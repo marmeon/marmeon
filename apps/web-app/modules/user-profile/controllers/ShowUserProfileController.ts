@@ -1,15 +1,18 @@
 import { abort, Controller, type HttpContext } from '@bespokecore/http';
+import { Session } from '@bespokecore/session';
 import { UserRepository, type AuthState } from '#modules/auth';
 import { ProfileActivity } from '../ProfileActivity.ts';
 
 export class ShowUserProfileController extends Controller {
   readonly #users: UserRepository;
   readonly #activity: ProfileActivity;
+  readonly #session: Session;
 
-  constructor(users: UserRepository, activity: ProfileActivity) {
+  constructor(users: UserRepository, activity: ProfileActivity, session: Session) {
     super();
     this.#users = users;
     this.#activity = activity;
+    this.#session = session;
   }
 
   handle(ctx: HttpContext<AuthState, { id: string }>) {
@@ -24,6 +27,7 @@ export class ShowUserProfileController extends Controller {
       viewer: { name: ctx.user.name },
       lastLoginAt: this.#activity.lastLogin(user.id)?.toISOString() ?? null,
       filter,
+      csrfToken: this.#session.token(), // for the sign-out form
       others: this.#users
         .all()
         .filter((other) => other.id !== user.id && other.name.toLowerCase().includes(filter.toLowerCase()))

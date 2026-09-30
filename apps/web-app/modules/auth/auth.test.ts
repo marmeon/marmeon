@@ -49,6 +49,18 @@ describe('auth module', () => {
       .assertPage<ShowLoginController>('auth/Login', { status: 'You have been signed out.' });
   });
 
+  it('refuses a login without CSRF token (419) and accepts the one from the login page', async () => {
+    const protectedApp = await createTestApp(application, { csrf: true });
+    await protectedApp.post('/login', { form: { user_id: '1' } }).assertStatus(419);
+
+    const page = await protectedApp.navigating().get('/login');
+    const { csrfToken } = page.page()!.props as { csrfToken: string };
+    await protectedApp
+      .withCookie('bespoke_session', page.cookie('bespoke_session')!)
+      .post('/login', { form: { user_id: '1', _token: csrfToken } })
+      .assertRedirect('/users/me');
+  });
+
   it('ignores forged session cookies', async () => {
     await app.withUnencryptedCookie('bespoke_session', 'x'.repeat(40)).expectingJson().get('/users/me').assertUnauthorized();
   });

@@ -5,12 +5,13 @@ import type { ShowUserProfileController } from '../controllers/ShowUserProfileCo
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, filter, others }: Props) {
+export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, filter, others, csrfToken }: Props) {
   return (
     <main>
       <header>
         Signed in as {viewer.name}
         <form method="post" action="/logout" style={{ display: 'inline', marginLeft: 8 }}>
+          <input type="hidden" name="_token" value={csrfToken} />
           <button type="submit">Sign out</button>
         </form>
       </header>

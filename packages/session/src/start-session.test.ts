@@ -3,6 +3,7 @@ import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption'
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
+import { CsrfProtection } from './csrf.ts';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { Session } from './session.ts';
@@ -48,6 +49,8 @@ const apiRoutes = defineRoutes((Route) => {
   Route.post('/no-session', () => new SaveController().handle());
 });
 
+const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
+
 async function boot(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
@@ -55,6 +58,7 @@ async function boot(env: Record<string, string> = {}) {
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
     modules: [defineModule({ name: 'visits', routes, apiRoutes })],
+    override: (container) => container.make(CsrfProtection).disable(), // CSRF has its own tests
   });
   const kernel = createHttpKernel(application);
   Object.assign(application, { kernel });
@@ -74,7 +78,7 @@ describe('StartSession', () => {
     const { send } = await boot();
     const first = await send('/count');
     expect(await first.json()).toEqual({ visits: 1, status: null });
-    expect(first.headers.getSetCookie()[0]).toMatch(/^bespoke_session=[\w-]{60,}; Path=\/; Max-Age=7200; HttpOnly; SameSite=Lax$/);
+    expect(sessionCookie(first)).toMatch(/^bespoke_session=[\w-]{60,}; Path=\/; Max-Age=7200; HttpOnly; SameSite=Lax$/);
     expect(await (await send('/count')).json()).toEqual({ visits: 2, status: null });
   });
 
@@ -90,7 +94,7 @@ describe('StartSession', () => {
     const { send } = await boot();
     const failed = await send('/fail', { method: 'POST' });
     expect(failed.status).toBe(422);
-    expect(failed.headers.getSetCookie()[0]).toMatch(/^bespoke_session=/);
+    expect(sessionCookie(failed)).toMatch(/^bespoke_session=/);
   });
 
   it('fails loudly (500) for redirect().with() on a route without a session', async () => {
@@ -110,7 +114,7 @@ describe('StartSession', () => {
 
   it('reads the cookie settings from the config', async () => {
     const { send } = await boot({ SESSION_COOKIE: 'shop_session', SESSION_LIFETIME: '30', SESSION_SECURE_COOKIE: 'true', SESSION_SAME_SITE: 'strict' });
-    const [cookie] = (await send('/count')).headers.getSetCookie();
+    const cookie = (await send('/count')).headers.getSetCookie().find((header) => header.startsWith('shop_session='));
     expect(cookie).toMatch(/^shop_session=[\w-]+; Path=\/; Max-Age=1800; HttpOnly; Secure; SameSite=Strict$/);
   });
 });

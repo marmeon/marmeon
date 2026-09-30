@@ -1,4 +1,5 @@
 export { SessionConfig } from './config.ts';
+export { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 export { SessionServiceProvider } from './provider.ts';
 export { Session } from './session.ts';
 export type { SessionData } from './session.ts';

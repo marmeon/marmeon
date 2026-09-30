@@ -19,6 +19,11 @@ export interface TestAppOptions {
   env?: Readonly<Record<string, string | undefined>>;
   /** Replace bindings before the app boots — even singletons see these. */
   override?: (container: Container) => void;
+  /**
+   * Verify CSRF tokens (default: false). Like Laravel, tests skip CSRF protection
+   * unless they test it — then send `_token` or the `X-XSRF-TOKEN` header yourself.
+   */
+  csrf?: boolean;
 }
 
 type FormValue = string | readonly string[];
@@ -44,10 +49,12 @@ export interface RequestOptions {
  * ```
  */
 export async function createTestApp(definition: ApplicationOptions, options: TestAppOptions = {}): Promise<TestApp> {
+  const session = await importSession();
   const application = await createApplication({
     ...definition,
     env: { ...(definition.env ?? loadEnv(definition.root)), ...options.env },
     override: (container) => {
+      if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
       definition.override?.(container);
       options.override?.(container);
     },
@@ -76,14 +83,18 @@ export interface SessionAccess {
   read(id: string): Promise<Record<string, unknown> | undefined>;
 }
 
-async function sessionAccess(container: Container): Promise<SessionAccess | undefined> {
-  let session: typeof import('@bespokecore/session');
+/** @bespokecore/session is an optional peer: only apps that use it have it installed. */
+async function importSession(): Promise<typeof import('@bespokecore/session') | undefined> {
   try {
-    session = await import('@bespokecore/session');
+    return await import('@bespokecore/session');
   } catch {
-    return undefined; // not installed
+    return undefined;
   }
-  if (!container.has(session.SessionConfig)) return undefined;
+}
+
+async function sessionAccess(container: Container): Promise<SessionAccess | undefined> {
+  const session = await importSession();
+  if (!session || !container.has(session.SessionConfig)) return undefined;
   const config = container.make(session.SessionConfig);
   const store = () => {
     if (config.driver === 'cookie') throw new Error('Session helpers in tests need the memory or file driver (set SESSION_DRIVER=memory in .env.test).');
