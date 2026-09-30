@@ -79,8 +79,14 @@ describe('user-profile module', () => {
   });
 
   it('serves a stateless API under /api — no session, no cookies', async () => {
-    const response = await app.get('/api/users').assertOk().assertCookieMissing('bespoke_session');
-    expect(response.json()).toEqual({ data: expect.arrayContaining([{ id: ada.id, name: 'Ada Lovelace' }]) });
+    const response = await app.get('/api/users?per_page=2').assertOk().assertCookieMissing('bespoke_session');
+    expect(response.json()).toEqual({
+      data: [
+        { id: ada.id, name: 'Ada Lovelace' },
+        { id: alan.id, name: 'Alan Turing' },
+      ],
+      meta: { page: 1, perPage: 2, total: 3, lastPage: 2, from: 1, to: 2 },
+    });
   });
 
   it('sends security headers on every response — global middleware, even for unknown paths', async () => {

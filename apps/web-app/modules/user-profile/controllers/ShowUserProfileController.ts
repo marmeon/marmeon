@@ -13,17 +13,19 @@ export class ShowUserProfileController extends Controller {
 
   /** `user` is bound by the route (ProfileDirectory): a missing one never gets here — it is a 404. */
   async handle(ctx: HttpContext<AuthState, { user: Profile }>) {
-    const { user } = ctx.params;
+    // The selected row goes to the view as it is — the migration's column types reach the view.
+    // Held back on purpose: the e-mail (owner only) and the activity (shown as lastLoginAt).
+    const { email, activity, ...user } = ctx.params.user;
     const filter = ctx.query.get('q')?.trim() ?? '';
     const people = await this.#directory.people({ search: filter, except: user.id, ...paginationFrom(ctx.query, { perPage: 5, maxPerPage: 50 }) });
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
-      profile: { id: user.id, name: user.name, bio: user.bio, links: user.links },
+      profile: user,
       // Only the owner may see their e-mail — the controller decides what leaves the server.
-      email: isOwnProfile ? user.email : null,
+      email: isOwnProfile ? email : null,
       isOwnProfile,
-      lastLoginAt: user.activity?.last_login_at ?? null,
+      lastLoginAt: activity?.last_login_at ?? null,
       filter,
       others: {
         data: people.data.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null })),

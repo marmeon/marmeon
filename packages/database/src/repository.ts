@@ -42,6 +42,13 @@ export interface RepositoryStatics {
 let savepoints = 0;
 
 /**
+ * `V`, but keys it does not share with `Shape` become `never` — so a variable with an extra field
+ * (`update(id, ctx.body)` after a column was renamed) is an error. TypeScript's excess-property check
+ * only covers object literals.
+ */
+export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never };
+
+/**
  * Optional base for a table's repository — a Data Mapper: rows in, rows out, no Active Record,
  * no identity map, no lazy loading, no dirty tracking, nothing happens on save that you did not call.
  *
@@ -167,7 +174,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /** Inserts a row and returns it as stored — defaults and generated id included. */
-  async insert(values: Insertable<DB[T]>): Promise<Selectable<DB[T]>> {
+  async insert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Selectable<DB[T]>> {
     return (await this.#untyped
       .insertInto(this.#name)
       .values(values as Record<string, unknown>)
@@ -176,7 +183,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /** Updates a row and returns it — `undefined` when there is none. Sets `updated_at` with `static timestamps = true`. */
-  async update(id: KeyOf<T, DB>, values: Updateable<DB[T]>): Promise<Selectable<DB[T]> | undefined> {
+  async update<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
     const changes: Record<string, unknown> = this.#statics().timestamps ? { ...values, updated_at: new Date() } : { ...values };
     let query = this.#untyped.updateTable(this.#name).set(changes).where('id', '=', id);
     if (this.#statics().softDeletes) query = query.where('deleted_at', 'is', null);

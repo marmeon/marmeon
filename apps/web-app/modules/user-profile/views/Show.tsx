@@ -36,6 +36,9 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
       <p>
+        <small>Member since {profile.created_at.slice(0, 10)}</small>
+      </p>
+      <p>
         <small>Last signed in: {lastLoginAt ? <time dateTime={lastLoginAt} title={utc(lastLoginAt)}>{ago(lastLoginAt, now)}</time> : 'never'}</small>
       </p>
       {isOwnProfile && (

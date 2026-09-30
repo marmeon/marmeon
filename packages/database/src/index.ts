@@ -46,5 +46,5 @@ export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';
 export { cursorPaginate, paginate, paginationFrom } from './pagination.ts';
 export type { CursorPaginated, PageMeta, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
-export type { KeyOf, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
+export type { Exact, KeyOf, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
 export { adaptNodeSqlite } from './sqlite.ts';

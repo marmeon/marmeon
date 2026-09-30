@@ -171,6 +171,11 @@ it('types repositories by their table', () => void (async (users: Users) => {
   await users.update(1, { is_admin: 'yes' });
   // @ts-expect-error — (27) not a column of the row
   void (await users.findOrFail(1)).password_hash;
+  const body = { name: 'Ada', bio: 'a renamed column' }; // a variable: no excess-property check for literals applies
+  // @ts-expect-error — (28a) an unknown column in a variable (e.g. ctx.body after a migration renamed it)
+  await users.update(1, body);
+  // @ts-expect-error — (28b) the same for insert
+  await users.insert({ ...body, email: 'a@x' });
   // @ts-expect-error — (28) `static table` names another table than Repository<'users'>
   const mislabeled: RepositoryClass<Mislabeled> = Mislabeled;
   void mislabeled;

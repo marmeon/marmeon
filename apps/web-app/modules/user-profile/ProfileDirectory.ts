@@ -16,11 +16,9 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   profile(id: number) {
     return this.#db
       .selectFrom('users')
+      // The row as the migrations define it — its columns reach the view (the controller holds back the e-mail).
+      .selectAll('users')
       .select((eb) => [
-        'users.id',
-        'users.name',
-        'users.email',
-        'users.bio',
         hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
         hasMany(eb, 'profile_links', 'user_id', 'users.id', (q) =>
           q.select(['profile_links.id', 'profile_links.label', 'profile_links.url']).orderBy('profile_links.id'),
