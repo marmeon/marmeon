@@ -1,3 +1,4 @@
+import { loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
 import { Container } from './container.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
 import type { ModuleDefinition } from './module.ts';
@@ -10,6 +11,13 @@ export interface ApplicationOptions {
   modules?: readonly ModuleDefinition[];
   /** Extra app-level providers (booted after packages, before modules). */
   providers?: readonly ServiceProviderClass[];
+  /** App-level configuration; modules can contribute their own through `config`. */
+  config?: readonly ConfigDefinition<any>[];
+  /**
+   * Environment to validate the configuration against. Default: `.env`, then
+   * `.env.{NODE_ENV}`, then the real environment (which wins).
+   */
+  env?: Readonly<Record<string, string | undefined>>;
   /** Register providers of installed packages (`bespoke discover`). Default: true. */
   discover?: boolean;
   container?: Container;
@@ -17,6 +25,9 @@ export interface ApplicationOptions {
 
 /**
  * The application: owns the container, the modules and the provider lifecycle.
+ *
+ * Configuration is validated and bound first — a start with missing or invalid
+ * variables fails before anything else runs, listing every problem at once.
  *
  * Boot order — every provider registers before any provider boots:
  * 1. providers of installed packages (dependencies first, from `bespoke discover`)
@@ -60,6 +71,11 @@ export class Application {
 export async function createApplication(options: ApplicationOptions): Promise<Application> {
   const container = options.container ?? new Container();
   const modules = options.modules ?? [];
+
+  const definitions = [...(options.config ?? []), ...modules.flatMap((module) => module.config ?? [])];
+  const config = await resolveConfig(definitions, options.env ?? loadEnv(options.root));
+  for (const [definition, value] of config) container.instance(definition, value);
+
   const discovered = options.discover === false ? undefined : await loadDiscoveredPackages({ root: options.root });
 
   const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [] });

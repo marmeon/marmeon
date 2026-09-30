@@ -1,3 +1,4 @@
+import type { ConfigDefinition } from './config/config.ts';
 import type { ServiceProviderClass } from './provider.ts';
 
 /**
@@ -14,6 +15,8 @@ import type { ServiceProviderClass } from './provider.ts';
 export interface ModuleDefinition {
   readonly name: string;
   readonly providers?: readonly ServiceProviderClass[];
+  /** Validated and bound before any provider registers. */
+  readonly config?: readonly ConfigDefinition<any>[];
 }
 
 /** Declares a module. The identity function exists for type inference and discoverability. */

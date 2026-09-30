@@ -4,3 +4,5 @@ dist/
 .vite/
 .DS_Store
 .bespoke/
+.env
+.env.local

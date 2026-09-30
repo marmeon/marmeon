@@ -25,4 +25,9 @@ describe('auth module', () => {
     const response = await app.request('/logout', { method: 'POST' });
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
+
+  it('injects the validated app config (from .env.test under Vitest)', async () => {
+    const page = (await (await app.request('/login', { headers: { 'x-bespoke': 'true' } })).json()) as { props: { appName: string } };
+    expect(page.props.appName).toBe('BespokeCore (test)');
+  });
 });

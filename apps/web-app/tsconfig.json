@@ -2,9 +2,21 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
-    "types": ["node", "vite/client"]
+    "types": [
+      "node",
+      "vite/client"
+    ]
   },
-  "include": ["bootstrap", "modules", "vite.config.ts"]
+  "include": [
+    "bootstrap",
+    "config",
+    "modules",
+    "vite.config.ts"
+  ]
 }
