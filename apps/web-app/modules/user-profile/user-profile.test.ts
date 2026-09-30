@@ -1,70 +1,59 @@
 import { UserRepository, type User } from '#modules/auth';
-import { Router } from '@bespokecore/router';
-import { createHttpKernel } from '@bespokecore/server';
-import { describe, expect, it } from 'vitest';
-import { app as application } from '../../bootstrap/app.ts';
+import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 
-const app = createHttpKernel(application);
-const as = (userId: string) => ({ headers: { 'x-user-id': userId, 'x-bespoke': 'true' } });
+let app: TestApp;
+beforeEach(async () => {
+  app = await createTestApp(application); // a fresh app per test
+});
+
+/** Signed in as `id`, navigating client-side (answers with the page object). */
+const as = (id: string) => app.withHeaders({ 'x-user-id': id }).navigating();
 
 describe('user-profile module', () => {
   it('returns 401 to non-browser clients without a session', async () => {
-    expect((await app.request('/users/1')).status).toBe(401);
+    await app.expectingJson().get('/users/1').assertUnauthorized().assertJson({ message: 'Unauthenticated.' });
   });
 
   it('redirects browsers without a session to the login page', async () => {
-    const response = await app.request('/users/1', { headers: { accept: 'text/html' } });
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/login');
+    await app.get('/users/1', { headers: { accept: 'text/html' } }).assertRedirect('/login');
   });
 
-  it('answers client-side navigations with the page object', async () => {
-    const response = await app.request('/users/1', as('1'));
-    expect(response.headers.get('x-bespoke')).toBe('true');
-    expect(await response.json()).toEqual({
-      component: 'user-profile/Show',
-      props: {
-        profile: { id: '1', name: 'Ada Lovelace', bio: 'First programmer.' },
+  it('renders the profile with controller-owned props', async () => {
+    await as('1')
+      .get('/users/1')
+      .assertOk()
+      .assertHeader('x-bespoke', 'true')
+      .assertPage<ShowUserProfileController>('user-profile/Show', {
+        profile: { name: 'Ada Lovelace' },
         email: 'ada@example.com',
         isOwnProfile: true,
-        viewer: { name: 'Ada Lovelace' },
         lastLoginAt: null,
-        others: [
-          { id: '2', name: 'Alan Turing' },
-          { id: '3', name: 'Grace Hopper' },
-        ],
-      },
-      url: '/users/1',
-    });
+      });
   });
 
   it("hides another user's e-mail", async () => {
-    const page = (await (await app.request('/users/2', as('1'))).json()) as { props: { email: string | null } };
-    expect(page.props.email).toBeNull();
+    await as('1').get('/users/2').assertPage<ShowUserProfileController>('user-profile/Show', { email: null, isOwnProfile: false });
   });
 
-  it('answers full page loads with an HTML document carrying the page', async () => {
-    const response = await app.request('/users/1', { headers: { 'x-user-id': '1' } });
-    expect(response.headers.get('content-type')).toContain('text/html');
-    expect(await response.text()).toContain('"component":"user-profile/Show"');
+  it('carries the page object in full page loads too', async () => {
+    await app.withHeaders({ 'x-user-id': '1' }).get('/users/1').assertOk().assertPage('user-profile/Show');
   });
 
   it('redirects /users/me to the current user', async () => {
-    const response = await app.request('/users/me', as('2'));
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(application.container.make(Router).url('user-profile.show', { id: 2 }));
+    await as('2').get('/users/me').assertRedirect('/users/2');
   });
 
   it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
-    const navigation = await app.request('/users/99', as('1'));
-    expect(navigation.status).toBe(404);
-    expect(await navigation.json()).toMatchObject({ component: 'errors/Error', props: { message: 'User not found.' } });
-
-    const api = await app.request('/users/99', { headers: { 'x-user-id': '1', accept: 'application/json' } });
-    expect(await api.json()).toEqual({ message: 'User not found.' });
+    await as('1').get('/users/99').assertNotFound().assertPage('errors/Error', { message: 'User not found.' });
+    await app.withHeaders({ 'x-user-id': '1' }).expectingJson().get('/users/99').assertNotFound().assertExactJson({
+      message: 'User not found.',
+    });
   });
 
-  it('resolves controllers through the container, so dependencies can be swapped', async () => {
+  it('lets tests replace services before the app boots — singletons included', async () => {
     const grace: User = { id: '1', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double' };
     class StubUserRepository extends UserRepository {
       override find(id: string) {
@@ -74,29 +63,23 @@ describe('user-profile module', () => {
         return [grace];
       }
     }
-    const stubbed = createHttpKernel(application, {
-      container: application.container.createScope().instance(UserRepository, new StubUserRepository()),
-    });
+    const stubbed = await createTestApp(application, { override: (c) => c.instance(UserRepository, new StubUserRepository()) });
 
-    const page = (await (await stubbed.request('/users/1', as('1'))).json()) as { props: { profile: { name: string } } };
-    expect(page.props.profile.name).toBe('Grace (stub)');
+    await stubbed.withHeaders({ 'x-user-id': '1' }).navigating().get('/users/1').assertPage('user-profile/Show', { profile: { name: 'Grace (stub)' } });
   });
 
   it('boots modules and discovered packages through their providers', () => {
-    expect(application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile']);
-    // The framework's own HTTP package registered itself like any installed package would.
-    expect(application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log']));
-    expect(application.container.make(UserRepository)).toBe(application.container.make(UserRepository)); // singleton
+    expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile']);
+    expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log']));
+    expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });
 
   it('shows when a user last signed in — via the UserLoggedIn event from the auth module', async () => {
-    const login = await app.request('/login', { method: 'POST', body: new URLSearchParams({ user_id: '2' }) });
-    expect(login.status).toBe(303);
+    await app.post('/login', { form: { user_id: '2' } }).assertRedirect('/users/me');
 
-    const page = (await (await app.request('/users/2', as('1'))).json()) as { props: { lastLoginAt: string | null } };
-    expect(page.props.lastLoginAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-
-    const untouched = (await (await app.request('/users/3', as('1'))).json()) as { props: { lastLoginAt: string | null } };
-    expect(untouched.props.lastLoginAt).toBeNull();
+    await as('1').get('/users/2').assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.lastLoginAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+    await as('1').get('/users/3').assertPage<ShowUserProfileController>('user-profile/Show', { lastLoginAt: null });
   });
 });

@@ -1,0 +1,91 @@
+import type { DeepPartial, PageSource, PropsOf, TestResponse } from './response.ts';
+
+type Assertions = {
+  [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];
+};
+
+/**
+ * A request that has not been awaited yet. Assertions chained onto it run once it
+ * is awaited, so a whole check reads like Laravel:
+ *
+ * ```ts
+ * await app.get('/users/1').assertOk().assertPage('user-profile/Show');
+ * ```
+ */
+export class PendingTestResponse implements PromiseLike<TestResponse> {
+  readonly #response: Promise<TestResponse>;
+  readonly #assertions: ((response: TestResponse) => void)[] = [];
+
+  constructor(response: Promise<TestResponse>) {
+    this.#response = response;
+  }
+
+  then<TResult1 = TestResponse, TResult2 = never>(
+    onfulfilled?: ((value: TestResponse) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return this.#response
+      .then((response) => {
+        for (const assertion of this.#assertions) assertion(response);
+        return response;
+      })
+      .then(onfulfilled, onrejected);
+  }
+
+  #queue(assertion: (response: TestResponse) => void): this {
+    this.#assertions.push(assertion);
+    return this;
+  }
+
+  assertStatus(...args: Parameters<Assertions['assertStatus']>): this {
+    return this.#queue((r) => r.assertStatus(...args));
+  }
+  assertOk(): this {
+    return this.#queue((r) => r.assertOk());
+  }
+  assertSuccessful(): this {
+    return this.#queue((r) => r.assertSuccessful());
+  }
+  assertCreated(): this {
+    return this.#queue((r) => r.assertCreated());
+  }
+  assertNoContent(): this {
+    return this.#queue((r) => r.assertNoContent());
+  }
+  assertUnauthorized(): this {
+    return this.#queue((r) => r.assertUnauthorized());
+  }
+  assertForbidden(): this {
+    return this.#queue((r) => r.assertForbidden());
+  }
+  assertNotFound(): this {
+    return this.#queue((r) => r.assertNotFound());
+  }
+  assertUnprocessable(): this {
+    return this.#queue((r) => r.assertUnprocessable());
+  }
+  assertRedirect(...args: Parameters<Assertions['assertRedirect']>): this {
+    return this.#queue((r) => r.assertRedirect(...args));
+  }
+  assertHeader(...args: Parameters<Assertions['assertHeader']>): this {
+    return this.#queue((r) => r.assertHeader(...args));
+  }
+  assertJson(...args: Parameters<Assertions['assertJson']>): this {
+    return this.#queue((r) => r.assertJson(...args));
+  }
+  assertExactJson(...args: Parameters<Assertions['assertExactJson']>): this {
+    return this.#queue((r) => r.assertExactJson(...args));
+  }
+  assertSee(...args: Parameters<Assertions['assertSee']>): this {
+    return this.#queue((r) => r.assertSee(...args));
+  }
+  assertDontSee(...args: Parameters<Assertions['assertDontSee']>): this {
+    return this.#queue((r) => r.assertDontSee(...args));
+  }
+  assertPage<TSource extends PageSource = PageSource>(
+    component: string,
+    props?: DeepPartial<PropsOf<TSource>> | ((props: PropsOf<TSource>) => void),
+  ): this {
+    return this.#queue((r) => r.assertPage<TSource>(component, props));
+  }
+}

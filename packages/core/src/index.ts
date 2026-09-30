@@ -8,7 +8,7 @@ export { analyzeInjections, injectConstructorDependencies, insertInjections, Inj
 export type { InjectionSite } from './injection/analyze.ts';
 export { embedInjections, embedPackageInjections } from './injection/embed.ts';
 export type { EmbedPackageOptions } from './injection/embed.ts';
-export { Application, createApplication } from './application.ts';
+export { Application, createApplication, defineApplication } from './application.ts';
 export type { ApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, Logger } from './logger.ts';

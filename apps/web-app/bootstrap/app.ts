@@ -1,14 +1,15 @@
 import { join } from 'node:path';
-import { createApplication } from '@bespokecore/core';
+import { defineApplication } from '@bespokecore/core';
 import auth from '#modules/auth';
-import { AppConfig } from '../config/app.ts';
 import userProfile from '#modules/user-profile';
+import { AppConfig } from '../config/app.ts';
 
 /**
- * The composition root. Installed packages (including the framework's own, like
- * @bespokecore/http) register themselves through discovery; modules are listed here.
+ * The composition root. It only describes the app: `bespoke` boots it, and tests
+ * boot a fresh instance per test. Installed packages (including the framework's
+ * own, like @bespokecore/http) register themselves through discovery.
  */
-export const app = await createApplication({
+export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
   modules: [auth, userProfile],

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { Application, ConfigError, Container } from '@bespokecore/core';
+import { Application, ConfigError, Container, createApplication, type ApplicationOptions } from '@bespokecore/core';
 import { CommandRegistry, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
@@ -82,14 +82,16 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   return typeof code === 'number' ? code : 0;
 }
 
-/** Imports `bootstrap/app.ts` — the app's composition root, which exports `app`. */
+/** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it. */
 async function loadApplication(root: string): Promise<Application | Error> {
   const entry = join(root, 'bootstrap', 'app.ts');
   if (!existsSync(entry)) return new Error(`No BespokeCore app in ${root} (bootstrap/app.ts not found)`);
   try {
-    const module = (await import(pathToFileURL(entry).href)) as { app?: unknown };
-    if (!(module.app instanceof Application)) return new Error('bootstrap/app.ts must export `app` (from createApplication).');
-    return module.app;
+    const module = (await import(pathToFileURL(entry).href)) as { default?: ApplicationOptions };
+    if (!module.default || typeof module.default.root !== 'string') {
+      return new Error('bootstrap/app.ts must `export default defineApplication({ … })`.');
+    }
+    return await createApplication(module.default);
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
   }

@@ -25,6 +25,19 @@ export interface ApplicationOptions {
   /** Register providers of installed packages (`bespoke discover`). Default: true. */
   discover?: boolean;
   container?: Container;
+  /**
+   * Runs after every provider registered and before any boots — the place to
+   * replace bindings, e.g. with test doubles, so even singletons see them.
+   */
+  override?: (container: Container) => void;
+}
+
+/**
+ * Describes the application without booting it — the default export of
+ * `bootstrap/app.ts`. The CLI boots it; tests boot a fresh instance per test.
+ */
+export function defineApplication(options: ApplicationOptions): ApplicationOptions {
+  return options;
 }
 
 /**
@@ -107,6 +120,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.bind(EventDispatcher, (resolver) => new EventDispatcher(events, resolver));
 
   app.register(providers);
+  options.override?.(container);
   await app.boot();
   return app;
 }

@@ -60,6 +60,9 @@ importers:
       '@bespokecore/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@bespokecore/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -166,6 +169,18 @@ importers:
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)
+
+  packages/testing:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
 
 packages:
 

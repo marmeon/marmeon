@@ -1,0 +1,42 @@
+{
+  "name": "@bespokecore/testing",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./vitest": {
+      "@bespokecore/source": "./src/vitest.ts",
+      "types": "./dist/vitest.d.ts",
+      "default": "./dist/vitest.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./vitest": {
+        "types": "./dist/vitest.d.ts",
+        "default": "./dist/vitest.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/server": "workspace:*"
+  }
+}
