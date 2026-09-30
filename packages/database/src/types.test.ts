@@ -3,7 +3,19 @@ import type { Generated, Kysely } from 'kysely';
 import * as v from 'valibot';
 import { expectTypeOf, it } from 'vitest';
 import type { ModuleDefinition } from '@bespokecore/core';
-import { Connections, Database, defineConnection, defineMigration, type QueryEvent, type Tables } from './index.ts';
+import {
+  Connections,
+  Database,
+  defineConnection,
+  defineMigration,
+  type Decimal,
+  type Generated as DbGenerated,
+  type JsonColumn,
+  type ModuleDatabase,
+  type QueryEvent,
+  type Tables,
+  type Timestamp,
+} from './index.ts';
 
 // Type guarantees of step 1 — checked by the compiler (`pnpm typecheck`); the test body only runs trivially.
 interface Shop {
@@ -19,8 +31,7 @@ it('types connections, configuration and the query log', () => {
   // @ts-expect-error — (2) wrong column type on insert
   void (() => shop().insertInto('orders').values({ total: '12' }));
 
-  // The default connection is typed by the (generated) `Tables`.
-  expectTypeOf<Database>().toEqualTypeOf<Kysely<Tables>>();
+  // The token resolves the default connection with every (generated) table.
   const fromContainer = (container: Container) => container.make(Database);
   expectTypeOf(fromContainer).returns.toEqualTypeOf<Kysely<Tables>>();
 
@@ -64,3 +75,65 @@ it('types migrations: defaults match the column, references come before on-delet
   // @ts-expect-error — (12) a module's migrations are a directory (URL or path)
   void ({ name: 'billing', migrations: 42 } satisfies ModuleDefinition);
 });
+
+// Generated-style tables of two modules — passed as parameters, because augmenting `Tables` in a test
+// file would change it for the whole package compilation.
+interface AppTables {
+  users: { id: DbGenerated<number>; name: string; email: string; password_hash: string; balance: DbGenerated<Decimal>; settings: JsonColumn | null; created_at: DbGenerated<Timestamp> };
+  login_activity: { user_id: number; last_login_at: Timestamp };
+  audit_log: { id: DbGenerated<number>; message: string };
+}
+interface Owners {
+  users: 'auth';
+  login_activity: 'user-profile';
+  audit_log: 'audit';
+}
+interface Exposed {
+  users: true;
+}
+declare const auth: ModuleDatabase<AppTables, Owners, Exposed, 'auth'>;
+declare const profile: ModuleDatabase<AppTables, Owners, Exposed, 'user-profile'>;
+
+// The bodies below are only compiled, never run (`declare const` has no runtime value).
+it('types generated tables: selection is the type, the database fills in generated columns', () => void (async () => {
+  const user = await auth.selectFrom('users').select(['id', 'name', 'created_at', 'balance', 'settings']).executeTakeFirstOrThrow();
+  expectTypeOf(user).toEqualTypeOf<{ id: number; name: string; created_at: string; balance: string; settings: import('./index.ts').Json | null }>();
+  // id, balance, created_at are generated; settings is nullable — all optional on insert. Dates may be `Date`.
+  await auth.insertInto('users').values({ name: 'Ada', email: 'a@x', password_hash: 'h', created_at: new Date() }).execute();
+  // @ts-expect-error — (13) not selected → not in the result: password_hash cannot leak into view props (E6)
+  void user.password_hash;
+  // @ts-expect-error — (14) unknown column
+  await auth.selectFrom('users').select('nmae').execute();
+  // @ts-expect-error — (15) wrong column type on insert
+  await auth.insertInto('users').values({ name: 1, email: 'a@x', password_hash: 'h' }).execute();
+  // @ts-expect-error — (16) a required column is missing
+  await auth.insertInto('users').values({ name: 'Ada', password_hash: 'h' }).execute();
+  // @ts-expect-error — (17) JSON is written as a string
+  await auth.updateTable('users').set({ settings: { theme: 'dark' } }).execute();
+}));
+
+it('enforces module boundaries (E20)', () => void (async () => {
+  // Own table: everything. Exposed `users`: reading and joins.
+  const rows = await profile
+    .selectFrom('login_activity')
+    .innerJoin('users', 'users.id', 'login_activity.user_id')
+    .select(['users.name', 'login_activity.last_login_at'])
+    .execute();
+  expectTypeOf(rows).toEqualTypeOf<{ name: string; last_login_at: string }[]>();
+  await profile.insertInto('login_activity').values({ user_id: 1, last_login_at: new Date() }).execute();
+  await profile.updateTable('login_activity').set({ last_login_at: new Date() }).where('user_id', 'in', (eb) => eb.selectFrom('users').select('id')).execute();
+  await profile.transaction().execute((trx) => trx.deleteFrom('login_activity').where('user_id', '=', 1).execute());
+
+  // @ts-expect-error — (18) another module's table that is not exposed is invisible
+  await profile.selectFrom('audit_log').selectAll().execute();
+  // @ts-expect-error — (19) the exposed table cannot be inserted into…
+  await profile.insertInto('users').values({ name: 'A', email: 'a@x', password_hash: 'h' }).execute();
+  // @ts-expect-error — (20) …updated…
+  await profile.updateTable('users').set({ name: 'B' }).execute();
+  // @ts-expect-error — (21) …or deleted from
+  await profile.deleteFrom('users').execute();
+  // @ts-expect-error — (22) not inside a transaction either
+  await profile.transaction().execute((trx) => trx.deleteFrom('users').execute());
+  // @ts-expect-error — (23) the owner sees nothing of the other module that was not exposed
+  await auth.selectFrom('login_activity').selectAll().execute();
+}));

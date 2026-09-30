@@ -12,5 +12,7 @@ export default defineModule({
   name: 'auth',
   providers: [AuthServiceProvider],
   migrations: new URL('./migrations/', import.meta.url),
+  // Other modules may read and join `users` — writing goes through the UserRepository.
+  exposes: ['users'],
   routes,
 });

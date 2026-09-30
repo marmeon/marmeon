@@ -1,7 +1,9 @@
 import { Application, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
 import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
+import { DbTypesCommand } from './commands/db-types.ts';
 import { Migrator } from './migrations/migrator.ts';
+import { TypeGenerator } from './types-gen/generator.ts';
 
 declare module '@bespokecore/core' {
   interface ModuleDefinition {
@@ -33,6 +35,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
     });
     container.singleton(Database, (c) => c.make(Connections).get());
     container.singleton(Migrator);
+    container.singleton(TypeGenerator);
   }
 
   async boot(app: Application): Promise<void> {
@@ -41,7 +44,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
     if (cli && app.container.has(cli.CommandRegistry)) {
       app.container
         .make(cli.CommandRegistry)
-        .add([DbShowCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand]);
+        .add([DbShowCommand, DbTypesCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand]);
     }
   }
 

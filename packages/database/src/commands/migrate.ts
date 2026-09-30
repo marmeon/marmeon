@@ -1,5 +1,7 @@
 import type { CommandInput } from '@bespokecore/cli';
 import { Migrator, type MigrationRun } from '../migrations/migrator.ts';
+import { TypeGenerator } from '../types-gen/generator.ts';
+import { writeTypes } from './db-types.ts';
 
 const force = { force: { type: 'boolean' } } as const;
 
@@ -14,23 +16,32 @@ function report(output: CommandInput['output'], verb: string) {
   return (run: MigrationRun) => output.success(`${verb} ${run.name} (${run.module}) ${run.ms.toFixed(1)} ms`);
 }
 
-/** Laravel's `migrate`: runs every pending migration of every module, in one batch. */
+/** After new migrations ran: regenerate the table types — not in production, where the committed file is final. */
+async function afterMigrating(generator: TypeGenerator, input: CommandInput, types: boolean): Promise<void> {
+  if (!types || process.env.NODE_ENV === 'production') return;
+  await writeTypes(generator, input.output, input.root);
+}
+
+/** Laravel's `migrate`: runs every pending migration of every module, in one batch, then updates the table types. */
 export class MigrateCommand {
   static command = 'migrate';
   static description = 'Run the pending migrations';
-  static usage = '[--force]';
-  static options = force;
+  static usage = '[--force] [--no-types]';
+  static options = { ...force, 'no-types': { type: 'boolean' } } as const;
 
   readonly #migrator: Migrator;
+  readonly #types: TypeGenerator;
 
-  constructor(migrator: Migrator) {
+  constructor(migrator: Migrator, types: TypeGenerator) {
     this.#migrator = migrator;
+    this.#types = types;
   }
 
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'migrate')) return 1;
     const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
     if (runs.length === 0) input.output.info('Nothing to migrate.');
+    await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
     return 0;
   }
 }
@@ -83,20 +94,23 @@ export class MigrateResetCommand {
 export class MigrateFreshCommand {
   static command = 'migrate:fresh';
   static description = 'Drop every table and run all migrations';
-  static usage = '[--force]';
-  static options = force;
+  static usage = '[--force] [--no-types]';
+  static options = { ...force, 'no-types': { type: 'boolean' } } as const;
 
   readonly #migrator: Migrator;
+  readonly #types: TypeGenerator;
 
-  constructor(migrator: Migrator) {
+  constructor(migrator: Migrator, types: TypeGenerator) {
     this.#migrator = migrator;
+    this.#types = types;
   }
 
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'drop every table')) return 1;
     await this.#migrator.dropAllTables();
     input.output.info('Dropped all tables.');
-    await this.#migrator.migrate(report(input.output, 'Migrated'));
+    const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
+    await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
     return 0;
   }
 }

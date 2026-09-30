@@ -2,20 +2,20 @@ import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { token, type Logger } from '@bespokecore/core';
 import { Kysely, type Dialect, type LogEvent } from 'kysely';
+import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { describeConnection, type ConnectionOptions } from './config.ts';
 import { DatabaseConnectionError, withBespokeDriver, type BespokeDriver } from './driver.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
 /**
- * Every table of the app, row types by table name — filled in by the generated file
- * (`bespoke db:types`, from the migrations) through declaration merging.
+ * The database as a module sees it — inject it with the module's name:
+ * `constructor(db: Database<'user-profile'>)`. Its own tables for everything, other modules'
+ * exposed tables for reading and joins (E20). At runtime it is the default connection.
  */
-export interface Tables {}
-
-/** The default connection, typed by the app's tables. Inject it: `constructor(db: Database)`. */
-export type Database = Kysely<Tables>;
-export const Database = token<Database>('Database');
+export type Database<M extends keyof Modules & string> = ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
+/** The default connection with every table — what the framework itself works with. */
+export const Database = token<Kysely<Tables>>('Database');
 
 /** One executed (or failed) query — for the query log, tests counting queries, and devtools. */
 export interface QueryEvent {

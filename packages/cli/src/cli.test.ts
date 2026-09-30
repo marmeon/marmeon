@@ -58,10 +58,17 @@ describe('bespoke (in the web app)', () => {
     expect(status.stdout).toMatch(/2026_10_01_120000_create_users_table\s+auth\s+Pending\n2026_10_01_120100_create_login_activity_table\s+user-profile\s+Pending/);
     const migrate = bespoke(webApp, ['migrate'], memory);
     expect(migrate.code).toBe(0);
+    // …then regenerates the table types (already committed, so unchanged).
     expect(migrate.stdout).toMatch(
-      /^✓ Migrated 2026_10_01_120000_create_users_table \(auth\) [\d.]+ ms\n✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\n$/,
+      /^✓ Migrated 2026_10_01_120000_create_users_table \(auth\) [\d.]+ ms\n✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\nℹ bootstrap\/database\.d\.ts is up to date\.\n$/,
     );
     expect(bespoke(webApp, ['migrate:fresh'], { ...memory, NODE_ENV: 'production' }).stderr).toContain('Pass --force to drop every table.');
+  });
+
+  it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
+    const { code, stdout } = bespoke(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
+    expect(stdout).toContain('✓ bootstrap/database.d.ts matches the migrations.');
+    expect(code).toBe(0);
   });
 
   it.runIf(process.env.BESPOKE_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
