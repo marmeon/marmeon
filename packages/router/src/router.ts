@@ -32,7 +32,8 @@ export interface DispatchInput {
   params: Record<string, string>;
 }
 
-export type ResponseFactory = (result: unknown, ctx: HttpContext) => Response | Promise<Response>;
+/** Turns a handler result into a Response. Needs only the request, so errors outside a route can use it too. */
+export type ResponseFactory = (result: unknown, ctx: { readonly request: Request }) => Response | Promise<Response>;
 
 export interface DispatchOptions {
   toResponse?: ResponseFactory;

@@ -1,4 +1,6 @@
+import { ERROR_PAGE } from '@bespokecore/http/page';
 import type { ComponentType } from 'react';
+import { ErrorPage } from './error-page.tsx';
 
 // Page props are validated at the controller boundary (PageProps<...>), not here.
 export type PageComponent = ComponentType<any>;
@@ -26,6 +28,7 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
 
   return async (name) => {
     const load = pages.get(name);
+    if (!load && name === ERROR_PAGE) return ErrorPage; // built-in until the app brings its own
     if (!load) {
       const [module, ...rest] = name.split('/');
       throw new Error(`Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx`);

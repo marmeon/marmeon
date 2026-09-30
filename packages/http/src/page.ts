@@ -1,4 +1,10 @@
+/**
+ * The page contract shared by the server and UI adapters — importable in the
+ * browser as `@bespokecore/http/page`, so it must stay free of server code.
+ */
 import type { ViewProps } from './view.ts';
+
+export type { PageProps, ViewProps, ViewResult } from './view.ts';
 
 /** The wire format of a page — shared by the server and every UI adapter. */
 export interface PageObject {
@@ -23,4 +29,15 @@ export type SsrRender = (page: PageObject) => Promise<SsrResult>;
 
 export function isPageObject(value: unknown): value is PageObject {
   return typeof value === 'object' && value !== null && 'component' in value && 'props' in value && 'url' in value;
+}
+
+/** The page every error renders. Apps override it with `modules/errors/views/Error.tsx`. */
+export const ERROR_PAGE = 'errors/Error';
+
+export interface ErrorPageProps {
+  status: number;
+  title: string;
+  message: string;
+  /** Only in debug mode. */
+  exception: { name: string; message: string; stack: string } | null;
 }

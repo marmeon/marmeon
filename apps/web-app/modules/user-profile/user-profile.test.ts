@@ -54,8 +54,13 @@ describe('user-profile module', () => {
     expect(response.headers.get('location')).toBe(application.container.make(Router).url('user-profile.show', { id: 2 }));
   });
 
-  it('returns 404 for unknown users', async () => {
-    expect((await app.request('/users/99', as('1'))).status).toBe(404);
+  it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
+    const navigation = await app.request('/users/99', as('1'));
+    expect(navigation.status).toBe(404);
+    expect(await navigation.json()).toMatchObject({ component: 'errors/Error', props: { message: 'User not found.' } });
+
+    const api = await app.request('/users/99', { headers: { 'x-user-id': '1', accept: 'application/json' } });
+    expect(await api.json()).toEqual({ message: 'User not found.' });
   });
 
   it('resolves controllers through the container, so dependencies can be swapped', async () => {
@@ -79,7 +84,7 @@ describe('user-profile module', () => {
   it('boots modules and discovered packages through their providers', () => {
     expect(application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile']);
     // The framework's own HTTP package registered itself like any installed package would.
-    expect(application.packages).toContain('@bespokecore/http');
+    expect(application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log']));
     expect(application.container.make(UserRepository)).toBe(application.container.make(UserRepository)); // singleton
   });
 });

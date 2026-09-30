@@ -8,6 +8,11 @@
       "@bespokecore/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./page": {
+      "@bespokecore/source": "./src/page.ts",
+      "types": "./dist/page.d.ts",
+      "default": "./dist/page.js"
     }
   },
   "files": [
@@ -26,6 +31,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./page": {
+        "types": "./dist/page.d.ts",
+        "default": "./dist/page.js"
       }
     }
   },

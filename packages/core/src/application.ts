@@ -1,6 +1,7 @@
 import { loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
 import { Container } from './container.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
+import { ConsoleLogger, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 
@@ -72,21 +73,29 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   const container = options.container ?? new Container();
   const modules = options.modules ?? [];
 
-  const definitions = [...(options.config ?? []), ...modules.flatMap((module) => module.config ?? [])];
-  const config = await resolveConfig(definitions, options.env ?? loadEnv(options.root));
-  for (const [definition, value] of config) container.instance(definition, value);
-
   const discovered = options.discover === false ? undefined : await loadDiscoveredPackages({ root: options.root });
+  const providers: ServiceProviderClass[] = [
+    ...((discovered?.providers ?? []) as ServiceProviderClass[]),
+    ...(options.providers ?? []),
+    ...modules.flatMap((module) => module.providers ?? []),
+  ];
+
+  // Configuration from the app, its modules and every provider (packages bring their own).
+  const definitions = new Set([
+    ...(options.config ?? []),
+    ...modules.flatMap((module) => module.config ?? []),
+    ...providers.flatMap((Provider) => Provider.config ?? []),
+  ]);
+  const config = await resolveConfig([...definitions], options.env ?? loadEnv(options.root));
+  for (const [definition, value] of config) container.instance(definition, value);
 
   const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [] });
   container.instance(Application, app);
   container.instance(Container, container);
+  // Fallback until a logging package (e.g. @bespokecore/log) binds its own.
+  container.singleton(Logger, () => new ConsoleLogger());
 
-  app.register([
-    ...((discovered?.providers ?? []) as ServiceProviderClass[]),
-    ...(options.providers ?? []),
-    ...modules.flatMap((module) => module.providers ?? []),
-  ]);
+  app.register(providers);
   await app.boot();
   return app;
 }

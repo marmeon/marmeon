@@ -1,4 +1,4 @@
-import { Controller, type HttpContext } from '@bespokecore/http';
+import { abort, Controller, type HttpContext } from '@bespokecore/http';
 import { UserRepository, type AuthState } from '#modules/auth';
 
 export class ShowUserProfileController extends Controller {
@@ -10,8 +10,7 @@ export class ShowUserProfileController extends Controller {
   }
 
   handle(ctx: HttpContext<AuthState, { id: string }>) {
-    const user = this.#users.find(ctx.params.id);
-    if (!user) return this.json({ message: 'User not found.' }, 404);
+    const user = this.#users.find(ctx.params.id) ?? abort(404, 'User not found.');
 
     return this.view('user-profile/Show', {
       profile: { id: user.id, name: user.name, bio: user.bio },

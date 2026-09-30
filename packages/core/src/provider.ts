@@ -1,4 +1,5 @@
 import type { Application } from './application.ts';
+import type { ConfigDefinition } from './config/config.ts';
 import type { Container } from './container.ts';
 
 /**
@@ -13,4 +14,11 @@ export interface ServiceProvider {
   boot?(app: Application): void | Promise<void>;
 }
 
-export type ServiceProviderClass = new (...args: any[]) => ServiceProvider;
+/**
+ * A provider class. Packages declare the configuration they need as
+ * `static config = [LogConfig]`; it is validated with the app's own config,
+ * before any provider registers.
+ */
+export type ServiceProviderClass = (new (...args: any[]) => ServiceProvider) & {
+  readonly config?: readonly ConfigDefinition<any>[];
+};

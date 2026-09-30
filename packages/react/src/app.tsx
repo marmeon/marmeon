@@ -1,4 +1,4 @@
-import { isPageObject, PAGE_HEADER, type PageObject } from '@bespokecore/http';
+import { isPageObject, PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PageComponent, ResolvePage } from './pages.ts';
 

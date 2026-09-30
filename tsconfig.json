@@ -8,6 +8,9 @@
       "path": "packages/core"
     },
     {
+      "path": "packages/log"
+    },
+    {
       "path": "packages/http"
     },
     {
