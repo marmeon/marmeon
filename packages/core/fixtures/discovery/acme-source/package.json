@@ -1,0 +1,9 @@
+{
+  "name": "@acme/source",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": { "@bespokecore/source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "bespoke": { "providers": ["SourceServiceProvider"] }
+}

@@ -3,3 +3,4 @@ dist/
 *.tsbuildinfo
 .vite/
 .DS_Store
+.bespoke/

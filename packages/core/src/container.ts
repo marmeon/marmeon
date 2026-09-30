@@ -1,4 +1,4 @@
-import { describeKey, type Concrete, type Constructor, type InjectCheck, type Key, type Token } from './token.ts';
+import { describeKey, type Concrete, type Constructor, type InjectCheck, type Key, type Resolve } from './token.ts';
 
 /** The read side of the container, handed to factories. */
 export interface Resolver {
@@ -86,10 +86,13 @@ export class Container implements Resolver {
 
   // -- Resolution ------------------------------------------------------------
 
-  make<T>(key: Token<T>): T;
-  make<C extends Constructor>(key: C & InjectCheck<C>): InstanceType<C>;
-  make(key: Key): unknown {
-    return this.#resolve(key, []);
+  /**
+   * One signature, not overloads: with overloads, a class failing the `static inject`
+   * check would silently fall through to a looser overload. Accepts tokens, classes and
+   * `Key<T>` values from generic code; the list check applies whenever K is a class.
+   */
+  make<K extends Key<any>>(key: K & (K extends Constructor ? InjectCheck<K> : unknown)): Resolve<K> {
+    return this.#resolve(key, []) as Resolve<K>;
   }
 
   #resolve(key: Key, path: readonly Key[]): unknown {
