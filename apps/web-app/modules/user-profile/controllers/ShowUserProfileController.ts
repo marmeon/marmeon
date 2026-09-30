@@ -27,7 +27,7 @@ export class ShowUserProfileController extends Controller {
       viewer: { name: ctx.user.name },
       lastLoginAt: this.#activity.lastLogin(user.id)?.toISOString() ?? null,
       filter,
-      csrfToken: this.#session.token(), // for the sign-out form
+      status: this.#session.get('status') ?? null, // flashed by the previous request (e.g. after saving)
       others: this.#users
         .all()
         .filter((other) => other.id !== user.id && other.name.toLowerCase().includes(filter.toLowerCase()))

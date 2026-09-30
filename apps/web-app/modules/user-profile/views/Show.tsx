@@ -5,24 +5,29 @@ import type { ShowUserProfileController } from '../controllers/ShowUserProfileCo
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, filter, others, csrfToken }: Props) {
+export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, filter, others, status }: Props) {
   return (
     <main>
       <header>
         Signed in as {viewer.name}
-        <form method="post" action="/logout" style={{ display: 'inline', marginLeft: 8 }}>
-          <input type="hidden" name="_token" value={csrfToken} />
-          <button type="submit">Sign out</button>
-        </form>
+        {/* A visit with the CSRF token from the XSRF-TOKEN cookie — no hidden form field needed. */}
+        <Link method="post" href="/logout" style={{ marginLeft: 8 }}>
+          Sign out
+        </Link>
       </header>
 
+      {status && <p role="status">{status}</p>}
       <h1>{profile.name}</h1>
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
       <p>
         <small>Last signed in: {lastLoginAt ? new Date(lastLoginAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'never'}</small>
       </p>
-      {isOwnProfile && <p><em>This is your profile.</em></p>}
+      {isOwnProfile && (
+        <p>
+          <em>This is your profile.</em> <Link href={`/users/${profile.id}/edit`}>Edit profile</Link>
+        </p>
+      )}
 
       <nav>
         <h2>Other people</h2>

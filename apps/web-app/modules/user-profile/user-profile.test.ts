@@ -1,7 +1,9 @@
 import { UserRepository, type User } from '#modules/auth';
+import { useForm } from '@bespokecore/react';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 
@@ -99,6 +101,41 @@ describe('user-profile module', () => {
     });
   });
 
+  describe('the edit page', () => {
+    it('shows your own profile for editing — and nobody else\'s', async () => {
+      await as('1').get('/users/1/edit').assertOk().assertPage<EditUserProfileController>('user-profile/Edit', {
+        profile: { name: 'Ada Lovelace' },
+        errors: {},
+      });
+      await as('2').get('/users/1/edit').assertForbidden();
+    });
+
+    it('a failed client-side visit comes back to the form with errors and old input (no 422)', async () => {
+      const response = await as('1')
+        .put('/users/1', { json: { name: 'A', bio: 'ok' }, headers: { referer: 'http://localhost/users/1/edit' } })
+        .assertStatus(303)
+        .assertRedirect('/users/1/edit');
+
+      await app
+        .withCookie('bespoke_session', response.cookie('bespoke_session')!)
+        .navigating()
+        .get('/users/1/edit')
+        .assertPage<EditUserProfileController>('user-profile/Edit', {
+          errors: { name: ['The name needs at least 2 characters.'] },
+          old: { name: 'A', bio: 'ok' },
+        });
+    });
+
+    it('a successful save lands on the profile with a status message', async () => {
+      const response = await as('1').put('/users/1', { json: { name: 'Ada', bio: 'Math.' } }).assertRedirect('/users/1');
+      await app
+        .withCookie('bespoke_session', response.cookie('bespoke_session')!)
+        .navigating()
+        .get('/users/1')
+        .assertPage<ShowUserProfileController>('user-profile/Show', { status: 'Profile saved.', profile: { bio: 'Math.' } });
+    });
+  });
+
   it('redirects /users/me to the current user', async () => {
     await as('2').get('/users/me').assertRedirect('/users/2');
   });
@@ -151,4 +188,20 @@ export async function typeLevelTests(): Promise<void> {
   // Nested paths of known fields and untyped checks are fine:
   await app.put('/users/1').assertInvalid<UpdateUserProfileController>(['name.first']);
   await app.put('/users/1').assertInvalid(['anything']);
+}
+
+// Never rendered: only the types of useForm matter.
+export function TypedForm() {
+  const form = useForm<UpdateUserProfileController>({ name: 'Ada', bio: '' });
+  form.set('name', 'Ada King');
+  // @ts-expect-error — `nmae` is not a field of the request schema.
+  form.set('nmae', 'x');
+  // @ts-expect-error — `bio` is a string.
+  form.set('bio', 1);
+  // @ts-expect-error — `bio` is required by the schema.
+  useForm<UpdateUserProfileController>({ name: 'Ada' });
+  const nameError: string | undefined = form.errors.name;
+  // @ts-expect-error — the schema has no `email`, so there is no such error either.
+  void form.errors.email;
+  return nameError;
 }

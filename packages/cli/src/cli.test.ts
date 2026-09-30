@@ -33,7 +33,7 @@ describe('bespoke (in the web app)', () => {
       /GET\s+\/users\/:id\s+user-profile\.show\s+web\s+SecurityHeaders, EncryptCookies, StartSession, VerifyCsrfToken, Authenticate\s+ShowUserProfileController/,
     );
     expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders\s+ListUsersController/);
-    expect(stdout).toContain('8 routes');
+    expect(stdout).toContain('9 routes');
   });
 
   it('prints configuration errors without Node internals and exits with 1', () => {
