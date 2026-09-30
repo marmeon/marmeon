@@ -74,11 +74,16 @@ describe.each(drivers)('a refreshed database on %s', (driver) => {
     await app.assertDatabaseHas<'notes', NotesTables>('notes', { title: 'From a request' });
   });
 
-  it('seeds per test when asked to', async () => {
+  it('seeds per test when asked to — one database app at a time', async () => {
+    await expect(createTestApp(definition, { database: 'refresh', seed: true })).rejects.toThrow(
+      "Another test app with database: 'refresh' is still open. Close it first (await app.close())",
+    );
+    await app.close();
     const seeded = await createTestApp(definition, { database: 'refresh', seed: true });
     await seeded.assertDatabaseHas<'notes', NotesTables>('notes', { title: 'Welcome', pinned: true });
     await seeded.close();
-    await app.assertDatabaseMissing<'notes', NotesTables>('notes', { title: 'Welcome' });
+    const next = await createTestApp(definition, { database: 'refresh' });
+    await next.assertDatabaseMissing<'notes', NotesTables>('notes', { title: 'Welcome' });
   });
 
   it('explains failed database assertions with what the table holds', async () => {

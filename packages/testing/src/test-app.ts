@@ -67,6 +67,14 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let worker: WorkerDatabase | undefined;
   if (options.database === 'refresh') {
     if (!database) throw new Error("createTestApp(…, { database: 'refresh' }) needs @bespokecore/database installed.");
+    if (openRefreshed.size > 0) {
+      // Two open transactions on the worker's database: SQLite has one writer, so the second app would
+      // wait for the first one's lock (5 s, then "database is locked"). One database app per test.
+      throw new Error(
+        "Another test app with database: 'refresh' is still open. Close it first (await app.close()) — " +
+          'each test works in one transaction of one app.',
+      );
+    }
     worker = await workerDatabase(database, definition.root, env);
     env = { ...env, ...worker.env };
   } else if (options.seed) {
@@ -89,7 +97,11 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     try {
       await prepareWorkerDatabase(database, application, worker);
       const isolation = await application.container.make(database.Connections).isolate();
-      shared.cleanups.push(() => isolation.rollback());
+      openRefreshed.add(app);
+      shared.cleanups.push(async () => {
+        openRefreshed.delete(app);
+        await isolation.rollback();
+      });
       if (options.seed) await application.container.make(database.Seeding).run();
     } catch (error) {
       await app.close();
@@ -99,6 +111,9 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   await closeWhenTheTestEnds(app);
   return app;
 }
+
+/** Refreshed test apps not closed yet — at most one at a time (see createTestApp). */
+const openRefreshed = new Set<TestApp>();
 
 /**
  * Inside a Vitest test (or its `beforeEach`), the app closes when the test ends — its transaction is

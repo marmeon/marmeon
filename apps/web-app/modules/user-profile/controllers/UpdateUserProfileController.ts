@@ -9,7 +9,7 @@ export const UpdateUserProfileRequest = defineRequest({
     bio: v.pipe(v.string(), v.trim(), v.maxLength(200, 'The bio may have at most 200 characters.')),
   }),
   // Only your own profile. Runs before validation — others get a 403, not field errors.
-  authorize: (ctx: HttpContext<AuthState, { id: string }>) => ctx.user.id === ctx.params.id,
+  authorize: (ctx: HttpContext<AuthState, { id: string }>) => String(ctx.user.id) === ctx.params.id,
 });
 
 export class UpdateUserProfileController extends Controller {
@@ -22,9 +22,9 @@ export class UpdateUserProfileController extends Controller {
     this.#users = users;
   }
 
-  handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
+  async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
     // ctx.body is { name: string; bio: string } — validated and trimmed
-    this.#users.update(ctx.params.id, ctx.body);
+    await this.#users.update(ctx.user.id, ctx.body);
     return this.redirect().route('user-profile.show', { id: ctx.params.id }).with('status', 'Profile saved.');
   }
 }

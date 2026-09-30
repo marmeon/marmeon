@@ -1,4 +1,5 @@
-import { UserRepository, type User } from '#modules/auth';
+import { UserFactory, UserRepository, type User } from '#modules/auth';
+import { Connections } from '@bespokecore/database';
 import { useForm } from '@bespokecore/react';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -8,25 +9,30 @@ import type { ShowUserProfileController } from './controllers/ShowUserProfileCon
 import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 
 let app: TestApp;
+let ada: User, alan: User, grace: User;
 beforeEach(async () => {
-  app = await createTestApp(application); // a fresh app per test
+  // A fresh app per test, on a real database: migrated once per worker, seeded and rolled back per test.
+  app = await createTestApp(application, { database: 'refresh', seed: true });
+  // The seeded demo users. Never assume ids: Postgres does not roll back its sequences.
+  [ada, alan, grace] = (await app.make(UserRepository).query().selectAll().orderBy('id').execute()) as [User, User, User];
 });
 
-/** Signed in as `id`, navigating client-side (answers with the page object). */
-const as = (id: string) => app.withSession({ user_id: id }).navigating();
+/** Signed in as `user`, navigating client-side (answers with the page object). */
+const as = (user: User) => app.withSession({ user_id: user.id }).navigating();
+const profile = (user: User) => `/users/${user.id}`;
 
 describe('user-profile module', () => {
   it('returns 401 to non-browser clients without a session', async () => {
-    await app.expectingJson().get('/users/1').assertUnauthorized().assertJson({ message: 'Unauthenticated.' });
+    await app.expectingJson().get(profile(ada)).assertUnauthorized().assertJson({ message: 'Unauthenticated.' });
   });
 
   it('redirects browsers without a session to the login page', async () => {
-    await app.get('/users/1', { headers: { accept: 'text/html' } }).assertRedirect('/login');
+    await app.get(profile(ada), { headers: { accept: 'text/html' } }).assertRedirect('/login');
   });
 
   it('renders the profile with controller-owned props', async () => {
-    await as('1')
-      .get('/users/1')
+    await as(ada)
+      .get(profile(ada))
       .assertOk()
       .assertHeader('x-bespoke', 'true')
       .assertPage<ShowUserProfileController>('user-profile/Show', {
@@ -38,25 +44,27 @@ describe('user-profile module', () => {
   });
 
   it("hides another user's e-mail", async () => {
-    await as('1').get('/users/2').assertPage<ShowUserProfileController>('user-profile/Show', { email: null, isOwnProfile: false });
+    await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', { email: null, isOwnProfile: false });
   });
 
   it('carries the page object in full page loads too', async () => {
-    await app.withSession({ user_id: '1' }).get('/users/1').assertOk().assertPage('user-profile/Show');
+    await app.withSession({ user_id: ada.id }).get(profile(ada)).assertOk().assertPage('user-profile/Show');
   });
 
   it('filters the other people by name from the query string', async () => {
-    await as('1')
-      .get('/users/1?q=  TUR ')
-      .assertPage<ShowUserProfileController>('user-profile/Show', { filter: 'TUR', others: [{ id: '2', name: 'Alan Turing' }] });
-    await as('1').get('/users/1').assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.others.map((other) => other.id)).toEqual(['2', '3']);
+    await as(ada)
+      .get(`${profile(ada)}?q=  TUR `)
+      .assertPage<ShowUserProfileController>('user-profile/Show', { filter: 'TUR', others: [{ id: alan.id, name: 'Alan Turing' }] });
+    await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.others.map((other) => other.name)).toEqual(['Alan Turing', 'Grace Hopper']);
     });
+    // LIKE wildcards in the search are taken literally
+    await as(ada).get(`${profile(ada)}?q=%25`).assertPage<ShowUserProfileController>('user-profile/Show', { others: [] });
   });
 
   it('serves a stateless API under /api — no session, no cookies', async () => {
     const response = await app.get('/api/users').assertOk().assertCookieMissing('bespoke_session');
-    expect(response.json()).toEqual({ data: expect.arrayContaining([{ id: '1', name: 'Ada Lovelace' }]) });
+    expect(response.json()).toEqual({ data: expect.arrayContaining([{ id: ada.id, name: 'Ada Lovelace' }]) });
   });
 
   it('sends security headers on every response — global middleware, even for unknown paths', async () => {
@@ -68,19 +76,19 @@ describe('user-profile module', () => {
   describe('updating the profile (UpdateUserProfileRequest)', () => {
     it('saves valid, trimmed input and flashes a status', async () => {
       await app
-        .withSession({ user_id: '1' })
-        .put('/users/1', { json: { name: '  Ada King ', bio: 'Countess.' } })
-        .assertRedirect('/users/1')
+        .withSession({ user_id: ada.id })
+        .put(profile(ada), { json: { name: '  Ada King ', bio: 'Countess.' } })
+        .assertRedirect(profile(ada))
         .assertValid()
         .assertSessionHas('status', 'Profile saved.');
-      expect(app.make(UserRepository).find('1')).toMatchObject({ name: 'Ada King', bio: 'Countess.' });
+      await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King', bio: 'Countess.' });
     });
 
     it('answers API clients with 422 and the field errors', async () => {
       const response = await app
-        .withSession({ user_id: '1' })
+        .withSession({ user_id: ada.id })
         .expectingJson()
-        .put('/users/1', { json: { name: 'A', bio: 'x'.repeat(201) } })
+        .put(profile(ada), { json: { name: 'A', bio: 'x'.repeat(201) } })
         .assertUnprocessable()
         .assertInvalid<UpdateUserProfileController>({ name: /at least 2/, bio: 'The bio may have at most 200 characters.' });
       expect(response.json()).toMatchObject({ message: 'The name needs at least 2 characters. (and 1 more error)' });
@@ -88,23 +96,23 @@ describe('user-profile module', () => {
 
     it('sends pages back with the errors and the old input in the session', async () => {
       await app
-        .withSession({ user_id: '1' })
-        .put('/users/1', { form: { name: 'A', bio: 'ok', _token: 'never flashed' }, headers: { referer: 'http://localhost/users/1/edit' } })
-        .assertRedirect('/users/1/edit')
+        .withSession({ user_id: ada.id })
+        .put(profile(ada), { form: { name: 'A', bio: 'ok', _token: 'never flashed' }, headers: { referer: `http://localhost${profile(ada)}/edit` } })
+        .assertRedirect(`${profile(ada)}/edit`)
         .assertInvalid<UpdateUserProfileController>(['name'])
         .assertSessionHas('_old_input', { name: 'A', bio: 'ok' });
     });
 
     it('forbids editing someone else (403 before validation)', async () => {
-      await app.withSession({ user_id: '2' }).expectingJson().put('/users/1', { json: {} }).assertForbidden();
-      expect(app.make(UserRepository).find('1')!.name).toBe('Ada Lovelace');
+      await app.withSession({ user_id: alan.id }).expectingJson().put(profile(ada), { json: {} }).assertForbidden();
+      await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada Lovelace' });
     });
   });
 
   describe('shared props', () => {
     it('gives every page the signed-in user, flash messages and validation errors', async () => {
-      await as('2').get('/users/1').assertPage<ShowUserProfileController>('user-profile/Show', {
-        auth: { user: { id: '2', name: 'Alan Turing' } },
+      await as(alan).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', {
+        auth: { user: { id: alan.id, name: 'Alan Turing' } },
         flash: { status: null },
         errors: {},
       });
@@ -114,40 +122,42 @@ describe('user-profile module', () => {
     it('evaluates lazy props only when a page renders — never for redirects or JSON', async () => {
       let lookups = 0;
       class CountingUsers extends UserRepository {
-        override find(id: string) {
+        override find(id: number) {
           lookups++;
           return super.find(id);
         }
       }
-      const counted = await createTestApp(application, { override: (c) => c.instance(UserRepository, new CountingUsers()) });
-      await counted.withSession({ user_id: '1' }).get('/users/me').assertRedirect('/users/1');
+      await app.close(); // one database app per test
+      const counted = await createTestApp(application, { database: 'refresh', override: (c) => c.singleton(UserRepository, CountingUsers) });
+      const user = await counted.factory(UserFactory).create();
+      await counted.withSession({ user_id: user.id }).get('/users/me').assertRedirect(`/users/${user.id}`);
       expect(lookups).toBe(1); // Authenticate only — the shared `auth` prop was not evaluated
 
       lookups = 0;
-      await counted.withSession({ user_id: '1' }).navigating().get('/users/1').assertOk();
+      await counted.withSession({ user_id: user.id }).navigating().get(`/users/${user.id}`).assertOk();
       expect(lookups).toBe(3); // Authenticate, the controller, and now the shared `auth` prop
     });
   });
 
   describe('the edit page', () => {
     it('shows your own profile for editing — and nobody else\'s', async () => {
-      await as('1').get('/users/1/edit').assertOk().assertPage<EditUserProfileController>('user-profile/Edit', {
+      await as(ada).get(`${profile(ada)}/edit`).assertOk().assertPage<EditUserProfileController>('user-profile/Edit', {
         profile: { name: 'Ada Lovelace' },
         errors: {},
       });
-      await as('2').get('/users/1/edit').assertForbidden();
+      await as(alan).get(`${profile(ada)}/edit`).assertForbidden();
     });
 
     it('a failed client-side visit comes back to the form with errors and old input (no 422)', async () => {
-      const response = await as('1')
-        .put('/users/1', { json: { name: 'A', bio: 'ok' }, headers: { referer: 'http://localhost/users/1/edit' } })
+      const response = await as(ada)
+        .put(profile(ada), { json: { name: 'A', bio: 'ok' }, headers: { referer: `http://localhost${profile(ada)}/edit` } })
         .assertStatus(303)
-        .assertRedirect('/users/1/edit');
+        .assertRedirect(`${profile(ada)}/edit`);
 
       await app
         .withCookie('bespoke_session', response.cookie('bespoke_session')!)
         .navigating()
-        .get('/users/1/edit')
+        .get(`${profile(ada)}/edit`)
         .assertPage<EditUserProfileController>('user-profile/Edit', {
           errors: { name: ['The name needs at least 2 characters.'] },
           old: { name: 'A', bio: 'ok' },
@@ -155,51 +165,56 @@ describe('user-profile module', () => {
     });
 
     it('a successful save lands on the profile with a status message', async () => {
-      const response = await as('1').put('/users/1', { json: { name: 'Ada', bio: 'Math.' } }).assertRedirect('/users/1');
+      const response = await as(ada).put(profile(ada), { json: { name: 'Ada', bio: 'Math.' } }).assertRedirect(profile(ada));
       await app
         .withCookie('bespoke_session', response.cookie('bespoke_session')!)
         .navigating()
-        .get('/users/1')
+        .get(profile(ada))
         .assertPage<ShowUserProfileController>('user-profile/Show', { flash: { status: 'Profile saved.' }, profile: { bio: 'Math.' } });
     });
   });
 
   it('sends open tabs of an older build a 409 with the URL to reload (ASSET_VERSION)', async () => {
-    const deployed = await createTestApp(application, { env: { ASSET_VERSION: 'build-2' } });
+    await app.close(); // one database app per test
+    const deployed = await createTestApp(application, { database: 'refresh', env: { ASSET_VERSION: 'build-2' } });
+    const user = await deployed.factory(UserFactory).create();
     await deployed
-      .withSession({ user_id: '1' })
+      .withSession({ user_id: user.id })
       .navigating()
       .withHeaders({ 'x-bespoke-version': 'build-1' })
-      .get('/users/1')
+      .get(`/users/${user.id}`)
       .assertStatus(409)
-      .assertHeader('x-bespoke-location', 'http://localhost/users/1');
-    await deployed.withSession({ user_id: '1' }).navigating().get('/users/1').assertOk();
+      .assertHeader('x-bespoke-location', `http://localhost/users/${user.id}`);
+    await deployed.withSession({ user_id: user.id }).navigating().get(`/users/${user.id}`).assertOk();
   });
 
   it('redirects /users/me to the current user', async () => {
-    await as('2').get('/users/me').assertRedirect('/users/2');
+    await as(alan).get('/users/me').assertRedirect(profile(alan));
   });
 
   it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
-    await as('1').get('/users/99').assertNotFound().assertPage('errors/Error', { message: 'User not found.' });
-    await app.withSession({ user_id: '1' }).expectingJson().get('/users/99').assertNotFound().assertExactJson({
+    await as(ada).get('/users/999999').assertNotFound().assertPage('errors/Error', { message: 'User not found.' });
+    await app.withSession({ user_id: ada.id }).expectingJson().get('/users/abc').assertNotFound().assertExactJson({
       message: 'User not found.',
     });
   });
 
   it('lets tests replace services before the app boots — singletons included', async () => {
-    const grace: User = { id: '1', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double' };
+    const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '' };
     class StubUserRepository extends UserRepository {
-      override find(id: string) {
-        return id === '1' ? grace : undefined;
+      override async find(id: number) {
+        return id === stub.id ? stub : undefined;
       }
-      override all() {
-        return [grace];
+      override async list() {
+        return [{ id: stub.id, name: stub.name }];
       }
     }
-    const stubbed = await createTestApp(application, { override: (c) => c.instance(UserRepository, new StubUserRepository()) });
-
-    await stubbed.withSession({ user_id: '1' }).navigating().get('/users/1').assertPage('user-profile/Show', { profile: { name: 'Grace (stub)' } });
+    await app.close(); // one database app per test
+    const stubbed = await createTestApp(application, {
+      database: 'refresh', // the profile also reads login_activity
+      override: (c) => c.singleton(UserRepository, (r) => new StubUserRepository(r.make(Connections))),
+    });
+    await stubbed.withSession({ user_id: 7 }).navigating().get('/users/7').assertPage('user-profile/Show', { profile: { name: 'Grace (stub)' } });
   });
 
   it('boots modules and discovered packages through their providers', () => {
@@ -209,12 +224,13 @@ describe('user-profile module', () => {
   });
 
   it('shows when a user last signed in — via the UserLoggedIn event from the auth module', async () => {
-    await app.post('/login', { form: { user_id: '2' } }).assertRedirect('/users/me');
+    await app.post('/login', { form: { user_id: String(alan.id) } }).assertRedirect('/users/me');
+    await app.assertDatabaseHas('login_activity', { user_id: alan.id });
 
-    await as('1').get('/users/2').assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.lastLoginAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.lastLoginAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
-    await as('1').get('/users/3').assertPage<ShowUserProfileController>('user-profile/Show', { lastLoginAt: null });
+    await as(ada).get(profile(grace)).assertPage<ShowUserProfileController>('user-profile/Show', { lastLoginAt: null });
   });
 });
 

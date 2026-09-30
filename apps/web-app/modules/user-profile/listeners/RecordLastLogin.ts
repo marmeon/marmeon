@@ -1,15 +1,15 @@
 import type { UserLoggedIn } from '#modules/auth';
-import { ProfileActivity } from '../ProfileActivity.ts';
+import { LoginActivityRepository } from '../LoginActivityRepository.ts';
 
 /** Reacts to an auth event without the auth module knowing this module exists. */
 export class RecordLastLogin {
-  readonly #activity: ProfileActivity;
+  readonly #activity: LoginActivityRepository;
 
-  constructor(activity: ProfileActivity) {
+  constructor(activity: LoginActivityRepository) {
     this.#activity = activity;
   }
 
-  handle(event: UserLoggedIn): void {
-    this.#activity.recordLogin(event.user.id, event.at);
+  async handle(event: UserLoggedIn): Promise<void> {
+    await this.#activity.record(event.user.id, event.at);
   }
 }

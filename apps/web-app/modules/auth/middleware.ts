@@ -6,7 +6,7 @@ import type { User } from './users.ts';
 declare module '@bespokecore/session' {
   interface SessionData {
     /** The signed-in user — set on login, removed on logout. */
-    user_id: string;
+    user_id: number;
     /** Flash message for the next page (signed out, profile saved). */
     status: string;
   }
@@ -33,8 +33,9 @@ export class Authenticate {
     this.#session = session;
   }
 
-  handle(ctx: HttpContext, next: Next<AuthState>) {
-    const user = this.#users.find(this.#session.get('user_id') ?? '');
+  async handle(ctx: HttpContext, next: Next<AuthState>) {
+    const id = this.#session.get('user_id');
+    const user = id === undefined ? undefined : await this.#users.find(id);
     if (user) return next({ user });
 
     // API/JSON clients get a 401, browsers are sent to the login page.

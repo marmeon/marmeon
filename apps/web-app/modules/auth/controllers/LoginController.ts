@@ -7,7 +7,7 @@ import { UserRepository } from '../UserRepository.ts';
 
 export const LoginRequest = defineRequest({
   schema: v.object({
-    user_id: v.pipe(v.string('Pick a user.'), v.regex(/^\d+$/, 'Pick a user.')),
+    user_id: v.pipe(v.string('Pick a user.'), v.regex(/^\d{1,15}$/, 'Pick a user.'), v.transform(Number)),
   }),
 });
 
@@ -26,7 +26,7 @@ export class LoginController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
-    const user = this.#users.find(ctx.body.user_id);
+    const user = await this.#users.find(ctx.body.user_id);
     if (!user) return this.back().withErrors({ user_id: ['Unknown user.'] });
 
     this.#session.regenerate(); // a session id planted before login must not survive it

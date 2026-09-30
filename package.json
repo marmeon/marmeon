@@ -12,7 +12,7 @@
     "test": "NODE_OPTIONS=--conditions=@bespokecore/source vitest run --configLoader native",
     "dev": "pnpm --filter @bespokecore/web-app dev",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
-    "test:pgsql": "BESPOKE_TEST_PGSQL_URL=postgres://bespoke:secret@localhost:55432/bespoke pnpm test"
+    "test:pgsql": "BESPOKE_TEST_PGSQL_URL=postgres://bespoke:secret@localhost:55432/bespoke DB_CONNECTION=pgsql DB_URL=postgres://bespoke:secret@localhost:55432/bespoke pnpm test"
   },
   "devDependencies": {
     "@bespokecore/cli": "workspace:*",

@@ -12,9 +12,10 @@ export class EditUserProfileController extends Controller {
     this.#session = session;
   }
 
-  handle(ctx: HttpContext<AuthState, { id: string }>) {
-    if (ctx.user.id !== ctx.params.id) abort(403, 'You can only edit your own profile.');
-    const user = this.#users.find(ctx.params.id) ?? abort(404, 'User not found.');
+  async handle(ctx: HttpContext<AuthState, { id: string }>) {
+    if (String(ctx.user.id) !== ctx.params.id) abort(403, 'You can only edit your own profile.');
+    const user = await this.#users.find(ctx.user.id);
+    if (!user) abort(404, 'User not found.');
 
     return this.view('user-profile/Edit', {
       profile: { id: user.id, name: user.name, bio: user.bio },

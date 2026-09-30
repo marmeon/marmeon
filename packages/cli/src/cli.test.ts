@@ -11,7 +11,9 @@ const webApp = join(repo, 'apps/web-app');
 const tsc = join(repo, 'node_modules/.bin/tsc');
 
 function bespoke(cwd: string, args: string[], env: Record<string, string> = {}) {
-  const { BESPOKE_CHILD: _child, ...parent } = process.env; // the launcher must re-exec, not think it is the child
+  // The launcher must re-exec, not think it is the child; and the web app here is the SQLite app of
+  // .env.test — `pnpm test:pgsql` points app tests at Postgres, commands get that only when a test says so.
+  const { BESPOKE_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
   const result = spawnSync(process.execPath, [bin, ...args], { cwd, encoding: 'utf8', env: { ...parent, NO_COLOR: '1', ...env } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }

@@ -15,10 +15,10 @@ export class ShowLoginController extends Controller {
     this.#session = session;
   }
 
-  handle() {
+  async handle() {
     return this.view('auth/Login', {
       appName: this.#config.name,
-      users: this.#users.all().map(({ id, name }) => ({ id, name })),
+      users: await this.#users.list(),
       // Plain HTML forms send it back as `_token` (client-side visits use the XSRF-TOKEN cookie instead).
       csrfToken: this.#session.token(),
     });

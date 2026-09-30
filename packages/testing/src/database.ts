@@ -34,7 +34,8 @@ export async function workerDatabase(database: DatabaseModule, root: string, env
     return { key: file, env: { DB_CONNECTION: 'sqlite', DB_DATABASE: file } };
   }
   const url = new URL(options.url);
-  url.pathname = `/${url.pathname.slice(1) || 'bespoke'}_test_${worker}`;
+  // Per app too (like the SQLite file): two apps' tests in one worker must not share a schema.
+  url.pathname = `/${url.pathname.slice(1) || 'bespoke'}_test_${hash(root)}_${worker}`;
   return { key: url.href, env: { DB_CONNECTION: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
 }
 

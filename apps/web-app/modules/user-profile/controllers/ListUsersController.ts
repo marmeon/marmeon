@@ -10,7 +10,7 @@ export class ListUsersController extends Controller {
     this.#users = users;
   }
 
-  handle() {
-    return { data: this.#users.all().map(({ id, name }) => ({ id, name })) };
+  async handle() {
+    return { data: await this.#users.list() };
   }
 }
