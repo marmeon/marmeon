@@ -1,4 +1,4 @@
-import type { AnyAction, AnyMiddleware, HttpMethod } from './types.ts';
+import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
 /**
  * A single registered route (Laravel's `Illuminate\Routing\Route`).
@@ -12,6 +12,8 @@ export class RouteDefinition {
   readonly middleware: readonly AnyMiddleware[];
   /** The middleware group the route belongs to, e.g. `web` or `api`. */
   readonly group: string | undefined;
+  /** Route parameters resolved to records before the action runs (`Route.bind`). */
+  readonly bindings: readonly RouteBinding[];
   readonly #namePrefix: string;
   #name: string | undefined;
 
@@ -22,12 +24,14 @@ export class RouteDefinition {
     middleware: readonly AnyMiddleware[];
     namePrefix: string;
     group?: string | undefined;
+    bindings?: readonly RouteBinding[];
   }) {
     this.methods = options.methods;
     this.path = options.path;
     this.action = options.action;
     this.middleware = options.middleware;
     this.group = options.group;
+    this.bindings = options.bindings ?? [];
     this.#namePrefix = options.namePrefix;
   }
 

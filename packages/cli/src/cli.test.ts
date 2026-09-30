@@ -34,10 +34,10 @@ describe('bespoke (in the web app)', () => {
     expect(code).toBe(0);
     // Execution order: global first, then the web group (cookies before the session), the route's own last.
     expect(stdout).toMatch(
-      /GET\s+\/users\/:id\s+user-profile\.show\s+web\s+SecurityHeaders, EncryptCookies, StartSession, .*ShareAppProps, Authenticate\s+ShowUserProfileController/,
+      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, EncryptCookies, StartSession, .*ShareAppProps, Authenticate\s+ShowUserProfileController/,
     );
     expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders\s+ListUsersController/);
-    expect(stdout).toContain('9 routes');
+    expect(stdout).toContain('11 routes');
   });
 
   it('prints configuration errors without Node internals and exits with 1', () => {
@@ -57,12 +57,14 @@ describe('bespoke (in the web app)', () => {
   it('runs the modules’ migrations in timestamp order (migrate, migrate:status)', () => {
     const memory = { DB_DATABASE: ':memory:' }; // every process starts empty
     const status = bespoke(webApp, ['migrate:status'], memory);
-    expect(status.stdout).toMatch(/2026_10_01_120000_create_users_table\s+auth\s+Pending\n2026_10_01_120100_create_login_activity_table\s+user-profile\s+Pending/);
+    expect(status.stdout).toMatch(
+      /2026_10_01_120000_create_users_table\s+auth\s+Pending\n2026_10_01_120100_create_login_activity_table\s+user-profile\s+Pending\n2026_10_01_120101_create_profile_links_table\s+user-profile\s+Pending/,
+    );
     const migrate = bespoke(webApp, ['migrate'], memory);
     expect(migrate.code).toBe(0);
     // …then regenerates the table types (already committed, so unchanged).
     expect(migrate.stdout).toMatch(
-      /^✓ Migrated 2026_10_01_120000_create_users_table \(auth\) [\d.]+ ms\n✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\nℹ bootstrap\/database\.d\.ts is up to date\.\n$/,
+      /^✓ Migrated 2026_10_01_120000_create_users_table \(auth\) [\d.]+ ms\n✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\n✓ Migrated 2026_10_01_120101_create_profile_links_table \(user-profile\) [\d.]+ ms\nℹ bootstrap\/database\.d\.ts is up to date\.\n$/,
     );
     expect(bespoke(webApp, ['migrate:fresh'], { ...memory, NODE_ENV: 'production' }).stderr).toContain('Pass --force to drop every table.');
   });
@@ -70,7 +72,7 @@ describe('bespoke (in the web app)', () => {
   it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {
     const fresh = bespoke(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
     expect(fresh.code).toBe(0);
-    expect(fresh.stdout).toMatch(/✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\n✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\n$/);
+    expect(fresh.stdout).toMatch(/✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\n✓ Seeded DemoLinksSeeder \(user-profile\) [\d.]+ ms\n$/);
     const unknown = bespoke(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toBe('✗ There is no seeder "Nope".\n');

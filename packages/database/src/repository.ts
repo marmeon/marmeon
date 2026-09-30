@@ -1,4 +1,4 @@
-import { HttpError } from '@bespokecore/router';
+import { HttpError, type RouteBinder, type RouteBindingContext } from '@bespokecore/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
 import type { Tables } from './types.ts';
@@ -29,6 +29,13 @@ export interface RepositoryStatics {
   readonly timestamps?: boolean;
   /** `delete()` sets `deleted_at`; reads skip deleted rows unless `withTrashed()`. */
   readonly softDeletes?: boolean;
+  /** The column a route parameter matches (`Route.bind`) — default `id`. */
+  readonly routeKey?: string;
+  /**
+   * What a route parameter must look like before it is looked up — default: digits for `id`
+   * (anything else is a 404 without a query; Postgres would fail comparing a bigint with `'abc'`).
+   */
+  readonly routeKeyPattern?: RegExp;
 }
 
 let savepoints = 0;
@@ -49,7 +56,7 @@ let savepoints = 0;
  * Repositories are ordinary injectable classes: data access only, their only dependency is the
  * connection (that is what lets {@link using} bind one to a transaction).
  */
-export abstract class Repository<T extends keyof DB & string, DB = Tables> {
+export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
   readonly #db: Kysely<DB>;
 
   constructor(connections: Connections) {
@@ -194,6 +201,26 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> {
   async restore(id: KeyOf<T, DB>): Promise<boolean> {
     const result = await this.#untyped.updateTable(this.#name).set({ deleted_at: null }).where('id', '=', id).executeTakeFirst();
     return result.numUpdatedRows > 0n;
+  }
+
+  /**
+   * `Route.bind('user', UserRepository)`: the row whose route key (`id`) is `value` — within the parent
+   * for scoped bindings (`scope.column` = the parent's id), so another parent's row is a 404.
+   */
+  async resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<Selectable<DB[T]> | undefined> {
+    const key = this.#statics().routeKey ?? 'id';
+    const custom = this.#statics().routeKeyPattern;
+    // The default key is a numeric id: compared as a number (Postgres refuses bigint = text), digits only.
+    const numericId = key === 'id' && !custom;
+    const pattern = custom ?? (numericId ? /^\d{1,15}$/ : undefined);
+    if (pattern && !pattern.test(value)) return undefined;
+    let query = this.query().selectAll().where(key as never, '=', (numericId ? Number(value) : value) as never);
+    if (binding.scope) {
+      const parent = (binding.scope.parent as { id?: unknown } | undefined)?.id;
+      if (parent === undefined) return undefined;
+      query = query.where(binding.scope.column as never, '=', parent as never);
+    }
+    return (await query.executeTakeFirst()) as Selectable<DB[T]> | undefined;
   }
 
   #statics(): RepositoryStatics {

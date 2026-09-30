@@ -1,21 +1,18 @@
 import { abort, Controller, type HttpContext } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
-import { UserRepository, type AuthState } from '#modules/auth';
+import type { AuthState, User } from '#modules/auth';
 
 export class EditUserProfileController extends Controller {
-  readonly #users: UserRepository;
   readonly #session: Session;
 
-  constructor(users: UserRepository, session: Session) {
+  constructor(session: Session) {
     super();
-    this.#users = users;
     this.#session = session;
   }
 
-  async handle(ctx: HttpContext<AuthState, { id: string }>) {
-    if (String(ctx.user.id) !== ctx.params.id) abort(403, 'You can only edit your own profile.');
-    const user = await this.#users.find(ctx.user.id);
-    if (!user) abort(404, 'User not found.');
+  handle(ctx: HttpContext<AuthState, { user: User }>) {
+    const { user } = ctx.params;
+    if (ctx.user.id !== user.id) abort(403, 'You can only edit your own profile.');
 
     return this.view('user-profile/Edit', {
       profile: { id: user.id, name: user.name, bio: user.bio },

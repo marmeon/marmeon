@@ -1,5 +1,6 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link } from '@bespokecore/react';
+import { Head, Link, useForm } from '@bespokecore/react';
+import type { AddProfileLinkController } from '../controllers/AddProfileLinkController.ts';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 const utc = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
@@ -43,6 +44,29 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
         </p>
       )}
 
+      <section aria-label="Links">
+        {profile.links.length > 0 && (
+          <ul>
+            {profile.links.map((link) => (
+              <li key={link.id}>
+                <a href={link.url} rel="nofollow noopener" target="_blank">
+                  {link.label}
+                </a>
+                {isOwnProfile && (
+                  <>
+                    {' '}
+                    <Link method="delete" href={`/users/${profile.id}/links/${link.id}`} aria-label={`Remove ${link.label}`}>
+                      Remove
+                    </Link>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {isOwnProfile && <AddLink userId={profile.id} />}
+      </section>
+
       <nav>
         <h2>Other people</h2>
         <form method="get">
@@ -63,5 +87,24 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
         </ul>
       </nav>
     </main>
+  );
+}
+
+function AddLink({ userId }: { userId: number }) {
+  const form = useForm<AddProfileLinkController>({ label: '', url: '' });
+  return (
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.post(`/users/${userId}/links`, { onSuccess: () => form.reset() });
+      }}
+    >
+      <input aria-label="Label" placeholder="Label" value={form.data.label} onChange={(e) => form.set('label', e.target.value)} />{' '}
+      <input aria-label="URL" placeholder="https://…" value={form.data.url} onChange={(e) => form.set('url', e.target.value)} />{' '}
+      <button disabled={form.processing}>Add link</button>
+      {form.errors.label && <small role="alert"> {form.errors.label}</small>}
+      {form.errors.url && <small role="alert"> {form.errors.url}</small>}
+    </form>
   );
 }

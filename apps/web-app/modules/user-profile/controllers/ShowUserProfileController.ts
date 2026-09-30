@@ -1,6 +1,6 @@
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
+import { Controller, type HttpContext } from '@bespokecore/http';
 import type { AuthState } from '#modules/auth';
-import { ProfileDirectory } from '../ProfileDirectory.ts';
+import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
 
 export class ShowUserProfileController extends Controller {
   readonly #directory: ProfileDirectory;
@@ -10,18 +10,18 @@ export class ShowUserProfileController extends Controller {
     this.#directory = directory;
   }
 
-  async handle(ctx: HttpContext<AuthState, { id: string }>) {
-    const id = Number(ctx.params.id);
-    const user = Number.isSafeInteger(id) ? await this.#directory.profile(id) : undefined;
-    if (!user) abort(404, 'User not found.');
+  /** `user` is bound by the route (ProfileDirectory): a missing one never gets here — it is a 404. */
+  async handle(ctx: HttpContext<AuthState, { user: Profile }>) {
+    const { user } = ctx.params;
     const filter = ctx.query.get('q')?.trim() ?? '';
     const people = await this.#directory.people({ search: filter, except: user.id });
+    const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
-      profile: { id: user.id, name: user.name, bio: user.bio },
+      profile: { id: user.id, name: user.name, bio: user.bio, links: user.links },
       // Only the owner may see their e-mail — the controller decides what leaves the server.
-      email: ctx.user.id === user.id ? user.email : null,
-      isOwnProfile: ctx.user.id === user.id,
+      email: isOwnProfile ? user.email : null,
+      isOwnProfile,
       lastLoginAt: user.activity?.last_login_at ?? null,
       filter,
       others: people.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null })),

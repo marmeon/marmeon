@@ -7,6 +7,7 @@ import application from '../../bootstrap/app.ts';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
+import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 import { ProfileDirectory } from './ProfileDirectory.ts';
 
 let app: TestApp;
@@ -194,10 +195,10 @@ describe('user-profile module', () => {
   });
 
   it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
-    await as(ada).get('/users/999999').assertNotFound().assertPage('errors/Error', { message: 'User not found.' });
-    await app.withSession({ user_id: ada.id }).expectingJson().get('/users/abc').assertNotFound().assertExactJson({
-      message: 'User not found.',
-    });
+    // Route binding: a missing record never reaches the controller.
+    await as(ada).get('/users/999999').assertNotFound().assertPage('errors/Error', { message: 'Not Found' });
+    await app.withSession({ user_id: ada.id }).expectingJson().get('/users/abc').assertNotFound().assertExactJson({ message: 'Not Found' });
+    await app.withSession({ user_id: ada.id }).expectingJson().get('/users/999999/edit').assertNotFound();
   });
 
   it('lets tests replace services before the app boots — singletons included', async () => {
@@ -249,6 +250,46 @@ describe('user-profile module', () => {
       expect(props.lastLoginAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
     await as(ada).get(profile(grace)).assertPage<ShowUserProfileController>('user-profile/Show', { lastLoginAt: null });
+  });
+});
+
+describe('profile links (a route bound within its user)', () => {
+  it('shows the links on the profile — loaded with it, in one query', async () => {
+    await as(alan)
+      .get(profile(ada))
+      .assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+        expect(props.profile.links.map((link) => link.label)).toEqual(['Notes on the Analytical Engine', 'Ada (language)']);
+      });
+  });
+
+  it('adds a link to your own profile — http(s) only', async () => {
+    await as(ada)
+      .post(`${profile(ada)}/links`, { json: { label: ' Blog ', url: 'https://ada.example' } })
+      .assertRedirect(profile(ada))
+      .assertSessionHas('status', 'Link added.');
+    await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog', url: 'https://ada.example' });
+
+    await app
+      .withSession({ user_id: ada.id })
+      .expectingJson()
+      .post(`${profile(ada)}/links`, { json: { label: 'x', url: 'javascript:alert(1)' } })
+      .assertInvalid(['url']);
+    await app.withSession({ user_id: alan.id }).expectingJson().post(`${profile(ada)}/links`, { json: { label: 'x', url: 'https://x.example' } }).assertForbidden();
+  });
+
+  it('removes your own link', async () => {
+    const link = await app.factory(ProfileLinkFactory).create({ user_id: alan.id });
+    await as(alan).delete(`${profile(alan)}/links/${link.id}`).assertRedirect(profile(alan)).assertSessionHas('status', 'Link removed.');
+    await app.assertDatabaseMissing('profile_links', { id: link.id });
+  });
+
+  it('refuses another user’s link through your own URL: 404, not deleted (IDOR)', async () => {
+    const adasLink = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
+    // Alan owns /users/<alan>, but the link belongs to Ada — the scoped binding does not find it there.
+    await app.withSession({ user_id: alan.id }).expectingJson().delete(`${profile(alan)}/links/${adasLink.id}`).assertNotFound();
+    // Through Ada's URL it is found — and refused, it is not Alan's profile.
+    await app.withSession({ user_id: alan.id }).expectingJson().delete(`${profile(ada)}/links/${adasLink.id}`).assertForbidden();
+    await app.assertDatabaseHas('profile_links', { id: adasLink.id });
   });
 });
 

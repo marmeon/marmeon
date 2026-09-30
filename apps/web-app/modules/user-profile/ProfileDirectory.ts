@@ -1,11 +1,12 @@
-import { Database, hasOne, sql } from '@bespokecore/database';
+import { Database, hasMany, hasOne, sql } from '@bespokecore/database';
+import type { RouteBinder } from '@bespokecore/http';
 
 /**
- * The module's read model: people with their last sign-in. `users` belongs to auth, which exposes it
- * for reading (E20); `login_activity` is this module's own table. Each read is one query — the last
- * sign-in is an eager-loaded relation, for one profile or the whole list (no N+1).
+ * The module's read model: people with their last sign-in and links. `users` belongs to auth, which
+ * exposes it for reading (E20); `login_activity` and `profile_links` are this module's own tables. Each
+ * read is one query — relations are eager-loaded (no N+1). Also a route binder: `Route.bind('user', ProfileDirectory)`.
  */
-export class ProfileDirectory {
+export class ProfileDirectory implements RouteBinder<Profile> {
   readonly #db: Database<'user-profile'>;
 
   constructor(db: Database<'user-profile'>) {
@@ -21,9 +22,17 @@ export class ProfileDirectory {
         'users.email',
         'users.bio',
         hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
+        hasMany(eb, 'profile_links', 'user_id', 'users.id', (q) =>
+          q.select(['profile_links.id', 'profile_links.label', 'profile_links.url']).orderBy('profile_links.id'),
+        ).as('links'),
       ])
       .where('users.id', '=', id)
       .executeTakeFirst();
+  }
+
+  /** `/users/:user` → the profile, or a 404. */
+  resolveRouteBinding(value: string) {
+    return /^\d{1,15}$/.test(value) ? this.profile(Number(value)) : undefined;
   }
 
   /** Everyone but `except`, by name — optionally only names containing `search` (LIKE wildcards taken literally). */
@@ -44,3 +53,5 @@ export class ProfileDirectory {
     return query.execute();
   }
 }
+
+export type Profile = NonNullable<Awaited<ReturnType<ProfileDirectory['profile']>>>;

@@ -10,6 +10,15 @@ declare module '@bespokecore/database' {
       user_id: number;
       last_login_at: Timestamp;
     };
+    /** Owned by `user-profile`. */
+    profile_links: {
+      id: Generated<number>;
+      user_id: number;
+      label: string;
+      url: string;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
     /** Owned by `auth`. */
     users: {
       id: Generated<number>;
@@ -22,6 +31,7 @@ declare module '@bespokecore/database' {
   }
   interface TableOwners {
     login_activity: 'user-profile';
+    profile_links: 'user-profile';
     users: 'auth';
   }
   interface ExposedTables {

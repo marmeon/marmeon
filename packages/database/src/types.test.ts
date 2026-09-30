@@ -4,6 +4,7 @@ import * as v from 'valibot';
 import { expectTypeOf, it } from 'vitest';
 import type { ModuleDefinition } from '@bespokecore/core';
 import type { Selectable } from 'kysely';
+import { defineRoutes } from '@bespokecore/router';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import {
@@ -217,3 +218,14 @@ it('types relations: keys are columns, the selection is the type, module boundar
     hasMany(eb, 'audit_log', 'id', 'login_activity.user_id', (q) => q.select(['audit_log.message'])).as('log'),
   ]);
 }));
+
+it('binds route parameters to rows of the repository’s table', () => {
+  defineRoutes((Route) => {
+    Route.bind('user', Users).get('/users/:user', (ctx) => {
+      expectTypeOf(ctx.params.user).toEqualTypeOf<Selectable<FixtureTables['users']>>();
+      return null;
+    });
+    // @ts-expect-error — (38) `static table = 'articles'` on a Repository<'users'> — caught where the class is passed
+    Route.bind('user', Mislabeled).get('/users/:user', () => null);
+  });
+});

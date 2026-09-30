@@ -20,6 +20,8 @@ export type {
   Input,
   Middleware,
   RequestDefinition,
+  RouteBinder,
+  RouteBindingContext,
   Validated,
   ValidationErrors,
 } from '@bespokecore/router';

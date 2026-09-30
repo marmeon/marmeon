@@ -136,6 +136,50 @@ export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any> 
   readonly request?: RequestDefinition<TSchema, TCtx>;
 };
 
+// ---------------------------------------------------------------------------
+// Route binding
+// ---------------------------------------------------------------------------
+
+/**
+ * Turns a route parameter into what the controller works with (Laravel's route model binding).
+ * The router stays free of any database: repositories — or any injectable class — implement it.
+ * Returning `undefined` answers 404.
+ */
+export interface RouteBinder<T> {
+  resolveRouteBinding(value: string, binding: RouteBindingContext): T | undefined | Promise<T | undefined>;
+}
+
+export interface RouteBindingContext {
+  readonly ctx: HttpContext<any, any>;
+  /** Scoped bindings (`{ scopedBy: 'team' }`): the parent it must belong to, and the column that points at it. */
+  readonly scope?: { readonly param: string; readonly parent: unknown; readonly column: string };
+}
+
+/** A class that binds route parameters — built per request from the container. */
+export type RouteBinderClass<T = unknown> = new (...args: any[]) => RouteBinder<T>;
+
+/** What a binder class resolves to. */
+export type BoundValue<B> = B extends new (...args: any[]) => RouteBinder<infer T> ? T : never;
+
+/**
+ * A binder class with a static `table` (a repository) must name the table its instances are typed for —
+ * `static table = 'articles'` on a `Repository<'users'>` is caught here.
+ */
+export type ConsistentBinder<B> = B extends { readonly table: infer S }
+  ? InstanceType<B & (new (...args: any[]) => unknown)> extends { readonly table: infer I }
+    ? [S] extends [I]
+      ? unknown
+      : { readonly table: { expected: I } } // an object, so the message names it (two literals would collapse to never)
+    : unknown
+  : unknown;
+
+export interface RouteBinding {
+  readonly param: string;
+  readonly binder: RouteBinderClass;
+  readonly scopedBy?: string;
+  readonly column?: string;
+}
+
 /** Builds controller and middleware classes — per request, from the container. */
 export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
 

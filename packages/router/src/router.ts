@@ -144,7 +144,10 @@ export class Router {
     return runPipeline(
       ctx,
       this.middlewareFor(route),
-      async (finalCtx) => {
+      async (afterMiddleware) => {
+        // Bindings after the middleware (authentication answers before a 404 could tell what exists),
+        // before `authorize` (which may look at the bound record) — Laravel's middleware priority.
+        const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
         const { action } = route;
         let result: unknown;
         if (isControllerClass(action)) {
@@ -191,6 +194,22 @@ export class Router {
     }
     this.#byName = byName;
   }
+}
+
+/** Resolves the route's bound parameters in order — a scoped one within its already resolved parent. */
+async function bindParams(route: RouteDefinition, ctx: HttpContext, resolve: ClassResolver): Promise<Record<string, unknown>> {
+  const params: Record<string, unknown> = { ...(ctx.params as Record<string, string>) };
+  for (const binding of route.bindings) {
+    const value = params[binding.param];
+    if (value === undefined) continue; // an optional parameter that is absent stays absent
+    const scope = binding.scopedBy
+      ? { param: binding.scopedBy, parent: params[binding.scopedBy], column: binding.column ?? `${binding.scopedBy}_id` }
+      : undefined;
+    const bound = await resolve(binding.binder).resolveRouteBinding(String(value), { ctx, ...(scope ? { scope } : {}) });
+    if (bound === undefined || bound === null) throw new HttpError(404);
+    params[binding.param] = bound;
+  }
+  return params;
 }
 
 /**

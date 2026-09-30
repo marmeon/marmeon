@@ -143,3 +143,51 @@ describe('Repository classes', () => {
     );
   });
 });
+
+describe.each(drivers)('Repository as a route binder on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections(driver));
+    await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
+  });
+  afterAll(() => close());
+
+  class Users extends Repository<'users', FixtureTables> {
+    static table = 'users' as const;
+    static softDeletes = true;
+  }
+  class Articles extends Repository<'articles', FixtureTables> {
+    static table = 'articles' as const;
+  }
+  class ArticlesBySlug extends Repository<'articles', FixtureTables> {
+    static table = 'articles' as const;
+    static routeKey = 'slug';
+    static routeKeyPattern = /^[a-z0-9-]+$/;
+  }
+  const ctx = {} as never;
+
+  it('finds by id, scoped by the parent, by another key — and never queries malformed values', async () => {
+    const users = new Users(connections);
+    const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    const alan = await users.insert({ name: 'Alan', email: 'alan@example.com' });
+    const articles = new Articles(connections);
+    const post = await articles.insert({ user_id: ada.id, title: 'Notes', slug: 'notes' });
+
+    expect(await users.resolveRouteBinding(String(ada.id), { ctx })).toMatchObject({ name: 'Ada' });
+    expect(await articles.resolveRouteBinding(String(post.id), { ctx, scope: { param: 'user', parent: ada, column: 'user_id' } })).toMatchObject({ title: 'Notes' });
+    // Alan's page, Ada's article: not found — the IDOR the scope prevents
+    expect(await articles.resolveRouteBinding(String(post.id), { ctx, scope: { param: 'user', parent: alan, column: 'user_id' } })).toBeUndefined();
+    expect(await new ArticlesBySlug(connections).resolveRouteBinding('notes', { ctx })).toMatchObject({ id: post.id });
+
+    const queries: string[] = [];
+    connections.onQuery((query) => queries.push(query.sql));
+    expect(await users.resolveRouteBinding('abc', { ctx })).toBeUndefined();
+    expect(await users.resolveRouteBinding('1e3', { ctx })).toBeUndefined();
+    expect(await new ArticlesBySlug(connections).resolveRouteBinding("x' or 1=1", { ctx })).toBeUndefined();
+    expect(queries).toEqual([]);
+
+    await users.delete(alan.id); // soft-deleted rows do not bind either
+    expect(await users.resolveRouteBinding(String(alan.id), { ctx })).toBeUndefined();
+  });
+});
