@@ -7,9 +7,9 @@
     "#modules/*": "./modules/*/index.ts"
   },
   "scripts": {
-    "dev": "node --conditions=@bespokecore/source --import @bespokecore/core/register --watch bootstrap/server.ts",
-    "build": "vite build --outDir dist/client && vite build --ssr bootstrap/ssr.tsx --outDir dist/server",
-    "start": "NODE_ENV=production node --import @bespokecore/core/register bootstrap/server.ts",
+    "dev": "bespoke dev",
+    "build": "bespoke build",
+    "start": "bespoke start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
+    "@bespokecore/cli": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

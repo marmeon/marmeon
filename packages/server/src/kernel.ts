@@ -9,6 +9,7 @@ import { Router } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, type PageRenderer } from './render.ts';
+import { ServerConfig } from './provider.ts';
 import { createViteDevRenderer } from './vite.ts';
 
 export interface KernelOptions {
@@ -98,6 +99,7 @@ export interface ServeOptions {
   app: Application;
   /** SSR entry relative to `root`, e.g. `bootstrap/ssr.tsx`. */
   ssrEntry: string;
+  /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
   mode?: 'development' | 'production';
 }
@@ -105,7 +107,7 @@ export interface ServeOptions {
 export async function startServer({
   app,
   ssrEntry,
-  port = 3000,
+  port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
   mode = process.env.NODE_ENV === 'production' ? 'production' : 'development',
 }: ServeOptions): Promise<Server> {
   const server = createServer();

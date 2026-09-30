@@ -55,10 +55,11 @@ export class Application {
 
   /** Register phase: build each provider through the container and let it bind services. */
   register(providers: readonly ServiceProviderClass[]): void {
+    // A provider may also only bring configuration (`static config`), which is validated earlier.
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
-      if (typeof provider.register !== 'function' && typeof provider.boot !== 'function') {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has neither register() nor boot().`);
+      if (typeof provider.register !== 'function' && typeof provider.boot !== 'function' && !Provider.config?.length) {
+        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot() or static config.`);
       }
       provider.register?.(this.container);
       this.#providers.push(provider);

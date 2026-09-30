@@ -1,0 +1,51 @@
+{
+  "name": "@bespokecore/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "bespoke": "./bin/bespoke.js"
+  },
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./main": {
+      "@bespokecore/source": "./src/main.ts",
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./main": {
+        "types": "./dist/main.d.ts",
+        "default": "./dist/main.js"
+      }
+    }
+  },
+  "files": [
+    "bin",
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "CliServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/server": "workspace:*"
+  }
+}

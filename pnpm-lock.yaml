@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:packages/cli
       '@bespokecore/core':
         specifier: workspace:*
         version: link:packages/core
@@ -54,6 +57,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -66,6 +72,21 @@ importers:
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)
+
+  packages/cli:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
 
   packages/core:
     dependencies:
@@ -139,6 +160,9 @@ importers:
       hono:
         specifier: ^4.13.11
         version: 4.13.11
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)

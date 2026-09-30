@@ -5,3 +5,4 @@ export type { PageRenderer } from './render.ts';
 export { renderDocument, HEAD_OUTLET, HTML_OUTLET } from './html.ts';
 export { createViteDevRenderer } from './vite.ts';
 export { createProductionRenderer } from './production.ts';
+export { ServerConfig, ServerServiceProvider } from './provider.ts';
