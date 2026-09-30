@@ -1,11 +1,15 @@
 import react from '@vitejs/plugin-react';
 import { defaultClientConditions, defaultServerConditions, defineConfig } from 'vite';
 
+// Resolve workspace packages to their TypeScript sources (see "exports" in packages/*/package.json).
 const source = '@bespokecore/source';
 
-// Consumed by @bespokecore/server once Vite runs in middleware mode for SSR.
 export default defineConfig({
   plugins: [react()],
-  resolve: { conditions: [source, ...defaultClientConditions] },
+  resolve: {
+    conditions: [source, ...defaultClientConditions],
+    dedupe: ['react', 'react-dom'],
+  },
   ssr: { resolve: { conditions: [source, ...defaultServerConditions] } },
+  build: { emptyOutDir: true },
 });

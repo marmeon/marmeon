@@ -6,8 +6,26 @@ export interface AuthState {
   user: User;
 }
 
-/** Demo authentication via `x-user-id` header — replaced by sessions once they exist. */
+export const SESSION_COOKIE = 'demo_user';
+
+/**
+ * Demo authentication — an unsigned cookie (browser) or `x-user-id` header (tests).
+ * Replaced by real sessions once they exist; never trust either in production.
+ */
+function userIdFrom(request: Request): string | undefined {
+  const header = request.headers.get('x-user-id');
+  if (header) return header;
+  const cookie = request.headers.get('cookie')?.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
+  return cookie?.[1];
+}
+
 export const authenticate = defineMiddleware<AuthState>('auth', (ctx, next) => {
-  const user = findUser(ctx.request.headers.get('x-user-id') ?? '');
-  return user ? next({ user }) : Response.json({ message: 'Unauthenticated.' }, { status: 401 });
+  const user = findUser(userIdFrom(ctx.request) ?? '');
+  if (user) return next({ user });
+
+  // Browsers are sent to the login page, API/JSON clients get a 401.
+  const wantsHtml = ctx.request.headers.get('accept')?.includes('text/html');
+  return wantsHtml
+    ? new Response(null, { status: 302, headers: { location: '/login' } })
+    : Response.json({ message: 'Unauthenticated.' }, { status: 401 });
 });

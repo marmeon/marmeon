@@ -1,5 +1,5 @@
 import { BaseController, type HttpContext } from '@bespokecore/core';
-import { findUser, type AuthState } from '#modules/auth';
+import { allUsers, findUser, type AuthState } from '#modules/auth';
 
 export class UserProfileController extends BaseController {
   me(ctx: HttpContext<AuthState>) {
@@ -15,6 +15,10 @@ export class UserProfileController extends BaseController {
       // Only the owner may see their e-mail — the controller decides what leaves the server.
       email: ctx.user.id === user.id ? user.email : null,
       isOwnProfile: ctx.user.id === user.id,
+      viewer: { name: ctx.user.name },
+      others: allUsers()
+        .filter((other) => other.id !== user.id)
+        .map(({ id, name }) => ({ id, name })),
     });
   }
 }

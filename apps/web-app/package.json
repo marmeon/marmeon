@@ -8,10 +8,13 @@
   },
   "scripts": {
     "dev": "node --conditions=@bespokecore/source --watch bootstrap/server.ts",
+    "build": "vite build --outDir dist/client && vite build --ssr bootstrap/ssr.tsx --outDir dist/server",
+    "start": "NODE_ENV=production node bootstrap/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bespokecore/core": "workspace:*",
+    "@bespokecore/react": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "@bespokecore/server": "workspace:*",
     "react": "^19.3.0",

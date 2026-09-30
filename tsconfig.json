@@ -1,8 +1,17 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/router" },
-    { "path": "packages/core" },
-    { "path": "packages/server" }
+    {
+      "path": "packages/router"
+    },
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/server"
+    },
+    {
+      "path": "packages/react"
+    }
   ]
 }
