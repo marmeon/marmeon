@@ -11,6 +11,9 @@
       "path": "packages/log"
     },
     {
+      "path": "packages/encryption"
+    },
+    {
       "path": "packages/http"
     },
     {

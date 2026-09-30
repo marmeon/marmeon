@@ -20,7 +20,7 @@ describe('cookies', () => {
     expect(() => serializeCookie('x', '1', { sameSite: 'none' })).toThrow('SameSite=None requires secure: true');
   });
 
-  it('reads incoming cookies and queues outgoing ones', () => {
+  it('reads incoming cookies and queues outgoing ones', async () => {
     const jar = new CookieJar('theme=dark');
     jar.set('theme', 'light');
     jar.set('theme', 'blue'); // the last set wins
@@ -28,18 +28,38 @@ describe('cookies', () => {
 
     expect(jar.get('theme')).toBe('dark'); // what the client sent
     expect(jar.has('missing')).toBe(false);
-    expect(jar.queued()).toEqual([
+    expect(await jar.queued()).toEqual([
       'theme=blue; Path=/; HttpOnly; SameSite=Lax',
       'old=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax',
     ]);
   });
 
-  it('adds queued cookies even to responses with immutable headers', () => {
+  it('adds queued cookies even to responses with immutable headers', async () => {
     const jar = new CookieJar(null);
     jar.set('a', '1');
-    const response = withQueuedCookies(Response.redirect('http://app.test/next', 302), jar);
+    const response = await withQueuedCookies(Response.redirect('http://app.test/next', 302), jar);
     expect(response.status).toBe(302);
     expect(response.headers.getSetCookie()).toEqual(['a=1; Path=/; HttpOnly; SameSite=Lax']);
+  });
+
+  it('run through a codec both ways — undecodable cookies vanish, deletions stay plain', async () => {
+    const jar = new CookieJar('a=enc(1); b=garbage');
+    await jar.useCodec({
+      decode: async (_name, value) => /^enc\((.*)\)$/.exec(value)?.[1],
+      encode: async (name, value) => `enc(${name}:${value})`,
+    });
+    jar.set('c', '3');
+    jar.delete('a');
+
+    expect(jar.all()).toEqual({ a: '1' });
+    expect(await jar.queued()).toEqual([
+      'c=enc(c%3A3); Path=/; HttpOnly; SameSite=Lax',
+      'a=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax',
+    ]);
+  });
+
+  it('validate names when set, not only when written', () => {
+    expect(() => new CookieJar(null).set('bad name', '1')).toThrow('Invalid cookie name');
   });
 
   it('are part of every context the router dispatches', async () => {

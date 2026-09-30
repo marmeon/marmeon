@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@bespokecore/core": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
     "@bespokecore/router": "workspace:*"
   },
   "publishConfig": {

@@ -1,5 +1,6 @@
 import type { Application, Container, ServiceProvider } from '@bespokecore/core';
 import { Router, type RouteDefinitions } from '@bespokecore/router';
+import { CookieEncryption } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
 
 declare module '@bespokecore/core' {
@@ -18,6 +19,7 @@ export class HttpServiceProvider implements ServiceProvider {
   register(container: Container): void {
     container.singleton(Router);
     container.singleton(ExceptionHandler, DefaultExceptionHandler);
+    container.singleton(CookieEncryption);
   }
 
   boot(app: Application): void {

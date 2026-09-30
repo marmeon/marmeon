@@ -6,6 +6,7 @@ import { Application, ConfigError, Container, createApplication, type Applicatio
 import { CommandRegistry, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
+import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { printCommandList } from './commands/list.ts';
 import {
   MakeControllerCommand,
@@ -25,6 +26,7 @@ const BUILT_IN: readonly CommandClass[] = [
   DiscoverCommand,
   BuildCommand,
   PackageBuildCommand,
+  KeyGenerateCommand,
   MakeModuleCommand,
   MakeControllerCommand,
   MakeEventCommand,

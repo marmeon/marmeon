@@ -10,7 +10,7 @@ export interface AuthState {
 export const SESSION_COOKIE = 'demo_user';
 
 /**
- * Demo authentication — an unsigned cookie (browser) or `x-user-id` header (tests).
+ * Demo authentication — an encrypted cookie (browser) or `x-user-id` header (tests).
  * Replaced by real sessions in Wave 4; never trust either in production.
  *
  * A middleware class: built per request from the container, so the repository is injected.

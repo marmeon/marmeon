@@ -29,7 +29,7 @@ describe('bespoke (in the web app)', () => {
   it('lists routes through a command that gets the Router injected', () => {
     const { code, stdout } = bespoke(webApp, ['route:list']);
     expect(code).toBe(0);
-    expect(stdout).toMatch(/GET\s+\/users\/:id\s+user-profile\.show\s+Authenticate\s+ShowUserProfileController/);
+    expect(stdout).toMatch(/GET\s+\/users\/:id\s+user-profile\.show\s+EncryptCookies, Authenticate\s+ShowUserProfileController/);
     expect(stdout).toContain('6 routes');
   });
 
@@ -66,7 +66,7 @@ describe('bespoke make:* (generated code compiles)', () => {
       join(app, 'tsconfig.json'),
       JSON.stringify({
         extends: join(repo, 'tsconfig.base.json'),
-        compilerOptions: { noEmit: true, jsx: 'react-jsx', lib: ['ES2024', 'DOM'], types: ['node'] },
+        compilerOptions: { noEmit: true, jsx: 'react-jsx', lib: ['ES2025', 'ESNext.TypedArrays', 'DOM'], types: ['node'] },
         include: ['modules'],
       }),
     );
@@ -99,6 +99,22 @@ describe('bespoke make:* (generated code compiles)', () => {
 
     const missing = bespoke(app, ['make:controller', 'ShowCart', '--module=cart']);
     expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: bespoke make:module cart');
+  });
+
+  it('generates the application key into .env — without booting, and never silently replacing one', () => {
+    writeFileSync(join(app, '.env.example'), 'APP_NAME=Shop\nAPP_KEY=\n');
+    expect(bespoke(app, ['key:generate']).code).toBe(0);
+    const env = readFileSync(join(app, '.env'), 'utf8');
+    expect(env).toMatch(/^APP_NAME=Shop\nAPP_KEY=base64:[A-Za-z0-9+/]{43}=\n$/);
+
+    const again = bespoke(app, ['key:generate']);
+    expect(again.code).toBe(1);
+    expect(again.stderr).toContain('APP_KEY is already set');
+    expect(readFileSync(join(app, '.env'), 'utf8')).toBe(env);
+
+    expect(bespoke(app, ['key:generate', '--force']).code).toBe(0);
+    expect(readFileSync(join(app, '.env'), 'utf8')).not.toBe(env);
+    expect(bespoke(app, ['key:generate', '--show']).stdout).toMatch(/^base64:[A-Za-z0-9+/]{43}=\n$/);
   });
 
   it('runs generators without a bootable app (no bootstrap, no .env)', () => {

@@ -48,6 +48,15 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
 }
 
 /**
+ * Transforms cookie values on their way in and out — `EncryptCookies` installs
+ * one that decrypts and encrypts. `decode` returning `undefined` drops the cookie.
+ */
+export interface CookieCodec {
+  decode(name: string, value: string): Promise<string | undefined>;
+  encode(name: string, value: string): Promise<string>;
+}
+
+/**
  * The cookies of one request: reads what the client sent, queues what the
  * response should set (Laravel's `Cookie::queue`). Queued cookies are added to
  * whatever response the request ends with — a view, a redirect or an error page.
@@ -55,8 +64,9 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
  * `get` only sees cookies the client sent, not ones queued in this request.
  */
 export class CookieJar {
-  readonly #incoming: ReadonlyMap<string, string>;
-  readonly #queued = new Map<string, string>();
+  #incoming: Map<string, string>;
+  readonly #queued = new Map<string, { value: string; options: CookieOptions | undefined }>();
+  #codec: CookieCodec | undefined;
 
   constructor(header: string | null) {
     this.#incoming = parseCookies(header);
@@ -75,7 +85,8 @@ export class CookieJar {
   }
 
   set(name: string, value: string, options?: CookieOptions): void {
-    this.#queued.set(name, serializeCookie(name, value, options));
+    serializeCookie(name, value, options); // validate now, where the mistake is made
+    this.#queued.set(name, { value, options });
   }
 
   /** Expires the cookie in the browser. Pass the same `path`/`domain` it was set with. */
@@ -83,15 +94,34 @@ export class CookieJar {
     this.set(name, '', { ...options, maxAge: 0, expires: new Date(0) });
   }
 
-  /** `Set-Cookie` values queued so far, one per cookie name (the last `set` wins). */
-  queued(): string[] {
-    return [...this.#queued.values()];
+  /**
+   * Installs a codec: decodes the incoming cookies now (so `get` stays synchronous)
+   * and encodes queued ones when they are written. Cookies it cannot decode vanish.
+   */
+  async useCodec(codec: CookieCodec): Promise<void> {
+    const decoded = new Map<string, string>();
+    for (const [name, value] of this.#incoming) {
+      const plain = await codec.decode(name, value);
+      if (plain !== undefined) decoded.set(name, plain);
+    }
+    this.#incoming = decoded;
+    this.#codec = codec;
+  }
+
+  /** `Set-Cookie` values queued so far, one per cookie name (the last `set` wins). Deletions are not encoded. */
+  async queued(): Promise<string[]> {
+    const headers: string[] = [];
+    for (const [name, { value, options }] of this.#queued) {
+      const encoded = this.#codec && value !== '' ? await this.#codec.encode(name, value) : value;
+      headers.push(serializeCookie(name, encoded, options));
+    }
+    return headers;
   }
 }
 
 /** Adds the jar's queued cookies to a response (copying it, since some responses have immutable headers). */
-export function withQueuedCookies(response: Response, cookies: CookieJar): Response {
-  const queued = cookies.queued();
+export async function withQueuedCookies(response: Response, cookies: CookieJar): Promise<Response> {
+  const queued = await cookies.queued();
   if (queued.length === 0) return response;
   const copy = new Response(response.body, response);
   for (const cookie of queued) copy.headers.append('set-cookie', cookie);

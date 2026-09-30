@@ -97,7 +97,7 @@ export function createHttpKernel(
         response = await renderError(error, c.req.raw);
       }
       // Cookies queued during the request reach the client whatever the outcome (like Laravel).
-      return withQueuedCookies(response, state.cookies);
+      return await withQueuedCookies(response, state.cookies);
     });
   }
 

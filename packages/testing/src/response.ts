@@ -1,5 +1,6 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import { isPageObject, PAGE_SCRIPT_ID, type PageObject, type PageProps } from '@bespokecore/http/page';
+import type { CookieCrypto } from './test-app.ts';
 
 /** Something `PageProps` can infer from: a controller class instance or a route closure. */
 export type PageSource = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
@@ -21,16 +22,24 @@ export class TestResponse {
   readonly headers: Headers;
   readonly body: string;
   readonly #label: string;
+  /** Cookie values as the app meant them — decrypted. */
+  readonly #cookies: ReadonlyMap<string, string>;
 
-  constructor(response: Response, body: string, label: string) {
+  constructor(response: Response, body: string, label: string, cookies: ReadonlyMap<string, string> = new Map()) {
     this.status = response.status;
     this.headers = response.headers;
     this.body = body;
     this.#label = label;
+    this.#cookies = cookies;
   }
 
-  static async from(response: Response, label: string): Promise<TestResponse> {
-    return new TestResponse(response, await response.text(), label);
+  static async from(response: Response, label: string, crypto?: CookieCrypto): Promise<TestResponse> {
+    const cookies = new Map<string, string>();
+    for (const header of response.headers.getSetCookie()) {
+      const { name, value } = splitSetCookie(header);
+      cookies.set(name, crypto ? await crypto.decrypt(name, value) : value);
+    }
+    return new TestResponse(response, await response.text(), label, cookies);
   }
 
   // --- Accessors ----------------------------------------------------------------
@@ -51,23 +60,15 @@ export class TestResponse {
     return isPageObject(candidate) ? candidate : undefined;
   }
 
-  /** A cookie set by this response (`set-cookie`), or undefined. */
+  /** A cookie set by this response — decrypted, like the app will read it — or undefined. */
   cookie(name: string): string | undefined {
     return this.#setCookie(name)?.value;
   }
 
   #setCookie(name: string): { value: string; attributes: Map<string, string> } | undefined {
     for (const header of this.headers.getSetCookie()) {
-      const [pair, ...rest] = header.split(';');
-      const index = pair!.indexOf('=');
-      if (pair!.slice(0, index).trim() !== name) continue;
-      const attributes = new Map(
-        rest.map((attribute) => {
-          const [key, ...value] = attribute.split('=');
-          return [key!.trim().toLowerCase(), value.join('=').trim()] as const;
-        }),
-      );
-      return { value: decodeURIComponent(pair!.slice(index + 1)), attributes };
+      const cookie = splitSetCookie(header);
+      if (cookie.name === name) return { ...cookie, value: this.#cookies.get(name) ?? cookie.value };
     }
     return undefined;
   }
@@ -197,6 +198,18 @@ export class TestResponse {
     const excerpt = this.body.length > 600 ? `${this.body.slice(0, 600)}…` : this.body;
     throw new AssertionError({ message: `${message}\n  ${this.#label} → ${this.status}\n  ${excerpt}` });
   }
+}
+
+function splitSetCookie(header: string): { name: string; value: string; attributes: Map<string, string> } {
+  const [pair, ...rest] = header.split(';');
+  const index = pair!.indexOf('=');
+  const attributes = new Map(
+    rest.map((attribute) => {
+      const [key, ...value] = attribute.split('=');
+      return [key!.trim().toLowerCase(), value.join('=').trim()] as const;
+    }),
+  );
+  return { name: pair!.slice(0, index).trim(), value: decodeURIComponent(pair!.slice(index + 1)), attributes };
 }
 
 function isExpired(attributes: ReadonlyMap<string, string>): boolean {

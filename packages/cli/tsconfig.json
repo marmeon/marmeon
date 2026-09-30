@@ -20,6 +20,9 @@
     },
     {
       "path": "../server"
+    },
+    {
+      "path": "../encryption"
     }
   ]
 }

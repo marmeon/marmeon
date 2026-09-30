@@ -10,5 +10,6 @@ export type { ErrorPageProps, PageObject, SsrRender, SsrResult } from './page.ts
 export { defineMiddleware, defineRoutes } from '@bespokecore/router';
 export type { CookieJar, CookieOptions, EmptyObject, HttpContext, Input, Middleware } from '@bespokecore/router';
 export { HttpServiceProvider } from './provider.ts';
+export { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 export { abort, DefaultExceptionHandler, ExceptionHandler, HttpError } from './errors.ts';
 export type { MiddlewareClass, Next } from '@bespokecore/router';

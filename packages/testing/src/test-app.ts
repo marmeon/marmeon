@@ -7,6 +7,8 @@ import {
   type Key,
   type Resolve,
 } from '@bespokecore/core';
+import { Encrypter } from '@bespokecore/encryption';
+import { CookieEncryption } from '@bespokecore/http';
 import { PAGE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { PendingTestResponse } from './pending.ts';
@@ -50,18 +52,55 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       options.override?.(container);
     },
   });
-  return new TestApp(application, createHttpKernel(application), {});
+  return new TestApp(application, createHttpKernel(application), { headers: {}, cookies: [] });
+}
+
+interface TestCookie {
+  readonly name: string;
+  readonly value: string;
+  /** Encrypted like the app would (when the app encrypts this cookie at all). */
+  readonly encrypt: boolean;
+}
+
+interface Defaults {
+  readonly headers: Readonly<Record<string, string>>;
+  readonly cookies: readonly TestCookie[];
+}
+
+/** How the app encrypts cookies — so tests can send and read plain values, like Laravel's. */
+export interface CookieCrypto {
+  encrypt(name: string, value: string): Promise<string>;
+  /** The plain value, or the raw one if it is not encrypted (or not decryptable). */
+  decrypt(name: string, value: string): Promise<string>;
+}
+
+function cookieCrypto(container: Container): CookieCrypto {
+  const encrypted = (name: string) =>
+    container.has(Encrypter) && (!container.has(CookieEncryption) || container.make(CookieEncryption).isEncrypted(name));
+  return {
+    encrypt: async (name, value) => (encrypted(name) ? container.make(Encrypter).encrypt(value, `cookie:${name}`) : value),
+    decrypt: async (name, value) => {
+      if (!encrypted(name) || value === '') return value;
+      try {
+        return await container.make(Encrypter).decrypt(value, `cookie:${name}`);
+      } catch {
+        return value;
+      }
+    },
+  };
 }
 
 export class TestApp {
   readonly application: Application;
   readonly #kernel: ReturnType<typeof createHttpKernel>;
-  readonly #headers: Readonly<Record<string, string>>;
+  readonly #defaults: Defaults;
+  readonly #crypto: CookieCrypto;
 
-  constructor(application: Application, kernel: ReturnType<typeof createHttpKernel>, headers: Readonly<Record<string, string>>) {
+  constructor(application: Application, kernel: ReturnType<typeof createHttpKernel>, defaults: Defaults) {
     this.application = application;
     this.#kernel = kernel;
-    this.#headers = headers;
+    this.#defaults = defaults;
+    this.#crypto = cookieCrypto(application.container);
   }
 
   get container(): Container {
@@ -76,12 +115,21 @@ export class TestApp {
   // --- Request defaults (each returns a new view of the same app) -------------------
 
   withHeaders(headers: Record<string, string>): TestApp {
-    return new TestApp(this.application, this.#kernel, { ...this.#headers, ...headers });
+    return this.#with({ headers: { ...this.#defaults.headers, ...headers } });
   }
 
+  /** Sends a cookie, encrypted like the app encrypts its own (Laravel's `withCookie`). */
   withCookie(name: string, value: string): TestApp {
-    const cookie = [this.#headers.cookie, `${name}=${encodeURIComponent(value)}`].filter(Boolean).join('; ');
-    return this.withHeaders({ cookie });
+    return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: true }] });
+  }
+
+  /** Sends a cookie exactly as given — e.g. to prove that forged values are ignored. */
+  withUnencryptedCookie(name: string, value: string): TestApp {
+    return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: false }] });
+  }
+
+  #with(defaults: Partial<Defaults>): TestApp {
+    return new TestApp(this.application, this.#kernel, { ...this.#defaults, ...defaults });
   }
 
   /** Requests as a client-side navigation: answered with the page object as JSON. */
@@ -112,8 +160,22 @@ export class TestApp {
     return this.request('DELETE', path, options);
   }
 
-  request(method: string, path: string, { headers = {}, form, multipart, json }: RequestOptions = {}): PendingTestResponse {
-    const init: RequestInit = { method, headers: { ...this.#headers, ...headers } };
+  request(method: string, path: string, options: RequestOptions = {}): PendingTestResponse {
+    const label = `${method} ${path}`;
+    const response = this.#init(method, options)
+      .then((init) => this.#kernel.request(path, init))
+      .then((res) => TestResponse.from(res, label, this.#crypto));
+    return new PendingTestResponse(response);
+  }
+
+  async #init(method: string, { headers = {}, form, multipart, json }: RequestOptions): Promise<RequestInit> {
+    const cookies = await Promise.all(
+      this.#defaults.cookies.map(
+        async ({ name, value, encrypt }) => `${name}=${encodeURIComponent(encrypt ? await this.#crypto.encrypt(name, value) : value)}`,
+      ),
+    );
+    const cookie = [this.#defaults.headers.cookie, ...cookies].filter(Boolean).join('; ');
+    const init: RequestInit = { method, headers: { ...this.#defaults.headers, ...(cookie ? { cookie } : {}), ...headers } };
     if (form) {
       const body = new URLSearchParams();
       for (const [name, value] of Object.entries(form)) for (const item of [value].flat()) body.append(name, item);
@@ -128,7 +190,6 @@ export class TestApp {
       init.body = JSON.stringify(json);
       (init.headers as Record<string, string>)['content-type'] = 'application/json';
     }
-    const response = Promise.resolve(this.#kernel.request(path, init)).then((res) => TestResponse.from(res, `${method} ${path}`));
-    return new PendingTestResponse(response);
+    return init;
   }
 }

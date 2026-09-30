@@ -81,6 +81,9 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http
@@ -101,11 +104,23 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
 
+  packages/encryption:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+
   packages/http:
     dependencies:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
       '@bespokecore/router':
         specifier: workspace:*
         version: link:../router
@@ -175,6 +190,9 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http

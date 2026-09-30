@@ -15,6 +15,11 @@ describe('auth module', () => {
     await app.withCookie(SESSION_COOKIE, response.cookie(SESSION_COOKIE)!).get('/users/me').assertRedirect('/users/3');
   });
 
+  it('ignores a forged, unencrypted session cookie', async () => {
+    await app.withUnencryptedCookie(SESSION_COOKIE, '1').expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(SESSION_COOKIE, '1').get('/users/me').assertRedirect('/users/1'); // encrypted by the app's key
+  });
+
   it('sends unknown users back to the page they came from', async () => {
     await app
       .post('/login', { form: { user_id: '99' }, headers: { referer: 'http://localhost/login' } })

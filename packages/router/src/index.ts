@@ -6,6 +6,6 @@ export { defineMiddleware, isMiddlewareClass, runPipeline } from './middleware.t
 export type * from './types.ts';
 export { abort, HttpError, statusText } from './errors.ts';
 export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
-export type { CookieOptions } from './cookies.ts';
+export type { CookieCodec, CookieOptions } from './cookies.ts';
 export { createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';

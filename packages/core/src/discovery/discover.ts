@@ -14,7 +14,7 @@
  * never restart a dev server.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
@@ -291,12 +291,23 @@ export function manifestPath(root: string): string {
 
 /** Writes `.bespoke/manifest.json` (what `bespoke discover` runs). */
 export function writeManifest(options: DiscoverOptions): DiscoverySummary {
+  return regenerate(options).summary;
+}
+
+/**
+ * Generates and writes the manifest atomically: a temporary file renamed into place.
+ * Several processes may regenerate at once (the dev server, `bespoke` commands, test
+ * workers) — a reader must never see a half-written file.
+ */
+function regenerate(options: DiscoverOptions): { manifest: Manifest; summary: DiscoverySummary } {
   const conditions = options.conditions ?? runtimeConditions();
-  const { manifest, summary } = generateManifest({ ...options, conditions });
+  const result = generateManifest({ ...options, conditions });
   const path = manifestPath(options.root);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
-  return summary;
+  const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(result.manifest, null, 2)}\n`);
+  renameSync(temporary, path);
+  return result;
 }
 
 export interface DiscoveredPackages {
@@ -319,10 +330,8 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
 
   let manifest = readManifest(path);
   const regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
-  if (regenerated) {
-    writeManifest({ root: options.root, conditions });
-    manifest = readManifest(path)!;
-  }
+  // Use what was just generated — re-reading the file could see another process's write.
+  if (regenerated) manifest = regenerate({ root: options.root, conditions }).manifest;
 
   const modules = await Promise.all(manifest!.modules.map((url) => import(url) as Promise<Record<string, any>>));
   const resolve = ([module, name]: ExportRef) => modules[module]![name];

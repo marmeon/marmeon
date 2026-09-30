@@ -1,5 +1,6 @@
-import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -119,6 +120,25 @@ describe('bespoke discover', () => {
     ]);
     expect(summary).toMatchObject({ injectable: 3, unresolvable: 1, providers: 3 });
   });
+
+  it('regenerates atomically — processes racing to rewrite the manifest never read half a file', async () => {
+    // The dev server, `bespoke` commands and test workers all regenerate after `pnpm add`.
+    writeFileSync(
+      join(app, 'race.ts'),
+      `import { loadDiscoveredPackages } from '@bespokecore/core';
+       let failures = 0;
+       for (let i = 0; i < 25; i++) {
+         try { await loadDiscoveredPackages({ root: import.meta.dirname, force: true }); } catch { failures++; }
+       }
+       console.log(failures);`,
+    );
+    const race = () =>
+      promisify(execFile)(process.execPath, ['--conditions=@bespokecore/source', join(app, 'race.ts')], { cwd: app, encoding: 'utf8' });
+    const results = await Promise.all([race(), race(), race(), race()]);
+
+    expect(results.map(({ stdout }) => stdout.trim())).toEqual(['0', '0', '0', '0']);
+    expect(readdirSync(join(app, '.bespoke'))).toEqual(['manifest.json']); // no temporary files left behind
+  }, 30_000);
 
   it('works in-process too, e.g. inside Vitest', async () => {
     await loadDiscoveredPackages({ root: app, conditions: DEV, force: true });
