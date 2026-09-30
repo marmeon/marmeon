@@ -1,0 +1,126 @@
+import type { CommandInput } from '@bespokecore/cli';
+import { Migrator, type MigrationRun } from '../migrations/migrator.ts';
+
+const force = { force: { type: 'boolean' } } as const;
+
+/** Destructive commands ask for `--force` in production, like Laravel's confirmation. */
+function confirmed({ options, output }: CommandInput, what: string): boolean {
+  if (process.env.NODE_ENV !== 'production' || options.force === true) return true;
+  output.error(`The application is in production. Pass --force to ${what}.`);
+  return false;
+}
+
+function report(output: CommandInput['output'], verb: string) {
+  return (run: MigrationRun) => output.success(`${verb} ${run.name} (${run.module}) ${run.ms.toFixed(1)} ms`);
+}
+
+/** Laravel's `migrate`: runs every pending migration of every module, in one batch. */
+export class MigrateCommand {
+  static command = 'migrate';
+  static description = 'Run the pending migrations';
+  static usage = '[--force]';
+  static options = force;
+
+  readonly #migrator: Migrator;
+
+  constructor(migrator: Migrator) {
+    this.#migrator = migrator;
+  }
+
+  async handle(input: CommandInput): Promise<number> {
+    if (!confirmed(input, 'migrate')) return 1;
+    const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
+    if (runs.length === 0) input.output.info('Nothing to migrate.');
+    return 0;
+  }
+}
+
+export class MigrateRollbackCommand {
+  static command = 'migrate:rollback';
+  static description = 'Roll back the last batch of migrations (or --step=n migrations)';
+  static usage = '[--step=<n>] [--force]';
+  static options = { ...force, step: { type: 'string' } } as const;
+
+  readonly #migrator: Migrator;
+
+  constructor(migrator: Migrator) {
+    this.#migrator = migrator;
+  }
+
+  async handle(input: CommandInput): Promise<number> {
+    const step = input.options.step === undefined ? undefined : Number(input.options.step);
+    if (step !== undefined && (!Number.isInteger(step) || step < 1)) {
+      input.output.error('--step must be a positive whole number.');
+      return 1;
+    }
+    if (!confirmed(input, 'roll back')) return 1;
+    const runs = await this.#migrator.rollback({ steps: step }, report(input.output, 'Rolled back'));
+    if (runs.length === 0) input.output.info('Nothing to roll back.');
+    return 0;
+  }
+}
+
+export class MigrateResetCommand {
+  static command = 'migrate:reset';
+  static description = 'Roll back every migration';
+  static usage = '[--force]';
+  static options = force;
+
+  readonly #migrator: Migrator;
+
+  constructor(migrator: Migrator) {
+    this.#migrator = migrator;
+  }
+
+  async handle(input: CommandInput): Promise<number> {
+    if (!confirmed(input, 'roll back every migration')) return 1;
+    const runs = await this.#migrator.reset(report(input.output, 'Rolled back'));
+    if (runs.length === 0) input.output.info('Nothing to roll back.');
+    return 0;
+  }
+}
+
+export class MigrateFreshCommand {
+  static command = 'migrate:fresh';
+  static description = 'Drop every table and run all migrations';
+  static usage = '[--force]';
+  static options = force;
+
+  readonly #migrator: Migrator;
+
+  constructor(migrator: Migrator) {
+    this.#migrator = migrator;
+  }
+
+  async handle(input: CommandInput): Promise<number> {
+    if (!confirmed(input, 'drop every table')) return 1;
+    await this.#migrator.dropAllTables();
+    input.output.info('Dropped all tables.');
+    await this.#migrator.migrate(report(input.output, 'Migrated'));
+    return 0;
+  }
+}
+
+export class MigrateStatusCommand {
+  static command = 'migrate:status';
+  static description = 'Show which migrations have run';
+
+  readonly #migrator: Migrator;
+
+  constructor(migrator: Migrator) {
+    this.#migrator = migrator;
+  }
+
+  async handle({ output }: CommandInput): Promise<number> {
+    const status = await this.#migrator.status();
+    if (status.length === 0) {
+      output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');
+      return 0;
+    }
+    output.table(
+      ['MIGRATION', 'MODULE', 'BATCH / STATUS'],
+      status.map((m) => [m.name, m.module, m.batch === undefined ? 'Pending' : `[${m.batch}] Ran`]),
+    );
+    return 0;
+  }
+}

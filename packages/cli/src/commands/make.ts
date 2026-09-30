@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
@@ -153,6 +153,42 @@ export class MakeMiddlewareCommand {
 
 // --- Templates ---------------------------------------------------------------
 
+const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+
+/**
+ * Laravel's `make:migration`. The name decides the template: `create_users_table` creates the
+ * table, `add_bio_to_users_table` (…_to_/_from_/_in_…_table) changes it, anything else is blank.
+ */
+export class MakeMigrationCommand {
+  static command = 'make:migration';
+  static description = 'Create a migration in a module';
+  static usage = '<snake_case_name> --module=<module>';
+  static options = moduleOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const [name] = input.args;
+    if (!name || !SNAKE.test(name)) {
+      input.output.error('Pass a snake_case name, e.g. bespoke make:migration create_invoices_table --module=billing');
+      return 1;
+    }
+    const dir = moduleDir(input);
+    if (!dir) return 1;
+    const stamp = migrationStamp(join(dir, 'migrations'));
+    const create = /^create_(\w+?)_table$/.exec(name)?.[1];
+    const alter = /_(?:to|from|in)_(\w+?)_table$/.exec(name)?.[1];
+    const contents = create ? CREATE_MIGRATION(create) : alter ? ALTER_MIGRATION(alter) : BLANK_MIGRATION;
+    if (!write(input, join(dir, 'migrations', `${stamp}_${name}.ts`), contents)) return 1;
+
+    if (!readFileSync(join(dir, 'index.ts'), 'utf8').includes('migrations')) {
+      input.output.line();
+      input.output.line('Register the directory in the module (once):');
+      input.output.line(style('dim', "  defineModule({ …, migrations: new URL('./migrations/', import.meta.url) })"));
+    }
+    return 0;
+  }
+}
+
 const MODULE = (name: string) => `import { defineModule } from '@bespokecore/core';
 import routes from './routes.ts';
 
@@ -237,4 +273,56 @@ export class ${name} {
     return next();
   }
 }
+`;
+
+/**
+ * `YYYY_MM_DD_HHMMSS` now — but always after the module's latest migration: two generated in the
+ * same second would otherwise sort by name, and `add_…_to_invoices` could run before `create_invoices`.
+ */
+function migrationStamp(directory: string): string {
+  const format = (date: Date) => date.toISOString().replace(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d).*$/, '$1_$2_$3_$4$5$6');
+  const latest = existsSync(directory)
+    ? readdirSync(directory)
+        .map((file) => /^(\d{4})_(\d\d)_(\d\d)_(\d\d)(\d\d)(\d\d)_/.exec(file))
+        .filter((match) => match !== null)
+        .map(([, y, mo, d, h, mi, se]) => Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(se)))
+        .reduce((max, time) => Math.max(max, time), 0)
+    : 0;
+  return format(new Date(Math.max(Date.now(), latest + 1000)));
+}
+
+const CREATE_MIGRATION = (table: string) => `import { defineMigration } from '@bespokecore/database';
+
+export default defineMigration({
+  up: (schema) =>
+    schema.create('${table}', (table) => {
+      table.id();
+      table.timestamps();
+    }),
+  down: (schema) => schema.drop('${table}'),
+});
+`;
+
+const ALTER_MIGRATION = (table: string) => `import { defineMigration } from '@bespokecore/database';
+
+export default defineMigration({
+  up: (schema) =>
+    schema.alter('${table}', (table) => {
+      // table.string('nickname').nullable();
+    }),
+  down: (schema) =>
+    schema.alter('${table}', (table) => {
+      // table.dropColumn('nickname');
+    }),
+});
+`;
+
+const BLANK_MIGRATION = `import { defineMigration } from '@bespokecore/database';
+
+export default defineMigration({
+  up: async (schema) => {
+    // await schema.create(…) / schema.alter(…) / schema.db for data
+  },
+  down: async (schema) => {},
+});
 `;

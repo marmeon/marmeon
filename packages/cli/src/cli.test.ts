@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +52,18 @@ describe('bespoke (in the web app)', () => {
     expect(stdout).toContain('No tables yet.');
   });
 
+  it('runs the modules’ migrations in timestamp order (migrate, migrate:status)', () => {
+    const memory = { DB_DATABASE: ':memory:' }; // every process starts empty
+    const status = bespoke(webApp, ['migrate:status'], memory);
+    expect(status.stdout).toMatch(/2026_10_01_120000_create_users_table\s+auth\s+Pending\n2026_10_01_120100_create_login_activity_table\s+user-profile\s+Pending/);
+    const migrate = bespoke(webApp, ['migrate'], memory);
+    expect(migrate.code).toBe(0);
+    expect(migrate.stdout).toMatch(
+      /^✓ Migrated 2026_10_01_120000_create_users_table \(auth\) [\d.]+ ms\n✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\n$/,
+    );
+    expect(bespoke(webApp, ['migrate:fresh'], { ...memory, NODE_ENV: 'production' }).stderr).toContain('Pass --force to drop every table.');
+  });
+
   it.runIf(process.env.BESPOKE_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
     const { code, stdout } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.BESPOKE_TEST_PGSQL_URL! });
     expect(code).toBe(0);
@@ -85,7 +97,7 @@ describe('bespoke make:* (generated code compiles)', () => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'http', 'router']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'http', 'router', 'database']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
     for (const pkg of ['react', '@types/react', 'valibot']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
@@ -108,6 +120,12 @@ describe('bespoke make:* (generated code compiles)', () => {
     );
     expect(bespoke(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
     expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).code).toBe(0);
+    expect(bespoke(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
+      "migrations: new URL('./migrations/', import.meta.url)",
+    );
+    expect(bespoke(app, ['make:migration', 'add_due_date_to_invoices_table', '--module=billing']).code).toBe(0);
+    expect(bespoke(app, ['make:migration', 'backfill_totals', '--module=billing']).code).toBe(0);
+    expect(bespoke(app, ['make:migration', 'CreateInvoices', '--module=billing']).stderr).toContain('Pass a snake_case name');
 
     const controller = readFileSync(join(app, 'modules/billing/controllers/ShowInvoiceController.ts'), 'utf8');
     expect(controller).toContain("return this.view('billing/ShowInvoice', {});");
@@ -116,6 +134,16 @@ describe('bespoke make:* (generated code compiles)', () => {
     expect(withRequest).toContain('export const UpdateInvoiceRequest = defineRequest({');
     expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
     expect(withRequest).toContain('handle(ctx: ContextOf<typeof UpdateInvoiceRequest>) {');
+
+    // Generated in quick succession, they still sort in the order they were made.
+    const migrations = readdirSync(join(app, 'modules/billing/migrations')).sort();
+    expect(migrations).toEqual([
+      expect.stringMatching(/^\d{4}_\d\d_\d\d_\d{6}_create_invoices_table\.ts$/),
+      expect.stringMatching(/^\d{4}_\d\d_\d\d_\d{6}_add_due_date_to_invoices_table\.ts$/),
+      expect.stringMatching(/^\d{4}_\d\d_\d\d_\d{6}_backfill_totals\.ts$/),
+    ]);
+    expect(readFileSync(join(app, 'modules/billing/migrations', migrations[0]!), 'utf8')).toContain("schema.create('invoices', (table) => {");
+    expect(readFileSync(join(app, 'modules/billing/migrations', migrations[1]!), 'utf8')).toContain("schema.alter('invoices', (table) => {");
 
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');

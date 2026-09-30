@@ -1,38 +1,18 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ConsoleLogger, createApplication, type Logger } from '@bespokecore/core';
+import { createApplication } from '@bespokecore/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { jsonArrayFrom as pgJsonArrayFrom } from 'kysely/helpers/postgres';
 import { jsonArrayFrom as sqliteJsonArrayFrom } from 'kysely/helpers/sqlite';
 import * as v from 'valibot';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Connections, Database, DatabaseConnectionError, DatabaseServiceProvider, defineConnection, type ConnectionOptions, type QueryEvent } from './index.ts';
-
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`docker compose up -d`, then `pnpm test:pgsql`). */
-const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
-const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
+import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { Connections, Database, DatabaseConnectionError, DatabaseServiceProvider, defineConnection, type QueryEvent } from './index.ts';
 
 interface TestTables {
   users: { id: Generated<number>; name: string; is_admin: Generated<boolean>; settings: unknown; bio: string | null; created_at: Generated<string> };
   posts: { id: Generated<number>; user_id: number; title: string };
-}
-
-/** A fresh database per suite: SQLite in memory, or a new Postgres database dropped afterwards. */
-async function freshDatabase(driver: 'sqlite' | 'pgsql'): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
-  if (driver === 'sqlite') return { options: { driver: 'sqlite', database: ':memory:' }, drop: async () => {} };
-  const name = `bespoke_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
-  const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
-  await sql`create database ${sql.id(name)}`.execute(admin.get());
-  const url = new URL(PGSQL_URL!);
-  url.pathname = `/${name}`;
-  return {
-    options: { driver: 'pgsql', url: url.href, poolMax: 3 },
-    drop: async () => {
-      await sql`drop database ${sql.id(name)} with (force)`.execute(admin.get());
-      await admin.destroy();
-    },
-  };
 }
 
 async function createTables(db: Kysely<any>, driver: 'sqlite' | 'pgsql') {
@@ -57,7 +37,6 @@ async function createTables(db: Kysely<any>, driver: 'sqlite' | 'pgsql') {
 }
 
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
-const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 describe.each(drivers)('a %s connection', (driver) => {
   let connections: Connections;

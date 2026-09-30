@@ -1,0 +1,107 @@
+import { sql, type Kysely } from 'kysely';
+import { Blueprint, compileColumn, type Driver } from './blueprint.ts';
+
+/** Keeps track of which module owns which table (E20) — the migrator writes it to `table_owners`. */
+export interface TableOwnership {
+  created(table: string): Promise<void>;
+  dropped(table: string): Promise<void>;
+  renamed(from: string, to: string): Promise<void>;
+}
+
+/**
+ * Laravel's `Schema` facade as an object — what a migration gets:
+ *
+ * ```ts
+ * up: (schema) => schema.create('users', (table) => { table.id(); table.string('email').unique(); table.timestamps(); })
+ * ```
+ *
+ * `schema.db` is the connection (inside the migration's transaction) for data changes and for
+ * anything the blueprint does not cover (`schema.db.schema…`, `sql\`…\``).
+ */
+export class Schema {
+  readonly db: Kysely<any>;
+  readonly driver: Driver;
+  readonly #owners: TableOwnership | undefined;
+
+  constructor(db: Kysely<any>, driver: Driver, owners?: TableOwnership) {
+    this.db = db;
+    this.driver = driver;
+    this.#owners = owners;
+  }
+
+  /** Creates a table. */
+  async create(table: string, build: (table: Blueprint) => void): Promise<void> {
+    const blueprint = new Blueprint(table);
+    build(blueprint);
+    if (blueprint.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
+    if (blueprint.drops.length || blueprint.renames.length || blueprint.dropIndexes.length) {
+      throw new Error('dropColumn(), renameColumn() and dropIndex() only work when changing a table (schema.alter).');
+    }
+
+    let builder = this.db.schema.createTable(table);
+    for (const spec of blueprint.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, this.driver));
+    await builder.execute();
+    await this.#createIndexes(blueprint);
+    await this.#owners?.created(table);
+  }
+
+  /**
+   * Changes a table (Laravel's `Schema::table`). Every change runs as its own statement, because
+   * SQLite's ALTER TABLE takes one change at a time. On SQLite a new NOT NULL column needs a default.
+   */
+  async alter(table: string, build: (table: Blueprint) => void): Promise<void> {
+    const blueprint = new Blueprint(table);
+    build(blueprint);
+    for (const name of blueprint.dropIndexes) await this.db.schema.dropIndex(name).execute();
+    for (const { from, to } of blueprint.renames) await this.db.schema.alterTable(table).renameColumn(from, to).execute();
+    for (const spec of blueprint.columns) await this.db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, this.driver)).execute();
+    await this.#createIndexes(blueprint);
+    for (const column of blueprint.drops) await this.db.schema.alterTable(table).dropColumn(column).execute();
+  }
+
+  async #createIndexes(blueprint: Blueprint): Promise<void> {
+    for (const index of blueprint.allIndexes()) {
+      let builder = this.db.schema.createIndex(index.name).on(blueprint.table).columns([...index.columns]);
+      if (index.unique) builder = builder.unique();
+      await builder.execute();
+    }
+  }
+
+  async drop(table: string): Promise<void> {
+    await this.db.schema.dropTable(table).execute();
+    await this.#owners?.dropped(table);
+  }
+
+  async dropIfExists(table: string): Promise<void> {
+    await this.db.schema.dropTable(table).ifExists().execute();
+    await this.#owners?.dropped(table);
+  }
+
+  async rename(from: string, to: string): Promise<void> {
+    await this.db.schema.alterTable(from).renameTo(to).execute();
+    await this.#owners?.renamed(from, to);
+  }
+
+  async hasTable(table: string): Promise<boolean> {
+    return (await this.db.introspection.getTables()).some((t) => t.name === table);
+  }
+
+  async hasColumn(table: string, column: string): Promise<boolean> {
+    return (await this.db.introspection.getTables()).find((t) => t.name === table)?.columns.some((c) => c.name === column) ?? false;
+  }
+
+  /** Drops every table of the connection — `migrate:fresh`. Foreign keys are no obstacle. */
+  async dropAllTables(): Promise<void> {
+    const tables = await this.db.introspection.getTables();
+    if (this.driver === 'pgsql') {
+      for (const t of tables) await sql`drop table if exists ${sql.table(t.schema ? `${t.schema}.${t.name}` : t.name)} cascade`.execute(this.db);
+      return;
+    }
+    await sql`pragma foreign_keys = off`.execute(this.db);
+    try {
+      for (const t of tables) await this.db.schema.dropTable(t.name).ifExists().execute();
+    } finally {
+      await sql`pragma foreign_keys = on`.execute(this.db);
+    }
+  }
+}

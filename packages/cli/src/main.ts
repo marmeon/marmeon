@@ -13,6 +13,7 @@ import {
   MakeEventCommand,
   MakeListenerCommand,
   MakeMiddlewareCommand,
+  MakeMigrationCommand,
   MakeModuleCommand,
 } from './commands/make.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
@@ -32,6 +33,7 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeEventCommand,
   MakeListenerCommand,
   MakeMiddlewareCommand,
+  MakeMigrationCommand,
 ];
 
 /** Runs one `bespoke` invocation in the app root (`cwd`) and returns the exit code. */

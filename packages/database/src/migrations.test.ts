@@ -1,0 +1,142 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Application, ModuleDefinition } from '@bespokecore/core';
+import { sql } from 'kysely';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { Migrator, type Connections } from './index.ts';
+
+const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
+const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
+const blog: ModuleDefinition = { name: 'blog', migrations: fixtures('blog') };
+const broken: ModuleDefinition = { name: 'broken', migrations: fixtures('broken') };
+
+/** The migrator only needs the app's modules and root. */
+const migrator = (connections: Connections, ...modules: ModuleDefinition[]) =>
+  new Migrator({ modules, root: '/' } as unknown as Application, connections);
+
+const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
+
+describe.each(drivers)('migrations on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const db = () => connections.get<any>();
+  const tables = async () => (await db().introspection.getTables()).map((t) => t.name).sort();
+
+  beforeAll(async () => ({ connections, close } = await freshConnections(driver)));
+  afterAll(() => close());
+
+  it('runs pending migrations across modules in timestamp order, one batch per run', async () => {
+    const ran: string[] = [];
+    expect((await migrator(connections, auth).migrate((run) => ran.push(`${run.module}/${run.name}`))).length).toBe(1);
+    await migrator(connections, auth, blog).migrate((run) => ran.push(`${run.module}/${run.name}`));
+    expect(ran).toEqual([
+      'auth/2026_01_01_000000_create_users_table',
+      'blog/2026_01_02_000000_create_posts_table',
+      'blog/2026_01_03_000000_add_slug_to_posts_table',
+    ]);
+    expect(await migrator(connections, auth, blog).migrate()).toEqual([]);
+    expect((await migrator(connections, auth, blog).status()).map((m) => [m.name, m.module, m.batch])).toEqual([
+      ['2026_01_01_000000_create_users_table', 'auth', 1],
+      ['2026_01_02_000000_create_posts_table', 'blog', 2],
+      ['2026_01_03_000000_add_slug_to_posts_table', 'blog', 2],
+    ]);
+    expect(await tables()).toEqual(['articles', 'migrations', 'table_owners', 'users']);
+  });
+
+  it('records which module owns each table — renames included', async () => {
+    expect(Object.fromEntries(await migrator(connections, auth, blog).owners())).toEqual({ users: 'auth', articles: 'blog' });
+  });
+
+  it('creates columns that read back the same on every driver: NOT NULL by default, defaults, timestamps', async () => {
+    const user = await db().insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returningAll().executeTakeFirstOrThrow();
+    expect(user).toEqual({
+      id: 1,
+      name: 'Ada',
+      email: 'ada@example.com',
+      is_admin: false,
+      settings: null,
+      balance: '0.00',
+      born_on: null,
+      created_at: expect.stringMatching(ISO_UTC),
+      updated_at: expect.stringMatching(ISO_UTC),
+      deleted_at: null,
+    });
+    const rich = await db().updateTable('users').set({ balance: 12.5, is_admin: true, settings: JSON.stringify({ a: [1] }) }).where('id', '=', 1).returning(['balance', 'is_admin', 'settings']).executeTakeFirstOrThrow();
+    expect(rich).toEqual({ balance: '12.50', is_admin: true, settings: { a: [1] } });
+    await expect(db().insertInto('users').values({ name: 'Ada 2', email: 'ada@example.com' }).execute()).rejects.toThrow(/unique/i);
+    await expect(db().insertInto('users').values({ email: 'x@example.com' }).execute()).rejects.toThrow(/not.null|null value/i);
+
+    const article = await db()
+      .insertInto('articles')
+      .values({ user_id: 1, title: 'Hello', slug: 'hello', content: 'Text', published_at: new Date('2026-10-01T08:00:00Z') })
+      .returning(['id', 'content', 'published_at'])
+      .executeTakeFirstOrThrow();
+    expect(article).toEqual({ id: 1, content: 'Text', published_at: '2026-10-01T08:00:00.000Z' });
+    await expect(db().insertInto('articles').values({ user_id: 99, title: 'Orphan' }).execute()).rejects.toThrow(/foreign key/i);
+    await db().deleteFrom('users').where('id', '=', 1).execute();
+    expect(await db().selectFrom('articles').selectAll().execute()).toEqual([]); // cascadeOnDelete
+  });
+
+  it('rolls back the last batch, then by steps, and undoes renames', async () => {
+    const both = migrator(connections, auth, blog);
+    const rolledBack = (await both.rollback()).map((run) => run.name);
+    expect(rolledBack).toEqual(['2026_01_03_000000_add_slug_to_posts_table', '2026_01_02_000000_create_posts_table']);
+    expect(await tables()).toEqual(['migrations', 'table_owners', 'users']);
+    expect(Object.fromEntries(await both.owners())).toEqual({ users: 'auth' });
+
+    await both.migrate();
+    expect((await both.rollback({ steps: 1 })).map((run) => run.name)).toEqual(['2026_01_03_000000_add_slug_to_posts_table']);
+    const posts = (await db().introspection.getTables()).find((t) => t.name === 'posts')!;
+    expect(posts.columns.map((c) => c.name)).toEqual(['id', 'user_id', 'title', 'body', 'published_at']);
+    expect((await both.reset()).length).toBe(2);
+    expect(await tables()).toEqual(['migrations', 'table_owners']);
+  });
+
+  it('undoes a failing migration completely and does not record it', async () => {
+    const withBroken = migrator(connections, auth, broken);
+    await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
+    expect(await tables()).toEqual(['migrations', 'table_owners', 'users']); // `half` is gone; users (earlier file) stays
+    expect((await withBroken.status()).map((m) => [m.name, m.batch])).toEqual([
+      ['2026_01_01_000000_create_users_table', 1],
+      ['2026_01_04_000000_create_half_table', undefined],
+    ]);
+  });
+
+  it('migrate:fresh drops every table — migrated or not — and runs everything again', async () => {
+    await sql`create table stray (x integer)`.execute(db());
+    const runs = await migrator(connections, auth, blog).fresh();
+    expect(runs.map((run) => run.name)).toHaveLength(3);
+    expect(await tables()).toEqual(['articles', 'migrations', 'table_owners', 'users']);
+    expect((await migrator(connections, auth, blog).status()).every((m) => m.batch === 1)).toBe(true);
+  });
+});
+
+describe('migration files', () => {
+  const root = mkdtempSync(join(tmpdir(), 'bespoke-migrations-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const app = (modules: ModuleDefinition[]) => new Migrator({ modules, root } as unknown as Application, undefined as never);
+
+  it('rejects badly named files, duplicate names and missing directories — with the module', () => {
+    const dir = mkdtempSync(join(root, 'm-'));
+    writeFileSync(join(dir, 'create_users.ts'), '');
+    expect(() => app([{ name: 'shop', migrations: dir }]).files()).toThrow(
+      'Migration file name "create_users.ts" (module "shop") must look like 2026_10_01_120000_create_users_table.ts.',
+    );
+    const twice = [
+      { name: 'a', migrations: fixtures('auth') },
+      { name: 'b', migrations: fixtures('auth') },
+    ];
+    expect(() => app(twice).files()).toThrow('Two migrations are named "2026_01_01_000000_create_users_table" (modules "a" and "b").');
+    expect(() => app([{ name: 'gone', migrations: 'nope' }]).files()).toThrow(/migrations directory of module "gone" does not exist/);
+  });
+
+  it('ignores declaration and test files, and resolves string paths against the app root', () => {
+    const dir = mkdtempSync(join(root, 'm-'));
+    writeFileSync(join(dir, '2026_01_01_000000_a.d.ts'), '');
+    writeFileSync(join(dir, 'helpers.test.ts'), '');
+    writeFileSync(join(dir, 'README.md'), '');
+    expect(app([{ name: 'x', migrations: dir.slice(root.length + 1) }]).files()).toEqual([]);
+  });
+});

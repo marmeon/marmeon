@@ -1,5 +1,17 @@
 import { Application, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
 import { DbShowCommand } from './commands/db-show.ts';
+import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
+import { Migrator } from './migrations/migrator.ts';
+
+declare module '@bespokecore/core' {
+  interface ModuleDefinition {
+    /**
+     * The module's migrations directory: `new URL('./migrations/', import.meta.url)` (or a path
+     * relative to the app root). Files are named `2026_10_01_120000_create_users_table.ts`.
+     */
+    readonly migrations?: URL | string;
+  }
+}
 import { DatabaseConfig, isConnectionDefinition, type ConnectionOptions } from './config.ts';
 import { Connections, Database } from './connections.ts';
 
@@ -20,12 +32,17 @@ export class DatabaseServiceProvider implements ServiceProvider {
       return new Connections({ connections, root: app.root, logger: c.make(Logger) });
     });
     container.singleton(Database, (c) => c.make(Connections).get());
+    container.singleton(Migrator);
   }
 
   async boot(app: Application): Promise<void> {
     app.container.make(Connections).verify();
     const cli = await import('@bespokecore/cli').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([DbShowCommand]);
+    if (cli && app.container.has(cli.CommandRegistry)) {
+      app.container
+        .make(cli.CommandRegistry)
+        .add([DbShowCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand]);
+    }
   }
 
   async shutdown(app: Application): Promise<void> {

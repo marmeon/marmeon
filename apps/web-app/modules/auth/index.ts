@@ -11,5 +11,6 @@ export type { User } from './users.ts';
 export default defineModule({
   name: 'auth',
   providers: [AuthServiceProvider],
+  migrations: new URL('./migrations/', import.meta.url),
   routes,
 });

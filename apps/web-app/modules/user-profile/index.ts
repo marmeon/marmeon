@@ -9,6 +9,7 @@ export default defineModule({
   name: 'user-profile',
   providers: [UserProfileServiceProvider],
   listeners: [listen(UserLoggedIn, RecordLastLogin)],
+  migrations: new URL('./migrations/', import.meta.url),
   routes,
   apiRoutes,
 });
