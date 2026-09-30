@@ -1,9 +1,17 @@
 import { Controller, type HttpContext } from '@bespokecore/http';
-import { allUsers, findUser, type AuthState } from '#modules/auth';
+import { UserRepository, type AuthState } from '#modules/auth';
 
 export class ShowUserProfileController extends Controller {
+  static inject = [UserRepository] as const; // generated from the constructor in step 3
+  readonly #users: UserRepository;
+
+  constructor(users: UserRepository) {
+    super();
+    this.#users = users;
+  }
+
   handle(ctx: HttpContext<AuthState, { id: string }>) {
-    const user = findUser(ctx.params.id);
+    const user = this.#users.find(ctx.params.id);
     if (!user) return this.json({ message: 'User not found.' }, 404);
 
     return this.view('user-profile/Show', {
@@ -12,7 +20,8 @@ export class ShowUserProfileController extends Controller {
       email: ctx.user.id === user.id ? user.email : null,
       isOwnProfile: ctx.user.id === user.id,
       viewer: { name: ctx.user.name },
-      others: allUsers()
+      others: this.#users
+        .all()
         .filter((other) => other.id !== user.id)
         .map(({ id, name }) => ({ id, name })),
     });

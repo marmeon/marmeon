@@ -13,6 +13,9 @@
       "path": "../router"
     },
     {
+      "path": "../core"
+    },
+    {
       "path": "../http"
     }
   ]

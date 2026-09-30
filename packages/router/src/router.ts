@@ -24,7 +24,7 @@ export function defineRoutes(register: (Route: Route) => void): RouteDefinitions
 
 export interface RouterOptions {
   /** Hook for a DI container. Defaults to `new Controller()`. */
-  resolveController?: (controller: ControllerClass) => Invokable<HttpContext>;
+  resolveController?: ControllerResolver;
 }
 
 export interface DispatchInput {
@@ -33,6 +33,14 @@ export interface DispatchInput {
 }
 
 export type ResponseFactory = (result: unknown, ctx: HttpContext) => Response | Promise<Response>;
+
+export type ControllerResolver = (controller: ControllerClass) => Invokable<HttpContext>;
+
+export interface DispatchOptions {
+  toResponse?: ResponseFactory;
+  /** Per-request controller resolution, e.g. from a request-scoped container. */
+  resolveController?: ControllerResolver;
+}
 
 /** Laravel's `Router::toResponse` in miniature: strings become HTML, everything else JSON. */
 export const defaultToResponse: ResponseFactory = (result) => {
@@ -46,7 +54,7 @@ export const defaultToResponse: ResponseFactory = (result) => {
 
 export class Router {
   readonly #routes: RouteDefinition[] = [];
-  readonly #resolveController: (controller: ControllerClass) => Invokable<HttpContext>;
+  readonly #resolveController: ControllerResolver;
 
   constructor(options: RouterOptions = {}) {
     this.#resolveController = options.resolveController ?? ((Controller) => new Controller());
@@ -84,18 +92,16 @@ export class Router {
   }
 
   /** Runs a matched route through its middleware pipeline and action. */
-  dispatch(route: RouteDefinition, input: DispatchInput, toResponse: ResponseFactory = defaultToResponse): Promise<Response> {
+  dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
     const ctx: HttpContext = { request: input.request, params: input.params, route };
+    const toResponse = options.toResponse ?? defaultToResponse;
+    const resolveController = options.resolveController ?? this.#resolveController;
 
     return runPipeline(ctx, route.middleware, async (finalCtx) => {
-      const result = await this.#invoke(route.action, finalCtx);
+      const { action } = route;
+      const result = await (isControllerClass(action) ? resolveController(action).handle(finalCtx) : action(finalCtx));
       return toResponse(result, finalCtx);
     });
-  }
-
-  #invoke(action: AnyAction, ctx: HttpContext): unknown {
-    if (!isControllerClass(action)) return action(ctx);
-    return this.#resolveController(action).handle(ctx);
   }
 }
 

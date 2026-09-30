@@ -23,6 +23,9 @@ importers:
 
   apps/web-app:
     dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../../packages/http
@@ -86,6 +89,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http

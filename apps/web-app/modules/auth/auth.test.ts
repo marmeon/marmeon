@@ -1,8 +1,8 @@
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
-import { router } from '../../bootstrap/app.ts';
+import { container, router } from '../../bootstrap/app.ts';
 
-const app = createHttpKernel(router);
+const app = createHttpKernel(router, { container });
 
 describe('auth module', () => {
   it('logs in via form post, sets the session cookie and redirects', async () => {

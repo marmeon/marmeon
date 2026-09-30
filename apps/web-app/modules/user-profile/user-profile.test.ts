@@ -1,8 +1,9 @@
+import { UserRepository, type User } from '#modules/auth';
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
-import { router } from '../../bootstrap/app.ts';
+import { container, router } from '../../bootstrap/app.ts';
 
-const app = createHttpKernel(router);
+const app = createHttpKernel(router, { container });
 const as = (userId: string) => ({ headers: { 'x-user-id': userId, 'x-bespoke': 'true' } });
 
 describe('user-profile module', () => {
@@ -54,5 +55,21 @@ describe('user-profile module', () => {
 
   it('returns 404 for unknown users', async () => {
     expect((await app.request('/users/99', as('1'))).status).toBe(404);
+  });
+
+  it('resolves controllers through the container, so dependencies can be swapped', async () => {
+    const grace: User = { id: '1', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double' };
+    class StubUserRepository extends UserRepository {
+      override find(id: string) {
+        return id === '1' ? grace : undefined;
+      }
+      override all() {
+        return [grace];
+      }
+    }
+    const stubbed = createHttpKernel(router, { container: container.createScope().instance(UserRepository, new StubUserRepository()) });
+
+    const page = (await (await stubbed.request('/users/1', as('1'))).json()) as { props: { profile: { name: string } } };
+    expect(page.props.profile.name).toBe('Grace (stub)');
   });
 });

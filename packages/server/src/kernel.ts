@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { join, relative } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { Container } from '@bespokecore/core';
 import type { Router } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
@@ -9,6 +10,8 @@ import { createResponseFactory, type PageRenderer } from './render.ts';
 import { createViteDevRenderer } from './vite.ts';
 
 export interface KernelOptions {
+  /** Application container. Every request gets its own scope, from which controllers are resolved. */
+  container?: Container;
   renderer?: PageRenderer;
   /** Built client output (production). Only its `/assets/*` files are served. */
   clientDir?: string;
@@ -20,7 +23,10 @@ export interface KernelOptions {
  * The HTTP kernel: Hono does the URL matching, the BespokeCore router runs the
  * typed middleware pipeline and the action.
  */
-export function createHttpKernel(router: Router, { renderer, clientDir, debug = false }: KernelOptions = {}): Hono {
+export function createHttpKernel(
+  router: Router,
+  { container = new Container(), renderer, clientDir, debug = false }: KernelOptions = {},
+): Hono {
   const app = new Hono();
   const toResponse = createResponseFactory(renderer);
 
@@ -30,9 +36,14 @@ export function createHttpKernel(router: Router, { renderer, clientDir, debug = 
   }
 
   for (const route of router.routes) {
-    app.on([...route.methods], route.path, (c) =>
-      router.dispatch(route, { request: c.req.raw, params: c.req.param() }, toResponse),
-    );
+    app.on([...route.methods], route.path, (c) => {
+      const scope = container.createScope();
+      return router.dispatch(
+        route,
+        { request: c.req.raw, params: c.req.param() },
+        { toResponse, resolveController: (Controller) => scope.make(Controller) },
+      );
+    });
   }
 
   app.onError((error, c) => {
@@ -45,6 +56,7 @@ export function createHttpKernel(router: Router, { renderer, clientDir, debug = 
 
 export interface ServeOptions {
   router: Router;
+  container?: Container;
   /** App root containing `index.html` and `vite.config.ts`. */
   root: string;
   /** SSR entry relative to `root`, e.g. `bootstrap/ssr.tsx`. */
@@ -55,6 +67,7 @@ export interface ServeOptions {
 
 export async function startServer({
   router,
+  container,
   root,
   ssrEntry,
   port = 3000,
@@ -64,13 +77,13 @@ export async function startServer({
 
   if (mode === 'development') {
     const { vite, renderer } = await createViteDevRenderer({ root, ssrEntry, httpServer: server });
-    const handle = getRequestListener(createHttpKernel(router, { renderer, debug: true }).fetch);
+    const handle = getRequestListener(createHttpKernel(router, { container, renderer, debug: true }).fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));
     server.on('close', () => void vite.close());
   } else {
     const renderer = await createProductionRenderer({ root, ssrEntry });
-    const kernel = createHttpKernel(router, { renderer, clientDir: join(root, 'dist/client') });
+    const kernel = createHttpKernel(router, { container, renderer, clientDir: join(root, 'dist/client') });
     server.on('request', getRequestListener(kernel.fetch));
   }
 
