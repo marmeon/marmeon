@@ -1,11 +1,11 @@
 import { createApplication, defineModule } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, Controller, defineRoutes, EncryptCookies, HttpServiceProvider } from '@bespokecore/http';
+import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
+import { SessionStore } from './store.ts';
 import { Session } from './session.ts';
-import { StartSession } from './start-session.ts';
 
 class CountVisitsController extends Controller {
   readonly #session: Session;
@@ -38,14 +38,13 @@ class FailingController extends Controller {
   }
 }
 
+// Module routes join the `web` group, where the session provider put StartSession.
 const routes = defineRoutes((Route) => {
-  Route.middleware(EncryptCookies)
-    .middleware(StartSession)
-    .group((Route) => {
-      Route.get('/count', CountVisitsController);
-      Route.post('/save', SaveController);
-      Route.post('/fail', FailingController);
-    });
+  Route.get('/count', CountVisitsController);
+  Route.post('/save', SaveController);
+  Route.post('/fail', FailingController);
+});
+const apiRoutes = defineRoutes((Route) => {
   Route.post('/no-session', () => new SaveController().handle());
 });
 
@@ -53,11 +52,12 @@ async function boot(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LOG_LEVEL: 'silent', ...env },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
-    modules: [defineModule({ name: 'visits', routes })],
+    modules: [defineModule({ name: 'visits', routes, apiRoutes })],
   });
   const kernel = createHttpKernel(application);
+  Object.assign(application, { kernel });
   // A tiny browser: remembers the session cookie between requests.
   let cookie = '';
   const send = async (path: string, init: RequestInit = {}) => {
@@ -66,7 +66,7 @@ async function boot(env: Record<string, string> = {}) {
     if (set) cookie = set.split(';')[0]!;
     return response;
   };
-  return { send, cookieHeader: () => cookie };
+  return { send, cookieHeader: () => cookie, application: application as typeof application & { kernel: typeof kernel } };
 }
 
 describe('StartSession', () => {
@@ -95,8 +95,17 @@ describe('StartSession', () => {
 
   it('fails loudly (500) for redirect().with() on a route without a session', async () => {
     const { send } = await boot({ LOG_LEVEL: 'silent' });
-    const response = await send('/no-session', { method: 'POST' });
+    const response = await send('/api/no-session', { method: 'POST' });
     expect(response.status).toBe(500);
+  });
+
+  it('cleans up expired sessions after the response, by lottery (SESSION_LOTTERY)', async () => {
+    const { send, application } = await boot({ SESSION_LOTTERY: '1/1' });
+    const store = application.container.make(SessionStore);
+    await store.write('e'.repeat(40), {}, -1);
+    await send('/count');
+    await application.kernel.settle();
+    expect(await store.gc(0)).toBe(0); // the expired session was already collected by terminate()
   });
 
   it('reads the cookie settings from the config', async () => {

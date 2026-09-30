@@ -1,5 +1,6 @@
-import { createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { abort, Controller, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
+import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
+import { abort, Controller, HttpServiceProvider, type HttpContext, type Next } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -31,7 +32,8 @@ describe('createHttpKernel — container', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [HttpServiceProvider, RequestScopeProvider],
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, RequestScopeProvider],
     modules: [defineModule({ name: 'ids', routes: defineRoutes((Route) => Route.get('/id', ShowRequestIdController)) })],
   });
   const app = createHttpKernel(application);
@@ -87,7 +89,8 @@ describe('createHttpKernel — errors & logging', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [HttpServiceProvider, LoggingProvider],
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
     modules: [defineModule({ name: 'errors', routes })],
   });
   const app = createHttpKernel(application);
@@ -170,8 +173,8 @@ describe('createHttpKernel — requests & responses', async () => {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { MAX_BODY_SIZE: '1k' },
-    providers: [HttpServiceProvider, ServerServiceProvider],
+    env: { APP_KEY: generateKey(), MAX_BODY_SIZE: '1k' },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'drafts', routes })],
   });
   const app = createHttpKernel(application);
@@ -181,13 +184,13 @@ describe('createHttpKernel — requests & responses', async () => {
     const response = await app.request('/drafts', form({ title: 'Hello' }));
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('/drafts/7');
-    expect(response.headers.getSetCookie()).toEqual(['draft=Hello; Path=/; HttpOnly; SameSite=Lax']);
+    expect(response.headers.getSetCookie()).toEqual([expect.stringMatching(/^draft=[\w-]+; Path=\/; HttpOnly; SameSite=Lax$/)]); // encrypted (web group)
   });
 
   it('adds queued cookies to error responses too', async () => {
     const response = await app.request('/drafts', { ...form({ title: 'boom' }), headers: { accept: 'application/json' } });
     expect(response.status).toBe(422);
-    expect(response.headers.getSetCookie()).toEqual(['draft=boom; Path=/; HttpOnly; SameSite=Lax']);
+    expect(response.headers.getSetCookie()).toEqual([expect.stringMatching(/^draft=[\w-]+; Path=\/; HttpOnly; SameSite=Lax$/)]);
   });
 
   it('enforces the body limit from the server config (MAX_BODY_SIZE)', async () => {
@@ -201,9 +204,99 @@ describe('createHttpKernel — requests & responses', async () => {
     expect(await response.json()).toEqual({ message: 'The request body exceeds 1024 bytes.' });
   });
 
+  it('refuses to boot the web group without an Encrypter — at boot, not on the first request', async () => {
+    await expect(
+      createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [HttpServiceProvider] }),
+    ).rejects.toThrow('The web middleware group needs the Encrypter');
+  });
+
   it('rejects an invalid MAX_BODY_SIZE at boot', async () => {
     await expect(
       createApplication({ root: import.meta.dirname, discover: false, env: { MAX_BODY_SIZE: 'lots' }, providers: [ServerServiceProvider] }),
     ).rejects.toThrow('server: MAX_BODY_SIZE — Expected bytes or a size like 512k, 8m or 1g');
+  });
+});
+
+describe('createHttpKernel — middleware groups & terminate', async () => {
+  const events: string[] = [];
+  const logged: string[] = [];
+  class CapturingLogger extends ConsoleLogger {
+    override error(message: string, context?: LogContext) {
+      logged.push(`${message}: ${String(context?.exception)}`);
+    }
+    override child(): Logger {
+      return this;
+    }
+  }
+  class CaptureLogs {
+    register(container: Container) {
+      container.singleton(Logger, () => new CapturingLogger());
+    }
+  }
+  class Stamp {
+    async handle(_ctx: HttpContext, next: Next<{}>) {
+      const response = await next();
+      const stamped = new Response(response.body, response);
+      stamped.headers.set('x-stamp', 'global');
+      return stamped;
+    }
+    async terminate(_ctx: HttpContext, response: Response) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      events.push(`terminated ${response.status}`);
+    }
+  }
+  class Failing {
+    handle(_ctx: HttpContext, next: Next<{}>) {
+      return next();
+    }
+    terminate(): void {
+      throw new Error('terminate broke');
+    }
+  }
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, CaptureLogs],
+    middleware: { global: [Stamp], api: [Failing] },
+    modules: [
+      defineModule({
+        name: 'groups',
+        routes: defineRoutes((Route) => {
+          Route.get('/page', () => 'page');
+          Route.get('/admin', () => abort(403));
+        }),
+        apiRoutes: defineRoutes((Route) => Route.get('/items', () => [])),
+      }),
+    ],
+  });
+  const app = createHttpKernel(application);
+
+  it('runs global middleware for routes of every group and for unknown paths', async () => {
+    for (const path of ['/page', '/api/items', '/nope']) {
+      expect((await app.request(path)).headers.get('x-stamp')).toBe('global');
+    }
+  });
+
+  it('turns errors into responses inside the pipeline, so outer middleware still applies to them', async () => {
+    const response = await app.request('/admin', { headers: { accept: 'application/json' } });
+    expect(response.status).toBe(403);
+    expect(response.headers.get('x-stamp')).toBe('global');
+  });
+
+  it('runs terminate hooks after the response — and settle() waits for them', async () => {
+    await app.settle(); // hooks of earlier tests
+    events.length = 0;
+    const response = await app.request('/page');
+    events.push(`responded ${response.status}`);
+    await app.settle();
+    expect(events).toEqual(['responded 200', 'terminated 200']);
+  });
+
+  it('logs a failing terminate hook instead of breaking anything', async () => {
+    const response = await app.request('/api/items');
+    await app.settle();
+    expect(response.status).toBe(200);
+    expect(logged).toContain('A terminate hook failed: Error: terminate broke');
   });
 });

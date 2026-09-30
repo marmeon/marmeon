@@ -51,6 +51,17 @@ describe('user-profile module', () => {
     });
   });
 
+  it('serves a stateless API under /api — no session, no cookies', async () => {
+    const response = await app.get('/api/users').assertOk().assertCookieMissing('bespoke_session');
+    expect(response.json()).toEqual({ data: expect.arrayContaining([{ id: '1', name: 'Ada Lovelace' }]) });
+  });
+
+  it('sends security headers on every response — global middleware, even for unknown paths', async () => {
+    for (const path of ['/login', '/api/users', '/nope']) {
+      await app.get(path).assertHeader('x-content-type-options', 'nosniff').assertHeader('x-frame-options', 'DENY');
+    }
+  });
+
   it('redirects /users/me to the current user', async () => {
     await as('2').get('/users/me').assertRedirect('/users/2');
   });

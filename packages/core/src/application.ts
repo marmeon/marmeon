@@ -6,6 +6,10 @@ import { ConsoleLogger, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 
+/**
+ * How an app is defined. Packages add their own app-level settings through
+ * declaration merging, like `ModuleDefinition` (http adds `middleware`).
+ */
 export interface ApplicationOptions {
   /** App root: package.json, `.bespoke/`, `index.html`. */
   root: string;
@@ -57,13 +61,22 @@ export class Application {
   readonly modules: readonly ModuleDefinition[];
   /** Names of the installed packages whose providers were discovered. */
   readonly packages: readonly string[];
+  /** What the app was defined with — packages read their app-level settings from here (e.g. http's `middleware`). */
+  readonly options: ApplicationOptions;
   readonly #providers: ServiceProvider[] = [];
 
-  constructor(options: { root: string; container: Container; modules: readonly ModuleDefinition[]; packages: readonly string[] }) {
+  constructor(options: {
+    root: string;
+    container: Container;
+    modules: readonly ModuleDefinition[];
+    packages: readonly string[];
+    options?: ApplicationOptions;
+  }) {
     this.root = options.root;
     this.container = options.container;
     this.modules = options.modules;
     this.packages = options.packages;
+    this.options = options.options ?? { root: options.root };
   }
 
   /** Register phase: build each provider through the container and let it bind services. */
@@ -106,7 +119,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   const config = await resolveConfig([...definitions], options.env ?? loadEnv(options.root));
   for (const [definition, value] of config) container.instance(definition, value);
 
-  const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [] });
+  const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], options });
   container.instance(Application, app);
   container.instance(Container, container);
   // Fallback until a logging package (e.g. @bespokecore/log) binds its own.

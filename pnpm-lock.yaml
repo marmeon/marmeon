@@ -187,6 +187,10 @@ importers:
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)
+    devDependencies:
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
 
   packages/session:
     dependencies:

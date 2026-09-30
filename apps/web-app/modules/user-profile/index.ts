@@ -1,6 +1,7 @@
 import { defineModule, listen } from '@bespokecore/core';
 import { UserLoggedIn } from '#modules/auth';
 import { RecordLastLogin } from './listeners/RecordLastLogin.ts';
+import apiRoutes from './api-routes.ts';
 import routes from './routes.ts';
 import { UserProfileServiceProvider } from './UserProfileServiceProvider.ts';
 
@@ -9,4 +10,5 @@ export default defineModule({
   providers: [UserProfileServiceProvider],
   listeners: [listen(UserLoggedIn, RecordLastLogin)],
   routes,
+  apiRoutes,
 });

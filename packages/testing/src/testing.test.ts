@@ -1,3 +1,4 @@
+import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { tmpdir } from 'node:os';
 import { defineModule, type ApplicationOptions } from '@bespokecore/core';
 import { Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
@@ -24,8 +25,8 @@ export class ShowGreetingController extends Controller {
 const definition: ApplicationOptions = {
   root: tmpdir(),
   discover: false,
-  env: {},
-  providers: [HttpServiceProvider],
+  env: { APP_KEY: generateKey() },
+  providers: [EncryptionServiceProvider, HttpServiceProvider],
   modules: [
     defineModule({
       name: 'greetings',

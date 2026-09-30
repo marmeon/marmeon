@@ -1,8 +1,10 @@
+import { HttpError } from './errors.ts';
 import { runPipeline } from './middleware.ts';
+import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
-import type { AnyAction, ClassResolver, ControllerClass, HttpContext } from './types.ts';
+import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -15,7 +17,7 @@ export interface RouteDefinitions {
  *
  * ```ts
  * export default defineRoutes((Route) => {
- *   Route.get('/', [HomeController, 'index']).name('home');
+ *   Route.get('/', ShowHomeController).name('home');
  * });
  * ```
  */
@@ -45,6 +47,17 @@ export interface DispatchOptions {
    * queued cookies to any response — error pages included. Created here otherwise.
    */
   state?: RequestState;
+  /** Collects middleware with a `terminate` hook, to run once the response is sent. */
+  onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: HttpContext) => void;
+  /** Turns errors into responses inside the pipeline, so outer middleware still applies (see `runPipeline`). */
+  onError?: (error: unknown, ctx: HttpContext) => Response | Promise<Response>;
+}
+
+export interface LoadOptions {
+  /** Middleware group of these routes (`web`, `api`). */
+  group?: string;
+  /** Path prefix for all of them, e.g. `/api`. */
+  prefix?: string;
 }
 
 /** Laravel's `Router::toResponse` in miniature: strings become HTML, everything else JSON. */
@@ -60,6 +73,9 @@ export const defaultToResponse: ResponseFactory = (result) => {
 export class Router {
   readonly #routes: RouteDefinition[] = [];
   readonly #resolve: ClassResolver;
+  #byName = new Map<string, RouteDefinition>();
+  /** Middleware groups and the global stack — packages and apps add to them while booting. */
+  readonly middleware = new MiddlewareGroups();
 
   constructor(options: RouterOptions = {}) {
     this.#resolve = options.resolve ?? ((Class) => new Class());
@@ -69,14 +85,35 @@ export class Router {
     return this.#routes;
   }
 
-  load(...definitions: RouteDefinitions[]): this {
-    const root = new Route((route) => this.#routes.push(route));
+  load(...definitions: RouteDefinitions[]): this;
+  load(options: LoadOptions, ...definitions: RouteDefinitions[]): this;
+  load(...args: (LoadOptions | RouteDefinitions)[]): this {
+    const [first, ...rest] = args;
+    const options = first && !('register' in first) ? first : {};
+    const definitions = (first && 'register' in first ? args : rest) as RouteDefinitions[];
+
+    const root = new Route((route) => this.#routes.push(route), {
+      prefix: options.prefix ?? '/',
+      namePrefix: '',
+      middleware: [],
+      group: options.group,
+    });
     for (const definition of definitions) definition.register(root);
+    this.#indexNames();
     return this;
   }
 
   findByName(name: string): RouteDefinition | undefined {
-    return this.#routes.find((route) => route.routeName === name);
+    return this.#byName.get(name);
+  }
+
+  /**
+   * Everything a route runs, in order: global middleware, its group's, then its own.
+   * Listed twice (a group's and the route's), a middleware runs once, at its first place — like Laravel.
+   */
+  middlewareFor(route: RouteDefinition): readonly AnyMiddleware[] {
+    const all = [...this.middleware.get(GLOBAL), ...(route.group ? this.middleware.get(route.group) : []), ...route.middleware];
+    return [...new Set(all)];
   }
 
   /** Builds a URL for a named route, like Laravel's `route('profile.show', { id: 1 })`. */
@@ -105,14 +142,46 @@ export class Router {
 
     return runPipeline(
       ctx,
-      route.middleware,
+      this.middlewareFor(route),
       async (finalCtx) => {
         const { action } = route;
         const result = await (isControllerClass(action) ? resolve(action).handle(finalCtx) : action(finalCtx));
         return toResponse(result, finalCtx);
       },
-      resolve,
+      { resolve, onTerminable: options.onTerminable, onError: options.onError },
     );
+  }
+
+  /**
+   * A request no route matched: it still passes the global middleware (security
+   * headers, request logging, …), then ends in a 404.
+   */
+  dispatchNotFound(request: Request, options: Omit<DispatchOptions, 'toResponse'> = {}): Promise<Response> {
+    const state = options.state ?? createRequestState(request);
+    const ctx = { ...state, request, params: {} } as unknown as HttpContext;
+    return runPipeline(
+      ctx,
+      this.middleware.get(GLOBAL),
+      () => Promise.reject(new HttpError(404)),
+      { resolve: options.resolve ?? this.#resolve, onTerminable: options.onTerminable, onError: options.onError },
+    );
+  }
+
+  /** Names are an API (redirects, links): a name used twice is a boot error, not a silent overwrite. */
+  #indexNames(): void {
+    const byName = new Map<string, RouteDefinition>();
+    for (const route of this.#routes) {
+      const name = route.routeName;
+      if (name === undefined) continue;
+      const taken = byName.get(name);
+      if (taken) {
+        throw new Error(
+          `Route name [${name}] is used twice: ${taken.methods.join('|')} ${taken.path} and ${route.methods.join('|')} ${route.path}.`,
+        );
+      }
+      byName.set(name, route);
+    }
+    this.#byName = byName;
   }
 }
 

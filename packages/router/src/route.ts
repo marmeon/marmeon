@@ -12,10 +12,12 @@ import type {
   Simplify,
 } from './types.ts';
 
-interface GroupAttributes {
+export interface GroupAttributes {
   readonly prefix: string;
   readonly namePrefix: string;
   readonly middleware: readonly AnyMiddleware[];
+  /** Middleware group of every route registered through this registrar (`web`, `api`). */
+  readonly group?: string | undefined;
 }
 
 type RouteContext<TState extends object, TParams extends object, TPath extends string> = HttpContext<
@@ -128,6 +130,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       action,
       middleware: this.#attributes.middleware,
       namePrefix: this.#attributes.namePrefix,
+      group: this.#attributes.group,
     });
     this.#register(route);
     return route;

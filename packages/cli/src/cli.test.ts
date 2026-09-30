@@ -29,8 +29,11 @@ describe('bespoke (in the web app)', () => {
   it('lists routes through a command that gets the Router injected', () => {
     const { code, stdout } = bespoke(webApp, ['route:list']);
     expect(code).toBe(0);
-    expect(stdout).toMatch(/GET\s+\/users\/:id\s+user-profile\.show\s+EncryptCookies, StartSession, Authenticate\s+ShowUserProfileController/);
-    expect(stdout).toContain('6 routes');
+    expect(stdout).toMatch(
+      /GET\s+\/users\/:id\s+user-profile\.show\s+web\s+SecurityHeaders, EncryptCookies, StartSession, Authenticate\s+ShowUserProfileController/,
+    );
+    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders\s+ListUsersController/);
+    expect(stdout).toContain('7 routes');
   });
 
   it('prints configuration errors without Node internals and exits with 1', () => {

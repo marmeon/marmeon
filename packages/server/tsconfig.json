@@ -17,6 +17,9 @@
     },
     {
       "path": "../http"
+    },
+    {
+      "path": "../encryption"
     }
   ]
 }

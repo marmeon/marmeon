@@ -1,12 +1,16 @@
 import { isAbsolute, join } from 'node:path';
 import { Application, type Container, type ServiceProvider } from '@bespokecore/core';
 import { Flasher } from '@bespokecore/http';
-import { CookieJar } from '@bespokecore/router';
+import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
+import { StartSession } from './start-session.ts';
 import { CookieSessionStore, FileSessionStore, MemorySessionStore, SessionStore } from './store.ts';
 
-/** Registers the session and its store (`SESSION_DRIVER`). Found by `bespoke discover`. */
+/**
+ * Registers the session and its store (`SESSION_DRIVER`) and starts it for every
+ * route in the `web` group. Found by `bespoke discover`.
+ */
 export class SessionServiceProvider implements ServiceProvider {
   static config = [SessionConfig];
 
@@ -30,5 +34,9 @@ export class SessionServiceProvider implements ServiceProvider {
         container.scoped(SessionStore, (c) => new CookieSessionStore(c.make(CookieJar), config.cookie));
         break;
     }
+  }
+
+  boot(app: Application): void {
+    app.container.make(Router).middleware.append('web', StartSession, MiddlewarePriority.startSession);
   }
 }

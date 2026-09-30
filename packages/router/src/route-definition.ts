@@ -8,7 +8,10 @@ export class RouteDefinition {
   readonly methods: readonly HttpMethod[];
   readonly path: string;
   readonly action: AnyAction;
+  /** The route's own middleware; group and global middleware run before it (`Router.middlewareFor`). */
   readonly middleware: readonly AnyMiddleware[];
+  /** The middleware group the route belongs to, e.g. `web` or `api`. */
+  readonly group: string | undefined;
   readonly #namePrefix: string;
   #name: string | undefined;
 
@@ -18,11 +21,13 @@ export class RouteDefinition {
     action: AnyAction;
     middleware: readonly AnyMiddleware[];
     namePrefix: string;
+    group?: string | undefined;
   }) {
     this.methods = options.methods;
     this.path = options.path;
     this.action = options.action;
     this.middleware = options.middleware;
+    this.group = options.group;
     this.#namePrefix = options.namePrefix;
   }
 

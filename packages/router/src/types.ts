@@ -66,6 +66,11 @@ export type Next<TAdd extends object> = keyof TAdd extends never
  */
 export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> {
   readonly handle: (ctx: HttpContext<TRequires>, next: Next<TAdds>) => Response | Promise<Response>;
+  /**
+   * Runs after the response has been handed off — for work the client should not
+   * wait for (cleanup, metrics). Errors are logged, never sent.
+   */
+  readonly terminate?: (ctx: HttpContext<TRequires>, response: Response) => void | Promise<void>;
 }
 
 /** Middleware as a plain object, from `defineMiddleware`. */

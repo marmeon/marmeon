@@ -208,7 +208,11 @@ export class TestApp {
     const label = `${method} ${path}`;
     const response = this.#init(method, options)
       .then((init) => this.#kernel.request(path, init))
-      .then(async (res) => TestResponse.from(res, label, this.#crypto, await this.#session));
+      .then(async (res) => {
+        const response = await TestResponse.from(res, label, this.#crypto, await this.#session);
+        await this.#kernel.settle(); // terminate hooks ran — like Laravel's test helpers call terminate()
+        return response;
+      });
     return new PendingTestResponse(response);
   }
 

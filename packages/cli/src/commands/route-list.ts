@@ -13,14 +13,16 @@ export class RouteListCommand {
   }
 
   handle({ output }: CommandInput): void {
+    // Middleware in execution order: global, the route's group, its own.
     const rows = this.#router.routes.map((route) => [
       route.methods.join('|'),
       route.path,
       route.routeName ?? '',
-      route.middleware.map(middlewareName).join(', '),
+      route.group ?? '',
+      this.#router.middlewareFor(route).map(middlewareName).join(', '),
       actionName(route.action),
     ]);
-    output.table(['METHOD', 'PATH', 'NAME', 'MIDDLEWARE', 'ACTION'], rows);
+    output.table(['METHOD', 'PATH', 'NAME', 'GROUP', 'MIDDLEWARE', 'ACTION'], rows);
     output.line();
     output.line(`${rows.length} routes`);
   }

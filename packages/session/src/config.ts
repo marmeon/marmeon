@@ -18,6 +18,18 @@ export const SessionConfig = defineConfig('session', {
     /** Send the cookie over HTTPS only. Turn on in production. */
     SESSION_SECURE_COOKIE: v.optional(BOOLEAN, 'false'),
     SESSION_SAME_SITE: v.optional(v.picklist(['lax', 'strict', 'none']), 'lax'),
+    /** Chance that a request also cleans up expired sessions, after the response (Laravel's lottery). */
+    SESSION_LOTTERY: v.optional(
+      v.pipe(
+        v.string(),
+        v.regex(/^\d+\/[1-9]\d*$/, 'Expected a chance like 2/100'),
+        v.transform((value) => {
+          const [hits, draws] = value.split('/').map(Number) as [number, number];
+          return hits / draws;
+        }),
+      ),
+      '2/100',
+    ),
   }),
   resolve: (env) => ({
     driver: env.SESSION_DRIVER,
@@ -26,6 +38,7 @@ export const SessionConfig = defineConfig('session', {
     files: env.SESSION_FILES,
     secure: env.SESSION_SECURE_COOKIE,
     sameSite: env.SESSION_SAME_SITE,
+    lottery: env.SESSION_LOTTERY,
   }),
 });
 export type SessionConfig = ConfigOf<typeof SessionConfig>;
