@@ -1,4 +1,5 @@
 import type { ConfigDefinition } from './config/config.ts';
+import type { ListenerBinding } from './events.ts';
 import type { ServiceProviderClass } from './provider.ts';
 
 /**
@@ -17,6 +18,8 @@ export interface ModuleDefinition {
   readonly providers?: readonly ServiceProviderClass[];
   /** Validated and bound before any provider registers. */
   readonly config?: readonly ConfigDefinition<any>[];
+  /** Event listeners, e.g. `[listen(UserLoggedIn, RecordLastLogin)]`. */
+  readonly listeners?: readonly ListenerBinding[];
 }
 
 /** Declares a module. The identity function exists for type inference and discoverability. */

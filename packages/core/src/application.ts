@@ -1,6 +1,7 @@
 import { loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
 import { Container } from './container.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
+import { EventDispatcher, EventRegistry, type ListenerBinding } from './events.ts';
 import { ConsoleLogger, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
@@ -12,6 +13,8 @@ export interface ApplicationOptions {
   modules?: readonly ModuleDefinition[];
   /** Extra app-level providers (booted after packages, before modules). */
   providers?: readonly ServiceProviderClass[];
+  /** App-level event listeners; modules bring their own through `listeners`. */
+  listeners?: readonly ListenerBinding[];
   /** App-level configuration; modules can contribute their own through `config`. */
   config?: readonly ConfigDefinition<any>[];
   /**
@@ -94,6 +97,13 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.instance(Container, container);
   // Fallback until a logging package (e.g. @bespokecore/log) binds its own.
   container.singleton(Logger, () => new ConsoleLogger());
+
+  // One registry; a dispatcher per resolution, bound to the asking container (e.g. the request scope).
+  const events = new EventRegistry()
+    .add(options.listeners ?? [])
+    .add(modules.flatMap((module) => module.listeners ?? []));
+  container.instance(EventRegistry, events);
+  container.bind(EventDispatcher, (resolver) => new EventDispatcher(events, resolver));
 
   app.register(providers);
   await app.boot();

@@ -5,7 +5,7 @@ import type { ShowUserProfileController } from '../controllers/ShowUserProfileCo
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, viewer, others }: Props) {
+export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, others }: Props) {
   return (
     <main>
       <header>
@@ -18,6 +18,9 @@ export default function Show({ profile, email, isOwnProfile, viewer, others }: P
       <h1>{profile.name}</h1>
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
+      <p>
+        <small>Last signed in: {lastLoginAt ? new Date(lastLoginAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'never'}</small>
+      </p>
       {isOwnProfile && <p><em>This is your profile.</em></p>}
 
       <nav>

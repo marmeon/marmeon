@@ -12,6 +12,8 @@ export { Application, createApplication } from './application.ts';
 export type { ApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, Logger } from './logger.ts';
+export { EventDispatcher, EventRegistry, listen } from './events.ts';
+export type { EventClass, Listener, ListenerBinding, ListenerLike } from './events.ts';
 export type { LogContext } from './logger.ts';
 export { currentRequest, runWithRequest } from './request-context.ts';
 export type { RequestInfo } from './request-context.ts';

@@ -28,6 +28,7 @@ describe('user-profile module', () => {
         email: 'ada@example.com',
         isOwnProfile: true,
         viewer: { name: 'Ada Lovelace' },
+        lastLoginAt: null,
         others: [
           { id: '2', name: 'Alan Turing' },
           { id: '3', name: 'Grace Hopper' },
@@ -86,5 +87,16 @@ describe('user-profile module', () => {
     // The framework's own HTTP package registered itself like any installed package would.
     expect(application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log']));
     expect(application.container.make(UserRepository)).toBe(application.container.make(UserRepository)); // singleton
+  });
+
+  it('shows when a user last signed in — via the UserLoggedIn event from the auth module', async () => {
+    const login = await app.request('/login', { method: 'POST', body: new URLSearchParams({ user_id: '2' }) });
+    expect(login.status).toBe(303);
+
+    const page = (await (await app.request('/users/2', as('1'))).json()) as { props: { lastLoginAt: string | null } };
+    expect(page.props.lastLoginAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const untouched = (await (await app.request('/users/3', as('1'))).json()) as { props: { lastLoginAt: string | null } };
+    expect(untouched.props.lastLoginAt).toBeNull();
   });
 });

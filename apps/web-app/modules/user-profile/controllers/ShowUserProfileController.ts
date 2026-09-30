@@ -1,12 +1,15 @@
 import { abort, Controller, type HttpContext } from '@bespokecore/http';
 import { UserRepository, type AuthState } from '#modules/auth';
+import { ProfileActivity } from '../ProfileActivity.ts';
 
 export class ShowUserProfileController extends Controller {
   readonly #users: UserRepository;
+  readonly #activity: ProfileActivity;
 
-  constructor(users: UserRepository) {
+  constructor(users: UserRepository, activity: ProfileActivity) {
     super();
     this.#users = users;
+    this.#activity = activity;
   }
 
   handle(ctx: HttpContext<AuthState, { id: string }>) {
@@ -18,6 +21,7 @@ export class ShowUserProfileController extends Controller {
       email: ctx.user.id === user.id ? user.email : null,
       isOwnProfile: ctx.user.id === user.id,
       viewer: { name: ctx.user.name },
+      lastLoginAt: this.#activity.lastLogin(user.id)?.toISOString() ?? null,
       others: this.#users
         .all()
         .filter((other) => other.id !== user.id)
