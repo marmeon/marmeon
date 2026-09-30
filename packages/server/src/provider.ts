@@ -15,8 +15,10 @@ export const ServerConfig = defineConfig('server', {
       ),
       '8m',
     ),
+    /** Overrides the asset version derived from the build — e.g. the git commit of the deployment. */
+    ASSET_VERSION: v.optional(v.pipe(v.string(), v.nonEmpty())),
   }),
-  resolve: (env) => ({ port: env.PORT, maxBodySize: env.MAX_BODY_SIZE }),
+  resolve: (env) => ({ port: env.PORT, maxBodySize: env.MAX_BODY_SIZE, assetVersion: env.ASSET_VERSION }),
 });
 export type ServerConfig = ConfigOf<typeof ServerConfig>;
 

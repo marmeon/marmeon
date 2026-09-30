@@ -6,6 +6,8 @@ import { FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 /** Turns a page object into a full HTML document (SSR). Implemented per environment. */
 export interface PageRenderer {
   render(page: PageObject, request: Request): Promise<string>;
+  /** Version of the built assets; undefined in development (no checks while Vite serves sources). */
+  readonly version?: string;
 }
 
 /** Renders an empty shell with the page object — the client renders everything. */
@@ -21,7 +23,11 @@ export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, s
  * page object as JSON, full page loads get a server-rendered document. Redirects
  * resolve named routes through `urls` (the router) and flash through the scope's `Flasher`.
  */
-export function createResponseFactory(renderer: PageRenderer = shellRenderer, urls?: UrlGenerator): ScopedResponseFactory {
+export function createResponseFactory(
+  renderer: PageRenderer = shellRenderer,
+  urls?: UrlGenerator,
+  version: string | null = null,
+): ScopedResponseFactory {
   const noRouter: UrlGenerator = {
     url: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
@@ -38,7 +44,7 @@ export function createResponseFactory(renderer: PageRenderer = shellRenderer, ur
     const url = new URL(ctx.request.url);
     // Shared props first, so a controller's own prop of the same name wins.
     const shared = scope?.has(SharedData) ? await scope.make(SharedData).resolve() : {};
-    const page: PageObject = { component: result.component, props: { ...shared, ...result.props }, url: url.pathname + url.search };
+    const page: PageObject = { component: result.component, props: { ...shared, ...result.props }, url: url.pathname + url.search, version };
     const headers = { vary: PAGE_HEADER };
 
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {

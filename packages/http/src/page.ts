@@ -27,10 +27,18 @@ export interface PageObject {
   component: string;
   props: ViewProps;
   url: string;
+  /** Build version of the assets (null in development). A client with another version reloads fully. */
+  version?: string | null;
 }
 
 /** Client-side navigations send this header and receive the page object as JSON. */
 export const PAGE_HEADER = 'x-bespoke';
+
+/** The asset version the client was built with; a mismatch answers 409 (Inertia's `X-Inertia-Version`). */
+export const VERSION_HEADER = 'x-bespoke-version';
+
+/** With a 409: where the client should load fully (Inertia's `X-Inertia-Location`). */
+export const LOCATION_HEADER = 'x-bespoke-location';
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'bespoke-page';

@@ -328,3 +328,40 @@ describe('createHttpKernel — shared props', async () => {
     expect(page.props).toEqual({ theme: 'dark', title: 'own' });
   });
 });
+
+describe('createHttpKernel — asset versioning', async () => {
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider],
+    modules: [
+      defineModule({
+        name: 'pages',
+        routes: defineRoutes((Route) => {
+          Route.get('/page', () => view('pages/Show', {}));
+          Route.post('/save', () => ({ saved: true }));
+        }),
+      }),
+    ],
+  });
+  const visit = (app: ReturnType<typeof createHttpKernel>, version?: string, method = 'GET', path = '/page') =>
+    app.request(path, { method, headers: { 'x-bespoke': 'true', ...(version ? { 'x-bespoke-version': version } : {}) } });
+
+  it('answers a client-side visit from an older build with 409 and the URL to load fully', async () => {
+    const app = createHttpKernel(application, { version: 'v2' });
+    const stale = await visit(app, 'v1');
+    expect(stale.status).toBe(409);
+    expect(stale.headers.get('x-bespoke-location')).toBe('http://localhost/page');
+
+    const current = await visit(app, 'v2');
+    expect(current.status).toBe(200);
+    expect(await current.json()).toMatchObject({ component: 'pages/Show', version: 'v2' });
+  });
+
+  it('never throws away a form submit, and does not check without a version (development)', async () => {
+    expect((await visit(createHttpKernel(application, { version: 'v2' }), 'v1', 'POST', '/save')).status).not.toBe(409);
+    expect((await visit(createHttpKernel(application, { version: 'v2' }))).status).toBe(200); // header missing
+    expect((await visit(createHttpKernel(application), 'v1')).status).toBe(200); // no version known
+  });
+});

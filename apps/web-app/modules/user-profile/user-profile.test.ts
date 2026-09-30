@@ -164,6 +164,18 @@ describe('user-profile module', () => {
     });
   });
 
+  it('sends open tabs of an older build a 409 with the URL to reload (ASSET_VERSION)', async () => {
+    const deployed = await createTestApp(application, { env: { ASSET_VERSION: 'build-2' } });
+    await deployed
+      .withSession({ user_id: '1' })
+      .navigating()
+      .withHeaders({ 'x-bespoke-version': 'build-1' })
+      .get('/users/1')
+      .assertStatus(409)
+      .assertHeader('x-bespoke-location', 'http://localhost/users/1');
+    await deployed.withSession({ user_id: '1' }).navigating().get('/users/1').assertOk();
+  });
+
   it('redirects /users/me to the current user', async () => {
     await as('2').get('/users/me').assertRedirect('/users/2');
   });

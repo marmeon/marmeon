@@ -4,7 +4,7 @@ import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, type Application, type Container } from '@bespokecore/core';
-import { ExceptionHandler, HttpError } from '@bespokecore/http';
+import { AssetVersion, ExceptionHandler, HttpError } from '@bespokecore/http';
 import {
   CookieJar,
   createRequestState,
@@ -31,6 +31,8 @@ export interface KernelOptions {
   debug?: boolean;
   /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `MAX_BODY_SIZE`), else 8 MiB. */
   maxBodySize?: number;
+  /** Asset version for 409 reloads. Defaults to `ASSET_VERSION`, else the renderer's (the build's), else none. */
+  version?: string | null;
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
@@ -60,11 +62,13 @@ export function createHttpKernel(
     clientDir,
     debug = false,
     maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
+    version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
   }: KernelOptions = {},
 ): HttpKernel {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
-  const toResponse = createResponseFactory(renderer, router);
+  container.instance(AssetVersion, { value: version });
+  const toResponse = createResponseFactory(renderer, router, version);
   const app = new Hono();
 
   const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {

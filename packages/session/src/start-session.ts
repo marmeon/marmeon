@@ -1,4 +1,5 @@
 import { Logger } from '@bespokecore/core';
+import { LOCATION_HEADER } from '@bespokecore/http';
 import type { HttpContext, Next } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -26,7 +27,10 @@ export class StartSession {
     const { cookie, lifetime, secure, sameSite } = this.#config;
     await this.#session.start(ctx.cookies.get(cookie));
     try {
-      return await next();
+      const response = await next();
+      // An asset-version reload (409): the page is requested again, so flash data must survive it.
+      if (response.status === 409 && response.headers.has(LOCATION_HEADER)) this.#session.reflash();
+      return response;
     } finally {
       await this.#session.save();
       ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });

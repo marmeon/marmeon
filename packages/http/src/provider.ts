@@ -1,6 +1,7 @@
 import type { Application, Container, ServiceProvider } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
 import { GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@bespokecore/router';
+import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
 import { SharedData } from './shared-data.ts';
@@ -32,7 +33,8 @@ declare module '@bespokecore/core' {
  * Discovered like any installed package through the `"bespoke"` field in this package's package.json.
  *
  * Order within `web`, whatever order packages boot in (lower priority first):
- * EncryptCookies (100) → StartSession (200) → VerifyCsrfToken (300) → shared props (400) → app middleware (1000).
+ * EncryptCookies (100) → StartSession (200) → CheckAssetVersion (250) → VerifyCsrfToken (300) → shared props (400)
+ * → app middleware (1000).
  */
 export class HttpServiceProvider implements ServiceProvider {
   register(container: Container): void {
@@ -40,6 +42,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(ExceptionHandler, DefaultExceptionHandler);
     container.singleton(CookieEncryption);
     container.scoped(SharedData);
+    container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
   }
 
   boot(app: Application): void {
@@ -51,7 +54,9 @@ export class HttpServiceProvider implements ServiceProvider {
       );
     }
     const router = app.container.make(Router);
-    router.middleware.append('web', EncryptCookies, MiddlewarePriority.encryptCookies);
+    router.middleware
+      .append('web', EncryptCookies, MiddlewarePriority.encryptCookies)
+      .append('web', CheckAssetVersion, MiddlewarePriority.checkAssetVersion);
 
     const { global = [], web = [], api = [] } = app.options.middleware ?? {};
     for (const middleware of global) router.middleware.append(GLOBAL, middleware);

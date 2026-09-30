@@ -8,6 +8,7 @@ import type { AnyMiddleware } from './types.ts';
 export const MiddlewarePriority = {
   encryptCookies: 100,
   startSession: 200,
+  checkAssetVersion: 250,
   verifyCsrfToken: 300,
   shareProps: 400,
   app: 1000,

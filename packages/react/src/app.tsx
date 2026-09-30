@@ -1,4 +1,4 @@
-import { isPageObject, PAGE_HEADER, type PageObject, type SharedProps } from '@bespokecore/http/page';
+import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject, type SharedProps } from '@bespokecore/http/page';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PageComponent, ResolvePage } from './pages.ts';
 
@@ -63,6 +63,8 @@ export function BespokeApp({ initialPage, initialComponent, resolve }: BespokeAp
   // `key` changes remount the page component (fresh state); an unchanged key preserves it.
   const [current, setCurrent] = useState({ page: initialPage, Component: initialComponent, key: 0 });
   const inFlight = useRef<AbortController | null>(null);
+  // The asset version this tab runs — the one of the page it was loaded with.
+  const versionRef = useRef(initialPage.version ?? null);
 
   const show = useCallback(
     async (page: PageObject, history: 'push' | 'replace' | 'none', { preserveScroll = false, preserveState = false } = {}) => {
@@ -91,12 +93,19 @@ export function BespokeApp({ initialPage, initialComponent, resolve }: BespokeAp
 
       try {
         const request = buildRequest(url, method, data);
+        const version = versionRef.current;
         const response = await fetch(request.url, {
           method: method.toUpperCase(),
-          headers: { [PAGE_HEADER]: 'true', ...request.headers, ...headers },
+          headers: { [PAGE_HEADER]: 'true', ...(version ? { [VERSION_HEADER]: version } : {}), ...request.headers, ...headers },
           body: request.body,
           signal: controller.signal,
         });
+        const location = response.status === 409 ? response.headers.get(LOCATION_HEADER) : null;
+        if (location) {
+          // A new build was deployed: load the page fully, with the new assets.
+          window.location.assign(location);
+          return undefined;
+        }
         if (response.headers.get(PAGE_HEADER) !== 'true') {
           // Not a page (e.g. a 401 JSON or a file download): let the browser handle it.
           window.location.assign(response.url);

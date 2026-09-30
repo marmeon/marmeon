@@ -51,7 +51,7 @@ const apiRoutes = defineRoutes((Route) => {
 
 const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
 
-async function boot(env: Record<string, string> = {}) {
+async function boot(env: Record<string, string> = {}, kernelOptions: { version?: string } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -60,12 +60,12 @@ async function boot(env: Record<string, string> = {}) {
     modules: [defineModule({ name: 'visits', routes, apiRoutes })],
     override: (container) => container.make(CsrfProtection).disable(), // CSRF has its own tests
   });
-  const kernel = createHttpKernel(application);
+  const kernel = createHttpKernel(application, kernelOptions);
   Object.assign(application, { kernel });
   // A tiny browser: remembers the session cookie between requests.
   let cookie = '';
-  const send = async (path: string, init: RequestInit = {}) => {
-    const response = await kernel.request(path, { ...init, headers: { cookie, accept: 'application/json' } });
+  const send = async (path: string, init: RequestInit & { headers?: Record<string, string> } = {}) => {
+    const response = await kernel.request(path, { ...init, headers: { cookie, accept: 'application/json', ...init.headers } });
     const set = response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
     if (set) cookie = set.split(';')[0]!;
     return response;
@@ -110,6 +110,14 @@ describe('StartSession', () => {
     await send('/count');
     await application.kernel.settle();
     expect(await store.gc(0)).toBe(0); // the expired session was already collected by terminate()
+  });
+
+  it('keeps flash data through an asset-version reload (409)', async () => {
+    const { send } = await boot({ ASSET_VERSION: 'v2' }, { version: 'v2' });
+    await send('/save', { method: 'POST' });
+    const stale = await send('/count', { headers: { 'x-bespoke': 'true', 'x-bespoke-version': 'v1' } });
+    expect(stale.status).toBe(409);
+    expect(await (await send('/count')).json()).toMatchObject({ status: 'Saved.' }); // still there after the reload
   });
 
   it('reads the cookie settings from the config', async () => {

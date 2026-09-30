@@ -3,7 +3,8 @@ export { view, isViewResult } from './view.ts';
 export { ERRORS_KEY, Flasher, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
 export type { RedirectStatus, UrlGenerator } from './redirect.ts';
 export type { PageProps, ViewProps, ViewResult } from './view.ts';
-export { ERROR_PAGE, PAGE_HEADER, PAGE_SCRIPT_ID, isPageObject } from './page.ts';
+export { ERROR_PAGE, LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, VERSION_HEADER, isPageObject } from './page.ts';
+export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export type { ErrorPageProps, PageObject, SharedProps, SsrRender, SsrResult } from './page.ts';
 export { SharedData } from './shared-data.ts';
 

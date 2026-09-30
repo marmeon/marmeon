@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -24,5 +25,9 @@ export async function createProductionRenderer({
   const bundle = join(root, serverDir, `${basename(ssrEntry, extname(ssrEntry))}.js`);
   const { render } = (await import(pathToFileURL(bundle).href)) as { render: SsrRender };
 
-  return { render: async (page) => renderDocument(template, page, await render(page)) };
+  return {
+    render: async (page) => renderDocument(template, page, await render(page)),
+    // The built index.html names every hashed asset: it changes exactly when the assets do.
+    version: createHash('sha256').update(template).digest('hex').slice(0, 12),
+  };
 }
