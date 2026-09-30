@@ -11,7 +11,9 @@ import { Encrypter } from '@bespokecore/encryption';
 import { CookieEncryption } from '@bespokecore/http';
 import { PAGE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
-import type { FactoryDefinition, PendingFactory } from '@bespokecore/database';
+import { AssertionError } from 'node:assert';
+import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
+import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
 import { TestResponse } from './response.ts';
 
@@ -25,6 +27,14 @@ export interface TestAppOptions {
    * unless they test it — then send `_token` or the `X-XSRF-TOKEN` header yourself.
    */
   csrf?: boolean;
+  /**
+   * `'refresh'`: a real database, reset for every test (Laravel's `RefreshDatabase`, E21). Each test
+   * worker gets its own database, migrated once; every test app runs inside one transaction that is
+   * rolled back when the test ends. Needs @bespokecore/database.
+   */
+  database?: 'refresh';
+  /** With `database: 'refresh'`: run the modules' seeders for every test (inside its transaction). */
+  seed?: boolean;
 }
 
 type FormValue = string | readonly string[];
@@ -51,17 +61,64 @@ export interface RequestOptions {
  */
 export async function createTestApp(definition: ApplicationOptions, options: TestAppOptions = {}): Promise<TestApp> {
   const session = await importSession();
+  const database = await importDatabase();
+  let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
+
+  let worker: WorkerDatabase | undefined;
+  if (options.database === 'refresh') {
+    if (!database) throw new Error("createTestApp(…, { database: 'refresh' }) needs @bespokecore/database installed.");
+    worker = await workerDatabase(database, definition.root, env);
+    env = { ...env, ...worker.env };
+  } else if (options.seed) {
+    throw new Error("createTestApp(…, { seed: true }) seeds a refreshed database: add database: 'refresh'.");
+  }
+
   const application = await createApplication({
     ...definition,
-    env: { ...(definition.env ?? loadEnv(definition.root)), ...options.env },
+    env,
     override: (container) => {
       if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
       definition.override?.(container);
       options.override?.(container);
     },
   });
-  const database = await importDatabase();
-  return new TestApp(application, createHttpKernel(application), { headers: {}, cookies: [], session: undefined }, database);
+
+  const shared: Shared = { kernel: createHttpKernel(application), database, cleanups: [], closing: undefined };
+  const app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });
+  if (database && worker) {
+    try {
+      await prepareWorkerDatabase(database, application, worker);
+      const isolation = await application.container.make(database.Connections).isolate();
+      shared.cleanups.push(() => isolation.rollback());
+      if (options.seed) await application.container.make(database.Seeding).run();
+    } catch (error) {
+      await app.close();
+      throw error;
+    }
+  }
+  await closeWhenTheTestEnds(app);
+  return app;
+}
+
+/**
+ * Inside a Vitest test (or its `beforeEach`), the app closes when the test ends — its transaction is
+ * rolled back, its connections closed — like Laravel's tearDown. Elsewhere: `app.close()` or `await using`.
+ */
+async function closeWhenTheTestEnds(app: TestApp): Promise<void> {
+  try {
+    const { onTestFinished } = await import('vitest');
+    onTestFinished(() => app.close());
+  } catch {
+    // Not inside a Vitest test.
+  }
+}
+
+interface Shared {
+  readonly kernel: ReturnType<typeof createHttpKernel>;
+  readonly database: DatabaseModule | undefined;
+  /** Run before the app shuts down, e.g. rolling back the test's transaction. */
+  readonly cleanups: (() => Promise<void>)[];
+  closing: Promise<void> | undefined;
 }
 
 interface TestCookie {
@@ -150,16 +207,14 @@ function cookieCrypto(container: Container): CookieCrypto {
 
 export class TestApp {
   readonly application: Application;
-  readonly #kernel: ReturnType<typeof createHttpKernel>;
+  readonly #shared: Shared;
   readonly #defaults: Defaults;
   readonly #crypto: CookieCrypto;
   readonly #session: Promise<SessionAccess | undefined>;
-  readonly #database: DatabaseModule | undefined;
 
-  constructor(application: Application, kernel: ReturnType<typeof createHttpKernel>, defaults: Defaults, database?: DatabaseModule) {
+  constructor(application: Application, shared: Shared, defaults: Defaults) {
     this.application = application;
-    this.#database = database;
-    this.#kernel = kernel;
+    this.#shared = shared;
     this.#defaults = defaults;
     this.#crypto = cookieCrypto(application.container);
     this.#session = sessionAccess(application.container);
@@ -173,9 +228,16 @@ export class TestApp {
    * Waits for pending `terminate` hooks, then shuts the app down (closes database pools and
    * the like). `await using app = await createTestApp(…)` does this at the end of the block.
    */
-  async close(): Promise<void> {
-    await this.#kernel.settle();
-    await this.application.shutdown();
+  close(): Promise<void> {
+    this.#shared.closing ??= (async () => {
+      await this.#shared.kernel.settle();
+      try {
+        for (const cleanup of this.#shared.cleanups) await cleanup();
+      } finally {
+        await this.application.shutdown();
+      }
+    })();
+    return this.#shared.closing;
   }
 
   [Symbol.asyncDispose](): Promise<void> {
@@ -187,8 +249,51 @@ export class TestApp {
    * `await app.factory(UserFactory).count(3).create()`. Needs @bespokecore/database.
    */
   factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S> {
-    if (!this.#database) throw new Error('app.factory() needs @bespokecore/database installed and its provider registered.');
-    return this.application.container.make(this.#database.Factories).for(definition);
+    return this.application.container.make(this.#requireDatabase('app.factory()').Factories).for(definition);
+  }
+
+  // --- Database assertions (Laravel's assertDatabaseHas & co.) -----------------------
+
+  /** A row in `table` matches every given column value. */
+  async assertDatabaseHas<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this> {
+    const { matching, sample } = await this.#rows(table, where as Record<string, unknown>);
+    if (matching === 0) {
+      throw new AssertionError({
+        message: `Expected a row in "${table}" matching ${JSON.stringify(where)} — found none.\n  ${sample}`,
+      });
+    }
+    return this;
+  }
+
+  /** No row in `table` matches the given column values. */
+  async assertDatabaseMissing<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<Selectable<DB[T]>>): Promise<this> {
+    const { matching } = await this.#rows(table, where as Record<string, unknown>);
+    if (matching > 0) throw new AssertionError({ message: `Expected no row in "${table}" matching ${JSON.stringify(where)} — found ${matching}.` });
+    return this;
+  }
+
+  /** `table` holds exactly `count` rows. */
+  async assertDatabaseCount<T extends keyof DB & string, DB = Tables>(table: T, count: number): Promise<this> {
+    const { total } = await this.#rows(table, {});
+    if (total !== count) throw new AssertionError({ message: `Expected ${count} rows in "${table}" — found ${total}.`, actual: total, expected: count });
+    return this;
+  }
+
+  async #rows(table: string, where: Record<string, unknown>): Promise<{ matching: number; total: number; sample: string }> {
+    const db = this.application.container.make(this.#requireDatabase('Database assertions').Connections).get<any>();
+    let query = db.selectFrom(table).selectAll();
+    for (const [column, value] of Object.entries(where)) query = value === null ? query.where(column, 'is', null) : query.where(column, '=', value);
+    const matching = (await query.execute()).length;
+    const rows = await db.selectFrom(table).selectAll().limit(5).execute();
+    const counted = (await db.selectFrom(table).select((eb: any) => eb.fn.countAll().as('count')).executeTakeFirstOrThrow()) as { count: number | string };
+    const total = Number(counted.count);
+    const sample = rows.length ? `The table has ${total} rows, e.g.:\n    ${rows.map((row: unknown) => JSON.stringify(row)).join('\n    ')}` : 'The table is empty.';
+    return { matching, total, sample };
+  }
+
+  #requireDatabase(feature: string): DatabaseModule {
+    if (!this.#shared.database) throw new Error(`${feature} needs @bespokecore/database installed.`);
+    return this.#shared.database;
   }
 
   /** Resolves a service from the app, e.g. to inspect state after a request. */
@@ -221,7 +326,7 @@ export class TestApp {
   }
 
   #with(defaults: Partial<Defaults>): TestApp {
-    return new TestApp(this.application, this.#kernel, { ...this.#defaults, ...defaults }, this.#database);
+    return new TestApp(this.application, this.#shared, { ...this.#defaults, ...defaults });
   }
 
   /** Requests as a client-side navigation: answered with the page object as JSON. */
@@ -255,10 +360,10 @@ export class TestApp {
   request(method: string, path: string, options: RequestOptions = {}): PendingTestResponse {
     const label = `${method} ${path}`;
     const response = this.#init(method, options)
-      .then((init) => this.#kernel.request(path, init))
+      .then((init) => this.#shared.kernel.request(path, init))
       .then(async (res) => {
         const response = await TestResponse.from(res, label, this.#crypto, await this.#session);
-        await this.#kernel.settle(); // terminate hooks ran — like Laravel's test helpers call terminate()
+        await this.#shared.kernel.settle(); // terminate hooks ran — like Laravel's test helpers call terminate()
         return response;
       });
     return new PendingTestResponse(response);

@@ -1,5 +1,8 @@
 // Data access on Kysely (E6): connections, the typed `Database`, and — in the next steps —
 // migrations per module, generated table types, repositories and factories.
+// Kysely's SQL template, so apps write raw SQL without depending on Kysely themselves.
+export { sql } from 'kysely';
+export type { Insertable, Kysely, Selectable, Transaction, Updateable } from 'kysely';
 export { Connections, Database } from './connections.ts';
 export type { QueryEvent } from './connections.ts';
 export type {

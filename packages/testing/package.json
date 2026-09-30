@@ -42,13 +42,17 @@
   },
   "peerDependencies": {
     "@bespokecore/database": "workspace:*",
-    "@bespokecore/session": "workspace:*"
+    "@bespokecore/session": "workspace:*",
+    "vitest": "^5.0.0"
   },
   "peerDependenciesMeta": {
     "@bespokecore/session": {
       "optional": true
     },
     "@bespokecore/database": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },
