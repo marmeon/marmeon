@@ -7,13 +7,14 @@
     "node": ">=26.10"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node --conditions=@bespokecore/source scripts/package-build.ts",
     "typecheck": "tsc -b && pnpm -r --parallel typecheck",
-    "test": "vitest run",
+    "test": "NODE_OPTIONS=--conditions=@bespokecore/source vitest run --configLoader native",
     "dev": "pnpm --filter @bespokecore/web-app dev",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo"
   },
   "devDependencies": {
+    "@bespokecore/core": "workspace:*",
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",

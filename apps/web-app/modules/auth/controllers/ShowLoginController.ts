@@ -2,7 +2,6 @@ import { Controller } from '@bespokecore/http';
 import { UserRepository } from '../UserRepository.ts';
 
 export class ShowLoginController extends Controller {
-  static inject = [UserRepository] as const; // generated from the constructor in step 3
   readonly #users: UserRepository;
 
   constructor(users: UserRepository) {

@@ -2,7 +2,6 @@ import { Controller, type HttpContext } from '@bespokecore/http';
 import { UserRepository, type AuthState } from '#modules/auth';
 
 export class ShowUserProfileController extends Controller {
-  static inject = [UserRepository] as const; // generated from the constructor in step 3
   readonly #users: UserRepository;
 
   constructor(users: UserRepository) {

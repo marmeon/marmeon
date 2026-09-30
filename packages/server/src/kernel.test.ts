@@ -9,7 +9,6 @@ class RequestId {
 }
 
 class ShowRequestIdController {
-  static inject = [RequestId, RequestId] as const;
   readonly #first: RequestId;
   readonly #second: RequestId;
   constructor(first: RequestId, second: RequestId) {

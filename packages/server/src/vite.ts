@@ -28,6 +28,9 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer }: Vite
 
   const vite = await createServer({
     root,
+    // Node imports vite.config.ts directly. The default loader bundles it to a temporary
+    // file first, which `node --watch` sees disappear and answers with a restart.
+    configLoader: 'native',
     appType: 'custom',
     server: { middlewareMode: true, hmr: { server: httpServer } },
   });

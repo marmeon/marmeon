@@ -3,7 +3,6 @@ import { SESSION_COOKIE } from '../middleware.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 export class LoginController extends Controller {
-  static inject = [UserRepository] as const; // generated from the constructor in step 3
   readonly #users: UserRepository;
 
   constructor(users: UserRepository) {

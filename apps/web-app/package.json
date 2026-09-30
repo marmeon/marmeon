@@ -7,9 +7,9 @@
     "#modules/*": "./modules/*/index.ts"
   },
   "scripts": {
-    "dev": "node --conditions=@bespokecore/source --watch bootstrap/server.ts",
+    "dev": "node --conditions=@bespokecore/source --import @bespokecore/core/register --watch bootstrap/server.ts",
     "build": "vite build --outDir dist/client && vite build --ssr bootstrap/ssr.tsx --outDir dist/server",
-    "start": "NODE_ENV=production node bootstrap/server.ts",
+    "start": "NODE_ENV=production node --import @bespokecore/core/register bootstrap/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

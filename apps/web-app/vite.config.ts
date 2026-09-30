@@ -1,3 +1,4 @@
+import { bespokeInjection } from '@bespokecore/core/vite';
 import react from '@vitejs/plugin-react';
 import { defaultClientConditions, defaultServerConditions, defineConfig } from 'vite';
 
@@ -5,7 +6,7 @@ import { defaultClientConditions, defaultServerConditions, defineConfig } from '
 const source = '@bespokecore/source';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [bespokeInjection(), react()],
   resolve: {
     conditions: [source, ...defaultClientConditions],
     dedupe: ['react', 'react-dom'],

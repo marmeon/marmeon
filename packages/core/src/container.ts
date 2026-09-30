@@ -16,6 +16,8 @@ interface Binding {
   readonly create: (container: Container, path: readonly Key[]) => unknown;
 }
 
+const UNRESOLVABLE = Symbol.for('bespokecore.injection.unresolvable');
+
 export class ContainerError extends Error {
   override name = 'ContainerError';
 }
@@ -133,10 +135,14 @@ export class Container implements Resolver {
   #build(concrete: Concrete, chain: readonly Key[]): unknown {
     const inject = (concrete as { inject?: readonly Key[] }).inject;
     if (inject === undefined && concrete.length > 0) {
+      // The injection transform attaches the reason when it could not derive a list.
+      const reason = (concrete as unknown as Record<symbol, string | undefined>)[UNRESOLVABLE];
       throw new ContainerError(
         `[${describeKey(concrete)}] needs ${concrete.length} constructor argument(s) but has no injection list` +
-          `${neededBy(chain.slice(0, -1))}. It is generated from the constructor types by the BespokeCore loader ` +
-          `(app code) or "bespoke discover" (packages).`,
+          `${neededBy(chain.slice(0, -1))}. ` +
+          (reason ??
+            'Lists are generated from the constructor types by the BespokeCore loader (app code), ' +
+              '"bespoke package:build" or "bespoke discover" (packages).'),
       );
     }
     return new concrete(...(inject ?? []).map((dependency) => this.#resolve(dependency, chain)));

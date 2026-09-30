@@ -8,13 +8,27 @@
       "@bespokecore/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./register": {
+      "@bespokecore/source": "./src/register.ts",
+      "types": "./dist/register.d.ts",
+      "default": "./dist/register.js"
+    },
+    "./vite": {
+      "@bespokecore/source": "./src/vite.ts",
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
     }
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "!dist/**/*.test.*",
+    "!dist/**/__fixtures__"
   ],
   "scripts": {
     "build": "tsc -b"
+  },
+  "dependencies": {
+    "oxc-parser": "^0.152.0"
   }
 }

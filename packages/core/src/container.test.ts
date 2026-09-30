@@ -36,6 +36,11 @@ class WelcomeService {
   }
 }
 
+// Top-level on purpose: the injection transform (Vitest plugin) attaches why it cannot be injected.
+class Money {
+  constructor(_amount: number) {}
+}
+
 class Counter {
   static created = 0;
   readonly id = ++Counter.created;
@@ -144,6 +149,12 @@ describe('Container — errors', () => {
     }
     A.inject = [B];
     expect(() => new Container().make(A)).toThrow('Circular dependency: A → B → A.');
+  });
+
+  it('reports why the injection transform could not derive a list', () => {
+    expect(() => new Container().make(Money)).toThrow(
+      /\[Money\] needs 1 constructor argument\(s\) but has no injection list\. Cannot inject .*container\.test\.ts:\d+ — Money, parameter "_amount: number": only classes and tokens can be injected, not "number"/,
+    );
   });
 
   it('explains classes that have constructor parameters but no injection list', () => {
