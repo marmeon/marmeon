@@ -1,8 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "target": "ES2024",
-    "lib": ["ES2024"],
+    // Node runs the sources as written, so emitted code should not be down-levelled either.
+    "target": "ESNext",
+    // ES2025 plus exactly the newer APIs Node 26.10 ships (checked one by one) — not all of ESNext,
+    // which grows with every TypeScript release (and includes decorators, which V8 cannot run yet).
+    // Packages that also target browsers repeat this list and add DOM.
+    "lib": ["ES2025", "ESNext.Array", "ESNext.Collection", "ESNext.Disposable", "ESNext.Error", "ESNext.Iterator", "ESNext.Promise", "ESNext.Temporal", "ESNext.TypedArrays"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
 

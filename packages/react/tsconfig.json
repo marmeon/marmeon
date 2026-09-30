@@ -4,11 +4,7 @@
     "composite": true,
     "rootDir": "src",
     "outDir": "dist",
-    "lib": [
-      "ES2024",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2025", "ESNext.Array", "ESNext.Collection", "ESNext.Disposable", "ESNext.Error", "ESNext.Iterator", "ESNext.Promise", "ESNext.Temporal", "ESNext.TypedArrays", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx"
   },
   "include": [
