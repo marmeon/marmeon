@@ -1,6 +1,7 @@
 import { Logger, token } from '@bespokecore/core';
-import { HttpError, statusText } from '@bespokecore/router';
+import { expectsJson, HttpError, statusText, ValidationError } from '@bespokecore/router';
 import { ERROR_PAGE, PAGE_HEADER, type ErrorPageProps } from './page.ts';
+import { RedirectResult } from './redirect.ts';
 import { view } from './view.ts';
 
 // HttpError and abort() live in the router (the request parser throws them too); re-exported for apps.
@@ -32,6 +33,7 @@ export class DefaultExceptionHandler implements ExceptionHandler {
   }
 
   render(error: unknown, request: Request, { debug }: { debug: boolean }): unknown {
+    if (error instanceof ValidationError) return renderInvalid(error, request);
     const status = error instanceof HttpError ? error.status : 500;
     const title = statusText(status);
     const exposed = error instanceof HttpError || debug;
@@ -46,6 +48,18 @@ export class DefaultExceptionHandler implements ExceptionHandler {
     }
     return Response.json(exception ? { message, exception } : { message }, { status, headers });
   }
+}
+
+/**
+ * Invalid input: clients that expect JSON get 422 with the field errors; everyone
+ * else goes back to the form, with the errors and the old input in the session —
+ * the form shows them next to the fields (Laravel's rule, and the Inertia pattern).
+ */
+function renderInvalid(error: ValidationError, request: Request): unknown {
+  if (expectsJson(request)) {
+    return Response.json({ message: error.message, errors: error.errors }, { status: 422 });
+  }
+  return new RedirectResult().back().withErrors(error.errors).withInput(error.input);
 }
 
 /** Page loads and client-side navigations get an error page; everything else JSON. */

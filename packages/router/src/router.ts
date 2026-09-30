@@ -2,6 +2,7 @@ import { HttpError } from './errors.ts';
 import { runPipeline } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
+import { validateRequest } from './request-definition.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
@@ -145,7 +146,14 @@ export class Router {
       this.middlewareFor(route),
       async (finalCtx) => {
         const { action } = route;
-        const result = await (isControllerClass(action) ? resolve(action).handle(finalCtx) : action(finalCtx));
+        let result: unknown;
+        if (isControllerClass(action)) {
+          // REPR: authorize and validate before the controller is even built.
+          const handlerCtx = action.request ? { ...finalCtx, body: await validateRequest(action.request, finalCtx) } : finalCtx;
+          result = await resolve(action).handle(handlerCtx);
+        } else {
+          result = await action(finalCtx);
+        }
         return toResponse(result, finalCtx);
       },
       { resolve, onTerminable: options.onTerminable, onError: options.onError },

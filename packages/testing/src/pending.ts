@@ -1,4 +1,4 @@
-import type { DeepPartial, PageSource, PropsOf, TestResponse } from './response.ts';
+import type { DeepPartial, FieldOf, PageSource, PropsOf, TestResponse } from './response.ts';
 
 type Assertions = {
   [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];
@@ -81,6 +81,12 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   }
   assertSessionMissing(...args: Parameters<Assertions['assertSessionMissing']>): this {
     return this.#queue((r) => r.assertSessionMissing(...args));
+  }
+  assertInvalid<C = unknown>(fields: readonly FieldOf<C>[] | Partial<Record<FieldOf<C>, string | RegExp>>): this {
+    return this.#queue((r) => r.assertInvalid<C>(fields));
+  }
+  assertValid(): this {
+    return this.#queue((r) => r.assertValid());
   }
   assertHeader(...args: Parameters<Assertions['assertHeader']>): this {
     return this.#queue((r) => r.assertHeader(...args));

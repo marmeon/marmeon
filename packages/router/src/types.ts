@@ -1,3 +1,4 @@
+import type { BodyOf, RequestDefinition, StandardSchemaV1 } from './request-definition.ts';
 import type { RequestState } from './request.ts';
 import type { RouteDefinition } from './route-definition.ts';
 
@@ -121,12 +122,24 @@ export interface Invokable<TCtx> {
 /**
  * An invokable controller (REPR): one class per endpoint, one `handle(ctx)`.
  * Constructor arguments are the container's concern.
+ *
+ * With `static request = defineRequest(…)`, the route checks both halves against
+ * its context: `authorize(ctx)` must accept the route's context, and `handle`
+ * gets it plus the validated `body`. *One* type with an optional `request` on
+ * purpose: a union of "with" and "without request" let a controller whose
+ * `authorize` needs more context than the route has slip through the "without"
+ * branch — and made TypeScript explain the wrong branch (type spike for E13).
  */
-export type ControllerClass<TCtx = any> = new (...args: any[]) => Invokable<TCtx>;
+export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any> = (new (
+  ...args: any[]
+) => Invokable<TCtx & BodyOf<TSchema>>) & {
+  readonly request?: RequestDefinition<TSchema, TCtx>;
+};
 
 /** Builds controller and middleware classes — per request, from the container. */
 export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
 
-export type Action<TCtx> = Handler<TCtx> | ControllerClass<TCtx>;
+/** A closure or a controller class. `TSchema` is inferred from the controller's `request` (`never` without one). */
+export type Action<TCtx, TSchema extends StandardSchemaV1 = never> = Handler<TCtx> | ControllerClass<TCtx, TSchema>;
 
-export type AnyAction = Action<any>;
+export type AnyAction = Action<any, any>;

@@ -1,4 +1,5 @@
 import { RouteDefinition } from './route-definition.ts';
+import type { StandardSchemaV1 } from './request-definition.ts';
 import type {
   Action,
   AnyAction,
@@ -79,39 +80,60 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   // -- Route registration ----------------------------------------------------
 
-  get<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  get<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['GET'], path, action);
   }
 
-  post<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  post<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['POST'], path, action);
   }
 
-  put<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  put<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['PUT'], path, action);
   }
 
-  patch<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  patch<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['PATCH'], path, action);
   }
 
-  delete<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  delete<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['DELETE'], path, action);
   }
 
-  options<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  options<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['OPTIONS'], path, action);
   }
 
-  match<const TPath extends string>(
+  match<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
     methods: readonly HttpMethod[],
     path: TPath,
-    action: Action<RouteContext<TState, TParams, TPath>>,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
   ): RouteDefinition {
     return this.#add(methods, path, action);
   }
 
-  any<const TPath extends string>(path: TPath, action: Action<RouteContext<TState, TParams, TPath>>): RouteDefinition {
+  any<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+    path: TPath,
+    action: Action<RouteContext<TState, TParams, TPath>, TSchema>,
+  ): RouteDefinition {
     return this.#add(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], path, action);
   }
 

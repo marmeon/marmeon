@@ -33,7 +33,7 @@ describe('bespoke (in the web app)', () => {
       /GET\s+\/users\/:id\s+user-profile\.show\s+web\s+SecurityHeaders, EncryptCookies, StartSession, VerifyCsrfToken, Authenticate\s+ShowUserProfileController/,
     );
     expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders\s+ListUsersController/);
-    expect(stdout).toContain('7 routes');
+    expect(stdout).toContain('8 routes');
   });
 
   it('prints configuration errors without Node internals and exits with 1', () => {
@@ -63,7 +63,7 @@ describe('bespoke make:* (generated code compiles)', () => {
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
     for (const pkg of ['core', 'http', 'router']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
-    for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
+    for (const pkg of ['react', '@types/react', 'valibot']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
       join(app, 'tsconfig.json'),
@@ -84,10 +84,15 @@ describe('bespoke make:* (generated code compiles)', () => {
       'listeners: [listen(InvoicePaid, SendReceipt)]',
     );
     expect(bespoke(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
+    expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).code).toBe(0);
 
     const controller = readFileSync(join(app, 'modules/billing/controllers/ShowInvoiceController.ts'), 'utf8');
     expect(controller).toContain("return this.view('billing/ShowInvoice', {});");
     expect(readFileSync(join(app, 'modules/billing/events/InvoicePaid.ts'), 'utf8')).toContain('readonly #event = true;');
+    const withRequest = readFileSync(join(app, 'modules/billing/controllers/UpdateInvoiceController.ts'), 'utf8');
+    expect(withRequest).toContain('export const UpdateInvoiceRequest = defineRequest({');
+    expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
+    expect(withRequest).toContain('handle(ctx: ContextOf<typeof UpdateInvoiceRequest>) {');
 
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');

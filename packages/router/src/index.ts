@@ -11,3 +11,18 @@ export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './c
 export type { CookieCodec, CookieOptions } from './cookies.ts';
 export { createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
+export { defineRequest, validateRequest, ValidationError } from './request-definition.ts';
+export type {
+  BodyOf,
+  ContextOf,
+  FormOf,
+  InferInput,
+  InferOutput,
+  RequestDefinition,
+  RequestOf,
+  StandardIssue,
+  StandardResult,
+  StandardSchemaV1,
+  Validated,
+  ValidationErrors,
+} from './request-definition.ts';

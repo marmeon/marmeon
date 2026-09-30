@@ -73,8 +73,8 @@ export class MakeModuleCommand {
 export class MakeControllerCommand {
   static command = 'make:controller';
   static description = 'Create an invokable controller (one endpoint)';
-  static usage = '<Name> --module=<module> [--view]';
-  static options = { ...moduleOption, view: { type: 'boolean' } } as const;
+  static usage = '<Name> --module=<module> [--view] [--request]';
+  static options = { ...moduleOption, view: { type: 'boolean' }, request: { type: 'boolean' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -85,7 +85,8 @@ export class MakeControllerCommand {
     const module = input.options.module as string;
     const page = name.replace(/Controller$/, '');
     const withView = input.options.view === true;
-    if (!write(input, join(dir, 'controllers', `${name}.ts`), CONTROLLER(name, withView ? `${module}/${page}` : undefined))) return 1;
+    const template = input.options.request === true ? REQUEST_CONTROLLER(name, page) : CONTROLLER(name, withView ? `${module}/${page}` : undefined);
+    if (!write(input, join(dir, 'controllers', `${name}.ts`), template)) return 1;
     if (withView && !write(input, join(dir, 'views', `${page}.tsx`), VIEW(name, page))) return 1;
 
     input.output.line();
@@ -174,6 +175,28 @@ const CONTROLLER = (name: string, page: string | undefined) => `import { Control
 export class ${name} extends Controller {
   handle(ctx: HttpContext) {
 ${page ? `    return this.view('${page}', {});` : `    return this.json({ path: new URL(ctx.request.url).pathname });`}
+  }
+}
+`;
+
+/** REPR: the request (schema + authorize), the endpoint and its answer in one file. */
+const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
+import * as v from 'valibot';
+
+export const ${subject}Request = defineRequest({
+  schema: v.object({
+    name: v.pipe(v.string(), v.trim(), v.nonEmpty()),
+  }),
+  // Runs before validation; returning false answers 403. Its context type is what the route must provide.
+  authorize: (_ctx: HttpContext) => true,
+});
+
+/** One endpoint. The body is validated before \`handle\` runs; dependencies are injected into the constructor. */
+export class ${name} extends Controller {
+  static request = ${subject}Request;
+
+  handle(ctx: ContextOf<typeof ${subject}Request>) {
+    return this.back().with('status', \`Saved \${ctx.body.name}.\`);
   }
 }
 `;

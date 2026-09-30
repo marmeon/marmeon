@@ -1,3 +1,4 @@
+import { OLD_INPUT_KEY, type ValidationErrors } from '@bespokecore/http';
 import { SessionConfig } from './config.ts';
 import { createSessionId, SESSION_ID, SessionStore, type SessionPayload } from './store.ts';
 
@@ -12,13 +13,16 @@ import { createSessionId, SESSION_ID, SessionStore, type SessionPayload } from '
  *
  * Declared keys are checked (`put('user_id', 1)` is an error); other keys are `unknown`.
  */
-export interface SessionData {}
+export interface SessionData {
+  /** Validation errors of the previous request (flashed by a failed page request). */
+  errors: ValidationErrors;
+}
 
 type Value<K extends string> = K extends keyof SessionData ? SessionData[K] : unknown;
 
 const FLASH = '_flash';
 const TOKEN = '_token';
-const OLD_INPUT = '_old_input';
+const OLD_INPUT = OLD_INPUT_KEY; // what `redirect().withInput()` flashes
 
 interface FlashState {
   new: string[];

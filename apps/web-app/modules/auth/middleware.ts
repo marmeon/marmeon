@@ -7,9 +7,8 @@ declare module '@bespokecore/session' {
   interface SessionData {
     /** The signed-in user — set on login, removed on logout. */
     user_id: string;
-    /** Flash messages for the login page. */
+    /** Flash message for the login page. */
     status: string;
-    error: string;
   }
 }
 

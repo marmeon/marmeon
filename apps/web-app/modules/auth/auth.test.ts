@@ -1,6 +1,7 @@
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import type { LoginController } from './controllers/LoginController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
 
 let app: TestApp;
@@ -16,22 +17,26 @@ describe('auth module', () => {
       .post('/login', { form: { user_id: '3' } })
       .assertStatus(303)
       .assertRedirect('/users/me')
+      .assertValid()
       .assertSessionHas('user_id', '3');
 
     expect(response.cookie('bespoke_session')).not.toBe(planted.cookie('bespoke_session')); // … does not survive it
     await app.withCookie('bespoke_session', response.cookie('bespoke_session')!).get('/users/me').assertRedirect('/users/3');
   });
 
-  it('sends unknown users back with an error, shown once on the login page', async () => {
+  it('validates the login (LoginRequest) and reports unknown users next to the field, once', async () => {
+    await app.post('/login', { form: { user_id: 'abc' } }).assertRedirect('/').assertInvalid<LoginController>({ user_id: 'Pick a user.' });
+    await app.expectingJson().post('/login', { json: {} }).assertUnprocessable().assertInvalid<LoginController>(['user_id']);
+
     const response = await app
       .post('/login', { form: { user_id: '99' }, headers: { referer: 'http://localhost/login' } })
       .assertRedirect('/login')
       .assertSessionMissing('user_id')
-      .assertSessionHas('error', 'Unknown user.');
+      .assertInvalid<LoginController>({ user_id: 'Unknown user.' });
 
     const next = app.withCookie('bespoke_session', response.cookie('bespoke_session')!).navigating();
-    await next.get('/login').assertPage<ShowLoginController>('auth/Login', { error: 'Unknown user.' });
-    await next.get('/login').assertPage<ShowLoginController>('auth/Login', { error: null });
+    await next.get('/login').assertPage<ShowLoginController>('auth/Login', { errors: { user_id: ['Unknown user.'] } });
+    await next.get('/login').assertPage<ShowLoginController>('auth/Login', (props) => expect(props.errors).toEqual({}));
   });
 
   it('ends the session on logout and says so on the login page', async () => {

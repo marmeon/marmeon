@@ -3,6 +3,7 @@ import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
+import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 
 let app: TestApp;
 beforeEach(async () => {
@@ -62,6 +63,42 @@ describe('user-profile module', () => {
     }
   });
 
+  describe('updating the profile (UpdateUserProfileRequest)', () => {
+    it('saves valid, trimmed input and flashes a status', async () => {
+      await app
+        .withSession({ user_id: '1' })
+        .put('/users/1', { json: { name: '  Ada King ', bio: 'Countess.' } })
+        .assertRedirect('/users/1')
+        .assertValid()
+        .assertSessionHas('status', 'Profile saved.');
+      expect(app.make(UserRepository).find('1')).toMatchObject({ name: 'Ada King', bio: 'Countess.' });
+    });
+
+    it('answers API clients with 422 and the field errors', async () => {
+      const response = await app
+        .withSession({ user_id: '1' })
+        .expectingJson()
+        .put('/users/1', { json: { name: 'A', bio: 'x'.repeat(201) } })
+        .assertUnprocessable()
+        .assertInvalid<UpdateUserProfileController>({ name: /at least 2/, bio: 'The bio may have at most 200 characters.' });
+      expect(response.json()).toMatchObject({ message: 'The name needs at least 2 characters. (and 1 more error)' });
+    });
+
+    it('sends pages back with the errors and the old input in the session', async () => {
+      await app
+        .withSession({ user_id: '1' })
+        .put('/users/1', { form: { name: 'A', bio: 'ok', _token: 'never flashed' }, headers: { referer: 'http://localhost/users/1/edit' } })
+        .assertRedirect('/users/1/edit')
+        .assertInvalid<UpdateUserProfileController>(['name'])
+        .assertSessionHas('_old_input', { name: 'A', bio: 'ok' });
+    });
+
+    it('forbids editing someone else (403 before validation)', async () => {
+      await app.withSession({ user_id: '2' }).expectingJson().put('/users/1', { json: {} }).assertForbidden();
+      expect(app.make(UserRepository).find('1')!.name).toBe('Ada Lovelace');
+    });
+  });
+
   it('redirects /users/me to the current user', async () => {
     await as('2').get('/users/me').assertRedirect('/users/2');
   });
@@ -103,3 +140,15 @@ describe('user-profile module', () => {
     await as('1').get('/users/3').assertPage<ShowUserProfileController>('user-profile/Show', { lastLoginAt: null });
   });
 });
+
+// Never called: only the types matter.
+export async function typeLevelTests(): Promise<void> {
+  const app = await createTestApp(application);
+  // @ts-expect-error — `nmae` is not a field of UpdateUserProfileRequest.
+  await app.put('/users/1').assertInvalid<UpdateUserProfileController>(['nmae']);
+  // @ts-expect-error — neither is `email` (the form has name and bio).
+  await app.put('/users/1').assertInvalid<UpdateUserProfileController>({ email: 'x' });
+  // Nested paths of known fields and untyped checks are fine:
+  await app.put('/users/1').assertInvalid<UpdateUserProfileController>(['name.first']);
+  await app.put('/users/1').assertInvalid(['anything']);
+}

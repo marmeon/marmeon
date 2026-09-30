@@ -1,9 +1,12 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
-import { isPageObject, PAGE_SCRIPT_ID, type PageObject, type PageProps } from '@bespokecore/http/page';
+import { isPageObject, PAGE_SCRIPT_ID, type FormOf, type PageObject, type PageProps } from '@bespokecore/http/page';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
 
 /** Something `PageProps` can infer from: a controller class instance or a route closure. */
 export type PageSource = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
+
+/** Field names of a controller's form — typed with a controller (`assertInvalid<C>`), any string without. */
+export type FieldOf<C> = unknown extends C ? string : (keyof FormOf<C> & string) | `${keyof FormOf<C> & string}.${string}`;
 
 /** Props of a page, every level optional — for asserting a subset. */
 export type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
@@ -169,6 +172,42 @@ export class TestResponse {
   assertSessionMissing(key: string): this {
     if (this.session()[key] !== undefined) this.#fail(`Expected the session not to have "${key}"`);
     return this;
+  }
+
+  // --- Validation ---------------------------------------------------------------
+
+  /**
+   * The request failed validation for `fields` — from a 422 JSON answer, or from the
+   * errors a page request flashed to the session. Messages match exactly or by RegExp:
+   * `assertInvalid<UpdateUserProfileController>({ name: /short/ })`.
+   */
+  assertInvalid<C = unknown>(fields: readonly FieldOf<C>[] | Partial<Record<FieldOf<C>, string | RegExp>>): this {
+    const errors = this.#validationErrors();
+    if (!errors) this.#fail('Expected validation errors, found none');
+    const expected: [string, string | RegExp | undefined][] = Array.isArray(fields)
+      ? fields.map((field: string) => [field, undefined])
+      : Object.entries(fields as Record<string, string | RegExp>);
+    for (const [field, message] of expected) {
+      const messages = errors[field];
+      if (!messages?.length) this.#fail(`Expected a validation error for "${field}", got errors for: ${Object.keys(errors).join(', ')}`);
+      if (message !== undefined && !messages.some((text) => (typeof message === 'string' ? text === message : message.test(text)))) {
+        this.#fail(`Expected "${field}" to fail with ${String(message)}, got: ${messages.join(' | ')}`);
+      }
+    }
+    return this;
+  }
+
+  /** The request passed validation: no 422, no flashed errors. */
+  assertValid(): this {
+    const errors = this.#validationErrors();
+    if (errors) this.#fail(`Expected no validation errors, got: ${JSON.stringify(errors)}`);
+    return this;
+  }
+
+  #validationErrors(): Record<string, string[]> | undefined {
+    if (this.status === 422) return (safeParse(this.body) as { errors?: Record<string, string[]> } | undefined)?.errors;
+    const flashed = this.#session?.errors as Record<string, string[]> | undefined;
+    return flashed && Object.keys(flashed).length > 0 ? flashed : undefined;
   }
 
   // --- Headers & body ---------------------------------------------------------

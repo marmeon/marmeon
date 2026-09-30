@@ -21,7 +21,7 @@ export class ShowLoginController extends Controller {
       users: this.#users.all().map(({ id, name }) => ({ id, name })),
       // Flashed by the previous request (logout, failed login) — shown once.
       status: this.#session.get('status') ?? null,
-      error: this.#session.get('error') ?? null,
+      errors: this.#session.get('errors') ?? {},
       // Plain HTML forms send it back as `_token` (client-side visits use the XSRF-TOKEN cookie instead).
       csrfToken: this.#session.token(),
     });

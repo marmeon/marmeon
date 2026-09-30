@@ -5,6 +5,8 @@
 import type { ViewProps } from './view.ts';
 
 export type { PageProps, ViewProps, ViewResult } from './view.ts';
+// Types only — erased, so the browser bundle stays free of router code.
+export type { FormOf, ValidationErrors } from '@bespokecore/router';
 
 /** The wire format of a page — shared by the server and every UI adapter. */
 export interface PageObject {

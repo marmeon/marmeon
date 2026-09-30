@@ -3,12 +3,12 @@ import type { ShowLoginController } from '../controllers/ShowLoginController.ts'
 
 type Props = PageProps<ShowLoginController>;
 
-export default function Login({ appName, users, status, error, csrfToken }: Props) {
+export default function Login({ appName, users, status, errors, csrfToken }: Props) {
   return (
     <main>
       <h1>Sign in to {appName}</h1>
       {status && <p role="status">{status}</p>}
-      {error && <p role="alert">{error}</p>}
+      {errors.user_id && <p role="alert">{errors.user_id[0]}</p>}
       <p>Demo login — pick a user:</p>
       {users.map((user) => (
         <form key={user.id} method="post" action="/login">

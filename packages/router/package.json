@@ -24,5 +24,8 @@
         "default": "./dist/index.js"
       }
     }
+  },
+  "devDependencies": {
+    "valibot": "^1.5.0"
   }
 }

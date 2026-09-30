@@ -80,6 +80,19 @@ export class RedirectResult {
     return this;
   }
 
+  /** Flashes validation errors (`errors`) — what a failed page request shows next to the fields. */
+  withErrors(errors: Record<string, readonly string[]>): this {
+    return this.with(ERRORS_KEY, errors);
+  }
+
+  /**
+   * Flashes the input for `old()`, so the form can be filled again. Files and
+   * passwords never go into the session.
+   */
+  withInput(input: Record<string, unknown>): this {
+    return this.with(OLD_INPUT_KEY, flashableInput(input));
+  }
+
   toResponse(request: Request, urls: UrlGenerator, flasher?: Flasher): Response {
     if (this.#flash.size > 0) {
       if (!flasher) throw new Error('redirect().with() needs a session: install @bespokecore/session and start it for this route.');
@@ -98,6 +111,30 @@ export class RedirectResult {
     if (target.kind === 'route') return urls.url(target.name, target.params);
     return previousUrl(request) ?? target.fallback;
   }
+}
+
+/** Session keys shared with @bespokecore/session (`old()`) and the shared `errors` prop. */
+export const ERRORS_KEY = 'errors';
+export const OLD_INPUT_KEY = '_old_input';
+
+/** Like Laravel's `$dontFlash`: never kept in the session. */
+const DONT_FLASH = new Set(['password', 'password_confirmation', 'current_password']);
+
+function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
+  const clean = (value: unknown): unknown => {
+    if (typeof value === 'object' && value !== null && !(value instanceof File)) {
+      if (Array.isArray(value)) return value.map(clean).filter((item) => item !== undefined);
+      return flashableInput(value as Record<string, unknown>);
+    }
+    return value instanceof File ? undefined : value;
+  };
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (DONT_FLASH.has(key) || key === '_token') continue;
+    const cleaned = clean(value);
+    if (cleaned !== undefined) result[key] = cleaned;
+  }
+  return result;
 }
 
 export function isRedirectResult(value: unknown): value is RedirectResult {
