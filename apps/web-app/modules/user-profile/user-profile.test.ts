@@ -279,3 +279,11 @@ export function TypedForm() {
   void form.errors.email;
   return nameError;
 }
+
+// Never called: PageProps are serialized — the controller's Date is a string in the view.
+export function serializedProps(props: import('@bespokecore/http').PageProps<ShowUserProfileController>) {
+  const now: string = props.now;
+  // @ts-expect-error — not a Date any more once it crossed the wire
+  props.now.getTime();
+  return now;
+}

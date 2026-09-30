@@ -25,6 +25,9 @@ export class ShowUserProfileController extends Controller {
       lastLoginAt: user.activity?.last_login_at ?? null,
       filter,
       others: people.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null })),
+      // The server's clock for "5 minutes ago": SSR and hydration compute the same text. A Date here,
+      // a string in the view (PageProps are serialized).
+      now: new Date(),
     });
   }
 }

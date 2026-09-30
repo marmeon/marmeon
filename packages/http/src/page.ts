@@ -4,7 +4,7 @@
  */
 import type { ViewProps } from './view.ts';
 
-export type { PageProps, ViewProps, ViewResult } from './view.ts';
+export type { PageProps, Serialize, ViewProps, ViewResult } from './view.ts';
 // Types only — erased, so the browser bundle stays free of router code.
 export type { FormOf, ValidationErrors } from '@bespokecore/router';
 

@@ -30,6 +30,47 @@ export function isViewResult(value: unknown): value is ViewResult {
 /** Flattens `A & B` into one object type — readable tooltips, exact type equality. */
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
+type Unserializable = undefined | symbol | ((...args: never[]) => unknown);
+
+/**
+ * What a value becomes on its way to the browser — `JSON.parse(JSON.stringify(value))` as a type:
+ * `Date` (anything with `toJSON`) → its JSON form (`string`), `undefined` properties → optional,
+ * functions and symbols → gone (`null` inside arrays), `bigint` → `never` (JSON.stringify throws).
+ * Page props are typed with it, so a view sees what actually arrives.
+ */
+export type Serialize<T> = 0 extends 1 & T
+  ? T // any
+  : unknown extends T
+    ? unknown
+    : SerializeKnown<T>;
+
+type SerializeKnown<T> = T extends string | number | boolean | null
+  ? T
+  : T extends bigint
+    ? never
+    : T extends Unserializable
+      ? never
+      : T extends { toJSON(...args: never[]): infer R }
+        ? Serialize<R>
+        : T extends ReadonlyMap<unknown, unknown> | ReadonlySet<unknown>
+          ? {}
+          : T extends readonly unknown[]
+            ? { -readonly [I in keyof T]: SerializeElement<T[I]> }
+            : T extends object
+              ? SerializeObject<T>
+              : never;
+
+/** Inside arrays, what JSON cannot hold becomes `null` (instead of disappearing). */
+type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
+
+type SerializeObject<T> = Simplify<
+  { [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]> } & {
+    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<
+      Exclude<T[K], undefined>
+    >;
+  }
+>;
+
 /** A controller class instance (`handle(ctx)`) or a route closure. */
 type PageAction = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
 
@@ -49,10 +90,11 @@ type ActionResult<TAction extends PageAction> = TAction extends { handle: (...ar
  *
  * Non-view branches (redirects, JSON `Response`s) are filtered out. The props every
  * page shares (`SharedProps`) are included; a controller's own prop of the same name wins.
+ * Props are typed as they arrive — serialized (`Serialize`): a `Date` prop is a `string` in the view.
  */
 export type PageProps<TAction extends PageAction> =
   Awaited<ActionResult<TAction>> extends infer TResult
     ? TResult extends ViewResult<infer TProps>
-      ? Simplify<Omit<SharedProps, keyof TProps> & TProps>
+      ? Serialize<Omit<SharedProps, keyof TProps> & TProps>
       : never
     : never;
