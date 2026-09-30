@@ -195,26 +195,43 @@ export interface ServeOptions {
   mode?: 'development' | 'production';
 }
 
+/** A listening server. `close()` stops it gracefully: no new connections, requests in flight finish. */
+export interface RunningServer {
+  readonly server: Server;
+  readonly port: number;
+  close(): Promise<void>;
+}
+
 export async function startServer({
   app,
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
   mode = process.env.NODE_ENV === 'production' ? 'production' : 'development',
-}: ServeOptions): Promise<Server> {
+}: ServeOptions): Promise<RunningServer> {
   const server = createServer();
   const { root } = app;
+  let closeVite: (() => Promise<void>) | undefined;
 
   if (mode === 'development') {
     const { vite, renderer } = await createViteDevRenderer({ root, ssrEntry, httpServer: server });
     const handle = getRequestListener(createHttpKernel(app, { renderer, debug: true }).fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));
-    server.on('close', () => void vite.close());
+    closeVite = () => vite.close();
   } else {
     const renderer = await createProductionRenderer({ root, ssrEntry });
     const kernel = createHttpKernel(app, { renderer, clientDir: join(root, 'dist/client') });
     server.on('request', getRequestListener(kernel.fetch));
   }
+
+  const close = async () => {
+    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+    server.closeIdleConnections();
+    // Vite's HMR WebSocket is an upgraded socket: neither `close()` nor `closeAllConnections()` ends it,
+    // so the server would wait forever for an open browser tab. Closing Vite closes its clients.
+    await closeVite?.();
+    await closed;
+  };
 
   return new Promise((resolve) => {
     server.listen(port, () => {
@@ -223,7 +240,7 @@ export async function startServer({
       app.container
         .make(Logger)
         .info(`BespokeCore [${mode}] on http://localhost:${port} (${routes} routes, ${app.modules.length} modules${packages})`);
-      resolve(server);
+      resolve({ server, port, close });
     });
   });
 }

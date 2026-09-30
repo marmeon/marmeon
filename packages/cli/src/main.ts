@@ -79,9 +79,27 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   }
 
   // Commands are built through the container, so they get constructor injection.
-  const command = (app?.container ?? new Container()).make(Command);
-  const code = await command.handle({ args: parsed.positionals, options: parsed.values, output, root });
-  return typeof code === 'number' ? code : 0;
+  // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
+  try {
+    const command = (app?.container ?? new Container()).make(Command);
+    const code = await command.handle({ args: parsed.positionals, options: parsed.values, output, root });
+    return typeof code === 'number' ? code : 0;
+  } catch (error) {
+    printError(output, error);
+    return 1;
+  } finally {
+    await app?.shutdown();
+  }
+}
+
+/** A failed command: its error and where it came from — not Node's dump of every property of every cause. */
+function printError(output: Output, error: unknown): void {
+  if (!(error instanceof Error)) {
+    output.error(String(error));
+    return;
+  }
+  const frames = (error.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line) && !line.includes('node:internal'));
+  output.error([`${error.name}: ${error.message}`, ...frames.slice(0, 5).map((frame) => `  ${frame.trim()}`)].join('\n'));
 }
 
 /** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it. */

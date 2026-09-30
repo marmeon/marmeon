@@ -23,6 +23,7 @@ describe('bespoke (in the web app)', () => {
     expect(stdout).toMatch(/^ {2}dev\s+Start the development server/m);
     expect(stdout).toMatch(/^make\n(?: {2}make:.*\n)+/m);
     expect(stdout).toContain('route:list');
+    expect(stdout).toContain('db:show');
     expect(stdout).not.toMatch(/^ {2}serve\b/m); // internal
   });
 
@@ -42,6 +43,27 @@ describe('bespoke (in the web app)', () => {
     expect(code).toBe(1);
     expect(stderr).toMatch(/^✗ Invalid configuration — the application cannot start:\n {2}• app: APP_NAME/);
     expect(stderr).not.toMatch(/triggerUncaughtException|node:internal/);
+  });
+
+  it('shows the database connection (db:show, added by @bespokecore/database)', () => {
+    const { code, stdout } = bespoke(webApp, ['db:show'], { DB_DATABASE: ':memory:' });
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/^Connection {2}default\nTarget {6}sqlite :memory:\nServer {6}SQLite 3\.\d+/m);
+    expect(stdout).toContain('No tables yet.');
+  });
+
+  it.runIf(process.env.BESPOKE_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
+    const { code, stdout } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.BESPOKE_TEST_PGSQL_URL! });
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/Target {6}pgsql postgres:\/\/bespoke:\*\*\*@localhost:55432\/bespoke\nServer {6}PostgreSQL \d+/);
+  });
+
+  it('prints a failing command’s error without Node’s dump and exits with 1', () => {
+    const { code, stdout, stderr } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:hunter2@127.0.0.1:1/app' });
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/^✗ DatabaseConnectionError: Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED.*\n {2}at /);
+    expect(stderr).not.toMatch(/\[cause\]|hunter2|Node\.js v/);
+    expect(stdout).toBe('');
   });
 
   it('rejects unknown commands and invalid options', () => {

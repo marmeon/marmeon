@@ -127,3 +127,24 @@ export async function typeLevelTests(): Promise<void> {
   // Without a controller, any props are accepted:
   await app.get('/greeting').assertPage('greetings/Show', { anything: true });
 }
+
+describe('closing a test app', () => {
+  it('waits for terminate hooks, then shuts the app down — also via `await using`', async () => {
+    const calls: string[] = [];
+    const Recorder = class {
+      shutdown() {
+        calls.push('shutdown');
+      }
+    };
+    const closing = { ...definition, providers: [...(definition.providers ?? []), Recorder] };
+    {
+      await using app = await createTestApp(closing);
+      await app.get('/greeting').assertOk();
+    }
+    expect(calls).toEqual(['shutdown']);
+    const app = await createTestApp(closing);
+    await app.close();
+    await app.close(); // shutting down twice is harmless
+    expect(calls).toEqual(['shutdown', 'shutdown']);
+  });
+});

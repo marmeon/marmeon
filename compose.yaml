@@ -1,0 +1,21 @@
+# Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`.
+# Own ports on purpose — 5432/3306 may belong to other projects on the same machine.
+name: bespokecore
+
+services:
+  pgsql:
+    image: postgres:18-alpine
+    container_name: bespokecore-pgsql
+    ports:
+      - '55432:5432'
+    environment:
+      POSTGRES_USER: bespoke
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: bespoke
+    # Test data is disposable: no volume, and fsync off for speed.
+    command: ['postgres', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'bespoke']
+      interval: 2s
+      timeout: 2s
+      retries: 15

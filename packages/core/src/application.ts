@@ -64,6 +64,7 @@ export class Application {
   /** What the app was defined with — packages read their app-level settings from here (e.g. http's `middleware`). */
   readonly options: ApplicationOptions;
   readonly #providers: ServiceProvider[] = [];
+  #shutdown: Promise<void> | undefined;
 
   constructor(options: {
     root: string;
@@ -84,8 +85,9 @@ export class Application {
     // A provider may also only bring configuration (`static config`), which is validated earlier.
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
-      if (typeof provider.register !== 'function' && typeof provider.boot !== 'function' && !Provider.config?.length) {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot() or static config.`);
+      const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
+      if (!hooks && !Provider.config?.length) {
+        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown() or static config.`);
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -95,6 +97,33 @@ export class Application {
   /** Boot phase: runs once every provider has registered. */
   async boot(): Promise<void> {
     for (const provider of this.#providers) await provider.boot?.(this);
+  }
+
+  /**
+   * Stops the app: every provider's `shutdown`, in reverse order (a provider shuts down
+   * before the ones it was booted after). Runs once — later calls return the same promise.
+   * Every provider gets its turn even if an earlier one fails; failures are thrown together.
+   *
+   * The CLI calls it after a command, the server on SIGINT/SIGTERM, tests via `await using`.
+   */
+  shutdown(): Promise<void> {
+    this.#shutdown ??= (async () => {
+      const errors: unknown[] = [];
+      for (const provider of this.#providers.toReversed()) {
+        try {
+          await provider.shutdown?.(this);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, `${errors.length} providers failed to shut down.`);
+    })();
+    return this.#shutdown;
+  }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    return this.shutdown();
   }
 }
 

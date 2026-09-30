@@ -154,6 +154,19 @@ export class TestApp {
     return this.application.container;
   }
 
+  /**
+   * Waits for pending `terminate` hooks, then shuts the app down (closes database pools and
+   * the like). `await using app = await createTestApp(…)` does this at the end of the block.
+   */
+  async close(): Promise<void> {
+    await this.#kernel.settle();
+    await this.application.shutdown();
+  }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    return this.close();
+  }
+
   /** Resolves a service from the app, e.g. to inspect state after a request. */
   make<K extends Key<any>>(key: K): Resolve<K> {
     return this.application.container.make(key as never) as Resolve<K>;

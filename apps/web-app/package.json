@@ -15,6 +15,7 @@
   "dependencies": {
     "@bespokecore/cache": "workspace:*",
     "@bespokecore/core": "workspace:*",
+    "@bespokecore/database": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/log": "workspace:*",
     "@bespokecore/react": "workspace:*",

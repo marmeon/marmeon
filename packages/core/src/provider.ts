@@ -7,11 +7,14 @@ import type { Container } from './container.ts';
  *
  * `register` binds things into the container and must not resolve anything yet,
  * because other providers may not have registered. `boot` runs after *every*
- * provider has registered, so it may resolve freely.
+ * provider has registered, so it may resolve freely. `shutdown` releases what the
+ * provider holds (connection pools, file handles) when the app stops — in reverse
+ * boot order, so a provider still has everything it depends on.
  */
 export interface ServiceProvider {
   register?(container: Container): void;
   boot?(app: Application): void | Promise<void>;
+  shutdown?(app: Application): void | Promise<void>;
 }
 
 /**
