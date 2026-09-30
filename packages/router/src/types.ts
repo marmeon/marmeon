@@ -59,14 +59,39 @@ export type Next<TAdd extends object> = keyof TAdd extends never
  *
  * `handle` is declared as a property (not a method) on purpose: property
  * function types are checked contravariantly under `strictFunctionTypes`, which
- * is what lets the compiler reject middleware whose requirements are unmet.
+ * is what lets the compiler reject middleware whose requirements are unmet —
+ * even when a middleware class writes `handle` as an ordinary method.
  */
-export interface Middleware<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> {
-  readonly name: string;
+export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> {
   readonly handle: (ctx: HttpContext<TRequires>, next: Next<TAdds>) => Response | Promise<Response>;
 }
 
-export type AnyMiddleware = Middleware<any, any>;
+/** Middleware as a plain object, from `defineMiddleware`. */
+export interface Middleware<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject>
+  extends MiddlewareHandler<TRequires, TAdds> {
+  readonly name: string;
+}
+
+/**
+ * Middleware as a class: built per request from the container, so it gets
+ * constructor injection like a controller.
+ *
+ * ```ts
+ * export class Authenticate {
+ *   constructor(users: UserRepository) { … }
+ *   handle(ctx: HttpContext, next: Next<AuthState>) { … }
+ * }
+ * ```
+ */
+export type MiddlewareClass<TRequires extends object = any, TAdds extends object = any> = new (
+  ...args: any[]
+) => MiddlewareHandler<TRequires, TAdds>;
+
+export type MiddlewareLike<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> =
+  | Middleware<TRequires, TAdds>
+  | MiddlewareClass<TRequires, TAdds>;
+
+export type AnyMiddleware = MiddlewareLike<any, any>;
 
 // ---------------------------------------------------------------------------
 // Actions (closures & invokable controllers)
@@ -91,6 +116,9 @@ export interface Invokable<TCtx> {
  * Constructor arguments are the container's concern.
  */
 export type ControllerClass<TCtx = any> = new (...args: any[]) => Invokable<TCtx>;
+
+/** Builds controller and middleware classes — per request, from the container. */
+export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
 
 export type Action<TCtx> = Handler<TCtx> | ControllerClass<TCtx>;
 

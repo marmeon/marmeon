@@ -1,0 +1,22 @@
+import type { ServiceProviderClass } from './provider.ts';
+
+/**
+ * A feature module of the modular monolith. Core knows only its name and
+ * providers; other packages add what they contribute through declaration merging:
+ *
+ * ```ts
+ * // in @bespokecore/http
+ * declare module '@bespokecore/core' {
+ *   interface ModuleDefinition { readonly routes?: RouteDefinitions }
+ * }
+ * ```
+ */
+export interface ModuleDefinition {
+  readonly name: string;
+  readonly providers?: readonly ServiceProviderClass[];
+}
+
+/** Declares a module. The identity function exists for type inference and discoverability. */
+export function defineModule<const TModule extends ModuleDefinition>(module: TModule): TModule {
+  return module;
+}

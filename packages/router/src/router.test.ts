@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defineMiddleware, defineRoutes, Router, type EmptyObject, type HttpContext } from './index.ts';
+import { defineMiddleware, defineRoutes, Router, type EmptyObject, type HttpContext, type Next } from './index.ts';
 
 interface User {
   id: string;
@@ -14,6 +14,19 @@ const authenticate = defineMiddleware<{ user: User }>('auth', (ctx, next) => {
 const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx, next) =>
   ctx.user.isAdmin ? next() : new Response('Forbidden', { status: 403 }),
 );
+
+class ClassAuthenticate {
+  handle(ctx: HttpContext, next: Next<{ user: User }>) {
+    const id = ctx.request.headers.get('x-user-id');
+    return id ? next({ user: { id, isAdmin: id === '1' } }) : new Response('Unauthorized', { status: 401 });
+  }
+}
+
+class RequireAdminClass {
+  handle(ctx: HttpContext<{ user: User }>, next: Next<EmptyObject>) {
+    return ctx.user.isAdmin ? next() : new Response('Forbidden', { status: 403 });
+  }
+}
 
 class ShowTeamMemberController {
   handle(ctx: HttpContext<{ user: User }, { team: string; id: string }>) {
@@ -95,9 +108,9 @@ describe('Dispatching', () => {
   it('uses the controller resolver hook', async () => {
     const resolved: string[] = [];
     const withContainer = new Router({
-      resolveController: (Controller) => {
-        resolved.push(Controller.name);
-        return new Controller();
+      resolve: (Class) => {
+        resolved.push(Class.name);
+        return new Class();
       },
     }).load(routes);
 
@@ -106,6 +119,23 @@ describe('Dispatching', () => {
       params: { team: 'a', id: 'b' },
     });
     expect(resolved).toEqual(['ShowTeamMemberController']);
+  });
+
+  it('builds middleware classes through the resolver, once per dispatch', async () => {
+    const built: string[] = [];
+    const router = new Router().load(
+      defineRoutes((Route) => Route.middleware(ClassAuthenticate).get('/me', (ctx) => ctx.user.id).name('me')),
+    );
+    const resolve = <T>(Class: new () => T) => {
+      built.push(Class.name);
+      return new Class();
+    };
+
+    const first = await router.dispatch(router.findByName('me')!, { request: request('42'), params: {} }, { resolve });
+    await router.dispatch(router.findByName('me')!, { request: request('7'), params: {} }, { resolve });
+
+    expect(await first.text()).toBe('42');
+    expect(built).toEqual(['ClassAuthenticate', 'ClassAuthenticate']);
   });
 
   it('rejects when a middleware calls next() twice', async () => {
@@ -131,6 +161,12 @@ defineRoutes((Route) => {
 
   // @ts-expect-error — `user` is only available after `authenticate`.
   Route.get('/me', (ctx) => ctx.user);
+
+  // Middleware classes add context just like `defineMiddleware` objects:
+  Route.middleware(ClassAuthenticate).middleware(RequireAdminClass).get('/admin', (ctx) => ctx.user.isAdmin);
+
+  // @ts-expect-error — the class needs `user`, but nothing upstream provides it.
+  Route.middleware(RequireAdminClass);
 
   // @ts-expect-error — the controller needs `user` and the `team`/`id` params.
   Route.get('/members/:id', ShowTeamMemberController);

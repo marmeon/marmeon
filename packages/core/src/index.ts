@@ -8,8 +8,11 @@ export { analyzeInjections, injectConstructorDependencies, insertInjections, Inj
 export type { InjectionSite } from './injection/analyze.ts';
 export { embedInjections, embedPackageInjections } from './injection/embed.ts';
 export type { EmbedPackageOptions } from './injection/embed.ts';
-export { registerProviders } from './provider.ts';
-export type { ServiceProvider } from './provider.ts';
+export { Application, createApplication } from './application.ts';
+export type { ApplicationOptions } from './application.ts';
+export { defineModule } from './module.ts';
+export type { ModuleDefinition } from './module.ts';
+export type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 export { generateManifest, loadDiscoveredPackages, manifestHash, writeManifest, DiscoveryError } from './discovery/discover.ts';
 export type { DiscoveredPackages, DiscoverOptions, DiscoverySummary, Manifest } from './discovery/discover.ts';
 export { runtimeConditions } from './discovery/resolve.ts';

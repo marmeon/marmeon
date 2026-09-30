@@ -8,7 +8,7 @@ import type {
   HttpContext,
   HttpMethod,
   Merge,
-  Middleware,
+  MiddlewareLike,
   Simplify,
 } from './types.ts';
 
@@ -67,7 +67,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * Appends middleware. It must accept the context built so far, and whatever it
    * passes to `next()` becomes available to everything registered after it.
    */
-  middleware<TAdds extends object>(middleware: Middleware<TState, TAdds>): Route<Merge<TState, TAdds>, TParams> {
+  middleware<TAdds extends object>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, TAdds>, TParams> {
     return this.#with({ middleware: [...this.#attributes.middleware, middleware] });
   }
 

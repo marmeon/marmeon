@@ -1,9 +1,10 @@
 import { UserRepository, type User } from '#modules/auth';
+import { Router } from '@bespokecore/router';
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
-import { container, router } from '../../bootstrap/app.ts';
+import { app as application } from '../../bootstrap/app.ts';
 
-const app = createHttpKernel(router, { container });
+const app = createHttpKernel(application);
 const as = (userId: string) => ({ headers: { 'x-user-id': userId, 'x-bespoke': 'true' } });
 
 describe('user-profile module', () => {
@@ -50,7 +51,7 @@ describe('user-profile module', () => {
   it('redirects /users/me to the current user', async () => {
     const response = await app.request('/users/me', as('2'));
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(router.url('user-profile.show', { id: 2 }));
+    expect(response.headers.get('location')).toBe(application.container.make(Router).url('user-profile.show', { id: 2 }));
   });
 
   it('returns 404 for unknown users', async () => {
@@ -67,9 +68,18 @@ describe('user-profile module', () => {
         return [grace];
       }
     }
-    const stubbed = createHttpKernel(router, { container: container.createScope().instance(UserRepository, new StubUserRepository()) });
+    const stubbed = createHttpKernel(application, {
+      container: application.container.createScope().instance(UserRepository, new StubUserRepository()),
+    });
 
     const page = (await (await stubbed.request('/users/1', as('1'))).json()) as { props: { profile: { name: string } } };
     expect(page.props.profile.name).toBe('Grace (stub)');
+  });
+
+  it('boots modules and discovered packages through their providers', () => {
+    expect(application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile']);
+    // The framework's own HTTP package registered itself like any installed package would.
+    expect(application.packages).toContain('@bespokecore/http');
+    expect(application.container.make(UserRepository)).toBe(application.container.make(UserRepository)); // singleton
   });
 });

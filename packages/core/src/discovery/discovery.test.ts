@@ -4,8 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Container } from '../container.ts';
-import { registerProviders } from '../provider.ts';
+import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
 import { generateManifest, loadDiscoveredPackages } from './discover.ts';
 import { resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
@@ -25,7 +24,12 @@ const PROD = runtimeConditions([], '');
  */
 function createFixtureApp(): string {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-discovery-')));
-  const store = (name: string) => join(root, 'store', name, 'node_modules', '@acme', name.replace('acme-', ''));
+  // @acme/source plays a workspace package: linked from outside node_modules, like pnpm
+  // does for workspace:* — the only place where Node strips types of a dependency.
+  const store = (name: string) =>
+    name === 'acme-source'
+      ? join(root, 'workspace', name)
+      : join(root, 'store', name, 'node_modules', '@acme', name.replace('acme-', ''));
   const link = (target: string, at: string) => {
     mkdirSync(dirname(at), { recursive: true });
     symlinkSync(target, at, 'dir');
@@ -73,7 +77,7 @@ describe('bespoke discover', () => {
     expect(result.retries).toBe(3); // optional parameter left to its default
     expect(result.fake).toBe('fake → bob@example.com at 09:00'); // subpath export
     expect(result.greeting).toBe('SMTP → Grace at noon'); // default export
-    expect(result.packages).toEqual(['@acme/clock', '@acme/mailer']); // dependencies first
+    expect(result.packages).toEqual(['@acme/clock', '@acme/mailer', '@acme/source']); // dependencies first
   });
 
   it('explains value objects instead of failing discovery', () => {
@@ -91,9 +95,16 @@ describe('bespoke discover', () => {
     expect(run().regenerated).toBe(true);
   });
 
-  it('leaves packages that resolve to TypeScript sources to the load hook', () => {
-    expect(generateManifest({ root: app, conditions: DEV }).summary.packages).not.toContain('@acme/source');
-    expect(generateManifest({ root: app, conditions: PROD }).summary.packages).toContain('@acme/source');
+  it('records only the providers of packages that resolve to TypeScript sources', () => {
+    const dev = generateManifest({ root: app, conditions: DEV }).manifest;
+    const prod = generateManifest({ root: app, conditions: PROD }).manifest;
+    const sourceModules = (manifest: typeof dev) => manifest.modules.filter((url) => url.includes('acme-source'));
+
+    // In development the load hook injects TypeScript sources; the provider still registers,
+    // from the very URL the runtime resolves to.
+    expect(sourceModules(dev)).toEqual([expect.stringMatching(/\/src\/index\.ts$/)]);
+    expect(sourceModules(prod)).toEqual([expect.stringMatching(/\/dist\/index\.js$/)]);
+    expect(dev.providers.map(([, name]) => name)).toContain('SourceServiceProvider');
   });
 
   it('records absolute module URLs and resolved dependencies in the manifest', () => {
@@ -106,13 +117,12 @@ describe('bespoke discover', () => {
       'acme-clock/node_modules/@acme/clock/dist/index.js#Clock',
       'acme-mailer/node_modules/@acme/mailer/dist/index.js#Formatter',
     ]);
-    expect(summary).toMatchObject({ injectable: 3, unresolvable: 1, providers: 2 });
+    expect(summary).toMatchObject({ injectable: 3, unresolvable: 1, providers: 3 });
   });
 
   it('works in-process too, e.g. inside Vitest', async () => {
-    const discovered = await loadDiscoveredPackages({ root: app, conditions: DEV, force: true });
-    const container = new Container();
-    registerProviders(container, discovered.providers);
+    await loadDiscoveredPackages({ root: app, conditions: DEV, force: true });
+    const { container } = await createApplication({ root: app });
 
     const mailer = (await import(pathToFileURL(join(app, 'node_modules/@acme/mailer/dist/index.js')).href)) as {
       Mailer: Key<{ send(to: string): string }>;

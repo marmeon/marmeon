@@ -18,6 +18,20 @@
     "build": "tsc -b"
   },
   "dependencies": {
+    "@bespokecore/core": "workspace:*",
     "@bespokecore/router": "workspace:*"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "bespoke": {
+    "providers": [
+      "HttpServiceProvider"
+    ]
   }
 }

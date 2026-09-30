@@ -1,5 +1,6 @@
-import { Container } from '@bespokecore/core';
-import { defineRoutes, Router } from '@bespokecore/router';
+import { createApplication, defineModule, type Container } from '@bespokecore/core';
+import { HttpServiceProvider } from '@bespokecore/http';
+import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -20,9 +21,19 @@ class ShowRequestIdController {
   }
 }
 
-describe('createHttpKernel — container', () => {
-  const router = new Router().load(defineRoutes((Route) => Route.get('/id', ShowRequestIdController)));
-  const app = createHttpKernel(router, { container: new Container().scoped(RequestId) });
+describe('createHttpKernel — container', async () => {
+  class RequestScopeProvider {
+    register(container: Container) {
+      container.scoped(RequestId);
+    }
+  }
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    providers: [HttpServiceProvider, RequestScopeProvider],
+    modules: [defineModule({ name: 'ids', routes: defineRoutes((Route) => Route.get('/id', ShowRequestIdController)) })],
+  });
+  const app = createHttpKernel(application);
 
   it('resolves controllers from a fresh scope per request', async () => {
     type Ids = { first: number; second: number };

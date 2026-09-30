@@ -1,7 +1,7 @@
 import { runPipeline } from './middleware.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
-import type { AnyAction, ControllerClass, HttpContext, Invokable } from './types.ts';
+import type { AnyAction, ClassResolver, ControllerClass, HttpContext } from './types.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -23,8 +23,8 @@ export function defineRoutes(register: (Route: Route) => void): RouteDefinitions
 }
 
 export interface RouterOptions {
-  /** Hook for a DI container. Defaults to `new Controller()`. */
-  resolveController?: ControllerResolver;
+  /** Default class resolution when `dispatch` gets none. Defaults to `new Class()`. */
+  resolve?: ClassResolver;
 }
 
 export interface DispatchInput {
@@ -34,12 +34,10 @@ export interface DispatchInput {
 
 export type ResponseFactory = (result: unknown, ctx: HttpContext) => Response | Promise<Response>;
 
-export type ControllerResolver = (controller: ControllerClass) => Invokable<HttpContext>;
-
 export interface DispatchOptions {
   toResponse?: ResponseFactory;
-  /** Per-request controller resolution, e.g. from a request-scoped container. */
-  resolveController?: ControllerResolver;
+  /** Builds controller and middleware classes for this request, e.g. from a request-scoped container. */
+  resolve?: ClassResolver;
 }
 
 /** Laravel's `Router::toResponse` in miniature: strings become HTML, everything else JSON. */
@@ -54,10 +52,10 @@ export const defaultToResponse: ResponseFactory = (result) => {
 
 export class Router {
   readonly #routes: RouteDefinition[] = [];
-  readonly #resolveController: ControllerResolver;
+  readonly #resolve: ClassResolver;
 
   constructor(options: RouterOptions = {}) {
-    this.#resolveController = options.resolveController ?? ((Controller) => new Controller());
+    this.#resolve = options.resolve ?? ((Class) => new Class());
   }
 
   get routes(): readonly RouteDefinition[] {
@@ -95,13 +93,18 @@ export class Router {
   dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
     const ctx: HttpContext = { request: input.request, params: input.params, route };
     const toResponse = options.toResponse ?? defaultToResponse;
-    const resolveController = options.resolveController ?? this.#resolveController;
+    const resolve = options.resolve ?? this.#resolve;
 
-    return runPipeline(ctx, route.middleware, async (finalCtx) => {
-      const { action } = route;
-      const result = await (isControllerClass(action) ? resolveController(action).handle(finalCtx) : action(finalCtx));
-      return toResponse(result, finalCtx);
-    });
+    return runPipeline(
+      ctx,
+      route.middleware,
+      async (finalCtx) => {
+        const { action } = route;
+        const result = await (isControllerClass(action) ? resolve(action).handle(finalCtx) : action(finalCtx));
+        return toResponse(result, finalCtx);
+      },
+      resolve,
+    );
   }
 }
 

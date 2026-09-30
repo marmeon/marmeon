@@ -1,4 +1,4 @@
-import type { AnyMiddleware, EmptyObject, Middleware } from './types.ts';
+import type { AnyMiddleware, ClassResolver, EmptyObject, Middleware, MiddlewareClass, MiddlewareHandler } from './types.ts';
 
 /**
  * Declares a middleware. Type parameters are ordered by how often you need them:
@@ -31,6 +31,7 @@ export function runPipeline<TCtx extends object>(
   ctx: TCtx,
   middleware: readonly AnyMiddleware[],
   destination: (ctx: TCtx) => Promise<Response>,
+  resolve: ClassResolver = (Class) => new Class(),
 ): Promise<Response> {
   const dispatch = (index: number, current: TCtx): Promise<Response> => {
     const layer = middleware[index];
@@ -45,9 +46,17 @@ export function runPipeline<TCtx extends object>(
       return dispatch(index + 1, extension ? { ...current, ...extension } : current);
     };
 
-    // Wrapping in a promise turns synchronous throws into rejections.
-    return Promise.resolve().then(() => layer.handle(current, next));
+    // Wrapping in a promise turns synchronous throws into rejections (including from the constructor).
+    return Promise.resolve().then(() => {
+      const handler: MiddlewareHandler<any, any> = isMiddlewareClass(layer) ? resolve(layer) : layer;
+      return handler.handle(current, next);
+    });
   };
 
   return dispatch(0, ctx);
+}
+
+/** Classes carry `handle` on their prototype; `defineMiddleware` objects carry it themselves. */
+export function isMiddlewareClass(layer: AnyMiddleware): layer is MiddlewareClass {
+  return typeof layer === 'function';
 }

@@ -1,11 +1,15 @@
 // The fixture app: discovers installed packages, registers their providers, resolves.
-import { Container, loadDiscoveredPackages, registerProviders } from '@bespokecore/core';
+import { createApplication, loadDiscoveredPackages } from '@bespokecore/core';
 import { Greeting, Mailer, Money } from '@acme/mailer';
 import { FakeMailer } from '@acme/mailer/testing';
 
+// Called separately only to report `regenerated`; createApplication() would discover on its own.
 const discovered = await loadDiscoveredPackages({ root: import.meta.dirname });
-const container = new Container();
-registerProviders(container, discovered.providers);
+const { container } = await createApplication({
+  root: import.meta.dirname,
+  discover: false,
+  providers: discovered.providers as never,
+});
 
 const attempt = (fn: () => unknown) => {
   try {

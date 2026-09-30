@@ -89,10 +89,17 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
 
   for (const pkg of walkDependencies(root)) {
     const rootEntry = resolveExports(pkg, '.', conditions);
-    // Resolved to TypeScript sources (a workspace package in development):
-    // the load hook injects those, and importing them here would be a second copy.
-    if (rootEntry && /\.[cm]?tsx?$/.test(rootEntry)) continue;
     names.push(pkg.name);
+
+    // Resolved to TypeScript sources (a workspace package in development): the load
+    // hook derives the injection lists there, so only the providers are recorded. The
+    // module URL is the one the runtime resolves too, so nothing is loaded twice.
+    if (rootEntry && /\.[cm]?tsx?$/.test(rootEntry)) {
+      for (const provider of pkg.json.bespoke?.providers ?? []) {
+        providers.push([moduleIndex(pathToFileURL(rootEntry).href), provider]);
+      }
+      continue;
+    }
 
     const seen = new Set<string>();
     for (const subpath of exportedSubpaths(pkg)) {
