@@ -7,8 +7,10 @@ import type { Selectable } from 'kysely';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import {
+  belongsTo,
   Connections,
   Factories,
+  hasMany,
   Repository,
   type RepositoryClass,
   type RowOf,
@@ -186,4 +188,32 @@ it('types factories against the insert type of their table', () => void (async (
   factories.for(UserFactory).state('banned');
   // @ts-expect-error — (32) an override of the wrong type
   await factories.for(UserFactory).create({ balance: true });
+}));
+
+it('types relations: keys are columns, the selection is the type, module boundaries hold', () => void (async (db: import('kysely').Kysely<FixtureTables>) => {
+  const [user] = await db
+    .selectFrom('users')
+    .select((eb) => ['users.id', hasMany(eb, 'articles', 'user_id', 'users.id', (q) => q.select(['articles.title'])).as('articles')])
+    .execute();
+  expectTypeOf(user!.articles).toEqualTypeOf<{ title: string }[]>();
+  // @ts-expect-error — (33) only the selected columns exist on related rows
+  void user!.articles[0]!.id;
+
+  await db.selectFrom('users').select((eb) => [
+    // @ts-expect-error — (34) the foreign key must be a column of the related table
+    hasMany(eb, 'articles', 'author_id', 'users.id', (q) => q.select(['articles.title'])).as('a'),
+  ]);
+  await db.selectFrom('users').select((eb) => [
+    // @ts-expect-error — (35) the local key must be a column of the outer query
+    hasMany(eb, 'articles', 'user_id', 'users.uuid', (q) => q.select(['articles.title'])).as('a'),
+  ]);
+  await db.selectFrom('articles').select((eb) => [
+    // @ts-expect-error — (36) unknown related table
+    belongsTo(eb, 'authors', 'id', 'articles.user_id', (q) => q.select(['id'])).as('author'),
+  ]);
+  // (37) E20: user-profile cannot even load a relation to a table it cannot see
+  await profile.selectFrom('login_activity').select((eb) => [
+    // @ts-expect-error — audit_log belongs to another module and is not exposed
+    hasMany(eb, 'audit_log', 'id', 'login_activity.user_id', (q) => q.select(['audit_log.message'])).as('log'),
+  ]);
 }));

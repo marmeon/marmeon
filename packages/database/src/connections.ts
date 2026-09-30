@@ -6,6 +6,7 @@ import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from
 import { describeConnection, type ConnectionOptions } from './config.ts';
 import { DatabaseConnectionError, withBespokeDriver, type BespokeDriver } from './driver.ts';
 import { createPostgresDialect } from './postgres.ts';
+import { RelationsPlugin } from './relations.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
 /**
@@ -115,7 +116,9 @@ export class Connections {
     if (!instance) {
       const options = this.options(name);
       const { dialect, driver } = withBespokeDriver(this.#dialect(options), { name, target: describeConnection(options) });
-      instance = { db: new Kysely<any>({ dialect, log: (event) => this.#log(name, event) }), driver };
+      const relations = new RelationsPlugin(options.driver, () => db);
+      const db: Kysely<any> = new Kysely<any>({ dialect, plugins: [relations], log: (event) => this.#log(name, event) });
+      instance = { db, driver };
       this.#instances.set(name, instance);
     }
     return instance;

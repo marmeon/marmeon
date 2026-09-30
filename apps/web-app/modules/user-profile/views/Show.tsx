@@ -2,6 +2,8 @@ import type { PageProps } from '@bespokecore/http';
 import { Head, Link } from '@bespokecore/react';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
+const utc = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
+
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
@@ -24,7 +26,7 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
       <p>
-        <small>Last signed in: {lastLoginAt ? new Date(lastLoginAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'never'}</small>
+        <small>Last signed in: {lastLoginAt ? utc(lastLoginAt) : 'never'}</small>
       </p>
       {isOwnProfile && (
         <p>
@@ -40,7 +42,8 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
         <ul>
           {others.map((other) => (
             <li key={other.id}>
-              <Link href={`/users/${other.id}`}>{other.name}</Link>
+              <Link href={`/users/${other.id}`}>{other.name}</Link>{' '}
+              <small>{other.lastLoginAt ? `last seen ${utc(other.lastLoginAt)}` : 'never signed in'}</small>
             </li>
           ))}
           {!isOwnProfile && (

@@ -7,6 +7,7 @@ import application from '../../bootstrap/app.ts';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
+import { ProfileDirectory } from './ProfileDirectory.ts';
 
 let app: TestApp;
 let ada: User, alan: User, grace: User;
@@ -54,7 +55,7 @@ describe('user-profile module', () => {
   it('filters the other people by name from the query string', async () => {
     await as(ada)
       .get(`${profile(ada)}?q=  TUR `)
-      .assertPage<ShowUserProfileController>('user-profile/Show', { filter: 'TUR', others: [{ id: alan.id, name: 'Alan Turing' }] });
+      .assertPage<ShowUserProfileController>('user-profile/Show', { filter: 'TUR', others: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null }] });
     await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
       expect(props.others.map((other) => other.name)).toEqual(['Alan Turing', 'Grace Hopper']);
     });
@@ -135,7 +136,7 @@ describe('user-profile module', () => {
 
       lookups = 0;
       await counted.withSession({ user_id: user.id }).navigating().get(`/users/${user.id}`).assertOk();
-      expect(lookups).toBe(3); // Authenticate, the controller, and now the shared `auth` prop
+      expect(lookups).toBe(2); // Authenticate, and now the shared `auth` prop (the profile comes from the ProfileDirectory)
     });
   });
 
@@ -214,13 +215,30 @@ describe('user-profile module', () => {
       database: 'refresh', // the profile also reads login_activity
       override: (c) => c.singleton(UserRepository, (r) => new StubUserRepository(r.make(Connections))),
     });
-    await stubbed.withSession({ user_id: 7 }).navigating().get('/users/7').assertPage('user-profile/Show', { profile: { name: 'Grace (stub)' } });
+    // Authenticate asks the repository: the stub's user is signed in, although no row exists.
+    await stubbed.withSession({ user_id: 7 }).get('/users/me').assertRedirect('/users/7');
+    await stubbed.withSession({ user_id: 7 }).navigating().get('/login').assertPage('auth/Login', { auth: { user: { id: 7, name: 'Grace (stub)' } } });
   });
 
   it('boots modules and discovered packages through their providers', () => {
     expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile']);
     expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log', '@bespokecore/session']));
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
+  });
+
+  it('loads the people with their last sign-in in one query — eager, no N+1 (ProfileDirectory)', async () => {
+    await app.factory(UserFactory).count(5).create();
+    await app.post('/login', { form: { user_id: String(grace.id) } }).assertRedirect('/users/me');
+    const directory = app.make(ProfileDirectory);
+    await directory.people({ except: ada.id }); // the first relation query of a connection looks up its column types, once
+    const queries: string[] = [];
+    app.make(Connections).onQuery((query) => queries.push(query.sql));
+
+    const people = await directory.people({ except: ada.id });
+    expect(queries).toHaveLength(1); // 7 people, each with their last sign-in
+    expect(people).toHaveLength(7);
+    expect(people.find((person) => person.id === grace.id)?.activity).toEqual({ last_login_at: expect.stringMatching(/Z$/) });
+    expect(people.find((person) => person.id === alan.id)?.activity).toBeNull();
   });
 
   it('shows when a user last signed in — via the UserLoggedIn event from the auth module', async () => {

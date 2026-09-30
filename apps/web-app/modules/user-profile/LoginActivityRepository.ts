@@ -11,9 +11,4 @@ export class LoginActivityRepository extends Repository<'login_activity'> {
       .onConflict((conflict) => conflict.column('user_id').doUpdateSet({ last_login_at: at }))
       .execute();
   }
-
-  async lastLogin(userId: number): Promise<string | undefined> {
-    const row = await this.query().select('last_login_at').where('user_id', '=', userId).executeTakeFirst();
-    return row?.last_login_at;
-  }
 }

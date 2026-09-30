@@ -42,6 +42,7 @@ export { Migrator, MIGRATIONS_TABLE, OWNERS_TABLE } from './migrations/migrator.
 export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
+export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
 export type { KeyOf, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
 export { adaptNodeSqlite } from './sqlite.ts';
