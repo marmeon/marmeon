@@ -8,6 +8,20 @@ export type { PageProps, ViewProps, ViewResult } from './view.ts';
 // Types only — erased, so the browser bundle stays free of router code.
 export type { FormOf, ValidationErrors } from '@bespokecore/router';
 
+/**
+ * Props every page receives, next to its controller's own — the signed-in user,
+ * flash messages, validation errors. Declared by whoever shares them:
+ *
+ * ```ts
+ * declare module '@bespokecore/http/page' {
+ *   interface SharedProps { auth: { user: { id: string; name: string } | null } }
+ * }
+ * ```
+ *
+ * `PageProps<Controller>` includes them, and the server fills them in (`SharedData`).
+ */
+export interface SharedProps {}
+
 /** The wire format of a page — shared by the server and every UI adapter. */
 export interface PageObject {
   component: string;

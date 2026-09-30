@@ -5,6 +5,7 @@ import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 import { Session } from './session.ts';
+import { ShareErrorsFromSession } from './share-errors.ts';
 import { StartSession } from './start-session.ts';
 import { CookieSessionStore, FileSessionStore, MemorySessionStore, SessionStore } from './store.ts';
 
@@ -49,7 +50,8 @@ export class SessionServiceProvider implements ServiceProvider {
     app.container
       .make(Router)
       .middleware.append('web', StartSession, MiddlewarePriority.startSession)
-      .append('web', VerifyCsrfToken, MiddlewarePriority.verifyCsrfToken);
+      .append('web', VerifyCsrfToken, MiddlewarePriority.verifyCsrfToken)
+      .append('web', ShareErrorsFromSession, MiddlewarePriority.shareProps);
     app.container.make(CookieEncryption).except(XSRF_COOKIE); // the browser's JavaScript reads it
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
   }

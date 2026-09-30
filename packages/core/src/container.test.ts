@@ -158,9 +158,8 @@ describe('Container — errors', () => {
   });
 
   it('explains classes that have constructor parameters but no injection list', () => {
-    class Needy {
-      constructor(_clock: Clock) {}
-    }
+    // Created at runtime, so the injection transform never sees it (like code outside the loader's reach).
+    const Needy = new Function('return class Needy { constructor(clock) {} }')() as new (clock: Clock) => object;
     expect(() => new Container().make(Needy)).toThrow(ContainerError);
     expect(() => new Container().make(Needy)).toThrow(/\[Needy\] needs 1 constructor argument\(s\) but has no injection list/);
   });

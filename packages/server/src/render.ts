@@ -1,5 +1,5 @@
 import type { Container } from '@bespokecore/core';
-import { Flasher, isRedirectResult, isViewResult, PAGE_HEADER, type PageObject, type UrlGenerator } from '@bespokecore/http';
+import { Flasher, isRedirectResult, isViewResult, PAGE_HEADER, SharedData, type PageObject, type UrlGenerator } from '@bespokecore/http';
 import { defaultToResponse, type ResponseFactory } from '@bespokecore/router';
 import { FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
@@ -36,7 +36,9 @@ export function createResponseFactory(renderer: PageRenderer = shellRenderer, ur
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
 
     const url = new URL(ctx.request.url);
-    const page: PageObject = { component: result.component, props: result.props, url: url.pathname + url.search };
+    // Shared props first, so a controller's own prop of the same name wins.
+    const shared = scope?.has(SharedData) ? await scope.make(SharedData).resolve() : {};
+    const page: PageObject = { component: result.component, props: { ...shared, ...result.props }, url: url.pathname + url.search };
     const headers = { vary: PAGE_HEADER };
 
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {

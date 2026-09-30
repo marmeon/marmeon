@@ -42,6 +42,25 @@ describe('injectConstructorDependencies', () => {
     expect(output).toContain('export const Job = class { static inject = [Clock];');
   });
 
+  it('covers classes at any depth — factories, tests — resolving types against the module', () => {
+    const output = inject(
+      [
+        "import { RateLimiter } from './limiter.ts';",
+        'export function throttle(name: string) {',
+        '  return class { constructor(limiter: RateLimiter) {} };',
+        '}',
+        'describe("x", () => {',
+        '  class Local { constructor(limiter: RateLimiter) {} }',
+        '  class NeedsLocal { constructor(local: Local) {} }',
+        '});',
+      ].join('\n'),
+    );
+    expect(output).toContain('  return class { static inject = [RateLimiter]; constructor');
+    expect(output).toContain('  class Local { static inject = [RateLimiter]; constructor');
+    // A type declared inside the function is not visible to the module: a reason, not a silent gap.
+    expect(output).toMatch(/class NeedsLocal \{ static \[Symbol\.for\("bespokecore\.injection\.unresolvable"\)\] = ".*Local/);
+  });
+
   it('erases type arguments', () => {
     const output = inject("import { Repository } from './x.ts';\nclass A { constructor(r: Repository<User>) {} }");
     expect(output).toContain('static inject = [Repository];');

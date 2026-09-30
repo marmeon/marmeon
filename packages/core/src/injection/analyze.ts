@@ -3,14 +3,16 @@ import { parseSync } from 'oxc-parser';
 type Node = { type: string; start: number; end: number; [key: string]: any };
 
 interface SiteBase {
-  /** Class name, or `default` for an anonymous default export. */
+  /** Class name, `default` for an anonymous default export, or `anonymous class`. */
   readonly className: string;
+  /** Position among the module's classes (source order) — pairs TypeScript and compiled classes. */
+  readonly classIndex: number;
   /** Offset of the class body's `{` — insertions go right after it, on the same line. */
   readonly bodyStart: number;
 }
 
 /**
- * A top-level class with constructor parameters. Either its `static inject` list
+ * A class with constructor parameters. Either its `static inject` list
  * can be derived, or it cannot — then the reason is attached to the class, and the
  * container reports it if (and only if) someone tries to resolve that class.
  */
@@ -41,14 +43,16 @@ interface ModuleBindings {
 }
 
 /**
- * Finds the top-level classes of a TypeScript module that take constructor
- * parameters, and resolves every parameter type to a runtime expression.
+ * Finds the classes of a TypeScript module that take constructor parameters —
+ * at any depth, so a class declared in a function (a middleware factory, a
+ * test) is covered too — and resolves every parameter type to a runtime expression.
+ * Types resolve against the module's imports and declarations.
  *
  * Never throws for a class: most classes (value objects, the router's own) are
  * never built by the container, so a parameter like `amount: number` is only a
  * problem once someone asks the container for that class.
  *
- * - Covered: `class X`, `export class X`, `export default class`, `const X = class`.
+ * - Covered: `class X`, `export class X`, `export default class`, `const X = class`, `return class { … }`.
  * - A class declaring its own `static inject` is left alone (explicit override).
  * - Optional and defaulted parameters end the list, so their JavaScript defaults apply.
  */
@@ -61,7 +65,7 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
   const bindings = collectBindings(program.body);
   const sites: InjectionSite[] = [];
 
-  for (const { node, name } of topLevelClasses(program.body)) {
+  for (const { node, name, index } of classesOf(program)) {
     const members: Node[] = node.body.body;
     if (members.some((member) => member.static && member.key?.name === 'inject')) continue;
 
@@ -74,10 +78,10 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
     const context = { source, filename, className: name, bindings };
     try {
       const dependencies = params.map((param) => dependencyOf(param, context));
-      sites.push({ className: name, bodyStart: node.body.start, dependencies });
+      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies });
     } catch (error) {
       if (!(error instanceof InjectionError)) throw error;
-      sites.push({ className: name, bodyStart: node.body.start, unresolvable: error.message });
+      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, unresolvable: error.message });
     }
   }
 
@@ -109,24 +113,36 @@ export function injectConstructorDependencies(source: string, filename: string):
 
 // ---------------------------------------------------------------------------
 
-function* topLevelClasses(body: Node[]): Generator<{ node: Node; name: string }> {
-  for (const statement of body) {
-    const declaration =
-      statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
-        ? statement.declaration
-        : statement;
-    if (!declaration) continue;
-
-    if (declaration.type === 'ClassDeclaration' || declaration.type === 'ClassExpression') {
-      yield { node: declaration, name: declaration.id?.name ?? 'default' };
-    } else if (declaration.type === 'VariableDeclaration') {
-      for (const declarator of declaration.declarations) {
-        if (declarator.init?.type === 'ClassExpression' && declarator.id.type === 'Identifier') {
-          yield { node: declarator.init, name: declarator.id.name };
-        }
-      }
+/**
+ * Every class of a module in source order, with a name for messages. `declare`
+ * classes produce no JavaScript and are skipped, so the n-th class here is the
+ * n-th class of the compiled output too (`bespoke package:build` pairs them).
+ */
+export function classesOf(program: Node): { node: Node; name: string; index: number }[] {
+  const found: { node: Node; name: string }[] = [];
+  const visit = (node: unknown, parent: Node | undefined): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, parent);
+      return;
     }
-  }
+    if (typeof node !== 'object' || node === null || typeof (node as Node).type !== 'string') return;
+    const current = node as Node;
+    if ((current.type === 'ClassDeclaration' || current.type === 'ClassExpression') && !current.declare) {
+      found.push({ node: current, name: className(current, parent) });
+    }
+    for (const [key, value] of Object.entries(current)) {
+      if (key !== 'type' && typeof value === 'object') visit(value, current);
+    }
+  };
+  visit(program, undefined);
+  return found.sort((a, b) => a.node.start - b.node.start).map((entry, index) => ({ ...entry, index }));
+}
+
+function className(node: Node, parent: Node | undefined): string {
+  if (node.id?.name) return node.id.name;
+  if (parent?.type === 'VariableDeclarator' && parent.id?.type === 'Identifier') return parent.id.name;
+  if (parent?.type === 'ExportDefaultDeclaration') return 'default';
+  return 'anonymous class';
 }
 
 function collectBindings(body: Node[]): ModuleBindings {

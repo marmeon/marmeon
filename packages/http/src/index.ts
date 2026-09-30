@@ -4,7 +4,8 @@ export { ERRORS_KEY, Flasher, isRedirectResult, OLD_INPUT_KEY, RedirectResult } 
 export type { RedirectStatus, UrlGenerator } from './redirect.ts';
 export type { PageProps, ViewProps, ViewResult } from './view.ts';
 export { ERROR_PAGE, PAGE_HEADER, PAGE_SCRIPT_ID, isPageObject } from './page.ts';
-export type { ErrorPageProps, PageObject, SsrRender, SsrResult } from './page.ts';
+export type { ErrorPageProps, PageObject, SharedProps, SsrRender, SsrResult } from './page.ts';
+export { SharedData } from './shared-data.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
 export { defineMiddleware, defineRequest, defineRoutes, ValidationError } from '@bespokecore/router';

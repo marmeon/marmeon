@@ -1,3 +1,5 @@
+import type { SharedProps } from './page.ts';
+
 const VIEW_RESULT = Symbol.for('bespokecore.view-result');
 
 export type ViewProps = Record<string, unknown>;
@@ -18,6 +20,9 @@ export function isViewResult(value: unknown): value is ViewResult {
   return typeof value === 'object' && value !== null && VIEW_RESULT in value;
 }
 
+/** Flattens `A & B` into one object type — readable tooltips, exact type equality. */
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
 /** A controller class instance (`handle(ctx)`) or a route closure. */
 type PageAction = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
 
@@ -35,7 +40,12 @@ type ActionResult<TAction extends PageAction> = TAction extends { handle: (...ar
  * export default function Show({ profile }: PageProps<ShowUserProfileController>) {}
  * ```
  *
- * Non-view branches (redirects, JSON `Response`s) are filtered out.
+ * Non-view branches (redirects, JSON `Response`s) are filtered out. The props every
+ * page shares (`SharedProps`) are included; a controller's own prop of the same name wins.
  */
 export type PageProps<TAction extends PageAction> =
-  Awaited<ActionResult<TAction>> extends infer TResult ? (TResult extends ViewResult<infer TProps> ? TProps : never) : never;
+  Awaited<ActionResult<TAction>> extends infer TResult
+    ? TResult extends ViewResult<infer TProps>
+      ? Simplify<Omit<SharedProps, keyof TProps> & TProps>
+      : never
+    : never;

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseSync } from 'oxc-parser';
-import { analyzeInjections, InjectionError, insertInjections, UNRESOLVABLE, type InjectionSite } from './analyze.ts';
+import { analyzeInjections, classesOf, InjectionError, insertInjections, UNRESOLVABLE, type InjectionSite } from './analyze.ts';
 
 type Node = { type: string; start: number; [key: string]: any };
 
@@ -15,7 +15,8 @@ export function embedInjections(tsSource: string, tsFile: string, jsSource: stri
   if (sites.length === 0) return jsSource;
 
   const { program } = parseSync(jsFile, jsSource);
-  const jsClasses = new Map<string, Node>();
+  // Classes pair up by position: tsc keeps their order (target ESNext rewrites none of them).
+  const jsClasses = classesOf(program);
   const jsValues = new Set<string>();
   for (const statement of program.body as Node[]) {
     if (statement.type === 'ImportDeclaration') {
@@ -25,22 +26,19 @@ export function embedInjections(tsSource: string, tsFile: string, jsSource: stri
       statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
         ? statement.declaration
         : statement;
-    if (declaration?.type === 'ClassDeclaration' || declaration?.type === 'ClassExpression') {
-      jsClasses.set(declaration.id?.name ?? 'default', declaration);
-    }
     if (declaration?.type === 'ClassDeclaration' && declaration.id) jsValues.add(declaration.id.name);
     if (declaration?.type === 'VariableDeclaration') {
-      for (const declarator of declaration.declarations) {
-        jsValues.add(declarator.id.name);
-        if (declarator.init?.type === 'ClassExpression') jsClasses.set(declarator.id.name, declarator.init);
-      }
+      for (const declarator of declaration.declarations) jsValues.add(declarator.id.name);
     }
   }
 
   const jsSites: InjectionSite[] = [];
   for (const site of sites) {
-    const node = jsClasses.get(site.className);
-    if (!node) throw new InjectionError(`${jsFile}: compiled output has no class "${site.className}".`);
+    const js = jsClasses[site.classIndex];
+    if (!js || js.name !== site.className) {
+      throw new InjectionError(`${jsFile}: compiled output has no class "${site.className}" at position ${site.classIndex + 1}.`);
+    }
+    const { node } = js;
     // Idempotent: `tsc -b` skips up-to-date projects, so dist/ may already carry the field.
     if (alreadyEmbedded(node, jsSource)) continue;
     for (const dependency of 'dependencies' in site ? site.dependencies : []) {

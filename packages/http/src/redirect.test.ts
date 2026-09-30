@@ -86,7 +86,8 @@ class OnlyRedirectsController extends Controller {
 
 describe('types', () => {
   it('keeps page props free of redirect branches', () => {
-    expectTypeOf<PageProps<UpdateThingController>>().toEqualTypeOf<{ readonly saved: true }>();
+    // Only `saved` is checked: PageProps also carries the shared props, and test files augment those.
+    expectTypeOf<PageProps<UpdateThingController>['saved']>().toEqualTypeOf<true>();
     expectTypeOf<PageProps<OnlyRedirectsController>>().toBeNever();
   });
 

@@ -3,6 +3,7 @@ import { Encrypter } from '@bespokecore/encryption';
 import { GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@bespokecore/router';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
+import { SharedData } from './shared-data.ts';
 
 declare module '@bespokecore/core' {
   interface ModuleDefinition {
@@ -38,6 +39,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(Router);
     container.singleton(ExceptionHandler, DefaultExceptionHandler);
     container.singleton(CookieEncryption);
+    container.scoped(SharedData);
   }
 
   boot(app: Application): void {

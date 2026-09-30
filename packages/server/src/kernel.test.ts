@@ -1,6 +1,6 @@
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { abort, Controller, HttpServiceProvider, type HttpContext, type Next } from '@bespokecore/http';
+import { abort, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -298,5 +298,33 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
     await app.settle();
     expect(response.status).toBe(200);
     expect(logged).toContain('A terminate hook failed: Error: terminate broke');
+  });
+});
+
+describe('createHttpKernel — shared props', async () => {
+  class ShareTheme {
+    constructor(shared: SharedData) {
+      this.#shared = shared;
+    }
+    readonly #shared: SharedData;
+    handle(_ctx: HttpContext, next: Next<{}>) {
+      (this.#shared as unknown as { share(key: string, value: unknown): void }).share('theme', 'dark');
+      (this.#shared as unknown as { share(key: string, value: unknown): void }).share('title', 'shared');
+      return next();
+    }
+  }
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider],
+    middleware: { web: [ShareTheme] },
+    modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.get('/page', () => view('pages/Show', { title: 'own' }))) })],
+  });
+  const app = createHttpKernel(application, { debug: true });
+
+  it('merges shared props into every page — a prop of the controller wins', async () => {
+    const page = (await (await app.request('/page', { headers: { 'x-bespoke': 'true' } })).json()) as { props: unknown };
+    expect(page.props).toEqual({ theme: 'dark', title: 'own' });
   });
 });

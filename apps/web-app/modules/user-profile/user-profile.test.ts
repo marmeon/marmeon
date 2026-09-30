@@ -101,6 +101,34 @@ describe('user-profile module', () => {
     });
   });
 
+  describe('shared props', () => {
+    it('gives every page the signed-in user, flash messages and validation errors', async () => {
+      await as('2').get('/users/1').assertPage<ShowUserProfileController>('user-profile/Show', {
+        auth: { user: { id: '2', name: 'Alan Turing' } },
+        flash: { status: null },
+        errors: {},
+      });
+      await app.navigating().get('/login').assertPage('auth/Login', { auth: { user: null } });
+    });
+
+    it('evaluates lazy props only when a page renders — never for redirects or JSON', async () => {
+      let lookups = 0;
+      class CountingUsers extends UserRepository {
+        override find(id: string) {
+          lookups++;
+          return super.find(id);
+        }
+      }
+      const counted = await createTestApp(application, { override: (c) => c.instance(UserRepository, new CountingUsers()) });
+      await counted.withSession({ user_id: '1' }).get('/users/me').assertRedirect('/users/1');
+      expect(lookups).toBe(1); // Authenticate only — the shared `auth` prop was not evaluated
+
+      lookups = 0;
+      await counted.withSession({ user_id: '1' }).navigating().get('/users/1').assertOk();
+      expect(lookups).toBe(3); // Authenticate, the controller, and now the shared `auth` prop
+    });
+  });
+
   describe('the edit page', () => {
     it('shows your own profile for editing — and nobody else\'s', async () => {
       await as('1').get('/users/1/edit').assertOk().assertPage<EditUserProfileController>('user-profile/Edit', {
@@ -132,7 +160,7 @@ describe('user-profile module', () => {
         .withCookie('bespoke_session', response.cookie('bespoke_session')!)
         .navigating()
         .get('/users/1')
-        .assertPage<ShowUserProfileController>('user-profile/Show', { status: 'Profile saved.', profile: { bio: 'Math.' } });
+        .assertPage<ShowUserProfileController>('user-profile/Show', { flash: { status: 'Profile saved.' }, profile: { bio: 'Math.' } });
     });
   });
 

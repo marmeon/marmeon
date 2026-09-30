@@ -51,7 +51,7 @@ describe('auth module', () => {
       .withCookie('bespoke_session', response.cookie('bespoke_session')!)
       .navigating()
       .get('/login')
-      .assertPage<ShowLoginController>('auth/Login', { status: 'You have been signed out.' });
+      .assertPage<ShowLoginController>('auth/Login', { flash: { status: 'You have been signed out.' }, auth: { user: null } });
   });
 
   it('refuses a login without CSRF token (419) and accepts the one from the login page', async () => {

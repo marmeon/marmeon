@@ -1,4 +1,4 @@
-import { isPageObject, PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
+import { isPageObject, PAGE_HEADER, type PageObject, type SharedProps } from '@bespokecore/http/page';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PageComponent, ResolvePage } from './pages.ts';
 
@@ -36,9 +36,12 @@ function useRouterContext(): RouterValue {
   return value;
 }
 
-/** The current page object (component name, props, url). */
-export function usePage(): PageObject {
-  return useRouterContext().page;
+/**
+ * The current page object (component name, props, url). Its props include the
+ * shared ones — `usePage().props.auth` — typed through `interface SharedProps`.
+ */
+export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'> & { props: SharedProps & TProps } {
+  return useRouterContext().page as Omit<PageObject, 'props'> & { props: SharedProps & TProps };
 }
 
 /** Programmatic navigation: `const { visit } = useRouter(); visit('/users/2')`. */

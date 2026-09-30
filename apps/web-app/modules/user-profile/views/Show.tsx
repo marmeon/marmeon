@@ -5,18 +5,18 @@ import type { ShowUserProfileController } from '../controllers/ShowUserProfileCo
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, filter, others, status }: Props) {
+export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter, others, auth, flash }: Props) {
   return (
     <main>
       <header>
-        Signed in as {viewer.name}
+        Signed in as {auth.user?.name}
         {/* A visit with the CSRF token from the XSRF-TOKEN cookie — no hidden form field needed. */}
         <Link method="post" href="/logout" style={{ marginLeft: 8 }}>
           Sign out
         </Link>
       </header>
 
-      {status && <p role="status">{status}</p>}
+      {flash.status && <p role="status">{flash.status}</p>}
       <h1>{profile.name}</h1>
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}

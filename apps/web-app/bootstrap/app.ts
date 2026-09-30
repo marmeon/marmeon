@@ -4,6 +4,7 @@ import auth from '#modules/auth';
 import userProfile from '#modules/user-profile';
 import { AppConfig } from '../config/app.ts';
 import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
+import { ShareAppProps } from '../middleware/ShareAppProps.ts';
 
 /**
  * The composition root. It only describes the app: `bespoke` boots it, and tests
@@ -18,5 +19,6 @@ export default defineApplication({
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {
     global: [SecurityHeaders],
+    web: [ShareAppProps],
   },
 });

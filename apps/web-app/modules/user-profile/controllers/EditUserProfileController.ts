@@ -20,7 +20,6 @@ export class EditUserProfileController extends Controller {
       profile: { id: user.id, name: user.name, bio: user.bio },
       // A failed submit without JavaScript comes back here: refill the fields from old().
       old: this.#session.old() as { name?: string; bio?: string },
-      errors: this.#session.get('errors') ?? {},
     });
   }
 }
