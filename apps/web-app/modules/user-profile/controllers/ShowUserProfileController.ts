@@ -1,3 +1,4 @@
+import { paginationFrom } from '@bespokecore/database';
 import { Controller, type HttpContext } from '@bespokecore/http';
 import type { AuthState } from '#modules/auth';
 import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
@@ -14,7 +15,7 @@ export class ShowUserProfileController extends Controller {
   async handle(ctx: HttpContext<AuthState, { user: Profile }>) {
     const { user } = ctx.params;
     const filter = ctx.query.get('q')?.trim() ?? '';
-    const people = await this.#directory.people({ search: filter, except: user.id });
+    const people = await this.#directory.people({ search: filter, except: user.id, ...paginationFrom(ctx.query, { perPage: 5, maxPerPage: 50 }) });
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
@@ -24,7 +25,10 @@ export class ShowUserProfileController extends Controller {
       isOwnProfile,
       lastLoginAt: user.activity?.last_login_at ?? null,
       filter,
-      others: people.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null })),
+      others: {
+        data: people.data.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null })),
+        meta: people.meta,
+      },
       // The server's clock for "5 minutes ago": SSR and hydration compute the same text. A Date here,
       // a string in the view (PageProps are serialized).
       now: new Date(),

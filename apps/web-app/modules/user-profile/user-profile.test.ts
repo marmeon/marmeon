@@ -2,7 +2,7 @@ import { UserFactory, UserRepository, type User } from '#modules/auth';
 import { Connections } from '@bespokecore/database';
 import { useForm } from '@bespokecore/react';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
@@ -56,12 +56,26 @@ describe('user-profile module', () => {
   it('filters the other people by name from the query string', async () => {
     await as(ada)
       .get(`${profile(ada)}?q=  TUR `)
-      .assertPage<ShowUserProfileController>('user-profile/Show', { filter: 'TUR', others: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null }] });
+      .assertPage<ShowUserProfileController>('user-profile/Show', {
+        filter: 'TUR',
+        others: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null }], meta: { total: 1, lastPage: 1 } },
+      });
     await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.others.map((other) => other.name)).toEqual(['Alan Turing', 'Grace Hopper']);
+      expect(props.others.data.map((other) => other.name)).toEqual(['Alan Turing', 'Grace Hopper']);
     });
     // LIKE wildcards in the search are taken literally
-    await as(ada).get(`${profile(ada)}?q=%25`).assertPage<ShowUserProfileController>('user-profile/Show', { others: [] });
+    await as(ada).get(`${profile(ada)}?q=%25`).assertPage<ShowUserProfileController>('user-profile/Show', { others: { data: [] } });
+  });
+
+  it('pages through the people — five at a time, the filter kept, bad page numbers harmless', async () => {
+    await app.factory(UserFactory).count(11).create(); // "User 1" … "User 11", plus Alan and Grace
+    await as(ada).get(`${profile(ada)}?q=user&page=2`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.others.meta).toEqual({ page: 2, perPage: 5, total: 11, lastPage: 3, from: 6, to: 10 });
+      expect(props.others.data).toHaveLength(5);
+    });
+    await as(ada).get(`${profile(ada)}?page=-3&per_page=100000`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.others.meta).toMatchObject({ page: 1, perPage: 50, total: 13 });
+    });
   });
 
   it('serves a stateless API under /api — no session, no cookies', async () => {
@@ -227,7 +241,7 @@ describe('user-profile module', () => {
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });
 
-  it('loads the people with their last sign-in in one query — eager, no N+1 (ProfileDirectory)', async () => {
+  it('loads the people with their last sign-in eagerly — the queries do not grow with the people (no N+1)', async () => {
     await app.factory(UserFactory).count(5).create();
     await app.post('/login', { form: { user_id: String(grace.id) } }).assertRedirect('/users/me');
     const directory = app.make(ProfileDirectory);
@@ -235,11 +249,13 @@ describe('user-profile module', () => {
     const queries: string[] = [];
     app.make(Connections).onQuery((query) => queries.push(query.sql));
 
-    const people = await directory.people({ except: ada.id });
-    expect(queries).toHaveLength(1); // 7 people, each with their last sign-in
-    expect(people).toHaveLength(7);
-    expect(people.find((person) => person.id === grace.id)?.activity).toEqual({ last_login_at: expect.stringMatching(/Z$/) });
-    expect(people.find((person) => person.id === alan.id)?.activity).toBeNull();
+    const people = await directory.people({ except: ada.id, perPage: 50 });
+    // 7 people, each with their last sign-in: the page count, and ONE query for the rows and their relation.
+    expect(queries).toHaveLength(2);
+    expect(queries.filter((sql) => /login_activity/.test(sql))).toHaveLength(1);
+    expect(people.data).toHaveLength(7);
+    expect(people.data.find((person) => person.id === grace.id)?.activity).toEqual({ last_login_at: expect.stringMatching(/Z$/) });
+    expect(people.data.find((person) => person.id === alan.id)?.activity).toBeNull();
   });
 
   it('shows when a user last signed in — via the UserLoggedIn event from the auth module', async () => {
@@ -327,4 +343,10 @@ export function serializedProps(props: import('@bespokecore/http').PageProps<Sho
   // @ts-expect-error — not a Date any more once it crossed the wire
   props.now.getTime();
   return now;
+}
+
+// Never called: the database's page meta and the one browser code knows describe the same shape.
+export function pageMetaShapes(meta: import('@bespokecore/database').PageMeta): import('@bespokecore/http/page').PaginationMeta {
+  expectTypeOf<import('@bespokecore/database').PageMeta>().toEqualTypeOf<import('@bespokecore/http/page').PaginationMeta>();
+  return meta;
 }

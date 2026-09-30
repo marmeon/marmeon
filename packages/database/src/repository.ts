@@ -1,6 +1,7 @@
 import { HttpError, type RouteBinder, type RouteBindingContext } from '@bespokecore/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
+import { paginate, type Paginated } from './pagination.ts';
 import type { Tables } from './types.ts';
 
 /** `findOrFail` found nothing: answers 404 like Laravel's ModelNotFoundException — without telling the client what was looked up. */
@@ -132,6 +133,11 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   query(): SelectQueryBuilder<DB, T, {}> {
     const query = this.#untyped.selectFrom(this.#name) as unknown as SelectQueryBuilder<DB, T, {}>;
     return this.#statics().softDeletes ? (query.where('deleted_at' as never, 'is', null) as typeof query) : query;
+  }
+
+  /** One page of a query on this repository's connection: `this.paginate(this.query().selectAll().orderBy('id'), { page })`. */
+  paginate<TB extends keyof DB, O>(query: SelectQueryBuilder<DB, TB, O>, options: { page?: number; perPage?: number } = {}): Promise<Paginated<O>> {
+    return paginate(this.db, query, options);
   }
 
   /** Including soft-deleted rows. */

@@ -58,6 +58,19 @@ export function isPageObject(value: unknown): value is PageObject {
 /** The page every error renders. Apps override it with `modules/errors/views/Error.tsx`. */
 export const ERROR_PAGE = 'errors/Error';
 
+/**
+ * Where a paginated list stands — what `paginate()` in @bespokecore/database returns as `meta`, and what
+ * `<Pagination>` renders. (Declared here too, so browser code never imports the database package.)
+ */
+export interface PaginationMeta {
+  readonly page: number;
+  readonly perPage: number;
+  readonly total: number;
+  readonly lastPage: number;
+  readonly from: number | null;
+  readonly to: number | null;
+}
+
 export interface ErrorPageProps {
   status: number;
   title: string;

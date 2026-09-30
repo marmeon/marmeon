@@ -1,4 +1,4 @@
-import { Database, hasMany, hasOne, sql } from '@bespokecore/database';
+import { Database, hasMany, hasOne, paginate, sql } from '@bespokecore/database';
 import type { RouteBinder } from '@bespokecore/http';
 
 /**
@@ -35,8 +35,8 @@ export class ProfileDirectory implements RouteBinder<Profile> {
     return /^\d{1,15}$/.test(value) ? this.profile(Number(value)) : undefined;
   }
 
-  /** Everyone but `except`, by name — optionally only names containing `search` (LIKE wildcards taken literally). */
-  people({ search = '', except }: { search?: string; except: number }) {
+  /** One page of everyone but `except`, by name — optionally only names containing `search` (LIKE wildcards taken literally). */
+  people({ search = '', except, page = 1, perPage = 5 }: { search?: string; except: number; page?: number; perPage?: number }) {
     let query = this.#db
       .selectFrom('users')
       .select((eb) => [
@@ -50,7 +50,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
       const pattern = `%${search.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       query = query.where(sql<boolean>`lower(users.name) like ${pattern} escape '\\'`);
     }
-    return query.execute();
+    return paginate(this.#db, query, { page, perPage });
   }
 }
 

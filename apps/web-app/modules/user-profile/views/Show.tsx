@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm } from '@bespokecore/react';
+import { Head, Link, Pagination, useForm } from '@bespokecore/react';
 import type { AddProfileLinkController } from '../controllers/AddProfileLinkController.ts';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
@@ -73,7 +73,7 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
           <input type="search" name="q" defaultValue={filter} placeholder="Filter by name" aria-label="Filter by name" />
         </form>
         <ul>
-          {others.map((other) => (
+          {others.data.map((other) => (
             <li key={other.id}>
               <Link href={`/users/${other.id}`}>{other.name}</Link>{' '}
               <small>{other.lastLoginAt ? `last seen ${ago(other.lastLoginAt, now)}` : 'never signed in'}</small>
@@ -85,6 +85,7 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
             </li>
           )}
         </ul>
+        <Pagination meta={others.meta} />
       </nav>
     </main>
   );

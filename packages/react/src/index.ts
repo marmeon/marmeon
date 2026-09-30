@@ -11,3 +11,5 @@ export { resolveModulePages } from './pages.ts';
 export type { PageComponent, ResolvePage } from './pages.ts';
 export { Head } from './head.tsx';
 export type { HeadProps, TitleTemplate } from './head.tsx';
+export { Pagination, pagesAround } from './pagination.tsx';
+export type { PaginationProps } from './pagination.tsx';

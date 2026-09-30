@@ -43,6 +43,8 @@ export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn } from './schema/blueprint.ts';
 export { Schema } from './schema/schema.ts';
 export { belongsTo, hasMany, hasOne, RelationsPlugin } from './relations.ts';
+export { cursorPaginate, paginate, paginationFrom } from './pagination.ts';
+export type { CursorPaginated, PageMeta, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
 export type { KeyOf, RepositoryClass, RepositoryStatics, RowOf, TableOf } from './repository.ts';
 export { adaptNodeSqlite } from './sqlite.ts';

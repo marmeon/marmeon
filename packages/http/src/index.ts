@@ -5,7 +5,7 @@ export type { RedirectStatus, UrlGenerator } from './redirect.ts';
 export type { PageProps, Serialize, ViewProps, ViewResult } from './view.ts';
 export { ERROR_PAGE, LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, VERSION_HEADER, isPageObject } from './page.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
-export type { ErrorPageProps, PageObject, SharedProps, SsrRender, SsrResult } from './page.ts';
+export type { ErrorPageProps, PageObject, PaginationMeta, SharedProps, SsrRender, SsrResult } from './page.ts';
 export { SharedData } from './shared-data.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
