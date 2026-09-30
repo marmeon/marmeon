@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Link, useForm } from '@bespokecore/react';
+import { Head, Link, useForm } from '@bespokecore/react';
 import type { EditUserProfileController } from '../controllers/EditUserProfileController.ts';
 import type { UpdateUserProfileController } from '../controllers/UpdateUserProfileController.ts';
 
@@ -11,6 +11,7 @@ export default function Edit({ profile, old }: Props) {
 
   return (
     <main>
+      <Head title="Edit profile" />
       <h1>Edit profile</h1>
       <form
         noValidate

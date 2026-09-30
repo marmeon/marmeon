@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Link } from '@bespokecore/react';
+import { Head, Link } from '@bespokecore/react';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
@@ -8,6 +8,9 @@ type Props = PageProps<ShowUserProfileController>;
 export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter, others, auth, flash }: Props) {
   return (
     <main>
+      <Head title={profile.name}>
+        <meta name="description" content={profile.bio} />
+      </Head>
       <header>
         Signed in as {auth.user?.name}
         {/* A visit with the CSRF token from the XSRF-TOKEN cookie — no hidden form field needed. */}

@@ -27,7 +27,10 @@ export function renderDocument(template: string, page: PageObject, { html, head 
     throw new Error(`index.html is missing the ${HTML_OUTLET} outlet.`);
   }
 
-  return template
+  // A page title from <Head> replaces the template's default <title>.
+  const base = /<title[\s>]/.test(head) ? template.replace(/<title>[\s\S]*?<\/title>\s*/, '') : template;
+
+  return base
     .replace(HEAD_OUTLET, () => head)
     .replace(HTML_OUTLET, () => html)
     .replace('</body>', () => `${pageScript}\n</body>`);

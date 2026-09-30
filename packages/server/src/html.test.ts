@@ -26,3 +26,18 @@ describe('renderDocument', () => {
     expect(() => renderDocument('<html></html>', page, { html: '' })).toThrow(/app-html/);
   });
 });
+
+describe('renderDocument — head', () => {
+  const template = '<html><head><title>Default</title>\n<!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>';
+  const page = { component: 'x', props: {}, url: '/' };
+
+  it('replaces the default title when the page brings its own', () => {
+    const html = renderDocument(template, page, { html: '', head: '<title data-bespoke-head="ssr">Ada — Shop</title>' });
+    expect(html).toContain('<head><title data-bespoke-head="ssr">Ada — Shop</title></head>');
+    expect(html).not.toContain('Default');
+  });
+
+  it('keeps the default title otherwise', () => {
+    expect(renderDocument(template, page, { html: '', head: '<meta name="x" content="y"/>' })).toContain('<title>Default</title>');
+  });
+});

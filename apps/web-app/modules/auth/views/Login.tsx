@@ -1,4 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
+import { Head } from '@bespokecore/react';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 
 type Props = PageProps<ShowLoginController>;
@@ -6,6 +7,7 @@ type Props = PageProps<ShowLoginController>;
 export default function Login({ appName, users, csrfToken, flash, errors }: Props) {
   return (
     <main>
+      <Head title="Sign in" />
       <h1>Sign in to {appName}</h1>
       {flash.status && <p role="status">{flash.status}</p>}
       {errors.user_id && <p role="alert">{errors.user_id[0]}</p>}
