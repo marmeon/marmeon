@@ -66,6 +66,15 @@ describe('auth module', () => {
       .assertRedirect('/users/me');
   });
 
+  it('throttles the login: five attempts a minute per user and address, then 429 with Retry-After', async () => {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await app.post('/login', { form: { user_id: '99' } }).assertRedirect();
+    }
+    const blocked = await app.post('/login', { form: { user_id: '99' } }).assertStatus(429);
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
+    await app.post('/login', { form: { user_id: '1' } }).assertRedirect('/users/me'); // another user's budget
+  });
+
   it('ignores forged session cookies', async () => {
     await app.withUnencryptedCookie('bespoke_session', 'x'.repeat(40)).expectingJson().get('/users/me').assertUnauthorized();
   });

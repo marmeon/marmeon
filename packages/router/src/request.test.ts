@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HttpError } from './errors.ts';
-import { createRequestState, expectsJson, type Input } from './request.ts';
+import { clientIp, createRequestState, expectsJson, type Input } from './request.ts';
 
 const URL_BASE = 'http://app.test';
 
@@ -143,5 +143,20 @@ describe('ctx.query and ctx.expectsJson()', () => {
     expect(accept('text/html,application/xhtml+xml')).toBe(false);
     expect(accept('*/*')).toBe(false);
     expect(accept('*/*', { 'x-requested-with': 'XMLHttpRequest' })).toBe(true);
+  });
+});
+
+describe('clientIp', () => {
+  it('is the peer address unless the peer is a trusted proxy', () => {
+    expect(clientIp('203.0.113.9', '1.2.3.4', [])).toBe('203.0.113.9'); // forged header ignored
+    expect(clientIp('::ffff:10.0.0.1', null, [])).toBe('10.0.0.1');
+    expect(clientIp(undefined, '1.2.3.4', ['*'])).toBeUndefined();
+  });
+
+  it('behind trusted proxies: the right-most untrusted address — what the client wrote on the left does not count', () => {
+    expect(clientIp('10.0.0.1', '198.51.100.7', ['10.0.0.1'])).toBe('198.51.100.7');
+    expect(clientIp('10.0.0.1', '6.6.6.6, 198.51.100.7', ['10.0.0.1'])).toBe('198.51.100.7');
+    expect(clientIp('10.0.0.2', '198.51.100.7, 10.0.0.1', ['10.0.0.1', '10.0.0.2'])).toBe('198.51.100.7');
+    expect(clientIp('10.0.0.1', '198.51.100.7, 10.0.0.5', ['*'])).toBe('198.51.100.7');
   });
 });

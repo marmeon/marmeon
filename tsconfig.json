@@ -14,6 +14,9 @@
       "path": "packages/encryption"
     },
     {
+      "path": "packages/cache"
+    },
+    {
       "path": "packages/http"
     },
     {

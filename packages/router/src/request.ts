@@ -7,6 +7,8 @@ export type Input = Record<string, unknown>;
 export interface RequestStateOptions {
   /** Largest accepted body in bytes. Defaults to 8 MiB (PHP's `post_max_size`). */
   maxBodySize?: number;
+  /** The client's IP address, as the server determined it (see the kernel's trusted proxies). */
+  ip?: string | undefined;
 }
 
 /**
@@ -24,6 +26,8 @@ export interface RequestState {
    */
   input(): Promise<Input>;
   readonly cookies: CookieJar;
+  /** The client's IP address — behind trusted proxies taken from `X-Forwarded-For`. Undefined in tests. */
+  readonly ip: string | undefined;
   /** The client wants JSON back (an API call), not a page. */
   expectsJson(): boolean;
 }
@@ -33,7 +37,7 @@ export const DEFAULT_MAX_BODY_SIZE = 8 * 1024 * 1024;
 /** Bracket nesting deeper than this is rejected (a request is not a data structure attack surface). */
 const MAX_DEPTH = 20;
 
-export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE }: RequestStateOptions = {}): RequestState {
+export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE, ip }: RequestStateOptions = {}): RequestState {
   const query = new URL(request.url).searchParams;
   let input: Promise<Input> | undefined;
 
@@ -41,8 +45,27 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
     query,
     input: () => (input ??= parseInput(request, query, maxBodySize)),
     cookies: new CookieJar(request.headers.get('cookie')),
+    ip,
     expectsJson: () => expectsJson(request),
   };
+}
+
+/**
+ * The client's address behind proxies: the right-most `X-Forwarded-For` entry that
+ * is not a trusted proxy. Left entries are whatever the client claimed, so they
+ * count only once every hop to their right is trusted. `'*'` trusts every hop
+ * (a platform that always sits behind its own load balancer).
+ */
+export function clientIp(remote: string | undefined, forwardedFor: string | null, trusted: readonly string[]): string | undefined {
+  const normalize = (address: string) => address.trim().replace(/^::ffff:/, '');
+  if (remote === undefined) return undefined;
+  const isTrusted = (address: string) => trusted.includes('*') || trusted.includes(normalize(address));
+  if (!isTrusted(remote) || !forwardedFor) return normalize(remote);
+  const chain = forwardedFor.split(',').map(normalize).filter(Boolean);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (!isTrusted(chain[i]!) || i === 0) return chain[i];
+  }
+  return normalize(remote);
 }
 
 /** Laravel's `expectsJson()`: JSON is the first accepted type, or an XHR that accepts anything. */

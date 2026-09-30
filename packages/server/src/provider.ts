@@ -15,10 +15,26 @@ export const ServerConfig = defineConfig('server', {
       ),
       '8m',
     ),
+    /**
+     * Proxies (load balancers) whose `X-Forwarded-For` is believed, comma-separated IPs — or `*`
+     * when the app is only reachable through its own proxy. Without it, `ctx.ip` is the peer address.
+     */
+    TRUSTED_PROXIES: v.optional(
+      v.pipe(
+        v.string(),
+        v.transform((value) => value.split(',').map((proxy) => proxy.trim()).filter(Boolean)),
+      ),
+      '',
+    ),
     /** Overrides the asset version derived from the build — e.g. the git commit of the deployment. */
     ASSET_VERSION: v.optional(v.pipe(v.string(), v.nonEmpty())),
   }),
-  resolve: (env) => ({ port: env.PORT, maxBodySize: env.MAX_BODY_SIZE, assetVersion: env.ASSET_VERSION }),
+  resolve: (env) => ({
+    port: env.PORT,
+    maxBodySize: env.MAX_BODY_SIZE,
+    assetVersion: env.ASSET_VERSION,
+    trustedProxies: env.TRUSTED_PROXIES,
+  }),
 });
 export type ServerConfig = ConfigOf<typeof ServerConfig>;
 

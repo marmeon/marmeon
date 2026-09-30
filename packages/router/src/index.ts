@@ -9,7 +9,7 @@ export type * from './types.ts';
 export { abort, HttpError, statusText } from './errors.ts';
 export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
 export type { CookieCodec, CookieOptions } from './cookies.ts';
-export { createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
+export { clientIp, createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
 export { defineRequest, validateRequest, ValidationError } from './request-definition.ts';
 export type {

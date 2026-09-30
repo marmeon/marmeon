@@ -45,7 +45,7 @@ export function createResponseFactory(
     // Shared props first, so a controller's own prop of the same name wins.
     const shared = scope?.has(SharedData) ? await scope.make(SharedData).resolve() : {};
     const page: PageObject = { component: result.component, props: { ...shared, ...result.props }, url: url.pathname + url.search, version };
-    const headers = { vary: PAGE_HEADER };
+    const headers = { ...result.headers, vary: PAGE_HEADER };
 
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {
       return Response.json(page, { status: result.status, headers: { ...headers, [PAGE_HEADER]: 'true' } });

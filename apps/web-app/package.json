@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bespokecore/cache": "workspace:*",
     "@bespokecore/core": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/log": "workspace:*",

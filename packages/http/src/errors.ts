@@ -44,7 +44,7 @@ export class DefaultExceptionHandler implements ExceptionHandler {
 
     if (wantsPage(request)) {
       const props: ErrorPageProps = { status, title, message, exception };
-      return view(ERROR_PAGE, { ...props }, status);
+      return view(ERROR_PAGE, { ...props }, status, headers);
     }
     return Response.json(exception ? { message, exception } : { message }, { status, headers });
   }

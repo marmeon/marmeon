@@ -10,10 +10,17 @@ export interface ViewResult<TProps extends ViewProps = ViewProps> {
   readonly component: string;
   readonly props: TProps;
   readonly status: number;
+  /** Extra response headers, e.g. `Retry-After` on an error page. */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
-export function view<const TProps extends ViewProps>(component: string, props: TProps, status = 200): ViewResult<TProps> {
-  return { [VIEW_RESULT]: true, component, props, status };
+export function view<const TProps extends ViewProps>(
+  component: string,
+  props: TProps,
+  status = 200,
+  headers?: Readonly<Record<string, string>>,
+): ViewResult<TProps> {
+  return { [VIEW_RESULT]: true, component, props, status, ...(headers ? { headers } : {}) };
 }
 
 export function isViewResult(value: unknown): value is ViewResult {

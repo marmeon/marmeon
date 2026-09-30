@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, type Application, type Container } from '@bespokecore/core';
 import { AssetVersion, ExceptionHandler, HttpError } from '@bespokecore/http';
 import {
+  clientIp,
   CookieJar,
   createRequestState,
   Router,
@@ -68,6 +69,7 @@ export function createHttpKernel(
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
   container.instance(AssetVersion, { value: version });
+  const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   const toResponse = createResponseFactory(renderer, router, version);
   const app = new Hono();
 
@@ -106,9 +108,14 @@ export function createHttpKernel(
   const pending = new Set<Promise<void>>();
 
   /** Runs one request: a fresh container scope, the request state, terminate hooks after the response. */
-  const handle = async (request: Request, run: (scope: Container, state: RequestState, onTerminable: OnTerminable) => Promise<Response>) => {
+  const handle = async (
+    request: Request,
+    remote: string | undefined,
+    run: (scope: Container, state: RequestState, onTerminable: OnTerminable) => Promise<Response>,
+  ) => {
     const scope = container.createScope();
-    const state = createRequestState(request, { maxBodySize });
+    const ip = clientIp(remote, request.headers.get('x-forwarded-for'), trustedProxies);
+    const state = createRequestState(request, { maxBodySize, ip });
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
 
@@ -137,7 +144,7 @@ export function createHttpKernel(
 
   for (const route of router.routes) {
     app.on([...route.methods], route.path, (c) =>
-      handle(c.req.raw, (scope, state, onTerminable) =>
+      handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
         router.dispatch(
           route,
           { request: c.req.raw, params: c.req.param() },
@@ -155,7 +162,7 @@ export function createHttpKernel(
 
   // Unknown paths still pass the global middleware, then end in the exception handler's 404.
   app.notFound((c) =>
-    handle(c.req.raw, (scope, state, onTerminable) =>
+    handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
       router.dispatchNotFound(c.req.raw, {
         resolve: (Class) => scope.make(Class),
         state,
@@ -173,6 +180,11 @@ export function createHttpKernel(
   });
 }
 
+
+/** The peer address from @hono/node-server's bindings; undefined for in-process requests (tests). */
+function remoteAddress(env: unknown): string | undefined {
+  return (env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress;
+}
 
 export interface ServeOptions {
   app: Application;
