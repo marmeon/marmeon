@@ -3,8 +3,13 @@ import type { Generated, Kysely } from 'kysely';
 import * as v from 'valibot';
 import { expectTypeOf, it } from 'vitest';
 import type { ModuleDefinition } from '@bespokecore/core';
+import type { Selectable } from 'kysely';
+import type { FixtureTables } from './__fixtures__/tables.ts';
 import {
   Connections,
+  Repository,
+  type RepositoryClass,
+  type RowOf,
   Database,
   defineConnection,
   defineMigration,
@@ -136,4 +141,32 @@ it('enforces module boundaries (E20)', () => void (async () => {
   await profile.transaction().execute((trx) => trx.deleteFrom('users').execute());
   // @ts-expect-error — (23) the owner sees nothing of the other module that was not exposed
   await auth.selectFrom('login_activity').selectAll().execute();
+}));
+
+class Users extends Repository<'users', FixtureTables> {
+  static table = 'users' as const;
+}
+class Mislabeled extends Repository<'users', FixtureTables> {
+  static table = 'articles' as const;
+}
+
+it('types repositories by their table', () => void (async (users: Users) => {
+  expectTypeOf(users.findOrFail(1)).resolves.toEqualTypeOf<Selectable<FixtureTables['users']>>();
+  expectTypeOf<RowOf<Users>>().toEqualTypeOf<Selectable<FixtureTables['users']>>();
+  expectTypeOf(users.using).returns.toEqualTypeOf<Users>();
+  const ok: RepositoryClass<Users> = Users;
+  void ok;
+  await users.insert({ name: 'Ada', email: 'ada@example.com', created_at: new Date() });
+
+  // @ts-expect-error — (24) the id is a number
+  await users.find('1');
+  // @ts-expect-error — (25) a required column is missing
+  await users.insert({ name: 'Ada' });
+  // @ts-expect-error — (26) wrong type on update
+  await users.update(1, { is_admin: 'yes' });
+  // @ts-expect-error — (27) not a column of the row
+  void (await users.findOrFail(1)).password_hash;
+  // @ts-expect-error — (28) `static table` names another table than Repository<'users'>
+  const mislabeled: RepositoryClass<Mislabeled> = Mislabeled;
+  void mislabeled;
 }));

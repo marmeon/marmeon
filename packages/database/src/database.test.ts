@@ -153,6 +153,27 @@ describe('the SQLite adapter', () => {
   });
 });
 
+describe.runIf(drivers.includes('pgsql' as never))('a Postgres pool', () => {
+  it('survives an idle connection being terminated by the server — instead of crashing the process', async () => {
+    const { freshConnections } = await import('./__fixtures__/databases.ts');
+    const { connections, close } = await freshConnections('pgsql');
+    const warnings: string[] = [];
+    const logged = new Connections({
+      connections: { default: connections.options() },
+      root: '/',
+      logger: Object.assign(Object.create(silent), { child: () => ({ ...silent, warn: (message: string) => warnings.push(message) }) }),
+    });
+    const db = logged.get();
+    const { rows } = await sql<{ pid: number }>`select pg_backend_pid() as pid`.execute(db);
+    await sql`select pg_terminate_backend(${rows[0]!.pid})`.execute(connections.get()); // the admin kills the idle connection
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(warnings).toEqual(['An idle database connection failed; the pool replaces it']);
+    expect((await sql<{ one: number }>`select 1 as one`.execute(db)).rows).toEqual([{ one: 1 }]); // and it keeps working
+    await logged.destroy();
+    await close();
+  });
+});
+
 describe('connection errors', () => {
   it('name the connection and where it points — never the password', async () => {
     const connections = new Connections({

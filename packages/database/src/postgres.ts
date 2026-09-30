@@ -4,6 +4,11 @@ export interface PostgresOptions {
   url: string;
   /** Largest number of pooled connections (default 10). */
   poolMax?: number;
+  /**
+   * An idle pooled connection failed (the server restarted, an admin terminated it). Without a
+   * listener, pg emits an unhandled 'error' event — which ends the Node process.
+   */
+  onIdleError?: (error: Error) => void;
 }
 
 // Postgres type OIDs whose default parsing differs from what SQLite returns.
@@ -35,7 +40,10 @@ export function createPostgresDialect(options: PostgresOptions): PostgresDialect
           return pg.types.getTypeParser(oid, format);
         },
       };
-      return new pg.Pool({ connectionString: options.url, max: options.poolMax ?? 10, types, options: '-c TimeZone=UTC' });
+      const pool = new pg.Pool({ connectionString: options.url, max: options.poolMax ?? 10, types, options: '-c TimeZone=UTC' });
+      // The pool replaces a broken idle connection by itself; it only needs to be told not to crash.
+      pool.on('error', (error) => options.onIdleError?.(error));
+      return pool;
     },
   });
 }

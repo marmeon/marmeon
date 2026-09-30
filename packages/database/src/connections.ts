@@ -123,7 +123,11 @@ export class Connections {
 
   #dialect(options: ConnectionOptions): Dialect {
     if (options.driver === 'sqlite') return createSqliteDialect(this.#sqlitePath(options.database));
-    return createPostgresDialect({ url: options.url, poolMax: options.poolMax });
+    return createPostgresDialect({
+      url: options.url,
+      poolMax: options.poolMax,
+      onIdleError: (error) => this.#logger.warn('An idle database connection failed; the pool replaces it', { error: error.message }),
+    });
   }
 
   #sqlitePath(database: string): string {

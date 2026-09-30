@@ -140,6 +140,9 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
       kysely:
         specifier: ^0.29.6
         version: 0.29.6
