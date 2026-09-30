@@ -53,10 +53,21 @@ export class TestResponse {
 
   /** A cookie set by this response (`set-cookie`), or undefined. */
   cookie(name: string): string | undefined {
+    return this.#setCookie(name)?.value;
+  }
+
+  #setCookie(name: string): { value: string; attributes: Map<string, string> } | undefined {
     for (const header of this.headers.getSetCookie()) {
-      const [pair] = header.split(';');
+      const [pair, ...rest] = header.split(';');
       const index = pair!.indexOf('=');
-      if (pair!.slice(0, index).trim() === name) return decodeURIComponent(pair!.slice(index + 1));
+      if (pair!.slice(0, index).trim() !== name) continue;
+      const attributes = new Map(
+        rest.map((attribute) => {
+          const [key, ...value] = attribute.split('=');
+          return [key!.trim().toLowerCase(), value.join('=').trim()] as const;
+        }),
+      );
+      return { value: decodeURIComponent(pair!.slice(index + 1)), attributes };
     }
     return undefined;
   }
@@ -98,6 +109,30 @@ export class TestResponse {
     if (this.status < 300 || this.status > 399) this.#fail(`Expected a redirect, got ${this.status}`);
     const actual = this.headers.get('location');
     if (location !== undefined && actual !== location) this.#fail(`Expected a redirect to ${location}, got ${actual}`);
+    return this;
+  }
+
+  // --- Cookies ----------------------------------------------------------------
+
+  /** The response sets cookie `name` (and it is not an expiry), optionally with `value`. */
+  assertCookie(name: string, value?: string): this {
+    const cookie = this.#setCookie(name);
+    if (!cookie) this.#fail(`Expected cookie "${name}" to be set`);
+    if (isExpired(cookie.attributes)) this.#fail(`Expected cookie "${name}" to be set, but it is expired`);
+    if (value !== undefined && cookie.value !== value) this.#fail(`Expected cookie "${name}" = "${value}", got "${cookie.value}"`);
+    return this;
+  }
+
+  /** The response does not touch cookie `name` at all. */
+  assertCookieMissing(name: string): this {
+    if (this.#setCookie(name)) this.#fail(`Expected no cookie "${name}"`);
+    return this;
+  }
+
+  /** The response deletes cookie `name` (expires it in the browser). */
+  assertCookieExpired(name: string): this {
+    const cookie = this.#setCookie(name);
+    if (!cookie || !isExpired(cookie.attributes)) this.#fail(`Expected cookie "${name}" to be expired`);
     return this;
   }
 
@@ -162,6 +197,13 @@ export class TestResponse {
     const excerpt = this.body.length > 600 ? `${this.body.slice(0, 600)}…` : this.body;
     throw new AssertionError({ message: `${message}\n  ${this.#label} → ${this.status}\n  ${excerpt}` });
   }
+}
+
+function isExpired(attributes: ReadonlyMap<string, string>): boolean {
+  const maxAge = attributes.get('max-age');
+  if (maxAge !== undefined) return Number(maxAge) <= 0;
+  const expires = attributes.get('expires');
+  return expires !== undefined && Date.parse(expires) <= Date.now();
 }
 
 function safeParse(text: string | undefined): unknown {

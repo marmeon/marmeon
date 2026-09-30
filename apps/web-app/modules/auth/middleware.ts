@@ -23,20 +23,12 @@ export class Authenticate {
   }
 
   handle(ctx: HttpContext, next: Next<AuthState>) {
-    const user = this.#users.find(userIdFrom(ctx.request) ?? '');
+    const user = this.#users.find(ctx.request.headers.get('x-user-id') ?? ctx.cookies.get(SESSION_COOKIE) ?? '');
     if (user) return next({ user });
 
-    // Browsers are sent to the login page, API/JSON clients get a 401.
-    const wantsHtml = ctx.request.headers.get('accept')?.includes('text/html');
-    return wantsHtml
-      ? new Response(null, { status: 302, headers: { location: '/login' } })
-      : Response.json({ message: 'Unauthenticated.' }, { status: 401 });
+    // API/JSON clients get a 401, browsers are sent to the login page.
+    return ctx.expectsJson()
+      ? Response.json({ message: 'Unauthenticated.' }, { status: 401 })
+      : new Response(null, { status: 302, headers: { location: '/login' } });
   }
-}
-
-function userIdFrom(request: Request): string | undefined {
-  const header = request.headers.get('x-user-id');
-  if (header) return header;
-  const cookie = request.headers.get('cookie')?.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
-  return cookie?.[1];
 }

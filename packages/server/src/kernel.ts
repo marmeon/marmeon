@@ -5,7 +5,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, type Application, type Container } from '@bespokecore/core';
 import { ExceptionHandler, HttpError } from '@bespokecore/http';
-import { Router } from '@bespokecore/router';
+import { createRequestState, Router, withQueuedCookies } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, type PageRenderer } from './render.ts';
@@ -20,6 +20,8 @@ export interface KernelOptions {
   clientDir?: string;
   /** Show exception details on error pages and in JSON errors (development). */
   debug?: boolean;
+  /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `MAX_BODY_SIZE`), else 8 MiB. */
+  maxBodySize?: number;
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
@@ -35,11 +37,17 @@ const REQUEST_ID = /^[\w.:-]{1,128}$/;
  */
 export function createHttpKernel(
   application: Application,
-  { container = application.container, renderer, clientDir, debug = false }: KernelOptions = {},
+  {
+    container = application.container,
+    renderer,
+    clientDir,
+    debug = false,
+    maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
+  }: KernelOptions = {},
 ): Hono {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
-  const toResponse = createResponseFactory(renderer);
+  const toResponse = createResponseFactory(renderer, router);
   const app = new Hono();
 
   const renderError = async (error: unknown, request: Request): Promise<Response> => {
@@ -77,15 +85,19 @@ export function createHttpKernel(
   for (const route of router.routes) {
     app.on([...route.methods], route.path, async (c) => {
       const scope = container.createScope();
+      const state = createRequestState(c.req.raw, { maxBodySize });
+      let response: Response;
       try {
-        return await router.dispatch(
+        response = await router.dispatch(
           route,
           { request: c.req.raw, params: c.req.param() },
-          { toResponse, resolve: (Class) => scope.make(Class) },
+          { toResponse, resolve: (Class) => scope.make(Class), state },
         );
       } catch (error) {
-        return renderError(error, c.req.raw);
+        response = await renderError(error, c.req.raw);
       }
+      // Cookies queued during the request reach the client whatever the outcome (like Laravel).
+      return withQueuedCookies(response, state.cookies);
     });
   }
 

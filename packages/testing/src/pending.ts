@@ -67,6 +67,15 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertRedirect(...args: Parameters<Assertions['assertRedirect']>): this {
     return this.#queue((r) => r.assertRedirect(...args));
   }
+  assertCookie(...args: Parameters<Assertions['assertCookie']>): this {
+    return this.#queue((r) => r.assertCookie(...args));
+  }
+  assertCookieMissing(...args: Parameters<Assertions['assertCookieMissing']>): this {
+    return this.#queue((r) => r.assertCookieMissing(...args));
+  }
+  assertCookieExpired(...args: Parameters<Assertions['assertCookieExpired']>): this {
+    return this.#queue((r) => r.assertCookieExpired(...args));
+  }
   assertHeader(...args: Parameters<Assertions['assertHeader']>): this {
     return this.#queue((r) => r.assertHeader(...args));
   }

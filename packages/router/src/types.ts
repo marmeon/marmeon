@@ -1,3 +1,4 @@
+import type { RequestState } from './request.ts';
 import type { RouteDefinition } from './route-definition.ts';
 
 export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
@@ -36,7 +37,8 @@ export type ExtractParams<Path extends string> = Path extends `${string}:${infer
 // Context & middleware
 // ---------------------------------------------------------------------------
 
-export interface RequestContext<TParams extends object = EmptyObject> {
+/** What every handler and middleware gets: the raw request, its route and parameters, plus query, input and cookies. */
+export interface RequestContext<TParams extends object = EmptyObject> extends RequestState {
   readonly request: Request;
   readonly params: TParams;
   readonly route: RouteDefinition;

@@ -1,4 +1,4 @@
-import { isViewResult, PAGE_HEADER, type PageObject } from '@bespokecore/http';
+import { isRedirectResult, isViewResult, PAGE_HEADER, type PageObject, type UrlGenerator } from '@bespokecore/http';
 import { defaultToResponse, type ResponseFactory } from '@bespokecore/router';
 import { FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
@@ -14,10 +14,18 @@ export const shellRenderer: PageRenderer = {
 
 /**
  * Turns controller results into HTTP responses. Client-side navigations get the
- * page object as JSON, full page loads get a server-rendered document.
+ * page object as JSON, full page loads get a server-rendered document. Redirects
+ * resolve named routes through `urls` (the router).
  */
-export function createResponseFactory(renderer: PageRenderer = shellRenderer): ResponseFactory {
+export function createResponseFactory(renderer: PageRenderer = shellRenderer, urls?: UrlGenerator): ResponseFactory {
+  const noRouter: UrlGenerator = {
+    url: (name) => {
+      throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
+    },
+  };
+
   return async (result, ctx) => {
+    if (isRedirectResult(result)) return result.toResponse(ctx.request, urls ?? noRouter);
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
 
     const url = new URL(ctx.request.url);

@@ -15,14 +15,13 @@ export class LoginController extends Controller {
   }
 
   async handle(ctx: HttpContext) {
-    const form = await ctx.request.formData();
-    const user = this.#users.find(String(form.get('user_id') ?? ''));
-    if (!user) return this.redirect('/login', 303);
+    const { user_id } = await ctx.input();
+    const user = this.#users.find(String(user_id ?? ''));
+    if (!user) return this.back();
 
     await this.#events.dispatch(new UserLoggedIn(user));
 
-    const response = this.redirect('/users/me', 303);
-    response.headers.append('set-cookie', `${SESSION_COOKIE}=${user.id}; Path=/; HttpOnly; SameSite=Lax`);
-    return response;
+    ctx.cookies.set(SESSION_COOKIE, user.id);
+    return this.redirect().route('user-profile.me');
   }
 }

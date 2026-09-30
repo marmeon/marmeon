@@ -5,7 +5,7 @@ import type { ShowUserProfileController } from '../controllers/ShowUserProfileCo
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, others }: Props) {
+export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt, filter, others }: Props) {
   return (
     <main>
       <header>
@@ -25,6 +25,9 @@ export default function Show({ profile, email, isOwnProfile, viewer, lastLoginAt
 
       <nav>
         <h2>Other people</h2>
+        <form method="get">
+          <input type="search" name="q" defaultValue={filter} placeholder="Filter by name" aria-label="Filter by name" />
+        </form>
         <ul>
           {others.map((other) => (
             <li key={other.id}>

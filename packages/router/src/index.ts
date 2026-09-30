@@ -4,3 +4,8 @@ export { Router, defineRoutes, defaultToResponse, isControllerClass } from './ro
 export type { DispatchInput, DispatchOptions, ResponseFactory, RouteDefinitions, RouterOptions } from './router.ts';
 export { defineMiddleware, isMiddlewareClass, runPipeline } from './middleware.ts';
 export type * from './types.ts';
+export { abort, HttpError, statusText } from './errors.ts';
+export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
+export type { CookieOptions } from './cookies.ts';
+export { createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
+export type { Input, RequestState, RequestStateOptions } from './request.ts';

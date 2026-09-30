@@ -10,19 +10,20 @@ beforeEach(async () => {
 });
 
 describe('auth module', () => {
-  it('logs in via form post, sets the session cookie and redirects', async () => {
-    const response = await app.post('/login', { form: { user_id: '3' } }).assertRedirect('/users/me');
+  it('logs in via form post, sets the session cookie and redirects (303 after a POST)', async () => {
+    const response = await app.post('/login', { form: { user_id: '3' } }).assertStatus(303).assertRedirect('/users/me').assertCookie(SESSION_COOKIE, '3');
     await app.withCookie(SESSION_COOKIE, response.cookie(SESSION_COOKIE)!).get('/users/me').assertRedirect('/users/3');
   });
 
-  it('rejects unknown users', async () => {
-    const response = await app.post('/login', { form: { user_id: '99' } }).assertRedirect('/login');
-    if (response.cookie(SESSION_COOKIE) !== undefined) throw new Error('no session cookie expected');
+  it('sends unknown users back to the page they came from', async () => {
+    await app
+      .post('/login', { form: { user_id: '99' }, headers: { referer: 'http://localhost/login' } })
+      .assertRedirect('/login')
+      .assertCookieMissing(SESSION_COOKIE);
   });
 
-  it('clears the cookie on logout', async () => {
-    const response = await app.post('/logout').assertRedirect('/login');
-    if (response.cookie(SESSION_COOKIE) !== '') throw new Error('expected the session cookie to be cleared');
+  it('expires the cookie on logout', async () => {
+    await app.withCookie(SESSION_COOKIE, '1').post('/logout').assertRedirect('/login').assertCookieExpired(SESSION_COOKIE);
   });
 
   it('injects the validated app config (from .env.test under Vitest)', async () => {

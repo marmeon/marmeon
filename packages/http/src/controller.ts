@@ -1,10 +1,11 @@
+import { RedirectResult, type RedirectStatus } from './redirect.ts';
 import { view, type ViewProps, type ViewResult } from './view.ts';
 
 /**
  * Base class for invokable controllers (REPR): one class per endpoint.
  *
  * Subclasses implement `handle(ctx)`, which receives a typed `HttpContext` and
- * returns a `ViewResult` (a page), a `Response`, or plain data. `handle` is not
+ * returns a `ViewResult` (a page), a `RedirectResult`, a `Response`, or plain data. `handle` is not
  * declared here as abstract, so implementations need no `override` keyword; the
  * router enforces its presence when the route is registered.
  */
@@ -17,7 +18,13 @@ export abstract class Controller {
     return Response.json(data, { status });
   }
 
-  protected redirect(location: string, status: 301 | 302 | 303 | 307 | 308 = 302): Response {
-    return new Response(null, { status, headers: { location } });
+  /** `redirect('/login')`, or `redirect().route('user-profile.show', { id })` for a named route. */
+  protected redirect(url?: string, status?: RedirectStatus): RedirectResult {
+    return new RedirectResult(url, status);
+  }
+
+  /** Back to the previous page of this site (`Referer`), or to `fallback`. */
+  protected back(fallback?: string): RedirectResult {
+    return new RedirectResult().back(fallback);
   }
 }

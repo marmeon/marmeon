@@ -1,4 +1,5 @@
 import { runPipeline } from './middleware.ts';
+import { createRequestState, type RequestState } from './request.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { AnyAction, ClassResolver, ControllerClass, HttpContext } from './types.ts';
@@ -39,6 +40,11 @@ export interface DispatchOptions {
   toResponse?: ResponseFactory;
   /** Builds controller and middleware classes for this request, e.g. from a request-scoped container. */
   resolve?: ClassResolver;
+  /**
+   * Query, input and cookies of this request. The kernel creates it, so it can add
+   * queued cookies to any response — error pages included. Created here otherwise.
+   */
+  state?: RequestState;
 }
 
 /** Laravel's `Router::toResponse` in miniature: strings become HTML, everything else JSON. */
@@ -92,7 +98,8 @@ export class Router {
 
   /** Runs a matched route through its middleware pipeline and action. */
   dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
-    const ctx: HttpContext = { request: input.request, params: input.params, route };
+    const state = options.state ?? createRequestState(input.request);
+    const ctx: HttpContext = { ...state, request: input.request, params: input.params, route };
     const toResponse = options.toResponse ?? defaultToResponse;
     const resolve = options.resolve ?? this.#resolve;
 

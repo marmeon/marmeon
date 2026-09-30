@@ -42,6 +42,15 @@ describe('user-profile module', () => {
     await app.withHeaders({ 'x-user-id': '1' }).get('/users/1').assertOk().assertPage('user-profile/Show');
   });
 
+  it('filters the other people by name from the query string', async () => {
+    await as('1')
+      .get('/users/1?q=  TUR ')
+      .assertPage<ShowUserProfileController>('user-profile/Show', { filter: 'TUR', others: [{ id: '2', name: 'Alan Turing' }] });
+    await as('1').get('/users/1').assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.others.map((other) => other.id)).toEqual(['2', '3']);
+    });
+  });
+
   it('redirects /users/me to the current user', async () => {
     await as('2').get('/users/me').assertRedirect('/users/2');
   });

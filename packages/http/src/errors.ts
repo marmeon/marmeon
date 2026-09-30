@@ -1,37 +1,10 @@
 import { Logger, token } from '@bespokecore/core';
+import { HttpError, statusText } from '@bespokecore/router';
 import { ERROR_PAGE, PAGE_HEADER, type ErrorPageProps } from './page.ts';
 import { view } from './view.ts';
 
-const REASONS: Record<number, string> = {
-  400: 'Bad Request',
-  401: 'Unauthorized',
-  403: 'Forbidden',
-  404: 'Not Found',
-  405: 'Method Not Allowed',
-  419: 'Page Expired',
-  422: 'Unprocessable Content',
-  429: 'Too Many Requests',
-  500: 'Server Error',
-  503: 'Service Unavailable',
-};
-
-/** An error that maps to an HTTP status. Its message is meant for the client. */
-export class HttpError extends Error {
-  override name = 'HttpError';
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-
-  constructor(status: number, message = REASONS[status] ?? 'Error', headers: Record<string, string> = {}) {
-    super(message);
-    this.status = status;
-    this.headers = headers;
-  }
-}
-
-/** Laravel's `abort(404)`: stops handling and answers with that status — from controllers or middleware. */
-export function abort(status: number, message?: string, headers?: Record<string, string>): never {
-  throw new HttpError(status, message, headers);
-}
+// HttpError and abort() live in the router (the request parser throws them too); re-exported for apps.
+export { abort, HttpError } from '@bespokecore/router';
 
 /**
  * Decides what happens with errors — Laravel's exception handler. Bound as a
@@ -60,7 +33,7 @@ export class DefaultExceptionHandler implements ExceptionHandler {
 
   render(error: unknown, request: Request, { debug }: { debug: boolean }): unknown {
     const status = error instanceof HttpError ? error.status : 500;
-    const title = REASONS[status] ?? 'Error';
+    const title = statusText(status);
     const exposed = error instanceof HttpError || debug;
     const message = exposed ? asError(error).message : title;
     // A deliberate abort(4xx) is not a bug: no stack trace, not even in debug mode (like Laravel).

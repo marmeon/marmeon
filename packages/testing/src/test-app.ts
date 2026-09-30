@@ -19,10 +19,15 @@ export interface TestAppOptions {
   override?: (container: Container) => void;
 }
 
+type FormValue = string | readonly string[];
+type MultipartValue = string | Blob | readonly (string | Blob)[];
+
 export interface RequestOptions {
   headers?: Record<string, string>;
-  /** Sent as `application/x-www-form-urlencoded`, like an HTML form. */
-  form?: Record<string, string>;
+  /** Sent as `application/x-www-form-urlencoded`, like an HTML form. Arrays repeat the field. */
+  form?: Record<string, FormValue>;
+  /** Sent as `multipart/form-data` — for file uploads: `{ avatar: new File([...], 'a.png') }`. */
+  multipart?: Record<string, MultipartValue>;
   /** Sent as JSON. */
   json?: unknown;
 }
@@ -107,9 +112,18 @@ export class TestApp {
     return this.request('DELETE', path, options);
   }
 
-  request(method: string, path: string, { headers = {}, form, json }: RequestOptions = {}): PendingTestResponse {
+  request(method: string, path: string, { headers = {}, form, multipart, json }: RequestOptions = {}): PendingTestResponse {
     const init: RequestInit = { method, headers: { ...this.#headers, ...headers } };
-    if (form) init.body = new URLSearchParams(form);
+    if (form) {
+      const body = new URLSearchParams();
+      for (const [name, value] of Object.entries(form)) for (const item of [value].flat()) body.append(name, item);
+      init.body = body;
+    }
+    if (multipart) {
+      const body = new FormData();
+      for (const [name, value] of Object.entries(multipart)) for (const item of [value].flat()) body.append(name, item);
+      init.body = body;
+    }
     if (json !== undefined) {
       init.body = JSON.stringify(json);
       (init.headers as Record<string, string>)['content-type'] = 'application/json';

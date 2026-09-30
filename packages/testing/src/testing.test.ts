@@ -32,6 +32,17 @@ const definition: ApplicationOptions = {
       routes: defineRoutes((Route) => {
         Route.get('/greeting', ShowGreetingController);
         Route.post('/echo', async (ctx) => Response.json(await ctx.request.json(), { status: 201 }));
+        Route.post('/upload', async (ctx) => {
+          const { avatar, tags } = await ctx.input();
+          const file = avatar as File;
+          return { name: file.name, size: file.size, text: await file.text(), tags };
+        });
+        Route.post('/prefs', async (ctx) => {
+          const { theme } = await ctx.input();
+          if (theme) ctx.cookies.set('theme', String(theme));
+          else ctx.cookies.delete('theme');
+          return null;
+        });
       }),
     }),
   ],
@@ -59,6 +70,28 @@ describe('@bespokecore/testing', () => {
     const app = await createTestApp(definition);
     const response = await app.post('/echo', { json: { a: 1 } }).assertCreated().assertExactJson({ a: 1 });
     expect(response.json()).toEqual({ a: 1 });
+  });
+
+  it('sends multipart bodies with files and repeated fields', async () => {
+    const app = await createTestApp(definition);
+    await app
+      .post('/upload', { multipart: { avatar: new File(['hello'], 'ada.txt'), 'tags[]': ['a', 'b'] } })
+      .assertOk()
+      .assertExactJson({ name: 'ada.txt', size: 5, text: 'hello', tags: ['a', 'b'] });
+  });
+
+  it('asserts cookies that responses set, leave alone or expire', async () => {
+    const app = await createTestApp(definition);
+    await app.post('/prefs', { form: { theme: 'dark' } }).assertCookie('theme').assertCookie('theme', 'dark').assertCookieMissing('other');
+    await app.withCookie('theme', 'dark').post('/prefs').assertCookieExpired('theme');
+
+    expect(await failure(app.post('/prefs').assertCookie('theme'))).toContain('Expected cookie "theme" to be set, but it is expired');
+    expect(await failure(app.post('/prefs', { form: { theme: 'x' } }).assertCookie('theme', 'dark'))).toContain(
+      'Expected cookie "theme" = "dark", got "x"',
+    );
+    expect(await failure(app.post('/prefs', { form: { theme: 'x' } }).assertCookieExpired('theme'))).toContain(
+      'Expected cookie "theme" to be expired',
+    );
   });
 
   it('replaces services before boot', async () => {

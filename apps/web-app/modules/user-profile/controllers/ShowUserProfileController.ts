@@ -14,6 +14,7 @@ export class ShowUserProfileController extends Controller {
 
   handle(ctx: HttpContext<AuthState, { id: string }>) {
     const user = this.#users.find(ctx.params.id) ?? abort(404, 'User not found.');
+    const filter = ctx.query.get('q')?.trim() ?? '';
 
     return this.view('user-profile/Show', {
       profile: { id: user.id, name: user.name, bio: user.bio },
@@ -22,9 +23,10 @@ export class ShowUserProfileController extends Controller {
       isOwnProfile: ctx.user.id === user.id,
       viewer: { name: ctx.user.name },
       lastLoginAt: this.#activity.lastLogin(user.id)?.toISOString() ?? null,
+      filter,
       others: this.#users
         .all()
-        .filter((other) => other.id !== user.id)
+        .filter((other) => other.id !== user.id && other.name.toLowerCase().includes(filter.toLowerCase()))
         .map(({ id, name }) => ({ id, name })),
     });
   }

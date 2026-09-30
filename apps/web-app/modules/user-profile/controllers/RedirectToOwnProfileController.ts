@@ -3,6 +3,6 @@ import type { AuthState } from '#modules/auth';
 
 export class RedirectToOwnProfileController extends Controller {
   handle(ctx: HttpContext<AuthState>) {
-    return this.redirect(`/users/${ctx.user.id}`);
+    return this.redirect().route('user-profile.show', { id: ctx.user.id });
   }
 }

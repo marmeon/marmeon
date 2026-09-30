@@ -1,8 +1,9 @@
 import { createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { abort, HttpServiceProvider } from '@bespokecore/http';
+import { abort, Controller, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
+import { ServerConfig, ServerServiceProvider } from './provider.ts';
 
 let created = 0;
 class RequestId {
@@ -148,5 +149,61 @@ describe('createHttpKernel — errors & logging', async () => {
 
     expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(entries.at(-1)).toMatchObject({ level: 'info', message: 'GET /nope 404', context: { channel: 'http', requestId } });
+  });
+});
+
+describe('createHttpKernel — requests & responses', async () => {
+  class SaveDraftController extends Controller {
+    async handle(ctx: HttpContext) {
+      const { title } = await ctx.input();
+      ctx.cookies.set('draft', String(title));
+      if (title === 'boom') abort(422, 'Not like this.');
+      return this.redirect().route('drafts.show', { id: 7 });
+    }
+  }
+
+  const routes = defineRoutes((Route) => {
+    Route.get('/drafts/:id', (ctx) => ({ id: ctx.params.id })).name('drafts.show');
+    Route.post('/drafts', SaveDraftController);
+    Route.put('/drafts/:id', (ctx) => ctx.input());
+  });
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { MAX_BODY_SIZE: '1k' },
+    providers: [HttpServiceProvider, ServerServiceProvider],
+    modules: [defineModule({ name: 'drafts', routes })],
+  });
+  const app = createHttpKernel(application);
+  const form = (fields: Record<string, string>) => ({ method: 'POST', body: new URLSearchParams(fields) });
+
+  it('resolves named-route redirects through the router, with 303 after a POST', async () => {
+    const response = await app.request('/drafts', form({ title: 'Hello' }));
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/drafts/7');
+    expect(response.headers.getSetCookie()).toEqual(['draft=Hello; Path=/; HttpOnly; SameSite=Lax']);
+  });
+
+  it('adds queued cookies to error responses too', async () => {
+    const response = await app.request('/drafts', { ...form({ title: 'boom' }), headers: { accept: 'application/json' } });
+    expect(response.status).toBe(422);
+    expect(response.headers.getSetCookie()).toEqual(['draft=boom; Path=/; HttpOnly; SameSite=Lax']);
+  });
+
+  it('enforces the body limit from the server config (MAX_BODY_SIZE)', async () => {
+    expect(application.container.make(ServerConfig).maxBodySize).toBe(1024);
+    const response = await app.request('/drafts/1', {
+      method: 'PUT',
+      body: JSON.stringify({ text: 'x'.repeat(2000) }),
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ message: 'The request body exceeds 1024 bytes.' });
+  });
+
+  it('rejects an invalid MAX_BODY_SIZE at boot', async () => {
+    await expect(
+      createApplication({ root: import.meta.dirname, discover: false, env: { MAX_BODY_SIZE: 'lots' }, providers: [ServerServiceProvider] }),
+    ).rejects.toThrow('server: MAX_BODY_SIZE — Expected bytes or a size like 512k, 8m or 1g');
   });
 });
