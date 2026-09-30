@@ -65,6 +65,15 @@ describe('bespoke (in the web app)', () => {
     expect(bespoke(webApp, ['migrate:fresh'], { ...memory, NODE_ENV: 'production' }).stderr).toContain('Pass --force to drop every table.');
   });
 
+  it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {
+    const fresh = bespoke(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
+    expect(fresh.code).toBe(0);
+    expect(fresh.stdout).toMatch(/✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\n✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\n$/);
+    const unknown = bespoke(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toBe('✗ There is no seeder "Nope".\n');
+  });
+
   it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
     const { code, stdout } = bespoke(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
     expect(stdout).toContain('✓ bootstrap/database.d.ts matches the migrations.');

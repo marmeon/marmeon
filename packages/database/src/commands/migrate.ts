@@ -1,6 +1,8 @@
 import type { CommandInput } from '@bespokecore/cli';
 import { Migrator, type MigrationRun } from '../migrations/migrator.ts';
 import { TypeGenerator } from '../types-gen/generator.ts';
+import { Seeding } from '../seeders.ts';
+import { seed } from './db-seed.ts';
 import { writeTypes } from './db-types.ts';
 
 const force = { force: { type: 'boolean' } } as const;
@@ -93,16 +95,18 @@ export class MigrateResetCommand {
 
 export class MigrateFreshCommand {
   static command = 'migrate:fresh';
-  static description = 'Drop every table and run all migrations';
-  static usage = '[--force] [--no-types]';
-  static options = { ...force, 'no-types': { type: 'boolean' } } as const;
+  static description = 'Drop every table and run all migrations (--seed: then the seeders)';
+  static usage = '[--seed] [--force] [--no-types]';
+  static options = { ...force, 'no-types': { type: 'boolean' }, seed: { type: 'boolean' } } as const;
 
   readonly #migrator: Migrator;
   readonly #types: TypeGenerator;
+  readonly #seeding: Seeding;
 
-  constructor(migrator: Migrator, types: TypeGenerator) {
+  constructor(migrator: Migrator, types: TypeGenerator, seeding: Seeding) {
     this.#migrator = migrator;
     this.#types = types;
+    this.#seeding = seeding;
   }
 
   async handle(input: CommandInput): Promise<number> {
@@ -111,7 +115,7 @@ export class MigrateFreshCommand {
     input.output.info('Dropped all tables.');
     const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
     await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
-    return 0;
+    return input.options.seed === true ? seed(this.#seeding, input) : 0;
   }
 }
 

@@ -4,9 +4,11 @@ import * as v from 'valibot';
 import { expectTypeOf, it } from 'vitest';
 import type { ModuleDefinition } from '@bespokecore/core';
 import type { Selectable } from 'kysely';
+import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import {
   Connections,
+  Factories,
   Repository,
   type RepositoryClass,
   type RowOf,
@@ -169,4 +171,19 @@ it('types repositories by their table', () => void (async (users: Users) => {
   // @ts-expect-error — (28) `static table` names another table than Repository<'users'>
   const mislabeled: RepositoryClass<Mislabeled> = Mislabeled;
   void mislabeled;
+}));
+
+it('types factories against the insert type of their table', () => void (async (factories: Factories) => {
+  expectTypeOf(factories.for(UserFactory).create()).resolves.toEqualTypeOf<Selectable<FixtureTables['users']>>();
+  expectTypeOf(factories.for(UserFactory).count(3).create()).resolves.toEqualTypeOf<Selectable<FixtureTables['users']>[]>();
+  await factories.for(UserFactory).state('admin').create({ name: 'Ada' });
+
+  // @ts-expect-error — (29) a definition must fill every required column (email is missing)
+  define('users', ({ sequence }) => ({ name: `User ${sequence}` }));
+  // @ts-expect-error — (30) a column value of the wrong type
+  define('users', () => ({ name: 'Ada', email: 'a@x', is_admin: 'yes' }));
+  // @ts-expect-error — (31) a state the factory does not define
+  factories.for(UserFactory).state('banned');
+  // @ts-expect-error — (32) an override of the wrong type
+  await factories.for(UserFactory).create({ balance: true });
 }));

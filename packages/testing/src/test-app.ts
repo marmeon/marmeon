@@ -11,6 +11,7 @@ import { Encrypter } from '@bespokecore/encryption';
 import { CookieEncryption } from '@bespokecore/http';
 import { PAGE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
+import type { FactoryDefinition, PendingFactory } from '@bespokecore/database';
 import { PendingTestResponse } from './pending.ts';
 import { TestResponse } from './response.ts';
 
@@ -59,7 +60,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       options.override?.(container);
     },
   });
-  return new TestApp(application, createHttpKernel(application), { headers: {}, cookies: [], session: undefined });
+  const database = await importDatabase();
+  return new TestApp(application, createHttpKernel(application), { headers: {}, cookies: [], session: undefined }, database);
 }
 
 interface TestCookie {
@@ -81,6 +83,17 @@ export interface SessionAccess {
   readonly cookie: string;
   create(data: Readonly<Record<string, unknown>>): Promise<string>;
   read(id: string): Promise<Record<string, unknown> | undefined>;
+}
+
+type DatabaseModule = typeof import('@bespokecore/database');
+
+/** @bespokecore/database is an optional peer, like the session. */
+async function importDatabase(): Promise<DatabaseModule | undefined> {
+  try {
+    return await import('@bespokecore/database');
+  } catch {
+    return undefined;
+  }
 }
 
 /** @bespokecore/session is an optional peer: only apps that use it have it installed. */
@@ -141,9 +154,11 @@ export class TestApp {
   readonly #defaults: Defaults;
   readonly #crypto: CookieCrypto;
   readonly #session: Promise<SessionAccess | undefined>;
+  readonly #database: DatabaseModule | undefined;
 
-  constructor(application: Application, kernel: ReturnType<typeof createHttpKernel>, defaults: Defaults) {
+  constructor(application: Application, kernel: ReturnType<typeof createHttpKernel>, defaults: Defaults, database?: DatabaseModule) {
     this.application = application;
+    this.#database = database;
     this.#kernel = kernel;
     this.#defaults = defaults;
     this.#crypto = cookieCrypto(application.container);
@@ -165,6 +180,15 @@ export class TestApp {
 
   [Symbol.asyncDispose](): Promise<void> {
     return this.close();
+  }
+
+  /**
+   * Rows from a factory, in this app's database (Laravel's `User::factory()`):
+   * `await app.factory(UserFactory).count(3).create()`. Needs @bespokecore/database.
+   */
+  factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S> {
+    if (!this.#database) throw new Error('app.factory() needs @bespokecore/database installed and its provider registered.');
+    return this.application.container.make(this.#database.Factories).for(definition);
   }
 
   /** Resolves a service from the app, e.g. to inspect state after a request. */
@@ -197,7 +221,7 @@ export class TestApp {
   }
 
   #with(defaults: Partial<Defaults>): TestApp {
-    return new TestApp(this.application, this.#kernel, { ...this.#defaults, ...defaults });
+    return new TestApp(this.application, this.#kernel, { ...this.#defaults, ...defaults }, this.#database);
   }
 
   /** Requests as a client-side navigation: answered with the page object as JSON. */

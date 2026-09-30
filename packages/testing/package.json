@@ -41,14 +41,19 @@
     "@bespokecore/server": "workspace:*"
   },
   "peerDependencies": {
+    "@bespokecore/database": "workspace:*",
     "@bespokecore/session": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@bespokecore/session": {
       "optional": true
+    },
+    "@bespokecore/database": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@bespokecore/database": "workspace:*",
     "@bespokecore/session": "workspace:*"
   }
 }

@@ -23,6 +23,9 @@
     },
     {
       "path": "../session"
+    },
+    {
+      "path": "../database"
     }
   ]
 }
