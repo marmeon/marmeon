@@ -1,4 +1,4 @@
-import { defineMiddleware } from '@bespokecore/core';
+import { defineMiddleware } from '@bespokecore/http';
 import { findUser, type User } from './users.ts';
 
 /** Context that `authenticate` adds for everything downstream. */

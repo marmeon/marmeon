@@ -15,9 +15,15 @@ const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx
   ctx.user.isAdmin ? next() : new Response('Forbidden', { status: 403 }),
 );
 
-class TeamController {
-  show(ctx: HttpContext<{ user: User }, { team: string; id: string }>) {
+class ShowTeamMemberController {
+  handle(ctx: HttpContext<{ user: User }, { team: string; id: string }>) {
     return { team: ctx.params.team, member: ctx.params.id, viewer: ctx.user.id };
+  }
+}
+
+class PingController {
+  handle() {
+    return 'pong';
   }
 }
 
@@ -27,12 +33,13 @@ function request(userId?: string): Request {
 
 const routes = defineRoutes((Route) => {
   Route.get('/', () => 'home').name('home');
+  Route.get('/ping', PingController).name('ping');
 
   Route.prefix('/teams/:team')
     .middleware(authenticate)
     .name('teams.')
     .group((Route) => {
-      Route.get('/members/:id', [TeamController, 'show']).name('members.show');
+      Route.get('/members/:id', ShowTeamMemberController).name('members.show');
 
       Route.middleware(requireAdmin).group((Route) => {
         Route.delete('/', (ctx) => `deleted ${ctx.params.team} by ${ctx.user.id}`).name('destroy');
@@ -46,6 +53,7 @@ describe('Route registration', () => {
   it('applies group prefixes, name prefixes and middleware', () => {
     expect(router.routes.map((r) => [r.methods.join('|'), r.path, r.routeName, r.middleware.map((m) => m.name)])).toEqual([
       ['GET', '/', 'home', []],
+      ['GET', '/ping', 'ping', []],
       ['GET', '/teams/:team/members/:id', 'teams.members.show', ['auth']],
       ['DELETE', '/teams/:team', 'teams.destroy', ['auth', 'admin']],
     ]);
@@ -70,6 +78,11 @@ describe('Dispatching', () => {
     expect(await response.json()).toEqual({ team: 'core', member: '7', viewer: '42' });
   });
 
+  it('invokes controllers without parameters', async () => {
+    const response = await router.dispatch(route('ping'), { request: request(), params: {} });
+    expect(await response.text()).toBe('pong');
+  });
+
   it('lets middleware short-circuit the pipeline', async () => {
     const params = { team: 'core' };
     const destroy = route('teams.destroy');
@@ -92,7 +105,7 @@ describe('Dispatching', () => {
       request: request('1'),
       params: { team: 'a', id: 'b' },
     });
-    expect(resolved).toEqual(['TeamController']);
+    expect(resolved).toEqual(['ShowTeamMemberController']);
   });
 
   it('rejects when a middleware calls next() twice', async () => {
@@ -119,11 +132,20 @@ defineRoutes((Route) => {
   // @ts-expect-error — `user` is only available after `authenticate`.
   Route.get('/me', (ctx) => ctx.user);
 
-  // @ts-expect-error — TeamController#show needs `user` and `team`/`id` params.
-  Route.get('/members/:id', [TeamController, 'show']);
+  // @ts-expect-error — the controller needs `user` and the `team`/`id` params.
+  Route.get('/members/:id', ShowTeamMemberController);
 
-  // @ts-expect-error — typo in the controller method name.
-  Route.prefix('/t/:team').middleware(authenticate).get('/m/:id', [TeamController, 'shwo']);
+  // @ts-expect-error — `user` is there, but the route lacks the `team` param.
+  Route.middleware(authenticate).get('/members/:id', ShowTeamMemberController);
+
+  // Provides everything the controller needs:
+  Route.prefix('/t/:team').middleware(authenticate).get('/m/:id', ShowTeamMemberController);
+
+  class NotAController {
+    show() {}
+  }
+  // @ts-expect-error — no handle(): not an invokable controller.
+  Route.get('/nope', NotAController);
 
   Route.get('/posts/:slug/:page?', (ctx) => {
     const slug: string = ctx.params.slug;

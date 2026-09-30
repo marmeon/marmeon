@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import { join } from 'node:path';
-import type { SsrRender } from '@bespokecore/core';
+import type { SsrRender } from '@bespokecore/http';
 import type { ViteDevServer } from 'vite';
 import { renderDocument } from './html.ts';
 import type { PageRenderer } from './render.ts';

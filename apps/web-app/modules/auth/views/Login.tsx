@@ -1,7 +1,7 @@
-import type { PageProps } from '@bespokecore/core';
-import type { AuthController } from '../AuthController.ts';
+import type { PageProps } from '@bespokecore/http';
+import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 
-type Props = PageProps<AuthController['show']>;
+type Props = PageProps<ShowLoginController>;
 
 export default function Login({ users }: Props) {
   return (

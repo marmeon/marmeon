@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@bespokecore/http": "workspace:*",
     "@bespokecore/react": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "@bespokecore/server": "workspace:*",

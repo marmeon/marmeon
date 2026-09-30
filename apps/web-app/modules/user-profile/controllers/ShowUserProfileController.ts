@@ -1,12 +1,8 @@
-import { BaseController, type HttpContext } from '@bespokecore/core';
+import { Controller, type HttpContext } from '@bespokecore/http';
 import { allUsers, findUser, type AuthState } from '#modules/auth';
 
-export class UserProfileController extends BaseController {
-  me(ctx: HttpContext<AuthState>) {
-    return this.redirect(`/users/${ctx.user.id}`);
-  }
-
-  show(ctx: HttpContext<AuthState, { id: string }>) {
+export class ShowUserProfileController extends Controller {
+  handle(ctx: HttpContext<AuthState, { id: string }>) {
     const user = findUser(ctx.params.id);
     if (!user) return this.json({ message: 'User not found.' }, 404);
 

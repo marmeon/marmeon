@@ -1,9 +1,9 @@
-import type { PageProps } from '@bespokecore/core';
+import type { PageProps } from '@bespokecore/http';
 import { Link } from '@bespokecore/react';
-import type { UserProfileController } from '../UserProfileController.ts';
+import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
-type Props = PageProps<UserProfileController['show']>;
+type Props = PageProps<ShowUserProfileController>;
 
 export default function Show({ profile, email, isOwnProfile, viewer, others }: Props) {
   return (

@@ -23,9 +23,9 @@ importers:
 
   apps/web-app:
     dependencies:
-      '@bespokecore/core':
+      '@bespokecore/http':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/http
       '@bespokecore/react':
         specifier: workspace:*
         version: link:../../packages/react
@@ -55,7 +55,9 @@ importers:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)
 
-  packages/core:
+  packages/core: {}
+
+  packages/http:
     dependencies:
       '@bespokecore/router':
         specifier: workspace:*
@@ -63,9 +65,9 @@ importers:
 
   packages/react:
     dependencies:
-      '@bespokecore/core':
+      '@bespokecore/http':
         specifier: workspace:*
-        version: link:../core
+        version: link:../http
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -84,9 +86,9 @@ importers:
 
   packages/server:
     dependencies:
-      '@bespokecore/core':
+      '@bespokecore/http':
         specifier: workspace:*
-        version: link:../core
+        version: link:../http
       '@bespokecore/router':
         specifier: workspace:*
         version: link:../router

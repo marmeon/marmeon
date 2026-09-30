@@ -1,7 +1,7 @@
 import { runPipeline } from './middleware.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
-import type { AnyAction, ControllerClass, HttpContext } from './types.ts';
+import type { AnyAction, ControllerClass, HttpContext, Invokable } from './types.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -24,7 +24,7 @@ export function defineRoutes(register: (Route: Route) => void): RouteDefinitions
 
 export interface RouterOptions {
   /** Hook for a DI container. Defaults to `new Controller()`. */
-  resolveController?: (controller: ControllerClass) => unknown;
+  resolveController?: (controller: ControllerClass) => Invokable<HttpContext>;
 }
 
 export interface DispatchInput {
@@ -46,7 +46,7 @@ export const defaultToResponse: ResponseFactory = (result) => {
 
 export class Router {
   readonly #routes: RouteDefinition[] = [];
-  readonly #resolveController: (controller: ControllerClass) => unknown;
+  readonly #resolveController: (controller: ControllerClass) => Invokable<HttpContext>;
 
   constructor(options: RouterOptions = {}) {
     this.#resolveController = options.resolveController ?? ((Controller) => new Controller());
@@ -94,14 +94,15 @@ export class Router {
   }
 
   #invoke(action: AnyAction, ctx: HttpContext): unknown {
-    if (typeof action === 'function') return action(ctx);
-
-    const [Controller, method] = action;
-    const controller = this.#resolveController(Controller) as Record<string, unknown>;
-    const handler = controller[method];
-    if (typeof handler !== 'function') {
-      throw new TypeError(`Method [${Controller.name}::${method}] does not exist.`);
-    }
-    return handler.call(controller, ctx);
+    if (!isControllerClass(action)) return action(ctx);
+    return this.#resolveController(action).handle(ctx);
   }
+}
+
+/**
+ * Tells invokable controllers from closures at runtime: only a class has a
+ * prototype carrying `handle` (arrow functions have no prototype at all).
+ */
+export function isControllerClass(action: AnyAction): action is ControllerClass {
+  return typeof action.prototype?.handle === 'function';
 }

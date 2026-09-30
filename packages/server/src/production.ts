@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { SsrRender } from '@bespokecore/core';
+import type { SsrRender } from '@bespokecore/http';
 import { renderDocument } from './html.ts';
 import type { PageRenderer } from './render.ts';
 

@@ -69,31 +69,29 @@ export interface Middleware<TRequires extends object = EmptyObject, TAdds extend
 export type AnyMiddleware = Middleware<any, any>;
 
 // ---------------------------------------------------------------------------
-// Actions (closures & controller tuples)
+// Actions (closures & invokable controllers)
 // ---------------------------------------------------------------------------
 
 export type Handler<TCtx> = (ctx: TCtx) => unknown;
 
-export type ControllerClass<TController = unknown> = new (...args: any[]) => TController;
+/**
+ * What a controller instance must offer to serve a route with context `TCtx`.
+ *
+ * `handle` is declared as a property on purpose: even when a controller writes
+ * `handle(ctx)` as a method, TypeScript compares it against this *property*
+ * strictly (contravariantly), so a controller that needs more context than
+ * the route provides is a compile error.
+ */
+export interface Invokable<TCtx> {
+  readonly handle: (ctx: TCtx) => unknown;
+}
 
 /**
- * Method names of `C` that can be called with `TCtx`. The check runs on the
- * parameter type (not the method type) to avoid method-parameter bivariance.
+ * An invokable controller (REPR): one class per endpoint, one `handle(ctx)`.
+ * Constructor arguments are the container's concern.
  */
-export type ControllerMethod<C, TCtx> = {
-  [K in keyof C]-?: C[K] extends (...args: any[]) => unknown
-    ? Parameters<C[K]> extends []
-      ? K
-      : TCtx extends Parameters<C[K]>[0]
-        ? K
-        : never
-    : never;
-}[keyof C] &
-  string;
+export type ControllerClass<TCtx = any> = new (...args: any[]) => Invokable<TCtx>;
 
-/** Laravel-style `[UserController, 'show']`. */
-export type ControllerAction<C, TCtx> = readonly [ControllerClass<C>, ControllerMethod<C, TCtx>];
+export type Action<TCtx> = Handler<TCtx> | ControllerClass<TCtx>;
 
-export type Action<C, TCtx> = Handler<TCtx> | ControllerAction<C, TCtx>;
-
-export type AnyAction = Handler<any> | readonly [ControllerClass, string];
+export type AnyAction = Action<any>;

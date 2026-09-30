@@ -1,4 +1,4 @@
-import { PAGE_SCRIPT_ID, type PageObject, type SsrResult } from '@bespokecore/core';
+import { PAGE_SCRIPT_ID, type PageObject, type SsrResult } from '@bespokecore/http';
 
 /** Placeholders an app's `index.html` provides. */
 export const HEAD_OUTLET = '<!--app-head-->';

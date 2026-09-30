@@ -1,4 +1,4 @@
-import { isViewResult, PAGE_HEADER, type PageObject } from '@bespokecore/core';
+import { isViewResult, PAGE_HEADER, type PageObject } from '@bespokecore/http';
 import { defaultToResponse, type ResponseFactory } from '@bespokecore/router';
 import { FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 

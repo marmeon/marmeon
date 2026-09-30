@@ -1,9 +1,3 @@
-export { BaseController } from './base-controller.ts';
-export { view, isViewResult } from './view.ts';
-export type { PageProps, ViewProps, ViewResult } from './view.ts';
-export { PAGE_HEADER, PAGE_SCRIPT_ID, isPageObject } from './page.ts';
-export type { PageObject, SsrRender, SsrResult } from './page.ts';
-
-// Re-exported so application code has a single import for the common surface.
-export { defineMiddleware, defineRoutes } from '@bespokecore/router';
-export type { EmptyObject, HttpContext, Middleware } from '@bespokecore/router';
+// The application kernel: service container, providers, config and events
+// land here in Wave 1 (see the roadmap). HTTP concerns live in @bespokecore/http.
+export {};

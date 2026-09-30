@@ -1,4 +1,4 @@
-import type { SsrRender } from '@bespokecore/core';
+import type { SsrRender } from '@bespokecore/http';
 import { renderToString } from 'react-dom/server';
 import { BespokeApp } from './app.tsx';
 import type { ResolvePage } from './pages.ts';

@@ -16,8 +16,5 @@
   ],
   "scripts": {
     "build": "tsc -b"
-  },
-  "dependencies": {
-    "@bespokecore/router": "workspace:*"
   }
 }

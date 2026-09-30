@@ -1,13 +1,14 @@
-import { defineRoutes } from '@bespokecore/core';
+import { defineRoutes } from '@bespokecore/http';
 import { authenticate } from '#modules/auth';
-import { UserProfileController } from './UserProfileController.ts';
+import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
+import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 
 export default defineRoutes((Route) => {
   Route.prefix('/users')
     .middleware(authenticate)
     .name('user-profile.')
     .group((Route) => {
-      Route.get('/me', [UserProfileController, 'me']).name('me');
-      Route.get('/:id', [UserProfileController, 'show']).name('show');
+      Route.get('/me', RedirectToOwnProfileController).name('me');
+      Route.get('/:id', ShowUserProfileController).name('show');
     });
 });

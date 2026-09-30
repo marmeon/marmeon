@@ -18,7 +18,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@bespokecore/http": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "@hono/node-server": "^2.1.3",
     "hono": "^4.13.11",

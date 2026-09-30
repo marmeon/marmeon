@@ -1,10 +1,14 @@
 import { view, type ViewProps, type ViewResult } from './view.ts';
 
 /**
- * Base class for all controllers. Actions receive a typed `HttpContext` from the
- * router and return either a `ViewResult` (a page), a `Response`, or plain data.
+ * Base class for invokable controllers (REPR): one class per endpoint.
+ *
+ * Subclasses implement `handle(ctx)`, which receives a typed `HttpContext` and
+ * returns a `ViewResult` (a page), a `Response`, or plain data. `handle` is not
+ * declared here as abstract, so implementations need no `override` keyword; the
+ * router enforces its presence when the route is registered.
  */
-export abstract class BaseController {
+export abstract class Controller {
   protected view<const TProps extends ViewProps>(component: string, props: TProps, status = 200): ViewResult<TProps> {
     return view(component, props, status);
   }

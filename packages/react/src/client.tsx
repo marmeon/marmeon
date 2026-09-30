@@ -1,4 +1,4 @@
-import { isPageObject, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/core';
+import { isPageObject, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http';
 import { hydrateRoot } from 'react-dom/client';
 import { BespokeApp } from './app.tsx';
 import type { ResolvePage } from './pages.ts';

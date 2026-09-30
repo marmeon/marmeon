@@ -18,15 +18,24 @@ export function isViewResult(value: unknown): value is ViewResult {
   return typeof value === 'object' && value !== null && VIEW_RESULT in value;
 }
 
+/** A controller class instance (`handle(ctx)`) or a route closure. */
+type PageAction = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
+
+type ActionResult<TAction extends PageAction> = TAction extends { handle: (...args: never[]) => infer R }
+  ? R
+  : TAction extends (...args: never[]) => infer R
+    ? R
+    : never;
+
 /**
- * Infers a page's props from the controller method that renders it — the
- * controller is the single source of truth for the data contract.
+ * Infers a page's props from the controller that renders it — the controller
+ * is the single source of truth for the data contract.
  *
  * ```ts
- * export default function Show({ user }: PageProps<UserProfileController['show']>) {}
+ * export default function Show({ profile }: PageProps<ShowUserProfileController>) {}
  * ```
  *
  * Non-view branches (redirects, JSON `Response`s) are filtered out.
  */
-export type PageProps<TAction extends (...args: never[]) => unknown> =
-  Awaited<ReturnType<TAction>> extends infer TResult ? (TResult extends ViewResult<infer TProps> ? TProps : never) : never;
+export type PageProps<TAction extends PageAction> =
+  Awaited<ActionResult<TAction>> extends infer TResult ? (TResult extends ViewResult<infer TProps> ? TProps : never) : never;
