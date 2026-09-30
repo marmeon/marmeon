@@ -1,6 +1,6 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import { isPageObject, PAGE_SCRIPT_ID, type PageObject, type PageProps } from '@bespokecore/http/page';
-import type { CookieCrypto } from './test-app.ts';
+import type { CookieCrypto, SessionAccess } from './test-app.ts';
 
 /** Something `PageProps` can infer from: a controller class instance or a route closure. */
 export type PageSource = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
@@ -24,22 +24,39 @@ export class TestResponse {
   readonly #label: string;
   /** Cookie values as the app meant them — decrypted. */
   readonly #cookies: ReadonlyMap<string, string>;
+  /** The session as the request left it — undefined if the app has no session. */
+  readonly #session: Record<string, unknown> | undefined;
 
-  constructor(response: Response, body: string, label: string, cookies: ReadonlyMap<string, string> = new Map()) {
+  constructor(
+    response: Response,
+    body: string,
+    label: string,
+    cookies: ReadonlyMap<string, string> = new Map(),
+    session?: Record<string, unknown>,
+  ) {
     this.status = response.status;
     this.headers = response.headers;
     this.body = body;
     this.#label = label;
     this.#cookies = cookies;
+    this.#session = session;
   }
 
-  static async from(response: Response, label: string, crypto?: CookieCrypto): Promise<TestResponse> {
+  static async from(response: Response, label: string, crypto?: CookieCrypto, sessions?: SessionAccess): Promise<TestResponse> {
     const cookies = new Map<string, string>();
     for (const header of response.headers.getSetCookie()) {
       const { name, value } = splitSetCookie(header);
       cookies.set(name, crypto ? await crypto.decrypt(name, value) : value);
     }
-    return new TestResponse(response, await response.text(), label, cookies);
+    const id = sessions ? cookies.get(sessions.cookie) : undefined;
+    const session = id ? await sessions!.read(id) : undefined;
+    return new TestResponse(response, await response.text(), label, cookies, session);
+  }
+
+  /** The session data after the request (from the store, via the session cookie). */
+  session(): Record<string, unknown> {
+    if (!this.#session) this.#fail('Expected the response to carry a session (is StartSession on this route?)');
+    return this.#session;
   }
 
   // --- Accessors ----------------------------------------------------------------
@@ -134,6 +151,23 @@ export class TestResponse {
   assertCookieExpired(name: string): this {
     const cookie = this.#setCookie(name);
     if (!cookie || !isExpired(cookie.attributes)) this.#fail(`Expected cookie "${name}" to be expired`);
+    return this;
+  }
+
+  // --- Session ----------------------------------------------------------------
+
+  /** The session holds `key` after the request, optionally with `value` (compared deeply). */
+  assertSessionHas(key: string, value?: unknown): this {
+    const session = this.session();
+    if (session[key] === undefined) this.#fail(`Expected the session to have "${key}"`);
+    if (value !== undefined) {
+      this.#compare(() => deepStrictEqual(session[key], value), `Session value "${key}" differs`);
+    }
+    return this;
+  }
+
+  assertSessionMissing(key: string): this {
+    if (this.session()[key] !== undefined) this.#fail(`Expected the session not to have "${key}"`);
     return this;
   }
 

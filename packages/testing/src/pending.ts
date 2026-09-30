@@ -76,6 +76,12 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertCookieExpired(...args: Parameters<Assertions['assertCookieExpired']>): this {
     return this.#queue((r) => r.assertCookieExpired(...args));
   }
+  assertSessionHas(...args: Parameters<Assertions['assertSessionHas']>): this {
+    return this.#queue((r) => r.assertSessionHas(...args));
+  }
+  assertSessionMissing(...args: Parameters<Assertions['assertSessionMissing']>): this {
+    return this.#queue((r) => r.assertSessionMissing(...args));
+  }
   assertHeader(...args: Parameters<Assertions['assertHeader']>): this {
     return this.#queue((r) => r.assertHeader(...args));
   }

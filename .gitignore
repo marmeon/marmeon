@@ -6,3 +6,4 @@ dist/
 .bespoke/
 .env
 .env.local
+storage/

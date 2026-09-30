@@ -10,7 +10,7 @@ beforeEach(async () => {
 });
 
 /** Signed in as `id`, navigating client-side (answers with the page object). */
-const as = (id: string) => app.withHeaders({ 'x-user-id': id }).navigating();
+const as = (id: string) => app.withSession({ user_id: id }).navigating();
 
 describe('user-profile module', () => {
   it('returns 401 to non-browser clients without a session', async () => {
@@ -39,7 +39,7 @@ describe('user-profile module', () => {
   });
 
   it('carries the page object in full page loads too', async () => {
-    await app.withHeaders({ 'x-user-id': '1' }).get('/users/1').assertOk().assertPage('user-profile/Show');
+    await app.withSession({ user_id: '1' }).get('/users/1').assertOk().assertPage('user-profile/Show');
   });
 
   it('filters the other people by name from the query string', async () => {
@@ -57,7 +57,7 @@ describe('user-profile module', () => {
 
   it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
     await as('1').get('/users/99').assertNotFound().assertPage('errors/Error', { message: 'User not found.' });
-    await app.withHeaders({ 'x-user-id': '1' }).expectingJson().get('/users/99').assertNotFound().assertExactJson({
+    await app.withSession({ user_id: '1' }).expectingJson().get('/users/99').assertNotFound().assertExactJson({
       message: 'User not found.',
     });
   });
@@ -74,12 +74,12 @@ describe('user-profile module', () => {
     }
     const stubbed = await createTestApp(application, { override: (c) => c.instance(UserRepository, new StubUserRepository()) });
 
-    await stubbed.withHeaders({ 'x-user-id': '1' }).navigating().get('/users/1').assertPage('user-profile/Show', { profile: { name: 'Grace (stub)' } });
+    await stubbed.withSession({ user_id: '1' }).navigating().get('/users/1').assertPage('user-profile/Show', { profile: { name: 'Grace (stub)' } });
   });
 
   it('boots modules and discovered packages through their providers', () => {
     expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile']);
-    expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log']));
+    expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log', '@bespokecore/session']));
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });
 

@@ -39,5 +39,16 @@
     "@bespokecore/encryption": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/server": "workspace:*"
+  },
+  "peerDependencies": {
+    "@bespokecore/session": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@bespokecore/session": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@bespokecore/session": "workspace:*"
   }
 }

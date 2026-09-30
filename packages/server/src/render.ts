@@ -1,4 +1,5 @@
-import { isRedirectResult, isViewResult, PAGE_HEADER, type PageObject, type UrlGenerator } from '@bespokecore/http';
+import type { Container } from '@bespokecore/core';
+import { Flasher, isRedirectResult, isViewResult, PAGE_HEADER, type PageObject, type UrlGenerator } from '@bespokecore/http';
 import { defaultToResponse, type ResponseFactory } from '@bespokecore/router';
 import { FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
@@ -12,20 +13,26 @@ export const shellRenderer: PageRenderer = {
   render: async (page) => renderDocument(FALLBACK_TEMPLATE, page, { html: '' }),
 };
 
+/** A response factory that may use the request's container scope (the kernel passes it). */
+export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
+
 /**
  * Turns controller results into HTTP responses. Client-side navigations get the
  * page object as JSON, full page loads get a server-rendered document. Redirects
- * resolve named routes through `urls` (the router).
+ * resolve named routes through `urls` (the router) and flash through the scope's `Flasher`.
  */
-export function createResponseFactory(renderer: PageRenderer = shellRenderer, urls?: UrlGenerator): ResponseFactory {
+export function createResponseFactory(renderer: PageRenderer = shellRenderer, urls?: UrlGenerator): ScopedResponseFactory {
   const noRouter: UrlGenerator = {
     url: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
     },
   };
 
-  return async (result, ctx) => {
-    if (isRedirectResult(result)) return result.toResponse(ctx.request, urls ?? noRouter);
+  return async (result, ctx, scope) => {
+    if (isRedirectResult(result)) {
+      const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
+      return result.toResponse(ctx.request, urls ?? noRouter, flasher);
+    }
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
 
     const url = new URL(ctx.request.url);

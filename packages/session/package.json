@@ -1,0 +1,43 @@
+{
+  "name": "@bespokecore/session",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "SessionServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@bespokecore/encryption": "workspace:*",
+    "@bespokecore/server": "workspace:*"
+  }
+}

@@ -48,6 +48,17 @@ describe('RedirectResult', () => {
     expect(() => new RedirectResult().route('nope').toResponse(request(), router)).toThrow('Route [nope] is not defined.');
   });
 
+  it('flashes with() data through the Flasher — and refuses to drop it silently without one', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value) };
+    new RedirectResult('/').with('status', 'Saved.').with({ count: 2 }).toResponse(request(), router, flasher);
+    expect(flashed).toEqual({ status: 'Saved.', count: 2 });
+
+    expect(() => new RedirectResult('/').with('status', 'x').toResponse(request(), router)).toThrow(
+      'redirect().with() needs a session: install @bespokecore/session and start it for this route.',
+    );
+  });
+
   it('is recognised by brand, not by class identity', () => {
     expect(isRedirectResult(new RedirectResult('/'))).toBe(true);
     expect(isRedirectResult({ location: '/' })).toBe(false);

@@ -47,6 +47,9 @@ importers:
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@bespokecore/session':
+        specifier: workspace:*
+        version: link:../../packages/session
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -185,6 +188,28 @@ importers:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)
 
+  packages/session:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
+
   packages/testing:
     dependencies:
       '@bespokecore/core':
@@ -199,6 +224,10 @@ importers:
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../server
+    devDependencies:
+      '@bespokecore/session':
+        specifier: workspace:*
+        version: link:../session
 
 packages:
 

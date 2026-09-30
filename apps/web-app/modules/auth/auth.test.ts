@@ -1,8 +1,7 @@
 import { createTestApp, type TestApp } from '@bespokecore/testing';
-import { beforeEach, describe, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
-import { SESSION_COOKIE } from './middleware.ts';
 
 let app: TestApp;
 beforeEach(async () => {
@@ -10,25 +9,48 @@ beforeEach(async () => {
 });
 
 describe('auth module', () => {
-  it('logs in via form post, sets the session cookie and redirects (303 after a POST)', async () => {
-    const response = await app.post('/login', { form: { user_id: '3' } }).assertStatus(303).assertRedirect('/users/me').assertCookie(SESSION_COOKIE, '3');
-    await app.withCookie(SESSION_COOKIE, response.cookie(SESSION_COOKIE)!).get('/users/me').assertRedirect('/users/3');
+  it('logs in via form post: the user goes into a regenerated session (303 after a POST)', async () => {
+    const planted = await app.get('/login'); // a session id handed out before login …
+    const response = await app
+      .withCookie('bespoke_session', planted.cookie('bespoke_session')!)
+      .post('/login', { form: { user_id: '3' } })
+      .assertStatus(303)
+      .assertRedirect('/users/me')
+      .assertSessionHas('user_id', '3');
+
+    expect(response.cookie('bespoke_session')).not.toBe(planted.cookie('bespoke_session')); // … does not survive it
+    await app.withCookie('bespoke_session', response.cookie('bespoke_session')!).get('/users/me').assertRedirect('/users/3');
   });
 
-  it('ignores a forged, unencrypted session cookie', async () => {
-    await app.withUnencryptedCookie(SESSION_COOKIE, '1').expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie(SESSION_COOKIE, '1').get('/users/me').assertRedirect('/users/1'); // encrypted by the app's key
-  });
-
-  it('sends unknown users back to the page they came from', async () => {
-    await app
+  it('sends unknown users back with an error, shown once on the login page', async () => {
+    const response = await app
       .post('/login', { form: { user_id: '99' }, headers: { referer: 'http://localhost/login' } })
       .assertRedirect('/login')
-      .assertCookieMissing(SESSION_COOKIE);
+      .assertSessionMissing('user_id')
+      .assertSessionHas('error', 'Unknown user.');
+
+    const next = app.withCookie('bespoke_session', response.cookie('bespoke_session')!).navigating();
+    await next.get('/login').assertPage<ShowLoginController>('auth/Login', { error: 'Unknown user.' });
+    await next.get('/login').assertPage<ShowLoginController>('auth/Login', { error: null });
   });
 
-  it('expires the cookie on logout', async () => {
-    await app.withCookie(SESSION_COOKIE, '1').post('/logout').assertRedirect('/login').assertCookieExpired(SESSION_COOKIE);
+  it('ends the session on logout and says so on the login page', async () => {
+    const response = await app
+      .withSession({ user_id: '1' })
+      .post('/logout')
+      .assertRedirect('/login')
+      .assertSessionMissing('user_id')
+      .assertSessionHas('status', 'You have been signed out.');
+
+    await app
+      .withCookie('bespoke_session', response.cookie('bespoke_session')!)
+      .navigating()
+      .get('/login')
+      .assertPage<ShowLoginController>('auth/Login', { status: 'You have been signed out.' });
+  });
+
+  it('ignores forged session cookies', async () => {
+    await app.withUnencryptedCookie('bespoke_session', 'x'.repeat(40)).expectingJson().get('/users/me').assertUnauthorized();
   });
 
   it('injects the validated app config (from .env.test under Vitest)', async () => {

@@ -1,4 +1,15 @@
+import { token } from '@bespokecore/core';
+
 const REDIRECT_RESULT = Symbol.for('bespokecore.redirect-result');
+
+/**
+ * Keeps data for the next request only — what `redirect().with()` needs. Bound by
+ * `@bespokecore/session` (to the request's session), so http needs no session itself.
+ */
+export interface Flasher {
+  flash(key: string, value: unknown): void;
+}
+export const Flasher = token<Flasher>('Flasher');
 
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 
@@ -27,6 +38,7 @@ export class RedirectResult {
   #target: Target | undefined;
   #status: RedirectStatus | undefined;
   readonly #headers = new Headers();
+  readonly #flash = new Map<string, unknown>();
 
   constructor(url?: string, status?: RedirectStatus) {
     if (url !== undefined) this.#target = { kind: 'url', url };
@@ -60,7 +72,19 @@ export class RedirectResult {
     return this;
   }
 
-  toResponse(request: Request, urls: UrlGenerator): Response {
+  /** Flashes data to the session for the next request: `back().with('success', 'Saved.')`. */
+  with(key: string, value: unknown): this;
+  with(values: Record<string, unknown>): this;
+  with(key: string | Record<string, unknown>, value?: unknown): this {
+    for (const [name, data] of typeof key === 'string' ? [[key, value] as const] : Object.entries(key)) this.#flash.set(name, data);
+    return this;
+  }
+
+  toResponse(request: Request, urls: UrlGenerator, flasher?: Flasher): Response {
+    if (this.#flash.size > 0) {
+      if (!flasher) throw new Error('redirect().with() needs a session: install @bespokecore/session and start it for this route.');
+      for (const [key, value] of this.#flash) flasher.flash(key, value);
+    }
     const headers = new Headers(this.#headers);
     headers.set('location', this.#location(request, urls));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);

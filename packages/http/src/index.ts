@@ -1,6 +1,6 @@
 export { Controller } from './controller.ts';
 export { view, isViewResult } from './view.ts';
-export { isRedirectResult, RedirectResult } from './redirect.ts';
+export { Flasher, isRedirectResult, RedirectResult } from './redirect.ts';
 export type { RedirectStatus, UrlGenerator } from './redirect.ts';
 export type { PageProps, ViewProps, ViewResult } from './view.ts';
 export { ERROR_PAGE, PAGE_HEADER, PAGE_SCRIPT_ID, isPageObject } from './page.ts';

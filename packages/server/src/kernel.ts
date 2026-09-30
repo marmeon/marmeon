@@ -5,7 +5,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, type Application, type Container } from '@bespokecore/core';
 import { ExceptionHandler, HttpError } from '@bespokecore/http';
-import { createRequestState, Router, withQueuedCookies } from '@bespokecore/router';
+import { CookieJar, createRequestState, Router, withQueuedCookies } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, type PageRenderer } from './render.ts';
@@ -50,11 +50,11 @@ export function createHttpKernel(
   const toResponse = createResponseFactory(renderer, router);
   const app = new Hono();
 
-  const renderError = async (error: unknown, request: Request): Promise<Response> => {
+  const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
     const handler = container.make(ExceptionHandler);
     handler.report(error);
     try {
-      return await toResponse(handler.render(error, request, { debug }), { request });
+      return await toResponse(handler.render(error, request, { debug }), { request }, scope);
     } catch (failure) {
       // Rendering the error page failed too — answer without it rather than not at all.
       logger.error('Rendering the error response failed', { exception: String(failure) });
@@ -86,15 +86,16 @@ export function createHttpKernel(
     app.on([...route.methods], route.path, async (c) => {
       const scope = container.createScope();
       const state = createRequestState(c.req.raw, { maxBodySize });
+      scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
       let response: Response;
       try {
         response = await router.dispatch(
           route,
           { request: c.req.raw, params: c.req.param() },
-          { toResponse, resolve: (Class) => scope.make(Class), state },
+          { toResponse: (result, ctx) => toResponse(result, ctx, scope), resolve: (Class) => scope.make(Class), state },
         );
       } catch (error) {
-        response = await renderError(error, c.req.raw);
+        response = await renderError(error, c.req.raw, scope);
       }
       // Cookies queued during the request reach the client whatever the outcome (like Laravel).
       return await withQueuedCookies(response, state.cookies);

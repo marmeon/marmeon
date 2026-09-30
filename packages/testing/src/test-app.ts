@@ -52,7 +52,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       options.override?.(container);
     },
   });
-  return new TestApp(application, createHttpKernel(application), { headers: {}, cookies: [] });
+  return new TestApp(application, createHttpKernel(application), { headers: {}, cookies: [], session: undefined });
 }
 
 interface TestCookie {
@@ -65,6 +65,40 @@ interface TestCookie {
 interface Defaults {
   readonly headers: Readonly<Record<string, string>>;
   readonly cookies: readonly TestCookie[];
+  /** Data for a session created before the request (`withSession`). */
+  readonly session: Readonly<Record<string, unknown>> | undefined;
+}
+
+/** Access to the app's session store — when the app uses @bespokecore/session (an optional peer). */
+export interface SessionAccess {
+  readonly cookie: string;
+  create(data: Readonly<Record<string, unknown>>): Promise<string>;
+  read(id: string): Promise<Record<string, unknown> | undefined>;
+}
+
+async function sessionAccess(container: Container): Promise<SessionAccess | undefined> {
+  let session: typeof import('@bespokecore/session');
+  try {
+    session = await import('@bespokecore/session');
+  } catch {
+    return undefined; // not installed
+  }
+  if (!container.has(session.SessionConfig)) return undefined;
+  const config = container.make(session.SessionConfig);
+  const store = () => {
+    if (config.driver === 'cookie') throw new Error('Session helpers in tests need the memory or file driver (set SESSION_DRIVER=memory in .env.test).');
+    return container.make(session.SessionStore);
+  };
+  return {
+    cookie: config.cookie,
+    create: async (data) => {
+      const id = session.createSessionId();
+      const token = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
+      await store().write(id, { _token: token, ...data }, config.lifetime * 60);
+      return id;
+    },
+    read: (id) => store().read(id),
+  };
 }
 
 /** How the app encrypts cookies — so tests can send and read plain values, like Laravel's. */
@@ -95,12 +129,14 @@ export class TestApp {
   readonly #kernel: ReturnType<typeof createHttpKernel>;
   readonly #defaults: Defaults;
   readonly #crypto: CookieCrypto;
+  readonly #session: Promise<SessionAccess | undefined>;
 
   constructor(application: Application, kernel: ReturnType<typeof createHttpKernel>, defaults: Defaults) {
     this.application = application;
     this.#kernel = kernel;
     this.#defaults = defaults;
     this.#crypto = cookieCrypto(application.container);
+    this.#session = sessionAccess(application.container);
   }
 
   get container(): Container {
@@ -121,6 +157,14 @@ export class TestApp {
   /** Sends a cookie, encrypted like the app encrypts its own (Laravel's `withCookie`). */
   withCookie(name: string, value: string): TestApp {
     return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: true }] });
+  }
+
+  /**
+   * Starts the request with a session holding `data` (Laravel's `withSession`):
+   * `app.withSession({ user_id: '1' }).get('/users/me')`.
+   */
+  withSession(data: Record<string, unknown>): TestApp {
+    return this.#with({ session: { ...this.#defaults.session, ...data } });
   }
 
   /** Sends a cookie exactly as given — e.g. to prove that forged values are ignored. */
@@ -164,13 +208,19 @@ export class TestApp {
     const label = `${method} ${path}`;
     const response = this.#init(method, options)
       .then((init) => this.#kernel.request(path, init))
-      .then((res) => TestResponse.from(res, label, this.#crypto));
+      .then(async (res) => TestResponse.from(res, label, this.#crypto, await this.#session));
     return new PendingTestResponse(response);
   }
 
   async #init(method: string, { headers = {}, form, multipart, json }: RequestOptions): Promise<RequestInit> {
+    const testCookies = [...this.#defaults.cookies];
+    if (this.#defaults.session) {
+      const session = await this.#session;
+      if (!session) throw new Error('withSession() needs @bespokecore/session in the app.');
+      testCookies.push({ name: session.cookie, value: await session.create(this.#defaults.session), encrypt: true });
+    }
     const cookies = await Promise.all(
-      this.#defaults.cookies.map(
+      testCookies.map(
         async ({ name, value, encrypt }) => `${name}=${encodeURIComponent(encrypt ? await this.#crypto.encrypt(name, value) : value)}`,
       ),
     );

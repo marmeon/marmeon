@@ -1,29 +1,41 @@
 import type { HttpContext, Next } from '@bespokecore/http';
+import { Session } from '@bespokecore/session';
 import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
+
+declare module '@bespokecore/session' {
+  interface SessionData {
+    /** The signed-in user — set on login, removed on logout. */
+    user_id: string;
+    /** Flash messages for the login page. */
+    status: string;
+    error: string;
+  }
+}
 
 /** Context that `Authenticate` adds for everything downstream. */
 export interface AuthState {
   user: User;
 }
 
-export const SESSION_COOKIE = 'demo_user';
-
 /**
- * Demo authentication — an encrypted cookie (browser) or `x-user-id` header (tests).
- * Replaced by real sessions in Wave 4; never trust either in production.
+ * Demo authentication: the signed-in user's id lives in the session. Real guards,
+ * passwords and "remember me" follow in Wave 4.
  *
- * A middleware class: built per request from the container, so the repository is injected.
+ * A middleware class: built per request from the container, so the repository and
+ * the request's session are injected.
  */
 export class Authenticate {
   readonly #users: UserRepository;
+  readonly #session: Session;
 
-  constructor(users: UserRepository) {
+  constructor(users: UserRepository, session: Session) {
     this.#users = users;
+    this.#session = session;
   }
 
   handle(ctx: HttpContext, next: Next<AuthState>) {
-    const user = this.#users.find(ctx.request.headers.get('x-user-id') ?? ctx.cookies.get(SESSION_COOKIE) ?? '');
+    const user = this.#users.find(this.#session.get('user_id') ?? '');
     if (user) return next({ user });
 
     // API/JSON clients get a 401, browsers are sent to the login page.
