@@ -7,6 +7,7 @@ import type { ViewProps } from './view.ts';
 import type { Suggest } from '@bespokecore/router';
 
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
+export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export type {
   AlwaysProp,
   DeferredProp,
@@ -26,14 +27,18 @@ export type {
   BrowserRouteName,
   BrowserRouteNameInput,
   CheckBrowserRouteName,
+  CheckIslandRouteName,
+  CheckPageRouteName,
   CheckRouteName,
   ControllerOf,
   FormOf,
+  IslandRouteName,
   MethodOf,
   Param,
   ParamsOf,
   Query,
   QueryFields,
+  QueryOf,
   QueryParams,
   RouteArgs,
   RouteQueryOf,
@@ -170,6 +175,40 @@ export function isPrefetch(request: Request): boolean {
   const purpose = `${request.headers.get(PURPOSE_HEADER) ?? ''},${request.headers.get('sec-purpose') ?? ''}`;
   return /(^|[\s,;])prefetch($|[\s,;])/i.test(purpose);
 }
+
+/**
+ * Sent with the request of a region — `island` for an `<Island route>` (E48–E52): the server answers with the island's
+ * region object (a page object of the island route, without the page's locale), never with a page. A request without it
+ * never gets an island: a direct hit is a 404, and so is a page's prefetch or visit of the island's URL. Answered with it
+ * too, on the island's own JSON (so a cache can tell the two apart: `Vary`).
+ */
+export const REGION_HEADER = 'x-bespoke-region';
+
+/** The kinds of region a request may ask for. (Layers come next to islands.) */
+export type RegionKind = 'island';
+
+/**
+ * How a region request ended when it brought no region object — the server answers `204` with this header instead of
+ * following a redirect, a 401 or a 403 of the island route (E52: they become the island's fallback, never a navigation
+ * of the page). Failures (4xx, 5xx) keep their status and say `exception`.
+ */
+export const REGION_STATUS_HEADER = 'x-bespoke-region-status';
+
+/** What a region request can end in besides its region object (see {@link REGION_STATUS_HEADER}). */
+export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
+
+/** The region `request` asks for (`x-bespoke-region`, with `x-bespoke`), or undefined for any other request. */
+export function regionOf(request: Request): RegionKind | undefined {
+  const { headers } = request;
+  if (headers.get(PAGE_HEADER) !== 'true') return undefined;
+  return headers.get(REGION_HEADER) === 'island' ? 'island' : undefined;
+}
+
+/**
+ * The wire format of a region (an island): the page object of the route it shows — its component, props, URL and query,
+ * deferred and merged props — without the page's language (`locale`, `fallbackLocale`): it renders in the page's.
+ */
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale'>;
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'bespoke-page';

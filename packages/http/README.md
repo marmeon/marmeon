@@ -18,8 +18,8 @@ signed URLs, encrypted cookies and the client history (`ClientHistory`). Three e
 A UI adapter (`@bespokecore/react` today, a Vue adapter later) is a **rendering layer**. Everything else — the protocol,
 the history, caching, background requests — is in `@bespokecore/http/client`, uses DOM APIs where it must, and knows no
 UI framework. `src/client/adapter.test.ts` is the proof: a complete adapter in plain DOM (it renders a page as its
-component name and props in text) visits, goes back and forward, loads deferred props, reloads partially and follows a
-409 — with no UI framework anywhere.
+component name and props in text) visits, goes back and forward, loads deferred props, reloads partially, follows a
+409 and renders islands — with no UI framework anywhere.
 
 ### What the core provides
 
@@ -27,6 +27,8 @@ component name and props in text) visits, goes back and forward, loads deferred 
 | --- | --- |
 | `Navigator` | Visits (`visit`, `reload`, `prefetch`), their events (`on('start' \| 'progress' \| 'success' \| 'error' \| 'exception' \| 'cancel' \| 'finish')` and per-visit `onX` callbacks, E44), the `x-bespoke` request headers (asset version, XSRF from the `XSRF-TOKEN` cookie, partial reloads), JSON or multipart bodies (upload progress via XHR), 409 + `x-bespoke-location` → full page load and every kept page dropped, history entries **without props** plus an in-memory page cache (E36, refetch on a miss), Back/Forward, bfcache, scroll restoration (window and `[scroll-region]`), deferred props loaded per group after every show, `merge`/`deepMerge`/`matchOn`, `async` and `preserveUrl` visits, prefetching (GET only, `Purpose: prefetch`, `cacheFor`) |
 | `mergePage` | A partial reload's props merged into the page (what the navigator does) |
+| `navigator.region(url, { owner, initial })` → `Region` | A region (E50) — an island (E48): the view of another route with its own region object (`RegionObject`: component, props, URL, query), loaded with `x-bespoke-region: island` (never following a redirect), `load()`/`reload({ query, only, except, reset })`, its deferred props, a `snapshot` (`loading \| ready \| unauthorized \| forbidden \| exception`, `pending`, `failure`) and `subscribe`. One per URL and owner (identical islands share one request); a newer request of a region aborts its older one. Its failures are its own — a redirect/401/403 is `unauthorized`/`forbidden`, never a page navigation (E52) — except a 409: the whole page loads again. Never prefetched |
+| `RegionOwner` | Where regions keep what they loaded: the history entry of their page (`render` hands it over), in memory only — Back/Forward shows islands without a request, `history.state` never holds them (E36). Closed (requests aborted, nothing lands) when the entry leaves the screen or the document is left. Pluggable for layers |
 | `navigator.queryState(options)` → `QueryState` | Typed URL state (E55): `value(page)` is the page's query as the server parsed it (`PageObject.query` + `queryDefaults` — the browser never parses a URL) or what is being typed (`draft`); `set(patch \| fn)` changes it at once and visits the page's URL after `debounce` ms (partial with `only`, `reset` = `only` by default, `history: 'push' \| 'replace'`, state and scroll kept); the draft gives way when the page changes otherwise (Back/Forward, a link). `navigator.subscribe(listener)` follows the page on screen |
 | `queryUrl`, `pageQuery`, `withoutDefaults`, `linkQuery`, `assertQueryPage` | Query helpers: a URL without the defaults, the page's query with them, a link's query for the page on screen, the "only on its route's page" check |
 | `showProgress(navigator, options)` | The progress bar: plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests |
@@ -41,13 +43,16 @@ component name and props in text) visits, goes back and forward, loads deferred 
 
 ### What an adapter provides
 
-1. **Rendering a page object.** `new Navigator({ initialPage, render })`: `render(page, { preserveState })` resolves the
+1. **Rendering a page object.** `new Navigator({ initialPage, render })`: `render(page, { preserveState, owner })` resolves the
    page's component (and its messages), shows it with `page.props`, and **resolves once it is on screen** — the navigator
    restores the scroll position after that. `preserveState: true` keeps component state when the same component comes
    back (a form that failed validation); otherwise the page mounts fresh. A rejection makes the browser load the URL
    itself (a chunk gone after a deployment). Then `navigator.start()` (returns the stop function) and, if wanted,
    `showProgress(navigator)`. Failures (`exception`: offline, 5xx with the server's error page) are the adapter's to show;
-   the page stays.
+   the page stays. `owner` is where the page's islands live: render them with `navigator.region(url, { owner })` (the
+   first page: `navigator.regionOwner`), each into an element of its own, from its `snapshot` — its fallback while
+   `loading`, an `unauthorized` UI, an error UI with a retry (`reload()`), and its view otherwise, inside an error boundary
+   of its own.
 2. **Persistent layouts** (E35): `Page.layout = Layout | [Outer, Inner] | null`, a default per app; the same layout at the
    same depth stays mounted across visits. Error boundaries inside them (a page that throws shows the error page).
 3. **Head management**: a head component that sets the title through a `TitleRegistry` and adds/removes its tags in the
@@ -67,7 +72,7 @@ component name and props in text) visits, goes back and forward, loads deferred 
    (`navigator.queryState`, rendering `value(page)` — on the server from the page object alone; links to the page on
    screen leave its defaults out, `linkQuery`).
 7. **Its route sinks** (E57): every place where app code hands the adapter a route name (`<Link route>`, the function of
-   `useRoute()`, `useForm(name, …)`, `useQueryState(name, …)`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })`).
+   `useRoute()`, `useForm(name, …)`, `useQueryState(name, …)`, `<Island route>`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })`).
    The client build ships only the names written out at a sink; a name built at runtime fails the build. Route names
    never come from props — the server sends URLs (`router.url()`).
 

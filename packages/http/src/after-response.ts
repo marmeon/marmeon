@@ -11,9 +11,16 @@
  */
 export class AfterResponse {
   readonly #tasks: (() => unknown)[] = [];
+  #permit: ((what: string) => boolean) | undefined;
 
   defer(task: () => unknown): void {
+    if (this.#permit && !this.#permit('afterResponse.defer()')) return;
     this.#tasks.push(task);
+  }
+
+  /** @internal — a read-only request (an island, E52) defers nothing: `permit` throws or drops the task. */
+  lock(permit: (what: string) => boolean): void {
+    this.#permit = permit;
   }
 
   /** @internal — the kernel takes the tasks once the response is out. */

@@ -38,8 +38,9 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
       const user = await this.#auth.user();
       if (user) return next({ user });
       if (ctx.expectsJson()) return Response.json({ message: 'Unauthenticated.' }, { status: 401 });
-      // A prefetch (a hovered link) is not where the guest wanted to go — only a visit is remembered.
-      if (ctx.request.method === 'GET' && this.#session.started && !isPrefetch(ctx.request)) {
+      // A prefetch (a hovered link) is not where the guest wanted to go — only a visit is remembered (an island's request,
+      // read-only, is no visit either: it gets its `unauthorized` fallback, E52).
+      if (ctx.request.method === 'GET' && this.#session.started && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
       }
@@ -98,7 +99,7 @@ export function confirmedPassword<const N extends RouteNameInput = never>(option
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
       if (this.#auth.passwordRecentlyConfirmed(options.seconds)) return next();
       if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423 });
-      if (ctx.request.method === 'GET' && !isPrefetch(ctx.request)) {
+      if (ctx.request.method === 'GET' && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
       }

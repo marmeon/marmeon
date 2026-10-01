@@ -105,7 +105,7 @@ export type AnyMiddleware = MiddlewareLike<any, any>;
 // Actions (closures & invokable controllers)
 // ---------------------------------------------------------------------------
 
-export type Handler<TCtx> = (ctx: TCtx) => unknown;
+export type Handler<TCtx, TResult = unknown> = (ctx: TCtx) => TResult;
 
 /**
  * What a controller instance must offer to serve a route with context `TCtx`.
@@ -115,8 +115,8 @@ export type Handler<TCtx> = (ctx: TCtx) => unknown;
  * strictly (contravariantly), so a controller that needs more context than
  * the route provides is a compile error.
  */
-export interface Invokable<TCtx> {
-  readonly handle: (ctx: TCtx) => unknown;
+export interface Invokable<TCtx, TResult = unknown> {
+  readonly handle: (ctx: TCtx) => TResult;
 }
 
 /**
@@ -130,9 +130,9 @@ export interface Invokable<TCtx> {
  * `authorize` needs more context than the route has slip through the "without"
  * branch — and made TypeScript explain the wrong branch (type spike for E13).
  */
-export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, TQuery extends StandardSchemaV1 = any> = (new (
+export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, TQuery extends StandardSchemaV1 = any, TResult = unknown> = (new (
   ...args: any[]
-) => Invokable<WithQuery<TCtx, TQuery> & BodyOf<TSchema>>) & {
+) => Invokable<WithQuery<TCtx, TQuery> & BodyOf<TSchema>, TResult>) & {
   readonly request?: RequestDefinition<TSchema, TCtx, TQuery>;
 };
 
@@ -183,9 +183,20 @@ export interface RouteBinding {
 /** Builds controller and middleware classes — per request, from the container. */
 export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
 
-/** A closure or a controller class. `TSchema` and `TQuery` are inferred from the controller's `request` (`never` without them). */
-export type Action<TCtx, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never> =
-  | Handler<TCtx>
-  | ControllerClass<TCtx, TSchema, TQuery>;
+/**
+ * A closure or a controller class. `TSchema` and `TQuery` are inferred from the controller's `request` (`never` without
+ * them), `TResult` from what it returns (the routes of other methods than GET refuse an island, see `Route.post`).
+ */
+export type Action<TCtx, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown> =
+  | Handler<TCtx, TResult>
+  | ControllerClass<TCtx, TSchema, TQuery, TResult>;
+
+/**
+ * What a region result carries — `this.island(…)` of @bespokecore/http — so the router can tell an island's controller
+ * by its type alone (it never imports http): islands are GET routes (E52), `<Island route>` takes only them, `<Link>` none.
+ */
+export interface RegionResultMarker {
+  readonly region: 'island';
+}
 
 export type AnyAction = Action<any, any, any>;

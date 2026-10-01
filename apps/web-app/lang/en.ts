@@ -1,6 +1,7 @@
 /** App-wide texts (namespace `app`): the layout around every page and the language switcher. */
 const en = {
   name: 'BespokeCore',
+  dashboard: 'Dashboard',
   account: 'Account',
   profile: 'Your profile',
   settings: 'Settings',

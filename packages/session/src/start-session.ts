@@ -1,5 +1,5 @@
 import { Logger } from '@bespokecore/core';
-import { LOCATION_HEADER } from '@bespokecore/http';
+import { LOCATION_HEADER, ReadOnly } from '@bespokecore/http';
 import type { HttpContext, Next } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -15,17 +15,24 @@ export class StartSession {
   readonly #config: SessionConfig;
   readonly #store: SessionStore;
   readonly #logger: Logger;
+  readonly #readOnly: ReadOnly;
 
-  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger) {
+  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly) {
     this.#session = session;
     this.#config = config;
     this.#store = store;
     this.#logger = logger;
+    this.#readOnly = readOnly;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
     const { cookie, lifetime, secure, sameSite } = this.#config;
     await this.#session.start(ctx.cookies.get(cookie));
+    if (this.#readOnly.active) {
+      // An island (E52): it reads the session, never writes it — no save, no cookie, flash data stays for the page.
+      this.#session.lock((what) => this.#readOnly.permit(what));
+      return next();
+    }
     try {
       const response = await next();
       // An asset-version reload (409): the page is requested again, so flash data must survive it.

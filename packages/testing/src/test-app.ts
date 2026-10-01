@@ -8,8 +8,21 @@ import {
   type Resolve,
 } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
-import { CookieEncryption, writeAppBrowserRoutes } from '@bespokecore/http';
-import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER } from '@bespokecore/http/page';
+import { CookieEncryption, Router, writeAppBrowserRoutes } from '@bespokecore/http';
+import {
+  PAGE_HEADER,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
+  REGION_HEADER,
+  urlFor,
+  type CheckIslandRouteName,
+  type Param,
+  type Query,
+  type RouteArgs,
+  type RouteNameInput,
+} from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
@@ -451,6 +464,24 @@ export class TestApp {
       ...(only ? { [PARTIAL_DATA_HEADER]: only.join(',') } : {}),
       ...(except.length > 0 ? { [PARTIAL_EXCEPT_HEADER]: except.join(',') } : {}),
     });
+  }
+
+  /**
+   * Requests as an `<Island route>` does (E48): a client-side request with `x-bespoke-region: island` — answered with the
+   * island's region object, or (redirect, 401, 403) with its outcome. For a partial reload of the island, chain
+   * `reloading(component, { only })`.
+   */
+  islanding(): TestApp {
+    return this.withHeaders({ [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' });
+  }
+
+  /**
+   * An island's request by route name — what `<Island route params query>` sends: `app.island('dashboard.sign-ins', {}, { limit: 10 })`.
+   * Then `assertIsland<C>(component, props)` or `assertIslandStatus('unauthorized')`.
+   */
+  island<const N extends RouteNameInput>(name: CheckIslandRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse {
+    const path = urlFor(this.make(Router), name, params as Readonly<Record<string, Param>> | undefined, query as Query | undefined);
+    return this.islanding().get(path);
   }
 
   /** Requests as an API client. */

@@ -1,0 +1,21 @@
+import type { IslandProps } from '@bespokecore/http';
+import { Link, useTranslation } from '@bespokecore/react';
+import type { ShowMemberStatsController } from '../controllers/ShowMemberStatsController.ts';
+
+/** Island "Members" (`dashboard.members`): for administrators only — its route decides, not this view. */
+export default function MemberStats({ stats }: IslandProps<ShowMemberStatsController>) {
+  const t = useTranslation('dashboard');
+  return (
+    <>
+      <p>{t('members.text', { members: stats.members, verified: stats.verified })}</p>
+      {stats.newest && (
+        <p>
+          {t('members.newest')}{' '}
+          <Link route="user-profile.show" params={{ user: stats.newest.id }}>
+            {stats.newest.name}
+          </Link>
+        </p>
+      )}
+    </>
+  );
+}

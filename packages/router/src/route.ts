@@ -12,6 +12,7 @@ import type {
   HttpMethod,
   Merge,
   MiddlewareLike,
+  RegionResultMarker,
   RouteBinderClass,
   RouteBinding,
   Simplify,
@@ -45,10 +46,11 @@ type RouteAction<
   TPath extends string,
   TSchema extends StandardSchemaV1,
   TQuery extends StandardSchemaV1,
+  TResult = unknown,
 > =
   Exclude<keyof TBindings, keyof (TParams & ExtractParams<TPath>)> extends infer Missing extends PropertyKey
     ? [Missing] extends [never]
-      ? Action<RouteContext<TState, TParams, TBindings, TPath>, TSchema, TQuery>
+      ? Action<RouteContext<TState, TParams, TBindings, TPath>, TSchema, TQuery, TResult>
       : `Route.bind('${Missing & string}') needs a :${Missing & string} parameter in the path`
     : never;
 
@@ -64,6 +66,22 @@ type GetRouteAction<
   TSchema extends StandardSchemaV1,
   TQuery extends StandardSchemaV1,
 > = [TSchema] extends [never] ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery> : typeof GET_HAS_NO_BODY;
+
+/** What a route of another method than GET says to a controller that answers with an island (E52). */
+export const ISLAND_IS_GET_ONLY = 'this.island(…) answers GET requests only — an island reads, it never changes anything: register it with Route.get';
+
+/** The action of a route that is not a GET: like any other, but an island (`this.island(…)`) is refused (E52). */
+type NonGetRouteAction<
+  TState extends object,
+  TParams extends object,
+  TBindings extends object,
+  TPath extends string,
+  TSchema extends StandardSchemaV1,
+  TQuery extends StandardSchemaV1,
+  TResult,
+> = [Extract<Awaited<TResult>, RegionResultMarker>] extends [never]
+  ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>
+  : typeof ISLAND_IS_GET_ONLY;
 
 export function joinPaths(...segments: string[]): string {
   const parts = segments.flatMap((segment) => segment.split('/')).filter(Boolean);
@@ -159,52 +177,52 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return this.#add(['GET'], path, action as unknown as AnyAction);
   }
 
-  post<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  post<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(['POST'], path, action);
   }
 
-  put<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  put<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(['PUT'], path, action);
   }
 
-  patch<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  patch<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(['PATCH'], path, action);
   }
 
-  delete<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  delete<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(['DELETE'], path, action);
   }
 
-  options<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  options<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(['OPTIONS'], path, action);
   }
 
-  match<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  match<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     methods: readonly HttpMethod[],
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(methods, path, action);
   }
 
-  any<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
+  any<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
+    action: NonGetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery, TResult>,
   ): RouteDefinition {
     return this.#add(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], path, action);
   }

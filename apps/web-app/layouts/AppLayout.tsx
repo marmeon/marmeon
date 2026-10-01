@@ -19,6 +19,7 @@ export function AppLayout({ children }: LayoutProps) {
         <strong>
           {user ? <Link route="user-profile.me">{t('name')}</Link> : <Link route="auth.login">{t('name')}</Link>}
         </strong>
+        {user && <Link route="dashboard.show">{t('dashboard')}</Link>}
         {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. */}
         <nav aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
           {locales.map((code) =>

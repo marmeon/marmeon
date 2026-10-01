@@ -1,5 +1,19 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
-import { isPageObject, PAGE_SCRIPT_ID, type FormOf, type PageObject, type PageProps, type CheckViewName, type ViewOf } from '@bespokecore/http/page';
+import {
+  isPageObject,
+  PAGE_SCRIPT_ID,
+  REGION_HEADER,
+  REGION_STATUS_HEADER,
+  type CheckViewName,
+  type FormOf,
+  type IslandOf,
+  type IslandProps,
+  type PageObject,
+  type PageProps,
+  type RegionObject,
+  type RegionOutcomeStatus,
+  type ViewOf,
+} from '@bespokecore/http/page';
 import type { AuthUser } from '@bespokecore/auth';
 import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
@@ -24,6 +38,14 @@ export type PageNameOf<TSource extends PageSource, V extends string = string> = 
 
 /** Typed props when a controller is given (`assertPage<ShowUserController>`), any record otherwise. */
 export type PropsOf<TSource extends PageSource> = PageSource extends TSource ? Record<string, unknown> : PageProps<TSource>;
+
+type IslandSource = { handle: (...args: never[]) => unknown };
+
+/** The island a controller renders when one is given (`assertIsland<ShowRecentSignInsController>('dashboard/RecentSignIns')`). */
+export type IslandNameOf<TSource extends IslandSource, V extends string = string> = IslandSource extends TSource ? CheckViewName<V> : IslandOf<TSource>;
+
+/** Typed island props when a controller is given, any record otherwise. */
+export type IslandPropsOf<TSource extends IslandSource> = IslandSource extends TSource ? Record<string, unknown> : IslandProps<TSource>;
 
 const PAGE_SCRIPT = new RegExp(`<script type="application/json" id="${PAGE_SCRIPT_ID}">([\\s\\S]*?)</script>`);
 
@@ -291,6 +313,39 @@ export class TestResponse {
     if (page.component !== component) this.#fail(`Expected page "${component}", got "${page.component}"`);
     if (typeof props === 'function') props(page.props as PropsOf<TSource>);
     else if (props !== undefined) this.#compare(() => partialDeepStrictEqual(page.props, props), `Props of "${component}" do not match`);
+    return this;
+  }
+
+  /** The region object of an island's response (`app.island(…)`), or undefined. */
+  island(): RegionObject | undefined {
+    if (this.headers.get(REGION_HEADER) !== 'island') return undefined;
+    const candidate = safeParse(this.body);
+    return isPageObject(candidate) ? candidate : undefined;
+  }
+
+  /**
+   * The response is island `component`'s region object, optionally with props that contain `props` (deeply) or pass a
+   * callback — typed against the controller when given: `assertIsland<ShowRecentSignInsController>('dashboard/RecentSignIns')`.
+   */
+  assertIsland<TSource extends IslandSource = IslandSource, const V extends string = string>(
+    component: IslandNameOf<TSource, V>,
+    props?: DeepPartial<IslandPropsOf<TSource>> | ((props: IslandPropsOf<TSource>) => void),
+  ): this {
+    const region = this.island();
+    if (!region) {
+      const outcome = this.headers.get(REGION_STATUS_HEADER);
+      this.#fail(`Expected the island ${component}, got ${outcome ? `its outcome "${outcome}"` : 'no island'} (status ${this.status})`);
+    }
+    if (region.component !== component) this.#fail(`Expected island "${component}", got "${region.component}"`);
+    if (typeof props === 'function') props(region.props as IslandPropsOf<TSource>);
+    else if (props !== undefined) this.#compare(() => partialDeepStrictEqual(region.props, props), `Props of island "${component}" do not match`);
+    return this;
+  }
+
+  /** The island's request ended without its region: `unauthorized` (a redirect, 401), `forbidden` (403) or `exception`. */
+  assertIslandStatus(status: RegionOutcomeStatus): this {
+    const outcome = this.headers.get(REGION_STATUS_HEADER);
+    if (outcome !== status) this.#fail(`Expected the island's outcome "${status}", got ${outcome ? `"${outcome}"` : 'none'} (status ${this.status})`);
     return this;
   }
 

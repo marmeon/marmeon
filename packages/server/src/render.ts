@@ -1,20 +1,30 @@
 import { ConsoleLogger, Translator, type Container, type Logger } from '@bespokecore/core';
 import {
   Flasher,
+  HttpError,
+  isIslandResult,
+  isPrefetch,
   isRedirectResult,
   isViewResult,
+  LOCATION_HEADER,
   PAGE_HEADER,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
   PURPOSE_HEADER,
   partialReloadOf,
+  REGION_HEADER,
+  REGION_STATUS_HEADER,
+  regionOf,
   resolvePageProps,
   SharedData,
+  type IslandResult,
   type PageObject,
+  type RegionObject,
+  type RegionOutcomeStatus,
   type SsrRender,
 } from '@bespokecore/http';
-import { defaultToResponse, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
+import { defaultToResponse, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
 import { documentOf, FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
 export interface PageRenderOptions {
@@ -103,7 +113,7 @@ const BOTS =
  * (a partial reload), a prefetch or the visit (`Purpose` — a page may skip side effects for a prefetch). A cache
  * (`Cache-Control: private, max-age=…`) must never answer one with the other.
  */
-const PAGE_VARY = [PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER].join(', ');
+const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER].join(', ');
 
 /** A response factory that may use the request's container scope (the kernel passes it). */
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
@@ -113,6 +123,8 @@ export interface ResponseFactoryOptions {
   logger?: Logger;
   /** Server rendering at all (`SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
   ssr?: boolean;
+  /** Development: say why an island (or a page) is a 404 where it was asked for the other. */
+  debug?: boolean;
 }
 
 /**
@@ -128,7 +140,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true }: ResponseFactoryOptions = {},
+  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   const noRouter: RouteLookup = {
     findByName: (name) => {
@@ -157,7 +169,12 @@ export function createResponseFactory(
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
       return result.toResponse(ctx.request, routes ?? noRouter, flasher);
     }
+    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug);
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
+    if (regionOf(ctx.request)) {
+      // `<Island route>` takes island routes only (a type error otherwise) — at runtime a page is not one either.
+      throw new HttpError(404, debug ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
+    }
 
     const url = new URL(ctx.request.url);
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
@@ -183,6 +200,74 @@ export function createResponseFactory(
       headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
     });
   };
+}
+
+/**
+ * The answer to an island's request (E48, E52): its region object as JSON — the page object of the island route, without
+ * shared props and without the page's locale. Only for a region request (`x-bespoke-region: island`): anything else —
+ * a direct hit, a page visit or a prefetch of the island's URL — is a 404 (an island has no head, layout or title).
+ */
+async function islandResponse(
+  result: IslandResult,
+  ctx: ResponseContext,
+  version: string | null,
+  debug: boolean,
+): Promise<Response> {
+  const { request } = ctx;
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    // The types refuse this already (`Route.post(…)` with an island's controller); a route built without them fails here.
+    throw new Error(`[${result.component}] is an island, and islands answer GET requests only — ${request.method} ${new URL(request.url).pathname} returned this.island(…).`);
+  }
+  if (regionOf(request) !== 'island' || isPrefetch(request)) {
+    throw new HttpError(
+      404,
+      debug
+        ? `[${result.component}] is an island: it is loaded by <Island route> on a page (x-bespoke-region: island), never visited, linked or prefetched by itself.`
+        : undefined,
+    );
+  }
+  const url = new URL(request.url);
+  // Its own props only: the page around it has the shared ones. Partial reloads of the island name its component.
+  const resolved = await resolvePageProps(result.props, undefined, partialReloadOf(request, result.component));
+  const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
+  const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query };
+  return new Response(JSON.stringify(region), {
+    status: 200,
+    headers: { vary: PAGE_VARY, 'content-type': 'application/json', [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' },
+  });
+}
+
+/**
+ * What a region request's response becomes on its way out (E52) — whatever the island route's middleware or controller
+ * answered: the region object passes, so does a 409 (a new build: the client loads the whole page again). A redirect, a
+ * 401 or a 423 is `unauthorized`, a 403 `forbidden` — `204` with `x-bespoke-region-status`, the redirect never followed,
+ * so the island shows its fallback and the page never navigates. Anything else is an `exception`, with its status (an
+ * error's JSON body, from the kernel, stays for development).
+ */
+export async function toRegionResponse(response: Response): Promise<Response> {
+  if (response.ok && response.headers.get(REGION_HEADER) === 'island') return response;
+  if (response.status === 409 && response.headers.has(LOCATION_HEADER)) return response;
+  const outcome = regionOutcome(response.status);
+  const headers = new Headers(response.headers);
+  for (const name of ['location', 'set-cookie', 'content-length', PAGE_HEADER, REGION_HEADER]) headers.delete(name);
+  headers.set(REGION_STATUS_HEADER, outcome);
+  // An outcome is about who asked, and the island URL answers otherwise without the header: never kept, kept apart.
+  if (!headers.has('cache-control')) headers.set('cache-control', 'no-store');
+  const vary = headers.get('vary');
+  if (!vary?.toLowerCase().split(/\s*,\s*/).includes(REGION_HEADER)) headers.set('vary', vary ? `${vary}, ${REGION_HEADER}` : REGION_HEADER);
+  const json = response.headers.get('content-type')?.includes('json') ?? false;
+  if (outcome !== 'exception' || !json) {
+    await response.body?.cancel();
+    headers.delete('content-type');
+    return new Response(null, { status: outcome === 'exception' ? (response.status >= 400 ? response.status : 500) : 204, headers });
+  }
+  return new Response(response.body, { status: response.status >= 400 ? response.status : 500, headers });
+}
+
+function regionOutcome(status: number): RegionOutcomeStatus {
+  if ((status >= 300 && status < 400) || status === 401 || status === 423) return 'unauthorized';
+  if (status === 403) return 'forbidden';
+  return 'exception';
 }
 
 function describe(error: unknown): { exception: string; message: string; stack?: string } {

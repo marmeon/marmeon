@@ -197,3 +197,37 @@ describe('session stores', () => {
     await expect(store.write('x', { big: 'x'.repeat(3000) }, 60)).rejects.toThrow('too large for the cookie driver');
   });
 });
+
+describe('Session — read-only (an island, E52)', () => {
+  it('asks before every write: a lenient lock drops it (production), the session is never saved', async () => {
+    const store = new MemorySessionStore();
+    const id = (await request(store, undefined, (session) => session.flash('visits', 1))).id;
+    const asked: string[] = [];
+    const session = new Session(store, config);
+    await session.start(id);
+    session.lock((what) => (asked.push(what), false));
+    expect(session.readOnly).toBe(true);
+    session.put('visits', 2);
+    session.flash('user_id', 'x');
+    session.forget('visits');
+    session.forget('nothing-there'); // changes nothing — not even asked
+    session.regenerate();
+    expect(session.id).toBe(id);
+    expect(session.get('visits')).toBe(1);
+    expect(asked).toEqual(["session.put('visits')", "session.flash('user_id')", "session.forget('visits')", 'session.regenerate()']);
+    expect(await session.save()).toBe(false);
+    // The flash data is still there for the page it was meant for — not aged by the island's request.
+    let seen: unknown;
+    await request(store, id, (page) => (seen = page.get('visits')));
+    expect(seen).toBe(1);
+  });
+
+  it('a strict lock (development) throws where the write is made', async () => {
+    const session = new Session(new MemorySessionStore(), config);
+    await session.start(undefined);
+    session.lock((what) => {
+      throw new Error(`no: ${what}`);
+    });
+    expect(() => session.put('visits', 1)).toThrow("no: session.put('visits')");
+  });
+});

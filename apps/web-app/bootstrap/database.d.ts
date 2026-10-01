@@ -76,6 +76,7 @@ declare module '@bespokecore/database' {
   }
   interface Modules {
     auth: true;
+    dashboard: true;
     lab: true;
     locale: true;
     'user-profile': true;

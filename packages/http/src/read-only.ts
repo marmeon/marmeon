@@ -1,0 +1,56 @@
+/** A write a read-only request tried (E52) — thrown in development and tests, so the mistake shows where it is made. */
+export class ReadOnlyViolation extends Error {
+  override name = 'ReadOnlyViolation';
+}
+
+/** What engages a request's {@link ReadOnly} guard. */
+export interface ReadOnlyOptions {
+  /** What the request is, for the message: `an island request (GET /dashboard/islands/sign-ins)`. */
+  readonly reason: string;
+  /** Throw on a write (development, tests) — otherwise the write is dropped and reported. */
+  readonly strict: boolean;
+  /** Where a dropped write is reported (the log). */
+  readonly report: (message: string) => void;
+}
+
+/**
+ * Whether the current request may leave anything behind — per request (scoped). An island's request is read-only (E52):
+ * it runs beside the page and after it, so whatever it wrote into the session (flash data, the page a guest wanted), into
+ * cookies or into work after the response would race the page's own requests — or, streamed with the page (W5b step 4),
+ * never reach the browser at all. Whatever would write asks first (`permit`): the session (`StartSession` locks it), the
+ * cookie jar and `AfterResponse` (the kernel locks them).
+ *
+ * In development and tests a write throws a {@link ReadOnlyViolation} naming it; in production it is dropped and logged,
+ * and the island — and the page around it — stays whole.
+ */
+export class ReadOnly {
+  #options: ReadOnlyOptions | undefined;
+
+  /** Whether this request is read-only. */
+  get active(): boolean {
+    return this.#options !== undefined;
+  }
+
+  /** @internal — the kernel engages it for a region request. */
+  engage(options: ReadOnlyOptions): void {
+    this.#options = options;
+  }
+
+  /**
+   * Asked before a write (`what`: `session.put('cart')`): true when the request may write. A read-only request throws
+   * (strict) or reports the write and answers false — the caller drops it.
+   */
+  permit(what: string): boolean {
+    const options = this.#options;
+    if (!options) return true;
+    const message =
+      `${what} in ${options.reason}: an island is read-only (E52) — it cannot change the session, cookies or flash data, ` +
+      'nor defer work after the response. Do that in the page or an action, not in an island.';
+    if (options.strict) throw new ReadOnlyViolation(message);
+    options.report(`${message} (dropped)`);
+    return false;
+  }
+}
+
+/** A write check, as the session, the cookie jar and `AfterResponse` take it (`lock(…)`). */
+export type WritePermit = (what: string) => boolean;

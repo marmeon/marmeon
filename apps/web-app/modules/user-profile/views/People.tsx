@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useQueryState, useTranslation } from '@bespokecore/react';
+import { Head, Island, Link, useQueryState, useTranslation } from '@bespokecore/react';
 import type { ListPeopleController } from '../controllers/ListPeopleController.ts';
 
 type Props = PageProps<ListPeopleController>;
@@ -85,6 +85,12 @@ export default function People({ people, now }: Props) {
           {t('people.more')}
         </Link>
       )}
+      <aside aria-labelledby="recent-sign-ins">
+        <h2 id="recent-sign-ins">{t('people.recent')}</h2>
+        {/* The dashboard's island, reused (E48): the same route, its own query. Typing and sorting above reload the page's
+            `people` only — the island stays as it is (no request). */}
+        <Island route="dashboard.sign-ins" query={{ limit: 3, range: 'all' }} fallback={<p aria-busy="true">…</p>} />
+      </aside>
       <p>
         <Link route="user-profile.me">{t('people.profile')}</Link>
       </p>

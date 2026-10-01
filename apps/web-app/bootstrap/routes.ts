@@ -19,8 +19,12 @@ import type { RevokeAccessTokenController } from '../modules/auth/controllers/Re
 import type { SendPasswordResetLinkController } from '../modules/auth/controllers/SendPasswordResetLinkController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
 import type { ShowConfirmPasswordController } from '../modules/auth/controllers/ShowConfirmPasswordController.ts';
+import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
 import type { ShowForgotPasswordController } from '../modules/auth/controllers/ShowForgotPasswordController.ts';
 import type { ShowLoginController } from '../modules/auth/controllers/ShowLoginController.ts';
+import type { ShowMemberStatsController } from '../modules/dashboard/controllers/ShowMemberStatsController.ts';
+import type { ShowMyActivityController } from '../modules/dashboard/controllers/ShowMyActivityController.ts';
+import type { ShowRecentSignInsController } from '../modules/dashboard/controllers/ShowRecentSignInsController.ts';
 import type { ShowRegisterController } from '../modules/auth/controllers/ShowRegisterController.ts';
 import type { ShowResetPasswordController } from '../modules/auth/controllers/ShowResetPasswordController.ts';
 import type { ShowSecurityController } from '../modules/auth/controllers/ShowSecurityController.ts';
@@ -56,6 +60,10 @@ declare module '@bespokecore/router' {
     'auth.verification.notice': { method: 'get'; path: '/email/verify'; controller: typeof ShowVerifyEmailNoticeController };
     'auth.verification.send': { method: 'post'; path: '/email/verification-notification'; controller: typeof ResendVerificationController };
     'auth.verification.verify': { method: 'get'; path: '/email/verify/:id/:hash'; controller: typeof VerifyEmailController; browser: false };
+    'dashboard.activity': { method: 'get'; path: '/dashboard/islands/activity'; controller: typeof ShowMyActivityController };
+    'dashboard.members': { method: 'get'; path: '/dashboard/islands/members'; controller: typeof ShowMemberStatsController };
+    'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
+    'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
@@ -77,6 +85,10 @@ declare module '@bespokecore/http/page' {
     'auth/ResetPassword': true;
     'auth/Security': true;
     'auth/VerifyEmail': true;
+    'dashboard/MemberStats': true;
+    'dashboard/MyActivity': true;
+    'dashboard/RecentSignIns': true;
+    'dashboard/Show': true;
     'errors/Error': true;
     'lab/BrowserOnly': true;
     'lab/ClientOnly': true;

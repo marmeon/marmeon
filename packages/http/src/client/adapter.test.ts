@@ -12,6 +12,8 @@ import {
   PAGE_SCRIPT_ID,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
+  REGION_HEADER,
+  REGION_STATUS_HEADER,
   type PageObject,
 } from '../page.ts';
 import {
@@ -134,6 +136,59 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(ended).toBeUndefined();
     expect(loads).toEqual(['/login']);
     expect(navigator.cachedPages).toBe(0);
+    stop();
+  });
+
+  it('renders islands: each a region of the page — loaded after it, kept in its entry, shown again on Back without a request', async () => {
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      const headers = { ...(init.headers as Record<string, string>) };
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers });
+      if (headers[REGION_HEADER] !== 'island') return server(input, init);
+      // The server's side (packages/server): the island's region object — or, for the admins' island, its outcome.
+      if (url.pathname === '/islands/admins') return new Response(null, { status: 204, headers: { [REGION_STATUS_HEADER]: 'forbidden' } });
+      const body = { component: 'dashboard/SignIns', props: { who: ['Ada'] }, url: url.pathname + url.search, version: 'v1' };
+      return new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    // The adapter: a page renders its islands into elements of their own, from the regions of its entry (`owner`).
+    const initialPage = readInitialPage();
+    const root = await rootElement('app');
+    let navigator!: Navigator;
+    const renderIsland = (element: Element, url: string, owner = navigator.regionOwner) => {
+      const region = navigator.region(url, { owner });
+      const draw = () => {
+        const { status, region: shown } = region.snapshot;
+        element.textContent = shown ? `${shown.component} ${JSON.stringify(shown.props)}` : status;
+      };
+      region.subscribe(draw);
+      draw();
+      void region.load();
+    };
+    navigator = new Navigator({
+      initialPage,
+      render: async (next, { owner }) => {
+        root.innerHTML = `<p>${next.component}</p><div id="island"></div><div id="admins"></div>`;
+        renderIsland(root.querySelector('#island')!, '/islands/sign-ins?limit=5', owner);
+        renderIsland(root.querySelector('#admins')!, '/islands/admins', owner);
+      },
+    });
+    const stop = navigator.start();
+    await navigator.visit('/users/2');
+    const island = () => root.querySelector('#island')!.textContent;
+    await vi.waitFor(() => expect(island()).toBe('dashboard/SignIns {"who":["Ada"]}'));
+    expect(root.querySelector('#admins')!.textContent).toBe('forbidden');
+    expect(requests.filter((request) => request.headers[REGION_HEADER] === 'island').map((request) => request.url)).toEqual(['/islands/sign-ins?limit=5', '/islands/admins']);
+
+    await navigator.visit('/users/1');
+    const asked = requests.length;
+    window.history.back();
+    await vi.waitFor(() => expect(window.location.pathname).toBe('/users/2'));
+    await vi.waitFor(() => expect(island()).toBe('dashboard/SignIns {"who":["Ada"]}'));
+    expect(root.querySelector('#admins')!.textContent).toBe('forbidden');
+    // From the entry's memory: the island requests not again — the page's deferred props neither.
+    expect(requests.slice(asked).filter((request) => request.headers[REGION_HEADER] === 'island')).toEqual([]);
+    expect(JSON.stringify(window.history.state)).not.toContain('Ada');
     stop();
   });
 

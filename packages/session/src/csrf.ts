@@ -95,6 +95,8 @@ export class VerifyCsrfToken {
     }
     // After the route: the token may have been rotated (login, logout).
     const response = await next();
+    // A read-only request (an island, E52) sets no cookie: the page's own requests keep the browser's token current.
+    if (this.#session.readOnly) return response;
     const { lifetime, secure, sameSite } = this.#sessionConfig; // lives as long as the session, like Laravel's
     ctx.cookies.set(XSRF_COOKIE, this.#session.token(), { httpOnly: false, maxAge: lifetime * 60, secure, sameSite });
     return response;

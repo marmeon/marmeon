@@ -3,6 +3,7 @@ import type en from './en.ts';
 
 export default {
   name: 'BespokeCore',
+  dashboard: 'Übersicht',
   account: 'Konto',
   profile: 'Dein Profil',
   settings: 'Einstellungen',

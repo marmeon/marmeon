@@ -34,6 +34,8 @@ export { createBespokeApp } from './client.tsx';
 export type { CreateBespokeAppOptions } from './client.tsx';
 export { ErrorPage } from './error-page.tsx';
 export { Link } from './link.tsx';
+export { Island, useIsland } from './island.tsx';
+export type { IslandElementProps, IslandReloadOptions, IslandState } from './island.tsx';
 export type { LinkProps, PrefetchTrigger } from './link.tsx';
 export { layoutsOf, resolveModulePages } from './pages.ts';
 export type { DefaultLayout, Layout, LayoutProps, PageComponent, PageLayout, PageSsr, ResolvePage } from './pages.ts';

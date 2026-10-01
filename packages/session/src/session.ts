@@ -45,6 +45,8 @@ export class Session {
   /** The session came from the store (it is not new in this request). */
   #loaded = false;
   readonly #obsolete: string[] = [];
+  /** Set for a read-only request (an island, E52): asked before every write. */
+  #permit: ((what: string) => boolean) | undefined;
 
   constructor(store: SessionStore, config: SessionConfig) {
     this.#store = store;
@@ -53,6 +55,25 @@ export class Session {
 
   get started(): boolean {
     return this.#started;
+  }
+
+  /**
+   * Whether this request may not change the session — an island's (E52, `StartSession` locks it). Writes then throw in
+   * development and are dropped in production; the session is never saved. Framework code that would write as a side
+   * effect (a remember-me sign-in, the page a guest wanted) skips that instead.
+   */
+  get readOnly(): boolean {
+    return this.#permit !== undefined;
+  }
+
+  /** @internal — `StartSession` locks the session of a read-only request: every write asks `permit` first. */
+  lock(permit: (what: string) => boolean): void {
+    this.#permit = permit;
+  }
+
+  /** Whether `what` may be written (always, unless the session is locked). */
+  #may(what: string): boolean {
+    return this.#permit === undefined || this.#permit(what);
   }
 
   get id(): string {
@@ -81,7 +102,8 @@ export class Session {
   }
 
   put<K extends string>(key: K, value: Value<K>): void {
-    this.#ensureStarted()[key] = value;
+    const data = this.#ensureStarted();
+    if (this.#may(`session.put('${key}')`)) data[key] = value;
   }
 
   /** Returns the value and removes it. */
@@ -93,7 +115,10 @@ export class Session {
 
   forget(...keys: string[]): void {
     const data = this.#ensureStarted();
-    for (const key of keys) delete data[key];
+    const present = keys.filter((key) => Object.hasOwn(data, key));
+    // Forgetting what is not there changes nothing — not even for a read-only request.
+    if (present.length === 0 || !this.#may(`session.forget('${present.join("', '")}')`)) return;
+    for (const key of present) delete data[key];
   }
 
   /** Everything except the framework's bookkeeping (`_token`, `_flash`, …). */
@@ -104,14 +129,16 @@ export class Session {
   /** Removes all data, the CSRF token included. */
   flush(): void {
     this.#ensureStarted();
-    this.#data = {};
+    if (this.#may('session.flush()')) this.#data = {};
   }
 
   // -- Flash data ------------------------------------------------------------
 
   /** Stores a value for this and the next request only. */
   flash<K extends string>(key: K, value: Value<K>): void {
-    this.put(key, value);
+    const data = this.#ensureStarted();
+    if (!this.#may(`session.flash('${key}')`)) return;
+    data[key] = value;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, key])];
     flash.old = flash.old.filter((old) => old !== key);
@@ -119,6 +146,8 @@ export class Session {
 
   /** Keeps all flash data for one more request. */
   reflash(): void {
+    this.#ensureStarted();
+    if (!this.#may('session.reflash()')) return;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, ...flash.old])];
     flash.old = [];
@@ -126,6 +155,8 @@ export class Session {
 
   /** Keeps some flash data for one more request. */
   keep(...keys: string[]): void {
+    this.#ensureStarted();
+    if (!this.#may(`session.keep('${keys.join("', '")}')`)) return;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, ...keys])];
     flash.old = flash.old.filter((key) => !keys.includes(key));
@@ -152,7 +183,9 @@ export class Session {
   }
 
   regenerateToken(): void {
-    this.#ensureStarted()[TOKEN] = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
+    const data = this.#ensureStarted();
+    if (!this.#may('session.regenerateToken()')) return;
+    data[TOKEN] = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
   }
 
   /**
@@ -161,6 +194,7 @@ export class Session {
    */
   regenerate(): void {
     this.#ensureStarted();
+    if (!this.#may('session.regenerate()')) return;
     this.#obsolete.push(this.#id);
     this.#id = createSessionId();
     this.regenerateToken();
@@ -185,6 +219,8 @@ export class Session {
    */
   async save(): Promise<boolean> {
     this.#ensureStarted();
+    // A read-only request never writes the session back: its flash data stays for the page it was meant for.
+    if (this.#permit) return false;
     const flash = this.#flash();
     for (const key of flash.old) delete this.#data[key];
     flash.old = flash.new;

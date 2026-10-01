@@ -1,4 +1,5 @@
-import type { DeepPartial, FieldOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
+import type { DeepPartial, FieldOf, IslandNameOf, IslandPropsOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
+import type { RegionOutcomeStatus } from '@bespokecore/http/page';
 
 type Assertions = {
   [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];
@@ -120,5 +121,14 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
     props?: DeepPartial<PropsOf<TSource>> | ((props: PropsOf<TSource>) => void),
   ): this {
     return this.#queue((r) => r.assertPage<TSource, V>(component, props));
+  }
+  assertIsland<TSource extends { handle: (...args: never[]) => unknown } = { handle: (...args: never[]) => unknown }, const V extends string = string>(
+    component: IslandNameOf<TSource, V>,
+    props?: DeepPartial<IslandPropsOf<TSource>> | ((props: IslandPropsOf<TSource>) => void),
+  ): this {
+    return this.#queue((r) => r.assertIsland<TSource, V>(component, props));
+  }
+  assertIslandStatus(status: RegionOutcomeStatus): this {
+    return this.#queue((r) => r.assertIslandStatus(status));
   }
 }

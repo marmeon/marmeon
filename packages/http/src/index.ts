@@ -1,5 +1,7 @@
 export { Controller } from './controller.ts';
 export { view, isViewResult } from './view.ts';
+export { island, isIslandResult } from './island.ts';
+export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export { ERRORS_KEY, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
 export type { RedirectStatus } from './redirect.ts';
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
@@ -12,10 +14,13 @@ export {
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
   PURPOSE_HEADER,
+  REGION_HEADER,
+  REGION_STATUS_HEADER,
   VERSION_HEADER,
   isPageObject,
   isPrefetch,
   pageName,
+  regionOf,
 } from './page.ts';
 export { always, deepMerge, defer, merge, mergeOf, optional, propKind, resolveProp } from './props.ts';
 export type {
@@ -35,17 +40,19 @@ export type {
 export { partialReloadOf, resolvePageProps } from './page-props.ts';
 export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
-export type { CheckViewName, ErrorPageProps, PageObject, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export type { CheckViewName, ErrorPageProps, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
 export { AfterResponse } from './after-response.ts';
+export { ReadOnly, ReadOnlyViolation } from './read-only.ts';
+export type { ReadOnlyOptions, WritePermit } from './read-only.ts';
 export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { defineMiddleware, defineRequest, defineRoutes, translatable, ValidationError } from '@bespokecore/router';
+export { defineMiddleware, defineRequest, defineRoutes, Router, translatable, ValidationError } from '@bespokecore/router';
 export type {
   ContextOf,
   CookieJar,

@@ -6,6 +6,7 @@ import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { ClearClientHistory, ClientHistory } from './client-history.ts';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
+import { ReadOnly } from './read-only.ts';
 import { SharedData } from './shared-data.ts';
 import { UrlSigner } from './signed-urls.ts';
 
@@ -57,6 +58,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(CookieEncryption);
     container.scoped(SharedData);
     container.scoped(AfterResponse);
+    container.scoped(ReadOnly);
     container.scoped(ClientHistory);
     container.singleton(UrlSigner);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version

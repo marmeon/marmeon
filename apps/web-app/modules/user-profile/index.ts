@@ -7,6 +7,10 @@ import routes from './routes.ts';
 import { UserProfileServiceProvider } from './UserProfileServiceProvider.ts';
 import { ProfileConfig } from './config.ts';
 
+// Public API of the module — the dashboard's islands read through it.
+export { ProfileActivity, type ActivityEntry } from './ProfileActivity.ts';
+export { ProfileDirectory } from './ProfileDirectory.ts';
+
 export default defineModule({
   name: 'user-profile',
   providers: [UserProfileServiceProvider],

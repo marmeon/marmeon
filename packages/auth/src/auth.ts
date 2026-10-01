@@ -233,8 +233,9 @@ export class Auth {
     const found = await this.#users.findById(id as never);
     const fingerprint = this.#session.get(AUTH_SESSION_KEYS.password);
     if (!found || typeof fingerprint !== 'string' || !equal(fingerprint, passwordFingerprint(found.passwordHash))) {
-      // Deleted, or the password changed since this session signed in: this session ends.
-      this.#session.invalidate();
+      // Deleted, or the password changed since this session signed in: this session ends — by the next request that may
+      // write it (an island's is read-only, E52: for it, nobody is signed in).
+      if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
     }
     return found.user;
@@ -242,7 +243,9 @@ export class Auth {
 
   async #fromRememberCookie(): Promise<AuthUser | undefined> {
     const cookie = this.#cookies.get(this.#config.rememberCookie);
-    if (!cookie) return undefined;
+    // A read-only request (an island, E52) cannot sign in: consuming the token rotates it, and the new one would never
+    // reach the browser (the next request would present the old one — "stolen"). The page's request signs in.
+    if (!cookie || this.#session.readOnly) return undefined;
     const result = await this.#remember.consume(cookie);
     if (result?.kind !== 'valid') {
       this.#cookies.delete(this.#config.rememberCookie);

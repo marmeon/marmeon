@@ -1,5 +1,6 @@
 import { RedirectResult, type RedirectStatus } from './redirect.ts';
 import type { CheckViewName } from './page.ts';
+import { island, type IslandResult } from './island.ts';
 import { view, type ViewProps, type ViewResult } from './view.ts';
 
 /**
@@ -14,6 +15,15 @@ export abstract class Controller {
   /** A page: `this.view('user-profile/Show', { profile })` — the name is checked against `modules/*\/views/**`. */
   protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status = 200): ViewResult<TProps, V> {
     return view<V, TProps>(component, props, status);
+  }
+
+  /**
+   * An island (E48) — a part of a page that loads by itself: `this.island('dashboard/RecentSignIns', { entries })`, embedded
+   * with `<Island route="dashboard.sign-ins">`. GET routes only (a type error on others): an island reads, it never
+   * writes — its request cannot change the session, cookies or flash data (E52). Not a page: visited directly, it is a 404.
+   */
+  protected island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V> {
+    return island<V, TProps>(component, props);
   }
 
   protected json(data: unknown, status = 200): Response {

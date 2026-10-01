@@ -9,7 +9,7 @@ import {
   type VisitMethod,
   type VisitOptions,
 } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
+import type { BrowserRouteNameInput, CheckPageRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { usePage, useRouter, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
@@ -76,7 +76,8 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
  */
 type RouteLinkProps<N extends string> = LinkOptions &
   PartialReloadOptions<Instance<ControllerOf<N>>> & {
-  route: CheckBrowserRouteName<N>;
+  /** A page or an action — an island route is a compile error (embed it with `<Island route>`). */
+  route: CheckPageRouteName<N>;
   /**
    * The query, typed by the route's query schema (E55) — a wrong key or value is a compile error. For the page on
    * screen, fields that are just its defaults are left out of the URL.

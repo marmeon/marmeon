@@ -1,5 +1,5 @@
 import type { InferOutput, QuerySchemaOf } from './request-definition.ts';
-import type { ExtractParams } from './types.ts';
+import type { ExtractParams, RegionResultMarker } from './types.ts';
 import type { Param, Query } from './url.ts';
 
 /**
@@ -74,6 +74,44 @@ export type CheckBrowserRouteName<N extends string> = string extends N
       : `'${N}' is not a route name${Suggest<N, BrowserRouteName>}`;
 
 type Entry<N> = N extends keyof Routes ? Routes[N] : never;
+
+type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
+
+/** What the controller of route `N` answers with (awaited) — `never` for a closure. */
+type AnswerOf<N> = Instance<Entry<N> extends { readonly controller: infer C } ? C : never> extends { handle: (...args: never[]) => infer R } ? Awaited<R> : never;
+
+/** Whether route `N` is an island: its controller answers with `this.island(…)` (E48). */
+type IsIsland<N> = [Extract<AnswerOf<N>, RegionResultMarker>] extends [never] ? false : true;
+
+/**
+ * Names of island routes the browser may know — what `<Island route>` takes (E48): GET routes whose controller answers
+ * with `this.island(…)`. Any string while no routes are generated.
+ */
+export type IslandRouteName = Registered extends true ? { [N in BrowserRouteName]: IsIsland<N> extends true ? N : never }[BrowserRouteName] : string;
+
+/**
+ * `N` when it is an island route the browser may know; otherwise a message — a page route is named as one
+ * (`'user-profile.show' renders a page, not an island — …`), anything else as {@link CheckBrowserRouteName} does.
+ */
+export type CheckIslandRouteName<N extends string> = string extends N
+  ? IslandRouteName
+  : N extends IslandRouteName
+    ? N
+    : N extends BrowserRouteName
+      ? `'${N}' renders a page, not an island — its controller returns this.view(…); an island's returns this.island(…)`
+      : CheckBrowserRouteName<N>;
+
+/**
+ * {@link CheckBrowserRouteName} for links and visits: a page (or an action) — an island is named as such, it has no page
+ * of its own to go to (`'dashboard.sign-ins' is an island, not a page — embed it with <Island route="dashboard.sign-ins">`).
+ */
+export type CheckPageRouteName<N extends string> = string extends N
+  ? BrowserRouteName
+  : N extends IslandRouteName
+    ? Registered extends true
+      ? `'${N}' is an island, not a page — embed it with <Island route="${N}">; links and visits go to pages`
+      : N
+    : CheckBrowserRouteName<N>;
 
 /** The path parameters of route `N`: `{ user: Param }`, optional ones optional. Any for a name that is not one literal. */
 export type ParamsOf<N extends string> = true extends IsUnion<N>

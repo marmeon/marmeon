@@ -67,6 +67,7 @@ export class CookieJar {
   #incoming: Map<string, string>;
   readonly #queued = new Map<string, { value: string; options: CookieOptions | undefined }>();
   #codec: CookieCodec | undefined;
+  #permit: ((what: string) => boolean) | undefined;
 
   constructor(header: string | null) {
     this.#incoming = parseCookies(header);
@@ -86,7 +87,16 @@ export class CookieJar {
 
   set(name: string, value: string, options?: CookieOptions): void {
     serializeCookie(name, value, options); // validate now, where the mistake is made
+    if (this.#permit && !this.#permit(`cookies.set('${name}')`)) return;
     this.#queued.set(name, { value, options });
+  }
+
+  /**
+   * Locks the jar for a read-only request (an island, E52): every `set`/`delete` asks `permit` first, which throws or
+   * answers false — then nothing is queued.
+   */
+  lock(permit: (what: string) => boolean): void {
+    this.#permit = permit;
   }
 
   /** Expires the cookie in the browser. Pass the same `path`/`domain` it was set with. */

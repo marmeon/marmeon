@@ -54,6 +54,37 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   }
 
   /**
+   * Who signed in lately — newest first, at most `limit`, since `since` (all time without). For the dashboard's
+   * "Recent sign-ins" island; names and times only.
+   */
+  recentSignIns({ since, limit }: { since: Date | undefined; limit: number }) {
+    let query = this.#db
+      .selectFrom('login_activity')
+      .innerJoin('users', 'users.id', 'login_activity.user_id')
+      .select(['users.id', 'users.name', 'login_activity.last_login_at'])
+      .orderBy('login_activity.last_login_at', 'desc')
+      .orderBy('users.id', 'desc')
+      .limit(limit);
+    if (since) query = query.where('login_activity.last_login_at', '>=', since.toISOString());
+    return query.execute();
+  }
+
+  /** How many members there are, how many confirmed their address, and who joined last — the dashboard's "Members" island. */
+  async memberStats(): Promise<{ members: number; verified: number; newest: { id: number; name: string; created_at: string } | undefined }> {
+    const [counts, newest] = await Promise.all([
+      this.#db
+        .selectFrom('users')
+        .select((eb) => [
+          eb.fn.countAll<number>().as('members'),
+          eb.fn.count<number>('users.email_verified_at').as('verified'),
+        ])
+        .executeTakeFirstOrThrow(),
+      this.#db.selectFrom('users').select(['users.id', 'users.name', 'users.created_at']).orderBy('users.id', 'desc').limit(1).executeTakeFirst(),
+    ]);
+    return { members: Number(counts.members), verified: Number(counts.verified), newest };
+  }
+
+  /**
    * The people of the list page (`/people`), as its query asks (`ListPeopleRequest`, already parsed): names containing
    * `q` (LIKE wildcards taken literally), in `sort` order, the next `perPage` after `cursor` (anything that does not
    * decode starts at the top). Keyset pagination — names repeat, ids break the tie — for "load more": no count, no

@@ -16,7 +16,7 @@ export type { CookieCodec, CookieOptions } from './cookies.ts';
 export { clientIp, createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
 export { defineRequest, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
-export { GET_HAS_NO_BODY } from './route.ts';
+export { GET_HAS_NO_BODY, ISLAND_IS_GET_ONLY } from './route.ts';
 export type {
   BodyOf,
   CheckQuery,

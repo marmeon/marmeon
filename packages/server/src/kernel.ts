@@ -4,7 +4,7 @@ import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, Translator, type Application, type Container } from '@bespokecore/core';
-import { AfterResponse, AssetVersion, ExceptionHandler, HttpError } from '@bespokecore/http';
+import { AfterResponse, AssetVersion, ExceptionHandler, HttpError, isViewResult, ReadOnly, regionOf } from '@bespokecore/http';
 import {
   clientIp,
   CookieJar,
@@ -15,10 +15,11 @@ import {
   type HttpContext,
   type MiddlewareHandler,
   type RequestState,
+  ValidationError,
 } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
-import { createResponseFactory, type PageRenderer } from './render.ts';
+import { createResponseFactory, toRegionResponse, type PageRenderer } from './render.ts';
 import { ServerConfig } from './provider.ts';
 import { createViteDevRenderer } from './vite.ts';
 
@@ -36,6 +37,11 @@ export interface KernelOptions {
   version?: string | null;
   /** Server rendering (default: `ServerConfig.ssr`, env `SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
   ssr?: boolean;
+  /**
+   * What a write in a read-only request (an island's, E52) does: throw (`true`, the default outside production — the
+   * mistake shows where it is made) or get dropped and logged (`false`, production — the island and its page stay whole).
+   */
+  strictReadOnly?: boolean;
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
@@ -67,18 +73,20 @@ export function createHttpKernel(
     maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
+    strictReadOnly = process.env.NODE_ENV !== 'production',
   }: KernelOptions = {},
 ): HttpKernel {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
   container.instance(AssetVersion, { value: version });
   const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
-  const toResponse = createResponseFactory(renderer, router, version, { logger: container.make(Logger).child({ channel: 'ssr' }), ssr });
+  const toResponse = createResponseFactory(renderer, router, version, { logger: container.make(Logger).child({ channel: 'ssr' }), ssr, debug });
   const app = new Hono();
 
   const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
     const handler = container.make(ExceptionHandler);
     handler.report(error);
+    if (regionOf(request)) return renderRegionError(handler, error, request, scope);
     try {
       // In the request's language, when a translator is bound (@bespokecore/i18n) — the error page, its title, validation messages.
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
@@ -94,6 +102,23 @@ export function createHttpKernel(
         return new Response('Server Error', { status: 500 });
       }
     }
+  };
+
+  /**
+   * An error in an island's request (E52): no error page — the island shows its fallback. JSON with the status (and, in
+   * development, the exception), which `toRegionResponse` marks as the island's `exception`.
+   */
+  const renderRegionError = (handler: ExceptionHandler, error: unknown, request: Request, scope?: Container): Response => {
+    try {
+      const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+      // Never back to a form with the errors flashed (that would write the session): the island has no form.
+      const result = error instanceof ValidationError ? Response.json({ message: error.message }, { status: 422 }) : handler.render(error, request, { debug, translator });
+      if (result instanceof Response) return result;
+      if (isViewResult(result)) return Response.json(result.props, { status: result.status, headers: result.headers });
+    } catch (failure) {
+      logger.error('Rendering the error of an island failed', { exception: String(failure) });
+    }
+    return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError ? error.status : 500 });
   };
 
   app.use(async (c, next) => {
@@ -129,6 +154,15 @@ export function createHttpKernel(
     const state = createRequestState(request, { maxBodySize, ip });
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
+    // An island's request is read-only (E52): no session write, no cookie, no work after the response.
+    const region = regionOf(request);
+    if (region && scope.has(ReadOnly)) {
+      const readOnly = scope.make(ReadOnly);
+      const { pathname } = new URL(request.url);
+      readOnly.engage({ reason: `an island request (${request.method} ${pathname})`, strict: strictReadOnly, report: (message) => logger.error(message) });
+      state.cookies.lock((what) => readOnly.permit(what));
+      if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
+    }
 
     let response: Response;
     try {
@@ -136,6 +170,8 @@ export function createHttpKernel(
     } catch (error) {
       response = await renderError(error, request, scope);
     }
+    // Redirects, 401 and 403 of an island become its fallback — never a navigation of the page.
+    if (region) response = await toRegionResponse(response);
     // Cookies queued during the request reach the client whatever the outcome (like Laravel).
     const final = await withQueuedCookies(response, state.cookies);
 

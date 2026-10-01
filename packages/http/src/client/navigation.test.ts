@@ -1,144 +1,7 @@
 import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../page.ts';
 import { describe, expect, it } from 'vitest';
-import { isHistoryState, mergePage, Navigator, type NavigatorWindow, type ScrollRegion, type VisitException } from './navigation.ts';
-
-const ORIGIN = 'https://app.test';
-
-const page = (url: string, props: Record<string, unknown> = {}, component = 'pages/Show'): PageObject => ({ component, props, url, version: null });
-
-const pageResponse = (body: PageObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json' } });
-
-type Handler = (url: string, init: RequestInit) => Response | Promise<Response>;
-
-/**
- * One tab's history, as the browser keeps it: states are stored *serialized* (structured clone, written to
- * disk for session restore) — the test reads exactly what would end up there.
- */
-class FakeWindow implements NavigatorWindow {
-  readonly entries: { url: string; state: string }[] = [];
-  index = -1;
-  readonly requests: { url: string; method: string; headers: Record<string, string> }[] = [];
-  readonly loads: string[] = [];
-  scrollX = 0;
-  scrollY = 0;
-  scrollRestoration: ScrollRestoration = 'auto';
-  /** The page's `[scroll-region]` elements. */
-  regions: ScrollRegion[] = [];
-  readonly document = {
-    querySelectorAll: (selector: string) => (selector === '[scroll-region]' ? this.regions : []),
-    getElementById: () => null,
-  };
-  XMLHttpRequest?: new () => XMLHttpRequest;
-  readonly #listeners = new Map<string, Set<(event: Event) => void>>();
-  handler: Handler = () => new Response('not found', { status: 404 });
-
-  constructor(url: string) {
-    this.entries.push({ url, state: 'null' });
-    this.index = 0;
-  }
-
-  get history(): NavigatorWindow['history'] {
-    const win = this;
-    return {
-      get state(): unknown {
-        return JSON.parse(win.current.state);
-      },
-      pushState(state: unknown, _title: string, url?: string | URL | null) {
-        win.entries.splice(win.index + 1);
-        win.entries.push({ url: win.#resolve(url), state: JSON.stringify(state) });
-        win.index++;
-      },
-      replaceState(state: unknown, _title: string, url?: string | URL | null) {
-        win.entries[win.index] = { url: win.#resolve(url), state: JSON.stringify(state) };
-      },
-      get scrollRestoration() {
-        return win.scrollRestoration;
-      },
-      set scrollRestoration(value: ScrollRestoration) {
-        win.scrollRestoration = value;
-      },
-    } as NavigatorWindow['history'];
-  }
-
-  get current() {
-    return this.entries[this.index]!;
-  }
-
-  get location(): NavigatorWindow['location'] {
-    const url = new URL(this.current.url);
-    return {
-      href: url.href,
-      origin: url.origin,
-      pathname: url.pathname,
-      search: url.search,
-      assign: (to: string | URL) => void this.loads.push(`assign ${to}`),
-      replace: (to: string | URL) => void this.loads.push(`replace ${to}`),
-      reload: () => void this.loads.push('reload'),
-    } as NavigatorWindow['location'];
-  }
-
-  scrollTo(x: number, y: number) {
-    this.scrollX = x;
-    this.scrollY = y;
-  }
-
-  async fetch(input: string, init: RequestInit = {}): Promise<Response> {
-    const url = new URL(input, this.current.url).href;
-    this.requests.push({ url, method: init.method ?? 'GET', headers: { ...(init.headers as Record<string, string>) } });
-    return this.handler(url, init);
-  }
-
-  addEventListener(type: string, listener: (event: Event) => void) {
-    if (!this.#listeners.has(type)) this.#listeners.set(type, new Set());
-    this.#listeners.get(type)!.add(listener);
-  }
-
-  removeEventListener(type: string, listener: (event: Event) => void) {
-    this.#listeners.get(type)?.delete(listener);
-  }
-
-  dispatch(type: string, init: Record<string, unknown>) {
-    const event = Object.assign(new Event(type), init);
-    for (const listener of this.#listeners.get(type) ?? []) listener(event);
-  }
-
-  /** Back within the same document: the browser fires popstate with the entry's (deserialized) state. */
-  back() {
-    this.index--;
-    this.dispatch('popstate', { state: this.history.state });
-  }
-
-  forward() {
-    this.index++;
-    this.dispatch('popstate', { state: this.history.state });
-  }
-
-  /** The user scrolls the window (and the regions) — the browser fires `scroll`. */
-  scroll(y: number, ...regions: number[]) {
-    this.scrollY = y;
-    regions.forEach((top, index) => (this.regions[index]!.scrollTop = top));
-    this.dispatch('scroll', {});
-  }
-
-  #resolve(url: string | URL | null | undefined): string {
-    return url === null || url === undefined ? this.current.url : new URL(url, this.current.url).href;
-  }
-}
-
-function boot(win: FakeWindow, initial: PageObject, options: { cacheSize?: number } = {}) {
-  const shown: PageObject[] = [];
-  const navigator = new Navigator({
-    initialPage: initial,
-    window: win,
-    render: async (next) => void shown.push(next),
-    ...options,
-  });
-  const stop = navigator.start();
-  return { navigator, shown, stop, visible: () => shown.at(-1) ?? initial };
-}
-
-/** Lets the async work of a popstate (a refetch, a render) finish. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
+import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
 describe('Navigator — the history without props (E36)', () => {
   it('keeps only { component, url, scroll, key } in history.state — never the props', async () => {
@@ -513,7 +376,9 @@ describe('Navigator — scroll restoration', () => {
     const first = boot(win, page('/a'));
     win.scroll(700, 90);
     await debounce();
-    expect(JSON.parse(win.current.state)).toMatchObject({ scroll: { x: 0, y: 700 }, regions: [{ x: 0, y: 90 }] });
+    // `scrollRegions` — not `regions`, the name islands' regions (which never go into the entry) would collide with.
+    expect(JSON.parse(win.current.state)).toMatchObject({ scroll: { x: 0, y: 700 }, scrollRegions: [{ x: 0, y: 90 }] });
+    expect(JSON.parse(win.current.state)).not.toHaveProperty('regions');
     first.stop();
 
     // Reload: a new document in the same entry, scrolled to the top by the browser (restoration is manual).
@@ -522,6 +387,17 @@ describe('Navigator — scroll restoration', () => {
     boot(win, page('/a'));
     expect(win.scrollY).toBe(700);
     expect(win.regions[0]!.scrollTop).toBe(90);
+  });
+
+  it('restores an entry an older document wrote — with its scroll regions still called `regions`', () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.regions = [{ scrollLeft: 0, scrollTop: 0 }];
+    win.history.replaceState({ component: 'pages/Show', url: '/a', key: 'k0', scroll: { x: 0, y: 300 }, regions: [{ x: 0, y: 40 }] }, '', `${ORIGIN}/a`);
+    boot(win, page('/a'));
+    expect([win.scrollY, win.regions[0]!.scrollTop]).toEqual([300, 40]);
+    // Written back under the new name only.
+    expect(JSON.parse(win.current.state)).toMatchObject({ key: 'k0', scrollRegions: [{ x: 0, y: 40 }] });
+    expect(JSON.parse(win.current.state)).not.toHaveProperty('regions');
   });
 
   it('keeps the position with preserveScroll', async () => {

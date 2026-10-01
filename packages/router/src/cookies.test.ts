@@ -81,3 +81,16 @@ describe('cookies', () => {
     expect(await response.json()).toEqual({ previous: 'dark', page: '3' });
   });
 });
+
+describe('CookieJar — locked (a read-only request)', () => {
+  it('queues nothing a lock refuses, and asks for deletions too', async () => {
+    const jar = new CookieJar('a=1');
+    const asked: string[] = [];
+    jar.lock((what) => (asked.push(what), false));
+    jar.set('b', '2');
+    jar.delete('a');
+    expect(await jar.queued()).toEqual([]);
+    expect(asked).toEqual(["cookies.set('b')", "cookies.set('a')"]);
+    expect(jar.get('a')).toBe('1');
+  });
+});

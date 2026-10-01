@@ -11,11 +11,18 @@ import {
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
   PURPOSE_HEADER,
+  REGION_HEADER,
+  REGION_STATUS_HEADER,
   VERSION_HEADER,
   type PageObject,
+  type RegionObject,
   type ValidationErrors,
 } from '../page.ts';
+import { mergePage } from './merge.ts';
 import { QueryState, type QueryStateOptions } from './query-state.ts';
+import { RegionOwner, type KeptRegion, type Region, type RegionResponse, type RegionTransport } from './region.ts';
+
+export { mergePage } from './merge.ts';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -151,8 +158,11 @@ export interface HistoryState {
   readonly url: string;
   /** The window's scroll position when the entry was left. */
   readonly scroll: ScrollPosition;
-  /** The positions of the page's `scroll-region` elements, in document order. */
-  readonly regions?: readonly ScrollPosition[];
+  /**
+   * The positions of the page's `scroll-region` elements, in document order. (Named `regions` before W5b — entries of an
+   * older document are still read; regions of a page, islands, are never in here: they live in memory, E36.)
+   */
+  readonly scrollRegions?: readonly ScrollPosition[];
   /** The entry's page in the in-memory cache — random, so entries of an earlier document never match. */
   readonly key: string;
 }
@@ -190,11 +200,23 @@ export interface NavigatorWindow {
   readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
 
+/** What the navigator tells the adapter with a page to render. */
+export interface RenderOptions {
+  /** Keep component state (the same component stays mounted). */
+  readonly preserveState: boolean;
+  /** The regions of this page's history entry (see {@link Navigator.region}). */
+  readonly owner: RegionOwner;
+}
+
 export interface NavigatorOptions {
   /** The page the server rendered (from `#bespoke-page`) — always fresh: a full load asks the server. */
   initialPage: PageObject;
-  /** Shows a page: resolve its component and render it. Resolves once it is on screen (scroll restores after that). */
-  render: (page: PageObject, options: { preserveState: boolean }) => Promise<void>;
+  /**
+   * Shows a page: resolve its component and render it. Resolves once it is on screen (scroll restores after that).
+   * `owner` is where the page's regions (islands) live — its history entry's memory: the adapter hands it to
+   * `navigator.region(url, { owner })`, so an island loads into the entry it is rendered for.
+   */
+  render: (page: PageObject, options: RenderOptions) => Promise<void>;
   /** Default: the browser's `window`. */
   window?: NavigatorWindow;
   /** Pages kept in memory, one per history entry; the least recently shown goes first. Default 20. */
@@ -209,10 +231,10 @@ const SCROLL_SAVE_DELAY = 100;
 
 interface Scroll {
   scroll: ScrollPosition;
-  regions: ScrollPosition[];
+  scrollRegions: ScrollPosition[];
 }
 
-const TOP: Scroll = { scroll: { x: 0, y: 0 }, regions: [] };
+const TOP: Scroll = { scroll: { x: 0, y: 0 }, scrollRegions: [] };
 
 /**
  * Navigates without full page loads: a visit fetches the next page object as JSON (`x-bespoke`), keeps it
@@ -255,6 +277,9 @@ export class Navigator {
   readonly #pageListeners = new Set<(page: PageObject) => void>();
   /** This document was left for a full page load (409, a response that is not a page). */
   #left = false;
+  /** Where the regions (islands) of the page on screen live — its history entry's; closed when the entry leaves the screen. */
+  #owner: RegionOwner;
+  readonly #transport: RegionTransport = { request: (url, headers, signal) => this.#regionRequest(url, headers, signal) };
   /** A page is being swapped in: scroll events belong to no entry until its position is set. */
   #transitioning = false;
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -265,6 +290,7 @@ export class Navigator {
     this.#cache = new PageCache(cacheSize);
     this.#page = initialPage;
     this.#version = initialPage.version ?? null;
+    this.#owner = new RegionOwner(this.#transport);
   }
 
   /** The page on screen. */
@@ -275,6 +301,25 @@ export class Navigator {
   /** How many pages are kept in memory (tests). */
   get cachedPages(): number {
     return this.#cache.size;
+  }
+
+  /** Where the regions of the page on screen live — for the adapter's first page (later ones come with `render`). */
+  get regionOwner(): RegionOwner {
+    this.#adopt();
+    return this.#owner;
+  }
+
+  /**
+   * A region of the page — an island (E48, E50): `url` is its route's (same origin), `owner` the entry it belongs to (what
+   * `render` handed the adapter; default: the page on screen). The same URL gives the same region (one request for two
+   * identical islands); what it loaded stays in the entry's memory, so Back/Forward shows it without a request. `initial`
+   * is a region object the server already sent (streamed with the page). Islands never load ahead (no prefetch, E52).
+   */
+  region(url: string, { owner, initial }: { owner?: RegionOwner; initial?: RegionObject } = {}): Region {
+    this.#adopt();
+    const target = new URL(url, this.#window.location.href);
+    if (target.origin !== this.#window.location.origin) throw new Error(`A region comes from this site, not from ${target.origin} (${url}).`);
+    return (owner ?? this.#owner).region(target.pathname + target.search, initial);
   }
 
   /**
@@ -468,7 +513,7 @@ export class Navigator {
     // A reload or session restore keeps the entry's key (and scroll); the page itself came fresh from the server.
     const restored = isHistoryState(state) ? state : undefined;
     this.#key = restored?.key ?? newKey();
-    this.#cache.set(this.#key, this.#page);
+    this.#cache.set(this.#key, { page: this.#page, regions: this.#owner.regions });
     this.#window.history.replaceState(entry(this.#page, this.#key, restored ? this.#positionOf(restored) : TOP), '', this.#window.location.href);
     return restored;
   }
@@ -481,11 +526,16 @@ export class Navigator {
     const leaving = this.#currentScroll();
     this.#cancelScrollSave();
     this.#transitioning = true;
+    // The page's islands: those of the page on screen when its state is kept (the same component — a partial reload, a
+    // sort link): replaced in place, they stay; pushed, the new entry starts with a copy. Any other page starts empty.
+    const keep = preserveState && page.component === this.#page.component;
+    const owner = history === 'replace' && keep ? this.#owner : new RegionOwner(this.#transport, keep ? new Map(this.#owner.regions) : new Map());
     try {
       try {
-        await this.#render(page, { preserveState });
+        await this.#render(page, { preserveState, owner });
       } catch {
         // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
+        if (owner !== this.#owner) owner.close();
         this.#leave();
         this.#window.location.assign(page.url);
         return undefined;
@@ -502,7 +552,8 @@ export class Navigator {
         browserHistory.replaceState(entry(page, this.#key!, arrived), '', page.url + hash);
       }
       this.#positions.set(this.#key!, arrived);
-      this.#cache.set(this.#key!, page);
+      this.#cache.set(this.#key!, { page, regions: owner.regions });
+      this.#switchOwner(owner);
       this.#setPage(page);
       if (!preserveScroll) this.#applyScroll(TOP);
       if (hash) this.#window.document?.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
@@ -524,8 +575,11 @@ export class Navigator {
       const cached = this.#cache.get(state.key);
       if (cached) {
         this.#key = state.key;
-        this.#setPage(cached);
-        void this.#arrive(cached, this.#positionOf(state));
+        // The entry's islands come back with it, from memory — no request.
+        const owner = new RegionOwner(this.#transport, cached.regions);
+        this.#switchOwner(owner);
+        this.#setPage(cached.page);
+        void this.#arrive(cached.page, this.#positionOf(state), owner);
         return;
       }
       void this.#restore(state.url, state.key, this.#positionOf(state));
@@ -536,10 +590,10 @@ export class Navigator {
   };
 
   /** Renders a page of the history and scrolls to where it was. */
-  async #arrive(page: PageObject, position: Scroll): Promise<void> {
+  async #arrive(page: PageObject, position: Scroll, owner: RegionOwner): Promise<void> {
     this.#transitioning = true;
     try {
-      await this.#render(page, { preserveState: false });
+      await this.#render(page, { preserveState: false, owner });
       this.#applyScroll(position);
       this.#loadDeferred();
     } catch {
@@ -570,9 +624,11 @@ export class Navigator {
       // Signed out meanwhile? Then the server sent the login page — and the entry is the login page now.
       this.#window.history.replaceState(entry(page, key, position), '', page.url);
       this.#key = key;
-      this.#cache.set(key, page);
+      const owner = new RegionOwner(this.#transport);
+      this.#cache.set(key, { page, regions: owner.regions });
+      this.#switchOwner(owner);
       this.#setPage(page);
-      await this.#arrive(page, position);
+      await this.#arrive(page, position, owner);
       return page;
     });
   }
@@ -617,14 +673,14 @@ export class Navigator {
     // Left for a full page load (signed out, say): nothing lands in what this document shows any more.
     if (this.#left) return undefined;
     const onScreen = this.#key === key && !this.#transitioning;
-    const target = onScreen ? this.#page : this.#cache.peek(key);
+    const target = onScreen ? this.#page : this.#cache.peek(key)?.page;
     // The entry shows another URL now (a replacing visit): these props are not for it.
     if (!target || target.url !== page.url || target.component !== page.component) return undefined;
     const merged = mergePage(target, loaded);
-    this.#cache.update(key, merged);
+    this.#cache.updatePage(key, merged);
     if (onScreen) {
       this.#setPage(merged);
-      await this.#render(merged, { preserveState: true });
+      await this.#render(merged, { preserveState: true, owner: this.#owner });
     }
     return merged;
   }
@@ -745,24 +801,26 @@ export class Navigator {
 
   /** Where an entry was scrolled to: from memory (exact), else from the entry itself. */
   #positionOf(state: HistoryState): Scroll {
-    return this.#positions.get(state.key) ?? { scroll: state.scroll ?? TOP.scroll, regions: [...(state.regions ?? [])] };
+    // `regions`: what the scroll regions were called before W5b — an entry of an older document of this tab.
+    const legacy = (state as { regions?: readonly ScrollPosition[] }).regions;
+    return this.#positions.get(state.key) ?? { scroll: state.scroll ?? TOP.scroll, scrollRegions: [...(state.scrollRegions ?? legacy ?? [])] };
   }
 
-  #regions(): ScrollRegion[] {
+  #scrollRegions(): ScrollRegion[] {
     return this.#window.document ? [...this.#window.document.querySelectorAll(`[${SCROLL_REGION_ATTRIBUTE}]`)] : [];
   }
 
   #currentScroll(): Scroll {
     return {
       scroll: { x: this.#window.scrollX, y: this.#window.scrollY },
-      regions: this.#regions().map((region) => ({ x: region.scrollLeft, y: region.scrollTop })),
+      scrollRegions: this.#scrollRegions().map((region) => ({ x: region.scrollLeft, y: region.scrollTop })),
     };
   }
 
-  #applyScroll({ scroll, regions }: Scroll): void {
+  #applyScroll({ scroll, scrollRegions }: Scroll): void {
     this.#window.scrollTo(scroll.x, scroll.y);
-    this.#regions().forEach((region, index) => {
-      const position = regions[index] ?? TOP.scroll;
+    this.#scrollRegions().forEach((region, index) => {
+      const position = scrollRegions[index] ?? TOP.scroll;
       region.scrollLeft = position.x;
       region.scrollTop = position.y;
     });
@@ -781,9 +839,66 @@ export class Navigator {
     }
   }
 
+  /** The page on screen now belongs to `owner`'s entry: the regions of the one before stop (their requests are aborted). */
+  #switchOwner(owner: RegionOwner): void {
+    if (owner === this.#owner) return;
+    this.#owner.close();
+    this.#owner = owner;
+  }
+
+  /**
+   * A region's request (E52): a GET with the page headers and `x-bespoke-region: island`, never following a redirect. What
+   * the server answers becomes the region's outcome — never a navigation of the page — except a 409: a new build (or a
+   * document change), so the whole page loads again (the island's code of this build may be gone).
+   */
+  async #regionRequest(url: string, headers: Readonly<Record<string, string>>, signal: AbortSignal): Promise<RegionResponse> {
+    if (this.#left || signal.aborted) return { kind: 'cancelled' };
+    let response: Response;
+    try {
+      response = await this.#window.fetch(url, {
+        method: 'GET',
+        headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', ...(this.#version ? { [VERSION_HEADER]: this.#version } : {}), ...headers },
+        signal,
+        redirect: 'manual',
+      });
+    } catch (cause) {
+      return signal.aborted || this.#left ? { kind: 'cancelled' } : { kind: 'exception', failure: { status: undefined, cause } };
+    }
+    if (this.#left || signal.aborted) {
+      await response.body?.cancel();
+      return { kind: 'cancelled' };
+    }
+    if (response.status === 409 && response.headers.has(LOCATION_HEADER)) {
+      this.#leave();
+      this.#window.location.reload();
+      return { kind: 'cancelled' };
+    }
+    const outcome = response.headers.get(REGION_STATUS_HEADER);
+    // The server turns redirects, 401 and 403 into an outcome; a redirect not turned (a proxy) is never followed either.
+    if (outcome === 'unauthorized' || response.type === 'opaqueredirect' || response.status === 401 || (response.status >= 300 && response.status < 400)) {
+      await response.body?.cancel();
+      return { kind: 'unauthorized' };
+    }
+    if (outcome === 'forbidden' || response.status === 403) {
+      await response.body?.cancel();
+      return { kind: 'forbidden' };
+    }
+    if (response.ok && response.headers.get(REGION_HEADER) === 'island') return { kind: 'region', region: (await response.json()) as RegionObject };
+    let message: string | undefined;
+    try {
+      const body = (await response.json()) as { message?: unknown };
+      if (typeof body.message === 'string') message = body.message;
+    } catch {
+      // Not JSON (a proxy's error page): the status says enough.
+    }
+    return { kind: 'exception', failure: { status: response.status || undefined, message } };
+  }
+
   /** Before a full page load: nothing kept in memory survives it, should the browser bring this document back. */
   #leave(): void {
     this.#left = true;
+    // Islands too: none of them lands any more, and none of what they showed survives (signing out).
+    this.#owner.close();
     this.#cache.clear();
     // Prefetched while signed in: not for whoever comes next — and one still under way lands nowhere.
     this.#flushPrefetched();
@@ -811,94 +926,6 @@ function partialReloadHeaders(component: string, only: readonly string[] | undef
   };
 }
 
-/**
- * The page after a partial reload: the props it had, with the new ones — merged where the server marked them
- * (`mergeProps`: arrays appended, objects merged one level; `deepMergeProps`: all the way down), unless `reset`.
- * Deferred props that arrived are no longer pending.
- */
-export function mergePage(current: PageObject, partial: PageObject, reset: readonly string[] = []): PageObject {
-  const props: Record<string, unknown> = { ...current.props };
-  const match = partial.matchPropsOn ?? [];
-  for (const [key, value] of Object.entries(partial.props)) {
-    if (reset.includes(key)) props[key] = value;
-    else if (partial.mergeProps?.includes(key)) props[key] = mergeValues(props[key], value, false, key, match);
-    else if (partial.deepMergeProps?.includes(key)) props[key] = mergeValues(props[key], value, true, key, match);
-    else props[key] = value;
-  }
-  const { deferredProps: _pending, mergeProps: _merge, deepMergeProps: _deep, matchPropsOn: _match, ...rest } = partial;
-  const deferredProps = stillPending(current.deferredProps, Object.keys(partial.props));
-  const mergeProps = union(current.mergeProps, partial.mergeProps);
-  const deepMergeProps = union(current.deepMergeProps, partial.deepMergeProps);
-  const matchPropsOn = union(current.matchPropsOn, partial.matchPropsOn);
-  return {
-    ...rest,
-    props,
-    ...(deferredProps ? { deferredProps } : {}),
-    ...(mergeProps ? { mergeProps } : {}),
-    ...(deepMergeProps ? { deepMergeProps } : {}),
-    ...(matchPropsOn ? { matchPropsOn } : {}),
-  };
-}
-
-/** Merges `next` into `current`, at `path` of the props (`others.data`) — arrays by the key `matchPropsOn` names for the path. */
-function mergeValues(current: unknown, next: unknown, deep: boolean, path: string, match: readonly string[]): unknown {
-  if (Array.isArray(current) && Array.isArray(next)) return append(current, next, matchKey(path, match));
-  if (isPlainObject(current) && isPlainObject(next)) {
-    if (!deep) return { ...current, ...next };
-    const merged: Record<string, unknown> = { ...current };
-    for (const [key, value] of Object.entries(next)) merged[key] = Object.hasOwn(current, key) ? mergeValues(current[key], value, true, `${path}.${key}`, match) : value;
-    return merged;
-  }
-  return next;
-}
-
-/** The key that identifies the items of the array at `path` — `matchPropsOn: ['others.data.id']` → `id` for `others.data`. */
-function matchKey(path: string, match: readonly string[]): string | undefined {
-  const prefix = `${path}.`;
-  return match.find((entry) => entry.startsWith(prefix) && !entry.slice(prefix.length).includes('.'))?.slice(prefix.length);
-}
-
-/**
- * `next` after `current` — with a `key`, an item whose key is shown already takes that one's place (the same page
- * loaded twice: a poll, "load more" clicked twice) instead of appearing again.
- */
-function append(current: readonly unknown[], next: readonly unknown[], key: string | undefined): unknown[] {
-  if (key === undefined) return [...current, ...next];
-  const merged = [...current];
-  const at = new Map<unknown, number>();
-  merged.forEach((item, index) => {
-    if (isPlainObject(item) && item[key] !== undefined) at.set(item[key], index);
-  });
-  for (const item of next) {
-    const id = isPlainObject(item) ? item[key] : undefined;
-    const index = id === undefined ? undefined : at.get(id);
-    if (index !== undefined) {
-      merged[index] = item;
-    } else {
-      if (id !== undefined) at.set(id, merged.length);
-      merged.push(item);
-    }
-  }
-  return merged;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stillPending(groups: PageObject['deferredProps'], arrived: readonly string[]): PageObject['deferredProps'] {
-  if (!groups) return undefined;
-  const pending = Object.entries(groups)
-    .map(([group, props]) => [group, props.filter((prop) => !arrived.includes(prop))] as const)
-    .filter(([, props]) => props.length > 0);
-  return pending.length > 0 ? Object.fromEntries(pending) : undefined;
-}
-
-function union(a: readonly string[] | undefined, b: readonly string[] | undefined): string[] | undefined {
-  if (!a && !b) return undefined;
-  return [...new Set([...(a ?? []), ...(b ?? [])])];
-}
-
 /** The validation errors a page carries (the shared `errors` prop), or undefined when there are none. */
 function validationErrors(page: PageObject): ValidationErrors | undefined {
   const errors = (page.props as { errors?: unknown }).errors;
@@ -909,10 +936,10 @@ function entry(page: PageObject, key: string, position: Scroll): HistoryState {
   return withPosition({ component: page.component, url: page.url, key, scroll: position.scroll }, position);
 }
 
-/** The state with the position — `regions` only when the page has any. */
-function withPosition(state: HistoryState, { scroll, regions }: Scroll): HistoryState {
-  const { regions: _old, ...rest } = state;
-  return regions.length > 0 ? { ...rest, scroll, regions } : { ...rest, scroll };
+/** The state with the position — `scrollRegions` only when the page has any (and never the old name, `regions`). */
+function withPosition(state: HistoryState, { scroll, scrollRegions }: Scroll): HistoryState {
+  const { scrollRegions: _old, regions: _legacy, ...rest } = state as HistoryState & { regions?: unknown };
+  return scrollRegions.length > 0 ? { ...rest, scroll, scrollRegions } : { ...rest, scroll };
 }
 
 function newKey(): string {
@@ -990,12 +1017,24 @@ function untilAborted<T>(promise: Promise<T | undefined>, signal: AbortSignal): 
   });
 }
 
-/** Page objects by history key, least recently used first out. */
-class PageCache extends BoundedMap<string, PageObject> {
-  override get(key: string): PageObject | undefined {
-    const page = super.get(key);
-    if (page) this.set(key, page);
-    return page;
+/** What memory keeps of a history entry: its page, and the region objects of its islands — one entry of the LRU together. */
+interface CachedEntry {
+  readonly page: PageObject;
+  readonly regions: Map<string, KeptRegion>;
+}
+
+/** History entries by key, least recently used first out. */
+class PageCache extends BoundedMap<string, CachedEntry> {
+  override get(key: string): CachedEntry | undefined {
+    const cached = super.get(key);
+    if (cached) this.set(key, cached);
+    return cached;
+  }
+
+  /** A new page object for an entry that is there (props merged in), keeping its regions and its place. */
+  updatePage(key: string, page: PageObject): void {
+    const cached = this.peek(key);
+    if (cached) this.update(key, { page, regions: cached.regions });
   }
 }
 

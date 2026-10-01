@@ -1,0 +1,27 @@
+import type { Messages } from '@bespokecore/i18n/messages';
+import type en from './en.ts';
+
+export default {
+  title: 'Übersicht',
+  intro: 'Jedes Feld ist eine Island: eine eigene Route, nach der Seite geladen — mit eigenen Berechtigungen.',
+  loading: 'Wird geladen …',
+  sign_ins: {
+    title: 'Letzte Anmeldungen',
+    range: 'Zeitraum',
+    range_option: '{range, select, 7d {7 Tage} 30d {30 Tage} other {Gesamt}}',
+    none: 'In diesem Zeitraum hat sich niemand angemeldet.',
+  },
+  activity: {
+    title: 'Meine Aktivität',
+    entry: '{kind, select, link {Link „{label}“ hinzugefügt} signed-in {Angemeldet} other {Beigetreten}}',
+    none: 'Noch nichts.',
+    refreshed: 'Stand {time}',
+  },
+  members: {
+    title: 'Mitglieder',
+    text: '{members, plural, one {# Mitglied} other {# Mitglieder}}, {verified} mit bestätigter Adresse',
+    newest: 'Zuletzt beigetreten:',
+    hidden: 'Die Mitgliederzahlen sehen nur Administratoren mit bestätigter Adresse.',
+  },
+  people: 'Alle Personen',
+} satisfies Messages<typeof en>;

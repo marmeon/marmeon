@@ -2,6 +2,7 @@ import {
   loadPageMessages,
   Navigator,
   pageLocale,
+  RegionOwner,
   showProgress,
   TitleRegistry,
   type PrefetchOptions,
@@ -79,7 +80,12 @@ interface RouterValue extends Router {
   page: PageObject;
   /** The navigator — null while rendering on the server (for the hooks of this package). */
   navigator(): Navigator | null;
+  /** Page components by name — `<Island>` renders its region's view with it. */
+  resolve: ResolvePage;
 }
+
+/** The regions (islands) of the page on screen — its history entry's (null on the server: islands load in the browser). */
+export const RegionOwnerContext = createContext<RegionOwner | null>(null);
 
 const RouterContext = createContext<RouterValue | null>(null);
 
@@ -141,6 +147,8 @@ interface Current {
   catalog: Catalog | undefined;
   /** Changes remount the page component (fresh state); an unchanged key preserves it. */
   key: number;
+  /** Where the page's islands live — from the navigator with each page (undefined for the first: the navigator's current). */
+  owner?: RegionOwner;
 }
 
 /**
@@ -174,7 +182,7 @@ export function BespokeApp({
   }, [current]);
 
   const render = useCallback(
-    async (page: PageObject, { preserveState }: { preserveState: boolean }) => {
+    async (page: PageObject, { preserveState, owner }: { preserveState: boolean; owner: RegionOwner }) => {
       // The page's component and its locale's messages, both before it renders: a page in another language (another
       // tab switched it) loads that language's files first.
       const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages)]);
@@ -185,6 +193,7 @@ export function BespokeApp({
           Component,
           catalog,
           key: preserveState && previous.Component === Component ? previous.key : previous.key + 1,
+          owner,
         }));
       });
     },
@@ -245,10 +254,11 @@ export function BespokeApp({
 
   const getNavigator = useCallback(() => navigator.current, []);
   const router = useMemo(
-    () => ({ page: current.page, visit, reload, prefetch, on, navigator: getNavigator }),
-    [current.page, visit, reload, prefetch, on, getNavigator],
+    () => ({ page: current.page, visit, reload, prefetch, on, navigator: getNavigator, resolve }),
+    [current.page, visit, reload, prefetch, on, getNavigator, resolve],
   );
   const { Component, page, key, catalog } = current;
+  const owner = current.owner ?? navigator.current?.regionOwner ?? null;
 
   const locale = messages ? pageLocale(page, messages) : page.locale;
   const i18n = useMemo(() => (catalog && locale ? { catalog, locale } : null), [catalog, locale]);
@@ -273,10 +283,12 @@ export function BespokeApp({
       <RoutesContext.Provider value={routes}>
         <I18nContext.Provider value={i18n}>
           <RouterContext.Provider value={router}>
-            {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
-            <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
-              {tree}
-            </ErrorBoundary>
+            <RegionOwnerContext.Provider value={owner}>
+              {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
+              <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
+                {tree}
+              </ErrorBoundary>
+            </RegionOwnerContext.Provider>
             <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
           </RouterContext.Provider>
         </I18nContext.Provider>
