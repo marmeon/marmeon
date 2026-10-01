@@ -27,6 +27,79 @@ importers:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
 
+  apps/blank-app:
+    dependencies:
+      '@bespokecore/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@bespokecore/cache':
+        specifier: workspace:*
+        version: link:../../packages/cache
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@bespokecore/log':
+        specifier: workspace:*
+        version: link:../../packages/log
+      '@bespokecore/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
+      '@bespokecore/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../../packages/router
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      '@bespokecore/session':
+        specifier: workspace:*
+        version: link:../../packages/session
+      mjml:
+        specifier: ^5.4.1
+        version: 5.4.1(svgo@4.1.0)(typescript@7.0.2)
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@bespokecore/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^6.1.1
+        version: 6.1.1(vite@8.3.1(@types/node@26.6.3))
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: ^8.3.1
+        version: 8.3.1(@types/node@26.6.3)
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
+
   apps/web-app:
     dependencies:
       '@bespokecore/auth':
@@ -115,6 +188,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@bespokecore/encryption':
         specifier: workspace:*
         version: link:../encryption

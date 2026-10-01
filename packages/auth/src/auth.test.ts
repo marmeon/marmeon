@@ -365,16 +365,17 @@ describe('authenticate() and guest()', () => {
     expect([away.status, away.headers.get('location')]).toEqual([302, '/home']);
   });
 
-  it('refuses to boot without a UserProvider, and says what to bind', async () => {
-    await expect(
-      createApplication({
-        root: import.meta.dirname,
-        discover: false,
-        env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', ...CHEAP },
-        providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, AuthServiceProvider],
-        modules: [defineModule({ name: 'auth-test', routes })],
-      }),
-    ).rejects.toThrow('container.bind(UserProvider, UserRepository)');
+  it('says what to bind when authentication is used without a UserProvider', async () => {
+    const application = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', ...CHEAP },
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+      modules: [defineModule({ name: 'auth-test', routes })], // boots: make:auth must run in apps without an auth module
+    });
+    const response = await createHttpKernel(application).request('/me', { headers: { accept: 'application/json' } });
+    expect(response.status).toBe(500);
+    expect(() => application.container.make(UserProvider)).toThrow('container.bind(UserProvider, UserRepository)');
   });
 
   it('keeps the auth keys out of session.all()', () => {

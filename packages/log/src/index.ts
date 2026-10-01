@@ -42,6 +42,24 @@ export class PinoLogger implements Logger {
   }
 }
 
+/** Context keys whose values never reach the log: passwords, tokens, secrets, credentials and cookies. */
+export const REDACTED_KEYS = /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature/i;
+
+/**
+ * A copy of `context` with sensitive values replaced by `[redacted]` — by key, at any depth (`password`,
+ * `new_password`, `headers.authorization`, `remember_web` …). Messages themselves are not scanned:
+ * never put secrets into a log message. Query parameters stay out of the query log anyway.
+ */
+export function redact(context: Record<string, unknown>, depth = 0): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(context)) {
+    if (REDACTED_KEYS.test(key)) out[key] = '[redacted]';
+    else if (depth < 6 && value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Error)) out[key] = redact(value as Record<string, unknown>, depth + 1);
+    else out[key] = value;
+  }
+  return out;
+}
+
 export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream): Logger {
   const stream =
     destination ?? (config.format === 'pretty' ? pretty({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
@@ -49,6 +67,7 @@ export function createPinoLogger(config: LogConfig, destination?: NodeJS.Writabl
     {
       level: config.level,
       base: undefined,
+      formatters: { log: (object) => redact(object) },
       // Every entry written while a request is handled carries its id.
       mixin: () => {
         const requestId = currentRequest()?.requestId;

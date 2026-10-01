@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2025", "ESNext.Array", "ESNext.Collection", "ESNext.Disposable", "ESNext.Error", "ESNext.Iterator", "ESNext.Promise", "ESNext.Temporal", "ESNext.TypedArrays", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "bootstrap",
+    "config",
+    "modules",
+    "vite.config.ts"
+  ]
+}

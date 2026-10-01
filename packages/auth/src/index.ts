@@ -4,6 +4,7 @@ import { Auth } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
+import { MakeAuthCommand } from './make-auth.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -22,6 +23,7 @@ export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './re
 export type { RememberResult, RememberTokenTable } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { AbilityOf, PolicyClass, PolicyResult, ResourcesOf } from './gate.ts';
+export { MakeAuthCommand, STUBS } from './make-auth.ts';
 export { confirmed, password } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
@@ -80,15 +82,18 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
-  }
-
-  boot(app: Application): void {
-    if (app.modules.length > 0 && !app.container.has(UserProvider)) {
+    // Until the app binds its own (its auth module does — `bespoke make:auth` writes one), the first use explains.
+    container.bind(UserProvider, () => {
       throw new Error(
         'Authentication needs to know where users come from: bind a UserProvider in a provider of your auth module — ' +
           'container.bind(UserProvider, UserRepository) — and declare the user type: ' +
-          "declare module '@bespokecore/auth' { interface AuthTypes { user: User } }.",
+          "declare module '@bespokecore/auth' { interface AuthTypes { user: User } }. `bespoke make:auth` sets this up.",
       );
-    }
+    });
+  }
+
+  async boot(app: Application): Promise<void> {
+    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand]);
   }
 }
