@@ -29,11 +29,15 @@ export function InTheBrowser() {
   // Object literal may only specify known properties, and 'tab' does not exist in type '{ user: Param; }'.
   // @ts-expect-error — a query goes into the third argument
   route('user-profile.show', { user: 7, tab: 'links' });
-  // ... '"'api.users.index' is not sent to the browser — API routes and clientRoutes.except stay on the server"'.
+  // ... '"'api.users.index' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server"'.
   // @ts-expect-error
   route('api.users.index');
-  // @ts-expect-error — in clientRoutes.except (bootstrap/app.ts)
+  // E57: an .internal() route (modules/auth/routes.ts) is a compile error in the browser — and the build refuses it too.
+  // ... '"'auth.verification.verify' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server"'.
+  // @ts-expect-error
   route('auth.verification.verify', { id: 1, hash: 'x' });
+  // @ts-expect-error — the same for <Link route> and useForm(name, …)
+  void (<Link route="auth.verification.verify" params={{ id: 1, hash: 'x' }} />);
 
   // E40: method, URL and fields from the route name.
   const form = useForm('user-profile.update', { user: 7 }, { name: '', bio: '' });
@@ -109,7 +113,7 @@ export class OnTheServer extends Controller {
     // Expected 2-3 arguments, but got 1.
     // @ts-expect-error
     void this.redirect().route('user-profile.show');
-    // The server knows every route — API ones and `except` ones too.
+    // The server knows every route — API ones and .internal() ones too.
     void this.redirect().route('api.users.index');
     signer.temporarySignedRoute('auth.verification.verify', { id: 1, hash: 'x' }, '60m');
     // Argument of type '{ id: number; }' is not assignable to parameter of type 'SignedParams<"auth.verification.verify">'.

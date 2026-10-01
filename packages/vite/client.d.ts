@@ -19,3 +19,13 @@ declare module 'virtual:bespoke/lang' {
   const lang: Record<string, () => Promise<unknown>>;
   export default lang;
 }
+
+declare module 'virtual:bespoke/routes' {
+  /**
+   * The named routes the browser knows — hand them to `createBespokeApp({ routes })` and `createSsrRenderer(…, { routes })`.
+   * A client build carries only the names its code writes out (`<Link route>`, `route()` of `useRoute()`,
+   * `useForm(name, …)`); the server and the dev server have every route the browser may learn. `.internal()` routes,
+   * API routes and `clientRoutes.except` are never in it. From `.bespoke/routes.json` (`bespoke route:types`).
+   */
+  export const routes: Readonly<Record<string, { readonly method: string; readonly path: string }>>;
+}

@@ -3,9 +3,10 @@ import type { CommandInput } from '../command.ts';
 import { RouteTypes } from '../route-types.ts';
 
 /**
- * Generates `bootstrap/routes.ts` — route names, parameters, methods and controllers for the type checker, the
- * views, and the browser's route manifest (E34). `--check` only compares, for CI: it fails when someone changed
- * routes or views without regenerating. `bespoke dev` and `bespoke build` run it themselves.
+ * Generates `bootstrap/routes.ts` — route names, parameters, methods and controllers for the type checker, and the
+ * views (E34) — plus `.bespoke/routes.json`, the routes the browser may learn, for the `bespoke()` Vite plugin (E57).
+ * `--check` only compares the committed file, for CI: it fails when someone changed routes or views without
+ * regenerating. `bespoke dev` and `bespoke build` run it themselves.
  */
 export class RouteTypesCommand {
   static command = 'route:types';

@@ -36,6 +36,8 @@ export { partialReloadOf, resolvePageProps } from './page-props.ts';
 export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export type { CheckViewName, ErrorPageProps, PageObject, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
+export type { BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
 export { AfterResponse } from './after-response.ts';
 export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';

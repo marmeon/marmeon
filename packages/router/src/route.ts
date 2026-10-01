@@ -24,6 +24,8 @@ export interface GroupAttributes {
   /** Middleware group of every route registered through this registrar (`web`, `api`). */
   readonly group?: string | undefined;
   readonly bindings?: readonly RouteBinding[];
+  /** Every route of the group is internal: never sent to the browser (`RouteDefinition.internal()`). */
+  readonly internal?: boolean;
 }
 
 /** Path parameters, with bound ones replaced by what their binder resolves (`Route.bind`). */
@@ -115,6 +117,14 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     return this.#with({ bindings: [...(this.#attributes.bindings ?? []), binding] });
   }
 
+  /**
+   * Every route registered through the returned registrar is internal — never sent to the browser
+   * (see `RouteDefinition.internal()`): `Route.internal().prefix('/admin').group((Route) => { … })`.
+   */
+  internal(): Route<TState, TParams, TBindings> {
+    return this.#with({ internal: true });
+  }
+
   group(callback: (Route: this) => void): void {
     callback(this);
   }
@@ -201,6 +211,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       namePrefix: this.#attributes.namePrefix,
       group: this.#attributes.group,
       bindings,
+      internal: this.#attributes.internal ?? false,
     });
     this.#register(route);
     return route;

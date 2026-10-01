@@ -54,8 +54,9 @@ export default defineRoutes((Route) => {
   sudo.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
 
-  // E-mail verification: the link is signed (made by the app, expires) — and only for its own user.
+  // E-mail verification: the link is signed (made by the app, expires) — and only for its own user. Internal: only
+  // the server builds it (for the mail), so the browser never learns its name or pattern.
   signedIn.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
-  signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify');
+  signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
   signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
 });

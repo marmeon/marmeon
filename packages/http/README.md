@@ -31,7 +31,7 @@ component name and props in text) visits, goes back and forward, loads deferred 
 | `createPoll(run, interval, options)` | Polling, paused while the tab is hidden |
 | `readInitialPage()`, `rootElement(id)`, `hasServerMarkup(root)` | The hydration entry's first steps: the page from `#bespoke-page`, the root (also while streaming), hydrate or render |
 | `loadPageMessages(page, messages)`, `pageLocale(page, messages)` | The page's messages in its `locale`, falling back to the server's `fallbackLocale` (`APP_FALLBACK_LOCALE`, sent with every page) — any loader with `fallback` and `load(locale, { fallback })`, e.g. `createMessageLoader` of `@bespokecore/i18n/messages`. Load them before a page renders, in the browser and the SSR entry |
-| `resolveRoute(manifest, name, params, query)` | A named route's URL and method from `bootstrap/routes.ts` |
+| `resolveRoute(manifest, name, params, query)` | A named route's URL and method from the manifest (`virtual:bespoke/routes`) |
 | `visitUrlOf(click, href, target)`, `prefetchTriggers`, `prefetchUrlOf`, `HOVER_PREFETCH_DELAY` | Which link clicks become visits (plain left clicks, same origin, no other `target`) and when links prefetch |
 | `firstErrors(page)` | The first validation message per field (forms) |
 | `TitleRegistry`, `defaultTitle` | The document title from the mounted head components — the last one wins, none → `template('')` |
@@ -62,7 +62,11 @@ component name and props in text) visits, goes back and forward, loads deferred 
 6. **Hooks/components on top of the navigator**, in the framework's idiom: the current page and shared props, a router
    (`visit`/`reload`/`prefetch`/`on`), `<Link>` (with `visitUrlOf` and the prefetch triggers), forms (`visit` with
    `method` + `data`, `firstErrors`), route URLs (`resolveRoute`), deferred props, polling, translations.
+7. **Its route sinks** (E57): every place where app code hands the adapter a route name (`<Link route>`, the function of
+   `useRoute()`, `useForm(name, …)`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })`).
+   The client build ships only the names written out at a sink; a name built at runtime fails the build. Route names
+   never come from props — the server sends URLs (`router.url()`).
 
-Pages come from `virtual:bespoke/pages` (`bespoke({ pages })` in `@bespokecore/vite`, default `modules/*/views/**/*.tsx`)
-and language files from `virtual:bespoke/lang`; the adapter brings its framework's Vite plugin
+Pages come from `virtual:bespoke/pages` (`bespoke({ pages })` in `@bespokecore/vite`, default `modules/*/views/**/*.tsx`),
+language files from `virtual:bespoke/lang` and the route manifest from `virtual:bespoke/routes`; the adapter brings its framework's Vite plugin
 (`plugins: [bespoke(), react()]`).

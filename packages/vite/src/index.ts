@@ -2,6 +2,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { bespokeInjection } from '@bespokecore/core/vite';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type UserConfig } from 'vite';
+import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
+import { routesModule } from './routes-module.ts';
+
+export { collectRouteReferences, ROUTE_SINKS } from './route-references.ts';
+export type { CollectOptions, RouteReference, RouteReferenceProblem, RouteSink } from './route-references.ts';
+export { BROWSER_ROUTES_FILE, routesModule } from './routes-module.ts';
 
 /**
  * The export condition that maps framework packages to their TypeScript sources inside the
@@ -35,6 +41,12 @@ export interface BespokeOptions {
    */
   lang?: string | string[];
   /**
+   * More places where client code hands a route name to the framework, besides the React adapter's
+   * (`<Link route>`, `useRoute()`, `useForm(name, …)` — see `ROUTE_SINKS`). Only names written out at a sink
+   * reach the browser's route manifest (`virtual:bespoke/routes`).
+   */
+  routeSinks?: readonly RouteSink[];
+  /**
    * For `vitest.config.ts`: conditions, injection and virtual modules only — no entries, no HTML,
    * no build settings.
    */
@@ -57,7 +69,8 @@ const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
  * - dedupes the peers of the framework packages the app depends on (one React for the adapter and the app);
  * - runs the constructor-injection transform (`@bespokecore/core/vite`);
  * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
- * - serves `virtual:bespoke/pages` and `virtual:bespoke/lang` (types: `@bespokecore/vite/client`).
+ * - serves `virtual:bespoke/pages`, `virtual:bespoke/lang` and `virtual:bespoke/routes` (types: `@bespokecore/vite/client`) —
+ *   the route manifest with only the names client code writes out (E57).
  */
 export function bespoke(options: BespokeOptions = {}): Plugin[] {
   const entries: BespokeEntries = { ...DEFAULT_ENTRIES, ...options.entries };
@@ -113,6 +126,7 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
     bespokeInjection() as Plugin,
     virtualGlob('pages', options.pages ?? DEFAULT_PAGES),
     virtualGlob('lang', options.lang ?? DEFAULT_LANG),
+    routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
   ];
 }
 

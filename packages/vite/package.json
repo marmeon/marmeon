@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "sideEffects": false,
-  "description": "The Vite plugin for BespokeCore apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic — the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
+  "description": "The Vite plugin for BespokeCore apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic \u2014 the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
   "exports": {
     ".": {
       "@bespokecore/source": "./src/index.ts",
@@ -34,7 +34,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*"
+    "@bespokecore/core": "workspace:*",
+    "oxc-parser": "^0.152.0"
   },
   "peerDependencies": {
     "vite": "^8.3.1"

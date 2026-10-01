@@ -8,7 +8,7 @@ import {
   type Resolve,
 } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
-import { CookieEncryption } from '@bespokecore/http';
+import { CookieEncryption, writeAppBrowserRoutes } from '@bespokecore/http';
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
@@ -113,7 +113,11 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
 
   let ssr: TestSsr | undefined;
   try {
-    ssr = options.ssr ? await TestSsr.start(definition.root) : undefined;
+    if (options.ssr) {
+      // The SSR entry imports `virtual:bespoke/routes`, which `bespoke route:types` writes — maybe never yet in this checkout.
+      writeAppBrowserRoutes(application);
+      ssr = await TestSsr.start(definition.root);
+    }
   } catch (error) {
     await application.shutdown();
     throw error;

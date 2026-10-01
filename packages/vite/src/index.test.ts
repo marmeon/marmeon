@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ConfigEnv, Plugin, UserConfig } from 'vite';
-import { afterAll, describe, expect, it } from 'vitest';
-import { adapterPeers, bespoke, PLUGIN_NAME, SOURCE_CONDITION, virtualGlob, type BespokePluginApi } from './index.ts';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { adapterPeers, bespoke, PLUGIN_NAME, routesModule, SOURCE_CONDITION, virtualGlob, type BespokePluginApi } from './index.ts';
 
 const temporary: string[] = [];
 afterAll(() => {
@@ -78,10 +78,17 @@ describe('bespoke()', () => {
     expect(html(bespoke({ test: true }), '<body></body>')).toBeUndefined();
   });
 
-  it('runs the constructor-injection transform and serves virtual:bespoke/pages and virtual:bespoke/lang', () => {
+  it('runs the constructor-injection transform and serves virtual:bespoke/pages, virtual:bespoke/lang and virtual:bespoke/routes', () => {
     const plugins = bespoke();
-    expect(plugins.map((plugin) => plugin.name)).toEqual(['bespokecore', 'bespokecore:async-entry', 'bespokecore:injection', 'bespokecore:virtual-pages', 'bespokecore:virtual-lang']);
-    const lang = plugins.at(-1)!;
+    expect(plugins.map((plugin) => plugin.name)).toEqual([
+      'bespokecore',
+      'bespokecore:async-entry',
+      'bespokecore:injection',
+      'bespokecore:virtual-pages',
+      'bespokecore:virtual-lang',
+      'bespokecore:routes',
+    ]);
+    const lang = plugins.find((plugin) => plugin.name === 'bespokecore:virtual-lang')!;
     // Lazy: one chunk per language file, the browser loads only its locale's.
     expect((lang.load as (id: string) => unknown)('\0virtual:bespoke/lang')).toBe('export default import.meta.glob(["/modules/*/lang/*.ts","/lang/*.ts"]);\n');
   });
@@ -115,3 +122,56 @@ export function typeTests(): void {
   // @ts-expect-error — an unknown entry
   bespoke({ entries: { server: 'bootstrap/ssr.tsx' } });
 }
+
+describe('virtual:bespoke/routes while serving', () => {
+  const root = tree({
+    '.bespoke/routes.json': {
+      version: 1,
+      routes: { home: { method: 'get', path: '/' }, 'admin.secret': { method: 'get', path: '/admin' } },
+      hidden: { 'verify.link': 'internal' },
+    },
+  });
+  const plugin = routesModule();
+  const context = { addWatchFile() {}, error(message: string): never { throw new Error(message); }, environment: { config: { consumer: 'client' } } };
+  (plugin.configResolved as (config: unknown) => void)({ root, command: 'serve' });
+  const load = () => (plugin.load as (this: unknown, id: string) => string).call(context, '\0virtual:bespoke/routes');
+  const transform = (code: string) =>
+    (plugin.transform as (this: unknown, code: string, id: string) => { code: string } | undefined).call(context, code, join(root, 'modules/demo/views/Page.tsx'));
+
+  it('has every route the browser may learn, and warns once for a name no module declared — production would lack it', async () => {
+    const module = (await import(`data:text/javascript,${encodeURIComponent(load())}`)) as {
+      routes: Record<string, unknown>;
+      __referenceRoutes(names: string[]): void;
+    };
+    expect(Object.keys(module.routes)).toEqual(['home', 'admin.secret']);
+    expect(Object.hasOwn(module.routes, 'verify.link')).toBe(false);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      module.__referenceRoutes(['home']);
+      expect(Object.hasOwn(module.routes, 'home') && module.routes.home).toEqual({ method: 'get', path: '/' });
+      expect(warn).not.toHaveBeenCalled();
+      void module.routes['admin.secret'];
+      void module.routes['admin.secret'];
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain('Route [admin.secret] is resolved, but no module writes it out');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('declares each module\'s names to the manifest, and fails a module that builds one at runtime — the dev overlay shows it', () => {
+    const page = "import { Link } from '@bespokecore/react';\nexport default () => <Link route=\"home\">Home</Link>;\n";
+    expect(transform(page)?.code).toBe(
+      `${page}\nimport { __referenceRoutes as __bespokeReferenceRoutes } from 'virtual:bespoke/routes';\n__bespokeReferenceRoutes(["home"]);\n`,
+    );
+    expect(transform("export const nothing = 'here';\n")).toBeUndefined();
+    expect(() => transform("import { Link } from '@bespokecore/react';\nexport default ({ to }) => <Link route={`admin.${to}`} />;\n")).toThrow(
+      "[bespoke] modules/demo/views/Page.tsx:2:41 — route names sent to the browser must be written out: `admin.${to}` (<Link route>) is built at runtime, " +
+        "so the build cannot tell which routes this page needs. Did you mean admin.secret? Write it as a literal: 'admin.secret'.",
+    );
+    expect(() => transform("import { useRoute } from '@bespokecore/react';\nexport const A = () => useRoute()('verify.lnk');\n")).toThrow(
+      "'verify.lnk' is not a route name (run bespoke route:types after adding a route).",
+    );
+  });
+});

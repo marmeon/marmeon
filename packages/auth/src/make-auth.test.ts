@@ -123,15 +123,15 @@ describe('make:auth', () => {
       expect(tests.code).toBe(0);
 
       // A stale bootstrap/routes.ts fails the CI check.
-      writeFileSync(join(root, 'bootstrap/routes.ts'), routeTypes.replace("  'dashboard': { method: 'get', path: '/dashboard' },\n", ''));
+      const stalled = routeTypes.replace(/^ {4}'dashboard': .*\n/m, '');
+      expect(stalled).not.toBe(routeTypes);
+      writeFileSync(join(root, 'bootstrap/routes.ts'), stalled);
       const stale = bespoke('route:types', '--check');
       expect(stale.out).toContain('bootstrap/routes.ts is out of date — run: bespoke route:types');
       expect(stale.code).toBe(1);
 
-      // The build regenerates it, and the client bundle carries only the browser's routes: no API route, nothing in
-      // `clientRoutes.except` — their names and patterns stay on the server (the types are erased).
-      const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
-      writeFileSync(join(root, 'bootstrap/app.ts'), app.replace('modules: [auth],', "modules: [auth],\n  clientRoutes: { except: ['auth.verification.verify'] },"));
+      // The build regenerates it, and the client bundle carries only the routes its code names (E57): no API route, no
+      // `.internal()` route, none that only the server redirects to — their names and patterns stay on the server.
       const built = bespoke('build');
       expect(built.out).toContain('Built dist/client and dist/server');
       expect(built.code).toBe(0);
@@ -142,6 +142,10 @@ describe('make:auth', () => {
         .join('\n');
       expect(client).toContain('auth.login.store');
       expect(client).toContain('/dashboard');
+      expect(readFileSync(join(root, '.bespoke/routes.json'), 'utf8')).toContain('"auth.password.reset"'); // the browser may learn it …
+      for (const serverOnly of ['auth.password.reset', 'auth.password.confirm', 'auth.verification.notice']) {
+        expect(client).not.toMatch(new RegExp(`[\`"']${serverOnly.replaceAll('.', '\\.')}[\`"']`)); // … but no view names it
+      }
       expect(client).not.toContain('auth.verification.verify');
       expect(client).not.toContain('/email/verify/:id/:hash');
       expect(client).not.toContain('api.user');

@@ -27,7 +27,7 @@ export interface RouteEntry {
   readonly path: string;
   /** The controller class (`typeof …`) — absent for closures. Gives `useForm(name)` its fields. */
   readonly controller?: unknown;
-  /** `false`: kept from the browser (API routes, `clientRoutes.except`). */
+  /** `false`: kept from the browser (API routes, `.internal()` routes, `clientRoutes.except`). */
   readonly browser?: false;
 }
 
@@ -36,7 +36,10 @@ type Registered = [keyof Routes] extends [never] ? false : true;
 /** A route name of the app — any string while no routes are generated. */
 export type RouteName = Registered extends true ? keyof Routes & string : string;
 
-/** Names the browser knows: without API routes and `except` patterns (see `bespoke route:types`). */
+/**
+ * Names the browser may know: without API routes, `.internal()` routes and `except` patterns (see `bespoke route:types`).
+ * Of these, the browser's manifest (`virtual:bespoke/routes`) carries only the names client code writes out.
+ */
 export type BrowserRouteName = Registered extends true
   ? { [N in keyof Routes]: Routes[N] extends { readonly browser: false } ? never : N }[keyof Routes] & string
   : string;
@@ -60,13 +63,13 @@ export type CheckRouteName<N extends string> = string extends N
     ? N
     : `'${N}' is not a route name${Suggest<N, RouteName>}`;
 
-/** Like {@link CheckRouteName}, for the browser: API routes and `except` patterns are named as such. */
+/** Like {@link CheckRouteName}, for the browser: API routes, `.internal()` routes and `except` patterns are named as such. */
 export type CheckBrowserRouteName<N extends string> = string extends N
   ? BrowserRouteName
   : N extends BrowserRouteName
     ? N
     : N extends RouteName
-      ? `'${N}' is not sent to the browser — API routes and clientRoutes.except stay on the server`
+      ? `'${N}' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server`
       : `'${N}' is not a route name${Suggest<N, BrowserRouteName>}`;
 
 type Entry<N> = N extends keyof Routes ? Routes[N] : never;

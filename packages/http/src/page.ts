@@ -62,7 +62,7 @@ export type CheckViewName<V extends string> = string extends V
       ? `'${V}' is not a view: there is no modules/${Module}/views/${Rest}.tsx${Suggest<V, ViewName, '/'>}`
       : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
 
-/** The routes the browser knows — `export const routes` of the generated `bootstrap/routes.ts`. */
+/** The routes the browser knows — `routes` of `virtual:bespoke/routes` (the `bespoke()` Vite plugin). */
 export type RouteManifest = Readonly<Record<string, { readonly method: string; readonly path: string }>>;
 
 /** `modules/user-profile/views/Show.tsx` → `user-profile/Show` (the page naming convention), or undefined. */

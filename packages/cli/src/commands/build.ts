@@ -7,9 +7,10 @@ import { typecheckApp } from '../typecheck.ts';
 /**
  * Builds the client bundle and the SSR bundle with the app's own Vite. The `bespoke()` plugin
  * from `@bespokecore/vite` decides entries and output (`dist/client`, `dist/server/ssr.js`).
- * First, `bespoke route:types` brings `bootstrap/routes.ts` up to date — the bundle carries its route manifest —
- * in a process of its own, as it boots the app (this command does not). Then the app is type-checked against it,
- * like `next build`: a renamed route or a missing view fails the build. `--no-typecheck` skips that.
+ * First, `bespoke route:types` brings `bootstrap/routes.ts` and `.bespoke/routes.json` up to date — the plugin builds
+ * the bundle's route manifest from the latter — in a process of its own, as it boots the app (this command does not).
+ * Then the app is type-checked against it, like `next build`: a renamed route or a missing view fails the build.
+ * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too.
  */
 export class BuildCommand {
   static command = 'build';
@@ -50,6 +51,12 @@ export class BuildCommand {
       await vite.build(shared);
       await vite.build({ ...shared, build: { ssr: true } });
     } catch (error) {
+      const problems = routeNameProblems(error);
+      if (problems) {
+        for (const line of problems) output.error(line);
+        output.error(`Not built: ${problems.length} route name${problems.length === 1 ? '' : 's'} the browser's route manifest cannot be built from.`);
+        return 1;
+      }
       if (!(error instanceof ViteSetupError)) throw error;
       output.error(error.message);
       return 1;
@@ -57,4 +64,12 @@ export class BuildCommand {
     output.success('Built dist/client and dist/server');
     return 0;
   }
+}
+
+/** The messages of the route collector (`bespokecore:routes` in `@bespokecore/vite`) — readable on their own, no stack. */
+function routeNameProblems(error: unknown): string[] | undefined {
+  const errors = (error as { errors?: unknown } | null)?.errors;
+  if (!Array.isArray(errors) || errors.length === 0) return undefined;
+  if (!errors.every((entry) => (entry as { plugin?: unknown }).plugin === 'bespokecore:routes')) return undefined;
+  return errors.flatMap((entry) => String((entry as { message?: unknown }).message ?? '').split('\n').filter(Boolean));
 }

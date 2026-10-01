@@ -24,7 +24,7 @@ function write(root: string, files: Record<string, string>): void {
  * A minimal app outside the workspace: no UI adapter (the plugin is UI-agnostic), and one framework
  * package whose `@bespokecore/source` condition points at different code than its build.
  */
-function app({ vite = true, plugin = true, typescript }: { vite?: boolean; plugin?: boolean; typescript?: string } = {}): string {
+function app({ vite = true, plugin = true, typescript, files = {} }: { vite?: boolean; plugin?: boolean; typescript?: string; files?: Record<string, string> } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'bespoke-vite-'));
   temporary.push(root);
   write(root, {
@@ -53,6 +53,7 @@ function app({ vite = true, plugin = true, typescript }: { vite?: boolean; plugi
         ].join('\n')
       : 'export default {};',
   });
+  write(root, files);
   if (vite) {
     symlinkSync(vitePackage, join(root, 'node_modules/vite'), 'dir');
     symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@bespokecore/vite'), 'dir');
@@ -152,4 +153,82 @@ describe('bespoke build with the bespoke() plugin', () => {
     expect(out).toContain('plugins: [bespoke(), react()]');
     expect(code).toBe(1);
   });
+});
+
+/**
+ * The browser's route manifest (E57): `.bespoke/routes.json` as `bespoke route:types` writes it — a fake adapter
+ * stands in for @bespokecore/react, so the collector finds its sinks without a UI framework.
+ */
+function routesApp(client: string): string {
+  return app({
+    files: {
+      '.bespoke/routes.json': JSON.stringify({
+        version: 1,
+        routes: {
+          home: { method: 'get', path: '/home-path' },
+          'profile.update': { method: 'put', path: '/profile-path/:user' },
+          'profile.show': { method: 'get', path: '/profile-path/:user/show' },
+          // Only a controller redirects here (`redirect().route('admin.secret')`): no client code names it.
+          'admin.secret': { method: 'get', path: '/admin/secret-path' },
+        },
+        hidden: { 'verify.link': 'internal', 'api.users': 'api' },
+      }),
+      'node_modules/@bespokecore/react/package.json': JSON.stringify({ name: '@bespokecore/react', type: 'module', exports: './index.js' }),
+      'node_modules/@bespokecore/react/index.js':
+        'export const useRoute = (routes) => (name) => routes[name].path;\nexport const useForm = (name, params, initial) => ({ name, params, initial });\n',
+      'bootstrap/client.ts': [
+        "import { useForm, useRoute } from '@bespokecore/react';",
+        "import { routes } from 'virtual:bespoke/routes';",
+        'const route = useRoute(routes);',
+        client,
+      ].join('\n'),
+      'bootstrap/ssr.ts': "import { routes } from 'virtual:bespoke/routes';\nexport const render = async () => ({ html: JSON.stringify(routes) });\n",
+    },
+  });
+}
+
+describe('virtual:bespoke/routes in a build', () => {
+  it('ships only the route names client code writes out; the SSR bundle has every route the browser may learn', () => {
+    const root = routesApp("document.title = route('home');\nconsole.log(useForm('profile.update', { user: 1 }, {}));\n");
+    const { code, out } = build(root);
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(code).toBe(0);
+
+    const client = bundle(join(root, 'dist/client'));
+    expect(client).toMatch(/[`"']home[`"']/);
+    expect(client).toContain('/home-path');
+    expect(client).toMatch(/[`"']profile\.update[`"']/);
+    // The route only the server links to: neither its name nor its pattern reaches the browser.
+    expect(client).not.toContain('admin.secret');
+    expect(client).not.toContain('/admin/secret-path');
+    expect(client).not.toContain('profile.show');
+    expect(client).not.toContain('verify.link');
+    expect(client).not.toContain('__BESPOKE_ROUTE_MANIFEST__');
+
+    const server = bundle(join(root, 'dist/server'));
+    expect(server).toContain('admin.secret');
+    expect(server).not.toContain('verify.link');
+    expect(server).not.toContain('api.users');
+  }, 60_000);
+
+  it('fails the build for an .internal() route named in client code', () => {
+    const { code, out } = build(routesApp("document.title = route('verify.link');\n"));
+    expect(out).toContain(
+      "[bespoke] bootstrap/client.ts:4:24 — 'verify.link' is never sent to the browser — it is .internal(). Link to it from the server (redirect().route(), router.url()), not from client code.",
+    );
+    expect(out).toContain("✗ Not built: 1 route name the browser's route manifest cannot be built from.");
+    expect(out).not.toContain('RolldownError'); // a message, not a stack trace
+    expect(out).not.toContain('Built dist/client');
+    expect(code).toBe(1);
+  }, 60_000);
+
+  it('fails the build for a name built at runtime, naming the routes it could have meant', () => {
+    const { code, out } = build(routesApp('const tab = location.hash.slice(1);\ndocument.title = route(`profile.${tab}`, { user: 1 });\n'));
+    expect(out).toContain(
+      '[bespoke] bootstrap/client.ts:5:24 — route names sent to the browser must be written out: `profile.${tab}` (route()) is built at runtime, so the build ' +
+        "cannot tell which routes this page needs. Did you mean one of profile.show, profile.update? Write them as literals, e.g. tab === 'show' ? 'profile.show' : 'profile.update'.",
+    );
+    expect(out).not.toContain('Built dist/client');
+    expect(code).toBe(1);
+  }, 60_000);
 });

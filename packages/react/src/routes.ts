@@ -2,7 +2,7 @@ import { resolveRoute } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, Param, Query, RouteArgs, RouteManifest } from '@bespokecore/http/page';
 import { createContext, useContext, useMemo } from 'react';
 
-/** The route manifest of the app (`bootstrap/routes.ts`), from `createBespokeApp({ routes })` / `createSsrRenderer(…, { routes })`. */
+/** The route manifest of the app (`virtual:bespoke/routes`), from `createBespokeApp({ routes })` / `createSsrRenderer(…, { routes })`. */
 export const RoutesContext = createContext<RouteManifest | undefined>(undefined);
 
 /** A named route's URL, typed against the routes the browser knows: `route('user-profile.show', { user: 7 }, { tab: 'links' })`. */

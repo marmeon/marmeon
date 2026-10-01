@@ -115,7 +115,7 @@ export interface BespokeAppProps {
   resolve: ResolvePage;
   /** Turns a page's `<Head title>` into the document title. */
   title?: TitleTemplate;
-  /** The named routes the browser knows (`routes` of `bootstrap/routes.ts`) — for `route()`, `<Link route>` and `useForm(name, …)`. */
+  /** The named routes the browser knows (`routes` of `virtual:bespoke/routes`) — for `route()`, `<Link route>` and `useForm(name, …)`. */
   routes?: RouteManifest;
   /** The layout of pages without their own `layout` (E35) — the same on the server and in the browser. */
   layout?: DefaultLayout;

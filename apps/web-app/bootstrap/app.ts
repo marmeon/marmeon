@@ -23,7 +23,6 @@ export default defineApplication({
     global: [SecurityHeaders],
     web: [ShareAppProps],
   },
-  // The browser gets the named `web` routes (bootstrap/routes.ts) — not the e-mail verification link, which only
-  // the server signs and sends by mail. API routes stay on the server unless listed in `include`.
-  clientRoutes: { except: ['auth.verification.verify'] },
+  // The browser learns only the `web` routes its code names (virtual:bespoke/routes). API routes stay on the server
+  // unless listed in `clientRoutes: { include }`; `.internal()` routes (the signed e-mail verification link) always do.
 });

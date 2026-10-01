@@ -12,7 +12,7 @@ export interface CreateBespokeAppOptions {
   rootId?: string;
   /** Turns a page's `<Head title>` into the document title — the same as the SSR entry's. */
   title?: TitleTemplate;
-  /** `routes` of the generated `bootstrap/routes.ts`: what `route()`, `<Link route>` and `useForm(name, …)` resolve. */
+  /** `routes` of `virtual:bespoke/routes`: what `route()`, `<Link route>` and `useForm(name, …)` resolve. */
   routes?: RouteManifest;
   /**
    * The layout of pages without their own `Page.layout` (E35), by page name — the same as the SSR entry's:

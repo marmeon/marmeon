@@ -52,9 +52,11 @@ describe('routes in the browser', () => {
 
   it('says what is missing: the manifest, or a route it does not carry', async () => {
     await expect(createSsrRenderer(resolve)({ component: 'people/Page', props: { id: 7 }, url: '/' })).rejects.toThrow(
-      'the browser has no route manifest — pass the routes of bootstrap/routes.ts to createBespokeApp({ routes })',
+      'the browser has no route manifest — pass the routes of virtual:bespoke/routes to createBespokeApp({ routes })',
     );
-    expect(() => resolveRoute(routes, 'admin.users')).toThrow('Route [admin.users] is not defined in the browser (API routes and clientRoutes.except are left out');
+    expect(() => resolveRoute(routes, 'admin.users')).toThrow(
+      "Route [admin.users] is not defined in the browser: a build ships only the route names client code writes out (<Link route=\"…\">, route('…'), useForm('…', …)), never API routes, .internal() routes or clientRoutes.except",
+    );
     expect(() => resolveRoute(routes, 'toString')).toThrow('Route [toString] is not defined'); // own keys only
     expect(() => resolveRoute(routes, 'people.show')).toThrow('Missing required parameter [person] for route [people.show].');
   });
