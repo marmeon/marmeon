@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-app",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && cd apps/web-app && PORT=3960 pnpm dev"
+      ],
+      "port": 3960
+    },
+    {
+      "name": "web-app-prod",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && cd apps/web-app && pnpm build && PORT=3961 pnpm start"
+      ],
+      "port": 3961
+    }
+  ]
+}
