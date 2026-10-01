@@ -86,7 +86,10 @@ export const PAGE_HEADER = 'x-bespoke';
 /** The asset version the client was built with; a mismatch answers 409 (Inertia's `X-Inertia-Version`). */
 export const VERSION_HEADER = 'x-bespoke-version';
 
-/** With a 409: where the client should load fully (Inertia's `X-Inertia-Location`). */
+/**
+ * With a 409: where the client loads fully (Inertia's `X-Inertia-Location`) — after a deployment (asset version)
+ * and after signing in or out (`ClientHistory`), so no page kept in memory outlives either.
+ */
 export const LOCATION_HEADER = 'x-bespoke-location';
 
 /** Id of the `<script type="application/json">` that carries the initial page. */

@@ -8,6 +8,7 @@ export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export type { CheckViewName, ErrorPageProps, PageObject, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrResult, ViewName, Views } from './page.ts';
 export { SharedData } from './shared-data.ts';
 export { AfterResponse } from './after-response.ts';
+export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedRouteOptions } from './signed-urls.ts';
 

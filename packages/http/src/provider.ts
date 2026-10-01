@@ -3,6 +3,7 @@ import { Encrypter } from '@bespokecore/encryption';
 import { GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@bespokecore/router';
 import { AfterResponse } from './after-response.ts';
 import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
+import { ClearClientHistory, ClientHistory } from './client-history.ts';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
 import { SharedData } from './shared-data.ts';
@@ -45,8 +46,8 @@ declare module '@bespokecore/core' {
  * Discovered like any installed package through the `"bespoke"` field in this package's package.json.
  *
  * Order within `web`, whatever order packages boot in (lower priority first):
- * EncryptCookies (100) → StartSession (200) → CheckAssetVersion (250) → VerifyCsrfToken (300) → shared props (400)
- * → app middleware (1000).
+ * EncryptCookies (100) → ClearClientHistory (150) → StartSession (200) → NoStoreWhenSignedIn (210, auth)
+ * → CheckAssetVersion (250) → VerifyCsrfToken (300) → shared props (400) → app middleware (1000).
  */
 export class HttpServiceProvider implements ServiceProvider {
   register(container: Container): void {
@@ -55,6 +56,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(CookieEncryption);
     container.scoped(SharedData);
     container.scoped(AfterResponse);
+    container.scoped(ClientHistory);
     container.singleton(UrlSigner);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
   }
@@ -70,6 +72,7 @@ export class HttpServiceProvider implements ServiceProvider {
     const router = app.container.make(Router);
     router.middleware
       .append('web', EncryptCookies, MiddlewarePriority.encryptCookies)
+      .append('web', ClearClientHistory, MiddlewarePriority.clearClientHistory)
       .append('web', CheckAssetVersion, MiddlewarePriority.checkAssetVersion);
 
     const { global = [], web = [], api = [] } = app.options.middleware ?? {};

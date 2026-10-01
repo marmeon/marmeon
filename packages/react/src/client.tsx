@@ -26,9 +26,9 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes 
   const root = document.getElementById(rootId);
   if (!root) throw new Error(`Root element #${rootId} not found.`);
 
-  // Resolve before hydrating so the first client render matches the server HTML.
+  // Resolve before hydrating so the first client render matches the server HTML. The history entry is the
+  // navigator's (<BespokeApp> starts it): its key and URL — never the page's props (E36).
   const Component = await resolve(page.component);
-  window.history.replaceState(page, '', window.location.href);
 
   hydrateRoot(root, <BespokeApp initialPage={page} initialComponent={Component} resolve={resolve} title={title} routes={routes} />);
 }

@@ -1,5 +1,7 @@
 export { BespokeApp, usePage, useRouter, xsrfToken } from './app.tsx';
 export type { BespokeAppProps, VisitMethod, VisitOptions } from './app.tsx';
+export { DEFAULT_PAGE_CACHE_SIZE, isHistoryState, Navigator } from './navigation.ts';
+export type { HistoryState, NavigatorOptions, NavigatorWindow } from './navigation.ts';
 export { useForm } from './use-form.ts';
 export type { Form, FormState, FormSubmitOptions, RouteForm, RouteFormFields } from './use-form.ts';
 export { useRoute } from './routes.ts';

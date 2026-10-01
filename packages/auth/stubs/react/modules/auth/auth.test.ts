@@ -53,6 +53,14 @@ describe('signing in and out', () => {
     await app.expectingJson().get('/dashboard').assertUnauthorized();
   });
 
+  it('leaves nothing for "Back" after signing out: full page load, no-store, Clear-Site-Data', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await app.actingAs(ada).get('/dashboard').assertOk().assertHeader('cache-control', 'no-store, private');
+    // A client-side visit gets 409 + x-bespoke-location: the browser loads the login page fully, the pages it kept in memory are gone.
+    const visit = await app.actingAs(ada).navigating().post('/logout').assertStatus(409).assertHeader('x-bespoke-location', '/login').assertGuest();
+    expect(visit.headers.get('clear-site-data')).toBe('"cache"');
+  });
+
   it('keeps signing in by the "keep me signed in" cookie', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });

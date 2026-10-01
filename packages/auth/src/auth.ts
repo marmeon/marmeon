@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { EventDispatcher, Logger } from '@bespokecore/core';
+import { ClientHistory } from '@bespokecore/http';
 import { CookieJar } from '@bespokecore/router';
 import { Session, SessionConfig } from '@bespokecore/session';
 import { AuthConfig } from './config.ts';
@@ -62,6 +63,7 @@ export class Auth {
   readonly #config: AuthConfig;
   readonly #sessionConfig: SessionConfig;
   readonly #logger: Logger;
+  readonly #history: ClientHistory;
   #user: Promise<AuthUser | undefined> | undefined;
 
   constructor(
@@ -74,6 +76,7 @@ export class Auth {
     config: AuthConfig,
     sessionConfig: SessionConfig,
     logger: Logger,
+    history: ClientHistory,
   ) {
     this.#session = session;
     this.#users = users;
@@ -84,6 +87,7 @@ export class Auth {
     this.#config = config;
     this.#sessionConfig = sessionConfig;
     this.#logger = logger;
+    this.#history = history;
   }
 
   /**
@@ -105,11 +109,16 @@ export class Auth {
     await this.#login(credentials.user, credentials.passwordHash, options);
   }
 
-  /** Signs out on this device: the session's data, id and CSRF token are all replaced, the remember-me token is dropped. */
+  /**
+   * Signs out on this device: the session's data, id and CSRF token are all replaced, the remember-me token is dropped.
+   * The browser loads the next page fully (its in-memory pages are gone) and clears its HTTP cache for the site
+   * (`Clear-Site-Data: "cache"`) — see `ClientHistory`.
+   */
   async logout(): Promise<void> {
     const user = await this.user();
     await this.#forgetDevice();
     this.#session.invalidate();
+    this.#history.clear({ siteCache: true });
     this.#user = Promise.resolve(undefined);
     if (user) await this.#events.dispatch(new Logout(user));
   }
@@ -211,6 +220,9 @@ export class Auth {
       this.#setCookie(await this.#remember.create(idOf(user), expiresAt), expiresAt);
     }
     this.#user = Promise.resolve(user);
+    // Another person may sit at this browser now: pages kept from before the sign-in must not come back.
+    // (A remember-me sign-in continues the same person's session — no reload for that.)
+    if (!viaRemember) this.#history.clear();
     await this.#events.dispatch(new Login(user, remember || viaRemember));
   }
 

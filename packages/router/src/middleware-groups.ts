@@ -7,7 +7,11 @@ import type { AnyMiddleware } from './types.ts';
  */
 export const MiddlewarePriority = {
   encryptCookies: 100,
+  /** Outside the session: it sees the route's own response (http's `ClearClientHistory`). */
+  clearClientHistory: 150,
   startSession: 200,
+  /** Inside the session, around everything that may answer for a signed-in user (auth's `NoStoreWhenSignedIn`). */
+  preventCaching: 210,
   checkAssetVersion: 250,
   verifyCsrfToken: 300,
   shareProps: 400,

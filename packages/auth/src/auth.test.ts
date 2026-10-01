@@ -1,7 +1,7 @@
 import { createApplication, defineModule, listen, type Container } from '@bespokecore/core';
 import { DatabaseServiceProvider, Migrator } from '@bespokecore/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
+import { ClientHistory, Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
 import { createHttpKernel } from '@bespokecore/server';
 import { CsrfProtection, Session, SessionServiceProvider, SessionStore } from '@bespokecore/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
@@ -262,7 +262,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never);
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory());
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();

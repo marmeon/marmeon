@@ -1,6 +1,8 @@
 import { defineConfig, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { MiddlewarePriority, Router } from '@bespokecore/router';
 import * as v from 'valibot';
 import { Auth } from './auth.ts';
+import { NoStoreWhenSignedIn } from './caching.ts';
 import { AuthConfig } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
@@ -14,6 +16,7 @@ import { UserProvider } from './user.ts';
 export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
 export type { LoginOptions } from './auth.ts';
 export { AuthConfig } from './config.ts';
+export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export type { PasswordResetTokenTable } from './password-reset.ts';
@@ -68,7 +71,10 @@ export const HashConfig = defineConfig('hash', {
 });
 export type HashConfig = ConfigOf<typeof HashConfig>;
 
-/** Registers the `Hasher` (`HASH_DRIVER`), `Auth` (per request) and the remember-me store. Found by `bespoke discover`. */
+/**
+ * Registers the `Hasher` (`HASH_DRIVER`), `Auth` (per request) and the remember-me store, and adds
+ * `NoStoreWhenSignedIn` to the `web` group. Found by `bespoke discover`.
+ */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
 
@@ -93,6 +99,8 @@ export class AuthServiceProvider implements ServiceProvider {
   }
 
   async boot(app: Application): Promise<void> {
+    // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
+    app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     const cli = await import('@bespokecore/cli').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand]);
   }
