@@ -13,6 +13,9 @@ export class AuthServiceProvider implements ServiceProvider {
   boot(app: Application): void {
     // Reset links: a few requests per address (the broker also waits 60 s per e-mail). By IP only —
     // the e-mail is not validated yet when middleware runs (W2 rule: never raw input).
-    app.container.make(RateLimiter).for('password-reset', (ctx) => Limit.perMinute(5).by(ctx.ip ?? 'unknown'));
+    const limiter = app.container.make(RateLimiter);
+    limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(ctx.ip ?? 'unknown'));
+    // Resending the verification mail: per signed-in user (the route is behind authenticate()).
+    limiter.for('verification', (ctx) => Limit.perMinute(3).by(String((ctx as { user?: { id: number } }).user?.id ?? ctx.ip)));
   }
 }

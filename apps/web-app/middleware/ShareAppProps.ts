@@ -5,7 +5,7 @@ import { Session } from '@bespokecore/session';
 declare module '@bespokecore/http/page' {
   interface SharedProps {
     /** The signed-in user, on every page — or null. */
-    auth: { user: { id: number; name: string } | null };
+    auth: { user: { id: number; name: string; verified: boolean } | null };
     /** Messages flashed by the previous request. */
     flash: { status: string | null };
   }
@@ -38,7 +38,7 @@ export class ShareAppProps {
       .share('auth', async () => {
         // The same lookup authenticate() already made on this request (Auth is per request).
         const user = await this.#auth.user();
-        return { user: user ? { id: user.id, name: user.name } : null };
+        return { user: user ? { id: user.id, name: user.name, verified: user.email_verified_at !== null } : null };
       })
       .share('flash', () => ({ status: this.#session.get('status') ?? null }));
     return next();

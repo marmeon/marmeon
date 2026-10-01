@@ -197,6 +197,19 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     }
   }
 
+  /**
+   * Updates a row unless a unique index already holds the new values — then `'duplicate'`; `undefined`
+   * when there is no such row. In a savepoint, like `tryInsert`.
+   */
+  async tryUpdate<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined | 'duplicate'> {
+    try {
+      return await this.transaction((repository) => repository.update(id, values));
+    } catch (error) {
+      if (isUniqueViolation(error)) return 'duplicate';
+      throw error;
+    }
+  }
+
   /** Updates a row and returns it — `undefined` when there is none. Sets `updated_at` with `static timestamps = true`. */
   async update<V extends Updateable<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, Updateable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
     const changes: Record<string, unknown> = this.#statics().timestamps ? { ...values, updated_at: new Date() } : { ...values };

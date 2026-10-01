@@ -70,6 +70,16 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(await users.count()).toBe(2);
   });
 
+  it('tryUpdate(): "duplicate" when the new value is taken, the row otherwise — the transaction survives', async () => {
+    const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    await users.insert({ name: 'Alan', email: 'alan@example.com' });
+    await users.transaction(async (inTransaction) => {
+      expect(await inTransaction.tryUpdate(ada.id, { email: 'alan@example.com' })).toBe('duplicate');
+      expect(await inTransaction.tryUpdate(ada.id, { email: 'ada@new.example' })).toMatchObject({ email: 'ada@new.example' });
+    });
+    expect(await users.tryUpdate(ada.id + 999, { name: 'Nobody' })).toBeUndefined();
+  });
+
   it('counter-check: a plain insert-and-catch inside a Postgres transaction leaves it unusable', async () => {
     await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const after = await users

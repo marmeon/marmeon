@@ -13,7 +13,7 @@ export class DemoUsersSeeder {
   async handle({ factory }: SeedContext) {
     // With the configured costs (OWASP outside tests), not the factory's cheap test hash — and one
     // hash per person: a shared hash would show in the database that they share the password.
-    const users = factory(UserFactory);
+    const users = factory(UserFactory); // verified addresses: the factory's default
     const password = () => this.#hasher.make('password');
     await users.create({ name: 'Ada Lovelace', email: 'ada@example.com', bio: 'First programmer.', password: await password() });
     await users.create({ name: 'Alan Turing', email: 'alan@example.com', bio: 'Computability pioneer.', password: await password() });

@@ -6,6 +6,7 @@ import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
 import { SharedData } from './shared-data.ts';
+import { UrlSigner } from './signed-urls.ts';
 
 declare module '@bespokecore/core' {
   interface ModuleDefinition {
@@ -44,6 +45,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(CookieEncryption);
     container.scoped(SharedData);
     container.scoped(AfterResponse);
+    container.singleton(UrlSigner);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
   }
 

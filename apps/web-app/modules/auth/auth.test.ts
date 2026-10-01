@@ -14,6 +14,8 @@ import type { LoginController } from './controllers/LoginController.ts';
 import type { RegisterController } from './controllers/RegisterController.ts';
 import type { ResetPasswordController } from './controllers/ResetPasswordController.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
+import { EmailChangedMail } from './mail/EmailChangedMail.ts';
+import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
 
@@ -430,6 +432,106 @@ describe('password reset', () => {
     app.mail.assertSentCount(ResetPasswordMail, 1);
     for (let i = 0; i < 3; i++) await ask(`someone${i}@example.com`);
     await ask('ada@example.com').assertStatus(429);
+  });
+});
+
+describe('e-mail verification', () => {
+  /** The link of the last verification mail (to `address`) — path and query. */
+  const verificationLink = (address?: string) => {
+    const sent = app.mail.sent(VerifyEmailMail, (_mail, message) => address === undefined || message.to[0]!.address === address).at(-1);
+    const url = new URL(/https?:\/\/\S+\/email\/verify\/\S+(?=\))/.exec(sent!.message.text)![0]);
+    return url.pathname + url.search;
+  };
+  const register = (email = 'kj@example.com') =>
+    app.post('/register', { form: { name: 'Katherine Johnson', email, password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } });
+  const userBy = (email: string) => app.make(UserRepository).query().selectAll().where('email', '=', email).executeTakeFirstOrThrow() as Promise<User>;
+
+  it('mails a signed link after registration; the link verifies — then links may be published', async () => {
+    const registered = await register().assertRedirect('/users/me');
+    app.mail.assertSent(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
+    const kj = await userBy('kj@example.com');
+    expect(kj.email_verified_at).toBeNull();
+    const session = app.withCookie('bespoke_session', registered.cookie('bespoke_session')!);
+
+    await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect('/email/verify');
+    await session.expectingJson().post(`/users/${kj.id}/links`, { json: { label: 'Blog', url: 'https://kj.example' } }).assertForbidden();
+    const verifiedResponse = await session.get(verificationLink()).assertRedirect('/users/me').assertSessionHas('status', 'Your e-mail address is verified.');
+    // The message survives the hop through /users/me (it reflashes) and shows on the profile.
+    const hop = await app.withCookie('bespoke_session', verifiedResponse.cookie('bespoke_session')!).get('/users/me').assertRedirect(`/users/${kj.id}`);
+    await app.withCookie('bespoke_session', hop.cookie('bespoke_session')!).navigating().get(`/users/${kj.id}`).assertPage('user-profile/Show', { flash: { status: 'Your e-mail address is verified.' } });
+    expect((await userBy('kj@example.com')).email_verified_at).toMatch(/Z$/);
+    await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect(`/users/${kj.id}`);
+  });
+
+  it('counter-checks: a changed parameter, a changed expiry, another user’s link, an expired link — 403', async () => {
+    await register('kj@example.com');
+    await register('dv@example.com');
+    const kj = await userBy('kj@example.com');
+    const dv = await userBy('dv@example.com');
+    const link = new URL(verificationLink('kj@example.com'), 'http://localhost');
+    const asKj = app.actingAs(kj).expectingJson();
+    const tampered = (change: (url: URL) => void) => {
+      const copy = new URL(link);
+      change(copy);
+      return asKj.get(copy.pathname + copy.search);
+    };
+    await tampered((url) => (url.pathname = url.pathname.replace(`/${kj.id}/`, `/${dv.id}/`))).assertForbidden(); // id changed
+    await tampered((url) => url.searchParams.set('expires', String(Number(url.searchParams.get('expires')) + 86_400))).assertForbidden();
+    // Dorothy's own, validly signed link — opened while signed in as Katherine:
+    await asKj.get(verificationLink('dv@example.com')).assertForbidden().assertExactJson({ message: 'This verification link is not for your account.' });
+    // Katherine's signature on Dorothy's path:
+    const dvPath = new URL(verificationLink('dv@example.com'), 'http://localhost').pathname;
+    await app.actingAs(dv).expectingJson().get(`${dvPath}${link.search}`).assertForbidden();
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
+    try {
+      await asKj.get(link.pathname + link.search).assertForbidden();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect((await userBy('kj@example.com')).email_verified_at).toBeNull();
+  });
+
+  it('a guest opening the link signs in first and comes back to it', async () => {
+    await register();
+    const kj = await userBy('kj@example.com');
+    const away = await app.get(verificationLink(), { headers: { accept: 'text/html' } }).assertRedirect('/login');
+    const login = await app.withCookie('bespoke_session', away.cookie('bespoke_session')!).post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
+    const back = new URL(login.headers.get('location')!, 'http://localhost');
+    expect(back.pathname).toBe(new URL(verificationLink(), 'http://localhost').pathname);
+    await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).get(back.pathname + back.search).assertRedirect('/users/me');
+    expect((await userBy('kj@example.com')).email_verified_at).not.toBeNull();
+  });
+
+  it('sends the link again on request — three times a minute', async () => {
+    const kj = await app.factory(UserFactory).state('unverified').create();
+    for (let i = 0; i < 3; i++) await app.actingAs(kj).post('/email/verification-notification').assertRedirect();
+    app.mail.assertSentCount(VerifyEmailMail, 3);
+    await app.actingAs(kj).post('/email/verification-notification').assertStatus(429);
+  });
+
+  it('changing the address needs the password again, unverifies it, mails both addresses — the old link dies', async () => {
+    await register('kj@example.com');
+    const kj = await userBy('kj@example.com');
+    const oldLink = verificationLink('kj@example.com');
+    await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
+    const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
+    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertSessionHas('status', 'E-mail address changed. Please confirm the new one — we sent you a link.');
+    expect(await userBy('katherine@nasa.example')).toMatchObject({ id: kj.id, email_verified_at: null });
+    app.mail.assertSent(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
+    app.mail.assertSent(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
+    await session.expectingJson().get(oldLink).assertForbidden(); // the link for the old address
+    await session.get(verificationLink('katherine@nasa.example')).assertRedirect('/users/me');
+  });
+
+  it('refuses an address another account has — a field error, not a 500', async () => {
+    await app.factory(UserFactory).create({ email: 'taken@example.com' });
+    const kj = await app.factory(UserFactory).create();
+    const login = await app.post('/login', credentialsOf(kj));
+    await app
+      .withCookie('bespoke_session', login.cookie('bespoke_session')!)
+      .put('/settings/email', { form: { email: 'TAKEN@example.com' }, headers: { referer: 'http://localhost/settings/security' } })
+      .assertInvalid(['email']);
   });
 });
 

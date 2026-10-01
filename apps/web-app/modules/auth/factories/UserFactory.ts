@@ -7,9 +7,14 @@ import { defineFactory } from '@bespokecore/database';
  */
 export const FACTORY_PASSWORD_HASH = '$argon2id$v=19$m=1024,t=1,p=1$4Xhubcoo37TNJTsjeD4YIg$tLK1IR1zuYLJNCVRYJaBxiXR+EuI6aAXP5Wt1Ha2xlQ';
 
-export const UserFactory = defineFactory('users', ({ sequence }) => ({
-  name: `User ${sequence}`,
-  email: `user${sequence}@example.com`,
-  password: FACTORY_PASSWORD_HASH,
-  bio: '',
-}));
+export const UserFactory = defineFactory(
+  'users',
+  ({ sequence }) => ({
+    name: `User ${sequence}`,
+    email: `user${sequence}@example.com`,
+    password: FACTORY_PASSWORD_HASH,
+    bio: '',
+    email_verified_at: new Date().toISOString(),
+  }),
+  { states: { unverified: { email_verified_at: null } } },
+);

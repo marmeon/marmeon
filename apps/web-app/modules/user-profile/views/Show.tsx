@@ -46,6 +46,14 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
           <em>This is your profile.</em> <Link href="/settings/security">Security</Link>
         </p>
       )}
+      {isOwnProfile && auth.user && !auth.user.verified && (
+        <p role="note">
+          Please confirm your e-mail address — the link is in your inbox.{' '}
+          <Link method="post" href="/email/verification-notification">
+            Send it again
+          </Link>
+        </p>
+      )}
       {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. */}
       {can.update && (
         <p>

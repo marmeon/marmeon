@@ -22,6 +22,8 @@ export type { RememberResult, RememberTokenTable } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { AbilityOf, PolicyClass, PolicyResult, ResourcesOf } from './gate.ts';
 export { confirmed, password } from './rules.ts';
+export { EmailVerification, emailHash, verified } from './verification.ts';
+export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
 export type { PasswordRuleOptions } from './rules.ts';
 export { authenticatedSession } from './testing.ts';
 export { UserProvider } from './user.ts';

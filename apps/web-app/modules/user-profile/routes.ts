@@ -1,4 +1,4 @@
-import { authenticate } from '@bespokecore/auth';
+import { authenticate, verified } from '@bespokecore/auth';
 import { defineRoutes } from '@bespokecore/http';
 import { UserRepository } from '#modules/auth';
 import { AddProfileLinkController } from './controllers/AddProfileLinkController.ts';
@@ -21,6 +21,7 @@ export default defineRoutes((Route) => {
   user.put('/:user', UpdateUserProfileController).name('update');
 
   // A link is looked up *within* its user: another user's link id under this user is a 404 (no IDOR).
-  user.post('/:user/links', AddProfileLinkController).name('links.store');
+  // Publishing links needs a confirmed address.
+  user.middleware(verified()).post('/:user/links', AddProfileLinkController).name('links.store');
   user.bind('link', ProfileLinkRepository, { scopedBy: 'user' }).delete('/:user/links/:link', DeleteProfileLinkController).name('links.destroy');
 });

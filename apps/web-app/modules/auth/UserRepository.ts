@@ -25,6 +25,15 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.tryInsert(values);
   }
 
+  async markEmailVerified(id: number): Promise<void> {
+    await this.update(id, { email_verified_at: new Date() });
+  }
+
+  /** A new address, unverified — `'duplicate'` when another account has it. */
+  async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
+    return this.tryUpdate(id, { email, email_verified_at: null });
+  }
+
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
     await this.update(id, { password: hash });
   }

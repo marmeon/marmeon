@@ -47,6 +47,7 @@ declare module '@bespokecore/database' {
       bio: Generated<string>;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
+      email_verified_at: Timestamp | null;
     };
   }
   interface TableOwners {

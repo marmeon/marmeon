@@ -2,11 +2,13 @@ import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
 import type { LogoutOtherDevicesController } from '../controllers/LogoutOtherDevicesController.ts';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
+import type { UpdateEmailController } from '../controllers/UpdateEmailController.ts';
 import type { UpdatePasswordController } from '../controllers/UpdatePasswordController.ts';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, flash, auth }: Props) {
+export default function Security({ viaRemember, email, flash, auth }: Props) {
+  const emailForm = useForm<UpdateEmailController>({ email });
   const passwordForm = useForm<UpdatePasswordController>({ current_password: '', password: '', password_confirmation: '' });
   const devicesForm = useForm<LogoutOtherDevicesController>({ password: '' });
 
@@ -23,6 +25,28 @@ export default function Security({ viaRemember, flash, auth }: Props) {
           <small>{auth.user?.name}, you were signed in by “Keep me signed in” on this device.</small>
         </p>
       )}
+
+      <section aria-labelledby="email-heading">
+        <h2 id="email-heading">E-mail address</h2>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void emailForm.put('/settings/email');
+          }}
+        >
+          <p>
+            <label htmlFor="email">E-mail</label>
+            <br />
+            <input id="email" type="email" autoComplete="email" value={emailForm.data.email} onChange={(e) => emailForm.set('email', e.target.value)} aria-invalid={!!emailForm.errors.email} />
+            {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
+            {auth.user && !auth.user.verified && <small> (not confirmed yet)</small>}
+          </p>
+          <button type="submit" disabled={emailForm.processing || !emailForm.isDirty}>
+            Change e-mail
+          </button>
+        </form>
+      </section>
 
       <section aria-labelledby="password-heading">
         <h2 id="password-heading">Change password</h2>

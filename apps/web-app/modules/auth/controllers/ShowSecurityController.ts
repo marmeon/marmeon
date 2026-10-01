@@ -1,5 +1,5 @@
-import { Auth } from '@bespokecore/auth';
-import { Controller } from '@bespokecore/http';
+import { Auth, type Authenticated } from '@bespokecore/auth';
+import { Controller, type HttpContext } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
 
 /** Password and devices — behind confirmedPassword() ("sudo mode"). */
@@ -13,9 +13,10 @@ export class ShowSecurityController extends Controller {
     this.#session = session;
   }
 
-  handle() {
+  handle(ctx: HttpContext<Authenticated>) {
     return this.view('auth/Security', {
       viaRemember: this.#auth.viaRemember(),
+      email: ctx.user.email,
       csrfToken: this.#session.token(),
     });
   }
