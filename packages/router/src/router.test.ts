@@ -7,7 +7,7 @@ interface User {
 }
 
 const authenticate = defineMiddleware<{ user: User }>('auth', (ctx, next) => {
-  const id = ctx.request.headers.get('x-user-id');
+  const id = ctx.request.headers.get('x-demo-user');
   return id ? next({ user: { id, isAdmin: id === '1' } }) : new Response('Unauthorized', { status: 401 });
 });
 
@@ -17,7 +17,7 @@ const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx
 
 class ClassAuthenticate {
   handle(ctx: HttpContext, next: Next<{ user: User }>) {
-    const id = ctx.request.headers.get('x-user-id');
+    const id = ctx.request.headers.get('x-demo-user');
     return id ? next({ user: { id, isAdmin: id === '1' } }) : new Response('Unauthorized', { status: 401 });
   }
 }
@@ -41,7 +41,7 @@ class PingController {
 }
 
 function request(userId?: string): Request {
-  return new Request('http://localhost/', { headers: userId ? { 'x-user-id': userId } : {} });
+  return new Request('http://localhost/', { headers: userId ? { 'x-demo-user': userId } : {} });
 }
 
 const routes = defineRoutes((Route) => {

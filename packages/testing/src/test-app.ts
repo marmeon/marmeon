@@ -375,7 +375,7 @@ export class TestApp {
 
   /**
    * Starts the request with a session holding `data` (Laravel's `withSession`):
-   * `app.withSession({ user_id: '1' }).get('/users/me')`.
+   * `app.withSession({ cart: [42] }).get('/checkout')` — to sign someone in, use `actingAs(user)`.
    */
   withSession(data: Record<string, unknown>): TestApp {
     return this.#with({ session: { ...this.#defaults.session, ...data } });
