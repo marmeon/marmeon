@@ -2,7 +2,8 @@ import { INTENDED_KEY } from '@bespokecore/http';
 import { Router, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
 import { Session } from '@bespokecore/session';
 import { Auth } from './auth.ts';
-import type { Authenticated } from './user.ts';
+import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
+import { UserProvider, type Authenticated } from './user.ts';
 
 export interface AuthenticateOptions {
   /** Named route of the login page, where browsers are sent (default `auth.login`). */
@@ -13,8 +14,14 @@ export interface AuthenticateOptions {
  * Only for signed-in users: `Route.middleware(authenticate())` — then `ctx.user` is the user.
  * Others get 401 (JSON clients) or are sent to the login page, which brings them back afterwards
  * (`redirect().intended()`).
+ *
+ * `authenticate('api')` is the token guard of the stateless `api` group: `Authorization: Bearer <token>`,
+ * then `ctx.user` and `ctx.token` (its abilities). Anything else is a 401 — a session cookie included.
  */
-export function authenticate(options: AuthenticateOptions = {}): MiddlewareClass<{}, Authenticated> {
+export function authenticate(guard: 'api'): MiddlewareClass<{}, Authenticated & WithToken>;
+export function authenticate(options?: AuthenticateOptions): MiddlewareClass<{}, Authenticated>;
+export function authenticate(options: AuthenticateOptions | 'api' = {}): MiddlewareClass<{}, Authenticated> | MiddlewareClass<{}, Authenticated & WithToken> {
+  if (options === 'api') return tokenGuard();
   const loginRoute = options.loginRoute ?? 'auth.login';
   const Authenticate = class {
     readonly #auth: Auth;
@@ -99,4 +106,45 @@ export function confirmedPassword(options: ConfirmedPasswordOptions = {}): Middl
   };
   Object.defineProperty(RequirePassword, 'name', { value: 'confirmedPassword' });
   return RequirePassword;
+}
+
+function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
+  const AuthenticateToken = class {
+    readonly #tokens: AccessTokenStore;
+    readonly #users: UserProvider;
+
+    constructor(tokens: AccessTokenStore, users: UserProvider) {
+      this.#tokens = tokens;
+      this.#users = users;
+    }
+
+    async handle(ctx: HttpContext, next: Next<Authenticated & WithToken>): Promise<Response> {
+      const header = ctx.request.headers.get('authorization') ?? '';
+      const presented = /^Bearer\s+(\S+)$/i.exec(header)?.[1];
+      const token = presented === undefined ? undefined : await this.#tokens.find(presented);
+      const found = token && (await this.#users.findById(token.userId as never));
+      if (!token || !found) {
+        return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: { 'www-authenticate': 'Bearer' } });
+      }
+      await this.#tokens.touch(token);
+      return next({ user: found.user, token });
+    }
+  };
+  Object.defineProperty(AuthenticateToken, 'name', { value: 'authenticate:api' });
+  return AuthenticateToken;
+}
+
+/**
+ * The token must grant every ability: `Route.middleware(authenticate('api'), …)` then
+ * `.middleware(abilities('users:read'))` — 403 otherwise. Only after the token guard.
+ */
+export function abilities(...required: string[]): MiddlewareClass<WithToken, {}> {
+  const CheckAbilities = class {
+    handle(ctx: HttpContext<WithToken>, next: Next<{}>): Promise<Response> | Response {
+      const missing = required.filter((ability) => !tokenCan(ctx.token, ability));
+      return missing.length === 0 ? next() : Response.json({ message: `This token may not: ${missing.join(', ')}.` }, { status: 403 });
+    }
+  };
+  Object.defineProperty(CheckAbilities, 'name', { value: `abilities:${required.join(',')}` });
+  return CheckAbilities;
 }

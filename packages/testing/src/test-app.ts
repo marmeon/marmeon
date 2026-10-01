@@ -165,6 +165,8 @@ interface Defaults {
   readonly session: Readonly<Record<string, unknown>> | undefined;
   /** Signed in as this user (`actingAs`). */
   readonly user?: AuthUser;
+  /** Signed in through an API token with these abilities instead of the session (`actingAs(user, { guard: 'api' })`). */
+  readonly token?: { readonly user: AuthUser; readonly abilities: readonly string[] };
 }
 
 /** Access to the app's session store — when the app uses @bespokecore/session (an optional peer). */
@@ -381,9 +383,11 @@ export class TestApp {
 
   /**
    * Signed in as `user` — the session holds exactly what a login leaves (Laravel's `actingAs`):
-   * `app.actingAs(ada).get('/users/me')`. Needs @bespokecore/auth; the user must exist.
+   * `app.actingAs(ada).get('/users/me')`. With `{ guard: 'api' }`, through a real API token instead
+   * (`Authorization: Bearer …`, Sanctum's `actingAs`). Needs @bespokecore/auth; the user must exist.
    */
-  actingAs(user: AuthUser): TestApp {
+  actingAs(user: AuthUser, options: { guard?: 'web' } | { guard: 'api'; abilities?: readonly string[] } = {}): TestApp {
+    if (options.guard === 'api') return this.#with({ token: { user, abilities: options.abilities ?? ['*'] } });
     return this.#with({ user });
   }
 
@@ -439,6 +443,13 @@ export class TestApp {
   async #init(method: string, { headers = {}, form, multipart, json }: RequestOptions): Promise<RequestInit> {
     const testCookies = [...this.#defaults.cookies];
     let data = this.#defaults.session;
+    const tokenHeader: Record<string, string> = {};
+    if (this.#defaults.token) {
+      const auth = await importAuth();
+      if (!auth) throw new Error("actingAs(…, { guard: 'api' }) needs @bespokecore/auth in the app.");
+      const { user, abilities } = this.#defaults.token;
+      tokenHeader.authorization = `Bearer ${await auth.authenticatedToken(this.application.container, user, abilities)}`;
+    }
     if (this.#defaults.user !== undefined) {
       const auth = await importAuth();
       if (!auth) throw new Error('actingAs() needs @bespokecore/auth in the app.');
@@ -455,7 +466,7 @@ export class TestApp {
       ),
     );
     const cookie = [this.#defaults.headers.cookie, ...cookies].filter(Boolean).join('; ');
-    const init: RequestInit = { method, headers: { ...this.#defaults.headers, ...(cookie ? { cookie } : {}), ...headers } };
+    const init: RequestInit = { method, headers: { ...this.#defaults.headers, ...tokenHeader, ...(cookie ? { cookie } : {}), ...headers } };
     if (form) {
       const body = new URLSearchParams();
       for (const [name, value] of Object.entries(form)) for (const item of [value].flat()) body.append(name, item);

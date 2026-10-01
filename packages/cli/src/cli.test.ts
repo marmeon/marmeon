@@ -36,7 +36,7 @@ describe('bespoke (in the web app)', () => {
     expect(stdout).toMatch(
       /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, EncryptCookies, StartSession, .*ShareAppProps, authenticate\s+ShowUserProfileController/,
     );
-    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders\s+ListUsersController/);
+    expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, authenticate:api, abilities:users:read\s+ListUsersController/);
     expect(stdout).toMatch(/\n\d+ routes\n$/); // the count grows with the app
   });
 

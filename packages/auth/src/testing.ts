@@ -1,5 +1,6 @@
 import type { Container } from '@bespokecore/core';
 import { AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
+import { AccessTokenStore } from './tokens.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /**
@@ -11,4 +12,10 @@ export async function authenticatedSession(container: Container, user: AuthUser)
   const credentials = await container.createScope().make(UserProvider).findById(id as never);
   if (!credentials) throw new Error(`actingAs(): there is no user ${id} — create it first (e.g. with a factory).`);
   return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: passwordFingerprint(credentials.passwordHash) };
+}
+
+/** A real API token for `user` with `abilities` — what `actingAs(user, { guard: 'api' })` sends as `Authorization: Bearer …`. */
+export async function authenticatedToken(container: Container, user: AuthUser, abilities: readonly string[] = ['*']): Promise<string> {
+  const { plainText } = await container.createScope().make(AccessTokenStore).create(idOf(user), 'test', { abilities });
+  return plainText;
 }

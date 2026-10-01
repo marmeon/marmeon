@@ -39,7 +39,7 @@ describe('user-profile module', () => {
       await as(ada).get(profile(alan)).assertOk(),
       await as(ada).get(`${profile(ada)}/edit`).assertOk(),
       await app.actingAs(ada).get(profile(ada), { headers: { accept: 'text/html' } }).assertOk(), // the HTML document
-      await app.get('/api/users').assertOk(),
+      await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users').assertOk(),
     ];
     for (const response of pages) {
       expect(response.body).not.toContain('$argon2id$');
@@ -93,8 +93,8 @@ describe('user-profile module', () => {
     });
   });
 
-  it('serves a stateless API under /api — no session, no cookies', async () => {
-    const response = await app.get('/api/users?per_page=2').assertOk().assertCookieMissing('bespoke_session');
+  it('serves a stateless API under /api — a token, no session, no cookies', async () => {
+    const response = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=2').assertOk().assertCookieMissing('bespoke_session');
     expect(response.json()).toEqual({
       data: [
         { id: ada.id, name: 'Ada Lovelace' },

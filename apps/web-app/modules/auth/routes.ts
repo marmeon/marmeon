@@ -2,12 +2,15 @@ import { authenticate, confirmedPassword, guest } from '@bespokecore/auth';
 import { throttle } from '@bespokecore/cache';
 import { defineRoutes, signed } from '@bespokecore/http';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
+import { CreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
 import { LoginController } from './controllers/LoginController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
 import { LogoutOtherDevicesController } from './controllers/LogoutOtherDevicesController.ts';
 import { RegisterController } from './controllers/RegisterController.ts';
 import { ResendVerificationController } from './controllers/ResendVerificationController.ts';
 import { ResetPasswordController } from './controllers/ResetPasswordController.ts';
+import { RevokeAccessTokenController } from './controllers/RevokeAccessTokenController.ts';
+import { ShowAccessTokensController } from './controllers/ShowAccessTokensController.ts';
 import { SendPasswordResetLinkController } from './controllers/SendPasswordResetLinkController.ts';
 import { ShowForgotPasswordController } from './controllers/ShowForgotPasswordController.ts';
 import { ShowResetPasswordController } from './controllers/ShowResetPasswordController.ts';
@@ -43,6 +46,11 @@ export default defineRoutes((Route) => {
   signedIn.put('/settings/password', UpdatePasswordController).name('auth.password.update');
   signedIn.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout');
   signedIn.middleware(confirmedPassword()).put('/settings/email', UpdateEmailController).name('auth.email.update');
+  // API tokens: as good as a session — sudo mode for all of it.
+  const sudo = signedIn.middleware(confirmedPassword());
+  sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
+  sudo.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
+  sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
 
   // E-mail verification: the link is signed (made by the app, expires) — and only for its own user.
   signedIn.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');

@@ -6,6 +6,7 @@ import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './h
 import { Gate } from './gate.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
+import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { UserProvider } from './user.ts';
 
 // Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
@@ -15,7 +16,7 @@ export { AuthConfig } from './config.ts';
 export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export type { PasswordResetTokenTable } from './password-reset.ts';
-export { authenticate, confirmedPassword, guest } from './middleware.ts';
+export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
 export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
 export type { RememberResult, RememberTokenTable } from './remember.ts';
@@ -25,7 +26,9 @@ export { confirmed, password } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
 export type { PasswordRuleOptions } from './rules.ts';
-export { authenticatedSession } from './testing.ts';
+export { authenticatedSession, authenticatedToken } from './testing.ts';
+export { ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
+export type { AccessToken, AccessTokenTable, WithToken } from './tokens.ts';
 export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
 export {
@@ -76,6 +79,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
+    container.singleton(AccessTokenStore, DatabaseAccessTokens);
   }
 
   boot(app: Application): void {

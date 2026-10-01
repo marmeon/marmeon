@@ -1,5 +1,6 @@
 import { Hasher, PasswordHasher, type PasswordHash } from '@bespokecore/auth';
 import { ConsoleLogger, Logger, type LogContext } from '@bespokecore/core';
+import { Connections } from '@bespokecore/database';
 import { Database, secret } from '@bespokecore/database';
 import { MailFake, Mailer, type Mailable, type MailMessage } from '@bespokecore/mail';
 import { createHttpKernel } from '@bespokecore/server';
@@ -532,6 +533,79 @@ describe('e-mail verification', () => {
       .withCookie('bespoke_session', login.cookie('bespoke_session')!)
       .put('/settings/email', { form: { email: 'TAKEN@example.com' }, headers: { referer: 'http://localhost/settings/security' } })
       .assertInvalid(['email']);
+  });
+});
+
+describe('API tokens', () => {
+  const sudo = async (user: User) => {
+    const login = await app.post('/login', credentialsOf(user));
+    return app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+  };
+  const createToken = async (user: User, abilities: string[] = ['users:read']) => {
+    const page = await (await sudo(user)).navigating().post('/settings/tokens', { json: { name: 'CLI', abilities } }).assertOk();
+    return (page.page()!.props as { plainText: string }).plainText;
+  };
+  const api = (token?: string) => app.withHeaders(token === undefined ? {} : { authorization: `Bearer ${token}` }).expectingJson();
+
+  it('creates a token on the token page — shown once, in that answer only — and the API takes it', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const session = await sudo(ada);
+    const created = await session.navigating().post('/settings/tokens', { json: { name: 'Backup script', abilities: ['users:read'] } }).assertOk();
+    const plainText = (created.page()!.props as { plainText: string }).plainText;
+    expect(plainText).toMatch(/^bc_\d+\|[A-Za-z0-9]{40}[0-9a-f]{8}$/);
+    expect(JSON.stringify(created.session())).not.toContain(plainText); // not flashed
+    await session.navigating().get('/settings/tokens').assertPage('auth/AccessTokens', (props) => {
+      expect((props as { plainText: unknown }).plainText).toBeNull();
+      expect(JSON.stringify(props)).not.toContain(plainText.slice(-48));
+      expect((props as { tokens: { name: string }[] }).tokens.map((token) => token.name)).toEqual(['Backup script']);
+    });
+    await api(plainText).get('/api/users').assertOk();
+  });
+
+  it('counter-checks: no token, a revoked one, a missing ability, a session cookie — 401 / 403', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const plainText = await createToken(ada);
+    await api().get('/api/users').assertUnauthorized().assertHeader('www-authenticate', 'Bearer');
+    const noAbility = await createToken(ada, []).catch(() => undefined); // abilities are required by the form …
+    expect(noAbility).toBeUndefined();
+    await app.actingAs(ada, { guard: 'api', abilities: ['something:else'] }).expectingJson().get('/api/users').assertForbidden().assertExactJson({ message: 'This token may not: users:read.' });
+    // A signed-in browser is no API client: the api group has no session.
+    const login = await app.post('/login', credentialsOf(ada));
+    await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).expectingJson().get('/api/users').assertUnauthorized();
+    // Revoked: dead at once.
+    const id = Number(/^bc_(\d+)\|/.exec(plainText)![1]);
+    await (await sudo(ada)).delete(`/settings/tokens/${id}`).assertRedirect('/settings/tokens');
+    await api(plainText).get('/api/users').assertUnauthorized();
+  });
+
+  it('counter-check: another user’s token id with a wrong secret is a 401 — and a broken checksum costs no query', async () => {
+    const alan = await app.factory(UserFactory).create();
+    const alansToken = await createToken(alan);
+    const id = /^bc_(\d+)\|/.exec(alansToken)![1]!;
+    const { crc32 } = await import('node:zlib');
+    const forgedBody = `bc_${id}|${'x'.repeat(40)}`;
+    await api(`${forgedBody}${crc32(forgedBody).toString(16).padStart(8, '0')}`).get('/api/users').assertUnauthorized();
+
+    const queries: string[] = [];
+    const stop = app.make(Connections).onQuery((query) => queries.push(query.sql));
+    const typo = alansToken.slice(0, -9) + (alansToken.at(-9) === 'a' ? 'b' : 'a') + alansToken.slice(-8);
+    await api(typo).get('/api/users').assertUnauthorized();
+    stop();
+    expect(queries).toEqual([]);
+  });
+
+  it('revokes only your own tokens — someone else’s id is a 404', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const alan = await app.factory(UserFactory).create();
+    const alansToken = await createToken(alan);
+    const id = /^bc_(\d+)\|/.exec(alansToken)![1];
+    await (await sudo(ada)).expectingJson().delete(`/settings/tokens/${id}`).assertNotFound();
+    await api(alansToken).get('/api/users').assertOk();
+  });
+
+  it('the token page is sudo mode', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await app.actingAs(ada).get('/settings/tokens', { headers: { accept: 'text/html' } }).assertRedirect('/confirm-password');
   });
 });
 

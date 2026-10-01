@@ -1,7 +1,8 @@
+import { abilities, authenticate } from '@bespokecore/auth';
 import { defineRoutes } from '@bespokecore/http';
 import { ListUsersController } from './controllers/ListUsersController.ts';
 
-// Loaded into the stateless `api` group under /api — no cookies, no session.
+// Loaded into the stateless `api` group under /api — no cookies, no session: API tokens (E27).
 export default defineRoutes((Route) => {
-  Route.get('/users', ListUsersController).name('api.users.index');
+  Route.middleware(authenticate('api')).middleware(abilities('users:read')).get('/users', ListUsersController).name('api.users.index');
 });

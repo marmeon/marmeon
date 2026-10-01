@@ -19,6 +19,9 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
         <Link href="/users/me">← Back to your profile</Link>
       </p>
       <h1>Security</h1>
+      <p>
+        <Link href="/settings/tokens">API tokens</Link>
+      </p>
       {flash.status && <p role="status">{flash.status}</p>}
       {viaRemember && (
         <p>
