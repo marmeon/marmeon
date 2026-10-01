@@ -1,6 +1,6 @@
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, FormOf, ParamsOf, Routes } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { useRouter, type VisitMethod, type VisitOptions } from './app.tsx';
+import { useRouter, type VisitMethod, type VisitOptions, type VisitProgress } from './app.tsx';
 import { resolveRoute, RoutesContext } from './routes.ts';
 
 /** The data of a form: the controller's schema input (`useForm<UpdateUserProfileController>`), or given directly. */
@@ -8,9 +8,15 @@ type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
 
 type Field<F> = keyof F & string;
 
-export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data'> {
+/**
+ * How a form is sent. `onError` gets the *validation* errors (as Inertia's forms do); a request that failed
+ * (offline, 5xx) is a visit error — the app shows it over the page, and `onFinish` still runs.
+ */
+export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data' | 'onError' | 'onFinish'> {
   onSuccess?: () => void;
+  /** The server rejected the input: the first message per field. */
   onError?: (errors: Record<string, string>) => void;
+  /** After every submit — succeeded, invalid, failed or cancelled. */
   onFinish?: () => void;
 }
 
@@ -25,6 +31,8 @@ export interface FormState<F> {
   clearErrors(...fields: Field<F>[]): void;
   /** A request is in flight. */
   readonly processing: boolean;
+  /** How far the upload is, while a form with a file (`FormData`) is sent — else null. */
+  readonly progress: VisitProgress | null;
   /** The last submit succeeded. */
   readonly wasSuccessful: boolean;
   /** The last submit succeeded less than two seconds ago — for a short "Saved." */
@@ -107,17 +115,27 @@ export function useForm(...args: unknown[]): unknown {
   const [data, setData] = useState(initial);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [processing, setProcessing] = useState(false);
+  const [progress, setProgress] = useState<VisitProgress | null>(null);
   const [wasSuccessful, setWasSuccessful] = useState(false);
   const [recentlySuccessful, setRecentlySuccessful] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const send = useCallback(
-    async (method: VisitMethod, url: string, { onSuccess, onError, onFinish, ...options }: FormSubmitOptions = {}) => {
+    async (method: VisitMethod, url: string, { onSuccess, onError, onFinish, onProgress, ...options }: FormSubmitOptions = {}) => {
       setProcessing(true);
       setWasSuccessful(false);
       try {
-        const page = await visit(url, { preserveScroll: true, ...options, method, data });
+        const page = await visit(url, {
+          preserveScroll: true,
+          ...options,
+          method,
+          data,
+          onProgress: (next, current) => {
+            setProgress(next);
+            onProgress?.(next, current);
+          },
+        });
         if (!page) return;
         const failed = firstMessages((page.props as { errors?: unknown }).errors);
         setErrors(failed);
@@ -132,6 +150,7 @@ export function useForm(...args: unknown[]): unknown {
         }
       } finally {
         setProcessing(false);
+        setProgress(null);
         onFinish?.();
       }
     },
@@ -152,6 +171,7 @@ export function useForm(...args: unknown[]): unknown {
     clearErrors: (...fields) =>
       setErrors((current) => (fields.length === 0 ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !fields.includes(key))))),
     processing,
+    progress,
     wasSuccessful,
     recentlySuccessful,
     isDirty: JSON.stringify(data) !== JSON.stringify(defaults),

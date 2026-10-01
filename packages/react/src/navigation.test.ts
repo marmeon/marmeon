@@ -1,6 +1,6 @@
 import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
 import { describe, expect, it } from 'vitest';
-import { isHistoryState, Navigator, type NavigatorWindow } from './navigation.ts';
+import { isHistoryState, Navigator, type NavigatorWindow, type ScrollRegion, type VisitError } from './navigation.ts';
 
 const ORIGIN = 'https://app.test';
 
@@ -21,6 +21,14 @@ class FakeWindow implements NavigatorWindow {
   readonly loads: string[] = [];
   scrollX = 0;
   scrollY = 0;
+  scrollRestoration: ScrollRestoration = 'auto';
+  /** The page's `[scroll-region]` elements. */
+  regions: ScrollRegion[] = [];
+  readonly document = {
+    querySelectorAll: (selector: string) => (selector === '[scroll-region]' ? this.regions : []),
+    getElementById: () => null,
+  };
+  XMLHttpRequest?: new () => XMLHttpRequest;
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
   handler: Handler = () => new Response('not found', { status: 404 });
 
@@ -42,6 +50,12 @@ class FakeWindow implements NavigatorWindow {
       },
       replaceState(state: unknown, _title: string, url?: string | URL | null) {
         win.entries[win.index] = { url: win.#resolve(url), state: JSON.stringify(state) };
+      },
+      get scrollRestoration() {
+        return win.scrollRestoration;
+      },
+      set scrollRestoration(value: ScrollRestoration) {
+        win.scrollRestoration = value;
       },
     } as NavigatorWindow['history'];
   }
@@ -92,6 +106,18 @@ class FakeWindow implements NavigatorWindow {
   back() {
     this.index--;
     this.dispatch('popstate', { state: this.history.state });
+  }
+
+  forward() {
+    this.index++;
+    this.dispatch('popstate', { state: this.history.state });
+  }
+
+  /** The user scrolls the window (and the regions) — the browser fires `scroll`. */
+  scroll(y: number, ...regions: number[]) {
+    this.scrollY = y;
+    regions.forEach((top, index) => (this.regions[index]!.scrollTop = top));
+    this.dispatch('scroll', {});
   }
 
   #resolve(url: string | URL | null | undefined): string {
@@ -248,5 +274,259 @@ describe('Navigator — the history without props (E36)', () => {
     await settle();
     expect(shown).toEqual([]);
     expect(win.requests).toEqual([]);
+  });
+});
+
+/** Records a navigator's events, in order. */
+function record(navigator: Navigator) {
+  const events: string[] = [];
+  const errors: VisitError[] = [];
+  navigator.on('start', (visit) => events.push(`start ${visit.method} ${visit.url}`));
+  navigator.on('progress', (progress) => events.push(`progress ${progress.percentage}`));
+  navigator.on('cancel', (visit) => events.push(`cancel ${visit.url}`));
+  navigator.on('error', (error) => (events.push(`error ${error.type}`), errors.push(error)));
+  navigator.on('finish', (visit) => events.push(`finish ${visit.url}`));
+  return { events, errors };
+}
+
+describe('Navigator — visit events and failures', () => {
+  it('reports start and finish of a visit — per visit too', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => pageResponse(page('/b'));
+    const { navigator } = boot(win, page('/a'));
+    const { events } = record(navigator);
+    const own: string[] = [];
+    await navigator.visit('/b', { onStart: () => own.push('start'), onFinish: () => own.push('finish'), onError: () => own.push('error') });
+    expect(events).toEqual(['start get /b', 'finish /b']);
+    expect(own).toEqual(['start', 'finish']);
+  });
+
+  it('turns a network failure into an error event — not a rejection — and leaves page and history as they are', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    const { navigator, shown } = boot(win, page('/a'));
+    const { events, errors } = record(navigator);
+    const own: VisitError[] = [];
+
+    await expect(navigator.visit('/b', { onError: (error) => void own.push(error) })).resolves.toBeUndefined();
+    expect(events).toEqual(['start get /b', 'error network', 'finish /b']);
+    expect(errors[0]).toMatchObject({ type: 'network', visit: { url: '/b', method: 'get' }, cause: expect.any(TypeError) });
+    expect(own).toEqual(errors);
+    expect(shown).toEqual([]);
+    expect(win.entries.map((entry) => entry.url)).toEqual([`${ORIGIN}/a`]);
+    expect(win.loads).toEqual([]);
+  });
+
+  it('reports a 5xx with the server’s error page — the page on screen stays, no history entry', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    const errorPage = page('/b', { status: 500, title: 'Server Error', message: 'boom', exception: { name: 'Error', message: 'boom', stack: '…' } }, 'errors/Error');
+    win.handler = () => new Response(JSON.stringify(errorPage), { status: 500, headers: { [PAGE_HEADER]: 'true' } });
+    const { navigator, shown } = boot(win, page('/a'));
+    const { events, errors } = record(navigator);
+
+    expect(await navigator.visit('/b', { method: 'post', data: { name: 'Ada' } })).toBeUndefined();
+    expect(events).toEqual(['start post /b', 'error server', 'finish /b']);
+    expect(errors[0]).toMatchObject({ type: 'server', status: 500, page: errorPage, html: undefined });
+    expect(shown).toEqual([]);
+    expect(win.entries).toHaveLength(1);
+  });
+
+  it('hands plain HTML of a 5xx (a proxy, say) to the error event instead of loading it', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => new Response('<h1>502 Bad Gateway</h1>', { status: 502, headers: { 'content-type': 'text/html' } });
+    const { navigator } = boot(win, page('/a'));
+    const { errors } = record(navigator);
+    await navigator.visit('/b');
+    expect(errors[0]).toMatchObject({ type: 'server', status: 502, page: undefined, html: '<h1>502 Bad Gateway</h1>' });
+    expect(win.loads).toEqual([]);
+  });
+
+  it('shows 4xx pages as pages (404, 403) — they are answers, not failures', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => new Response(JSON.stringify(page('/missing', { status: 404 }, 'errors/Error')), { status: 404, headers: { [PAGE_HEADER]: 'true' } });
+    const { navigator, visible } = boot(win, page('/a'));
+    const { errors } = record(navigator);
+    await navigator.visit('/missing');
+    expect(errors).toEqual([]);
+    expect(visible().component).toBe('errors/Error');
+  });
+
+  it('cancels the older of two visits — the newer one wins', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = (url, init) =>
+      url.endsWith('/slow')
+        ? new Promise((_resolve, reject) => init.signal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+        : pageResponse(page('/fast'));
+    const { navigator, visible } = boot(win, page('/a'));
+    const { events } = record(navigator);
+    const own: string[] = [];
+    const slow = navigator.visit('/slow', { onCancel: () => own.push('cancelled') });
+    await navigator.visit('/fast');
+    expect(await slow).toBeUndefined();
+    expect(events).toEqual(['start get /slow', 'start get /fast', 'cancel /slow', 'finish /slow', 'finish /fast']);
+    expect(own).toEqual(['cancelled']);
+    expect(visible().url).toBe('/fast');
+  });
+
+  it('reports the upload progress of FormData — over XHR, the page headers included', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    const sent: { method: string; url: string; headers: Record<string, string>; body: unknown }[] = [];
+    win.XMLHttpRequest = class FakeXhr extends EventTarget {
+      readonly upload = new EventTarget();
+      status = 0;
+      statusText = '';
+      responseText = '';
+      responseURL = '';
+      #request = { method: '', url: '', headers: {} as Record<string, string> };
+      open(method: string, url: string) {
+        this.#request = { method, url, headers: {} };
+      }
+      setRequestHeader(name: string, value: string) {
+        this.#request.headers[name] = value;
+      }
+      getAllResponseHeaders() {
+        return `content-type: application/json\r\n${PAGE_HEADER}: true\r\n`;
+      }
+      abort() {}
+      send(body: unknown) {
+        sent.push({ ...this.#request, body });
+        for (const loaded of [250, 1000]) this.upload.dispatchEvent(Object.assign(new Event('progress'), { loaded, total: 1000, lengthComputable: true }));
+        Object.assign(this, { status: 200, responseText: JSON.stringify(page('/a', { uploaded: true })), responseURL: `${ORIGIN}/a` });
+        this.dispatchEvent(new Event('load'));
+      }
+    } as never;
+    const { navigator, visible } = boot(win, page('/a'));
+    const { events } = record(navigator);
+    const own: number[] = [];
+    const data = new FormData();
+    data.append('avatar', new Blob(['…'], { type: 'image/png' }), 'avatar.png');
+
+    await navigator.visit('/a', { method: 'post', data, onProgress: (progress) => void own.push(progress.percentage!) });
+    expect(events).toEqual(['start post /a', 'progress 25', 'progress 100', 'finish /a']);
+    expect(own).toEqual([25, 100]);
+    expect(sent[0]).toMatchObject({ method: 'POST', url: '/a', headers: { [PAGE_HEADER]: 'true' }, body: data });
+    expect(visible().props).toEqual({ uploaded: true });
+  });
+
+  it('sends data with a file in it as multipart, nested keys in brackets', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    let body: unknown;
+    win.handler = (_url, init) => ((body = init.body), pageResponse(page('/a')));
+    const { navigator } = boot(win, page('/a'));
+    const avatar = new File(['…'], 'avatar.png', { type: 'image/png' });
+    await navigator.visit('/a', { method: 'post', data: { name: 'Ada', public: true, avatar, links: [{ url: 'https://ada.dev' }], note: null } });
+    expect(body).toBeInstanceOf(FormData);
+    const form = body as FormData;
+    expect([...form.keys()]).toEqual(['name', 'public', 'avatar', 'links[0][url]', 'note']);
+    expect(form.get('public')).toBe('1');
+    expect(form.get('avatar')).toBeInstanceOf(File);
+    expect(form.get('note')).toBe('');
+  });
+
+  it('reload() fetches the current page again in place, keeping the scroll position', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a?tab=links`);
+    win.handler = () => pageResponse(page('/a?tab=links', { fresh: true }));
+    const { navigator, visible } = boot(win, page('/a?tab=links', { fresh: false }));
+    win.scroll(400);
+    await navigator.reload();
+    expect(win.requests.at(-1)).toMatchObject({ url: `${ORIGIN}/a?tab=links`, method: 'GET' });
+    expect(visible().props).toEqual({ fresh: true });
+    expect(win.entries).toHaveLength(1);
+    expect(win.scrollY).toBe(400);
+  });
+});
+
+describe('Navigator — scroll restoration', () => {
+  /** Lets the debounced write of the scroll position into the history entry happen. */
+  const debounce = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+  it('takes over scroll restoration from the browser', () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    boot(win, page('/a'));
+    expect(win.scrollRestoration).toBe('manual');
+  });
+
+  it('restores the window and every scroll-region on Back and Forward — new pages start at the top', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.regions = [
+      { scrollLeft: 0, scrollTop: 0 },
+      { scrollLeft: 0, scrollTop: 0 },
+    ];
+    win.handler = (url) => pageResponse(page(new URL(url).pathname));
+    const { navigator } = boot(win, page('/a'));
+
+    win.scroll(500, 120, 30);
+    await navigator.visit('/b');
+    expect([win.scrollY, ...win.regions.map((region) => region.scrollTop)]).toEqual([0, 0, 0]);
+    win.scroll(300, 40, 0);
+
+    win.back();
+    await settle();
+    expect([win.scrollY, ...win.regions.map((region) => region.scrollTop)]).toEqual([500, 120, 30]);
+    win.forward();
+    await settle();
+    expect([win.scrollY, ...win.regions.map((region) => region.scrollTop)]).toEqual([300, 40, 0]);
+  });
+
+  it('a position still waiting to be saved never lands in the entry Back went to', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => pageResponse(page('/b'));
+    const { navigator } = boot(win, page('/a'));
+    win.scroll(500);
+    await navigator.visit('/b');
+    win.scroll(300); // and Back right away, before the debounced save
+    win.back();
+    await settle();
+    await debounce();
+    expect(JSON.parse(win.entries[0]!.state).scroll).toEqual({ x: 0, y: 500 });
+    expect(win.scrollY).toBe(500);
+  });
+
+  it('writes the position into the entry, so a reload or a session restore comes back to it', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.regions = [{ scrollLeft: 0, scrollTop: 0 }];
+    const first = boot(win, page('/a'));
+    win.scroll(700, 90);
+    await debounce();
+    expect(JSON.parse(win.current.state)).toMatchObject({ scroll: { x: 0, y: 700 }, regions: [{ x: 0, y: 90 }] });
+    first.stop();
+
+    // Reload: a new document in the same entry, scrolled to the top by the browser (restoration is manual).
+    win.scrollTo(0, 0);
+    win.regions[0]!.scrollTop = 0;
+    boot(win, page('/a'));
+    expect(win.scrollY).toBe(700);
+    expect(win.regions[0]!.scrollTop).toBe(90);
+  });
+
+  it('keeps the position with preserveScroll', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => pageResponse(page('/a', { saved: true }));
+    const { navigator } = boot(win, page('/a'));
+    win.scroll(250);
+    await navigator.visit('/a', { method: 'put', data: {}, preserveScroll: true });
+    expect(win.scrollY).toBe(250);
+  });
+
+  it('scrolls only after the page is on screen — render resolves first', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => pageResponse(page('/b'));
+    const order: string[] = [];
+    const navigator = new Navigator({
+      initialPage: page('/a'),
+      window: Object.assign(win, { scrollTo: (x: number, y: number) => (order.push(`scroll ${y}`), FakeWindow.prototype.scrollTo.call(win, x, y)) }),
+      render: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        order.push('rendered');
+      },
+    });
+    navigator.start();
+    win.scroll(500);
+    await navigator.visit('/b');
+    win.back();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(order).toEqual(['rendered', 'scroll 0', 'rendered', 'scroll 500']);
   });
 });

@@ -1,6 +1,7 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, useForm, useRoute } from '@bespokecore/react';
 import type { ShowConfirmPasswordController } from '../controllers/ShowConfirmPasswordController.ts';
+import { AppLayout } from '../layouts/AppLayout.tsx';
 
 type Props = PageProps<ShowConfirmPasswordController>;
 
@@ -44,3 +45,5 @@ export default function ConfirmPassword({ csrfToken }: Props) {
     </main>
   );
 }
+
+ConfirmPassword.layout = AppLayout;

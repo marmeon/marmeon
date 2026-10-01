@@ -1,6 +1,7 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm, useRoute } from '@bespokecore/react';
 import type { ShowResetPasswordController } from '../controllers/ShowResetPasswordController.ts';
+import { AppLayout } from '../layouts/AppLayout.tsx';
 
 type Props = PageProps<ShowResetPasswordController>;
 
@@ -63,3 +64,5 @@ export default function ResetPassword({ email, csrfToken }: Props) {
     </main>
   );
 }
+
+ResetPassword.layout = AppLayout;

@@ -1,6 +1,7 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm, useRoute } from '@bespokecore/react';
 import type { ShowRegisterController } from '../controllers/ShowRegisterController.ts';
+import { AppLayout } from '../layouts/AppLayout.tsx';
 
 type Props = PageProps<ShowRegisterController>;
 
@@ -52,3 +53,5 @@ export default function Register({ old, csrfToken }: Props) {
     </main>
   );
 }
+
+Register.layout = AppLayout;

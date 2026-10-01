@@ -1,21 +1,19 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
+import { AppLayout } from '../../../layouts/AppLayout.tsx';
 import type { ShowAccessTokensController } from '../controllers/ShowAccessTokensController.ts';
+import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowAccessTokensController>;
 
-export default function AccessTokens({ tokens, abilities, plainText, flash }: Props) {
+export default function AccessTokens({ tokens, abilities, plainText }: Props) {
   const form = useForm('auth.tokens.store', { name: '', abilities: [] });
   const selected = [form.data.abilities ?? []].flat();
 
   return (
     <main>
       <Head title="API tokens" />
-      <p>
-        <Link route="auth.security">← Security</Link>
-      </p>
       <h1>API tokens</h1>
-      {flash.status && <p role="status">{flash.status}</p>}
       {plainText && (
         <section aria-label="New token" role="alert">
           <p>
@@ -34,7 +32,8 @@ export default function AccessTokens({ tokens, abilities, plainText, flash }: Pr
       {tokens.length === 0 ? (
         <p>No tokens yet.</p>
       ) : (
-        <ul>
+        // A scrolling list of its own: Back and Forward restore its position, like the window's.
+        <ul scroll-region="" style={{ maxHeight: '12rem', overflowY: 'auto' }}>
           {tokens.map((token) => (
             <li key={token.id}>
               <strong>{token.name}</strong> — {token.abilities.join(', ')} · {token.lastUsedAt ? `last used ${token.lastUsedAt.slice(0, 16).replace('T', ' ')} UTC` : 'never used'}
@@ -82,3 +81,5 @@ export default function AccessTokens({ tokens, abilities, plainText, flash }: Pr
     </main>
   );
 }
+
+AccessTokens.layout = [AppLayout, SettingsLayout];

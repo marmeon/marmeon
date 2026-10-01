@@ -28,7 +28,7 @@ importers:
         version: 8.3.1(@types/node@26.6.3)
       vitest:
         specifier: ^5.0.2
-        version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
+        version: 5.0.2(@types/node@26.6.3)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.3))
 
   apps/blank-app:
     dependencies:
@@ -104,7 +104,7 @@ importers:
         version: 8.3.1(@types/node@26.6.3)
       vitest:
         specifier: ^5.0.2
-        version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
+        version: 5.0.2(@types/node@26.6.3)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.3))
 
   apps/web-app:
     dependencies:
@@ -346,6 +346,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -425,7 +428,7 @@ importers:
         version: link:../server
       vitest:
         specifier: ^5.0.0
-        version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
+        version: 5.0.2(@types/node@26.6.3)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.3))
     devDependencies:
       '@bespokecore/auth':
         specifier: workspace:*
@@ -742,6 +745,12 @@ packages:
   '@types/relateurl@0.2.33':
     resolution: {integrity: sha512-bTQCKsVbIdzLqZhLkF5fcJQreE4y1ro4DIyVrlDNSCJRRwHhB8Z+4zXXa8jN6eDvc2HbRsEYgbvrnGvi54EpSw==}
 
+  '@types/whatwg-mimetype@3.0.2':
+    resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
+
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
     engines: {node: '>=16.20.0'}
@@ -939,6 +948,10 @@ packages:
     resolution: {integrity: sha512-1R4kiYKXGViqEN0CnoDrXc1StD9niAwu+j2dukWzrD4bJgsD4lDmEp0CRbc6E/vYJIfTHwPmwyaKtVSudICdPA==}
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
+
+  buffer-image-size@0.6.4:
+    resolution: {integrity: sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==}
+    engines: {node: '>=4.0'}
 
   callsites@3.1.0:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
@@ -1192,6 +1205,10 @@ packages:
   glob@13.0.6:
     resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
     engines: {node: 18 || 20 || >=22}
+
+  happy-dom@20.14.5:
+    resolution: {integrity: sha512-x/RzkpWO40bTjIoT30iQtt64FLLmH/iRcUCN2X//bLx7H3ifkdfPXyqsro/OYtqzIAhiLMMA7mmiOR9C3NOKjQ==}
+    engines: {node: '>=20.0.0'}
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
@@ -2074,6 +2091,10 @@ packages:
     engines: {node: '>=18'}
     deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
+  whatwg-mimetype@3.0.0:
+    resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}
+    engines: {node: '>=12'}
+
   whatwg-mimetype@4.0.0:
     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}
     engines: {node: '>=18'}
@@ -2089,6 +2110,18 @@ packages:
 
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
+
+  ws@8.22.0:
+    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
 
   xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
@@ -2274,6 +2307,12 @@ snapshots:
 
   '@types/relateurl@0.2.33': {}
 
+  '@types/whatwg-mimetype@3.0.2': {}
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 26.6.3
+
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true
 
@@ -2383,6 +2422,10 @@ snapshots:
       electron-to-chromium: 1.5.442
       node-releases: 2.0.57
       update-browserslist-db: 1.3.3(browserslist@4.29.3)
+
+  buffer-image-size@0.6.4:
+    dependencies:
+      '@types/node': 26.6.3
 
   callsites@3.1.0: {}
 
@@ -2672,6 +2715,19 @@ snapshots:
       minimatch: 10.2.6
       minipass: 7.1.3
       path-scurry: 2.0.2
+
+  happy-dom@20.14.5:
+    dependencies:
+      '@types/node': 26.6.3
+      '@types/whatwg-mimetype': 3.0.2
+      '@types/ws': 8.18.2
+      buffer-image-size: 0.6.4
+      entities: 7.0.1
+      whatwg-mimetype: 3.0.0
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   help-me@5.0.0: {}
 
@@ -3804,7 +3860,7 @@ snapshots:
       '@types/node': 26.6.3
       fsevents: 2.3.3
 
-  vitest@5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)):
+  vitest@5.0.2(@types/node@26.6.3)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.3)):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.2(vite@8.3.1(@types/node@26.6.3))
@@ -3822,6 +3878,7 @@ snapshots:
       why-is-node-running: 3.2.2
     optionalDependencies:
       '@types/node': 26.6.3
+      happy-dom: 20.14.5
     transitivePeerDependencies:
       - msw
 
@@ -3837,6 +3894,8 @@ snapshots:
     dependencies:
       iconv-lite: 0.6.3
 
+  whatwg-mimetype@3.0.0: {}
+
   whatwg-mimetype@4.0.0: {}
 
   why-is-node-running@3.2.2: {}
@@ -3848,6 +3907,8 @@ snapshots:
       strip-ansi: 6.0.1
 
   wrappy@1.0.2: {}
+
+  ws@8.22.0: {}
 
   xtend@4.0.2: {}
 

@@ -13,6 +13,7 @@
   "include": [
     "bootstrap",
     "config",
+    "layouts",
     "middleware",
     "modules",
     "vite.config.ts"

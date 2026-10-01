@@ -16,21 +16,12 @@ function ago(iso: string, now: string): string {
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, now, auth, flash }: Props) {
+export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, now, auth }: Props) {
   return (
     <main>
       <Head title={profile.name}>
         <meta name="description" content={profile.bio} />
       </Head>
-      <header>
-        Signed in as {auth.user?.name}
-        {/* A visit with the CSRF token from the XSRF-TOKEN cookie — no hidden form field needed. */}
-        <Link route="auth.logout" style={{ marginLeft: 8 }}>
-          Sign out
-        </Link>
-      </header>
-
-      {flash.status && <p role="status">{flash.status}</p>}
       <h1>{profile.name}</h1>
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
@@ -42,7 +33,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       </p>
       {isOwnProfile && (
         <p>
-          <em>This is your profile.</em> <Link route="auth.security">Security</Link>
+          <em>This is your profile.</em> <Link route="auth.security">Settings</Link>
         </p>
       )}
       {isOwnProfile && auth.user && !auth.user.verified && (

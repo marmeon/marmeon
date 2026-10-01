@@ -1,9 +1,51 @@
 import { ERROR_PAGE, pageName } from '@bespokecore/http/page';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
 
+/** A layout: a component around pages — `function AppLayout({ children }: LayoutProps) { … }`. Shared data via `usePage()`. */
+export type Layout = ComponentType<LayoutProps>;
+
+export interface LayoutProps {
+  children: ReactNode;
+}
+
+/**
+ * The layouts of a page, outermost first (E35): `Show.layout = AppLayout` or `[AppLayout, SettingsLayout]`.
+ * A layout that the next page has too stays mounted — its state (and scroll position) survives the navigation.
+ * `null` (or `[]`): no layout, not even the app's default. Check one with `satisfies PageLayout`.
+ */
+export type PageLayout = Layout | readonly Layout[] | null;
+
 // Page props are validated at the controller boundary (PageProps<...>), not here.
-export type PageComponent = ComponentType<any>;
+export type PageComponent = ComponentType<any> & { layout?: PageLayout };
+
+/** The app's default layout per page name — for pages without their own `layout`: `createBespokeApp({ layout: () => AppLayout })`. */
+export type DefaultLayout = (name: string) => PageLayout | undefined;
+
+/** The layouts a page renders in, outermost first: its own, else the app's default. */
+export function layoutsOf(page: PageComponent, name: string, defaultLayout?: DefaultLayout): readonly Layout[] {
+  const layout = page.layout !== undefined ? page.layout : defaultLayout?.(name);
+  if (layout === undefined || layout === null) return [];
+  return isLayoutList(layout) ? layout : [layout];
+}
+
+function isLayoutList(layout: Layout | readonly Layout[]): layout is readonly Layout[] {
+  return Array.isArray(layout);
+}
+
+/** A component React can render: a function, a class, or a memo/forwardRef/lazy object. */
+function isComponent(value: unknown): boolean {
+  return typeof value === 'function' || (typeof value === 'object' && value !== null && '$$typeof' in value);
+}
+
+function checkLayout(name: string, layout: unknown): void {
+  if (layout === undefined || layout === null) return;
+  const layouts: unknown[] = Array.isArray(layout) ? layout : [layout];
+  const invalid = layouts.findIndex((entry) => !isComponent(entry));
+  if (invalid !== -1) {
+    throw new Error(`Page [${name}] has an invalid layout${Array.isArray(layout) ? ` at index ${invalid}` : ''}: expected a component (or a list of them), got ${String(layouts[invalid])}.`);
+  }
+}
 
 export type ResolvePage = (name: string) => Promise<PageComponent>;
 
@@ -36,6 +78,8 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     if (typeof module !== 'object' || module === null || !('default' in module)) {
       throw new Error(`Page [${name}] has no default export.`);
     }
-    return module.default as PageComponent;
+    const page = module.default as PageComponent;
+    checkLayout(name, page.layout);
+    return page;
   };
 }

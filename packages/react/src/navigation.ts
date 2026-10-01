@@ -1,20 +1,65 @@
 /**
- * The UI-free core of the client: visits, the browser history and the in-memory page cache (E36).
- * No React in here — `<BespokeApp>` renders what the navigator hands it (and Wave 5's adapter core,
- * `@bespokecore/http/client`, will start from this file).
+ * The UI-free core of the client: visits and their events, the browser history, the in-memory page cache (E36)
+ * and scroll restoration. No React in here — `<BespokeApp>` renders what the navigator hands it (and Wave 5's
+ * adapter core, `@bespokecore/http/client`, will start from this file).
  */
 import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject } from '@bespokecore/http/page';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-export interface VisitOptions {
+/** One request of the navigator: a visit, a reload, or Back/Forward to a page that is not in memory. */
+export interface Visit {
+  readonly url: string;
+  readonly method: VisitMethod;
+}
+
+/** How far the upload of a `FormData` visit is. `total` and `percentage` are undefined when the size is unknown. */
+export interface VisitProgress {
+  readonly loaded: number;
+  readonly total: number | undefined;
+  readonly percentage: number | undefined;
+}
+
+/**
+ * A visit that failed — the page stays as it is (nothing typed is lost) and the app shows a fallback:
+ * - `network`: the server could not be reached (offline, the server is down, the connection broke).
+ * - `server`: the server answered with a 5xx — its error page (`page`, with the exception in debug mode) or, from
+ *   something in front of it (a proxy), plain HTML (`html`).
+ *
+ * Validation errors are no failure: they come back as the page's `errors` prop (see `useForm`).
+ */
+export type VisitError =
+  | { readonly type: 'network'; readonly visit: Visit; readonly cause: unknown }
+  | { readonly type: 'server'; readonly visit: Visit; readonly status: number; readonly page: PageObject | undefined; readonly html: string | undefined };
+
+/** The events of a visit, in order: `start`, `progress` (uploads), then `error` or `cancel`, and always `finish`. */
+export interface VisitEvents {
+  start: (visit: Visit) => void;
+  progress: (progress: VisitProgress, visit: Visit) => void;
+  error: (error: VisitError) => void;
+  /** A newer visit (or Back/Forward) replaced this one before it finished. */
+  cancel: (visit: Visit) => void;
+  finish: (visit: Visit) => void;
+}
+
+export type VisitEvent = keyof VisitEvents;
+
+export interface VisitCallbacks {
+  onStart?: VisitEvents['start'];
+  onProgress?: VisitEvents['progress'];
+  onError?: VisitEvents['error'];
+  onCancel?: VisitEvents['cancel'];
+  onFinish?: VisitEvents['finish'];
+}
+
+export interface VisitOptions extends VisitCallbacks {
   /** Default `get`. Other methods send `data` and the CSRF token (`X-XSRF-TOKEN`). */
   method?: VisitMethod;
-  /** Sent as JSON — or as multipart when it is a `FormData` (file uploads). For `get`, as query string. */
+  /** Sent as JSON — or as multipart when it is a `FormData` (file uploads, with `onProgress`). For `get`, as query string. */
   data?: Record<string, unknown> | FormData;
   /** Replace the current history entry instead of pushing a new one. */
   replace?: boolean;
-  /** Keep the scroll position (default: scroll to the top on a new page). */
+  /** Keep the scroll position — of the window and of every `scroll-region` (default: back to the top on a new page). */
   preserveScroll?: boolean;
   /**
    * Keep component state (form input, open panels) when the same page component
@@ -23,6 +68,11 @@ export interface VisitOptions {
    */
   preserveState?: boolean;
   headers?: Record<string, string>;
+}
+
+export interface ScrollPosition {
+  readonly x: number;
+  readonly y: number;
 }
 
 /**
@@ -35,7 +85,9 @@ export interface HistoryState {
   readonly component: string;
   readonly url: string;
   /** The window's scroll position when the entry was left. */
-  readonly scroll: { readonly x: number; readonly y: number };
+  readonly scroll: ScrollPosition;
+  /** The positions of the page's `scroll-region` elements, in document order. */
+  readonly regions?: readonly ScrollPosition[];
   /** The entry's page in the in-memory cache — random, so entries of an earlier document never match. */
   readonly key: string;
 }
@@ -46,22 +98,37 @@ export function isHistoryState(value: unknown): value is HistoryState {
   return typeof state.key === 'string' && typeof state.url === 'string' && typeof state.component === 'string' && !('props' in state);
 }
 
-/** The parts of `window` the navigator uses (a fake one in tests). */
+/** The attribute that marks a scrolling container whose position Back/Forward restores, like the window's. */
+export const SCROLL_REGION_ATTRIBUTE = 'scroll-region';
+
+/** An element that scrolls (a `scroll-region`). */
+export interface ScrollRegion {
+  scrollLeft: number;
+  scrollTop: number;
+}
+
+type WindowEvent = 'popstate' | 'pageshow' | 'scroll';
+
+/** The parts of `window` the navigator uses (a fake one in tests). The optional ones only add features. */
 export interface NavigatorWindow {
-  readonly history: Pick<History, 'state' | 'pushState' | 'replaceState'>;
+  readonly history: Pick<History, 'state' | 'pushState' | 'replaceState'> & { scrollRestoration?: ScrollRestoration };
   readonly location: Pick<Location, 'href' | 'origin' | 'pathname' | 'search' | 'assign' | 'replace' | 'reload'>;
   readonly scrollX: number;
   readonly scrollY: number;
   scrollTo(x: number, y: number): void;
   fetch(input: string, init?: RequestInit): Promise<Response>;
-  addEventListener(type: 'popstate' | 'pageshow', listener: (event: Event) => void): void;
-  removeEventListener(type: 'popstate' | 'pageshow', listener: (event: Event) => void): void;
+  addEventListener(type: WindowEvent, listener: (event: Event) => void, options?: AddEventListenerOptions): void;
+  removeEventListener(type: WindowEvent, listener: (event: Event) => void, options?: EventListenerOptions): void;
+  /** For `scroll-region` elements and `#fragment` targets. */
+  readonly document?: { querySelectorAll(selectors: string): Iterable<ScrollRegion>; getElementById(id: string): { scrollIntoView(): void } | null };
+  /** For the upload progress of `FormData` visits — `fetch` cannot report it (over HTTP/1.1). */
+  readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
 
 export interface NavigatorOptions {
   /** The page the server rendered (from `#bespoke-page`) — always fresh: a full load asks the server. */
   initialPage: PageObject;
-  /** Shows a page: resolve its component and render it. */
+  /** Shows a page: resolve its component and render it. Resolves once it is on screen (scroll restores after that). */
   render: (page: PageObject, options: { preserveState: boolean }) => Promise<void>;
   /** Default: the browser's `window`. */
   window?: NavigatorWindow;
@@ -72,16 +139,36 @@ export interface NavigatorOptions {
 /** How many pages the in-memory cache keeps by default. */
 export const DEFAULT_PAGE_CACHE_SIZE = 20;
 
+/** Scroll positions are written to the history entry this long after scrolling stops (browsers limit `replaceState` calls). */
+const SCROLL_SAVE_DELAY = 100;
+
+interface Scroll {
+  scroll: ScrollPosition;
+  regions: ScrollPosition[];
+}
+
+const TOP: Scroll = { scroll: { x: 0, y: 0 }, regions: [] };
+
 /**
  * Navigates without full page loads: a visit fetches the next page object as JSON (`x-bespoke`), keeps it
  * in memory and pushes a history entry *without* its props. Back and Forward show the page from memory —
- * or ask the server when it is not there. A `409` with `x-bespoke-location` (a new build, or signing in
- * or out — `ClientHistory` on the server) loads that URL fully and drops every page kept in memory.
+ * or ask the server when it is not there — and restore where it was scrolled to. A `409` with
+ * `x-bespoke-location` (a new build, or signing in or out — `ClientHistory` on the server) loads that URL
+ * fully and drops every page kept in memory. Every request reports its events (`on('start', …)`).
  */
 export class Navigator {
   readonly #window: NavigatorWindow;
   readonly #render: NavigatorOptions['render'];
   readonly #cache: PageCache;
+  /** Scroll positions by history key — exact to the last scroll event, unlike the (debounced) history entry. */
+  readonly #positions = new BoundedMap<string, Scroll>(100);
+  readonly #listeners: { [E in VisitEvent]: Set<VisitEvents[E]> } = {
+    start: new Set(),
+    progress: new Set(),
+    error: new Set(),
+    cancel: new Set(),
+    finish: new Set(),
+  };
   /** The asset version this tab runs — the one of the page it was loaded with. */
   readonly #version: string | null;
   #page: PageObject;
@@ -89,6 +176,9 @@ export class Navigator {
   #inFlight: AbortController | undefined;
   /** This document was left for a full page load (409, a response that is not a page). */
   #left = false;
+  /** A page is being swapped in: scroll events belong to no entry until its position is set. */
+  #transitioning = false;
+  #saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor({ initialPage, render, window: win = globalThis.window, cacheSize = DEFAULT_PAGE_CACHE_SIZE }: NavigatorOptions) {
     this.#window = win;
@@ -108,18 +198,39 @@ export class Navigator {
     return this.#cache.size;
   }
 
-  /** Takes over the history (Back/Forward, the back/forward cache). Returns the function that stops it. */
+  /**
+   * Takes over the history (Back/Forward, scroll restoration, the back/forward cache). Returns the function
+   * that stops it.
+   */
   start(): () => void {
-    this.#adopt();
+    const restored = this.#adopt();
+    // The navigator restores scroll positions itself — the browser's would apply before the page is rendered.
+    if (this.#window.history.scrollRestoration !== undefined) this.#window.history.scrollRestoration = 'manual';
+    // A reload or a session restore keeps the entry: back to where it was.
+    if (restored) this.#applyScroll(this.#positionOf(restored));
     this.#window.addEventListener('popstate', this.#onPopState);
     this.#window.addEventListener('pageshow', this.#onPageShow);
+    // Capturing: scroll events of elements do not bubble, but pass the window on their way down.
+    this.#window.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
     return () => {
       this.#window.removeEventListener('popstate', this.#onPopState);
       this.#window.removeEventListener('pageshow', this.#onPageShow);
+      this.#window.removeEventListener('scroll', this.#onScroll, { capture: true });
+      clearTimeout(this.#saveTimer);
     };
   }
 
-  /** Resolves with the page the visit ended on (undefined if the browser took over). */
+  /** Listens to the events of every request (a progress bar, logging). Returns the function that stops listening. */
+  on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void {
+    const listeners = this.#listeners[event] as Set<VisitEvents[E]>;
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  }
+
+  /**
+   * Resolves with the page the visit ended on — undefined if it did not end on a page: the browser took over,
+   * a newer visit replaced it (`onCancel`), or it failed (`onError`). It never rejects for a failed request.
+   */
   async visit(url: string, options: VisitOptions = {}): Promise<PageObject | undefined> {
     this.#adopt();
     const { method = 'get', data, replace = false, preserveScroll = false, headers = {} } = options;
@@ -134,40 +245,72 @@ export class Navigator {
     }
 
     const request = buildRequest(target, method, data);
-    const page = await this.#fetch(request.url, { method, headers: { ...request.headers, ...headers }, body: request.body, replace });
-    if (!page) return undefined;
-    // Redirected back to the same URL (a failed form): replace, don't stack history entries.
-    const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
-    await this.#show(page, replace || (method !== 'get' && sameUrl) ? 'replace' : 'push', { preserveScroll, preserveState });
-    return page;
+    return this.#request({ url: request.url, method }, options, async (signal, onProgress) => {
+      const response = await this.#send(request.url, { method, headers: { ...request.headers, ...headers }, body: request.body, signal }, onProgress);
+      const page = await this.#read(response, { replace, failed: true }, { url: request.url, method }, options);
+      if (!page || signal.aborted) return undefined;
+      // Redirected back to the same URL (a failed form): replace, don't stack history entries.
+      const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
+      const history = replace || (method !== 'get' && sameUrl) ? 'replace' : 'push';
+      return this.#show(page, history, { preserveScroll, preserveState, hash: target.hash });
+    });
   }
 
-  /** The entry the document was loaded into gets a key, and its page goes into the cache. */
-  #adopt(): void {
-    if (this.#key !== undefined) return;
+  /** The current page again from the server (fresh props), keeping scroll position and component state. */
+  reload(options: Omit<VisitOptions, 'method' | 'data'> = {}): Promise<PageObject | undefined> {
+    const { pathname, search } = this.#window.location;
+    return this.visit(pathname + search, { replace: true, preserveScroll: true, preserveState: true, ...options });
+  }
+
+  /** The entry the document was loaded into gets a key, and its page goes into the cache. Returns a restored entry. */
+  #adopt(): HistoryState | undefined {
+    if (this.#key !== undefined) return undefined;
     const state: unknown = this.#window.history.state;
     // A reload or session restore keeps the entry's key (and scroll); the page itself came fresh from the server.
     const restored = isHistoryState(state) ? state : undefined;
     this.#key = restored?.key ?? newKey();
     this.#cache.set(this.#key, this.#page);
-    this.#window.history.replaceState(entry(this.#page, this.#key, restored?.scroll ?? { x: 0, y: 0 }), '', this.#window.location.href);
+    this.#window.history.replaceState(entry(this.#page, this.#key, restored ? this.#positionOf(restored) : TOP), '', this.#window.location.href);
+    return restored;
   }
 
-  async #show(page: PageObject, history: 'push' | 'replace', { preserveScroll, preserveState }: { preserveScroll: boolean; preserveState: boolean }) {
-    const scroll = { x: this.#window.scrollX, y: this.#window.scrollY };
-    await this.#render(page, { preserveState });
-    const { history: browserHistory } = this.#window;
-    if (history === 'push') {
-      // Remember where the page being left was scrolled to (restored on Back by the scroll handling of step 4).
-      browserHistory.replaceState(entry(this.#page, this.#key!, scroll), '', this.#window.location.href);
-      this.#key = newKey();
-      browserHistory.pushState(entry(page, this.#key, { x: 0, y: 0 }), '', page.url);
-    } else {
-      browserHistory.replaceState(entry(page, this.#key!, preserveScroll ? scroll : { x: 0, y: 0 }), '', page.url);
+  async #show(
+    page: PageObject,
+    history: 'push' | 'replace',
+    { preserveScroll, preserveState, hash }: { preserveScroll: boolean; preserveState: boolean; hash: string },
+  ): Promise<PageObject | undefined> {
+    const leaving = this.#currentScroll();
+    this.#cancelScrollSave();
+    this.#transitioning = true;
+    try {
+      try {
+        await this.#render(page, { preserveState });
+      } catch {
+        // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
+        this.#leave();
+        this.#window.location.assign(page.url);
+        return undefined;
+      }
+      const { history: browserHistory } = this.#window;
+      const arrived = preserveScroll ? this.#currentScroll() : TOP;
+      if (history === 'push') {
+        // Remember where the page being left was scrolled to — Back restores it.
+        this.#positions.set(this.#key!, leaving);
+        browserHistory.replaceState(entry(this.#page, this.#key!, leaving), '', this.#window.location.href);
+        this.#key = newKey();
+        browserHistory.pushState(entry(page, this.#key, arrived), '', page.url + hash);
+      } else {
+        browserHistory.replaceState(entry(page, this.#key!, arrived), '', page.url + hash);
+      }
+      this.#positions.set(this.#key!, arrived);
+      this.#cache.set(this.#key!, page);
+      this.#page = page;
+      if (!preserveScroll) this.#applyScroll(TOP);
+      if (hash) this.#window.document?.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
+      return page;
+    } finally {
+      this.#transitioning = false;
     }
-    this.#cache.set(this.#key!, page);
-    this.#page = page;
-    if (!preserveScroll) this.#window.scrollTo(0, 0);
   }
 
   readonly #onPopState = (event: Event): void => {
@@ -175,37 +318,62 @@ export class Navigator {
     // `null`: an entry of a fragment link (`#section`) on the same page.
     if (state === null || state === undefined) return;
     this.#inFlight?.abort();
+    // A save still pending belongs to the entry just left; the browser already switched to the new one.
+    this.#cancelScrollSave();
     if (isHistoryState(state)) {
       const cached = this.#cache.get(state.key);
       if (cached) {
         this.#key = state.key;
         this.#page = cached;
-        void this.#render(cached, { preserveState: false });
+        void this.#arrive(cached, this.#positionOf(state));
         return;
       }
-      void this.#restore(state.url, state.key, state.scroll);
+      void this.#restore(state.url, state.key, this.#positionOf(state));
       return;
     }
     // An entry of an older client, which kept whole pages in the history: never shown — the server is asked.
-    if (isPageObject(state)) void this.#restore(state.url, newKey(), { x: 0, y: 0 });
+    if (isPageObject(state)) void this.#restore(state.url, newKey(), TOP);
   };
 
-  /** Back/Forward to an entry whose page is not in memory: the server decides what it shows now. */
-  async #restore(url: string, key: string, scroll: HistoryState['scroll']): Promise<void> {
+  /** Renders a page of the history and scrolls to where it was. */
+  async #arrive(page: PageObject, position: Scroll): Promise<void> {
+    this.#transitioning = true;
     try {
-      const page = await this.#fetch(url, { method: 'get', headers: {}, replace: true });
-      if (!page) return;
       await this.#render(page, { preserveState: false });
+      this.#applyScroll(position);
+    } catch {
+      this.#leave();
+      this.#window.location.reload();
+    } finally {
+      this.#transitioning = false;
+    }
+  }
+
+  /** Back/Forward to an entry whose page is not in memory: the server decides what it shows now. */
+  async #restore(url: string, key: string, position: Scroll): Promise<void> {
+    const visit: Visit = { url, method: 'get' };
+    await this.#request(visit, {}, async (signal) => {
+      let response: Response;
+      try {
+        response = await this.#send(url, { method: 'get', headers: {}, signal });
+      } catch (error) {
+        if (signal.aborted) throw error;
+        // The server cannot be asked (offline): let the browser load the entry itself.
+        this.#leave();
+        this.#window.location.reload();
+        return undefined;
+      }
+      // An error page is what this URL shows now — like a full load would.
+      const page = await this.#read(response, { replace: true, failed: false }, visit, {});
+      if (!page || signal.aborted) return undefined;
       // Signed out meanwhile? Then the server sent the login page — and the entry is the login page now.
-      this.#window.history.replaceState(entry(page, key, scroll), '', page.url);
+      this.#window.history.replaceState(entry(page, key, position), '', page.url);
       this.#key = key;
       this.#cache.set(key, page);
       this.#page = page;
-    } catch {
-      // The server cannot be asked (offline, an error): let the browser load the entry itself.
-      this.#leave();
-      this.#window.location.reload();
-    }
+      await this.#arrive(page, position);
+      return page;
+    });
   }
 
   readonly #onPageShow = (event: Event): void => {
@@ -215,44 +383,136 @@ export class Navigator {
   };
 
   /**
-   * One request for a page object. A newer request always wins over a slower, older one (it aborts it;
-   * the aborted one resolves with undefined). Undefined, too, when the browser takes over.
+   * One request with its events. A newer request always wins over a slower, older one (it aborts it — the
+   * older one is cancelled). Failures become `error` events, never rejections.
    */
-  async #fetch(
-    url: string,
-    { method, headers, body, replace }: { method: VisitMethod; headers: Record<string, string>; body?: BodyInit; replace: boolean },
+  async #request(
+    visit: Visit,
+    callbacks: VisitCallbacks,
+    task: (signal: AbortSignal, onProgress: (progress: VisitProgress) => void) => Promise<PageObject | undefined>,
   ): Promise<PageObject | undefined> {
     this.#inFlight?.abort();
     const controller = new AbortController();
     this.#inFlight = controller;
+    this.#emit('start', callbacks.onStart, visit);
     try {
-      const response = await this.#window.fetch(url, {
-        method: method.toUpperCase(),
-        headers: { [PAGE_HEADER]: 'true', ...(this.#version ? { [VERSION_HEADER]: this.#version } : {}), ...headers },
-        body,
-        signal: controller.signal,
-      });
-      const location = response.status === 409 ? response.headers.get(LOCATION_HEADER) : null;
-      if (location) {
-        // A new build, or signing in or out: load the page fully. The pages in memory go with this document.
-        this.#leave();
-        if (replace) this.#window.location.replace(location);
-        else this.#window.location.assign(location);
-        return undefined;
-      }
-      if (response.headers.get(PAGE_HEADER) !== 'true') {
-        // Not a page (e.g. a 401 JSON or a file download): let the browser handle it.
-        this.#leave();
-        this.#window.location.assign(response.url);
-        return undefined;
-      }
-      return (await response.json()) as PageObject;
-    } catch (error) {
-      if (controller.signal.aborted) return undefined;
-      throw error;
+      const page = await task(controller.signal, (progress) => this.#emit('progress', callbacks.onProgress, progress, visit));
+      if (controller.signal.aborted) this.#emit('cancel', callbacks.onCancel, visit);
+      return page;
+    } catch (cause) {
+      if (controller.signal.aborted) this.#emit('cancel', callbacks.onCancel, visit);
+      else this.#emit('error', callbacks.onError, { type: 'network', visit, cause });
+      return undefined;
     } finally {
       if (this.#inFlight === controller) this.#inFlight = undefined;
+      this.#emit('finish', callbacks.onFinish, visit);
     }
+  }
+
+  /**
+   * The page object of a response — or undefined when there is none to show: a full page load took over
+   * (409, a response that is not a page), or the server failed (5xx, reported as an `error` when `failed`).
+   */
+  async #read(response: Response, { replace, failed }: { replace: boolean; failed: boolean }, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined> {
+    const location = response.status === 409 ? response.headers.get(LOCATION_HEADER) : null;
+    if (location) {
+      // A new build, or signing in or out: load the page fully. The pages in memory go with this document.
+      this.#leave();
+      if (replace) this.#window.location.replace(location);
+      else this.#window.location.assign(location);
+      return undefined;
+    }
+    const isPage = response.headers.get(PAGE_HEADER) === 'true';
+    if (failed && response.status >= 500) {
+      // The page stays (and whatever was typed into it); the app shows the server's error as a fallback.
+      const page = isPage ? ((await response.json()) as PageObject) : undefined;
+      const html = isPage ? undefined : await response.text();
+      this.#emit('error', callbacks.onError, { type: 'server', visit, status: response.status, page, html });
+      return undefined;
+    }
+    if (!isPage) {
+      // Not a page (e.g. a 401 JSON or a file download): let the browser handle it.
+      this.#leave();
+      this.#window.location.assign(response.url || new URL(visit.url, this.#window.location.href).href);
+      return undefined;
+    }
+    return (await response.json()) as PageObject;
+  }
+
+  /** Sends a request with the page headers — through XHR for `FormData` with a progress listener (upload progress). */
+  #send(
+    url: string,
+    { method, headers, body, signal }: { method: VisitMethod; headers: Record<string, string>; body?: BodyInit; signal: AbortSignal },
+    onProgress?: (progress: VisitProgress) => void,
+  ): Promise<Response> {
+    const init = {
+      method: method.toUpperCase(),
+      headers: { [PAGE_HEADER]: 'true', ...(this.#version ? { [VERSION_HEADER]: this.#version } : {}), ...headers },
+      body,
+      signal,
+    };
+    const Xhr = this.#window.XMLHttpRequest;
+    if (body instanceof FormData && onProgress && Xhr) return sendWithProgress(Xhr, url, init, onProgress);
+    return this.#window.fetch(url, init);
+  }
+
+  #emit<E extends VisitEvent>(event: E, callback: VisitEvents[E] | undefined, ...args: Parameters<VisitEvents[E]>): void {
+    const call = (listener: VisitEvents[E]) => {
+      try {
+        (listener as (...args: Parameters<VisitEvents[E]>) => void)(...args);
+      } catch (error) {
+        // A listener's bug must not break the navigation (nor the other listeners).
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    };
+    if (callback) call(callback);
+    for (const listener of this.#listeners[event] as Set<VisitEvents[E]>) call(listener);
+  }
+
+  readonly #onScroll = (): void => {
+    if (this.#transitioning || this.#key === undefined) return;
+    this.#positions.set(this.#key, this.#currentScroll());
+    this.#cancelScrollSave();
+    // Into the entry too, for a reload or a session restore — debounced: browsers throttle replaceState.
+    this.#saveTimer = setTimeout(() => {
+      const key = this.#key;
+      const state: unknown = this.#window.history.state;
+      if (this.#transitioning || key === undefined || !isHistoryState(state) || state.key !== key) return;
+      const position = this.#positions.get(key);
+      if (position) this.#window.history.replaceState(withPosition(state, position), '', this.#window.location.href);
+    }, SCROLL_SAVE_DELAY);
+  };
+
+  #cancelScrollSave(): void {
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = undefined;
+  }
+
+  /** Where an entry was scrolled to: from memory (exact), else from the entry itself. */
+  #positionOf(state: HistoryState): Scroll {
+    return this.#positions.get(state.key) ?? { scroll: state.scroll ?? TOP.scroll, regions: [...(state.regions ?? [])] };
+  }
+
+  #regions(): ScrollRegion[] {
+    return this.#window.document ? [...this.#window.document.querySelectorAll(`[${SCROLL_REGION_ATTRIBUTE}]`)] : [];
+  }
+
+  #currentScroll(): Scroll {
+    return {
+      scroll: { x: this.#window.scrollX, y: this.#window.scrollY },
+      regions: this.#regions().map((region) => ({ x: region.scrollLeft, y: region.scrollTop })),
+    };
+  }
+
+  #applyScroll({ scroll, regions }: Scroll): void {
+    this.#window.scrollTo(scroll.x, scroll.y);
+    this.#regions().forEach((region, index) => {
+      const position = regions[index] ?? TOP.scroll;
+      region.scrollLeft = position.x;
+      region.scrollTop = position.y;
+    });
   }
 
   /** Before a full page load: nothing kept in memory survives it, should the browser bring this document back. */
@@ -262,8 +522,14 @@ export class Navigator {
   }
 }
 
-function entry(page: PageObject, key: string, scroll: HistoryState['scroll']): HistoryState {
-  return { component: page.component, url: page.url, scroll, key };
+function entry(page: PageObject, key: string, position: Scroll): HistoryState {
+  return withPosition({ component: page.component, url: page.url, key, scroll: position.scroll }, position);
+}
+
+/** The state with the position — `regions` only when the page has any. */
+function withPosition(state: HistoryState, { scroll, regions }: Scroll): HistoryState {
+  const { regions: _old, ...rest } = state;
+  return regions.length > 0 ? { ...rest, scroll, regions } : { ...rest, scroll };
 }
 
 function newKey(): string {
@@ -271,9 +537,9 @@ function newKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** Page objects by history key, least recently used first out. */
-class PageCache {
-  readonly #pages = new Map<string, PageObject>();
+/** A Map that forgets its oldest entries beyond `size`. */
+class BoundedMap<K, V> {
+  readonly #entries = new Map<K, V>();
   readonly #size: number;
 
   constructor(size: number) {
@@ -281,27 +547,74 @@ class PageCache {
   }
 
   get size(): number {
-    return this.#pages.size;
+    return this.#entries.size;
   }
 
-  get(key: string): PageObject | undefined {
-    const page = this.#pages.get(key);
-    if (page) this.set(key, page);
-    return page;
+  get(key: K): V | undefined {
+    return this.#entries.get(key);
   }
 
-  set(key: string, page: PageObject): void {
-    this.#pages.delete(key);
-    this.#pages.set(key, page);
-    for (const oldest of this.#pages.keys()) {
-      if (this.#pages.size <= this.#size) break;
-      this.#pages.delete(oldest);
+  set(key: K, value: V): void {
+    this.#entries.delete(key);
+    this.#entries.set(key, value);
+    for (const oldest of this.#entries.keys()) {
+      if (this.#entries.size <= this.#size) break;
+      this.#entries.delete(oldest);
     }
   }
 
-  clear(): void {
-    this.#pages.clear();
+  delete(key: K): void {
+    this.#entries.delete(key);
   }
+
+  clear(): void {
+    this.#entries.clear();
+  }
+}
+
+/** Page objects by history key, least recently used first out. */
+class PageCache extends BoundedMap<string, PageObject> {
+  override get(key: string): PageObject | undefined {
+    const page = super.get(key);
+    if (page) this.set(key, page);
+    return page;
+  }
+}
+
+/**
+ * XHR, because `fetch` reports no upload progress (streaming request bodies need HTTP/2 in Chromium, and
+ * a `FormData` body would have to be streamed by hand). Answers with a `Response` like `fetch`.
+ */
+function sendWithProgress(
+  Xhr: new () => XMLHttpRequest,
+  url: string,
+  { method, headers, body, signal }: { method: string; headers: Record<string, string>; body?: BodyInit; signal: AbortSignal },
+  onProgress: (progress: VisitProgress) => void,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new Xhr();
+    xhr.open(method, url);
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.upload.addEventListener('progress', (event) => {
+      const total = event.lengthComputable && event.total > 0 ? event.total : undefined;
+      onProgress({ loaded: event.loaded, total, percentage: total === undefined ? undefined : Math.round((event.loaded / total) * 100) });
+    });
+    xhr.addEventListener('load', () => {
+      const responseHeaders = new Headers();
+      for (const line of xhr.getAllResponseHeaders().trim().split(/[\r\n]+/)) {
+        const colon = line.indexOf(':');
+        if (colon > 0) responseHeaders.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
+      }
+      const empty = [101, 204, 205, 304].includes(xhr.status);
+      const response = new Response(empty ? null : xhr.responseText, { status: xhr.status, statusText: xhr.statusText, headers: responseHeaders });
+      Object.defineProperty(response, 'url', { value: xhr.responseURL });
+      resolve(response);
+    });
+    xhr.addEventListener('error', () => reject(new TypeError('Network request failed')));
+    xhr.addEventListener('abort', () => reject(new DOMException('The visit was aborted.', 'AbortError')));
+    signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(body as XMLHttpRequestBodyInit);
+  });
 }
 
 /** The CSRF token the server put into the readable `XSRF-TOKEN` cookie. */
@@ -316,11 +629,37 @@ function buildRequest(target: URL, method: VisitMethod, data: VisitOptions['data
     if (data && !(data instanceof FormData)) {
       for (const [key, value] of Object.entries(data)) if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
     }
-    return { url: target.pathname + target.search + target.hash, headers: {} };
+    return { url: target.pathname + target.search, headers: {} };
   }
-  const url = target.pathname + target.search + target.hash;
+  const url = target.pathname + target.search;
   const token = xsrfToken();
   const headers: Record<string, string> = token ? { 'x-xsrf-token': token } : {};
-  if (data instanceof FormData) return { url, headers, body: data }; // the browser sets the multipart boundary
+  // Multipart for files — the browser sets the boundary.
+  if (data instanceof FormData) return { url, headers, body: data };
+  if (data && hasFiles(data)) return { url, headers, body: toFormData(data) };
   return { url, headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(data ?? {}) };
+}
+
+function hasFiles(value: unknown): boolean {
+  if (value instanceof Blob) return true;
+  if (Array.isArray(value)) return value.some(hasFiles);
+  if (typeof value === 'object' && value !== null) return Object.values(value).some(hasFiles);
+  return false;
+}
+
+/**
+ * Data with a file in it, as multipart: nested keys in brackets (`links[0][url]`), the notation the server
+ * parses back into objects. As in any HTML form, other values become strings — `true` is `1`, `false` is `0`,
+ * `null` is empty.
+ */
+function toFormData(data: Record<string, unknown>, form = new FormData(), prefix = ''): FormData {
+  for (const [key, value] of Object.entries(data)) {
+    const name = prefix ? `${prefix}[${key}]` : key;
+    if (value === undefined) continue;
+    if (value instanceof Blob) form.append(name, value);
+    else if (Array.isArray(value)) toFormData(Object.fromEntries(value.map((item, index) => [String(index), item])), form, name);
+    else if (typeof value === 'object' && value !== null) toFormData(value as Record<string, unknown>, form, name);
+    else form.append(name, value === null ? '' : typeof value === 'boolean' ? (value ? '1' : '0') : String(value));
+  }
+  return form;
 }

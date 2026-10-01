@@ -2,7 +2,8 @@ import { isPageObject, PAGE_SCRIPT_ID, type PageObject, type RouteManifest } fro
 import { hydrateRoot } from 'react-dom/client';
 import { BespokeApp } from './app.tsx';
 import type { TitleTemplate } from './head.tsx';
-import type { ResolvePage } from './pages.ts';
+import type { DefaultLayout, ResolvePage } from './pages.ts';
+import type { ProgressOptions } from './progress.ts';
 
 export interface CreateBespokeAppOptions {
   resolve: ResolvePage;
@@ -12,6 +13,13 @@ export interface CreateBespokeAppOptions {
   title?: TitleTemplate;
   /** `routes` of the generated `bootstrap/routes.ts`: what `route()`, `<Link route>` and `useForm(name, …)` resolve. */
   routes?: RouteManifest;
+  /**
+   * The layout of pages without their own `Page.layout` (E35), by page name — the same as the SSR entry's:
+   * `layout: (name) => (name.startsWith('auth/') ? null : AppLayout)`.
+   */
+  layout?: DefaultLayout;
+  /** The progress bar of visits: `{ delay: 250 }` (the default — fast visits show none), or `false`. */
+  progress?: ProgressOptions | false;
 }
 
 function readInitialPage(): PageObject {
@@ -21,7 +29,7 @@ function readInitialPage(): PageObject {
 }
 
 /** Client entry point: hydrates the server-rendered page and takes over navigation. */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes }: CreateBespokeAppOptions): Promise<void> {
+export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, progress }: CreateBespokeAppOptions): Promise<void> {
   const page = readInitialPage();
   const root = document.getElementById(rootId);
   if (!root) throw new Error(`Root element #${rootId} not found.`);
@@ -30,5 +38,5 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes 
   // navigator's (<BespokeApp> starts it): its key and URL — never the page's props (E36).
   const Component = await resolve(page.component);
 
-  hydrateRoot(root, <BespokeApp initialPage={page} initialComponent={Component} resolve={resolve} title={title} routes={routes} />);
+  hydrateRoot(root, <BespokeApp initialPage={page} initialComponent={Component} resolve={resolve} title={title} routes={routes} layout={layout} progress={progress} />);
 }

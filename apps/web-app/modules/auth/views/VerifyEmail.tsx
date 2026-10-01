@@ -4,12 +4,11 @@ import type { ShowVerifyEmailNoticeController } from '../controllers/ShowVerifyE
 
 type Props = PageProps<ShowVerifyEmailNoticeController>;
 
-export default function VerifyEmail({ email, flash }: Props) {
+export default function VerifyEmail({ email }: Props) {
   return (
     <main>
       <Head title="Confirm your e-mail address" />
       <h1>Confirm your e-mail address</h1>
-      {flash.status && <p role="status">{flash.status}</p>}
       <p>We sent a link to {email}. Click it to confirm the address — then you can publish links on your profile.</p>
       <p>
         <Link route="auth.verification.send">

@@ -4,7 +4,7 @@ import type { ShowLoginController } from '../controllers/ShowLoginController.ts'
 
 type Props = PageProps<ShowLoginController>;
 
-export default function Login({ appName, old, csrfToken, flash }: Props) {
+export default function Login({ appName, old, csrfToken }: Props) {
   const route = useRoute();
   // Method, URL, fields and errors come from the route (auth.login.store → LoginController's LoginRequest).
   // The password never comes back from the server.
@@ -14,7 +14,6 @@ export default function Login({ appName, old, csrfToken, flash }: Props) {
     <main>
       <Head title="Sign in" />
       <h1>Sign in to {appName}</h1>
-      {flash.status && <p role="status">{flash.status}</p>}
       {/* Works without JavaScript too: a plain form post with the CSRF token. */}
       <form
         method="post"

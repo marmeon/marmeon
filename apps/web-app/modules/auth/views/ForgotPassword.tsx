@@ -4,7 +4,7 @@ import type { ShowForgotPasswordController } from '../controllers/ShowForgotPass
 
 type Props = PageProps<ShowForgotPasswordController>;
 
-export default function ForgotPassword({ csrfToken, flash }: Props) {
+export default function ForgotPassword({ csrfToken }: Props) {
   const route = useRoute();
   // Method, URL and fields from the route: auth.password.email → SendPasswordResetLinkController's request.
   const form = useForm('auth.password.email', { email: '' });
@@ -14,7 +14,6 @@ export default function ForgotPassword({ csrfToken, flash }: Props) {
       <Head title="Forgot your password?" />
       <h1>Forgot your password?</h1>
       <p>Enter your e-mail address. If it belongs to an account, we send you a link to choose a new password.</p>
-      {flash.status && <p role="status">{flash.status}</p>}
       <form
         method="post"
         action={route('auth.password.email')}

@@ -1,21 +1,19 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
 import type { ShowAccessTokensController } from '../controllers/ShowAccessTokensController.ts';
+import { AppLayout } from '../layouts/AppLayout.tsx';
+import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowAccessTokensController>;
 
-export default function AccessTokens({ tokens, abilities, plainText, flash }: Props) {
+export default function AccessTokens({ tokens, abilities, plainText }: Props) {
   const form = useForm('auth.tokens.store', { name: '', abilities: [] });
   const selected = [form.data.abilities ?? []].flat();
 
   return (
     <main>
       <Head title="API tokens" />
-      <p>
-        <Link route="auth.security">← Security</Link>
-      </p>
       <h1>API tokens</h1>
-      {flash.status && <p role="status">{flash.status}</p>}
       {plainText && (
         <section aria-label="New token" role="alert">
           <p>
@@ -82,3 +80,5 @@ export default function AccessTokens({ tokens, abilities, plainText, flash }: Pr
     </main>
   );
 }
+
+AccessTokens.layout = [AppLayout, SettingsLayout];

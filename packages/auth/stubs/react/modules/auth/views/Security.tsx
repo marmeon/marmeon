@@ -1,10 +1,12 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
+import { AppLayout } from '../layouts/AppLayout.tsx';
+import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, flash, auth }: Props) {
+export default function Security({ viaRemember, email, auth }: Props) {
   const emailForm = useForm('auth.email.update', { email });
   const passwordForm = useForm('auth.password.update', { current_password: '', password: '', password_confirmation: '' });
   const devicesForm = useForm('auth.devices.logout', { password: '' });
@@ -12,14 +14,7 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
   return (
     <main>
       <Head title="Security" />
-      <p>
-        <Link route="dashboard">← Dashboard</Link>
-      </p>
       <h1>Security</h1>
-      <p>
-        <Link route="auth.tokens">API tokens</Link>
-      </p>
-      {flash.status && <p role="status">{flash.status}</p>}
       {viaRemember && (
         <p>
           <small>{auth.user?.name}, you were signed in by “Keep me signed in” on this device.</small>
@@ -82,11 +77,13 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
             Change password
           </button>
         </form>
+        <ApiTokensNote />
       </section>
 
       <section aria-labelledby="devices-heading">
         <h2 id="devices-heading">Other devices</h2>
         <p>Signs you out everywhere else — other browsers, and “Keep me signed in” on other devices. This one stays signed in.</p>
+        <ApiTokensNote />
         <form
           noValidate
           onSubmit={(event) => {
@@ -113,5 +110,18 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
         </form>
       </section>
     </main>
+  );
+}
+
+Security.layout = [AppLayout, SettingsLayout];
+
+/** Passwords and sessions are one thing, API tokens another (like Sanctum): revoking them is done by hand. */
+function ApiTokensNote() {
+  return (
+    <p role="note">
+      <small>
+        This does not revoke your API tokens — scripts using them keep working. Revoke them under <Link route="auth.tokens">API tokens</Link>.
+      </small>
+    </p>
   );
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import { usePage } from './app.tsx';
 import { Head } from './head.tsx';
@@ -63,6 +64,39 @@ describe('<Head> on the server', () => {
   it('adds nothing for pages without <Head>', async () => {
     const { head } = await createSsrRenderer(resolve)({ component: 'greeting/Hello', props: { name: 'Ada' }, url: '/' });
     expect(head).toBe('');
+  });
+
+  it('gives pages without <Head title> the default title — the same the browser falls back to', async () => {
+    const { head } = await createSsrRenderer(resolve, { title: (title) => (title ? `${title} — Shop` : 'Shop') })({ component: 'greeting/Hello', props: { name: 'Ada' }, url: '/' });
+    expect(head).toBe('<title data-bespoke-head="ssr">Shop</title>');
+  });
+});
+
+describe('layouts on the server', () => {
+  function Shell({ children }: { children: ReactNode }) {
+    return <div className="shell">{children}</div>;
+  }
+  function Inner({ children }: { children: ReactNode }) {
+    return <section>{children}</section>;
+  }
+  function Own() {
+    return <p>own</p>;
+  }
+  Own.layout = [Shell, Inner];
+  const withLayouts = resolveModulePages({
+    '../modules/app/views/Hello.tsx': async () => ({ default: Greeting }),
+    '../modules/app/views/Own.tsx': async () => ({ default: Own }),
+    '../modules/app/views/Broken.tsx': async () => ({ default: Object.assign(() => null, { layout: 'Shell' }) }),
+  });
+
+  it('renders the page inside its layouts — its own, else the default', async () => {
+    const render = createSsrRenderer(withLayouts, { layout: () => Shell });
+    expect((await render({ component: 'app/Hello', props: { name: 'Ada' }, url: '/' })).html).toBe('<div class="shell"><p>Hello <!-- -->Ada<!-- --> at <!-- -->/</p></div>');
+    expect((await render({ component: 'app/Own', props: {}, url: '/' })).html).toBe('<div class="shell"><section><p>own</p></section></div>');
+  });
+
+  it('refuses a layout that is not a component', async () => {
+    await expect(withLayouts('app/Broken')).rejects.toThrow('Page [app/Broken] has an invalid layout: expected a component (or a list of them), got Shell.');
   });
 });
 
