@@ -10,6 +10,7 @@ import { MakeAuthCommand } from './make-auth.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
+import { warnAboutCookieSessions } from './session-driver.ts';
 import { UserProvider } from './user.ts';
 
 // Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
@@ -34,6 +35,7 @@ export type { PasswordRuleOptions } from './rules.ts';
 export { authenticatedSession, authenticatedToken } from './testing.ts';
 export { ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
 export type { AccessToken, AccessTokenTable, WithToken } from './tokens.ts';
+export { COOKIE_SESSION_WARNING } from './session-driver.ts';
 export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
 export {
@@ -101,6 +103,7 @@ export class AuthServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
+    warnAboutCookieSessions(app.container);
     const cli = await import('@bespokecore/cli').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand]);
   }
