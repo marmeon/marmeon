@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { Auth } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
+import { Gate } from './gate.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { UserProvider } from './user.ts';
 
@@ -15,6 +16,8 @@ export { authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
 export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
 export type { RememberResult, RememberTokenTable } from './remember.ts';
+export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
+export type { AbilityOf, PolicyClass, PolicyResult, ResourcesOf } from './gate.ts';
 export { confirmed, password } from './rules.ts';
 export type { PasswordRuleOptions } from './rules.ts';
 export { authenticatedSession } from './testing.ts';
@@ -63,6 +66,8 @@ export class AuthServiceProvider implements ServiceProvider {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.scoped(Auth);
+    // Policies are built in the request's scope: they may depend on anything a controller can.
+    container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
     // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
   }

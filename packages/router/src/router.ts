@@ -152,7 +152,7 @@ export class Router {
         let result: unknown;
         if (isControllerClass(action)) {
           // REPR: authorize and validate before the controller is even built.
-          const handlerCtx = action.request ? { ...finalCtx, body: await validateRequest(action.request, finalCtx) } : finalCtx;
+          const handlerCtx = action.request ? { ...finalCtx, body: await validateRequest(action.request, finalCtx, resolve) } : finalCtx;
           result = await resolve(action).handle(handlerCtx);
         } else {
           result = await action(finalCtx);

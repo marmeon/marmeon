@@ -1,14 +1,17 @@
 import { paginationFrom } from '@bespokecore/database';
 import { Controller, type HttpContext } from '@bespokecore/http';
-import type { Authenticated } from '@bespokecore/auth';
+import { Gate, type Authenticated } from '@bespokecore/auth';
+import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
 
 export class ShowUserProfileController extends Controller {
   readonly #directory: ProfileDirectory;
+  readonly #gate: Gate;
 
-  constructor(directory: ProfileDirectory) {
+  constructor(directory: ProfileDirectory, gate: Gate) {
     super();
     this.#directory = directory;
+    this.#gate = gate;
   }
 
   /** `user` is bound by the route (ProfileDirectory): a missing one never gets here — it is a 404. */
@@ -22,9 +25,11 @@ export class ShowUserProfileController extends Controller {
 
     return this.view('user-profile/Show', {
       profile: user,
-      // Only the owner may see their e-mail — the controller decides what leaves the server.
-      email: isOwnProfile ? email : null,
+      // Only the owner may see their e-mail (ProfilePolicy) — the controller decides what leaves the server.
+      email: (await this.#gate.allows(ProfilePolicy, 'viewEmail', user)) ? email : null,
       isOwnProfile,
+      // What the page may offer — explicit, from the policies (E28). The server checks again on every action.
+      can: { update: await this.#gate.allows(ProfilePolicy, 'update', user) },
       lastLoginAt: activity?.last_login_at ?? null,
       filter,
       others: {

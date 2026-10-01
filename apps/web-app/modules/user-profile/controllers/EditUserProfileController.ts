@@ -1,19 +1,22 @@
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
+import { Gate, type Authenticated } from '@bespokecore/auth';
+import { Controller, type HttpContext } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
-import type { Authenticated } from '@bespokecore/auth';
 import type { User } from '#modules/auth';
+import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 
 export class EditUserProfileController extends Controller {
   readonly #session: Session;
+  readonly #gate: Gate;
 
-  constructor(session: Session) {
+  constructor(session: Session, gate: Gate) {
     super();
     this.#session = session;
+    this.#gate = gate;
   }
 
-  handle(ctx: HttpContext<Authenticated, { user: User }>) {
+  async handle(ctx: HttpContext<Authenticated, { user: User }>) {
     const { user } = ctx.params;
-    if (ctx.user.id !== user.id) abort(403, 'You can only edit your own profile.');
+    await this.#gate.authorize(ProfilePolicy, 'update', user); // a GET without a request schema: the Gate in code
 
     return this.view('user-profile/Edit', {
       profile: { id: user.id, name: user.name, bio: user.bio },

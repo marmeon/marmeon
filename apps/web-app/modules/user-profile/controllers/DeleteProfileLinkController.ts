@@ -1,10 +1,18 @@
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
-import type { Row } from '@bespokecore/database';
-import type { Authenticated } from '@bespokecore/auth';
-import type { User } from '#modules/auth';
+import { can } from '@bespokecore/auth';
+import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import * as v from 'valibot';
+import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
+export const DeleteProfileLinkRequest = defineRequest({
+  schema: v.object({}),
+  // The route binds `link` scoped to `user` (another user's link id is a 404); the policy decides who may remove it.
+  authorize: can(ProfileLinkPolicy, 'delete', 'link'),
+});
+
 export class DeleteProfileLinkController extends Controller {
+  static request = DeleteProfileLinkRequest;
+
   readonly #links: ProfileLinkRepository;
 
   constructor(links: ProfileLinkRepository) {
@@ -12,11 +20,8 @@ export class DeleteProfileLinkController extends Controller {
     this.#links = links;
   }
 
-  /** The route binds `link` scoped to `user`: it is this user's link, or the request never got here (404). */
-  async handle(ctx: HttpContext<Authenticated, { user: User; link: Row<'profile_links'> }>) {
-    const { user, link } = ctx.params;
-    if (ctx.user.id !== user.id) abort(403, 'You can only change your own profile.');
-    await this.#links.delete(link.id);
-    return this.redirect().route('user-profile.show', { user: user.id }).with('status', 'Link removed.');
+  async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number } } }) {
+    await this.#links.delete(ctx.params.link.id);
+    return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).with('status', 'Link removed.');
   }
 }

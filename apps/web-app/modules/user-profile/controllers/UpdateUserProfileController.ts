@@ -1,7 +1,8 @@
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
+import { can } from '@bespokecore/auth';
+import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import * as v from 'valibot';
-import type { Authenticated } from '@bespokecore/auth';
-import { UserRepository, type User } from '#modules/auth';
+import { UserRepository } from '#modules/auth';
+import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 
 /** REPR: what the endpoint accepts and who may call it — next to the endpoint itself. */
 export const UpdateUserProfileRequest = defineRequest({
@@ -9,8 +10,8 @@ export const UpdateUserProfileRequest = defineRequest({
     name: v.pipe(v.string(), v.trim(), v.minLength(2, 'The name needs at least 2 characters.'), v.maxLength(60)),
     bio: v.pipe(v.string(), v.trim(), v.maxLength(200, 'The bio may have at most 200 characters.')),
   }),
-  // Only your own profile. Runs before validation — others get a 403, not field errors.
-  authorize: (ctx: HttpContext<Authenticated, { user: User }>) => ctx.user.id === ctx.params.user.id,
+  // Only your own profile (ProfilePolicy). Runs after binding, before validation — others get a 403, not field errors.
+  authorize: can(ProfilePolicy, 'update', 'user'),
 });
 
 export class UpdateUserProfileController extends Controller {

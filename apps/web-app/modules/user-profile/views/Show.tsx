@@ -17,7 +17,7 @@ function ago(iso: string, now: string): string {
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter, others, now, auth, flash }: Props) {
+export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, now, auth, flash }: Props) {
   return (
     <main>
       <Head title={profile.name}>
@@ -43,7 +43,13 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
       </p>
       {isOwnProfile && (
         <p>
-          <em>This is your profile.</em> <Link href={`/users/${profile.id}/edit`}>Edit profile</Link> · <Link href="/settings/security">Security</Link>
+          <em>This is your profile.</em> <Link href="/settings/security">Security</Link>
+        </p>
+      )}
+      {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. */}
+      {can.update && (
+        <p>
+          <Link href={`/users/${profile.id}/edit`}>Edit profile</Link>
         </p>
       )}
 
@@ -55,7 +61,7 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
                 <a href={link.url} rel="nofollow noopener" target="_blank">
                   {link.label}
                 </a>
-                {isOwnProfile && (
+                {can.update && (
                   <>
                     {' '}
                     <Link method="delete" href={`/users/${profile.id}/links/${link.id}`} aria-label={`Remove ${link.label}`}>
@@ -67,7 +73,7 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
             ))}
           </ul>
         )}
-        {isOwnProfile && <AddLink userId={profile.id} />}
+        {can.update && <AddLink userId={profile.id} />}
       </section>
 
       <nav>

@@ -1,5 +1,5 @@
 import { HttpError } from './errors.ts';
-import type { EmptyObject, HttpContext } from './types.ts';
+import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
 
 /**
  * The Standard Schema interface (https://standardschema.dev), copied as the spec
@@ -33,8 +33,12 @@ export type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']
  */
 export interface RequestDefinition<TSchema extends StandardSchemaV1 = StandardSchemaV1, TCtx = any> {
   readonly schema: TSchema;
-  /** Runs before validation; `false` answers 403. Its context type is what the route must provide. */
-  readonly authorize?: ((ctx: TCtx) => boolean | Promise<boolean>) | undefined;
+  /**
+   * Runs after route binding, before validation; `false` answers 403 (or it throws its own `HttpError`).
+   * Its context type is what the route must provide. `resolve` builds classes from the request's container
+   * scope — how `can(Policy, …)` of @bespokecore/auth gets its policy without the router knowing a container (E28).
+   */
+  readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
 }
 
 /**
@@ -52,7 +56,7 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = StandardSc
  */
 export function defineRequest<TSchema extends StandardSchemaV1, TCtx = HttpContext>(definition: {
   schema: TSchema;
-  authorize?: (ctx: TCtx) => boolean | Promise<boolean>;
+  authorize?: (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
 }): RequestDefinition<TSchema, TCtx> {
   return definition;
 }
@@ -117,8 +121,8 @@ export class ValidationError extends HttpError {
 }
 
 /** Runs a request definition: authorize (403), then validate (422). Returns the validated body. */
-export async function validateRequest(definition: RequestDefinition, ctx: HttpContext): Promise<unknown> {
-  if (definition.authorize && !(await definition.authorize(ctx))) {
+export async function validateRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<unknown> {
+  if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
     throw new HttpError(403, 'This action is unauthorized.');
   }
   const input = await ctx.input();
