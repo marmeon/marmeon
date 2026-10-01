@@ -12,8 +12,10 @@ declare const passwordHash: unique symbol;
 export type PasswordHash = string & { readonly [passwordHash]: true };
 
 /**
- * Hashes and checks passwords (Laravel's `Hash`). Passwords are hashed exactly as given — never
- * trimmed — and at most {@link MAX_PASSWORD_BYTES} long.
+ * Hashes and checks passwords (Laravel's `Hash`). Passwords are never trimmed, but **Unicode-normalized
+ * (NFKC)** before hashing, as NIST SP 800-63B asks: `é` typed as one code point (Windows) or as `e` plus
+ * a combining accent (macOS) is the same password. Strings with lone surrogates are refused (they
+ * would encode as U+FFFD and collide). At most {@link MAX_PASSWORD_BYTES} long, after normalizing.
  */
 export interface Hasher {
   /** A new hash with a fresh salt, by the configured driver and costs. */
@@ -122,7 +124,8 @@ export class PasswordHasher implements Hasher {
   }
 
   async make(password: string): Promise<PasswordHash> {
-    const bytes = Buffer.from(password, 'utf8');
+    const bytes = encode(password);
+    if (!bytes) throw new HashError('A password must be a well-formed string (no lone surrogates).');
     if (bytes.byteLength > MAX_PASSWORD_BYTES) throw new HashError(`Passwords are limited to ${MAX_PASSWORD_BYTES} bytes.`);
     const salt = crypto.randomBytes(SALT_BYTES);
     const parsed: Parsed =
@@ -134,8 +137,8 @@ export class PasswordHasher implements Hasher {
 
   async verify(password: string, hash: PasswordHash): Promise<boolean> {
     if (typeof password !== 'string' || typeof hash !== 'string') return false;
-    const bytes = Buffer.from(password, 'utf8');
-    if (bytes.byteLength > MAX_PASSWORD_BYTES) return false;
+    const bytes = encode(password);
+    if (!bytes || bytes.byteLength > MAX_PASSWORD_BYTES) return false;
     const parsed = parse(hash);
     if (!parsed || (parsed.id === 'argon2id' && !argon2Available())) return false;
     try {
@@ -158,6 +161,11 @@ export class PasswordHasher implements Hasher {
     await this.verify(password, await this.#dummy);
     return false;
   }
+}
+
+/** NFKC, as UTF-8 — or undefined for strings with lone surrogates. */
+function encode(password: string): Buffer | undefined {
+  return password.isWellFormed() ? Buffer.from(password.normalize('NFKC'), 'utf8') : undefined;
 }
 
 // --- PHC strings ---------------------------------------------------------------------------

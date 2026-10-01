@@ -32,6 +32,25 @@ describe('PasswordHasher', () => {
     expect(await argon2.verify('Passwort 🔑', unicode)).toBe(false);
   });
 
+  it('normalizes Unicode (NFKC, NIST 800-63B): the same password typed on another system still matches', async () => {
+    const composed = 'Caf\u00e9'; // é as one code point (Windows, most keyboards)
+    const decomposed = 'Cafe\u0301'; // e + combining acute (macOS input, copied text)
+    expect(composed).not.toBe(decomposed);
+    expect(await argon2.verify(decomposed, await argon2.make(composed))).toBe(true);
+    expect(await argon2.verify(composed, await argon2.make(decomposed))).toBe(true);
+    // Compatibility forms too: full-width letters and ligatures are their plain letters.
+    expect(await argon2.verify('pass', await argon2.make('\uff50\uff41\uff53\uff53'))).toBe(true);
+    expect(await argon2.verify('fix', await argon2.make('\ufb01x'))).toBe(true);
+    // Not case or spaces, though: those are different passwords.
+    expect(await argon2.verify('cafe\u0301', await argon2.make(composed))).toBe(false);
+  });
+
+  it('refuses strings with lone surrogates — they would collide with U+FFFD', async () => {
+    const hash = await argon2.make('\ufffd');
+    expect(await argon2.verify('\ud800', hash)).toBe(false);
+    await expect(argon2.make('pass\udc00word')).rejects.toThrow('well-formed');
+  });
+
   it('makes scrypt hashes and verifies hashes of both drivers — a driver switch needs no reset', async () => {
     const fromScrypt = await scrypt.make('secret');
     expect(fromScrypt).toMatch(/^\$scrypt\$ln=10,r=8,p=1\$/);
