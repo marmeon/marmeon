@@ -28,12 +28,18 @@ export const ServerConfig = defineConfig('server', {
     ),
     /** Overrides the asset version derived from the build — e.g. the git commit of the deployment. */
     ASSET_VERSION: v.optional(v.pipe(v.string(), v.nonEmpty())),
+    /**
+     * `false`: no server rendering — pages go out without markup and the browser renders them (single pages:
+     * `Page.ssr = false`). Not `SSR`: Vite and Vitest set that one themselves.
+     */
+    SSR_ENABLED: v.optional(v.picklist(['true', 'false']), 'true'),
   }),
   resolve: (env) => ({
     port: env.PORT,
     maxBodySize: env.MAX_BODY_SIZE,
     assetVersion: env.ASSET_VERSION,
     trustedProxies: env.TRUSTED_PROXIES,
+    ssr: env.SSR_ENABLED === 'true',
   }),
 });
 export type ServerConfig = ConfigOf<typeof ServerConfig>;

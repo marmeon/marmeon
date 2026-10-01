@@ -32,7 +32,7 @@ export { ErrorPage } from './error-page.tsx';
 export { Link } from './link.tsx';
 export type { LinkProps, PrefetchTrigger } from './link.tsx';
 export { layoutsOf, resolveModulePages } from './pages.ts';
-export type { DefaultLayout, Layout, LayoutProps, PageComponent, PageLayout, ResolvePage } from './pages.ts';
+export type { DefaultLayout, Layout, LayoutProps, PageComponent, PageLayout, PageSsr, ResolvePage } from './pages.ts';
 export { Head } from './head.tsx';
 export type { HeadProps, TitleTemplate } from './head.tsx';
 export { Pagination, pagesAround } from './pagination.tsx';

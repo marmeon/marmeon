@@ -148,3 +148,12 @@ describe('closing a test app', () => {
     expect(calls).toEqual(['shutdown', 'shutdown']);
   });
 });
+
+describe('server rendering assertions', () => {
+  it('say how to turn server rendering on in tests', async () => {
+    const app = await createTestApp(definition);
+    expect(await failure(app.get('/greeting', { headers: { accept: 'text/html' } }).assertHydrates())).toContain(
+      'assertHydrates() needs server rendering in the test: createTestApp(app, { ssr: true })',
+    );
+  });
+});

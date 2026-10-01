@@ -16,8 +16,15 @@ export interface LayoutProps {
  */
 export type PageLayout = Layout | readonly Layout[] | null;
 
+/**
+ * How the server renders a page: `true` (the default) streams it — the shell at once, Suspense boundaries as they
+ * finish; `'complete'` waits for the whole page before sending (as for bots); `false` sends no markup, the browser
+ * renders the page (for pages that need the browser to render at all).
+ */
+export type PageSsr = boolean | 'complete';
+
 // Page props are validated at the controller boundary (PageProps<...>), not here.
-export type PageComponent = ComponentType<any> & { layout?: PageLayout };
+export type PageComponent = ComponentType<any> & { layout?: PageLayout; ssr?: PageSsr };
 
 /** The app's default layout per page name — for pages without their own `layout`: `createBespokeApp({ layout: () => AppLayout })`. */
 export type DefaultLayout = (name: string) => PageLayout | undefined;
@@ -80,6 +87,9 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     }
     const page = module.default as PageComponent;
     checkLayout(name, page.layout);
+    if (page.ssr !== undefined && page.ssr !== true && page.ssr !== false && page.ssr !== 'complete') {
+      throw new Error(`Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.`);
+    }
     return page;
   };
 }

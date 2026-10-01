@@ -34,6 +34,8 @@ export interface KernelOptions {
   maxBodySize?: number;
   /** Asset version for 409 reloads. Defaults to `ASSET_VERSION`, else the renderer's (the build's), else none. */
   version?: string | null;
+  /** Server rendering (default: `ServerConfig.ssr`, env `SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
+  ssr?: boolean;
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
@@ -64,13 +66,14 @@ export function createHttpKernel(
     debug = false,
     maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
+    ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
   }: KernelOptions = {},
 ): HttpKernel {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
   container.instance(AssetVersion, { value: version });
   const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
-  const toResponse = createResponseFactory(renderer, router, version);
+  const toResponse = createResponseFactory(renderer, router, version, { logger: container.make(Logger).child({ channel: 'ssr' }), ssr });
   const app = new Hono();
 
   const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
@@ -79,9 +82,15 @@ export function createHttpKernel(
     try {
       return await toResponse(handler.render(error, request, { debug }), { request }, scope);
     } catch (failure) {
-      // Rendering the error page failed too — answer without it rather than not at all.
+      // Building the error page failed too — most likely a shared prop (the database is down). Once more without
+      // the request's scope, so with the error's own props only; server rendering failing is no reason (the browser
+      // renders the page then). Only if even that fails: a plain answer rather than none.
       logger.error('Rendering the error response failed', { exception: String(failure) });
-      return new Response('Server Error', { status: 500 });
+      try {
+        return await toResponse(handler.render(error, request, { debug }), { request });
+      } catch {
+        return new Response('Server Error', { status: 500 });
+      }
     }
   };
 

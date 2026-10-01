@@ -153,13 +153,40 @@ export function isPrefetch(request: Request): boolean {
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'bespoke-page';
 
+/** What an SSR entry renders of a page. */
 export interface SsrResult {
-  html: string;
+  /**
+   * The page's markup: a string, or a stream of it (streaming SSR — the shell first, Suspense boundaries as they
+   * finish). Empty: the server renders no markup for this page (`Page.ssr = false`), the browser renders it.
+   */
+  html: string | ReadableStream<Uint8Array>;
+  /** Tags for the document head (`<Head>` in the shell): the title and meta tags. */
   head?: string;
 }
 
-/** Contract of an app's SSR entry (`export const render: SsrRender`). */
-export type SsrRender = (page: PageObject) => Promise<SsrResult>;
+export interface SsrRenderOptions {
+  /**
+   * Resolve only once the whole page has rendered, every Suspense boundary included — for bots, which read the HTML
+   * without running scripts. Otherwise the shell is enough to start sending.
+   */
+  complete?: boolean;
+  /**
+   * An error after the shell, while the response is already on its way: the Suspense boundary it happened in is
+   * rendered by the browser instead. Errors in the shell reject the render (the server sends the page without markup).
+   */
+  onError?: (error: unknown) => void;
+  /** Hints for the developer, development only — e.g. a `<Head>` that rendered after the document head was sent. */
+  onWarning?: (message: string) => void;
+  /** Stops rendering, e.g. when the client went away. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Contract of an app's SSR entry (`export const render: SsrRender`). It receives the page as the browser does — JSON
+ * values only (`Serialize<T>`: a Date is its ISO string), so the markup hydrates. Rejects when the page cannot render
+ * on the server at all; the server then sends it without markup and the browser renders it.
+ */
+export type SsrRender = (page: PageObject, options?: SsrRenderOptions) => Promise<SsrResult>;
 
 export function isPageObject(value: unknown): value is PageObject {
   return typeof value === 'object' && value !== null && 'component' in value && 'props' in value && 'url' in value;

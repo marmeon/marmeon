@@ -56,7 +56,7 @@ describe('createViteDevRenderer', () => {
   it('takes the SSR entry from bespoke(), serves virtual:bespoke/pages to SSR, and adds the client entry', async () => {
     const { vite, renderer } = await start(app());
     try {
-      const html = await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'));
+      const html = await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} });
       expect(html).toContain('demo/Home: /modules/demo/views/Home.ts');
       expect(html).toContain('<script type="module" src="/bootstrap/client.ts"></script>');
     } finally {

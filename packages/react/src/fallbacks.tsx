@@ -16,6 +16,9 @@ export function isDevelopment(): boolean {
   }
 }
 
+/** The digest of errors in a Suspense boundary on the server — how the browser tells them from a hydration mismatch. */
+export const SSR_ERROR_DIGEST = 'bespoke:ssr';
+
 /** What the error page shows for an error thrown while rendering — the details only in development. */
 export function renderErrorProps(error: unknown): ErrorPageProps {
   const exception = error instanceof Error ? { name: error.name, message: error.message, stack: error.stack ?? '' } : { name: 'Error', message: String(error), stack: '' };

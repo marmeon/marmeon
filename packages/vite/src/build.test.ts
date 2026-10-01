@@ -99,7 +99,8 @@ describe('bespoke build with the bespoke() plugin', () => {
     expect(client).not.toContain('development only');
 
     // The client entry comes from the plugin, not from index.html.
-    expect(readFileSync(join(root, 'dist/client/index.html'), 'utf8')).toMatch(/<script type="module" crossorigin src="\/assets\/index-[\w-]+\.js"><\/script>/);
+    // `async`: a streamed page hydrates its shell while the rest still arrives.
+    expect(readFileSync(join(root, 'dist/client/index.html'), 'utf8')).toMatch(/<script type="module" async crossorigin src="\/assets\/index-[\w-]+\.js"><\/script>/);
     // virtual:bespoke/pages: root-absolute keys, one chunk per page.
     expect(client).toContain('/modules/demo/views/Home.ts');
     expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.startsWith('Home-'))).toBe(true);

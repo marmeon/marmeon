@@ -3,8 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { SsrRender } from '@bespokecore/http';
-import { renderDocument } from './html.ts';
-import type { PageRenderer } from './render.ts';
+import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
 export interface ProductionOptions {
   root: string;
@@ -25,9 +24,10 @@ export async function createProductionRenderer({
   });
   const { render } = (await import(pathToFileURL(join(root, ssrBundle)).href)) as { render: SsrRender };
 
-  return {
-    render: async (page) => renderDocument(template, page, await render(page)),
+  return createDocumentRenderer({
+    template: () => template,
+    ssr: () => render,
     // The built index.html names every hashed asset: it changes exactly when the assets do.
     version: createHash('sha256').update(template).digest('hex').slice(0, 12),
-  };
+  });
 }

@@ -6,8 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { SsrRender } from '@bespokecore/http';
 import type { ResolvedConfig, ViteDevServer } from 'vite';
-import { renderDocument } from './html.ts';
-import type { PageRenderer } from './render.ts';
+import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
 /** The app's Vite setup is incomplete: no `vite`, no `@bespokecore/vite`, or no `bespoke()` plugin. The message says what to do. */
 export class ViteSetupError extends Error {
@@ -76,8 +75,8 @@ export interface ViteDevOptions {
   root: string;
   /** SSR entry relative to `root`, exporting `render: SsrRender`. Defaults to the `bespoke()` plugin's entry. */
   ssrEntry?: string;
-  /** Share the HTTP server so HMR runs on the app's port instead of a second one. */
-  httpServer: Server;
+  /** Share the HTTP server so HMR runs on the app's port instead of a second one. Without one, no HMR (tests). */
+  httpServer?: Server;
 }
 
 /**
@@ -99,7 +98,7 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer }: Vite
       // file first, which `node --watch` sees disappear and answers with a restart.
       configLoader: 'native',
       appType: 'custom',
-      server: { middlewareMode: true, hmr: { server: httpServer } },
+      server: { middlewareMode: true, ...(httpServer ? { hmr: { server: httpServer } } : { hmr: false, ws: false }) },
     });
   } catch (error) {
     throw explainConfigError(error);
@@ -119,16 +118,13 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer }: Vite
     throw new Error('The Vite SSR environment is not runnable in this process.');
   }
 
-  const renderer: PageRenderer = {
-    async render(page, request) {
-      const template = await vite.transformIndexHtml(
-        new URL(request.url).pathname,
-        await readFile(join(root, 'index.html'), 'utf8'),
-      );
-      const { render } = await ssr.runner.import<{ render: SsrRender }>(`/${entry}`);
-      return renderDocument(template, page, await render(page));
-    },
-  };
+  const renderer = createDocumentRenderer({
+    template: async (request) => vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')),
+    // Through Vite's module runner on every request: an edited view renders without a restart.
+    ssr: async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render,
+    // Stack traces of SSR errors point into the sources, not into Vite's transformed modules.
+    fixStack: (error) => vite.ssrFixStacktrace(error as Error),
+  });
 
   return { vite, renderer };
 }

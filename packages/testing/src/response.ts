@@ -1,6 +1,7 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import { isPageObject, PAGE_SCRIPT_ID, type FormOf, type PageObject, type PageProps, type CheckViewName, type ViewOf } from '@bespokecore/http/page';
 import type { AuthUser } from '@bespokecore/auth';
+import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
 
 /** `AUTH_SESSION_KEYS.id` of @bespokecore/auth — an optional peer, so not imported at runtime. */
@@ -39,6 +40,8 @@ export class TestResponse {
   readonly #cookies: ReadonlyMap<string, string>;
   /** The session as the request left it — undefined if the app has no session. */
   readonly #session: Record<string, unknown> | undefined;
+  /** What server rendering did — undefined without `createTestApp(…, { ssr: true })`. */
+  readonly #ssr: SsrOutcome | undefined;
 
   constructor(
     response: Response,
@@ -46,6 +49,7 @@ export class TestResponse {
     label: string,
     cookies: ReadonlyMap<string, string> = new Map(),
     session?: Record<string, unknown>,
+    ssr?: SsrOutcome,
   ) {
     this.status = response.status;
     this.headers = response.headers;
@@ -53,9 +57,16 @@ export class TestResponse {
     this.#label = label;
     this.#cookies = cookies;
     this.#session = session;
+    this.#ssr = ssr;
   }
 
-  static async from(response: Response, label: string, crypto?: CookieCrypto, sessions?: SessionAccess): Promise<TestResponse> {
+  static async from(
+    response: Response,
+    label: string,
+    crypto?: CookieCrypto,
+    sessions?: SessionAccess,
+    ssr?: (page: PageObject | undefined) => Promise<SsrOutcome | undefined>,
+  ): Promise<TestResponse> {
     const cookies = new Map<string, string>();
     for (const header of response.headers.getSetCookie()) {
       const { name, value } = splitSetCookie(header);
@@ -63,7 +74,9 @@ export class TestResponse {
     }
     const id = sessions ? cookies.get(sessions.cookie) : undefined;
     const session = id ? await sessions!.read(id) : undefined;
-    return new TestResponse(response, await response.text(), label, cookies, session);
+    const body = await response.text();
+    const page = response.headers.get('content-type')?.includes('text/html') ? pageIn(body) : undefined;
+    return new TestResponse(response, body, label, cookies, session, await ssr?.(page));
   }
 
   /** The session data after the request (from the store, via the session cookie). */
@@ -84,9 +97,8 @@ export class TestResponse {
 
   /** The page object — from a client-side navigation (JSON) or a full page load (embedded script). */
   page(): PageObject | undefined {
-    const candidate = this.headers.get('content-type')?.includes('json')
-      ? safeParse(this.body)
-      : safeParse(PAGE_SCRIPT.exec(this.body)?.[1]);
+    if (!this.headers.get('content-type')?.includes('json')) return pageIn(this.body);
+    const candidate = safeParse(this.body);
     return isPageObject(candidate) ? candidate : undefined;
   }
 
@@ -282,6 +294,44 @@ export class TestResponse {
     return this;
   }
 
+  // --- Server rendering (createTestApp(…, { ssr: true })) -------------------------
+
+  /** The page was rendered on the server — without an error, in the shell or after it (the error is shown). */
+  assertServerRendered(): this {
+    const ssr = this.#requireSsr('assertServerRendered');
+    const [error] = ssr.errors;
+    if (error !== undefined) this.#fail(`Expected the page to render on the server, but it failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
+    if (!this.page()) this.#fail('Expected a server-rendered page, got no page document');
+    return this;
+  }
+
+  /**
+   * The markup is what the browser renders from the page object it receives — the page hydrates without a mismatch.
+   * Compares the document with one rendered again from the page's JSON (what the browser reads), so a prop the server
+   * rendered differently than it sent (a `Date` instead of its string) fails here.
+   */
+  assertHydrates(): this {
+    this.#requireSsr('assertHydrates');
+    this.assertServerRendered();
+    const { rerendered } = this.#ssr!;
+    if (rerendered === undefined) this.#fail('Could not render the page again from its JSON');
+    if (rerendered !== this.body) {
+      let at = 0;
+      while (at < this.body.length && this.body[at] === rerendered[at]) at++;
+      const around = (text: string) => JSON.stringify(text.slice(Math.max(0, at - 80), at + 80));
+      this.#fail(
+        `Expected the page to hydrate: the server rendered other markup than the browser will from the page object.\n` +
+          `  server:  ${around(this.body)}\n  browser: ${around(rerendered)}`,
+      );
+    }
+    return this;
+  }
+
+  #requireSsr(assertion: string): SsrOutcome {
+    if (!this.#ssr) this.#fail(`${assertion}() needs server rendering in the test: createTestApp(app, { ssr: true })`);
+    return this.#ssr;
+  }
+
   // ------------------------------------------------------------------------------
 
   #compare(check: () => void, message: string): this {
@@ -317,6 +367,12 @@ function isExpired(attributes: ReadonlyMap<string, string>): boolean {
   if (maxAge !== undefined) return Number(maxAge) <= 0;
   const expires = attributes.get('expires');
   return expires !== undefined && Date.parse(expires) <= Date.now();
+}
+
+/** The page object embedded in a page document. */
+function pageIn(html: string): PageObject | undefined {
+  const candidate = safeParse(PAGE_SCRIPT.exec(html)?.[1]);
+  return isPageObject(candidate) ? candidate : undefined;
 }
 
 function safeParse(text: string | undefined): unknown {

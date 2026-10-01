@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { defineApplication } from '@bespokecore/core';
 import auth from '#modules/auth';
+import lab from '#modules/lab';
 import userProfile from '#modules/user-profile';
 import { AppConfig } from '../config/app.ts';
 import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
@@ -14,7 +15,7 @@ import { ShareAppProps } from '../middleware/ShareAppProps.ts';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
-  modules: [auth, userProfile],
+  modules: [auth, userProfile, lab],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {

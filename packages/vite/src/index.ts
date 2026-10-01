@@ -84,8 +84,26 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
     },
   };
 
+  // Built pages start their client entry as soon as it is loaded (`async`), not once the whole document has arrived
+  // (a module script's default): a streamed page hydrates its shell while slow Suspense boundaries still stream in.
+  // The page object is in the head, before the markup. Not while serving: the dev runtime's preambles (React Refresh)
+  // must run first, so in development a streamed page hydrates once it has arrived completely.
+  const asyncEntry: Plugin = {
+    name: 'bespokecore:async-entry',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, { chunk }) {
+        if (options.test || !chunk) return undefined;
+        const entry = new RegExp(`<script type="module"((?:(?!async)[^>])*\\ssrc="[^"]*/${chunk.fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}")`);
+        return html.replace(entry, '<script type="module" async$1');
+      },
+    },
+  };
+
   return [
     main,
+    asyncEntry,
     bespokeInjection() as Plugin,
     virtualGlob('pages', options.pages ?? DEFAULT_PAGES),
   ];

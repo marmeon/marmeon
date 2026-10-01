@@ -75,6 +75,10 @@ declare module '@bespokecore/http/page' {
     'auth/Security': true;
     'auth/VerifyEmail': true;
     'errors/Error': true;
+    'lab/BrowserOnly': true;
+    'lab/ClientOnly': true;
+    'lab/LateError': true;
+    'lab/Streaming': true;
     'user-profile/Edit': true;
     'user-profile/Show': true;
   }

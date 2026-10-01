@@ -43,6 +43,12 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertOk(): this {
     return this.#queue((r) => r.assertOk());
   }
+  assertServerRendered(): this {
+    return this.#queue((r) => r.assertServerRendered());
+  }
+  assertHydrates(): this {
+    return this.#queue((r) => r.assertHydrates());
+  }
   assertSuccessful(): this {
     return this.#queue((r) => r.assertSuccessful());
   }

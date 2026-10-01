@@ -80,7 +80,7 @@ describe('bespoke()', () => {
 
   it('runs the constructor-injection transform and serves virtual:bespoke/pages', () => {
     const names = bespoke().map((plugin) => plugin.name);
-    expect(names).toEqual(['bespokecore', 'bespokecore:injection', 'bespokecore:virtual-pages']);
+    expect(names).toEqual(['bespokecore', 'bespokecore:async-entry', 'bespokecore:injection', 'bespokecore:virtual-pages']);
   });
 });
 

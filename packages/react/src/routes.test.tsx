@@ -39,7 +39,7 @@ const resolve = resolveModulePages({ '../modules/people/views/Page.tsx': async (
 describe('routes in the browser', () => {
   it('renders links, buttons, URLs and forms from the route manifest — the same on the server', async () => {
     const render = createSsrRenderer(resolve, { routes });
-    const { html } = await render({ component: 'people/Page', props: { id: 7 }, url: '/' });
+    const html = await new Response((await render({ component: 'people/Page', props: { id: 7 }, url: '/' })).html).text();
     expect(html).toContain('<a href="/people/7?tab=links">Ada</a>');
     // Not GET: a button (actions are not links), its method from the route.
     expect(html).toContain('<button type="button">Sign out</button>');

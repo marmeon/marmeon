@@ -1,7 +1,7 @@
 import type { PageObject, PageProps, RouteManifest, SharedProps } from '@bespokecore/http/page';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
-import { defaultTitle, HeadContext, TitleRegistry, type TitleTemplate } from './head.tsx';
+import { defaultTitle, HeadContext, TitleRegistry, type HeadCollector, type TitleTemplate } from './head.tsx';
 import { Navigator, type PrefetchOptions, type VisitException, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { showProgress, type ProgressOptions } from './progress.ts';
@@ -97,7 +97,7 @@ export interface BespokeAppProps {
   /** The progress bar of visits (shown after `delay` ms, default 250), or `false` for none. */
   progress?: ProgressOptions | false;
   /** Server rendering only: where `<Head>` records itself. */
-  headCollector?: { title: string | undefined; tags: ReactElement[] };
+  headCollector?: HeadCollector;
 }
 
 interface Current {
@@ -149,7 +149,11 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
   if (navigator.current === null && typeof window !== 'undefined') {
     navigator.current = new Navigator({ initialPage, render: (page, options) => renderRef.current(page, options) });
   }
-  useEffect(() => navigator.current?.start(), []);
+  useEffect(() => {
+    // When the first page became interactive (hydrated, or rendered when the server sent no markup) — for measuring.
+    if (typeof performance !== 'undefined') performance.mark('bespoke:hydrated');
+    return navigator.current?.start();
+  }, []);
   useEffect(() => {
     const nav = navigator.current;
     if (!nav) return undefined;

@@ -5,9 +5,14 @@ export type TitleTemplate = (title: string) => string;
 
 export const defaultTitle: TitleTemplate = (title) => title;
 
-interface HeadCollector {
-  title: string | undefined;
-  tags: ReactElement[];
+/** Server rendering: where `<Head>`s record themselves for the document head. */
+export interface HeadCollector {
+  /** The `<Head>`s in render order. */
+  readonly entries: { title: string | undefined; tags: ReactElement[] }[];
+  /** Set once the head is rendered: a `<Head>` after that (in a Suspense boundary that streams in later) misses it. */
+  sealed: boolean;
+  /** Called for such a late `<Head>` (development: a warning). */
+  onLate?: (title: string | undefined) => void;
 }
 
 /**
@@ -82,9 +87,10 @@ export function Head({ title, children }: HeadProps) {
   const tags = Children.toArray(children).filter(isValidElement) as ReactElement[];
 
   if (collector) {
-    // Server render: the last <Head> wins for the title (a page overrides its layout).
-    if (title !== undefined) collector.title = title;
-    collector.tags.push(...tags);
+    // Server render: the last <Head> wins for the title (a page overrides its layout). After the head went out
+    // (streaming), it is too late for this one — the browser adds its tags once it hydrates.
+    if (collector.sealed) collector.onLate?.(title);
+    else collector.entries.push({ title, tags });
   }
 
   const signature = JSON.stringify(tags.map((tag) => [tag.type, tag.props]));
@@ -113,13 +119,14 @@ export function Head({ title, children }: HeadProps) {
  * the title is `template('')` (as on the client), or the template's own `<title>` when that is empty.
  */
 export function renderHead(collector: HeadCollector, template: TitleTemplate, renderTag: (tag: ReactElement) => string): string {
-  const text = template(collector.title ?? '');
+  const { entries } = collector;
+  const text = template(entries.findLast((entry) => entry.title !== undefined)?.title ?? '');
   const title = text === '' ? '' : `<title ${MARKER}="ssr">${escapeHtml(text)}</title>`;
-  return title + collector.tags.map(renderTag).join('');
+  return title + entries.flatMap((entry) => entry.tags.map(renderTag)).join('');
 }
 
-export function createHeadCollector(): HeadCollector {
-  return { title: undefined, tags: [] };
+export function createHeadCollector(onLate?: (title: string | undefined) => void): HeadCollector {
+  return { entries: [], sealed: false, onLate };
 }
 
 /** `data-bespoke-head="ssr"` on server-rendered tags, so the client can take them over. */

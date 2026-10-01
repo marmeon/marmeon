@@ -17,6 +17,7 @@ import type { MailFake } from '@bespokecore/mail';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
+import { SSR_TEST_HEADER, TestSsr } from './ssr.ts';
 import { TestResponse, type PageNameOf, type PageSource, type PropsOf } from './response.ts';
 
 export interface TestAppOptions {
@@ -42,6 +43,12 @@ export interface TestAppOptions {
    * (Laravel's `Mail::fake()`, on by default). `'real'` keeps the configured transport.
    */
   mail?: 'fake' | 'real';
+  /**
+   * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `bespoke dev` does) — so the markup
+   * and `<Head>` are testable (`assertSee`, `assertServerRendered`, `assertHydrates`). Off by default: responses carry
+   * the page object only (fast, no Vite). Every page renders completely, as for a bot.
+   */
+  ssr?: boolean;
 }
 
 type FormValue = string | readonly string[];
@@ -104,7 +111,21 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     },
   });
 
-  const shared: Shared = { kernel: createHttpKernel(application), database, mail: mailFake, cleanups: [], closing: undefined };
+  let ssr: TestSsr | undefined;
+  try {
+    ssr = options.ssr ? await TestSsr.start(definition.root) : undefined;
+  } catch (error) {
+    await application.shutdown();
+    throw error;
+  }
+  const shared: Shared = {
+    kernel: createHttpKernel(application, ssr ? { renderer: ssr.renderer } : {}),
+    database,
+    mail: mailFake,
+    ssr,
+    cleanups: ssr ? [() => ssr.close()] : [],
+    closing: undefined,
+  };
   const app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });
   if (database && worker) {
     try {
@@ -146,6 +167,8 @@ interface Shared {
   readonly database: DatabaseModule | undefined;
   /** The recording mailer, unless the app has no mail or the test chose `mail: 'real'`. */
   readonly mail: MailFake | undefined;
+  /** Server rendering, with `ssr: true`. */
+  readonly ssr: TestSsr | undefined;
   /** Run before the app shuts down, e.g. rolling back the test's transaction. */
   readonly cleanups: (() => Promise<void>)[];
   closing: Promise<void> | undefined;
@@ -451,10 +474,14 @@ export class TestApp {
 
   request(method: string, path: string, options: RequestOptions = {}): PendingTestResponse {
     const label = `${method} ${path}`;
+    const { ssr } = this.#shared;
+    const render = ssr?.begin();
     const response = this.#init(method, options)
-      .then((init) => this.#shared.kernel.request(path, init))
+      .then((init) => this.#shared.kernel.request(path, render === undefined ? init : { ...init, headers: { ...(init.headers as Record<string, string>), [SSR_TEST_HEADER]: render } }))
       .then(async (res) => {
-        const response = await TestResponse.from(res, label, this.#crypto, await this.#session);
+        const response = await TestResponse.from(res, label, this.#crypto, await this.#session, async (page) =>
+          render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
+        );
         await this.#shared.kernel.settle(); // terminate hooks ran — like Laravel's test helpers call terminate()
         return response;
       });
