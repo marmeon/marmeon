@@ -71,3 +71,13 @@ export class PasswordChanged {
     this.user = user;
   }
 }
+
+/** A password was reset by e-mail link — every session and remember-me token of the user ended. */
+export class PasswordReset {
+  readonly #event = true;
+  readonly user: AuthUser;
+
+  constructor(user: AuthUser) {
+    this.user = user;
+  }
+}

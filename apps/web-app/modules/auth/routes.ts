@@ -1,10 +1,15 @@
 import { authenticate, confirmedPassword, guest } from '@bespokecore/auth';
+import { throttle } from '@bespokecore/cache';
 import { defineRoutes } from '@bespokecore/http';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import { LoginController } from './controllers/LoginController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
 import { LogoutOtherDevicesController } from './controllers/LogoutOtherDevicesController.ts';
 import { RegisterController } from './controllers/RegisterController.ts';
+import { ResetPasswordController } from './controllers/ResetPasswordController.ts';
+import { SendPasswordResetLinkController } from './controllers/SendPasswordResetLinkController.ts';
+import { ShowForgotPasswordController } from './controllers/ShowForgotPasswordController.ts';
+import { ShowResetPasswordController } from './controllers/ShowResetPasswordController.ts';
 import { ShowConfirmPasswordController } from './controllers/ShowConfirmPasswordController.ts';
 import { ShowLoginController } from './controllers/ShowLoginController.ts';
 import { ShowRegisterController } from './controllers/ShowRegisterController.ts';
@@ -20,6 +25,10 @@ export default defineRoutes((Route) => {
   guests.post('/login', LoginController).name('auth.login.store');
   guests.get('/register', ShowRegisterController).name('auth.register');
   guests.post('/register', RegisterController).name('auth.register.store');
+  guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
+  guests.middleware(throttle('password-reset')).post('/forgot-password', SendPasswordResetLinkController).name('auth.password.email');
+  guests.get('/reset-password', ShowResetPasswordController).name('auth.password.reset');
+  guests.post('/reset-password', ResetPasswordController).name('auth.password.store');
 
   const signedIn = Route.middleware(authenticate());
   signedIn.post('/logout', LogoutController).name('auth.logout');

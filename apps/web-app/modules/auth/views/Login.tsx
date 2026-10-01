@@ -63,7 +63,7 @@ export default function Login({ appName, old, csrfToken, flash }: Props) {
         </button>
       </form>
       <p>
-        New here? <Link href="/register">Create an account</Link>
+        <Link href="/forgot-password">Forgot your password?</Link> · New here? <Link href="/register">Create an account</Link>
       </p>
       <p>
         <small>Demo: ada@example.com, alan@example.com or grace@example.com — password <code>password</code>.</small>

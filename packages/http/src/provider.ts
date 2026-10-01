@@ -1,6 +1,7 @@
 import type { Application, Container, ServiceProvider } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
 import { GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@bespokecore/router';
+import { AfterResponse } from './after-response.ts';
 import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
@@ -42,6 +43,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.singleton(ExceptionHandler, DefaultExceptionHandler);
     container.singleton(CookieEncryption);
     container.scoped(SharedData);
+    container.scoped(AfterResponse);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
   }
 

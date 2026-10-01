@@ -4,7 +4,7 @@ import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, type Application, type Container } from '@bespokecore/core';
-import { AssetVersion, ExceptionHandler, HttpError } from '@bespokecore/http';
+import { AfterResponse, AssetVersion, ExceptionHandler, HttpError } from '@bespokecore/http';
 import {
   clientIp,
   CookieJar,
@@ -136,6 +136,21 @@ export function createHttpKernel(
           () => undefined,
           (error: unknown) => logger.error('A terminate hook failed', { exception: String(error) }),
         );
+      pending.add(task);
+      void task.finally(() => pending.delete(task));
+    }
+    // `afterResponse.defer(…)` work: also after the response, one task after the other.
+    const deferred = scope.has(AfterResponse) ? scope.make(AfterResponse).take() : [];
+    if (deferred.length > 0) {
+      const task = new Promise<void>((resolve) => setImmediate(resolve)).then(async () => {
+        for (const work of deferred) {
+          try {
+            await work();
+          } catch (error) {
+            logger.error('Deferred work failed', { exception: error instanceof Error ? (error.stack ?? error.message) : String(error) });
+          }
+        }
+      });
       pending.add(task);
       void task.finally(() => pending.delete(task));
     }

@@ -11,11 +11,17 @@ export const AuthConfig = defineConfig('auth', {
     AUTH_REMEMBER_COOKIE: v.optional(v.pipe(v.string(), v.regex(/^[\w-]+$/)), 'remember_web'),
     /** How long a password confirmation counts for `confirmedPassword()` routes, in seconds (default 15 minutes). */
     AUTH_PASSWORD_TIMEOUT: whole(900, 1),
+    /** How long a password reset link works, in minutes. */
+    AUTH_RESET_EXPIRE: whole(60, 1),
+    /** Seconds before another reset link is sent to the same e-mail. */
+    AUTH_RESET_THROTTLE: whole(60, 0),
   }),
   resolve: (env) => ({
     rememberDays: env.AUTH_REMEMBER_DAYS,
     rememberCookie: env.AUTH_REMEMBER_COOKIE,
     passwordTimeout: env.AUTH_PASSWORD_TIMEOUT,
+    resetExpire: env.AUTH_RESET_EXPIRE,
+    resetThrottle: env.AUTH_RESET_THROTTLE,
   }),
 });
 export type AuthConfig = ConfigOf<typeof AuthConfig>;

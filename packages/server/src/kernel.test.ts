@@ -1,6 +1,6 @@
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { abort, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@bespokecore/http';
+import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -253,6 +253,23 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
       throw new Error('terminate broke');
     }
   }
+  class DeferringController {
+    readonly #after: AfterResponse;
+    constructor(after: AfterResponse) {
+      this.#after = after;
+    }
+    handle() {
+      this.#after.defer(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        events.push('deferred work');
+      });
+      this.#after.defer(() => {
+        throw new Error('deferred broke');
+      });
+      this.#after.defer(() => events.push('after the failure'));
+      return 'accepted';
+    }
+  }
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -265,6 +282,7 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
         routes: defineRoutes((Route) => {
           Route.get('/page', () => 'page');
           Route.get('/admin', () => abort(403));
+          Route.get('/defer', DeferringController);
         }),
         apiRoutes: defineRoutes((Route) => Route.get('/items', () => [])),
       }),
@@ -291,6 +309,18 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
     events.push(`responded ${response.status}`);
     await app.settle();
     expect(events).toEqual(['responded 200', 'terminated 200']);
+  });
+
+  it('runs afterResponse.defer() work after the response — in order, a failure logged, settle() waits', async () => {
+    await app.settle();
+    events.length = 0;
+    const started = performance.now();
+    const response = await app.request('/defer');
+    expect(performance.now() - started).toBeLessThan(15); // the 20 ms of work did not hold the response
+    events.push(`responded ${response.status}`);
+    await app.settle();
+    expect(events.filter((event) => !event.startsWith('terminated'))).toEqual(['responded 200', 'deferred work', 'after the failure']);
+    expect(logged.some((line) => line.startsWith('Deferred work failed: Error: deferred broke'))).toBe(true);
   });
 
   it('logs a failing terminate hook instead of breaking anything', async () => {

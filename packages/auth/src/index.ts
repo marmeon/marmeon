@@ -4,6 +4,7 @@ import { Auth } from './auth.ts';
 import { AuthConfig } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
+import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { UserProvider } from './user.ts';
 
@@ -11,7 +12,9 @@ import { UserProvider } from './user.ts';
 export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
 export type { LoginOptions } from './auth.ts';
 export { AuthConfig } from './config.ts';
-export { Failed, Lockout, Login, Logout, PasswordChanged, Registered } from './events.ts';
+export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';
+export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
+export type { PasswordResetTokenTable } from './password-reset.ts';
 export { authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
 export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
@@ -70,6 +73,7 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
     // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
+    container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
   }
 
   boot(app: Application): void {

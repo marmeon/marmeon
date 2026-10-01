@@ -1,5 +1,8 @@
 import { Hasher, PasswordHasher, type PasswordHash } from '@bespokecore/auth';
+import { ConsoleLogger, Logger, type LogContext } from '@bespokecore/core';
 import { Database, secret } from '@bespokecore/database';
+import { MailFake, Mailer, type Mailable, type MailMessage } from '@bespokecore/mail';
+import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { UserFactory } from './factories/UserFactory.ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +12,8 @@ import { UserRepository } from './UserRepository.ts';
 import type { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import type { LoginController } from './controllers/LoginController.ts';
 import type { RegisterController } from './controllers/RegisterController.ts';
+import type { ResetPasswordController } from './controllers/ResetPasswordController.ts';
+import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
 import type { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
 
@@ -295,6 +300,136 @@ describe('security settings', () => {
     const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
     for (let attempt = 1; attempt <= 5; attempt++) await session.post('/confirm-password', { form: { password: `guess ${attempt}` } });
     await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
+  });
+});
+
+describe('password reset', () => {
+  const SENT = 'If an account exists for that address, we sent a link to reset its password.';
+  const INVALID = 'This password reset link is invalid or has expired. Ask for a new one.';
+  const ask = (email: string) => app.post('/forgot-password', { form: { email }, headers: { referer: 'http://localhost/forgot-password' } });
+  /** The link from the last reset mail — path and query, as a browser would open it. */
+  const linkInMail = () => {
+    const [sent] = app.mail.sent(ResetPasswordMail).slice(-1);
+    const url = new URL(/https?:\/\/\S+\/reset-password\?\S+(?=\))/.exec(sent!.message.text)![0]);
+    return { path: url.pathname + url.search, token: url.searchParams.get('token')! };
+  };
+  const open = async () => (await app.get(linkInMail().path).assertRedirect('/reset-password')).cookie('password_reset')!;
+  const resetWith = (cookie: string, password = 'brand new password') =>
+    app.withCookie('password_reset', cookie).post('/reset-password', { form: { password, password_confirmation: password }, headers: { referer: 'http://localhost/reset-password' } });
+
+  it('mails a link, takes the token out of the URL, sets the new password — once', async () => {
+    const ada = await app.factory(UserFactory).create({ name: 'Ada', email: 'ada@example.com' });
+    await ask(' ADA@example.com ').assertRedirect('/forgot-password').assertSessionHas('status', SENT);
+    app.mail.assertSentCount(ResetPasswordMail, 1).assertSent(ResetPasswordMail, (_mail, message) => message.to[0]!.address === 'ada@example.com');
+    const [mail] = app.mail.sent(ResetPasswordMail);
+    expect(mail!.message.html).toContain('<!--[if mso'); // MJML: built for mail clients
+    expect(mail!.message.text).toContain('Hello Ada,');
+
+    const cookie = await open();
+    // The page knows the address, not the token: it is in neither the URL nor the props.
+    const page = await app.withCookie('password_reset', cookie).navigating().get('/reset-password').assertPage('auth/ResetPassword', { email: 'ada@example.com' });
+    expect(page.body).not.toContain(linkInMail().token);
+
+    await resetWith(cookie).assertRedirect('/login').assertSessionHas('status', 'Your password has been reset. Sign in with the new one.').assertCookieExpired('password_reset');
+    await app.post('/login', credentialsOf(ada)).assertGuest();
+    await app.post('/login', { form: { email: ada.email, password: 'brand new password' } }).assertAuthenticated(ada);
+    // Counter-check: the same link a second time
+    await resetWith(cookie, 'yet another password').assertInvalid<ResetPasswordController>({ password: INVALID });
+  });
+
+  it('counter-check (enumeration): an unknown address gets the same answer — and no mail', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const known = await ask('ada@example.com');
+    const unknown = await ask('nobody@example.com');
+    expect([unknown.status, unknown.headers.get('location'), unknown.session().status]).toEqual([known.status, known.headers.get('location'), known.session().status]);
+    app.mail.assertSentCount(ResetPasswordMail, 1);
+  });
+
+  it('counter-check (enumeration by timing): the mail goes out after the response', async () => {
+    await app.close(); // one database app per test
+    let mailed = 0;
+    class SlowMailer extends MailFake {
+      override async send(mailable: Mailable): Promise<MailMessage> {
+        await new Promise((resolve) => setTimeout(resolve, 150)); // a slow SMTP server
+        mailed++;
+        return super.send(mailable);
+      }
+    }
+    app = await createTestApp(application, { database: 'refresh', mail: 'real', override: (c) => c.instance(Mailer, new SlowMailer()) });
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const kernel = createHttpKernel(app.application); // its own kernel: TestApp waits for deferred work, a browser does not
+    const time = async (email: string) => {
+      const started = performance.now();
+      const response = await kernel.request('/forgot-password', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${email}` });
+      const ms = performance.now() - started;
+      expect(response.status).toBe(303);
+      return ms;
+    };
+    expect(await time('ada@example.com')).toBeLessThan(100);
+    expect(await time('nobody@example.com')).toBeLessThan(100);
+    await kernel.settle();
+    expect(mailed).toBe(1);
+  });
+
+  it('counter-check: an expired link, another address’s token, no cookie — one answer', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    await app.factory(UserFactory).create({ email: 'alan@example.com' });
+    await ask('ada@example.com');
+    const cookie = await open();
+    const forAlan = JSON.stringify({ ...JSON.parse(cookie), email: 'alan@example.com' });
+    await resetWith(forAlan).assertInvalid<ResetPasswordController>({ password: INVALID });
+    await app.post('/reset-password', { form: { password: 'brand new password', password_confirmation: 'brand new password' } }).assertInvalid<ResetPasswordController>({ password: INVALID });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
+    try {
+      await resetWith(cookie).assertInvalid<ResetPasswordController>({ password: INVALID });
+    } finally {
+      vi.useRealTimers();
+    }
+    await app.navigating().get('/reset-password').assertPage('auth/ResetPassword', { email: null });
+  });
+
+  it('counter-check: the token is only in the mail — not in the database, not in the request log', async () => {
+    await app.close();
+    const lines: string[] = [];
+    class Capture extends ConsoleLogger {
+      override info(message: string, context?: LogContext) {
+        lines.push(`${message} ${JSON.stringify(context ?? {})}`);
+      }
+      override debug(message: string, context?: LogContext) {
+        lines.push(`${message} ${JSON.stringify(context ?? {})}`);
+      }
+      override child(): Logger {
+        return this;
+      }
+    }
+    app = await createTestApp(application, { database: 'refresh', override: (c) => c.instance(Logger, new Capture()) });
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    await ask('ada@example.com');
+    const { token } = linkInMail();
+    await open();
+    const rows = await app.make(Database).selectFrom('password_reset_tokens').select(['email', (eb) => secret(eb, 'token_hash')]).execute();
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows)).not.toContain(token);
+    expect(lines.some((line) => line.includes('GET /reset-password'))).toBe(true); // the request was logged …
+    expect(lines.join('\n')).not.toContain(token); // … without its query
+  });
+
+  it('ends every session and remember-me device of the user', async () => {
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
+    await ask('ada@example.com');
+    await resetWith(await open()).assertRedirect('/login');
+    await app.withCookie('bespoke_session', phone.cookie('bespoke_session')!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
+  });
+
+  it('throttles: one link per address a minute, five requests a minute per IP', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    await ask('ada@example.com');
+    await ask('ada@example.com');
+    app.mail.assertSentCount(ResetPasswordMail, 1);
+    for (let i = 0; i < 3; i++) await ask(`someone${i}@example.com`);
+    await ask('ada@example.com').assertStatus(429);
   });
 });
 

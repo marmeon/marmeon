@@ -10,6 +10,12 @@ declare module '@bespokecore/database' {
       user_id: number;
       last_login_at: Timestamp;
     };
+    /** Owned by `auth`. */
+    password_reset_tokens: {
+      email: string;
+      token_hash: Secret<string>;
+      created_at: Timestamp;
+    };
     /** Owned by `user-profile`. */
     profile_links: {
       id: Generated<number>;
@@ -45,6 +51,7 @@ declare module '@bespokecore/database' {
   }
   interface TableOwners {
     login_activity: 'user-profile';
+    password_reset_tokens: 'auth';
     profile_links: 'user-profile';
     remember_tokens: 'auth';
     users: 'auth';

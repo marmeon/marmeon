@@ -19,10 +19,12 @@
     "@bespokecore/database": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/log": "workspace:*",
+    "@bespokecore/mail": "workspace:*",
     "@bespokecore/react": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "@bespokecore/server": "workspace:*",
     "@bespokecore/session": "workspace:*",
+    "mjml": "^5.4.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "valibot": "^1.5.0"

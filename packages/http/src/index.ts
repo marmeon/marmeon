@@ -7,6 +7,7 @@ export { ERROR_PAGE, LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, VERSION_HEADE
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export type { ErrorPageProps, PageObject, PaginationMeta, SharedProps, SsrRender, SsrResult } from './page.ts';
 export { SharedData } from './shared-data.ts';
+export { AfterResponse } from './after-response.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
 export { defineMiddleware, defineRequest, defineRoutes, ValidationError } from '@bespokecore/router';

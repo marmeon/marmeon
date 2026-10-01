@@ -13,6 +13,7 @@ import { PAGE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
+import type { MailFake } from '@bespokecore/mail';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
@@ -36,6 +37,11 @@ export interface TestAppOptions {
   database?: 'refresh';
   /** With `database: 'refresh'`: run the modules' seeders for every test (inside its transaction). */
   seed?: boolean;
+  /**
+   * Mail is recorded, never sent (default `'fake'`): the `Mailer` is a `MailFake`, available as `app.mail`
+   * (Laravel's `Mail::fake()`, on by default). `'real'` keeps the configured transport.
+   */
+  mail?: 'fake' | 'real';
 }
 
 type FormValue = string | readonly string[];
@@ -63,6 +69,8 @@ export interface RequestOptions {
 export async function createTestApp(definition: ApplicationOptions, options: TestAppOptions = {}): Promise<TestApp> {
   const session = await importSession();
   const database = await importDatabase();
+  const mail = options.mail === 'real' ? undefined : await importMail();
+  let mailFake: MailFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
 
   let worker: WorkerDatabase | undefined;
@@ -87,12 +95,16 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     env,
     override: (container) => {
       if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
+      if (mail && container.has(mail.Mailer)) {
+        mailFake = new mail.MailFake(container.make(mail.MailConfig).from);
+        container.instance(mail.Mailer, mailFake);
+      }
       definition.override?.(container);
       options.override?.(container);
     },
   });
 
-  const shared: Shared = { kernel: createHttpKernel(application), database, cleanups: [], closing: undefined };
+  const shared: Shared = { kernel: createHttpKernel(application), database, mail: mailFake, cleanups: [], closing: undefined };
   const app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });
   if (database && worker) {
     try {
@@ -132,6 +144,8 @@ async function closeWhenTheTestEnds(app: TestApp): Promise<void> {
 interface Shared {
   readonly kernel: ReturnType<typeof createHttpKernel>;
   readonly database: DatabaseModule | undefined;
+  /** The recording mailer, unless the app has no mail or the test chose `mail: 'real'`. */
+  readonly mail: MailFake | undefined;
   /** Run before the app shuts down, e.g. rolling back the test's transaction. */
   readonly cleanups: (() => Promise<void>)[];
   closing: Promise<void> | undefined;
@@ -166,6 +180,15 @@ type DatabaseModule = typeof import('@bespokecore/database');
 async function importDatabase(): Promise<DatabaseModule | undefined> {
   try {
     return await import('@bespokecore/database');
+  } catch {
+    return undefined;
+  }
+}
+
+/** @bespokecore/mail is an optional peer, like the session. */
+async function importMail(): Promise<typeof import('@bespokecore/mail') | undefined> {
+  try {
+    return await import('@bespokecore/mail');
   } catch {
     return undefined;
   }
@@ -249,6 +272,15 @@ export class TestApp {
 
   get container(): Container {
     return this.application.container;
+  }
+
+  /**
+   * The mail the app sent — recorded, not delivered: `app.mail.assertSent(ResetPasswordMail, (mail, message) => …)`.
+   * Needs @bespokecore/mail in the app.
+   */
+  get mail(): MailFake {
+    if (!this.#shared.mail) throw new Error("app.mail needs @bespokecore/mail in the app (and not createTestApp(…, { mail: 'real' })).");
+    return this.#shared.mail;
   }
 
   /**

@@ -62,10 +62,12 @@ describe('bespoke (in the web app)', () => {
     );
     const migrate = bespoke(webApp, ['migrate'], memory);
     expect(migrate.code).toBe(0);
+    // Every module's migrations, in timestamp order (the list grows with the app) …
+    const ran = [...migrate.stdout.matchAll(/^✓ Migrated (\d{4}_\d\d_\d\d_\d{6}_\w+) \(([\w-]+)\) [\d.]+ ms$/gm)].map((match) => match[1]!);
+    expect(ran.slice(0, 3)).toEqual(['2026_10_01_120000_create_users_table', '2026_10_01_120100_create_login_activity_table', '2026_10_01_120101_create_profile_links_table']);
+    expect(ran).toEqual(ran.toSorted());
     // …then regenerates the table types (already committed, so unchanged).
-    expect(migrate.stdout).toMatch(
-      /^✓ Migrated 2026_10_01_120000_create_users_table \(auth\) [\d.]+ ms\n✓ Migrated 2026_10_01_120100_create_login_activity_table \(user-profile\) [\d.]+ ms\n✓ Migrated 2026_10_01_120101_create_profile_links_table \(user-profile\) [\d.]+ ms\n✓ Migrated 2026_10_01_140000_create_remember_tokens_table \(auth\) [\d.]+ ms\nℹ bootstrap\/database\.d\.ts is up to date\.\n$/,
-    );
+    expect(migrate.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
     expect(bespoke(webApp, ['migrate:fresh'], { ...memory, NODE_ENV: 'production' }).stderr).toContain('Pass --force to drop every table.');
   });
 

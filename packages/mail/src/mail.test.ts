@@ -1,0 +1,269 @@
+import { createServer, type Server } from 'node:net';
+import { ConsoleLogger, createApplication, Logger, type Container, type LogContext } from '@bespokecore/core';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import {
+  ArrayTransport,
+  compose,
+  fromHtml,
+  html,
+  LogTransport,
+  MailError,
+  mjml,
+  MjmlError,
+  Mailer,
+  MailFake,
+  MailServiceProvider,
+  MailTransport,
+  raw,
+  SmtpTransport,
+  textFromHtml,
+  type Mailable,
+  type MailContent,
+  type MailMessage,
+} from './index.ts';
+
+class WelcomeMail implements Mailable {
+  readonly #name: string;
+  readonly #email: string;
+  constructor(name: string, email = 'ada@example.com') {
+    this.#name = name;
+    this.#email = email;
+  }
+  envelope() {
+    return { to: { address: this.#email, name: this.#name }, subject: `Welcome, ${this.#name}` };
+  }
+  content() {
+    return fromHtml(html`<h1>Hello ${this.#name}</h1><p>Start here: <a href="${'https://app.test/start?a=1&b=2'}">Your profile</a></p>`);
+  }
+}
+
+describe('html``', () => {
+  it('counter-check: escapes every value — a name cannot inject markup', () => {
+    const name = '<img src=x onerror="alert(1)">';
+    expect(String(html`<p>Hello ${name}</p>`)).toBe('<p>Hello &lt;img src=x onerror=&quot;alert(1)&quot;&gt;</p>');
+    expect(String(html`<a title='${"x' onmouseover='alert(1)"}'>`)).toBe(`<a title='x&#39; onmouseover=&#39;alert(1)'>`);
+    // Without the template — plain interpolation — the markup would go through as it is:
+    expect(`<p>Hello ${name}</p>`).toContain('<img');
+  });
+
+  it('keeps nested templates and raw() markup, joins arrays, drops null/undefined/false', () => {
+    const items = ['a<b', 'c'];
+    expect(String(html`<ul>${items.map((item) => html`<li>${item}</li>`)}</ul>${null}${undefined}${false}${0}${raw('<hr>')}`)).toBe(
+      '<ul><li>a&lt;b</li><li>c</li></ul>0<hr>',
+    );
+  });
+
+  it('derives a text version: line breaks for blocks, URLs kept next to link labels, entities decoded', () => {
+    const markup = String(html`<style>p{color:red}</style><h1>Hi &amp; welcome</h1><p>Line<br>two</p><ul><li>one</li><li>two</li></ul><p><a href="${'https://x.test/?a=1&b=2'}">Go</a></p>`);
+    expect(textFromHtml(markup)).toBe('Hi & welcome\n\nLine\ntwo\n\n- one\n- two\n\nGo (https://x.test/?a=1&b=2)');
+  });
+});
+
+class ResetMail implements Mailable {
+  readonly #name: string;
+  constructor(name: string) {
+    this.#name = name;
+  }
+  envelope() {
+    return { to: 'ada@example.com', subject: 'Reset your password' };
+  }
+  content() {
+    return mjml`<mjml>
+      <mj-head><mj-preview>A link to choose a new password</mj-preview></mj-head>
+      <mj-body><mj-section><mj-column>
+        <mj-text>Hello ${this.#name},</mj-text>
+        <mj-button href="${'https://app.test/reset-password?token=abc&email=ada%40example.com'}">Choose a new password</mj-button>
+      </mj-column></mj-section></mj-body>
+    </mjml>`;
+  }
+}
+
+describe('mjml``', () => {
+  it('compiles to mail-client HTML — tables and Outlook conditionals — with a readable text version', async () => {
+    const message = await compose(new ResetMail('Ada'), 'hello@app.test');
+    expect(message.html).toMatch(/^<!doctype html>/i);
+    expect(message.html).toContain('<!--[if mso');
+    expect(message.html).toContain('<table');
+    expect(message.text).toBe('Hello Ada,\n\nChoose a new password (https://app.test/reset-password?token=abc&email=ada%40example.com)');
+  });
+
+  it('counter-check: escapes values — a name cannot inject markup or MJML', async () => {
+    const message = await compose(new ResetMail('<mj-raw><img src=x onerror="alert(1)"></mj-raw>'), 'hello@app.test');
+    expect(message.html).not.toContain('<img src=x');
+    expect(message.html).toContain('&lt;mj-raw&gt;&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+  });
+
+  it('validates strictly: a mistyped tag is an error, not a silently missing button', async () => {
+    const typo = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => mjml`<mjml><mj-body><mj-buton>x</mj-buton></mj-body></mjml>` };
+    await expect(compose(typo, 'hello@app.test')).rejects.toThrow(MjmlError);
+  });
+});
+
+describe('compose()', () => {
+  it('builds the neutral message: default sender, addresses normalized, text derived', async () => {
+    const message = await compose(new WelcomeMail('Ada'), { address: 'hello@app.test', name: 'App' });
+    expect(message).toMatchObject({
+      from: { address: 'hello@app.test', name: 'App' },
+      to: [{ address: 'ada@example.com', name: 'Ada' }],
+      cc: [],
+      bcc: [],
+      subject: 'Welcome, Ada',
+      attachments: [],
+    });
+    expect(message.text).toBe('Hello Ada\n\nStart here: Your profile (https://app.test/start?a=1&b=2)');
+  });
+
+  it('counter-check: refuses line breaks in headers — no Bcc smuggled in through a subject or a name', async () => {
+    await expect(compose(new WelcomeMail('Ada\r\nBcc: everyone@evil.test'), 'hello@app.test')).rejects.toThrow(MailError);
+    const withHeader = { envelope: () => ({ to: 'a@b.test', subject: 'x', headers: { 'X-Tag': 'a\nBcc: c@d.test' } }), content: () => ({ html: '', text: '' }) };
+    await expect(compose(withHeader, 'hello@app.test')).rejects.toThrow('header X-Tag must be a single line');
+    const badAddress = { envelope: () => ({ to: 'a@b.test, c@d.test', subject: 'x' }), content: () => ({ html: '', text: '' }) };
+    await expect(compose(badAddress, 'hello@app.test')).rejects.toThrow('Invalid mail address');
+  });
+
+  it('needs { html, text } strings — and at least one recipient', async () => {
+    const wrong = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => ({ $$typeof: Symbol.for('react.element') }) as unknown as MailContent };
+    await expect(compose(wrong, 'hello@app.test')).rejects.toThrow('must return mjml`…`, html`…` or { html, text } strings');
+    await expect(compose({ envelope: () => ({ to: [], subject: 'x' }), content: () => ({ html: '', text: '' }) }, 'hello@app.test')).rejects.toThrow('has no recipient');
+  });
+});
+
+describe('transports', () => {
+  it('log: writes recipient, subject and the text version (links clickable in development)', async () => {
+    const lines: string[] = [];
+    class Capture extends ConsoleLogger {
+      override info(message: string, _context?: LogContext) {
+        lines.push(message);
+      }
+      override child(): Logger {
+        return this;
+      }
+    }
+    await new LogTransport(new Capture()).send(await compose(new WelcomeMail('Ada'), 'hello@app.test'));
+    expect(lines).toEqual(['Mail to ada@example.com: Welcome, Ada\n\nHello Ada\n\nStart here: Your profile (https://app.test/start?a=1&b=2)\n']);
+  });
+
+  it('smtp: hands the message to an SMTP server through nodemailer — text and HTML parts', async () => {
+    const received = await withSmtpServer(async (port) => {
+      const transport = new SmtpTransport({ host: '127.0.0.1', port, secure: false });
+      await transport.send(await compose(new WelcomeMail('Ada'), { address: 'hello@app.test', name: 'App' }));
+      await transport.close();
+    });
+    expect(received.envelope).toEqual(['MAIL FROM:<hello@app.test>', 'RCPT TO:<ada@example.com>']);
+    expect(received.data).toMatch(/^Subject: Welcome, Ada$/m);
+    expect(received.data).toMatch(/^From: App <hello@app\.test>$/m);
+    expect(received.data).toContain('Content-Type: text/plain');
+    expect(received.data).toContain('Content-Type: text/html');
+  });
+});
+
+describe('MailServiceProvider', () => {
+  const boot = (env: Record<string, string>, override?: (container: Container) => void) =>
+    createApplication({ root: import.meta.dirname, discover: false, env: { LOG_LEVEL: 'silent', ...env }, providers: [MailServiceProvider], ...(override ? { override } : {}) });
+
+  it('picks the transport by MAIL_MAILER and sends from MAIL_FROM_*', async () => {
+    const app = await boot({ MAIL_MAILER: 'array', MAIL_FROM_ADDRESS: 'team@app.test', MAIL_FROM_NAME: 'The Team' });
+    const message = await app.container.make(Mailer).send(new WelcomeMail('Ada'));
+    expect(message.from).toEqual({ address: 'team@app.test', name: 'The Team' });
+    expect((app.container.make(MailTransport) as ArrayTransport).messages).toEqual([message]);
+    expect((await boot({})).container.make(MailTransport)).toBeInstanceOf(LogTransport);
+    expect((await boot({ MAIL_MAILER: 'smtp' })).container.make(MailTransport)).toBeInstanceOf(SmtpTransport);
+    await expect(boot({ MAIL_FROM_ADDRESS: 'nope' })).rejects.toThrow(/mail: MAIL_FROM_ADDRESS/);
+  });
+
+  it('takes a transport of your own — a class against the neutral message type', async () => {
+    class PostcardTransport implements MailTransport {
+      readonly postcards: string[] = [];
+      async send(message: MailMessage) {
+        this.postcards.push(`${message.to[0]!.address}: ${message.subject}`);
+      }
+    }
+    const postcards = new PostcardTransport();
+    const app = await boot({}, (container) => container.instance(MailTransport, postcards));
+    await app.container.make(Mailer).send(new WelcomeMail('Ada'));
+    expect(postcards.postcards).toEqual(['ada@example.com: Welcome, Ada']);
+  });
+});
+
+describe('MailFake', () => {
+  it('records mailables, composes them (a broken template fails), and asserts', async () => {
+    const mail = new MailFake();
+    mail.assertNothingSent();
+    await mail.send(new WelcomeMail('Ada'));
+    mail.assertSent(WelcomeMail).assertSent(WelcomeMail, (_mail, message) => message.to[0]!.address === 'ada@example.com').assertSentCount(WelcomeMail, 1);
+    expect(() => mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'nope')).toThrow('Expected a WelcomeMail matching the filter to be sent. Sent: WelcomeMail to ada@example.com.');
+    expect(() => mail.assertNothingSent()).toThrow('Expected no mail, sent WelcomeMail.');
+    expect(mail.sent(WelcomeMail)[0]!.message.text).toContain('https://app.test/start');
+    class Broken implements Mailable {
+      envelope() {
+        return { to: 'a@b.test', subject: 'x' };
+      }
+      content(): MailContent {
+        throw new Error('template broke');
+      }
+    }
+    await expect(mail.send(new Broken())).rejects.toThrow('template broke');
+  });
+});
+
+// --- Type guarantees (never called) -----------------------------------------------------------
+
+export function mailTypes() {
+  // content() must be { html, text }: an element of some UI library is not (E29 — this package knows none).
+  // @ts-expect-error — an object that is not { html: string; text: string }
+  const element: Mailable = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => ({ type: 'p', props: {}, key: null }) };
+  // Templates are content too: the text version is derived.
+  const fromTemplate: Mailable = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => mjml`<mjml><mj-body></mj-body></mjml>` };
+  // @ts-expect-error — a plain string is neither markup nor { html, text }
+  const plain: Mailable = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => '<p>x</p>' };
+  expectTypeOf(fromHtml(html`<p>x</p>`)).toEqualTypeOf<MailContent>();
+  void element;
+  void fromTemplate;
+  void plain;
+}
+
+/** A tiny SMTP server: answers every command with success and keeps what it was told. */
+async function withSmtpServer(run: (port: number) => Promise<void>): Promise<{ envelope: string[]; data: string }> {
+  const received = { envelope: [] as string[], data: '' };
+  const server: Server = createServer((socket) => {
+    let buffer = '';
+    let inData = false;
+    socket.write('220 test ESMTP\r\n');
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      while (true) {
+        if (inData) {
+          const end = buffer.indexOf('\r\n.\r\n');
+          if (end === -1) return;
+          received.data = buffer.slice(0, end);
+          buffer = buffer.slice(end + 5);
+          inData = false;
+          socket.write('250 queued\r\n');
+          continue;
+        }
+        const newline = buffer.indexOf('\r\n');
+        if (newline === -1) return;
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 2);
+        const command = line.slice(0, 4).toUpperCase();
+        if (command === 'EHLO' || command === 'HELO') socket.write('250 test\r\n');
+        else if (command === 'MAIL' || command === 'RCPT') {
+          received.envelope.push(line.replace(/ SIZE=\d+/, ''));
+          socket.write('250 ok\r\n');
+        } else if (command === 'DATA') {
+          inData = true;
+          socket.write('354 go ahead\r\n');
+        } else if (command === 'QUIT') {
+          socket.end('221 bye\r\n');
+        } else socket.write('250 ok\r\n');
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await run((server.address() as { port: number }).port);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  return received;
+}
