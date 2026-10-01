@@ -43,7 +43,7 @@ export default function Show({ profile, email, isOwnProfile, lastLoginAt, filter
       </p>
       {isOwnProfile && (
         <p>
-          <em>This is your profile.</em> <Link href={`/users/${profile.id}/edit`}>Edit profile</Link>
+          <em>This is your profile.</em> <Link href={`/users/${profile.id}/edit`}>Edit profile</Link> · <Link href="/settings/security">Security</Link>
         </p>
       )}
 

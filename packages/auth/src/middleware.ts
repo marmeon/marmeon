@@ -61,3 +61,42 @@ export function guest(home = '/'): MiddlewareClass<{}, {}> {
   Object.defineProperty(RedirectIfAuthenticated, 'name', { value: 'guest' });
   return RedirectIfAuthenticated;
 }
+
+export interface ConfirmedPasswordOptions {
+  /** Named route of the confirmation page (default `auth.password.confirm`). */
+  readonly confirmRoute?: string;
+  /** How long a confirmation counts, in seconds (default `AUTH_PASSWORD_TIMEOUT`, 15 minutes). */
+  readonly seconds?: number;
+}
+
+/**
+ * Sensitive pages ask for the password again — "sudo mode" (Laravel's `password.confirm`):
+ * `Route.middleware(authenticate()).middleware(confirmedPassword())`. Without a recent confirmation,
+ * JSON clients get 423, browsers the confirmation page (and come back afterwards).
+ */
+export function confirmedPassword(options: ConfirmedPasswordOptions = {}): MiddlewareClass<Authenticated, {}> {
+  const confirmRoute = options.confirmRoute ?? 'auth.password.confirm';
+  const RequirePassword = class {
+    readonly #auth: Auth;
+    readonly #session: Session;
+    readonly #router: Router;
+
+    constructor(auth: Auth, session: Session, router: Router) {
+      this.#auth = auth;
+      this.#session = session;
+      this.#router = router;
+    }
+
+    async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
+      if (this.#auth.passwordRecentlyConfirmed(options.seconds)) return next();
+      if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423 });
+      if (ctx.request.method === 'GET') {
+        const url = new URL(ctx.request.url);
+        this.#session.put(INTENDED_KEY, url.pathname + url.search);
+      }
+      return new Response(null, { status: 302, headers: { location: this.#router.url(confirmRoute) } });
+    }
+  };
+  Object.defineProperty(RequirePassword, 'name', { value: 'confirmedPassword' });
+  return RequirePassword;
+}

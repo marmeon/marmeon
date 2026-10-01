@@ -93,6 +93,9 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http

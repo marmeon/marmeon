@@ -51,3 +51,23 @@ export class Lockout {
     this.ip = ip;
   }
 }
+
+/** A new user registered — the app dispatches it (verification mails listen to it, step 6). */
+export class Registered {
+  readonly #event = true;
+  readonly user: AuthUser;
+
+  constructor(user: AuthUser) {
+    this.user = user;
+  }
+}
+
+/** A user's password changed (themselves, or by a reset) — every other session and remember-me token ended. */
+export class PasswordChanged {
+  readonly #event = true;
+  readonly user: AuthUser;
+
+  constructor(user: AuthUser) {
+    this.user = user;
+  }
+}

@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, useForm } from '@bespokecore/react';
+import { Head, Link, useForm } from '@bespokecore/react';
 import type { LoginController } from '../controllers/LoginController.ts';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 
@@ -7,7 +7,7 @@ type Props = PageProps<ShowLoginController>;
 
 export default function Login({ appName, old, csrfToken, flash }: Props) {
   // Fields and errors are typed from LoginRequest; the password never comes back from the server.
-  const form = useForm<LoginController>({ email: old.email ?? '', password: '' });
+  const form = useForm<LoginController>({ email: old.email ?? '', password: '', remember: false });
 
   return (
     <main>
@@ -53,10 +53,18 @@ export default function Login({ appName, old, csrfToken, flash }: Props) {
           />
           {form.errors.password && <small role="alert"> {form.errors.password}</small>}
         </p>
+        <p>
+          <label>
+            <input type="checkbox" name="remember" checked={form.data.remember === true} onChange={(e) => form.set('remember', e.target.checked)} /> Keep me signed in
+          </label>
+        </p>
         <button type="submit" disabled={form.processing}>
           {form.processing ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      <p>
+        New here? <Link href="/register">Create an account</Link>
+      </p>
       <p>
         <small>Demo: ada@example.com, alan@example.com or grace@example.com — password <code>password</code>.</small>
       </p>

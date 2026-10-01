@@ -24,6 +24,7 @@ export type {
 export { DatabaseConfig, defineConnection, describeConnection } from './config.ts';
 export type { ConnectionDefinition, ConnectionOptions } from './config.ts';
 export { DatabaseConnectionError } from './driver.ts';
+export { isUniqueViolation } from './errors.ts';
 export { DatabaseServiceProvider } from './provider.ts';
 export { DbShowCommand } from './commands/db-show.ts';
 export { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';

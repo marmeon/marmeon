@@ -1,4 +1,4 @@
-import { token } from '@bespokecore/core';
+import { token, type Token } from '@bespokecore/core';
 import type { PasswordHash } from './hashing.ts';
 
 /**
@@ -49,7 +49,8 @@ export interface UserProvider<U = AuthUser> {
   /** Stores a new hash (rehash on login, password change, reset). */
   updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash): Promise<void>;
 }
-export const UserProvider = token<UserProvider>('UserProvider');
+// Annotated: the declaration then names `UserProvider` instead of spelling out the app's user type.
+export const UserProvider: Token<UserProvider> = token<UserProvider>('UserProvider');
 
 /** What `authenticate()` adds to the context. */
 export interface Authenticated {

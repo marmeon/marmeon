@@ -10,6 +10,8 @@ export const LoginRequest = defineRequest({
     email: v.pipe(v.string('Enter your e-mail address.'), v.trim(), v.toLowerCase(), v.nonEmpty('Enter your e-mail address.'), v.maxLength(255), v.email('Enter a valid e-mail address.')),
     // Never trimmed: spaces belong to the password. The hasher normalizes Unicode itself.
     password: v.pipe(v.string('Enter your password.'), v.nonEmpty('Enter your password.'), v.maxLength(4096)),
+    // A checkbox: absent when unticked; `on` from an HTML form, `true` from JSON.
+    remember: v.optional(v.pipe(v.union([v.boolean(), v.literal('on')]), v.transform((value) => value !== false)), false),
   }),
 });
 
@@ -32,7 +34,7 @@ export class LoginController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
-    const { email, password } = ctx.body;
+    const { email, password, remember } = ctx.body;
     // Keyed on the *validated* e-mail, after validation — never on raw input (Breeze's ensureIsNotRateLimited).
     const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
     if (await this.#limiter.tooManyAttempts(key, MAX_ATTEMPTS)) {
@@ -42,7 +44,7 @@ export class LoginController extends Controller {
     }
 
     // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify).
-    if (!(await this.#auth.attempt(email, password))) {
+    if (!(await this.#auth.attempt(email, password, { remember }))) {
       await this.#limiter.hit(key, DECAY_SECONDS);
       throw new ValidationError({ email: ['These credentials do not match our records.'] }, { email });
     }

@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@bespokecore/core": "workspace:*",
+    "@bespokecore/database": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "@bespokecore/session": "workspace:*",

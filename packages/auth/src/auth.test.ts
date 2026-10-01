@@ -1,15 +1,20 @@
 import { createApplication, defineModule, listen, type Container } from '@bespokecore/core';
+import { DatabaseServiceProvider, Migrator } from '@bespokecore/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
 import { createHttpKernel } from '@bespokecore/server';
 import { CsrfProtection, Session, SessionServiceProvider, SessionStore } from '@bespokecore/session';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   Auth,
   AUTH_SESSION_KEYS,
   authenticate,
   AuthServiceProvider,
+  confirmedPassword,
+  DEFAULT_HASHER_OPTIONS,
   Failed,
+  PasswordChanged,
+  RememberTokenStore,
   guest,
   Hasher,
   Login,
@@ -63,8 +68,8 @@ class LoginController extends Controller {
     this.#auth = auth;
   }
   async handle(ctx: HttpContext) {
-    const { email, password } = (await ctx.input()) as { email: string; password: string };
-    const user = await this.#auth.attempt(email, password);
+    const { email, password, remember } = (await ctx.input()) as { email: string; password: string; remember?: boolean };
+    const user = await this.#auth.attempt(email, password, { remember: remember === true });
     return user ? this.redirect().intended().route('home') : Response.json({ message: 'These credentials do not match our records.' }, { status: 422 });
   }
 }
@@ -78,6 +83,53 @@ class LogoutController extends Controller {
   async handle() {
     await this.#auth.logout();
     return this.redirect('/login');
+  }
+}
+
+class ConfirmPasswordController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    const { password } = (await ctx.input()) as { password: string };
+    return (await this.#auth.confirmPassword(password)) ? this.redirect().intended().route('home') : Response.json({ message: 'Wrong password.' }, { status: 422 });
+  }
+}
+
+class UpdatePasswordController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    await this.#auth.updatePassword(((await ctx.input()) as { password: string }).password);
+    return { changed: true };
+  }
+}
+
+class LogoutOtherDevicesController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    return { done: await this.#auth.logoutOtherDevices(((await ctx.input()) as { password: string }).password) };
+  }
+}
+
+class WhoController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    const user = await this.#auth.user();
+    return { id: user?.id ?? null, viaRemember: this.#auth.viaRemember() };
   }
 }
 
@@ -106,6 +158,14 @@ const routes = defineRoutes((Route) => {
   Route.get('/token', TokenController);
   Route.get('/home', () => 'home').name('home');
   Route.middleware(authenticate()).get('/me', (ctx) => ({ id: ctx.user.id, name: ctx.user.name }));
+  Route.get('/who', WhoController);
+  Route.get('/confirm-password', () => 'confirm').name('auth.password.confirm');
+  Route.post('/confirm-password', ConfirmPasswordController);
+  const signedIn = Route.middleware(authenticate());
+  signedIn.middleware(confirmedPassword()).get('/sensitive', () => 'sensitive');
+  signedIn.middleware(confirmedPassword({ seconds: 60 })).get('/very-sensitive', () => 'very sensitive');
+  signedIn.post('/password', UpdatePasswordController);
+  signedIn.post('/logout-others', LogoutOtherDevicesController);
 });
 
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
@@ -115,13 +175,14 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', ...CHEAP, ...options.env },
-    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, AuthServiceProvider],
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
     modules: [
       defineModule({
         name: 'auth-test',
         routes,
-        listeners: [listen(Login, RecordEvent), listen(Logout, RecordEvent), listen(Failed, RecordEvent)],
+        migrations: new URL('./__fixtures__/migrations/', import.meta.url),
+        listeners: [listen(Login, RecordEvent), listen(Logout, RecordEvent), listen(Failed, RecordEvent), listen(PasswordChanged, RecordEvent)],
       }),
     ],
     override: (container: Container) => {
@@ -129,24 +190,29 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
       container.instance(UserProvider, users as UserProvider);
     },
   });
+  await application.container.make(Migrator).migrate();
   const kernel = createHttpKernel(application);
   const hasher = application.container.make(Hasher);
   const add = async (user: TestUser, password = 'secret') => users.rows.set(user.id, { user, hash: await hasher.make(password) });
 
   /** A tiny browser: keeps the session cookie between requests. */
-  const browser = () => {
-    let cookie = '';
+  const browser = (jar: Map<string, string> = new Map()) => {
     const send = async (path: string, init: { method?: string; json?: unknown; headers?: Record<string, string> } = {}) => {
+      const cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
       const response = await kernel.request(path, {
         method: init.method ?? 'GET',
         headers: { cookie, accept: 'application/json', ...(init.json ? { 'content-type': 'application/json' } : {}), ...init.headers },
         ...(init.json ? { body: JSON.stringify(init.json) } : {}),
       });
-      const set = response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
-      if (set) cookie = set.split(';')[0]!;
+      for (const header of response.headers.getSetCookie()) {
+        const [pair, ...attributes] = header.split(';');
+        const [name, value] = pair!.split('=') as [string, string];
+        if (value === '' || attributes.some((attribute) => /max-age=0\b/i.test(attribute.trim()))) jar.delete(name);
+        else jar.set(name, value);
+      }
       return response;
     };
-    return { send, cookie: () => cookie };
+    return { send, cookie: () => (jar.has('bespoke_session') ? `bespoke_session=${jar.get('bespoke_session')}` : ''), jar };
   };
   return { application, users, add, browser, store: application.container.make(SessionStore) };
 }
@@ -195,8 +261,8 @@ describe('Auth (session guard)', () => {
     const users = new MemoryUsers();
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
-    const session = { started: true, get: () => undefined, regenerate() {}, put() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never);
+    const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -320,6 +386,160 @@ function median(values: number[]): number {
   const sorted = values.toSorted((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)]!;
 }
+
+describe('remember me (E26)', () => {
+  const rememberLogin = (send: ReturnType<Awaited<ReturnType<typeof boot>>['browser']>['send']) =>
+    send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
+
+  it('keeps signing in by the cookie once the session is gone — and rotates it on every use', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const laptop = browser();
+    await rememberLogin(laptop.send);
+    const first = laptop.jar.get('remember_web');
+    expect(first).toBeTruthy();
+    // The browser closes: the session cookie is gone, the remember cookie stays.
+    const reopened = browser(new Map([['remember_web', first!]]));
+    expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true });
+    expect(reopened.jar.get('remember_web')).not.toBe(first); // rotated
+    expect(reopened.jar.has('bespoke_session')).toBe(true); // and a session again
+    expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true }); // from the session now
+  });
+
+  it('sets the cookie only when asked to, HttpOnly and long-lived', async () => {
+    const { add, browser } = await boot({ env: { AUTH_REMEMBER_DAYS: '7' } });
+    await add(ada);
+    const plain = browser();
+    await login(plain.send);
+    expect(plain.jar.has('remember_web')).toBe(false);
+    const response = await rememberLogin(browser().send);
+    const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('remember_web='))!;
+    expect(header).toMatch(/; Max-Age=60(4799|4800); HttpOnly; SameSite=Lax$/);
+  });
+
+  it('counter-check (copied cookie): the thief and the owner are both signed out, and every device of the user with them', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const owner = browser();
+    await rememberLogin(owner.send);
+    const otherDevice = browser();
+    await rememberLogin(otherDevice.send);
+    const copied = owner.jar.get('remember_web')!;
+
+    const thief = browser(new Map([['remember_web', copied]]));
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 }); // first use wins, rotates
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      const ownerLater = browser(new Map([['remember_web', copied]])); // the owner's browser, session expired
+      expect(await (await ownerLater.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(ownerLater.jar.has('remember_web')).toBe(false); // the cookie is deleted
+      const thiefLater = browser(new Map([['remember_web', thief.jar.get('remember_web')!]]));
+      expect(await (await thiefLater.send('/who')).json()).toMatchObject({ id: null });
+      const otherLater = browser(new Map([['remember_web', otherDevice.jar.get('remember_web')!]]));
+      expect(await (await otherLater.send('/who')).json()).toMatchObject({ id: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('signs out only this device', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const laptop = browser();
+    const phone = browser();
+    await rememberLogin(laptop.send);
+    await rememberLogin(phone.send);
+    const laptopCookie = laptop.jar.get('remember_web')!;
+    await laptop.send('/logout', { method: 'POST' });
+    expect(laptop.jar.has('remember_web')).toBe(false);
+    expect(await (await browser(new Map([['remember_web', laptopCookie]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['remember_web', phone.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: 1 });
+  });
+
+  it('ignores remember cookies of deleted users and forged cookies', async () => {
+    const { add, users, browser, application } = await boot();
+    await add(ada);
+    const laptop = browser();
+    await rememberLogin(laptop.send);
+    users.rows.delete(1);
+    expect(await (await browser(new Map([['remember_web', laptop.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: null });
+    // A cookie the app did not encrypt is not even read.
+    const plain = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 60_000));
+    expect(await (await browser(new Map([['remember_web', plain]])).send('/who')).json()).toMatchObject({ id: null });
+  });
+});
+
+describe('password changes and confirmation', () => {
+  it('changing the password ends the other sessions and all remember-me tokens — this session stays', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const laptop = browser();
+    const phone = browser();
+    await login(laptop.send);
+    await phone.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
+    const phoneRemember = phone.jar.get('remember_web')!;
+    events.length = 0;
+    expect(await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()).toEqual({ changed: true });
+    expect((await laptop.send('/me')).status).toBe(200);
+    expect((await phone.send('/me')).status).toBe(401);
+    expect(await (await browser(new Map([['remember_web', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(events).toEqual([expect.any(PasswordChanged)]);
+    expect((await login(browser().send, 'a new secret')).status).toBe(303);
+  });
+
+  it('signs out the other devices with the password — this one stays, and keeps its remember-me token', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const laptop = browser();
+    const phone = browser();
+    await laptop.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
+    await phone.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
+    const phoneRemember = phone.jar.get('remember_web')!;
+    expect(await (await laptop.send('/logout-others', { method: 'POST', json: { password: 'wrong' } })).json()).toEqual({ done: false });
+    expect((await phone.send('/me')).status).toBe(200);
+    expect(await (await laptop.send('/logout-others', { method: 'POST', json: { password: 'secret' } })).json()).toEqual({ done: true });
+    expect((await laptop.send('/me')).status).toBe(200);
+    expect((await phone.send('/me')).status).toBe(401);
+    expect(await (await browser(new Map([['remember_web', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['remember_web', laptop.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: 1 });
+    expect((await login(browser().send)).status).toBe(303); // the password itself is unchanged
+  });
+
+  it('asks for the password again on sensitive pages — a sign-in counts, a remember-me sign-in does not', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const html = { accept: 'text/html' };
+    const fresh = browser();
+    await login(fresh.send);
+    expect((await fresh.send('/sensitive', { headers: html })).status).toBe(200); // just typed it
+
+    const remembered = browser();
+    await remembered.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
+    const later = browser(new Map([['remember_web', remembered.jar.get('remember_web')!]]));
+    const away = await later.send('/sensitive?tab=keys', { headers: html });
+    expect([away.status, away.headers.get('location')]).toEqual([302, '/confirm-password']);
+    expect((await later.send('/sensitive')).status).toBe(423); // JSON clients
+    expect((await later.send('/confirm-password', { method: 'POST', json: { password: 'wrong' } })).status).toBe(422);
+    const back = await later.send('/confirm-password', { method: 'POST', json: { password: 'secret' } });
+    expect(back.headers.get('location')).toBe('/sensitive?tab=keys');
+    expect((await later.send('/sensitive', { headers: html })).status).toBe(200);
+  });
+
+  it('lets a confirmation expire', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const { send } = browser();
+    await login(send);
+    expect((await send('/very-sensitive')).status).toBe(200);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      expect((await send('/very-sensitive')).status).toBe(423);
+      expect((await send('/sensitive')).status).toBe(200); // 15 minutes by default
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 // --- Type guarantees (never called) -----------------------------------------------------------
 

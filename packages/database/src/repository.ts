@@ -1,6 +1,7 @@
 import { HttpError, type RouteBinder, type RouteBindingContext } from '@bespokecore/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
+import { isUniqueViolation } from './errors.ts';
 import { paginate, type Paginated } from './pagination.ts';
 import type { Tables } from './types.ts';
 
@@ -180,6 +181,20 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       .values(values as Record<string, unknown>)
       .returningAll()
       .executeTakeFirstOrThrow()) as Selectable<DB[T]>;
+  }
+
+  /**
+   * Inserts a row unless a unique index already holds its values — then `undefined` (an e-mail that is
+   * taken, say). Race-free, unlike checking first. Runs in a savepoint: on Postgres a failed statement
+   * aborts the whole surrounding transaction, so a plain insert-and-catch would break every query after it.
+   */
+  async tryInsert<V extends Insertable<DB[T]>>(values: Exact<V, Insertable<DB[T]>>): Promise<Selectable<DB[T]> | undefined> {
+    try {
+      return await this.transaction((repository) => repository.insert(values));
+    } catch (error) {
+      if (isUniqueViolation(error)) return undefined;
+      throw error;
+    }
   }
 
   /** Updates a row and returns it — `undefined` when there is none. Sets `updated_at` with `static timestamps = true`. */

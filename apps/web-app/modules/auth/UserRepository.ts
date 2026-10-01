@@ -20,6 +20,11 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('email', '=', email));
   }
 
+  /** A new user — `undefined` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
+  register(values: { name: string; email: string; password: PasswordHash }): Promise<User | undefined> {
+    return this.tryInsert(values);
+  }
+
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
     await this.update(id, { password: hash });
   }

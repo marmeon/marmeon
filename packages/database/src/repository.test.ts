@@ -2,7 +2,7 @@ import type { Application, ModuleDefinition } from '@bespokecore/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
+import { isUniqueViolation, Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
 
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
@@ -50,6 +50,35 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(await users.exists(ada.id + 1)).toBe(false);
     expect(await users.count()).toBe(1);
     expect(await users.findByEmail('ada@example.com')).toEqual({ id: ada.id, name: 'Ada' });
+  });
+
+  it('recognizes a unique violation on this driver (for race-free "already taken" errors)', async () => {
+    await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    const error = await users.insert({ name: 'Ada 2', email: 'ada@example.com' }).then(() => undefined, (e: unknown) => e);
+    expect(isUniqueViolation(error)).toBe(true);
+    expect(isUniqueViolation(new Error('UNIQUE but not from the database'))).toBe(false);
+    expect(isUniqueViolation(undefined)).toBe(false);
+  });
+
+  it('tryInsert(): undefined for a duplicate — and the surrounding transaction survives it (Postgres aborts it otherwise)', async () => {
+    await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    await users.transaction(async (inTransaction) => {
+      expect(await inTransaction.tryInsert({ name: 'Ada 2', email: 'ada@example.com' })).toBeUndefined();
+      expect(await inTransaction.tryInsert({ name: 'Alan', email: 'alan@example.com' })).toMatchObject({ name: 'Alan' });
+      expect(await inTransaction.count()).toBe(2); // still usable
+    });
+    expect(await users.count()).toBe(2);
+  });
+
+  it('counter-check: a plain insert-and-catch inside a Postgres transaction leaves it unusable', async () => {
+    await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    const after = await users
+      .transaction(async (inTransaction) => {
+        await inTransaction.insert({ name: 'Ada 2', email: 'ada@example.com' }).catch(() => undefined);
+        return inTransaction.count();
+      })
+      .then((count) => `count ${count}`, (error: unknown) => (error as Error).message);
+    expect(after).toBe(driver === 'pgsql' ? 'current transaction is aborted, commands ignored until end of transaction block' : 'count 1');
   });
 
   it('answers a missing row with a 404 that does not tell the client what was looked up', async () => {

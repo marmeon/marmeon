@@ -1,14 +1,22 @@
 import { defineConfig, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import * as v from 'valibot';
 import { Auth } from './auth.ts';
+import { AuthConfig } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
+import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { UserProvider } from './user.ts';
 
 // Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
 export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
-export { Failed, Lockout, Login, Logout } from './events.ts';
-export { authenticate, guest } from './middleware.ts';
-export type { AuthenticateOptions } from './middleware.ts';
+export type { LoginOptions } from './auth.ts';
+export { AuthConfig } from './config.ts';
+export { Failed, Lockout, Login, Logout, PasswordChanged, Registered } from './events.ts';
+export { authenticate, confirmedPassword, guest } from './middleware.ts';
+export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
+export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
+export type { RememberResult, RememberTokenTable } from './remember.ts';
+export { confirmed, password } from './rules.ts';
+export type { PasswordRuleOptions } from './rules.ts';
 export { authenticatedSession } from './testing.ts';
 export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
@@ -47,14 +55,16 @@ export const HashConfig = defineConfig('hash', {
 });
 export type HashConfig = ConfigOf<typeof HashConfig>;
 
-/** Registers the `Hasher` (`HASH_DRIVER`) and `Auth` (per request). Found by `bespoke discover`. */
+/** Registers the `Hasher` (`HASH_DRIVER`), `Auth` (per request) and the remember-me store. Found by `bespoke discover`. */
 export class AuthServiceProvider implements ServiceProvider {
-  static config = [HashConfig];
+  static config = [HashConfig, AuthConfig];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.scoped(Auth);
+    // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
+    container.singleton(RememberTokenStore, DatabaseRememberTokens);
   }
 
   boot(app: Application): void {

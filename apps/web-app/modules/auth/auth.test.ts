@@ -2,11 +2,14 @@ import { Hasher, PasswordHasher, type PasswordHash } from '@bespokecore/auth';
 import { Database, secret } from '@bespokecore/database';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { UserFactory } from './factories/UserFactory.ts';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { User } from './users.ts';
 import { UserRepository } from './UserRepository.ts';
+import type { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import type { LoginController } from './controllers/LoginController.ts';
+import type { RegisterController } from './controllers/RegisterController.ts';
+import type { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
 
 let app: TestApp;
@@ -158,6 +161,144 @@ describe('auth module', () => {
     await app.navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { appName: 'BespokeCore (test)' });
   });
 });
+
+describe('registration', () => {
+  const register = (form: Record<string, string>) =>
+    app.post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password: 'correct horse', password_confirmation: 'correct horse', ...form }, headers: { referer: 'http://localhost/register' } });
+
+  it('creates the user with a hashed password and signs them in', async () => {
+    const response = await register({ email: '  Ada@Example.COM ' }).assertRedirect('/users/me');
+    await app.assertDatabaseHas('users', { name: 'Ada Lovelace', email: 'ada@example.com' });
+    const ada = await app.make(Database).selectFrom('users').select('id').where('email', '=', 'ada@example.com').executeTakeFirstOrThrow();
+    response.assertAuthenticated({ id: ada.id } as User);
+    expect(await app.make(Hasher).verify('correct horse', await storedHash(ada.id))).toBe(true);
+    await app.post('/login', { form: { email: 'ada@example.com', password: 'correct horse' } }).assertRedirect('/users/me');
+  });
+
+  it('counter-check: an e-mail that exists — in any case — is a field error, not a 500', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    await register({ email: 'ADA@example.com' }).assertRedirect('/register').assertInvalid<RegisterController>({ email: 'This e-mail address is already registered.' }).assertGuest();
+    await app.assertDatabaseCount('users', 1);
+  });
+
+  it('checks the password: length, confirmation — and never flashes it', async () => {
+    const short = await register({ password: 'short', password_confirmation: 'short' }).assertInvalid<RegisterController>({ password: 'The password needs at least 8 characters.' });
+    expect(JSON.stringify(short.session())).not.toContain('short"');
+    await register({ password_confirmation: 'correct house' }).assertInvalid<RegisterController>({ password_confirmation: 'The passwords do not match.' });
+    await register({ name: 'A' }).assertInvalid<RegisterController>(['name']);
+  });
+
+  it('is for guests only', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await app.actingAs(ada).get('/register').assertRedirect('/users/me');
+  });
+});
+
+describe('remember me', () => {
+  const rememberLogin = (user: User) => app.post('/login', { form: { email: user.email, password: 'password', remember: 'on' } });
+
+  it('signs in by the cookie after the session is gone, and rotates it', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const login = await rememberLogin(ada).assertAuthenticated(ada);
+    const cookie = login.cookie('remember_web')!;
+    expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
+    await app.assertDatabaseCount('remember_tokens', 1);
+
+    const later = await app.withCookie('remember_web', cookie).get('/users/me').assertRedirect(`/users/${ada.id}`).assertAuthenticated(ada);
+    expect(later.cookie('remember_web')).not.toBe(cookie);
+    expect(later.cookie('remember_web')!.split('.')[0]).toBe(cookie.split('.')[0]);
+  });
+
+  it('does nothing without the checkbox', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const login = await app.post('/login', credentialsOf(ada));
+    expect(login.cookie('remember_web')).toBeUndefined();
+    await app.assertDatabaseCount('remember_tokens', 0);
+  });
+
+  it('counter-check: a copied cookie used by someone else first ends every remember-me sign-in of the user', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const copied = (await rememberLogin(ada)).cookie('remember_web')!;
+    const otherDevice = (await rememberLogin(ada)).cookie('remember_web')!;
+    await app.withCookie('remember_web', copied).get('/users/me').assertAuthenticated(ada); // the thief, first
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      await app.withCookie('remember_web', copied).expectingJson().get('/users/me').assertUnauthorized(); // the owner, later
+      await app.withCookie('remember_web', otherDevice).expectingJson().get('/users/me').assertUnauthorized();
+    } finally {
+      vi.useRealTimers();
+    }
+    await app.assertDatabaseCount('remember_tokens', 0);
+  });
+
+  it('signing out forgets this device only', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const laptop = await rememberLogin(ada);
+    const phone = await rememberLogin(ada);
+    await app.withCookie('bespoke_session', laptop.cookie('bespoke_session')!).withCookie('remember_web', laptop.cookie('remember_web')!).post('/logout').assertGuest();
+    await app.assertDatabaseCount('remember_tokens', 1);
+    await app.withCookie('remember_web', phone.cookie('remember_web')!).get('/users/me').assertAuthenticated(ada);
+  });
+});
+
+describe('security settings', () => {
+  it('asks for the password first ("sudo mode") and comes back to the page', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const away = await app.actingAs(ada).get('/settings/security', { headers: { accept: 'text/html' } }).assertRedirect('/confirm-password');
+    const session = app.withCookie('bespoke_session', away.cookie('bespoke_session')!);
+    const wrong = await session.post('/confirm-password', { form: { password: 'wrong' }, headers: { referer: 'http://localhost/confirm-password' } });
+    wrong.assertInvalid<ConfirmPasswordController>({ password: 'The password is incorrect.' });
+    const right = await app.withCookie('bespoke_session', wrong.cookie('bespoke_session')!).post('/confirm-password', { form: { password: 'password' } });
+    right.assertRedirect('/settings/security');
+    await app.withCookie('bespoke_session', right.cookie('bespoke_session')!).navigating().get('/settings/security').assertPage('auth/Security', { viaRemember: false });
+  });
+
+  it('a fresh sign-in counts as confirmation', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const login = await app.post('/login', credentialsOf(ada));
+    await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).navigating().get('/settings/security').assertOk();
+  });
+
+  it('counter-check: a new password signs out the other sessions and every remember-me device — the old password is dead', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
+    const laptop = await app.post('/login', credentialsOf(ada));
+    const here = app.withCookie('bespoke_session', laptop.cookie('bespoke_session')!);
+
+    await here.put('/settings/password', { form: { current_password: 'wrong', password: 'a new password', password_confirmation: 'a new password' } }).assertInvalid<UpdatePasswordController>({
+      current_password: 'The password is incorrect.',
+    });
+    const changed = await here.put('/settings/password', { form: { current_password: 'password', password: 'a new password', password_confirmation: 'a new password' } });
+    changed.assertRedirect().assertSessionHas('status', 'Password changed. You were signed out everywhere else.').assertAuthenticated(ada);
+
+    await app.withCookie('bespoke_session', phone.cookie('bespoke_session')!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie('bespoke_session', changed.cookie('bespoke_session')!).get('/users/me').assertRedirect(`/users/${ada.id}`);
+    await app.post('/login', credentialsOf(ada)).assertGuest();
+    await app.post('/login', { form: { email: ada.email, password: 'a new password' } }).assertAuthenticated(ada);
+  });
+
+  it('signs out the other devices with the password', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
+    const laptop = await app.post('/login', credentialsOf(ada));
+    const done = await app.withCookie('bespoke_session', laptop.cookie('bespoke_session')!).post('/settings/devices/logout', { form: { password: 'password' } });
+    done.assertSessionHas('status', 'Signed out on all other devices.');
+    await app.withCookie('bespoke_session', done.cookie('bespoke_session')!).get('/users/me').assertRedirect(`/users/${ada.id}`);
+    await app.withCookie('bespoke_session', phone.cookie('bespoke_session')!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
+  });
+
+  it('throttles password checks of a signed-in user — a stolen session is no guessing oracle', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const login = await app.post('/login', credentialsOf(ada));
+    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    for (let attempt = 1; attempt <= 5; attempt++) await session.post('/confirm-password', { form: { password: `guess ${attempt}` } });
+    await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
+  });
+});
+
+const credentialsOf = (user: User) => ({ form: { email: user.email, password: 'password' } });
 
 /** The stored hash — read the one deliberate way. */
 const storedHash = async (id: number) =>

@@ -20,6 +20,19 @@ declare module '@bespokecore/database' {
       updated_at: Generated<Timestamp>;
     };
     /** Owned by `auth`. */
+    remember_tokens: {
+      id: Generated<number>;
+      user_id: number;
+      selector: string;
+      validator_hash: Secret<string>;
+      previous_validator_hash: Secret<string | null>;
+      rotated_at: Timestamp | null;
+      last_used_at: Timestamp | null;
+      expires_at: Timestamp;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `auth`. */
     users: {
       id: Generated<number>;
       name: string;
@@ -33,6 +46,7 @@ declare module '@bespokecore/database' {
   interface TableOwners {
     login_activity: 'user-profile';
     profile_links: 'user-profile';
+    remember_tokens: 'auth';
     users: 'auth';
   }
   interface ExposedTables {
