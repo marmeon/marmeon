@@ -11,12 +11,27 @@ export {
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
   VERSION_HEADER,
   isPageObject,
+  isPrefetch,
   pageName,
 } from './page.ts';
-export { always, deepMerge, defer, merge, optional, propKind, resolveProp } from './props.ts';
-export type { AlwaysProp, DeferredProp, MergeProp, OptionalProp, PropKind, ResolvedProp, ResolvedProps, SharedValue, WrappedProp } from './props.ts';
+export { always, deepMerge, defer, merge, mergeOf, optional, propKind, resolveProp } from './props.ts';
+export type {
+  AlwaysProp,
+  DeferredProp,
+  MatchKey,
+  MergeProp,
+  MergeStrategy,
+  MergingDeferredProp,
+  OptionalProp,
+  PropKind,
+  ResolvedProp,
+  ResolvedProps,
+  SharedValue,
+  WrappedProp,
+} from './props.ts';
 export { partialReloadOf, resolvePageProps } from './page-props.ts';
 export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';

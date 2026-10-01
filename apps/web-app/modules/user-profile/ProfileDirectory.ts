@@ -1,4 +1,4 @@
-import { Database, hasMany, hasOne, paginate, sql } from '@bespokecore/database';
+import { cursorPaginate, Database, hasMany, hasOne, sql } from '@bespokecore/database';
 import type { RouteBinder } from '@bespokecore/http';
 
 /**
@@ -53,8 +53,12 @@ export class ProfileDirectory implements RouteBinder<Profile> {
     return { links: Number(links.count), memberNumber: Number(rank.memberNumber), members: Number(rank.members) };
   }
 
-  /** One page of everyone but `except`, by name — optionally only names containing `search` (LIKE wildcards taken literally). */
-  people({ search = '', except, page = 1, perPage = 5 }: { search?: string; except: number; page?: number; perPage?: number }) {
+  /**
+   * The next people after `cursor` (from the query string — anything that does not decode starts at the top), by
+   * name: everyone but `except`, optionally only names containing `search` (LIKE wildcards taken literally). Keyset
+   * pagination on (name, id) — names repeat, ids break the tie — for "load more": no count, no offset, nobody twice.
+   */
+  people({ search = '', except, cursor, perPage = 5 }: { search?: string; except: number; cursor?: string | null; perPage?: number }) {
     let query = this.#db
       .selectFrom('users')
       .select((eb) => [
@@ -62,13 +66,12 @@ export class ProfileDirectory implements RouteBinder<Profile> {
         'users.name',
         hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
       ])
-      .where('users.id', '!=', except)
-      .orderBy('users.name');
+      .where('users.id', '!=', except);
     if (search) {
       const pattern = `%${search.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       query = query.where(sql<boolean>`lower(users.name) like ${pattern} escape '\\'`);
     }
-    return paginate(this.#db, query, { page, perPage });
+    return cursorPaginate(query, { column: ['name', 'id'], cursor, perPage });
   }
 }
 

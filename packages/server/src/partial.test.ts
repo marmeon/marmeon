@@ -83,6 +83,6 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
 
   it('varies page responses by the partial headers, so no cache answers one with the other', async () => {
     const vary = (await visit()).headers.get('vary')?.split(',').map((name) => name.trim());
-    expect(vary).toEqual(['x-bespoke', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except']);
+    expect(vary).toEqual(['x-bespoke', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose']);
   });
 });

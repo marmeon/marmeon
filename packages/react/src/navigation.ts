@@ -10,6 +10,7 @@ import {
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
   VERSION_HEADER,
   type PageObject,
   type ValidationErrors,
@@ -19,7 +20,8 @@ export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 /**
  * One request of the navigator: a visit, a reload, Back/Forward to a page that is not in memory — or, `async`, one
- * in the background that loads a page's deferred props (no progress bar; it neither cancels nor waits for visits).
+ * in the background (deferred props, a poll, `visit({ async: true })`): no progress bar, it neither cancels visits
+ * nor is cancelled by them.
  */
 export interface Visit {
   readonly url: string;
@@ -50,8 +52,8 @@ export type VisitException =
 /**
  * The events of a visit, in order: `start`, `progress` (uploads), then one of `success`, `error`, `exception` or
  * `cancel`, and always `finish` — Inertia's names and meanings (E44). Back/Forward to a page that is not in memory
- * and loading deferred props (`visit.async`) report `start`, `exception`/`cancel` and `finish` only (they are no
- * visits of the app's own).
+ * and loading deferred props report `start`, `exception`/`cancel` and `finish` only (they are no visits of the
+ * app's own); an `async` visit of the app (a poll) reports all of them. Prefetches report nothing.
  */
 export interface VisitEvents {
   start: (visit: Visit) => void;
@@ -105,7 +107,32 @@ export interface VisitOptions extends VisitCallbacks {
   except?: readonly string[];
   /** Props to replace instead of merge, though the server marked them `merge()` (start a list over). */
   reset?: readonly string[];
+  /**
+   * In the background (a poll, "load more" as you scroll): no progress bar, it does not cancel the visit under way
+   * and a newer visit does not cancel it. It lands only on the page it started from — moved on meanwhile, the
+   * answer is dropped.
+   */
+  async?: boolean;
+  /**
+   * Keep the URL of the page on screen, though the request went elsewhere — "load more" with `data: { cursor }`:
+   * the history entry stays the list's URL (replaced, not a new one), so a reload starts it over instead of showing
+   * one later page alone.
+   */
+  preserveUrl?: boolean;
 }
+
+/** A prefetch: always a GET (`data` goes into the query string). */
+export interface PrefetchOptions {
+  /** How long the prefetched page may be shown instead of asking the server, in ms (default 30 000). */
+  cacheFor?: number;
+  data?: Record<string, unknown>;
+}
+
+/** How long a prefetched page is used by default: 30 s, like Inertia. */
+export const DEFAULT_PREFETCH_CACHE_FOR = 30_000;
+
+/** Prefetched pages kept at most (the oldest goes first). */
+const PREFETCH_LIMIT = 30;
 
 export interface ScrollPosition {
   readonly x: number;
@@ -217,6 +244,12 @@ export class Navigator {
   readonly #loading = new Set<string>();
   /** Requests in the background (`visit.async`): they die with the document's pages when it is left. */
   readonly #background = new Set<AbortController>();
+  /**
+   * Prefetched pages by URL — in memory only, like every page (E36): never in `history.state` or any storage. Used
+   * once, by the visit they were fetched for, within their `cacheFor`; dropped when the document is left (signing
+   * out) and when a non-GET visit changes what they show.
+   */
+  readonly #prefetched = new BoundedMap<string, Prefetched>(PREFETCH_LIMIT);
   /** This document was left for a full page load (409, a response that is not a page). */
   #left = false;
   /** A page is being swapped in: scroll events belong to no entry until its position is set. */
@@ -278,7 +311,7 @@ export class Navigator {
    */
   async visit(url: string, options: VisitOptions = {}): Promise<PageObject | undefined> {
     this.#adopt();
-    const { method = 'get', data, replace = false, preserveScroll = false, headers = {} } = options;
+    const { method = 'get', data, replace = false, preserveScroll = false, headers = {}, async: background = false, preserveUrl = false } = options;
     const preserveState = options.preserveState ?? method !== 'get';
 
     const target = new URL(url, this.#window.location.href);
@@ -288,36 +321,121 @@ export class Navigator {
       this.#window.location.assign(target.href);
       return undefined;
     }
+    // A form changes what prefetched pages show: none of them is used after it.
+    if (method !== 'get') this.#flushPrefetched();
 
     const request = buildRequest(target, method, data);
     // A partial reload names the page it reloads: the server sends only some props when it renders that one.
     const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? this.#page.component : undefined;
     const partialHeaders = partial === undefined ? {} : partialReloadHeaders(partial, options.only, options.except);
-    return this.#request({ url: request.url, method }, options, async (signal, onProgress) => {
-      const response = await this.#send(
-        request.url,
-        { method, headers: { ...request.headers, ...partialHeaders, ...headers }, body: request.body, signal },
-        onProgress,
-      );
-      let page = await this.#read(response, { replace, failed: true }, { url: request.url, method }, options);
+    // A plain GET visit of a prefetched URL takes that page (or waits for its request, still under way).
+    const prefetched = method === 'get' && partial === undefined && Object.keys(headers).length === 0 ? this.#takePrefetched(request.url) : undefined;
+    const visit: Visit = background ? { url: request.url, method, async: true } : { url: request.url, method };
+    // An async visit lands only on the page it started from.
+    const from = this.#key;
+    return this.#request(visit, options, async (signal, onProgress) => {
+      let page = prefetched ? await untilAborted(prefetched, signal) : undefined;
+      if (!page) {
+        if (signal.aborted) return undefined;
+        const response = await this.#send(
+          request.url,
+          { method, headers: { ...request.headers, ...partialHeaders, ...headers }, body: request.body, signal },
+          onProgress,
+        );
+        page = await this.#read(response, { replace, failed: true }, visit, options);
+      }
       if (!page || signal.aborted) return undefined;
+      if (background && (this.#left || this.#key !== from || this.#transitioning)) return undefined;
       // Some props of the same page: into the ones it has. (Another page — a redirect to the login — came in full.)
       if (partial !== undefined && page.component === partial && this.#page.component === partial) page = mergePage(this.#page, page, options.reset);
-      // Redirected back to the same URL (a failed form): replace, don't stack history entries.
+      if (preserveUrl) page = { ...page, url: this.#page.url };
+      // Redirected back to the same URL (a failed form), or kept the URL ("load more"): replace, don't stack history entries.
       const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
-      const history = replace || (method !== 'get' && sameUrl) ? 'replace' : 'push';
-      const shown = await this.#show(page, history, { preserveScroll, preserveState, hash: target.hash });
+      const history = replace || preserveUrl || (method !== 'get' && sameUrl) ? 'replace' : 'push';
+      const shown = await this.#show(page, history, { preserveScroll, preserveState, hash: preserveUrl ? '' : target.hash });
       if (shown) {
         const errors = validationErrors(shown);
-        if (errors) this.#emit('error', options.onError, errors, { url: request.url, method });
-        else this.#emit('success', options.onSuccess, shown, { url: request.url, method });
+        if (errors) this.#emit('error', options.onError, errors, visit);
+        else this.#emit('success', options.onSuccess, shown, visit);
       }
       return shown;
     });
   }
 
-  /** The current page again from the server (fresh props), keeping scroll position and component state. */
-  reload(options: Omit<VisitOptions, 'method' | 'data'> = {}): Promise<PageObject | undefined> {
+  /**
+   * Fetches a page ahead of the visit (a hovered link): GET only, with `Purpose: prefetch`, so the server can tell
+   * and leave out side effects. A visit of the same URL within `cacheFor` shows it without asking again — or
+   * waits for it, if it is still under way. No events, no progress bar, no fallback: a prefetch that fails (offline,
+   * 5xx, a 409 after a deployment, anything but a page) is forgotten, and the visit asks the server itself.
+   */
+  prefetch(url: string, options: PrefetchOptions = {}): Promise<void> {
+    // Never anything but a GET — whatever a caller passes (a form, an action, is no page to fetch ahead).
+    const method = (options as { method?: unknown }).method;
+    if (this.#left || (method !== undefined && String(method).toLowerCase() !== 'get')) return Promise.resolve();
+    this.#adopt();
+    const target = new URL(url, this.#window.location.href);
+    if (target.origin !== this.#window.location.origin) return Promise.resolve();
+    const { url: key } = buildRequest(target, 'get', options.data);
+    if (key === this.#page.url) return Promise.resolve();
+    const existing = this.#prefetched.peek(key);
+    if (existing && !existing.expired()) return existing.page.then(() => undefined);
+
+    const cacheFor = options.cacheFor ?? DEFAULT_PREFETCH_CACHE_FOR;
+    const controller = new AbortController();
+    const entry: Prefetched = {
+      controller,
+      page: this.#fetchAhead(key, controller.signal).then((page) => {
+        // Kept from when it arrived; nothing to keep → the visit asks the server.
+        if (page && this.#prefetched.peek(key) === entry) entry.expiresAt = Date.now() + cacheFor;
+        else if (this.#prefetched.peek(key) === entry) this.#prefetched.delete(key);
+        return page;
+      }),
+      expiresAt: Infinity,
+      expired: () => Date.now() >= entry.expiresAt,
+    };
+    this.#prefetched.set(key, entry);
+    return entry.page.then(() => undefined);
+  }
+
+  /** The page of a prefetch — undefined for anything that is not a page to show as it is. */
+  async #fetchAhead(url: string, signal: AbortSignal): Promise<PageObject | undefined> {
+    try {
+      const response = await this.#send(url, { method: 'get', headers: { [PURPOSE_HEADER]: 'prefetch' }, signal });
+      // 409 (a new build, signing in or out), 5xx, a 4xx page, not a page: the visit asks again and handles it.
+      if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true') {
+        await response.body?.cancel();
+        return undefined;
+      }
+      const page = (await response.json()) as PageObject;
+      return this.#left || signal.aborted ? undefined : page;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The prefetched page of `url`, if it may still be used — taken: a later visit asks the server again. */
+  #takePrefetched(url: string): Promise<PageObject | undefined> | undefined {
+    const entry = this.#prefetched.peek(url);
+    if (!entry) return undefined;
+    this.#prefetched.delete(url);
+    return entry.expired() ? undefined : entry.page;
+  }
+
+  #flushPrefetched(): void {
+    for (const entry of this.#prefetched.values()) entry.controller.abort();
+    this.#prefetched.clear();
+  }
+
+  /** How many prefetched pages are kept (tests). */
+  get prefetchedPages(): number {
+    return this.#prefetched.size;
+  }
+
+  /**
+   * The current page again from the server (fresh props), keeping scroll position and component state. `data`
+   * goes into the query string — `reload({ data: { cursor }, only: ['people'], preserveUrl: true })` loads more.
+   */
+  reload(options: Omit<VisitOptions, 'method'> = {}): Promise<PageObject | undefined> {
     const { pathname, search } = this.#window.location;
     return this.visit(pathname + search, { replace: true, preserveScroll: true, preserveState: true, ...options });
   }
@@ -633,6 +751,8 @@ export class Navigator {
   #leave(): void {
     this.#left = true;
     this.#cache.clear();
+    // Prefetched while signed in: not for whoever comes next — and one still under way lands nowhere.
+    this.#flushPrefetched();
     // A deferred prop still loading must not come back into a page of someone who has left (signed out).
     for (const request of this.#background) request.abort();
   }
@@ -654,34 +774,68 @@ function partialReloadHeaders(component: string, only: readonly string[] | undef
  */
 export function mergePage(current: PageObject, partial: PageObject, reset: readonly string[] = []): PageObject {
   const props: Record<string, unknown> = { ...current.props };
+  const match = partial.matchPropsOn ?? [];
   for (const [key, value] of Object.entries(partial.props)) {
     if (reset.includes(key)) props[key] = value;
-    else if (partial.mergeProps?.includes(key)) props[key] = mergeValues(props[key], value, false);
-    else if (partial.deepMergeProps?.includes(key)) props[key] = mergeValues(props[key], value, true);
+    else if (partial.mergeProps?.includes(key)) props[key] = mergeValues(props[key], value, false, key, match);
+    else if (partial.deepMergeProps?.includes(key)) props[key] = mergeValues(props[key], value, true, key, match);
     else props[key] = value;
   }
-  const { deferredProps: _pending, mergeProps: _merge, deepMergeProps: _deep, ...rest } = partial;
+  const { deferredProps: _pending, mergeProps: _merge, deepMergeProps: _deep, matchPropsOn: _match, ...rest } = partial;
   const deferredProps = stillPending(current.deferredProps, Object.keys(partial.props));
   const mergeProps = union(current.mergeProps, partial.mergeProps);
   const deepMergeProps = union(current.deepMergeProps, partial.deepMergeProps);
+  const matchPropsOn = union(current.matchPropsOn, partial.matchPropsOn);
   return {
     ...rest,
     props,
     ...(deferredProps ? { deferredProps } : {}),
     ...(mergeProps ? { mergeProps } : {}),
     ...(deepMergeProps ? { deepMergeProps } : {}),
+    ...(matchPropsOn ? { matchPropsOn } : {}),
   };
 }
 
-function mergeValues(current: unknown, next: unknown, deep: boolean): unknown {
-  if (Array.isArray(current) && Array.isArray(next)) return [...current, ...next];
+/** Merges `next` into `current`, at `path` of the props (`others.data`) — arrays by the key `matchPropsOn` names for the path. */
+function mergeValues(current: unknown, next: unknown, deep: boolean, path: string, match: readonly string[]): unknown {
+  if (Array.isArray(current) && Array.isArray(next)) return append(current, next, matchKey(path, match));
   if (isPlainObject(current) && isPlainObject(next)) {
     if (!deep) return { ...current, ...next };
     const merged: Record<string, unknown> = { ...current };
-    for (const [key, value] of Object.entries(next)) merged[key] = Object.hasOwn(current, key) ? mergeValues(current[key], value, true) : value;
+    for (const [key, value] of Object.entries(next)) merged[key] = Object.hasOwn(current, key) ? mergeValues(current[key], value, true, `${path}.${key}`, match) : value;
     return merged;
   }
   return next;
+}
+
+/** The key that identifies the items of the array at `path` — `matchPropsOn: ['others.data.id']` → `id` for `others.data`. */
+function matchKey(path: string, match: readonly string[]): string | undefined {
+  const prefix = `${path}.`;
+  return match.find((entry) => entry.startsWith(prefix) && !entry.slice(prefix.length).includes('.'))?.slice(prefix.length);
+}
+
+/**
+ * `next` after `current` — with a `key`, an item whose key is shown already takes that one's place (the same page
+ * loaded twice: a poll, "load more" clicked twice) instead of appearing again.
+ */
+function append(current: readonly unknown[], next: readonly unknown[], key: string | undefined): unknown[] {
+  if (key === undefined) return [...current, ...next];
+  const merged = [...current];
+  const at = new Map<unknown, number>();
+  merged.forEach((item, index) => {
+    if (isPlainObject(item) && item[key] !== undefined) at.set(item[key], index);
+  });
+  for (const item of next) {
+    const id = isPlainObject(item) ? item[key] : undefined;
+    const index = id === undefined ? undefined : at.get(id);
+    if (index !== undefined) {
+      merged[index] = item;
+    } else {
+      if (id !== undefined) at.set(id, merged.length);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -765,6 +919,31 @@ class BoundedMap<K, V> {
   clear(): void {
     this.#entries.clear();
   }
+
+  values(): IterableIterator<V> {
+    return this.#entries.values();
+  }
+}
+
+/** A prefetched page: its request (under way or done), and until when it may be shown. */
+interface Prefetched {
+  readonly controller: AbortController;
+  readonly page: Promise<PageObject | undefined>;
+  expiresAt: number;
+  expired(): boolean;
+}
+
+/** `promise`, or undefined as soon as `signal` aborts — a newer visit does not wait for a prefetch it does not need. */
+function untilAborted<T>(promise: Promise<T | undefined>, signal: AbortSignal): Promise<T | undefined> {
+  if (signal.aborted) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const abort = () => resolve(undefined);
+    signal.addEventListener('abort', abort, { once: true });
+    void promise.then((value) => {
+      signal.removeEventListener('abort', abort);
+      resolve(value);
+    });
+  });
 }
 
 /** Page objects by history key, least recently used first out. */

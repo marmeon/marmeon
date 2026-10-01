@@ -2,13 +2,13 @@ import type { PageObject, PageProps, RouteManifest, SharedProps } from '@bespoke
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { defaultTitle, HeadContext, TitleRegistry, type TitleTemplate } from './head.tsx';
-import { Navigator, type VisitException, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
+import { Navigator, type PrefetchOptions, type VisitException, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { showProgress, type ProgressOptions } from './progress.ts';
 import { RoutesContext } from './routes.ts';
 
 export { xsrfToken } from './navigation.ts';
-export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress } from './navigation.ts';
+export type { PrefetchOptions, Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress } from './navigation.ts';
 
 /** The props of page `T`: a controller (`PageProps<T>`) or the props themselves. */
 type PropsOf<T> = T extends { handle: (...args: never[]) => unknown } ? PageProps<T> : T;
@@ -32,8 +32,8 @@ export interface PartialReloadOptions<T = unknown> {
 /** {@link VisitOptions}, with the props of a partial reload checked against page `T`. */
 export type TypedVisitOptions<T = unknown> = Omit<VisitOptions, keyof PartialReloadOptions> & PartialReloadOptions<T>;
 
-/** {@link TypedVisitOptions} of a reload — of the current URL, without a method or data. */
-export type ReloadOptions<T = unknown> = Omit<TypedVisitOptions<T>, 'method' | 'data'>;
+/** {@link TypedVisitOptions} of a reload — a GET of the current URL; `data` goes into its query string. */
+export type ReloadOptions<T = unknown> = Omit<TypedVisitOptions<T>, 'method' | 'data'> & { data?: Record<string, unknown> };
 
 /** Programmatic navigation, from {@link useRouter}. */
 export interface Router<T = unknown> {
@@ -41,6 +41,11 @@ export interface Router<T = unknown> {
   visit(url: string, options?: TypedVisitOptions<T>): Promise<PageObject | undefined>;
   /** The current page again from the server, keeping scroll position and component state — `reload({ only: ['stats'] })`. */
   reload(options?: ReloadOptions<T>): Promise<PageObject | undefined>;
+  /**
+   * Fetches a page ahead of the visit — GET only, kept in memory for `cacheFor` ms (default 30 s); a visit of that
+   * URL then shows it at once. What `<Link prefetch>` does on hover.
+   */
+  prefetch(url: string, options?: PrefetchOptions): Promise<void>;
   /** Listens to the events of every visit; returns the function that stops listening (for an effect's cleanup). */
   on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
 }
@@ -75,8 +80,8 @@ export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'>
  * ```
  */
 export function useRouter<T = unknown>(): Router<T> {
-  const { visit, reload, on } = useRouterContext();
-  return { visit, reload, on } as Router<T>;
+  const { visit, reload, prefetch, on } = useRouterContext();
+  return useMemo(() => ({ visit, reload, prefetch, on }) as Router<T>, [visit, reload, prefetch, on]);
 }
 
 export interface BespokeAppProps {
@@ -163,6 +168,8 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
   }, []);
   const visit = useCallback((url: string, options?: VisitOptions) => browser().visit(url, options), [browser]);
   const reload = useCallback((options?: ReloadOptions) => browser().reload(options), [browser]);
+  // A prefetch while rendering on the server (an effect never runs there) has nothing to do.
+  const prefetch = useCallback((url: string, options?: PrefetchOptions) => navigator.current?.prefetch(url, options) ?? Promise.resolve(), []);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
 
   // A page that throws gets one fresh copy of its props from the server: after a hot update, the code may
@@ -182,7 +189,7 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
     if (retried.current && retried.current !== page) retried.current = null;
   }, []);
 
-  const router = useMemo(() => ({ page: current.page, visit, reload, on }), [current.page, visit, reload, on]);
+  const router = useMemo(() => ({ page: current.page, visit, reload, prefetch, on }), [current.page, visit, reload, prefetch, on]);
   const { Component, page, key } = current;
 
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);

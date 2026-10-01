@@ -73,7 +73,7 @@ describe('user-profile module', () => {
       .get(`${profile(ada)}?q=  TUR `)
       .assertPage<ShowUserProfileController>('user-profile/Show', {
         filter: 'TUR',
-        others: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null }], meta: { total: 1, lastPage: 1 } },
+        others: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null }], meta: { perPage: 5, nextCursor: null } },
       });
     await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
       expect(props.others.data.map((other) => other.name)).toEqual(['Alan Turing', 'Grace Hopper']);
@@ -82,14 +82,22 @@ describe('user-profile module', () => {
     await as(ada).get(`${profile(ada)}?q=%25`).assertPage<ShowUserProfileController>('user-profile/Show', { others: { data: [] } });
   });
 
-  it('pages through the people — five at a time, the filter kept, bad page numbers harmless', async () => {
+  it('pages through the people by cursor — five at a time, the filter kept, a bad cursor harmless', async () => {
     await app.factory(UserFactory).count(11).create(); // "User 1" … "User 11", plus Alan and Grace
-    await as(ada).get(`${profile(ada)}?q=user&page=2`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.others.meta).toEqual({ page: 2, perPage: 5, total: 11, lastPage: 3, from: 6, to: 10 });
-      expect(props.others.data).toHaveLength(5);
-    });
-    await as(ada).get(`${profile(ada)}?page=-3&per_page=100000`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.others.meta).toMatchObject({ page: 1, perPage: 50, total: 13 });
+    const names: string[] = [];
+    let cursor: string | null = '';
+    for (let page = 0; cursor !== null; page++) {
+      await as(ada).get(`${profile(ada)}?q=user${cursor ? `&cursor=${cursor}` : ''}`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+        expect(props.others.data.length).toBeLessThanOrEqual(5);
+        names.push(...props.others.data.map((other) => other.name));
+        cursor = props.others.meta.nextCursor;
+      });
+      expect(page).toBeLessThan(3);
+    }
+    expect(names).toHaveLength(11);
+    expect(new Set(names).size).toBe(11);
+    await as(ada).get(`${profile(ada)}?cursor=not-a-cursor`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
+      expect(props.others.data[0]!.name).toBe('Alan Turing');
     });
   });
 
@@ -271,8 +279,8 @@ describe('user-profile module', () => {
     app.make(Connections).onQuery((query) => queries.push(query.sql));
 
     const people = await directory.people({ except: ada.id, perPage: 50 });
-    // 7 people, each with their last sign-in: the page count, and ONE query for the rows and their relation.
-    expect(queries).toHaveLength(2);
+    // 7 people, each with their last sign-in: ONE query for the rows and their relation (keyset pagination counts nothing).
+    expect(queries).toHaveLength(1);
     expect(queries.filter((sql) => /login_activity/.test(sql))).toHaveLength(1);
     expect(people.data).toHaveLength(7);
     expect(people.data.find((person) => person.id === grace.id)?.activity).toEqual({ last_login_at: expect.stringMatching(/Z$/) });

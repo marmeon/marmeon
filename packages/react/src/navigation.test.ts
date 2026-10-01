@@ -1,6 +1,6 @@
 import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
 import { describe, expect, it } from 'vitest';
-import { isHistoryState, Navigator, type NavigatorWindow, type ScrollRegion, type VisitException } from './navigation.ts';
+import { isHistoryState, mergePage, Navigator, type NavigatorWindow, type ScrollRegion, type VisitException } from './navigation.ts';
 
 const ORIGIN = 'https://app.test';
 
@@ -720,5 +720,266 @@ describe('Navigator — partial reloads and deferred props (E7)', () => {
     await settle();
     expect(visible().props).toEqual({ name: 'Ada', activity: ['x'] });
     expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual([undefined, 'activity']);
+  });
+});
+
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { open, opened };
+}
+
+const purpose = (request: { headers: Record<string, string> }) => request.headers.purpose;
+
+describe('Navigator — prefetching', () => {
+  it('fetches a page ahead (GET, Purpose: prefetch) — the visit shows it without asking again', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = (url) => pageResponse(page(new URL(url).pathname, { name: 'Grace' }));
+    const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
+    await navigator.prefetch('/users/2');
+    expect(win.requests).toEqual([{ url: `${ORIGIN}/users/2`, method: 'GET', headers: expect.objectContaining({ [PAGE_HEADER]: 'true', purpose: 'prefetch' }) }]);
+    expect(visible().props).toEqual({ name: 'Ada' }); // fetched, not shown
+
+    const events: string[] = [];
+    await navigator.visit('/users/2', { onSuccess: () => events.push('success'), onFinish: () => events.push('finish') });
+    expect(visible().props).toEqual({ name: 'Grace' });
+    expect(win.requests).toHaveLength(1);
+    expect(events).toEqual(['success', 'finish']);
+    // History as for any visit: an entry, no props in it.
+    expect(win.entries.map((entry) => entry.url)).toEqual([`${ORIGIN}/users/1`, `${ORIGIN}/users/2`]);
+    expect(win.current.state).not.toContain('Grace');
+  });
+
+  it('a visit while the prefetch is still under way waits for it — one request, not two', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    win.handler = async () => {
+      await slow.opened;
+      return pageResponse(page('/users/2', { name: 'Grace' }));
+    };
+    const { navigator, visible } = boot(win, page('/users/1'));
+    void navigator.prefetch('/users/2');
+    void navigator.prefetch('/users/2'); // hovered again: still the one request
+    const visiting = navigator.visit('/users/2');
+    slow.open();
+    await visiting;
+    expect(visible().props).toEqual({ name: 'Grace' });
+    expect(win.requests).toHaveLength(1);
+  });
+
+  it('counter-check: never prefetches anything but a GET — nor another site', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => pageResponse(page('/x'));
+    const { navigator } = boot(win, page('/users/1'));
+    for (const method of ['post', 'put', 'patch', 'delete', 'POST']) await navigator.prefetch('/logout', { method } as never);
+    await navigator.prefetch('https://elsewhere.test/page');
+    await navigator.prefetch('/users/1'); // the page on screen
+    expect(win.requests).toEqual([]);
+  });
+
+  it('uses a prefetched page once, within cacheFor — then the server is asked again', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    let n = 0;
+    win.handler = (url) => pageResponse(page(new URL(url).pathname, { n: ++n }));
+    const { navigator, visible } = boot(win, page('/a'));
+    await navigator.prefetch('/b');
+    await navigator.visit('/b');
+    await navigator.visit('/a');
+    await navigator.visit('/b');
+    expect(visible().props).toEqual({ n: 3 }); // not the prefetched n: 1 again
+
+    await navigator.prefetch('/c', { cacheFor: 0 }); // stale as soon as it arrives
+    await navigator.visit('/c');
+    expect(visible().props).toEqual({ n: 5 });
+    expect(win.requests.map(purpose)).toEqual(['prefetch', undefined, undefined, 'prefetch', undefined]);
+  });
+
+  it.each([
+    ['signing out (POST → 409)', 'post'],
+    ['a GET visit answered with 409 (a new build — or the session ended in another tab, the next visit hits the login)', 'get'],
+  ] as const)('counter-check: after a hard page change — %s — a prefetched protected page is never shown', async (_, method) => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    let signedIn = true;
+    win.handler = (url) => {
+      if (url.endsWith('/logout')) {
+        signedIn = false;
+        return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
+      }
+      return signedIn ? pageResponse(page('/settings/security', { email: 'ada@example.com' }, 'auth/Security')) : pageResponse(page('/login', {}, 'auth/Login'));
+    };
+    const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
+    await navigator.prefetch('/settings/security');
+    expect(navigator.prefetchedPages).toBe(1);
+    await navigator.visit('/logout', { method });
+    expect(win.loads).toEqual(['assign /login']);
+    expect(navigator.prefetchedPages).toBe(0);
+
+    // Should this document live on (the browser brings it back, a click before it unloads): the server is asked.
+    await navigator.visit('/settings/security');
+    expect(JSON.stringify(visible())).not.toContain('ada@example.com');
+    expect(visible().component).toBe('auth/Login');
+    expect(win.requests.at(-1)).toMatchObject({ url: `${ORIGIN}/settings/security`, method: 'GET' });
+    expect(purpose(win.requests.at(-1)!)).toBeUndefined();
+  });
+
+  it('a prefetch still under way when the document is left lands nowhere — and is aborted', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    let signal: AbortSignal | undefined;
+    win.handler = async (url, init) => {
+      if (init.method === 'POST') return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
+      signal = init.signal ?? undefined;
+      await slow.opened;
+      return pageResponse(page('/settings/security', { email: 'ada@example.com' }));
+    };
+    const { navigator } = boot(win, page('/users/1'));
+    const prefetching = navigator.prefetch('/settings/security');
+    await navigator.visit('/logout', { method: 'post' });
+    expect(signal?.aborted).toBe(true);
+    slow.open();
+    await prefetching;
+    expect(navigator.prefetchedPages).toBe(0);
+  });
+
+  it('forgets what is no page to show as it is — 409 after a deployment, a download, offline, 5xx — without navigating or events', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    const answers: (() => Response)[] = [
+      () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/b' } }),
+      () => new Response('%PDF-1.7', { headers: { 'content-type': 'application/pdf' } }), // not a page: a download
+      () => {
+        throw new TypeError('Failed to fetch');
+      },
+    ];
+    for (const answer of answers) {
+      win.handler = answer;
+      const { navigator, stop } = boot(win, page('/a'));
+      const exceptions: unknown[] = [];
+      navigator.on('exception', (exception) => exceptions.push(exception));
+      navigator.on('start', (visit) => exceptions.push(visit));
+      await navigator.prefetch('/b');
+      expect(win.loads).toEqual([]);
+      expect(exceptions).toEqual([]); // no events, no fallback for a prefetch
+      expect(navigator.prefetchedPages).toBe(0);
+      stop();
+    }
+    // A 5xx error page with the page header is not kept either.
+    win.handler = () => new Response(JSON.stringify(page('/b', {}, 'errors/Error')), { status: 500, headers: { [PAGE_HEADER]: 'true' } });
+    const { navigator } = boot(win, page('/a'));
+    await navigator.prefetch('/b');
+    expect(navigator.prefetchedPages).toBe(0);
+  });
+
+  it('a form (non-GET visit) drops every prefetched page — what they show may have changed', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = (url, init) => pageResponse(page(init.method === 'POST' ? '/a' : new URL(url).pathname));
+    const { navigator } = boot(win, page('/a'));
+    await navigator.prefetch('/b');
+    await navigator.prefetch('/c');
+    expect(navigator.prefetchedPages).toBe(2);
+    await navigator.visit('/a', { method: 'post', data: { name: 'x' } });
+    expect(navigator.prefetchedPages).toBe(0);
+  });
+
+  it('takes data into the query string — and never a prefetch for a partial reload or a visit with its own headers', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = (url) => pageResponse(page(new URL(url).pathname + new URL(url).search));
+    const { navigator } = boot(win, page('/a'));
+    await navigator.prefetch('/b', { data: { tab: 'links' } });
+    expect(win.requests[0]!.url).toBe(`${ORIGIN}/b?tab=links`);
+    await navigator.visit('/b?tab=links', { headers: { 'x-custom': '1' } });
+    expect(win.requests).toHaveLength(2);
+  });
+});
+
+describe('Navigator — background visits, "load more", merging without duplicates', () => {
+  it('an async visit neither cancels the visit under way nor is cancelled by it — and lands only on the page it started from', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    const slow = gate();
+    const cancelled: string[] = [];
+    win.handler = async (url, init) => {
+      if ((init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'count') {
+        await slow.opened;
+        return pageResponse(page('/a', { count: 2 }));
+      }
+      return pageResponse(page('/b', { name: 'b' }));
+    };
+    const { navigator, visible } = boot(win, page('/a', { count: 1 }));
+    navigator.on('cancel', (visit) => cancelled.push(visit.url));
+    const poll = navigator.reload({ only: ['count'], async: true });
+    await navigator.visit('/b'); // the user moves on meanwhile
+    slow.open();
+    expect(await poll).toBeUndefined();
+    expect(visible().props).toEqual({ name: 'b' }); // not yanked back to /a
+    expect(cancelled).toEqual([]);
+  });
+
+  it('an async reload of the page on screen merges in place, without a progress-bar visit', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = () => pageResponse(page('/a', { count: 2 }));
+    const { navigator, visible } = boot(win, page('/a', { count: 1, name: 'a' }));
+    const visits: unknown[] = [];
+    navigator.on('start', (visit) => visits.push(visit));
+    await navigator.reload({ only: ['count'], async: true });
+    expect(visible().props).toEqual({ count: 2, name: 'a' });
+    expect(visits).toEqual([{ url: '/a', method: 'get', async: true }]);
+  });
+
+  it('"load more": reload({ data, only, preserveUrl }) appends the next page — the URL stays, Back/Forward keep what was loaded, a reload starts over', async () => {
+    const win = new FakeWindow(`${ORIGIN}/people`);
+    const people = (cursor: string | null) => (cursor === null ? [{ id: 1 }, { id: 2 }] : cursor === 'c2' ? [{ id: 3 }, { id: 4 }] : [{ id: 5 }]);
+    const next = (cursor: string | null) => (cursor === null ? 'c2' : cursor === 'c2' ? 'c3' : null);
+    win.handler = (url) => {
+      const { pathname, search, searchParams } = new URL(url);
+      if (pathname === '/other') return pageResponse(page('/other', {}, 'pages/Other'));
+      const cursor = searchParams.get('cursor');
+      return pageResponse({
+        ...page(pathname + search, { list: { data: people(cursor), meta: { nextCursor: next(cursor) } } }),
+        deepMergeProps: ['list'],
+        matchPropsOn: ['list.data.id'],
+      });
+    };
+    const first = (cursor: string | null) => ({ ...page('/people', { list: { data: people(cursor), meta: { nextCursor: next(cursor) } } }) });
+    const { navigator, visible, stop } = boot(win, first(null));
+    await navigator.reload({ data: { cursor: 'c2' }, only: ['list'], preserveUrl: true });
+    expect(win.requests[0]!.url).toBe(`${ORIGIN}/people?cursor=c2`);
+    expect(visible().props).toEqual({ list: { data: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }], meta: { nextCursor: 'c3' } } });
+    expect(visible().url).toBe('/people');
+    expect(win.entries.map((entry) => entry.url)).toEqual([`${ORIGIN}/people`]);
+    // As a link (`<Link href="?cursor=c3" only preserveUrl>`): a visit, not a reload — still no new entry.
+    await navigator.visit('/people?cursor=c3', { only: ['list'], preserveUrl: true, preserveScroll: true });
+    expect((visible().props.list as { data: unknown[] }).data).toHaveLength(5);
+    expect(win.entries.map((entry) => entry.url)).toEqual([`${ORIGIN}/people`]);
+
+    await navigator.visit('/other');
+    const requests = win.requests.length;
+    win.back();
+    await settle();
+    expect((visible().props.list as { data: unknown[] }).data).toHaveLength(5); // from memory, as it was left
+    expect(win.requests.length).toBe(requests);
+
+    // A reload of the tab: a new document on /people — the server sends the first page, nothing appended.
+    stop();
+    const reloaded = boot(win, first(null));
+    expect((reloaded.visible().props.list as { data: unknown[] }).data).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('counter-check: the same page fetched twice is merged without duplicates (matchPropsOn) — items with a known key take the old one’s place', () => {
+    const current = page('/people', { list: { data: [{ id: 1, name: 'a' }, { id: 2, name: 'b' }], meta: { next: 'c2' } }, flat: [{ id: 1 }] });
+    const again: PageObject = {
+      ...page('/people', { list: { data: [{ id: 2, name: 'b2' }, { id: 3, name: 'c' }], meta: { next: 'c3' } }, flat: [{ id: 1 }, { id: 9 }] }),
+      deepMergeProps: ['list'],
+      mergeProps: ['flat'],
+      matchPropsOn: ['list.data.id', 'flat.id'],
+    };
+    const once = mergePage(current, again);
+    const twice = mergePage(once, again);
+    for (const merged of [once, twice]) {
+      expect(merged.props.list).toEqual({ data: [{ id: 1, name: 'a' }, { id: 2, name: 'b2' }, { id: 3, name: 'c' }], meta: { next: 'c3' } });
+      expect(merged.props.flat).toEqual([{ id: 1 }, { id: 9 }]);
+    }
+    expect(twice.matchPropsOn).toEqual(['list.data.id', 'flat.id']);
+    // Without a key to match on, the same page twice is appended twice (what matchOn is for).
+    const { matchPropsOn: _, ...unmatched } = again;
+    expect((mergePage(mergePage(current, unmatched), unmatched).props.list as { data: unknown[] }).data).toHaveLength(6);
   });
 });

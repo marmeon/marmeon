@@ -41,6 +41,10 @@ export interface OptionalProp<T> extends PageProp<'optional', T> {
 export interface DeferredProp<T> extends PageProp<'defer', T> {
   readonly group: string;
   readonly resolve: () => unknown;
+  /** Once loaded, a partial reload of it (a poll, "load more") is merged into what the browser has — see {@link merge}. */
+  merge(): MergingDeferredProp<T, 'merge'>;
+  /** As {@link DeferredProp.merge}, all the way down — see {@link deepMerge}. */
+  deepMerge(): MergingDeferredProp<T, 'deepMerge'>;
 }
 
 /** In every response — also in partial reloads that ask for other props. */
@@ -48,13 +52,42 @@ export interface AlwaysProp<T> extends PageProp<'always', T> {
   readonly value: unknown;
 }
 
+/** How a partial reload merges a prop into the browser's: arrays appended, objects one level (`merge`) or all the way (`deepMerge`). */
+export type MergeStrategy = 'merge' | 'deepMerge';
+
 /** Merged into the value the browser has on a partial reload — arrays appended, objects shallowly merged. */
-export interface MergeProp<T> extends PageProp<'merge' | 'deepMerge', T> {
+export interface MergeProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<S, T> {
   readonly value: unknown;
+  /** Keys that identify an item of a merged array (`matchOn`). */
+  readonly match: readonly string[];
+  /**
+   * Items of the merged array with the same value of `key` replace each other instead of appearing twice — the
+   * same page loaded again (a poll, a double click on "load more"): `merge(people).matchOn('id')`, or for a list
+   * inside an object, `deepMerge({ data, meta }).matchOn('data.id')`.
+   */
+  matchOn(...keys: MatchKey<T, S>[]): MergeProp<T, S>;
 }
 
+/**
+ * Where a merged prop's array items carry their identity: a key of the items of an array prop (`merge`), or, for
+ * `deepMerge`, the path to a key of the items of an array inside it (`'data.id'` of `{ data: User[] }`).
+ */
+export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepItemKey<T, []> : ItemKey<T>;
+
+type ItemKey<T> = T extends readonly (infer E)[] ? (E extends object ? keyof E & string : never) : never;
+
+type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4
+  ? never
+  : T extends readonly unknown[]
+    ? ItemKey<T>
+    : T extends Date | ((...args: never) => unknown)
+      ? never
+      : T extends object
+        ? { [K in keyof T & string]: `${K}.${DeepItemKey<T[K], [...Depth, unknown]>}` }[keyof T & string]
+        : never;
+
 /** Any wrapped prop. */
-export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | AlwaysProp<T> | MergeProp<T>;
+export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T>;
 
 /**
  * A prop the page gets only when it asks: `reload({ only: ['stats'] })`. Never computed for a full response —
@@ -64,12 +97,31 @@ export function optional<R>(resolve: () => R): OptionalProp<Awaited<R>> {
   return { [PROP]: 'optional', resolve } as OptionalProp<Awaited<R>>;
 }
 
+/** A deferred prop that is merged into what the browser has when it is loaded again — `defer(fn).merge()`. */
+export interface MergingDeferredProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<'defer', T> {
+  readonly group: string;
+  readonly resolve: () => unknown;
+  readonly strategy: S;
+  readonly match: readonly string[];
+  /** As {@link MergeProp.matchOn}. */
+  matchOn(...keys: MatchKey<T, S>[]): MergingDeferredProp<T, S>;
+}
+
 /**
  * A prop the page renders without: the first response leaves it out (and names it in `deferredProps`), the browser
  * fetches it right after showing the page — props of one `group` in one request, groups in parallel.
+ * `defer(fn).merge()` / `.deepMerge()`: once loaded, partial reloads of it ("load more") merge into it.
  */
 export function defer<R>(resolve: () => R, group = 'default'): DeferredProp<Awaited<R>> {
-  return { [PROP]: 'defer', group, resolve } as DeferredProp<Awaited<R>>;
+  const merging = (strategy: MergeStrategy, match: readonly string[]): MergingDeferredProp<Awaited<R>> =>
+    ({ [PROP]: 'defer', group, resolve, strategy, match, matchOn: (...keys: string[]) => merging(strategy, [...match, ...keys]) }) as MergingDeferredProp<Awaited<R>>;
+  return {
+    [PROP]: 'defer',
+    group,
+    resolve,
+    merge: () => merging('merge', []),
+    deepMerge: () => merging('deepMerge', []),
+  } as unknown as DeferredProp<Awaited<R>>;
 }
 
 /** A prop sent with every response, partial reloads included (the shared `errors` are one). */
@@ -77,17 +129,33 @@ export function always<V>(value: V): AlwaysProp<Unlazy<V>> {
   return { [PROP]: 'always', value } as AlwaysProp<Unlazy<V>>;
 }
 
+function mergeProp(kind: MergeStrategy, value: unknown, match: readonly string[]): MergeProp<unknown> {
+  return { [PROP]: kind, value, match, matchOn: (...keys: string[]) => mergeProp(kind, value, [...match, ...keys]) } as unknown as MergeProp<unknown>;
+}
+
 /**
  * A prop a partial reload merges into what the browser already shows — arrays are appended, objects merged one
- * level deep: `links: merge(page.data)` for "load more". A full response replaces it as usual.
+ * level deep: `links: merge(page.data)` for "load more". A full response replaces it as usual. `.matchOn('id')`
+ * keeps an item from appearing twice.
  */
-export function merge<V>(value: V): MergeProp<Unlazy<V>> {
-  return { [PROP]: 'merge', value } as MergeProp<Unlazy<V>>;
+export function merge<V>(value: V): MergeProp<Unlazy<V>, 'merge'> {
+  return mergeProp('merge', value, []) as MergeProp<Unlazy<V>, 'merge'>;
 }
 
 /** Like {@link merge}, but all the way down: nested objects are merged, nested arrays appended. */
-export function deepMerge<V>(value: V): MergeProp<Unlazy<V>> {
-  return { [PROP]: 'deepMerge', value } as MergeProp<Unlazy<V>>;
+export function deepMerge<V>(value: V): MergeProp<Unlazy<V>, 'deepMerge'> {
+  return mergeProp('deepMerge', value, []) as MergeProp<Unlazy<V>, 'deepMerge'>;
+}
+
+/** How a sent prop is merged by the browser (and on which keys), or undefined when it replaces. */
+export function mergeOf(value: unknown): { strategy: MergeStrategy; match: readonly string[] } | undefined {
+  const kind = propKind(value);
+  if (kind === 'merge' || kind === 'deepMerge') return { strategy: kind, match: (value as MergeProp<unknown>).match };
+  if (kind === 'defer' && 'strategy' in (value as object)) {
+    const { strategy, match } = value as MergingDeferredProp<unknown>;
+    return { strategy, match };
+  }
+  return undefined;
 }
 
 /** What kind of wrapped prop `value` is — undefined for a plain value (or a function). */
@@ -126,7 +194,9 @@ export type SharedValue<T> =
   | Lazy<T>
   | AlwaysProp<T>
   | MergeProp<T>
-  | (undefined extends T ? OptionalProp<Exclude<T, undefined>> | DeferredProp<Exclude<T, undefined>> : NotOptional);
+  | (undefined extends T
+      ? OptionalProp<Exclude<T, undefined>> | DeferredProp<Exclude<T, undefined>> | MergingDeferredProp<Exclude<T, undefined>>
+      : NotOptional);
 
 /** In place of `optional()`/`defer()` for a shared prop that is always there — the property name is the message. */
 interface NotOptional {

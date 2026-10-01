@@ -1,6 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { useState } from 'react';
-import { Deferred, Head, Link, Pagination, useForm, useRouter } from '@bespokecore/react';
+import { Deferred, Head, Link, useForm, usePoll, WhenVisible } from '@bespokecore/react';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 const utc = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
@@ -14,12 +13,15 @@ function ago(iso: string, now: string): string {
   return relative.format(Math.round(value), unit as Intl.RelativeTimeFormatUnit);
 }
 
+/** How often the recent activity is refreshed while the page is open (ms). */
+const ACTIVITY_POLL = 15_000;
+
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
 export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, activity, stats, now, auth }: Props) {
-  const router = useRouter<ShowUserProfileController>();
-  const [loadingStats, setLoadingStats] = useState(false);
+  // The activity panel keeps itself current: a background reload of just `activity`, paused while the tab is hidden.
+  usePoll<ShowUserProfileController>(ACTIVITY_POLL, { only: ['activity'] });
   return (
     <main>
       <Head title={profile.name}>
@@ -79,23 +81,14 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
 
       <section aria-labelledby="stats">
         <h2 id="stats">Statistics</h2>
-        {/* `stats` is optional: never sent with the page — only when asked for, with a partial reload. */}
-        {stats ? (
-          <p>
-            {stats.links === 1 ? '1 link' : `${stats.links} links`} · member {stats.memberNumber} of {stats.members}
-          </p>
-        ) : (
-          <button
-            type="button"
-            disabled={loadingStats}
-            onClick={() => {
-              setLoadingStats(true);
-              void router.reload({ only: ['stats'], onFinish: () => setLoadingStats(false) });
-            }}
-          >
-            Show statistics
-          </button>
-        )}
+        {/* `stats` is optional: never sent with the page — asked for (a partial reload) once this section scrolls into view. */}
+        <WhenVisible<ShowUserProfileController> data="stats" buffer={100} fallback={<p aria-busy="true">Loading statistics…</p>}>
+          {() => (
+            <p>
+              {stats!.links === 1 ? '1 link' : `${stats!.links} links`} · member {stats!.memberNumber} of {stats!.members}
+            </p>
+          )}
+        </WhenVisible>
       </section>
 
       <section aria-label="Links">
@@ -129,7 +122,8 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
         <ul>
           {others.data.map((other) => (
             <li key={other.id}>
-              <Link route="user-profile.show" params={{ user: other.id }}>
+              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once. */}
+              <Link route="user-profile.show" params={{ user: other.id }} prefetch>
                 {other.name}
               </Link>{' '}
               <small>{other.lastLoginAt ? `last seen ${ago(other.lastLoginAt, now)}` : 'never signed in'}</small>
@@ -141,7 +135,22 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
             </li>
           )}
         </ul>
-        <Pagination meta={others.meta} />
+        {others.meta.nextCursor && (
+          // The next five, appended (`others` is deepMerge()d on the server) — the URL stays the list's, so a reload
+          // starts over at the top; Back and Forward keep what was loaded (the page in memory). Without JavaScript,
+          // an ordinary link to the next five.
+          <Link
+            route="user-profile.show"
+            params={{ user: profile.id }}
+            query={{ ...(filter ? { q: filter } : {}), cursor: others.meta.nextCursor }}
+            only={['others']}
+            preserveUrl
+            preserveScroll
+            preserveState
+          >
+            Load more
+          </Link>
+        )}
       </nav>
     </main>
   );

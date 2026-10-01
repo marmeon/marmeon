@@ -7,7 +7,20 @@ import type { ViewProps } from './view.ts';
 import type { Suggest } from '@bespokecore/router';
 
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
-export type { AlwaysProp, DeferredProp, MergeProp, OptionalProp, PropKind, ResolvedProp, ResolvedProps, SharedValue, WrappedProp } from './props.ts';
+export type {
+  AlwaysProp,
+  DeferredProp,
+  MatchKey,
+  MergeProp,
+  MergeStrategy,
+  MergingDeferredProp,
+  OptionalProp,
+  PropKind,
+  ResolvedProp,
+  ResolvedProps,
+  SharedValue,
+  WrappedProp,
+} from './props.ts';
 // Types — erased, so the browser bundle stays free of router code.
 export type {
   BrowserRouteName,
@@ -88,6 +101,11 @@ export interface PageObject {
   mergeProps?: string[];
   /** Props a partial reload merges all the way down (`deepMerge()`). */
   deepMergeProps?: string[];
+  /**
+   * Where merged arrays identify their items (`matchOn()`): `<prop>.<key>` or `<prop>.<path>.<key>` — an item with a
+   * key already shown replaces it instead of appearing twice.
+   */
+  matchPropsOn?: string[];
 }
 
 /** Client-side navigations send this header and receive the page object as JSON. */
@@ -113,6 +131,24 @@ export const PARTIAL_DATA_HEADER = 'x-bespoke-partial-data';
 
 /** With a partial reload: the props to leave out, comma-separated (`except`). */
 export const PARTIAL_EXCEPT_HEADER = 'x-bespoke-partial-except';
+
+/**
+ * Sent with a prefetch (`<Link prefetch>`, `router.prefetch()`) — `Purpose: prefetch`, as browsers do for their own
+ * prefetches (`Sec-Purpose`, which scripts may not set). The user has not asked for the page yet: a GET that does
+ * something besides showing (marks notifications read, remembers where a guest wanted to go) skips that for a
+ * prefetch — see {@link isPrefetch}.
+ */
+export const PURPOSE_HEADER = 'purpose';
+
+/**
+ * Whether `request` is a prefetch — ours (`Purpose: prefetch`) or the browser's (`Sec-Purpose: prefetch`). Answer it
+ * like the real request, minus side effects: the client shows the prefetched page when the link is clicked (within
+ * its `cacheFor`), without asking again. A page whose visit must do something should not be prefetched.
+ */
+export function isPrefetch(request: Request): boolean {
+  const purpose = `${request.headers.get(PURPOSE_HEADER) ?? ''},${request.headers.get('sec-purpose') ?? ''}`;
+  return /(^|[\s,;])prefetch($|[\s,;])/i.test(purpose);
+}
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'bespoke-page';

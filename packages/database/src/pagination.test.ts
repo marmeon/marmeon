@@ -66,6 +66,25 @@ describe.each(drivers)('pagination on %s', (driver) => {
     expect(backwards.data.map((u) => u.name)).toEqual(['User 00 (late)', 'User 12']);
     expect((await cursorPaginate(ids, { column: 'id', perPage: 2, cursor: 'not-a-cursor' })).data.map((u) => u.name)).toEqual(['User 01', 'User 02']);
   });
+
+  it('pages by a column that is not unique, with a tie-breaker: (name, id) — no row twice, none skipped', async () => {
+    // Three people of the same name, across a page boundary.
+    for (const email of ['twin1@example.com', 'twin2@example.com', 'twin3@example.com']) await db.insertInto('users').values({ name: 'User 05', email }).execute();
+    const byName = db.selectFrom('users').select(['id', 'name', 'email']).where('email', 'not like', 'late%');
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: { data: { email: string }[]; meta: { nextCursor: string | null } } = await cursorPaginate(byName, { column: ['name', 'id'], perPage: 4, cursor });
+      seen.push(...page.data.map((u) => u.email));
+      cursor = page.meta.nextCursor;
+    } while (cursor);
+    expect(seen).toHaveLength(15);
+    expect(new Set(seen).size).toBe(15);
+    expect(seen.slice(4, 8)).toEqual(['u5@example.com', 'twin1@example.com', 'twin2@example.com', 'twin3@example.com']);
+    // A cursor of another shape (one value for two columns) is the first page — it came from the query string.
+    const single = (await cursorPaginate(db.selectFrom('users').select(['id', 'name']), { column: 'id', perPage: 1 })).meta.nextCursor!;
+    expect((await cursorPaginate(byName, { column: ['name', 'id'], perPage: 1, cursor: single })).data[0]!.email).toBe('u1@example.com');
+  });
 });
 
 describe('paginationFrom', () => {

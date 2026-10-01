@@ -1,5 +1,5 @@
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject } from './page.ts';
-import { propKind, resolveProp } from './props.ts';
+import { mergeOf, propKind, resolveProp } from './props.ts';
 import type { SharedData } from './shared-data.ts';
 
 /** What a partial reload asks for: the props named in `only` (if given), minus those in `except`. */
@@ -28,7 +28,7 @@ function list(header: string | null): string[] {
 }
 
 /** The part of the page object the props make up. */
-export type ResolvedPage = Pick<PageObject, 'props' | 'deferredProps' | 'mergeProps' | 'deepMergeProps'>;
+export type ResolvedPage = Pick<PageObject, 'props' | 'deferredProps' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
 
 /**
  * Resolves what a response sends of a page's props — the controller's and the shared ones (the controller's win).
@@ -51,6 +51,7 @@ export async function resolvePageProps(
   const deferredProps: Record<string, string[]> = {};
   const mergeProps: string[] = [];
   const deepMergeProps: string[] = [];
+  const matchPropsOn: string[] = [];
   for (const [key, value] of all) {
     const kind = propKind(value);
     if (!included(key, kind, partial)) {
@@ -59,8 +60,12 @@ export async function resolvePageProps(
       continue;
     }
     send.push(key);
-    if (kind === 'merge') mergeProps.push(key);
-    if (kind === 'deepMerge') deepMergeProps.push(key);
+    // `merge()`/`deepMerge()` — and `defer(…).merge()`, once it is sent.
+    const merging = mergeOf(value);
+    if (merging) {
+      (merging.strategy === 'merge' ? mergeProps : deepMergeProps).push(key);
+      for (const match of merging.match) matchPropsOn.push(`${key}.${match}`);
+    }
   }
 
   const fromShared = send.filter((key) => !Object.hasOwn(props, key));
@@ -78,6 +83,7 @@ export async function resolvePageProps(
     ...(Object.keys(deferredProps).length > 0 ? { deferredProps } : {}),
     ...(mergeProps.length > 0 ? { mergeProps } : {}),
     ...(deepMergeProps.length > 0 ? { deepMergeProps } : {}),
+    ...(matchPropsOn.length > 0 ? { matchPropsOn } : {}),
   };
 }
 

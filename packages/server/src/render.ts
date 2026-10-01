@@ -7,6 +7,7 @@ import {
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
+  PURPOSE_HEADER,
   partialReloadOf,
   resolvePageProps,
   SharedData,
@@ -29,9 +30,10 @@ export const shellRenderer: PageRenderer = {
 
 /**
  * Page responses differ by these request headers: a page document or its JSON (`x-bespoke`), all props or some
- * (a partial reload). A cache (`Cache-Control: private, max-age=…`) must never answer one with the other.
+ * (a partial reload), a prefetch or the visit (`Purpose` — a page may skip side effects for a prefetch). A cache
+ * (`Cache-Control: private, max-age=…`) must never answer one with the other.
  */
-const PAGE_VARY = [PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER].join(', ');
+const PAGE_VARY = [PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER].join(', ');
 
 /** A response factory that may use the request's container scope (the kernel passes it). */
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;

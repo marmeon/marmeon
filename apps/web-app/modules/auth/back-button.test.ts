@@ -75,6 +75,12 @@ class FakeTab {
     await this.idle();
   }
 
+  /** A hovered `<Link prefetch>` in the current document. */
+  async prefetch(url: string): Promise<void> {
+    await this.#current!.navigator.prefetch(url);
+    await this.idle();
+  }
+
   async back(): Promise<void> {
     const from = this.entries[this.index]!;
     this.index--;
@@ -311,6 +317,28 @@ describe('Back after signing out (E36)', () => {
     expect(tab.requests.slice(asked)).toEqual(expect.arrayContaining([`GET /users/${ada.id}`, 'GET /settings/security']));
   });
 
+  it('a page prefetched while signed in (W5 step 6) is gone with the sign-out — neither Back nor a visit shows it', async () => {
+    const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
+    await tab.open('/login');
+    await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
+    await tab.visit('/settings/security'); // a fresh sign-in counts as a confirmed password: the page itself
+    await tab.visit(`/users/${ada.id}`);
+    await tab.prefetch('/settings/security'); // hovered, never clicked
+    expect(tab.requests.at(-1)).toBe('GET /settings/security (visit)');
+    await tab.visit('/logout', { method: 'post' });
+    expect(tab.visible.component).toBe('auth/Login');
+
+    const asked = tab.requests.length;
+    await tab.visit('/settings/security');
+    expect(leaks(tab.visible, 'no token here')).toEqual([]);
+    expect(tab.visible.component).toBe('auth/Login');
+    expect(tab.requests.slice(asked)).toEqual(['GET /settings/security (visit)', 'GET /login (visit)']); // the server was asked
+    while (tab.index > 0) {
+      await tab.back();
+      expect(leaks(tab.visible, 'no token here'), `Back to ${tab.entries[tab.index]!.url}`).toEqual([]);
+    }
+  });
+
   it('keeps no props in history.state — nothing of the token or the profile is written to disk', async () => {
     const { plainText } = await createTokenThenSignOut();
     expect(tab.entries.length).toBeGreaterThan(2);
@@ -358,11 +386,11 @@ describe('Cache headers', () => {
     expect(response.headers.get('cache-control')).toBeNull();
   });
 
-  it('varies pages on x-bespoke (and the partial-reload headers): the HTML document and the page JSON of one URL are two cache entries', async () => {
+  it('varies pages on x-bespoke (and the partial-reload and prefetch headers): the HTML document and the page JSON of one URL are two cache entries', async () => {
     const html = await app.get('/login').assertOk();
     const json = await app.navigating().get('/login').assertOk();
     for (const response of [html, json]) {
-      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except']);
+      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose']);
     }
   });
 

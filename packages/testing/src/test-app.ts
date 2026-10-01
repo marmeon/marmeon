@@ -9,7 +9,7 @@ import {
 } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
 import { CookieEncryption } from '@bespokecore/http';
-import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from '@bespokecore/http/page';
+import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
@@ -403,6 +403,11 @@ export class TestApp {
   /** Requests as a client-side navigation: answered with the page object as JSON. */
   navigating(): TestApp {
     return this.withHeaders({ [PAGE_HEADER]: 'true' });
+  }
+
+  /** Requests as a prefetch (`<Link prefetch>`): a client-side navigation with `Purpose: prefetch` — see `isPrefetch`. */
+  prefetching(): TestApp {
+    return this.withHeaders({ [PAGE_HEADER]: 'true', [PURPOSE_HEADER]: 'prefetch' });
   }
 
   /**

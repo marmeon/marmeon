@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from './page.ts';
+import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from './page.ts';
 import { partialReloadOf, resolvePageProps } from './page-props.ts';
 import { always, deepMerge, defer, merge, optional } from './props.ts';
 import { SharedData } from './shared-data.ts';
@@ -124,9 +124,39 @@ describe('resolvePageProps', () => {
     expect(reload).toEqual({ props: { links: [{ id: 3 }] }, mergeProps: ['links'] }); // only what is sent
   });
 
+  it('names the keys merged arrays match their items on (matchOn) — per prop, with its path', async () => {
+    const people = { data: [{ id: 1, name: 'Ada' }], meta: { nextCursor: 'c2' } };
+    const page = await resolvePageProps(
+      { links: merge([{ id: 3 }]).matchOn('id'), others: deepMerge(() => people).matchOn('data.id'), tags: merge(['a']) },
+      undefined,
+      undefined,
+    );
+    expect(page).toMatchObject({ mergeProps: ['links', 'tags'], deepMergeProps: ['others'], matchPropsOn: ['links.id', 'others.data.id'] });
+  });
+
+  it('defer(…).merge(): left out of the first response like any deferred prop — merged (and matched) once it is sent', async () => {
+    const { calls, count } = counted();
+    const props = { feed: defer(count('feed', [{ id: 1 }]), 'feed').merge().matchOn('id'), chart: defer(() => ({ a: { b: [1] } })).deepMerge() };
+    const first = await resolvePageProps(props, undefined, undefined);
+    expect(first).toEqual({ props: {}, deferredProps: { feed: ['feed'], default: ['chart'] } });
+    expect(calls).toEqual({});
+    const loaded = await resolvePageProps(props, undefined, partialReloadOf(partial('x/Y', 'feed,chart'), 'x/Y'));
+    expect(loaded).toEqual({ props: { feed: [{ id: 1 }], chart: { a: { b: [1] } } }, mergeProps: ['feed'], deepMergeProps: ['chart'], matchPropsOn: ['feed.id'] });
+  });
+
   it("lets a controller's prop win over a shared one of the same name", async () => {
     const shared = new SharedData().share('pageProps', () => ({ user: 'shared' }));
     expect((await resolvePageProps({ pageProps: { user: 'own' } }, shared, undefined)).props).toEqual({ pageProps: { user: 'own' } });
+  });
+});
+
+describe('isPrefetch', () => {
+  it('tells a prefetch (ours: Purpose, the browser’s: Sec-Purpose) from the visit', () => {
+    expect(isPrefetch(request({ purpose: 'prefetch' }))).toBe(true);
+    expect(isPrefetch(request({ 'sec-purpose': 'prefetch;prerender' }))).toBe(true);
+    expect(isPrefetch(request({ 'sec-purpose': 'prefetch' }))).toBe(true);
+    expect(isPrefetch(request())).toBe(false);
+    expect(isPrefetch(request({ purpose: 'prefetcher' }))).toBe(false);
   });
 });
 
@@ -142,6 +172,8 @@ describe('PageProps with wrapped props', () => {
         links: merge([{ id: 1, url: 'https://example.com' }]),
         feed: deepMerge(() => ({ data: [1, 2] })),
         flag: always(true),
+        people: deepMerge(async () => ({ data: [{ id: 1, joined: new Date() }], meta: { next: 'c2' } })).matchOn('data.id'),
+        later: defer(() => [{ id: 1 }]).merge().matchOn('id'),
       });
     }
   }
@@ -156,6 +188,8 @@ describe('PageProps with wrapped props', () => {
     expectTypeOf<Props['links']>().toEqualTypeOf<{ id: number; url: string }[]>();
     expectTypeOf<Props['feed']>().toEqualTypeOf<{ data: number[] }>();
     expectTypeOf<Props['flag']>().toEqualTypeOf<boolean>();
+    expectTypeOf<Props['people']>().toEqualTypeOf<{ data: { id: number; joined: string }[]; meta: { next: string } }>();
+    expectTypeOf<Props['later']>().toEqualTypeOf<{ id: number }[] | undefined>();
     // Possibly missing — a view has to handle `undefined` before using it.
     const use = (props: Props) => {
       // @ts-expect-error -- 'props.stats' is possibly 'undefined'
@@ -163,6 +197,20 @@ describe('PageProps with wrapped props', () => {
       void props.stats?.links;
     };
     void use;
+  });
+
+  it('checks matchOn keys against the merged value', () => {
+    const check = () => {
+      // @ts-expect-error -- Argument of type '"uid"' is not assignable to parameter of type '"id" | "url"'.
+      merge([{ id: 1, url: 'x' }]).matchOn('uid');
+      // @ts-expect-error -- a shallow merge appends only a top-level array: '"data.id"' is not assignable to parameter of type 'never'.
+      merge({ data: [{ id: 1 }] }).matchOn('data.id');
+      // @ts-expect-error -- Argument of type '"data.uid"' is not assignable to parameter of type '"data.id"'.
+      deepMerge(() => ({ data: [{ id: 1 }], meta: { next: null } })).matchOn('data.uid');
+      // @ts-expect-error -- matchOn only on a merging deferred prop: Property 'matchOn' does not exist on type 'DeferredProp<…>'.
+      defer(() => [{ id: 1 }]).matchOn('id');
+    };
+    void check;
   });
 
   it('types shared wrapped values against SharedProps', () => {
