@@ -1,6 +1,6 @@
 import { paginationFrom } from '@bespokecore/database';
 import { Controller, type HttpContext } from '@bespokecore/http';
-import type { AuthState } from '#modules/auth';
+import type { Authenticated } from '@bespokecore/auth';
 import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
 
 export class ShowUserProfileController extends Controller {
@@ -12,7 +12,7 @@ export class ShowUserProfileController extends Controller {
   }
 
   /** `user` is bound by the route (ProfileDirectory): a missing one never gets here — it is a 404. */
-  async handle(ctx: HttpContext<AuthState, { user: Profile }>) {
+  async handle(ctx: HttpContext<Authenticated, { user: Profile }>) {
     // The selected row goes to the view as it is — the migration's column types reach the view.
     // Held back on purpose: the e-mail (owner only) and the activity (shown as lastLoginAt).
     const { email, activity, ...user } = ctx.params.user;

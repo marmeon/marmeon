@@ -1,6 +1,7 @@
 import { abort, Controller, type HttpContext } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
-import type { AuthState, User } from '#modules/auth';
+import type { Authenticated } from '@bespokecore/auth';
+import type { User } from '#modules/auth';
 
 export class EditUserProfileController extends Controller {
   readonly #session: Session;
@@ -10,7 +11,7 @@ export class EditUserProfileController extends Controller {
     this.#session = session;
   }
 
-  handle(ctx: HttpContext<AuthState, { user: User }>) {
+  handle(ctx: HttpContext<Authenticated, { user: User }>) {
     const { user } = ctx.params;
     if (ctx.user.id !== user.id) abort(403, 'You can only edit your own profile.');
 

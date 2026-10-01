@@ -93,9 +93,25 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      '@bespokecore/session':
+        specifier: workspace:*
+        version: link:../session
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
 
   packages/cache:
     dependencies:
@@ -301,6 +317,9 @@ importers:
         specifier: ^5.0.0
         version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3))
     devDependencies:
+      '@bespokecore/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@bespokecore/database':
         specifier: workspace:*
         version: link:../database

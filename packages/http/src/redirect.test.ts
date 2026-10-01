@@ -1,7 +1,7 @@
 import { defineRoutes, Router, type HttpContext } from '@bespokecore/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { Controller } from './controller.ts';
-import { isRedirectResult, RedirectResult } from './redirect.ts';
+import { INTENDED_KEY, isLocalPath, isRedirectResult, RedirectResult } from './redirect.ts';
 import type { PageProps } from './view.ts';
 
 const router = new Router().load(
@@ -50,13 +50,49 @@ describe('RedirectResult', () => {
 
   it('flashes with() data through the Flasher — and refuses to drop it silently without one', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value) };
+    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined };
     new RedirectResult('/').with('status', 'Saved.').with({ count: 2 }).toResponse(request(), router, flasher);
     expect(flashed).toEqual({ status: 'Saved.', count: 2 });
 
     expect(() => new RedirectResult('/').with('status', 'x').toResponse(request(), router)).toThrow(
       'redirect().with() needs a session: install @bespokecore/session and start it for this route.',
     );
+  });
+
+  it('goes to the intended page once (authenticate() stored it), else to the fallback target', () => {
+    const stored: Record<string, unknown> = { [INTENDED_KEY]: '/users/7/edit?tab=links' };
+    const flasher = { flash: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; } };
+    const intended = () => new RedirectResult().intended().route('user-profile.show', { id: 1 }).toResponse(request('POST'), router, flasher);
+    expect(intended().headers.get('location')).toBe('/users/7/edit?tab=links');
+    expect(intended().headers.get('location')).toBe('/users/1'); // pulled: used once
+    expect(new RedirectResult('/home').intended().toResponse(request(), router).headers.get('location')).toBe('/home'); // no session
+  });
+
+  it('counter-check: an intended URL pointing elsewhere is never followed (open redirect)', () => {
+    for (const evil of ['//evil.test/phish', '/\\evil.test', 'https://evil.test/', '/\tevil', 'javascript:alert(1)', '', 42]) {
+      expect(isLocalPath(evil), String(evil)).toBe(false);
+      const flasher = { flash: () => {}, pull: () => evil };
+      expect(new RedirectResult('/home').intended().toResponse(request(), router, flasher).headers.get('location')).toBe('/home');
+    }
+    expect(isLocalPath('/users/1?q=a//b')).toBe(true);
+  });
+
+  it('never flashes a field with "password" in its name, files or the CSRF token', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined };
+    const input = {
+      email: 'ada@example.com',
+      password: 'secret',
+      password_confirmation: 'secret',
+      current_password: 'old',
+      new_password: 'new',
+      Password: 'x',
+      _token: 'csrf',
+      avatar: new File(['x'], 'a.png'),
+      nested: { password: 'deep', name: 'n' },
+    };
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), router, flasher);
+    expect(flashed._old_input).toEqual({ email: 'ada@example.com', nested: { name: 'n' } });
   });
 
   it('is recognised by brand, not by class identity', () => {

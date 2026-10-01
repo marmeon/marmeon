@@ -11,6 +11,21 @@
   "references": [
     {
       "path": "../core"
+    },
+    {
+      "path": "../router"
+    },
+    {
+      "path": "../http"
+    },
+    {
+      "path": "../session"
+    },
+    {
+      "path": "../encryption"
+    },
+    {
+      "path": "../server"
     }
   ]
 }

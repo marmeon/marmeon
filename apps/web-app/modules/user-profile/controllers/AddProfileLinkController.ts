@@ -1,6 +1,7 @@
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
 import * as v from 'valibot';
-import type { AuthState, User } from '#modules/auth';
+import type { Authenticated } from '@bespokecore/auth';
+import type { User } from '#modules/auth';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
 export const AddProfileLinkRequest = defineRequest({
@@ -9,7 +10,7 @@ export const AddProfileLinkRequest = defineRequest({
     // http(s) only: a `javascript:` URL in an href would run in every visitor's browser.
     url: v.pipe(v.string(), v.trim(), v.url('Enter a full URL.'), v.regex(/^https?:\/\//i, 'Only http and https links.'), v.maxLength(2048)),
   }),
-  authorize: (ctx: HttpContext<AuthState, { user: User }>) => ctx.user.id === ctx.params.user.id,
+  authorize: (ctx: HttpContext<Authenticated, { user: User }>) => ctx.user.id === ctx.params.user.id,
 });
 
 export class AddProfileLinkController extends Controller {

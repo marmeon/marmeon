@@ -1,6 +1,6 @@
+import { Auth } from '@bespokecore/auth';
 import { SharedData, type HttpContext, type Next } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
-import { UserRepository } from '#modules/auth';
 
 declare module '@bespokecore/http/page' {
   interface SharedProps {
@@ -11,6 +11,13 @@ declare module '@bespokecore/http/page' {
   }
 }
 
+declare module '@bespokecore/session' {
+  interface SessionData {
+    /** Flash message for the next page (signed out, profile saved). */
+    status: string;
+  }
+}
+
 /**
  * Shares what every page of the app shows (Inertia's `HandleInertiaRequests::share`).
  * Lazy: evaluated only when a page renders — redirects and JSON never look up the user.
@@ -18,19 +25,19 @@ declare module '@bespokecore/http/page' {
 export class ShareAppProps {
   readonly #shared: SharedData;
   readonly #session: Session;
-  readonly #users: UserRepository;
+  readonly #auth: Auth;
 
-  constructor(shared: SharedData, session: Session, users: UserRepository) {
+  constructor(shared: SharedData, session: Session, auth: Auth) {
     this.#shared = shared;
     this.#session = session;
-    this.#users = users;
+    this.#auth = auth;
   }
 
   handle(_ctx: HttpContext, next: Next<{}>) {
     this.#shared
       .share('auth', async () => {
-        const id = this.#session.get('user_id');
-        const user = id === undefined ? undefined : await this.#users.find(id);
+        // The same lookup authenticate() already made on this request (Auth is per request).
+        const user = await this.#auth.user();
         return { user: user ? { id: user.id, name: user.name } : null };
       })
       .share('flash', () => ({ status: this.#session.get('status') ?? null }));

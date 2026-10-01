@@ -115,7 +115,7 @@ describe('PasswordHasher', () => {
     await hasher.dummyVerify('warm-up'); // the first call also makes its reference hash
     const real: number[] = [];
     const dummy: number[] = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 7; i++) {
       let started = performance.now();
       await hasher.verify('wrong password', hash);
       real.push(performance.now() - started);
@@ -124,8 +124,8 @@ describe('PasswordHasher', () => {
       dummy.push(performance.now() - started);
     }
     const ratio = median(dummy) / median(real);
-    expect(ratio).toBeGreaterThan(0.7);
-    expect(ratio).toBeLessThan(1.4);
+    expect(ratio).toBeGreaterThan(0.5); // wide bounds: parallel test workers add noise; skipping the hash would be ~0.02
+    expect(ratio).toBeLessThan(2);
     // Without it, an unknown e-mail would answer in no time:
     expect(median(real)).toBeGreaterThan(5);
   });

@@ -3,11 +3,14 @@ import { token } from '@bespokecore/core';
 const REDIRECT_RESULT = Symbol.for('bespokecore.redirect-result');
 
 /**
- * Keeps data for the next request only — what `redirect().with()` needs. Bound by
- * `@bespokecore/session` (to the request's session), so http needs no session itself.
+ * Keeps data for the next request only — what `redirect().with()` needs — and hands out values
+ * stored earlier (`redirect().intended()`). Bound by `@bespokecore/session` (to the request's
+ * session), so http needs no session itself.
  */
 export interface Flasher {
   flash(key: string, value: unknown): void;
+  /** Returns a stored value and removes it. */
+  pull(key: string): unknown;
 }
 export const Flasher = token<Flasher>('Flasher');
 
@@ -36,6 +39,7 @@ type Target =
 export class RedirectResult {
   readonly [REDIRECT_RESULT] = true;
   #target: Target | undefined;
+  #intended = false;
   #status: RedirectStatus | undefined;
   readonly #headers = new Headers();
   readonly #flash = new Map<string, unknown>();
@@ -54,6 +58,16 @@ export class RedirectResult {
   /** Redirects to the previous page (the `Referer` of this site), or to `fallback`. */
   back(fallback = '/'): this {
     this.#target = { kind: 'back', fallback };
+    return this;
+  }
+
+  /**
+   * To the page a guest asked for before being sent to log in (`authenticate()` stores it in the
+   * session as {@link INTENDED_KEY}) — or, without one, to the target set otherwise:
+   * `redirect().intended().route('dashboard')`. Only local paths are followed: never another site.
+   */
+  intended(): this {
+    this.#intended = true;
     return this;
   }
 
@@ -98,8 +112,9 @@ export class RedirectResult {
       if (!flasher) throw new Error('redirect().with() needs a session: install @bespokecore/session and start it for this route.');
       for (const [key, value] of this.#flash) flasher.flash(key, value);
     }
+    const intended = this.#intended ? flasher?.pull(INTENDED_KEY) : undefined;
     const headers = new Headers(this.#headers);
-    headers.set('location', this.#location(request, urls));
+    headers.set('location', isLocalPath(intended) ? intended : this.#location(request, urls));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
     return new Response(null, { status, headers });
   }
@@ -116,9 +131,24 @@ export class RedirectResult {
 /** Session keys shared with @bespokecore/session (`old()`) and the shared `errors` prop. */
 export const ERRORS_KEY = 'errors';
 export const OLD_INPUT_KEY = '_old_input';
+/** Where `authenticate()` keeps the page a guest wanted, for `redirect().intended()`. */
+export const INTENDED_KEY = '_intended_url';
 
-/** Like Laravel's `$dontFlash`: never kept in the session. */
-const DONT_FLASH = new Set(['password', 'password_confirmation', 'current_password']);
+/**
+ * Like Laravel's `$dontFlash`, but by pattern: no field with "password" in its name is ever kept in
+ * the session (`password`, `password_confirmation`, `current_password`, `new_password`, …).
+ */
+const DONT_FLASH = /password/i;
+
+/** A path on this site (`/users/1?tab=links`) — not `//evil.example`, `/\\evil.example` or a full URL. */
+export function isLocalPath(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u001f]/.test(value)) return false;
+  try {
+    return new URL(value, 'http://local.invalid').host === 'local.invalid';
+  } catch {
+    return false;
+  }
+}
 
 function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
   const clean = (value: unknown): unknown => {
@@ -130,7 +160,7 @@ function flashableInput(input: Record<string, unknown>): Record<string, unknown>
   };
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
-    if (DONT_FLASH.has(key) || key === '_token') continue;
+    if (DONT_FLASH.test(key) || key === '_token') continue;
     const cleaned = clean(value);
     if (cleaned !== undefined) result[key] = cleaned;
   }

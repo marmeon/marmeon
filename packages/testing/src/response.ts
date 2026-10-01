@@ -1,6 +1,10 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import { isPageObject, PAGE_SCRIPT_ID, type FormOf, type PageObject, type PageProps } from '@bespokecore/http/page';
+import type { AuthUser } from '@bespokecore/auth';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
+
+/** `AUTH_SESSION_KEYS.id` of @bespokecore/auth — an optional peer, so not imported at runtime. */
+const AUTH_ID = '_auth_id';
 
 /** Something `PageProps` can infer from: a controller class instance or a route closure. */
 export type PageSource = { handle: (...args: never[]) => unknown } | ((...args: never[]) => unknown);
@@ -171,6 +175,23 @@ export class TestResponse {
 
   assertSessionMissing(key: string): this {
     if (this.session()[key] !== undefined) this.#fail(`Expected the session not to have "${key}"`);
+    return this;
+  }
+
+  // --- Authentication (@bespokecore/auth) -------------------------------------------
+
+  /** The session is signed in after the request — as `user`, when given (compared by id). */
+  assertAuthenticated(user?: AuthUser): this {
+    const id = this.session()[AUTH_ID];
+    if (id === undefined) this.#fail('Expected the session to be signed in, but it is a guest');
+    if (user !== undefined) this.#compare(() => deepStrictEqual(id, (user as unknown as { id: unknown }).id), 'Signed in as another user');
+    return this;
+  }
+
+  /** The session is not signed in after the request. */
+  assertGuest(): this {
+    const id = this.session()[AUTH_ID];
+    if (id !== undefined) this.#fail(`Expected a guest, but the session is signed in as user ${JSON.stringify(id)}`);
     return this;
   }
 

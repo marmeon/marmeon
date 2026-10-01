@@ -1,9 +1,28 @@
-import { Repository, sql } from '@bespokecore/database';
+import type { Credentials, PasswordHash, UserProvider } from '@bespokecore/auth';
+import { Repository, secret, sql } from '@bespokecore/database';
+import type { User } from './users.ts';
 
-/** Access to users — the auth module's public, injectable API (other modules only read `users` via `exposes`). */
-export class UserRepository extends Repository<'users'> {
+/**
+ * Access to users — the auth module's public, injectable API (other modules only read `users` via
+ * `exposes`). Also where authentication finds users (`UserProvider`): the only place that reads the
+ * password hash, which travels next to the user, never inside it.
+ */
+export class UserRepository extends Repository<'users'> implements UserProvider<User> {
   static table = 'users' as const;
   static timestamps = true;
+
+  findById(id: number): Promise<Credentials<User> | undefined> {
+    return this.#credentials(this.query().where('id', '=', id));
+  }
+
+  /** By e-mail — as the login request normalized it (trimmed, lower case). */
+  findForLogin(email: string): Promise<Credentials<User> | undefined> {
+    return this.#credentials(this.query().where('email', '=', email));
+  }
+
+  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
+    await this.update(id, { password: hash });
+  }
 
   /** Everyone's id and name, by name — optionally only names containing `search` (any case). */
   list({ search = '', except }: { search?: string; except?: number } = {}) {
@@ -15,5 +34,12 @@ export class UserRepository extends Repository<'users'> {
     }
     if (except !== undefined) query = query.where('id', '!=', except);
     return query.execute();
+  }
+
+  async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
+    const row = await query.selectAll().select((eb) => secret(eb, 'password')).executeTakeFirst();
+    if (!row) return undefined;
+    const { password, ...user } = row;
+    return { user, passwordHash: password as PasswordHash };
   }
 }

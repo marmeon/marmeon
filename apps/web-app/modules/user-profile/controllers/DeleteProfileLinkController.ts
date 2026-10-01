@@ -1,6 +1,7 @@
 import { abort, Controller, type HttpContext } from '@bespokecore/http';
 import type { Row } from '@bespokecore/database';
-import type { AuthState, User } from '#modules/auth';
+import type { Authenticated } from '@bespokecore/auth';
+import type { User } from '#modules/auth';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
 export class DeleteProfileLinkController extends Controller {
@@ -12,7 +13,7 @@ export class DeleteProfileLinkController extends Controller {
   }
 
   /** The route binds `link` scoped to `user`: it is this user's link, or the request never got here (404). */
-  async handle(ctx: HttpContext<AuthState, { user: User; link: Row<'profile_links'> }>) {
+  async handle(ctx: HttpContext<Authenticated, { user: User; link: Row<'profile_links'> }>) {
     const { user, link } = ctx.params;
     if (ctx.user.id !== user.id) abort(403, 'You can only change your own profile.');
     await this.#links.delete(link.id);

@@ -12,6 +12,7 @@ import { CookieEncryption } from '@bespokecore/http';
 import { PAGE_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
+import type { AuthUser } from '@bespokecore/auth';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
@@ -148,6 +149,8 @@ interface Defaults {
   readonly cookies: readonly TestCookie[];
   /** Data for a session created before the request (`withSession`). */
   readonly session: Readonly<Record<string, unknown>> | undefined;
+  /** Signed in as this user (`actingAs`). */
+  readonly user?: AuthUser;
 }
 
 /** Access to the app's session store — when the app uses @bespokecore/session (an optional peer). */
@@ -163,6 +166,15 @@ type DatabaseModule = typeof import('@bespokecore/database');
 async function importDatabase(): Promise<DatabaseModule | undefined> {
   try {
     return await import('@bespokecore/database');
+  } catch {
+    return undefined;
+  }
+}
+
+/** @bespokecore/auth is an optional peer, like the session. */
+async function importAuth(): Promise<typeof import('@bespokecore/auth') | undefined> {
+  try {
+    return await import('@bespokecore/auth');
   } catch {
     return undefined;
   }
@@ -335,6 +347,14 @@ export class TestApp {
     return this.#with({ session: { ...this.#defaults.session, ...data } });
   }
 
+  /**
+   * Signed in as `user` — the session holds exactly what a login leaves (Laravel's `actingAs`):
+   * `app.actingAs(ada).get('/users/me')`. Needs @bespokecore/auth; the user must exist.
+   */
+  actingAs(user: AuthUser): TestApp {
+    return this.#with({ user });
+  }
+
   /** Sends a cookie exactly as given — e.g. to prove that forged values are ignored. */
   withUnencryptedCookie(name: string, value: string): TestApp {
     return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: false }] });
@@ -386,10 +406,16 @@ export class TestApp {
 
   async #init(method: string, { headers = {}, form, multipart, json }: RequestOptions): Promise<RequestInit> {
     const testCookies = [...this.#defaults.cookies];
-    if (this.#defaults.session) {
+    let data = this.#defaults.session;
+    if (this.#defaults.user !== undefined) {
+      const auth = await importAuth();
+      if (!auth) throw new Error('actingAs() needs @bespokecore/auth in the app.');
+      data = { ...data, ...(await auth.authenticatedSession(this.application.container, this.#defaults.user)) };
+    }
+    if (data) {
       const session = await this.#session;
-      if (!session) throw new Error('withSession() needs @bespokecore/session in the app.');
-      testCookies.push({ name: session.cookie, value: await session.create(this.#defaults.session), encrypt: true });
+      if (!session) throw new Error('withSession() and actingAs() need @bespokecore/session in the app.');
+      testCookies.push({ name: session.cookie, value: await session.create(data), encrypt: true });
     }
     const cookies = await Promise.all(
       testCookies.map(

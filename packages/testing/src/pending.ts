@@ -82,6 +82,12 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertSessionMissing(...args: Parameters<Assertions['assertSessionMissing']>): this {
     return this.#queue((r) => r.assertSessionMissing(...args));
   }
+  assertAuthenticated(...args: Parameters<Assertions['assertAuthenticated']>): this {
+    return this.#queue((r) => r.assertAuthenticated(...args));
+  }
+  assertGuest(): this {
+    return this.#queue((r) => r.assertGuest());
+  }
   assertInvalid<C = unknown>(fields: readonly FieldOf<C>[] | Partial<Record<FieldOf<C>, string | RegExp>>): this {
     return this.#queue((r) => r.assertInvalid<C>(fields));
   }

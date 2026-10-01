@@ -1,5 +1,6 @@
+import { authenticate } from '@bespokecore/auth';
 import { defineRoutes } from '@bespokecore/http';
-import { Authenticate, UserRepository } from '#modules/auth';
+import { UserRepository } from '#modules/auth';
 import { AddProfileLinkController } from './controllers/AddProfileLinkController.ts';
 import { DeleteProfileLinkController } from './controllers/DeleteProfileLinkController.ts';
 import { EditUserProfileController } from './controllers/EditUserProfileController.ts';
@@ -10,7 +11,7 @@ import { ProfileDirectory } from './ProfileDirectory.ts';
 import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
 
 export default defineRoutes((Route) => {
-  const users = Route.prefix('/users').middleware(Authenticate).name('user-profile.');
+  const users = Route.prefix('/users').middleware(authenticate()).name('user-profile.');
   users.get('/me', RedirectToOwnProfileController).name('me');
 
   // The profile page reads through the module's own read model; editing goes through auth's repository.

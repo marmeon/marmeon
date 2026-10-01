@@ -1,6 +1,7 @@
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
 import * as v from 'valibot';
-import { UserRepository, type AuthState, type User } from '#modules/auth';
+import type { Authenticated } from '@bespokecore/auth';
+import { UserRepository, type User } from '#modules/auth';
 
 /** REPR: what the endpoint accepts and who may call it — next to the endpoint itself. */
 export const UpdateUserProfileRequest = defineRequest({
@@ -9,7 +10,7 @@ export const UpdateUserProfileRequest = defineRequest({
     bio: v.pipe(v.string(), v.trim(), v.maxLength(200, 'The bio may have at most 200 characters.')),
   }),
   // Only your own profile. Runs before validation — others get a 403, not field errors.
-  authorize: (ctx: HttpContext<AuthState, { user: User }>) => ctx.user.id === ctx.params.user.id,
+  authorize: (ctx: HttpContext<Authenticated, { user: User }>) => ctx.user.id === ctx.params.user.id,
 });
 
 export class UpdateUserProfileController extends Controller {

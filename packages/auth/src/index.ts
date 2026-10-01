@@ -1,8 +1,17 @@
-import { defineConfig, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import * as v from 'valibot';
+import { Auth } from './auth.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
+import { UserProvider } from './user.ts';
 
-// Authentication (Wave 4): password hashing first; guards, policies and tokens follow.
+// Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
+export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
+export { Failed, Lockout, Login, Logout } from './events.ts';
+export { authenticate, guest } from './middleware.ts';
+export type { AuthenticateOptions } from './middleware.ts';
+export { authenticatedSession } from './testing.ts';
+export { UserProvider } from './user.ts';
+export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
 export {
   argon2Available,
   DEFAULT_HASHER_OPTIONS,
@@ -38,12 +47,23 @@ export const HashConfig = defineConfig('hash', {
 });
 export type HashConfig = ConfigOf<typeof HashConfig>;
 
-/** Registers the `Hasher` (`HASH_DRIVER`). Found by `bespoke discover`. */
+/** Registers the `Hasher` (`HASH_DRIVER`) and `Auth` (per request). Found by `bespoke discover`. */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig];
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
+    container.scoped(Auth);
+  }
+
+  boot(app: Application): void {
+    if (app.modules.length > 0 && !app.container.has(UserProvider)) {
+      throw new Error(
+        'Authentication needs to know where users come from: bind a UserProvider in a provider of your auth module — ' +
+          'container.bind(UserProvider, UserRepository) — and declare the user type: ' +
+          "declare module '@bespokecore/auth' { interface AuthTypes { user: User } }.",
+      );
+    }
   }
 }

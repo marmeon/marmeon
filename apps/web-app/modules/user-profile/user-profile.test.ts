@@ -21,7 +21,7 @@ beforeEach(async () => {
 });
 
 /** Signed in as `user`, navigating client-side (answers with the page object). */
-const as = (user: User) => app.withSession({ user_id: user.id }).navigating();
+const as = (user: User) => app.actingAs(user).navigating();
 const profile = (user: User) => `/users/${user.id}`;
 
 describe('user-profile module', () => {
@@ -38,7 +38,7 @@ describe('user-profile module', () => {
       await as(ada).get(profile(ada)).assertOk(),
       await as(ada).get(profile(alan)).assertOk(),
       await as(ada).get(`${profile(ada)}/edit`).assertOk(),
-      await app.withSession({ user_id: ada.id }).get(profile(ada), { headers: { accept: 'text/html' } }).assertOk(), // the HTML document
+      await app.actingAs(ada).get(profile(ada), { headers: { accept: 'text/html' } }).assertOk(), // the HTML document
       await app.get('/api/users').assertOk(),
     ];
     for (const response of pages) {
@@ -65,7 +65,7 @@ describe('user-profile module', () => {
   });
 
   it('carries the page object in full page loads too', async () => {
-    await app.withSession({ user_id: ada.id }).get(profile(ada)).assertOk().assertPage('user-profile/Show');
+    await app.actingAs(ada).get(profile(ada)).assertOk().assertPage('user-profile/Show');
   });
 
   it('filters the other people by name from the query string', async () => {
@@ -113,7 +113,7 @@ describe('user-profile module', () => {
   describe('updating the profile (UpdateUserProfileRequest)', () => {
     it('saves valid, trimmed input and flashes a status', async () => {
       await app
-        .withSession({ user_id: ada.id })
+        .actingAs(ada)
         .put(profile(ada), { json: { name: '  Ada King ', bio: 'Countess.' } })
         .assertRedirect(profile(ada))
         .assertValid()
@@ -123,7 +123,7 @@ describe('user-profile module', () => {
 
     it('answers API clients with 422 and the field errors', async () => {
       const response = await app
-        .withSession({ user_id: ada.id })
+        .actingAs(ada)
         .expectingJson()
         .put(profile(ada), { json: { name: 'A', bio: 'x'.repeat(201) } })
         .assertUnprocessable()
@@ -133,7 +133,7 @@ describe('user-profile module', () => {
 
     it('sends pages back with the errors and the old input in the session', async () => {
       await app
-        .withSession({ user_id: ada.id })
+        .actingAs(ada)
         .put(profile(ada), { form: { name: 'A', bio: 'ok', _token: 'never flashed' }, headers: { referer: `http://localhost${profile(ada)}/edit` } })
         .assertRedirect(`${profile(ada)}/edit`)
         .assertInvalid<UpdateUserProfileController>(['name'])
@@ -141,7 +141,7 @@ describe('user-profile module', () => {
     });
 
     it('forbids editing someone else (403 before validation)', async () => {
-      await app.withSession({ user_id: alan.id }).expectingJson().put(profile(ada), { json: {} }).assertForbidden();
+      await app.actingAs(alan).expectingJson().put(profile(ada), { json: {} }).assertForbidden();
       await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada Lovelace' });
     });
   });
@@ -159,20 +159,21 @@ describe('user-profile module', () => {
     it('evaluates lazy props only when a page renders — never for redirects or JSON', async () => {
       let lookups = 0;
       class CountingUsers extends UserRepository {
-        override find(id: number) {
+        override findById(id: number) {
           lookups++;
-          return super.find(id);
+          return super.findById(id);
         }
       }
       await app.close(); // one database app per test
       const counted = await createTestApp(application, { database: 'refresh', override: (c) => c.singleton(UserRepository, CountingUsers) });
       const user = await counted.factory(UserFactory).create();
-      await counted.withSession({ user_id: user.id }).get('/users/me').assertRedirect(`/users/${user.id}`);
-      expect(lookups).toBe(1); // Authenticate only — the shared `auth` prop was not evaluated
+      await counted.actingAs(user).get('/users/me').assertRedirect(`/users/${user.id}`);
+      expect(lookups).toBe(2); // actingAs() fingerprints the user, then authenticate() — the shared `auth` prop was not evaluated
 
       lookups = 0;
-      await counted.withSession({ user_id: user.id }).navigating().get(`/users/${user.id}`).assertOk();
-      expect(lookups).toBe(2); // Authenticate, and now the shared `auth` prop (the profile comes from the ProfileDirectory)
+      await counted.actingAs(user).navigating().get(`/users/${user.id}`).assertOk();
+      // actingAs(), then authenticate() — and the shared `auth` prop asks the same per-request Auth: no second lookup.
+      expect(lookups).toBe(2);
     });
   });
 
@@ -216,13 +217,13 @@ describe('user-profile module', () => {
     const deployed = await createTestApp(application, { database: 'refresh', env: { ASSET_VERSION: 'build-2' } });
     const user = await deployed.factory(UserFactory).create();
     await deployed
-      .withSession({ user_id: user.id })
+      .actingAs(user)
       .navigating()
       .withHeaders({ 'x-bespoke-version': 'build-1' })
       .get(`/users/${user.id}`)
       .assertStatus(409)
       .assertHeader('x-bespoke-location', `http://localhost/users/${user.id}`);
-    await deployed.withSession({ user_id: user.id }).navigating().get(`/users/${user.id}`).assertOk();
+    await deployed.actingAs(user).navigating().get(`/users/${user.id}`).assertOk();
   });
 
   it('redirects /users/me to the current user', async () => {
@@ -232,15 +233,15 @@ describe('user-profile module', () => {
   it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
     // Route binding: a missing record never reaches the controller.
     await as(ada).get('/users/999999').assertNotFound().assertPage('errors/Error', { message: 'Not Found' });
-    await app.withSession({ user_id: ada.id }).expectingJson().get('/users/abc').assertNotFound().assertExactJson({ message: 'Not Found' });
-    await app.withSession({ user_id: ada.id }).expectingJson().get('/users/999999/edit').assertNotFound();
+    await app.actingAs(ada).expectingJson().get('/users/abc').assertNotFound().assertExactJson({ message: 'Not Found' });
+    await app.actingAs(ada).expectingJson().get('/users/999999/edit').assertNotFound();
   });
 
   it('lets tests replace services before the app boots — singletons included', async () => {
     const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '' };
     class StubUserRepository extends UserRepository {
-      override async find(id: number) {
-        return id === stub.id ? stub : undefined;
+      override async findById(id: number) {
+        return id === stub.id ? { user: stub, passwordHash: null } : undefined;
       }
       override async list() {
         return [{ id: stub.id, name: stub.name }];
@@ -251,9 +252,9 @@ describe('user-profile module', () => {
       database: 'refresh', // the profile also reads login_activity
       override: (c) => c.singleton(UserRepository, (r) => new StubUserRepository(r.make(Connections))),
     });
-    // Authenticate asks the repository: the stub's user is signed in, although no row exists.
-    await stubbed.withSession({ user_id: 7 }).get('/users/me').assertRedirect('/users/7');
-    await stubbed.withSession({ user_id: 7 }).navigating().get('/login').assertPage('auth/Login', { auth: { user: { id: 7, name: 'Grace (stub)' } } });
+    // Authentication asks the repository (it is the UserProvider): the stub's user is signed in, although no row exists.
+    await stubbed.actingAs(stub).get('/users/me').assertRedirect('/users/7');
+    await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { auth: { user: { id: 7, name: 'Grace (stub)' } } });
   });
 
   it('boots modules and discovered packages through their providers', () => {
@@ -264,9 +265,8 @@ describe('user-profile module', () => {
 
   it('loads the people with their last sign-in eagerly — the queries do not grow with the people (no N+1)', async () => {
     await app.factory(UserFactory).count(5).create();
-    await app.post('/login', { form: { user_id: String(grace.id) } }).assertRedirect('/users/me');
+    await app.post('/login', { form: { email: grace.email, password: 'password' } }).assertRedirect('/users/me');
     const directory = app.make(ProfileDirectory);
-    await directory.people({ except: ada.id }); // the first relation query of a connection looks up its column types, once
     const queries: string[] = [];
     app.make(Connections).onQuery((query) => queries.push(query.sql));
 
@@ -279,8 +279,8 @@ describe('user-profile module', () => {
     expect(people.data.find((person) => person.id === alan.id)?.activity).toBeNull();
   });
 
-  it('shows when a user last signed in — via the UserLoggedIn event from the auth module', async () => {
-    await app.post('/login', { form: { user_id: String(alan.id) } }).assertRedirect('/users/me');
+  it('shows when a user last signed in — via the Login event of @bespokecore/auth', async () => {
+    await app.post('/login', { form: { email: alan.email, password: 'password' } }).assertRedirect('/users/me');
     await app.assertDatabaseHas('login_activity', { user_id: alan.id });
 
     await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
@@ -307,11 +307,11 @@ describe('profile links (a route bound within its user)', () => {
     await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog', url: 'https://ada.example' });
 
     await app
-      .withSession({ user_id: ada.id })
+      .actingAs(ada)
       .expectingJson()
       .post(`${profile(ada)}/links`, { json: { label: 'x', url: 'javascript:alert(1)' } })
       .assertInvalid(['url']);
-    await app.withSession({ user_id: alan.id }).expectingJson().post(`${profile(ada)}/links`, { json: { label: 'x', url: 'https://x.example' } }).assertForbidden();
+    await app.actingAs(alan).expectingJson().post(`${profile(ada)}/links`, { json: { label: 'x', url: 'https://x.example' } }).assertForbidden();
   });
 
   it('removes your own link', async () => {
@@ -323,9 +323,9 @@ describe('profile links (a route bound within its user)', () => {
   it('refuses another user’s link through your own URL: 404, not deleted (IDOR)', async () => {
     const adasLink = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
     // Alan owns /users/<alan>, but the link belongs to Ada — the scoped binding does not find it there.
-    await app.withSession({ user_id: alan.id }).expectingJson().delete(`${profile(alan)}/links/${adasLink.id}`).assertNotFound();
+    await app.actingAs(alan).expectingJson().delete(`${profile(alan)}/links/${adasLink.id}`).assertNotFound();
     // Through Ada's URL it is found — and refused, it is not Alan's profile.
-    await app.withSession({ user_id: alan.id }).expectingJson().delete(`${profile(ada)}/links/${adasLink.id}`).assertForbidden();
+    await app.actingAs(alan).expectingJson().delete(`${profile(ada)}/links/${adasLink.id}`).assertForbidden();
     await app.assertDatabaseHas('profile_links', { id: adasLink.id });
   });
 });

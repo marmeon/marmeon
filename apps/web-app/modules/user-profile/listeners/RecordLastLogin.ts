@@ -1,7 +1,7 @@
-import type { UserLoggedIn } from '#modules/auth';
+import type { Login } from '@bespokecore/auth';
 import { LoginActivityRepository } from '../LoginActivityRepository.ts';
 
-/** Reacts to an auth event without the auth module knowing this module exists. */
+/** Reacts to the framework's Login event — the auth module does not know this module exists. */
 export class RecordLastLogin {
   readonly #activity: LoginActivityRepository;
 
@@ -9,7 +9,7 @@ export class RecordLastLogin {
     this.#activity = activity;
   }
 
-  async handle(event: UserLoggedIn): Promise<void> {
+  async handle(event: Login): Promise<void> {
     await this.#activity.record(event.user.id, event.at);
   }
 }
