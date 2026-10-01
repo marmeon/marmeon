@@ -2,8 +2,9 @@ import { Database, hasMany, hasOne, paginate, sql } from '@bespokecore/database'
 import type { RouteBinder } from '@bespokecore/http';
 
 /**
- * The module's read model: people with their last sign-in and links. `users` belongs to auth, which
- * exposes it for reading (E20); `login_activity` and `profile_links` are this module's own tables. Each
+ * The module's read model: people with their last sign-in and links. It opts into module boundaries
+ * (`Database<'user-profile'>`): `users` belongs to auth, which exposes it for reading only;
+ * `login_activity` and `profile_links` are this module's own tables. Each
  * read is one query — relations are eager-loaded (no N+1). Also a route binder: `Route.bind('user', ProfileDirectory)`.
  */
 export class ProfileDirectory implements RouteBinder<Profile> {

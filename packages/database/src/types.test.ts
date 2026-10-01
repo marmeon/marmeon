@@ -41,9 +41,11 @@ it('types connections, configuration and the query log', () => {
   // @ts-expect-error — (2) wrong column type on insert
   void (() => shop().insertInto('orders').values({ total: '12' }));
 
-  // The token resolves the default connection with every (generated) table.
+  // The token resolves the default connection with every (generated) table — and `Database`
+  // without a module name is exactly that: module boundaries are opt-in (E20, revised).
   const fromContainer = (container: Container) => container.make(Database);
   expectTypeOf(fromContainer).returns.toEqualTypeOf<Kysely<Tables>>();
+  expectTypeOf<Database>().toEqualTypeOf<Kysely<Tables>>();
 
   defineConnection('reporting', { env: v.object({ URL: v.string() }), resolve: (env) => ({ driver: 'pgsql', url: env.URL }) });
   // @ts-expect-error — (3) unknown driver

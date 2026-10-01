@@ -42,7 +42,7 @@ export type Row<T extends keyof Tables> = Selectable<Tables[T]>;
 export type NewRow<T extends keyof Tables> = Insertable<Tables[T]>;
 export type RowUpdate<T extends keyof Tables> = Updateable<Tables[T]>;
 
-// --- Module boundaries (E20) --------------------------------------------------------------
+// --- Module boundaries (E20, opt-in via `Database<'module'>`) -------------------------------
 
 type ReadOnlyTable<T> = { [C in keyof T]: ColumnType<Selectable<T>[C & keyof Selectable<T>], never, never> };
 

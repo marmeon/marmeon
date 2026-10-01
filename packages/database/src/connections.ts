@@ -10,12 +10,15 @@ import { RelationsPlugin } from './relations.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
 /**
- * The database as a module sees it — inject it with the module's name:
- * `constructor(db: Database<'user-profile'>)`. Its own tables for everything, other modules'
- * exposed tables for reading and joins (E20). At runtime it is the default connection.
+ * The default connection, typed by the app's tables: `constructor(db: Database)`.
+ *
+ * Module boundaries are opt-in (E20, revised): with a module's name — `Database<'user-profile'>` —
+ * the module sees its own tables for everything, and other modules' `exposes` tables for reading and
+ * joins only. At runtime it is the same connection either way; the boundary is a type.
  */
-export type Database<M extends keyof Modules & string> = ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
-/** The default connection with every table — what the framework itself works with. */
+export type Database<M extends keyof Modules & string = never> = [M] extends [never]
+  ? Kysely<Tables>
+  : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
 export const Database = token<Kysely<Tables>>('Database');
 
 /** One executed (or failed) query — for the query log, tests counting queries, and devtools. */
