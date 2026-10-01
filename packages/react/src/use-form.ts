@@ -9,10 +9,11 @@ type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
 type Field<F> = keyof F & string;
 
 /**
- * How a form is sent. `onError` gets the *validation* errors (as Inertia's forms do); a request that failed
- * (offline, 5xx) is a visit error — the app shows it over the page, and `onFinish` still runs.
+ * How a form is sent — the visit's callbacks with Inertia's meanings (E44): `onError` gets the *validation* errors
+ * (here the first message per field), `onException` a request that failed (offline, 5xx — the app also shows it over
+ * the page), and `onFinish` runs after every submit.
  */
-export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data' | 'onError' | 'onFinish'> {
+export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data' | 'onSuccess' | 'onError' | 'onFinish'> {
   onSuccess?: () => void;
   /** The server rejected the input: the first message per field. */
   onError?: (errors: Record<string, string>) => void;

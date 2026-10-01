@@ -2,13 +2,13 @@ import type { PageObject, RouteManifest, SharedProps } from '@bespokecore/http/p
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { defaultTitle, HeadContext, TitleRegistry, type TitleTemplate } from './head.tsx';
-import { Navigator, type VisitError, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
+import { Navigator, type VisitException, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { showProgress, type ProgressOptions } from './progress.ts';
 import { RoutesContext } from './routes.ts';
 
 export { xsrfToken } from './navigation.ts';
-export type { Visit, VisitCallbacks, VisitError, VisitEvent, VisitEvents, VisitMethod, VisitOptions, VisitProgress } from './navigation.ts';
+export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress } from './navigation.ts';
 
 interface RouterValue {
   page: PageObject;
@@ -76,7 +76,7 @@ interface Current {
  */
 export function BespokeApp({ initialPage, initialComponent, resolve, title = defaultTitle, routes, layout, progress, headCollector }: BespokeAppProps) {
   const [current, setCurrent] = useState<Current>({ page: initialPage, Component: initialComponent, key: 0 });
-  const [failure, setFailure] = useState<VisitError | null>(null);
+  const [failure, setFailure] = useState<VisitException | null>(null);
 
   // The navigator waits until a page is on screen before it restores the scroll position.
   const committed = useRef<(() => void)[]>([]);
@@ -111,7 +111,7 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
   useEffect(() => {
     const nav = navigator.current;
     if (!nav) return undefined;
-    const stops = [nav.on('error', setFailure), nav.on('start', () => setFailure(null))];
+    const stops = [nav.on('exception', setFailure), nav.on('start', () => setFailure(null))];
     if (progress !== false) stops.push(showProgress(nav, progress));
     return () => {
       for (const stop of stops) stop();

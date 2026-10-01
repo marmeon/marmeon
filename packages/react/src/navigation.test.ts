@@ -1,6 +1,6 @@
 import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
 import { describe, expect, it } from 'vitest';
-import { isHistoryState, Navigator, type NavigatorWindow, type ScrollRegion, type VisitError } from './navigation.ts';
+import { isHistoryState, Navigator, type NavigatorWindow, type ScrollRegion, type VisitException } from './navigation.ts';
 
 const ORIGIN = 'https://app.test';
 
@@ -280,11 +280,13 @@ describe('Navigator — the history without props (E36)', () => {
 /** Records a navigator's events, in order. */
 function record(navigator: Navigator) {
   const events: string[] = [];
-  const errors: VisitError[] = [];
+  const errors: VisitException[] = [];
   navigator.on('start', (visit) => events.push(`start ${visit.method} ${visit.url}`));
   navigator.on('progress', (progress) => events.push(`progress ${progress.percentage}`));
+  navigator.on('success', (_page, visit) => events.push(`success ${visit.url}`));
+  navigator.on('error', (invalid) => events.push(`error ${Object.keys(invalid).join(',')}`));
   navigator.on('cancel', (visit) => events.push(`cancel ${visit.url}`));
-  navigator.on('error', (error) => (events.push(`error ${error.type}`), errors.push(error)));
+  navigator.on('exception', (exception) => (events.push(`exception ${exception.type}`), errors.push(exception)));
   navigator.on('finish', (visit) => events.push(`finish ${visit.url}`));
   return { events, errors };
 }
@@ -296,22 +298,43 @@ describe('Navigator — visit events and failures', () => {
     const { navigator } = boot(win, page('/a'));
     const { events } = record(navigator);
     const own: string[] = [];
-    await navigator.visit('/b', { onStart: () => own.push('start'), onFinish: () => own.push('finish'), onError: () => own.push('error') });
-    expect(events).toEqual(['start get /b', 'finish /b']);
-    expect(own).toEqual(['start', 'finish']);
+    await navigator.visit('/b', {
+      onStart: () => own.push('start'),
+      onSuccess: () => own.push('success'),
+      onError: () => own.push('error'),
+      onException: () => own.push('exception'),
+      onFinish: () => own.push('finish'),
+    });
+    expect(events).toEqual(['start get /b', 'success /b', 'finish /b']);
+    expect(own).toEqual(['start', 'success', 'finish']);
   });
 
-  it('turns a network failure into an error event — not a rejection — and leaves page and history as they are', async () => {
+  it('reports validation errors as `error` (Inertia’s meaning) — the page with them is shown', async () => {
+    const win = new FakeWindow(`${ORIGIN}/edit`);
+    // A failed form: the server redirects back, the page carries the errors.
+    win.handler = () => pageResponse(page('/edit', { errors: { name: ['The name is required.'] } }));
+    const { navigator, visible } = boot(win, page('/edit', { errors: {} }));
+    const { events } = record(navigator);
+    const own: unknown[] = [];
+    const shown = await navigator.visit('/edit', { method: 'put', data: { name: '' }, onError: (errors) => void own.push(errors), onSuccess: () => void own.push('success') });
+    expect(events).toEqual(['start put /edit', 'error name', 'finish /edit']);
+    expect(own).toEqual([{ name: ['The name is required.'] }]);
+    expect(shown).toBe(visible());
+  });
+
+  it('turns a network failure into an exception event — not a rejection — and leaves page and history as they are', async () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     win.handler = () => {
       throw new TypeError('Failed to fetch');
     };
     const { navigator, shown } = boot(win, page('/a'));
     const { events, errors } = record(navigator);
-    const own: VisitError[] = [];
+    const own: VisitException[] = [];
+    const invalid: unknown[] = [];
 
-    await expect(navigator.visit('/b', { onError: (error) => void own.push(error) })).resolves.toBeUndefined();
-    expect(events).toEqual(['start get /b', 'error network', 'finish /b']);
+    await expect(navigator.visit('/b', { onException: (exception) => void own.push(exception), onError: (errors) => void invalid.push(errors) })).resolves.toBeUndefined();
+    expect(invalid).toEqual([]);
+    expect(events).toEqual(['start get /b', 'exception network', 'finish /b']);
     expect(errors[0]).toMatchObject({ type: 'network', visit: { url: '/b', method: 'get' }, cause: expect.any(TypeError) });
     expect(own).toEqual(errors);
     expect(shown).toEqual([]);
@@ -327,13 +350,13 @@ describe('Navigator — visit events and failures', () => {
     const { events, errors } = record(navigator);
 
     expect(await navigator.visit('/b', { method: 'post', data: { name: 'Ada' } })).toBeUndefined();
-    expect(events).toEqual(['start post /b', 'error server', 'finish /b']);
+    expect(events).toEqual(['start post /b', 'exception server', 'finish /b']);
     expect(errors[0]).toMatchObject({ type: 'server', status: 500, page: errorPage, html: undefined });
     expect(shown).toEqual([]);
     expect(win.entries).toHaveLength(1);
   });
 
-  it('hands plain HTML of a 5xx (a proxy, say) to the error event instead of loading it', async () => {
+  it('hands plain HTML of a 5xx (a proxy, say) to the exception event instead of loading it', async () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     win.handler = () => new Response('<h1>502 Bad Gateway</h1>', { status: 502, headers: { 'content-type': 'text/html' } });
     const { navigator } = boot(win, page('/a'));
@@ -365,7 +388,7 @@ describe('Navigator — visit events and failures', () => {
     const slow = navigator.visit('/slow', { onCancel: () => own.push('cancelled') });
     await navigator.visit('/fast');
     expect(await slow).toBeUndefined();
-    expect(events).toEqual(['start get /slow', 'start get /fast', 'cancel /slow', 'finish /slow', 'finish /fast']);
+    expect(events).toEqual(['start get /slow', 'start get /fast', 'cancel /slow', 'finish /slow', 'success /fast', 'finish /fast']);
     expect(own).toEqual(['cancelled']);
     expect(visible().url).toBe('/fast');
   });
@@ -404,7 +427,7 @@ describe('Navigator — visit events and failures', () => {
     data.append('avatar', new Blob(['…'], { type: 'image/png' }), 'avatar.png');
 
     await navigator.visit('/a', { method: 'post', data, onProgress: (progress) => void own.push(progress.percentage!) });
-    expect(events).toEqual(['start post /a', 'progress 25', 'progress 100', 'finish /a']);
+    expect(events).toEqual(['start post /a', 'progress 25', 'progress 100', 'success /a', 'finish /a']);
     expect(own).toEqual([25, 100]);
     expect(sent[0]).toMatchObject({ method: 'POST', url: '/a', headers: { [PAGE_HEADER]: 'true' }, body: data });
     expect(visible().props).toEqual({ uploaded: true });

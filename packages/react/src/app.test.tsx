@@ -8,6 +8,7 @@ import { BespokeApp, usePage, useRouter } from './app.tsx';
 import { Head } from './head.tsx';
 import { resolveModulePages, type DefaultLayout, type PageComponent } from './pages.ts';
 import { showProgress, PROGRESS_ATTRIBUTE } from './progress.ts';
+import { useForm } from './use-form.ts';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -74,7 +75,26 @@ function Fragile({ items }: { items: { data: string[] } | string[] }) {
 }
 Fragile.layout = AppLayout;
 
-const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile };
+/** A form: what its callbacks were called with. */
+const calls: unknown[] = [];
+function Form() {
+  const form = useForm<{ name: string }>({ name: '' });
+  return (
+    <button
+      data-testid="submit"
+      onClick={() =>
+        void form.post('/form', {
+          onSuccess: () => calls.push('success'),
+          onError: (errors) => calls.push({ error: errors }),
+          onException: (exception) => calls.push({ exception: exception.type }),
+          onFinish: () => calls.push('finish'),
+        })
+      }
+    />
+  );
+}
+
+const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile, Form };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
@@ -251,6 +271,31 @@ describe('failed visits', () => {
     await click('to-b');
     await settle();
     expect($('[data-bespoke-failure]')).toBeNull();
+  });
+});
+
+describe('form callbacks (E44: Inertia’s meanings)', () => {
+  it('onError gets the validation errors (first message per field), onException a failed request', async () => {
+    calls.length = 0;
+    server = () => respond(page('Form', '/form', { errors: { name: ['The name is required.', 'Too short.'] } }));
+    await mount(page('Form', '/form'));
+    await click('submit');
+    await settle();
+    expect(calls).toEqual([{ error: { name: 'The name is required.' } }, 'finish']);
+
+    calls.length = 0;
+    server = () => respond(page('Form', '/form', { errors: {} }));
+    await click('submit');
+    await settle();
+    expect(calls).toEqual(['success', 'finish']);
+
+    calls.length = 0;
+    server = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await click('submit');
+    await settle();
+    expect(calls).toEqual([{ exception: 'network' }, 'finish']);
   });
 });
 

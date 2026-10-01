@@ -1,7 +1,7 @@
 import { ERROR_PAGE, type ErrorPageProps } from '@bespokecore/http/page';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
-import type { VisitError } from './navigation.ts';
+import type { VisitException } from './navigation.ts';
 import type { PageComponent, ResolvePage } from './pages.ts';
 
 /**
@@ -101,7 +101,7 @@ export function RenderErrorFallback({ resolve, error }: { resolve: ResolvePage; 
  * - a 5xx: the server's error page in a dialog — with the exception in debug mode (development), else just
  *   status and title. Plain HTML from something in front of the server goes into a sandboxed frame.
  */
-export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitError | null; resolve: ResolvePage; onDismiss: () => void }) {
+export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitException | null; resolve: ResolvePage; onDismiss: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const element = dialog.current;

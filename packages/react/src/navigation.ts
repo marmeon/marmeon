@@ -3,7 +3,7 @@
  * and scroll restoration. No React in here — `<BespokeApp>` renders what the navigator hands it (and Wave 5's
  * adapter core, `@bespokecore/http/client`, will start from this file).
  */
-import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject } from '@bespokecore/http/page';
+import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject, type ValidationErrors } from '@bespokecore/http/page';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -21,22 +21,32 @@ export interface VisitProgress {
 }
 
 /**
- * A visit that failed — the page stays as it is (nothing typed is lost) and the app shows a fallback:
+ * A visit that failed (E44: `exception`, as in Inertia) — the page stays as it is (nothing typed is lost) and the
+ * app shows a fallback:
  * - `network`: the server could not be reached (offline, the server is down, the connection broke).
  * - `server`: the server answered with a 5xx — its error page (`page`, with the exception in debug mode) or, from
  *   something in front of it (a proxy), plain HTML (`html`).
  *
- * Validation errors are no failure: they come back as the page's `errors` prop (see `useForm`).
+ * Validation errors are no failure: they are the `error` event (the page's `errors` prop, see `useForm`).
  */
-export type VisitError =
+export type VisitException =
   | { readonly type: 'network'; readonly visit: Visit; readonly cause: unknown }
   | { readonly type: 'server'; readonly visit: Visit; readonly status: number; readonly page: PageObject | undefined; readonly html: string | undefined };
 
-/** The events of a visit, in order: `start`, `progress` (uploads), then `error` or `cancel`, and always `finish`. */
+/**
+ * The events of a visit, in order: `start`, `progress` (uploads), then one of `success`, `error`, `exception` or
+ * `cancel`, and always `finish` — Inertia's names and meanings (E44). Back/Forward to a page that is not in memory
+ * reports `start`, `exception`/`cancel` and `finish` only (it is no visit of the app's own).
+ */
 export interface VisitEvents {
   start: (visit: Visit) => void;
   progress: (progress: VisitProgress, visit: Visit) => void;
-  error: (error: VisitError) => void;
+  /** The visit ended on a page without validation errors. */
+  success: (page: PageObject, visit: Visit) => void;
+  /** The visit ended on a page with validation errors (its `errors` prop — the server redirected back to the form). */
+  error: (errors: ValidationErrors, visit: Visit) => void;
+  /** The request failed: offline or a 5xx. The page stays; the app shows a fallback. */
+  exception: (exception: VisitException) => void;
   /** A newer visit (or Back/Forward) replaced this one before it finished. */
   cancel: (visit: Visit) => void;
   finish: (visit: Visit) => void;
@@ -47,7 +57,9 @@ export type VisitEvent = keyof VisitEvents;
 export interface VisitCallbacks {
   onStart?: VisitEvents['start'];
   onProgress?: VisitEvents['progress'];
+  onSuccess?: VisitEvents['success'];
   onError?: VisitEvents['error'];
+  onException?: VisitEvents['exception'];
   onCancel?: VisitEvents['cancel'];
   onFinish?: VisitEvents['finish'];
 }
@@ -165,7 +177,9 @@ export class Navigator {
   readonly #listeners: { [E in VisitEvent]: Set<VisitEvents[E]> } = {
     start: new Set(),
     progress: new Set(),
+    success: new Set(),
     error: new Set(),
+    exception: new Set(),
     cancel: new Set(),
     finish: new Set(),
   };
@@ -229,7 +243,7 @@ export class Navigator {
 
   /**
    * Resolves with the page the visit ended on — undefined if it did not end on a page: the browser took over,
-   * a newer visit replaced it (`onCancel`), or it failed (`onError`). It never rejects for a failed request.
+   * a newer visit replaced it (`onCancel`), or it failed (`onException`). It never rejects for a failed request.
    */
   async visit(url: string, options: VisitOptions = {}): Promise<PageObject | undefined> {
     this.#adopt();
@@ -252,7 +266,13 @@ export class Navigator {
       // Redirected back to the same URL (a failed form): replace, don't stack history entries.
       const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
       const history = replace || (method !== 'get' && sameUrl) ? 'replace' : 'push';
-      return this.#show(page, history, { preserveScroll, preserveState, hash: target.hash });
+      const shown = await this.#show(page, history, { preserveScroll, preserveState, hash: target.hash });
+      if (shown) {
+        const errors = validationErrors(shown);
+        if (errors) this.#emit('error', options.onError, errors, { url: request.url, method });
+        else this.#emit('success', options.onSuccess, shown, { url: request.url, method });
+      }
+      return shown;
     });
   }
 
@@ -401,7 +421,7 @@ export class Navigator {
       return page;
     } catch (cause) {
       if (controller.signal.aborted) this.#emit('cancel', callbacks.onCancel, visit);
-      else this.#emit('error', callbacks.onError, { type: 'network', visit, cause });
+      else this.#emit('exception', callbacks.onException, { type: 'network', visit, cause });
       return undefined;
     } finally {
       if (this.#inFlight === controller) this.#inFlight = undefined;
@@ -427,7 +447,7 @@ export class Navigator {
       // The page stays (and whatever was typed into it); the app shows the server's error as a fallback.
       const page = isPage ? ((await response.json()) as PageObject) : undefined;
       const html = isPage ? undefined : await response.text();
-      this.#emit('error', callbacks.onError, { type: 'server', visit, status: response.status, page, html });
+      this.#emit('exception', callbacks.onException, { type: 'server', visit, status: response.status, page, html });
       return undefined;
     }
     if (!isPage) {
@@ -520,6 +540,12 @@ export class Navigator {
     this.#left = true;
     this.#cache.clear();
   }
+}
+
+/** The validation errors a page carries (the shared `errors` prop), or undefined when there are none. */
+function validationErrors(page: PageObject): ValidationErrors | undefined {
+  const errors = (page.props as { errors?: unknown }).errors;
+  return typeof errors === 'object' && errors !== null && Object.keys(errors).length > 0 ? (errors as ValidationErrors) : undefined;
 }
 
 function entry(page: PageObject, key: string, position: Scroll): HistoryState {
