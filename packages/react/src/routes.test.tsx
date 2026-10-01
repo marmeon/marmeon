@@ -1,7 +1,8 @@
+import { resolveRoute } from '@bespokecore/http/client';
 import { describe, expect, it } from 'vitest';
 import { Link } from './link.tsx';
 import { resolveModulePages } from './pages.ts';
-import { resolveRoute, useRoute } from './routes.ts';
+import { useRoute } from './routes.ts';
 import { createSsrRenderer } from './server.tsx';
 import { useForm } from './use-form.ts';
 

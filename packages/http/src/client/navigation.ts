@@ -1,7 +1,7 @@
 /**
- * The UI-free core of the client: visits and their events, the browser history, the in-memory page cache (E36)
- * and scroll restoration. No React in here — `<BespokeApp>` renders what the navigator hands it (and Wave 5's
- * adapter core, `@bespokecore/http/client`, will start from this file).
+ * The heart of the UI-free client core (`@bespokecore/http/client`): visits and their events, the browser history,
+ * the in-memory page cache (E36), partial reloads, deferred and merged props, prefetching and scroll restoration.
+ * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
  */
 import {
   isPageObject,
@@ -14,7 +14,7 @@ import {
   VERSION_HEADER,
   type PageObject,
   type ValidationErrors,
-} from '@bespokecore/http/page';
+} from '../page.ts';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 

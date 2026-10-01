@@ -1,6 +1,6 @@
+import { createPoll, type Poll } from '@bespokecore/http/client';
 import { useEffect, useMemo, useRef } from 'react';
 import { useRouter, type ReloadOptions } from './app.tsx';
-import { createPoll, type Poll } from './poll.ts';
 
 export interface UsePollOptions {
   /** Keep polling while the tab is hidden (default: pause, and catch up when it is shown again). */

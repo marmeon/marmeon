@@ -1,5 +1,5 @@
 /**
- * Polling, UI-free (the adapter core of step 9 takes it along): runs `run` every `interval` ms — one at a time, the
+ * Polling, UI-free (part of the client core — `usePoll` of @bespokecore/react builds on it): runs `run` every `interval` ms — one at a time, the
  * next one `interval` after the last one finished — and pauses while the tab is in the background.
  */
 

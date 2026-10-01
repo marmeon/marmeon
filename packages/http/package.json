@@ -13,6 +13,11 @@
       "@bespokecore/source": "./src/page.ts",
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"
+    },
+    "./client": {
+      "@bespokecore/source": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
     }
   },
   "files": [
@@ -27,6 +32,10 @@
     "@bespokecore/encryption": "workspace:*",
     "@bespokecore/router": "workspace:*"
   },
+  "devDependencies": {
+    "happy-dom": "^20.14.5",
+    "vite": "^8.3.1"
+  },
   "publishConfig": {
     "exports": {
       ".": {
@@ -36,6 +45,10 @@
       "./page": {
         "types": "./dist/page.d.ts",
         "default": "./dist/page.js"
+      },
+      "./client": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.js"
       }
     }
   },

@@ -1,7 +1,8 @@
+import { firstErrors, resolveRoute, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, FormOf, ParamsOf, Routes } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { useRouter, type VisitMethod, type VisitOptions, type VisitProgress } from './app.tsx';
-import { resolveRoute, RoutesContext } from './routes.ts';
+import { useRouter } from './app.tsx';
+import { RoutesContext } from './routes.ts';
 
 /** The data of a form: the controller's schema input (`useForm<UpdateUserProfileController>`), or given directly. */
 type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
@@ -138,7 +139,7 @@ export function useForm(...args: unknown[]): unknown {
           },
         });
         if (!page) return;
-        const failed = firstMessages((page.props as { errors?: unknown }).errors);
+        const failed = firstErrors(page);
         setErrors(failed);
         if (Object.keys(failed).length > 0) {
           onError?.(failed);
@@ -189,15 +190,4 @@ export function useForm(...args: unknown[]): unknown {
     ...(target ? { method: target.method as VisitMethod, url: target.url } : {}),
   };
   return form;
-}
-
-/** Server errors are lists per field; forms show the first. */
-function firstMessages(errors: unknown): Record<string, string> {
-  if (typeof errors !== 'object' || errors === null) return {};
-  const result: Record<string, string> = {};
-  for (const [field, messages] of Object.entries(errors)) {
-    const first = Array.isArray(messages) ? messages[0] : messages;
-    if (typeof first === 'string') result[field] = first;
-  }
-  return result;
 }

@@ -1,5 +1,5 @@
 /**
- * The progress bar of visits — plain DOM, no UI framework (it moves to the adapter core with the navigator).
+ * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one (`showProgress(navigator)`).
  * Styled through CSS variables, set as inline style properties (no `<style>` element, so a strict
  * Content-Security-Policy does not block it):
  *

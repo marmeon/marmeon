@@ -1,6 +1,6 @@
 import { NO_STORE } from '@bespokecore/auth';
 import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { Navigator, type NavigatorWindow } from '@bespokecore/react';
+import { Navigator, type NavigatorWindow } from '@bespokecore/http/client';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';

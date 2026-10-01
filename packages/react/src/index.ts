@@ -1,10 +1,16 @@
-export { BespokeApp, loadPageMessages, pageLocale, usePage, useRouter, xsrfToken } from './app.tsx';
+/**
+ * `@bespokecore/react` — the React rendering layer on the UI-free client core `@bespokecore/http/client` (E39):
+ * components, hooks, context, layouts, error boundaries and `<Head>`. Visits, history, caching, prefetching, polling
+ * and the progress bar come from the core (import `Navigator`, `createPoll` … from there).
+ */
+export { BespokeApp, usePage, useRouter } from './app.tsx';
 export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {
   BespokeAppProps,
   PartialReloadOptions,
   PrefetchOptions,
+  ProgressOptions,
   PropName,
   ReloadOptions,
   Router,
@@ -18,12 +24,8 @@ export type {
   VisitOptions,
   VisitProgress,
 } from './app.tsx';
-export { DEFAULT_PAGE_CACHE_SIZE, DEFAULT_PREFETCH_CACHE_FOR, isHistoryState, mergePage, Navigator, SCROLL_REGION_ATTRIBUTE } from './navigation.ts';
 export { Deferred } from './deferred.tsx';
 export type { DeferredProps } from './deferred.tsx';
-export type { HistoryState, NavigatorOptions, NavigatorWindow, ScrollPosition, ScrollRegion } from './navigation.ts';
-export { DEFAULT_PROGRESS_DELAY, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
-export type { ProgressOptions } from './progress.ts';
 export { useForm } from './use-form.ts';
 export type { Form, FormState, FormSubmitOptions, RouteForm, RouteFormFields } from './use-form.ts';
 export { useRoute } from './routes.ts';
@@ -41,7 +43,5 @@ export { Pagination, pagesAround } from './pagination.tsx';
 export type { PaginationProps } from './pagination.tsx';
 export { usePoll } from './use-poll.ts';
 export type { UsePollOptions } from './use-poll.ts';
-export { createPoll } from './poll.ts';
-export type { Poll, PollDocument, PollOptions } from './poll.ts';
 export { WhenVisible } from './when-visible.tsx';
 export type { WhenVisibleProps } from './when-visible.tsx';

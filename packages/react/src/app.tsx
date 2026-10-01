@@ -1,16 +1,39 @@
+import {
+  loadPageMessages,
+  Navigator,
+  pageLocale,
+  showProgress,
+  TitleRegistry,
+  type PrefetchOptions,
+  type ProgressOptions,
+  type TitleTemplate,
+  type VisitException,
+  type VisitEvent,
+  type VisitEvents,
+  type VisitOptions,
+} from '@bespokecore/http/client';
 import type { PageObject, PageProps, RouteManifest, SharedProps } from '@bespokecore/http/page';
 import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
-import { defaultTitle, HeadContext, TitleRegistry, type HeadCollector, type TitleTemplate } from './head.tsx';
+import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
-import { Navigator, type PrefetchOptions, type VisitException, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
-import { showProgress, type ProgressOptions } from './progress.ts';
 import { RoutesContext } from './routes.ts';
 
-export { xsrfToken } from './navigation.ts';
-export type { PrefetchOptions, Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress } from './navigation.ts';
+// The visit types of the client core, under the names React apps already import them by.
+export type {
+  PrefetchOptions,
+  ProgressOptions,
+  Visit,
+  VisitCallbacks,
+  VisitEvent,
+  VisitEvents,
+  VisitException,
+  VisitMethod,
+  VisitOptions,
+  VisitProgress,
+} from '@bespokecore/http/client';
 
 /** The props of page `T`: a controller (`PageProps<T>`) or the props themselves. */
 type PropsOf<T> = T extends { handle: (...args: never[]) => unknown } ? PageProps<T> : T;
@@ -107,16 +130,6 @@ export interface BespokeAppProps {
   messages?: MessageLoader;
   /** The first page's messages, loaded before hydrating (by `createBespokeApp` and the SSR entry). */
   initialCatalog?: Catalog;
-}
-
-/** The locale a page renders in: its own, else the fallback locale of the language files. */
-export function pageLocale(page: PageObject, messages: MessageLoader): string {
-  return page.locale ?? messages.fallback;
-}
-
-/** The messages a page renders with — loaded once per locale; undefined without language files. */
-export function loadPageMessages(page: PageObject, messages: MessageLoader | undefined): Promise<Catalog | undefined> {
-  return messages ? messages.load(pageLocale(page, messages)) : Promise.resolve(undefined);
 }
 
 interface Current {

@@ -308,6 +308,13 @@ importers:
       '@bespokecore/router':
         specifier: workspace:*
         version: link:../router
+    devDependencies:
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
+      vite:
+        specifier: ^8.3.1
+        version: 8.3.1(@types/node@26.6.3)
 
   packages/i18n:
     dependencies:

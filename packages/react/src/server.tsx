@@ -1,9 +1,10 @@
 import type { RouteManifest, SsrRender } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';
-import { BespokeApp, loadPageMessages } from './app.tsx';
-import { isDevelopment, SSR_ERROR_DIGEST } from './fallbacks.tsx';
-import { createHeadCollector, defaultTitle, markServerTag, renderHead, type HeadCollector, type TitleTemplate } from './head.tsx';
+import { defaultTitle, isDevelopment, loadPageMessages, type TitleTemplate } from '@bespokecore/http/client';
+import { BespokeApp } from './app.tsx';
+import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
+import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
 
 export interface SsrOptions {

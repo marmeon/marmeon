@@ -1,7 +1,19 @@
+import {
+  HOVER_PREFETCH_DELAY,
+  prefetchTriggers,
+  prefetchUrlOf,
+  resolveRoute,
+  visitUrlOf,
+  type PrefetchTrigger,
+  type VisitMethod,
+  type VisitOptions,
+} from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, MethodOf, ParamsOf, Query } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
-import { useRouter, type PartialReloadOptions, type VisitMethod, type VisitOptions } from './app.tsx';
-import { resolveRoute, RoutesContext } from './routes.ts';
+import { useRouter, type PartialReloadOptions } from './app.tsx';
+import { RoutesContext } from './routes.ts';
+
+export type { PrefetchTrigger } from '@bespokecore/http/client';
 
 interface LinkOptions {
   replace?: boolean;
@@ -12,9 +24,6 @@ interface LinkOptions {
   /** A visit in the background: no progress bar, it cancels no other visit (see `VisitOptions.async`). */
   async?: boolean;
 }
-
-/** When a link fetches its page ahead: on `hover` (and when pressed — touch screens have no hover), or on `mount`. */
-export type PrefetchTrigger = 'hover' | 'mount';
 
 /** Prefetching — for links (GET) only. */
 interface PrefetchProps {
@@ -32,9 +41,6 @@ interface NoPrefetch {
   prefetch?: 'only links (GET) are prefetched — never an action (POST, PUT, PATCH, DELETE)';
   cacheFor?: never;
 }
-
-/** How long the pointer rests on a link before it prefetches (Inertia's 75 ms): passing over it does not. */
-const HOVER_DELAY = 75;
 
 type AnchorAttributes = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>;
 type ButtonAttributes = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'>;
@@ -142,12 +148,12 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const method = (givenMethod ?? target?.method ?? 'get') as VisitMethod;
 
   // Prefetching: GET links to pages of this site only — and not partial reloads (they are about the page on screen).
-  const triggers = method === 'get' && only === undefined && except === undefined ? prefetchTriggers(prefetch) : NONE;
+  const triggers = method === 'get' && only === undefined && except === undefined ? prefetchTriggers(prefetch) : prefetchTriggers(false);
   const hover = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const fetchAhead = () => {
     clearTimeout(hover.current);
-    const url = new URL(href, window.location.href);
-    if (url.origin === window.location.origin) void prefetchPage(url.pathname + url.search, cacheFor === undefined ? {} : { cacheFor });
+    const url = prefetchUrlOf(href);
+    if (url !== undefined) void prefetchPage(url, cacheFor === undefined ? {} : { cacheFor });
   };
   const onMount = triggers.has('mount');
   useEffect(() => {
@@ -170,15 +176,11 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event as MouseEvent<HTMLAnchorElement & HTMLButtonElement>);
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (rest.target && rest.target !== '_self') return;
-
-    const url = new URL(href, window.location.href);
-    if (url.origin !== window.location.origin) return;
-
+    // Plain left clicks on links to this site only — the browser handles the rest (new tabs, other sites).
+    const url = visitUrlOf(event, href, rest.target);
+    if (url === undefined) return;
     event.preventDefault();
-    void visit(url.pathname + url.search + url.hash, options);
+    void visit(url, options);
   };
 
   const onHover = triggers.has('hover');
@@ -189,7 +191,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       onClick={handleClick}
       onMouseEnter={(event) => {
         onMouseEnter?.(as(event));
-        if (onHover) hover.current = setTimeout(fetchAhead, HOVER_DELAY);
+        if (onHover) hover.current = setTimeout(fetchAhead, HOVER_PREFETCH_DELAY);
       }}
       onMouseLeave={(event) => {
         onMouseLeave?.(as(event));
@@ -206,12 +208,4 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       {...(rest as AnchorAttributes)}
     />
   );
-}
-
-const NONE: ReadonlySet<PrefetchTrigger> = new Set();
-
-function prefetchTriggers(prefetch: PrefetchProps['prefetch']): ReadonlySet<PrefetchTrigger> {
-  if (prefetch === undefined || prefetch === false) return NONE;
-  if (prefetch === true) return new Set(['hover']);
-  return new Set(typeof prefetch === 'string' ? [prefetch] : prefetch);
 }

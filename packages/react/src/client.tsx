@@ -1,11 +1,10 @@
-import { isPageObject, PAGE_SCRIPT_ID, type PageObject, type RouteManifest } from '@bespokecore/http/page';
+import { hasServerMarkup, isDevelopment, loadPageMessages, readInitialPage, rootElement, type ProgressOptions, type TitleTemplate } from '@bespokecore/http/client';
+import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
-import { BespokeApp, loadPageMessages } from './app.tsx';
-import { isDevelopment, SSR_ERROR_DIGEST } from './fallbacks.tsx';
-import type { TitleTemplate } from './head.tsx';
+import { BespokeApp } from './app.tsx';
+import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
-import type { ProgressOptions } from './progress.ts';
 
 export interface CreateBespokeAppOptions {
   resolve: ResolvePage;
@@ -35,28 +34,6 @@ export interface CreateBespokeAppOptions {
   onRecoverableError?: (error: unknown, info: ErrorInfo) => void;
 }
 
-function readInitialPage(): PageObject {
-  const page: unknown = JSON.parse(document.getElementById(PAGE_SCRIPT_ID)?.textContent ?? 'null');
-  if (!isPageObject(page)) throw new Error(`Missing or invalid #${PAGE_SCRIPT_ID} script — was the page server-rendered?`);
-  return page;
-}
-
-/** The root element — the client may start while a streamed document is still arriving. */
-async function rootElement(rootId: string): Promise<HTMLElement> {
-  let root = document.getElementById(rootId);
-  if (!root && document.readyState === 'loading') {
-    await new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
-    root = document.getElementById(rootId);
-  }
-  if (!root) throw new Error(`Root element #${rootId} not found.`);
-  return root;
-}
-
-/** Whether the server rendered markup into `root` (it sends none when server rendering failed or is off). */
-function hasMarkup(root: HTMLElement): boolean {
-  return [...root.childNodes].some((node) => node.nodeType !== Node.TEXT_NODE || (node.textContent ?? '').trim() !== '');
-}
-
 /**
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
@@ -82,7 +59,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
     />
   );
 
-  if (!hasMarkup(root)) {
+  if (!hasServerMarkup(root)) {
     createRoot(root).render(app);
     return;
   }

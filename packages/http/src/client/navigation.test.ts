@@ -1,4 +1,4 @@
-import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
+import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../page.ts';
 import { describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type NavigatorWindow, type ScrollRegion, type VisitException } from './navigation.ts';
 

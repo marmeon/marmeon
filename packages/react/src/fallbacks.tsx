@@ -1,20 +1,8 @@
+import { isDevelopment, type VisitException } from '@bespokecore/http/client';
 import { ERROR_PAGE, type ErrorPageProps } from '@bespokecore/http/page';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
-import type { VisitException } from './navigation.ts';
 import type { PageComponent, ResolvePage } from './pages.ts';
-
-/**
- * Development builds (Vite replaces `process.env.NODE_ENV`, as for React itself). Without a bundler that
- * replaces it, `process` does not exist in the browser: production.
- */
-export function isDevelopment(): boolean {
-  try {
-    return process.env.NODE_ENV !== 'production';
-  } catch {
-    return false;
-  }
-}
 
 /** The digest of errors in a Suspense boundary on the server — how the browser tells them from a hydration mismatch. */
 export const SSR_ERROR_DIGEST = 'bespoke:ssr';

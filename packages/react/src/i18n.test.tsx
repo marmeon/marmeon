@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
+import { loadPageMessages } from '@bespokecore/http/client';
 import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
 import { createMessageLoader } from '@bespokecore/i18n/messages';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, loadPageMessages, useRouter } from './app.tsx';
+import { BespokeApp, useRouter } from './app.tsx';
 import { useLocale, useTranslation } from './i18n.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 
