@@ -21,7 +21,7 @@ export class MakeAuthCommand {
   static usage = '[--adapter=react] [--force]';
   static options = { force: { type: 'boolean' }, adapter: { type: 'string' } } as const;
 
-  handle(input: CommandInput): number {
+  async handle(input: CommandInput): Promise<number> {
     const adapter = typeof input.options.adapter === 'string' ? input.options.adapter : 'react';
     const source = join(STUBS, adapter, 'modules', 'auth');
     if (!/^[a-z]+$/.test(adapter) || !existsSync(source)) {
@@ -51,8 +51,11 @@ export class MakeAuthCommand {
     }
 
     const missing = missingDependencies(input.root);
+    // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
+    const typed = missing.length === 0 && registered !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
     if (missing.length > 0) input.output.line(`Install what the module uses: pnpm add ${missing.join(' ')}`);
+    if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: bespoke migrate — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
     return 0;

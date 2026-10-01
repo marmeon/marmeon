@@ -13,6 +13,6 @@ export class RevokeAccessTokenController extends Controller {
     // Only the user's own: someone else's token id is a 404, like one that does not exist.
     const id = /^\d{1,15}$/.test(ctx.params.token) ? Number(ctx.params.token) : 0;
     if (!(await this.#tokens.revoke(ctx.user.id, id))) abort(404);
-    return this.redirect('/settings/tokens').with('status', 'Token revoked. Programs using it can no longer sign in.');
+    return this.redirect().route('auth.tokens').with('status', 'Token revoked. Programs using it can no longer sign in.');
   }
 }

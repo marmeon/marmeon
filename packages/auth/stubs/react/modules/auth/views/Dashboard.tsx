@@ -10,7 +10,7 @@ export default function Dashboard({ name, verified, flash }: Props) {
       <Head title="Dashboard" />
       <header>
         Signed in as {name}{' '}
-        <Link method="post" href="/logout">
+        <Link route="auth.logout">
           Sign out
         </Link>
       </header>
@@ -19,13 +19,13 @@ export default function Dashboard({ name, verified, flash }: Props) {
       {!verified && (
         <p role="note">
           Please confirm your e-mail address — the link is in your inbox.{' '}
-          <Link method="post" href="/email/verification-notification">
+          <Link route="auth.verification.send">
             Send it again
           </Link>
         </p>
       )}
       <p>
-        <Link href="/settings/security">Security</Link> · <Link href="/settings/tokens">API tokens</Link>
+        <Link route="auth.security">Security</Link> · <Link route="auth.tokens">API tokens</Link>
       </p>
     </main>
   );

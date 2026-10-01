@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,19 +34,23 @@ function blankApp(): string {
 
 function fakeInput(root: string, options: Record<string, unknown> = {}) {
   const lines: string[] = [];
+  const spawned: string[][] = [];
   const output = {
     success: (line: string) => lines.push(`✓ ${line}`),
     error: (line: string) => lines.push(`✗ ${line}`),
     line: (line = '') => lines.push(line),
   };
-  return { input: { root, args: [], options, output } as never, lines };
+  const spawn = async (...args: string[]) => (spawned.push(args), 0);
+  return { input: { root, args: [], options, output, spawn } as never, lines, spawned };
 }
 
 describe('make:auth', () => {
-  it('writes the module, registers it, and reports what the app still needs', () => {
+  it('writes the module, registers it, generates its route types, and reports what the app still needs', async () => {
     const root = blankApp();
-    const { input, lines } = fakeInput(root);
-    expect(new MakeAuthCommand().handle(input)).toBe(0);
+    const { input, lines, spawned } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    // In a fresh process: this one booted without the module.
+    expect(spawned).toEqual([['route:types']]);
     expect(existsSync(join(root, 'modules/auth/controllers/LoginController.ts'))).toBe(true);
     expect(existsSync(join(root, 'modules/auth/migrations/0001_01_01_000000_create_users_table.ts'))).toBe(true);
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
@@ -56,21 +60,21 @@ describe('make:auth', () => {
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
   });
 
-  it('refuses to overwrite an existing module unless forced — the module belongs to the app', () => {
+  it('refuses to overwrite an existing module unless forced — the module belongs to the app', async () => {
     const root = blankApp();
-    new MakeAuthCommand().handle(fakeInput(root).input);
+    await new MakeAuthCommand().handle(fakeInput(root).input);
     writeFileSync(join(root, 'modules/auth/routes.ts'), '// changed by the app\n');
     const { input, lines } = fakeInput(root);
-    expect(new MakeAuthCommand().handle(input)).toBe(1);
+    expect(await new MakeAuthCommand().handle(input)).toBe(1);
     expect(lines).toEqual(['✗ modules/auth already exists. It is yours now — pass --force to overwrite it with the templates.']);
     expect(readFileSync(join(root, 'modules/auth/routes.ts'), 'utf8')).toBe('// changed by the app\n');
-    expect(new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
+    expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').match(/#modules\/auth/g)).toHaveLength(1); // registered once
   });
 
-  it('knows its adapters', () => {
+  it('knows its adapters', async () => {
     const { input, lines } = fakeInput(blankApp(), { adapter: 'vue' });
-    expect(new MakeAuthCommand().handle(input)).toBe(1);
+    expect(await new MakeAuthCommand().handle(input)).toBe(1);
     expect(lines[0]).toBe('✗ There are no auth templates for the UI adapter "vue". Known: react.');
   });
 
@@ -97,6 +101,13 @@ describe('make:auth', () => {
       const generated = bespoke('make:auth');
       expect(generated.out).toContain('Created modules/auth');
       expect(generated.code).toBe(0);
+      // make:auth ran `bespoke route:types`: the module's routes, controllers and views are typed (W5.2).
+      const routeTypes = readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8');
+      expect(generated.out).toContain('Wrote bootstrap/routes.ts');
+      expect(routeTypes).toContain("'auth.login.store': { method: 'post'; path: '/login'; controller: typeof LoginController };");
+      expect(routeTypes).toContain("'api.user': { method: 'get'; path: '/api/user'; browser: false };");
+      expect(routeTypes).toContain("'auth/Dashboard': true;");
+      expect(bespoke('route:types', '--check').code).toBe(0);
       const migrated = bespoke('migrate');
       expect(migrated.out).toContain('create_personal_access_tokens_table');
       expect(migrated.code).toBe(0);
@@ -110,6 +121,31 @@ describe('make:auth', () => {
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
       expect(tests.out).not.toMatch(/failed/);
       expect(tests.code).toBe(0);
+
+      // A stale bootstrap/routes.ts fails the CI check.
+      writeFileSync(join(root, 'bootstrap/routes.ts'), routeTypes.replace("  'dashboard': { method: 'get', path: '/dashboard' },\n", ''));
+      const stale = bespoke('route:types', '--check');
+      expect(stale.out).toContain('bootstrap/routes.ts is out of date — run: bespoke route:types');
+      expect(stale.code).toBe(1);
+
+      // The build regenerates it, and the client bundle carries only the browser's routes: no API route, nothing in
+      // `clientRoutes.except` — their names and patterns stay on the server (the types are erased).
+      const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
+      writeFileSync(join(root, 'bootstrap/app.ts'), app.replace('modules: [auth],', "modules: [auth],\n  clientRoutes: { except: ['auth.verification.verify'] },"));
+      const built = bespoke('build');
+      expect(built.out).toContain('Built dist/client and dist/server');
+      expect(built.code).toBe(0);
+      expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.verification.verify': { method: 'get'; path: '/email/verify/:id/:hash'; controller: typeof VerifyEmailController; browser: false };");
+      const client = readdirSync(join(root, 'dist/client'), { recursive: true, encoding: 'utf8' })
+        .filter((file) => file.endsWith('.js'))
+        .map((file) => readFileSync(join(root, 'dist/client', file), 'utf8'))
+        .join('\n');
+      expect(client).toContain('auth.login.store');
+      expect(client).toContain('/dashboard');
+      expect(client).not.toContain('auth.verification.verify');
+      expect(client).not.toContain('/email/verify/:id/:hash');
+      expect(client).not.toContain('api.user');
+      expect(client).not.toMatch(/["'`]\/api\/user["'`]/); // the page text mentions /api/users — the pattern itself must be absent
     },
     300_000,
   );

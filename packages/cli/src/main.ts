@@ -1,6 +1,7 @@
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Application, ConfigError, Container, createApplication, type ApplicationOptions } from '@bespokecore/core';
 import { CommandRegistry, type CommandClass } from './command.ts';
@@ -18,12 +19,14 @@ import {
 } from './commands/make.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
+import { RouteTypesCommand } from './commands/route-types.ts';
 import { ServeCommand } from './commands/serve.ts';
 import { Output } from './output.ts';
 
 const BUILT_IN: readonly CommandClass[] = [
   ServeCommand,
   RouteListCommand,
+  RouteTypesCommand,
   DiscoverCommand,
   BuildCommand,
   PackageBuildCommand,
@@ -84,7 +87,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
     const command = (app?.container ?? new Container()).make(Command);
-    const code = await command.handle({ args: parsed.positionals, options: parsed.values, output, root });
+    const code = await command.handle({ args: parsed.positionals, options: parsed.values, output, root, spawn: (...args) => spawnBespoke(root, args) });
     return typeof code === 'number' ? code : 0;
   } catch (error) {
     printError(output, error);
@@ -92,6 +95,19 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   } finally {
     await app?.shutdown();
   }
+}
+
+/** The `bespoke` launcher of this package — `bin/bespoke.js`, next to `src/` and `dist/`. */
+const LAUNCHER = fileURLToPath(new URL('../bin/bespoke.js', import.meta.url));
+
+/** `bespoke <args>` in `root` as a new process (the launcher sets conditions and the injection hook itself). */
+export function spawnBespoke(root: string, args: readonly string[]): Promise<number> {
+  const { BESPOKE_CHILD: _child, ...env } = process.env;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env, stdio: 'inherit' });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
+  });
 }
 
 /** A failed command: its error and where it came from — not Node's dump of every property of every cause. */

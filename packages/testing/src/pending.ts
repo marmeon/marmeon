@@ -1,4 +1,4 @@
-import type { DeepPartial, FieldOf, PageSource, PropsOf, TestResponse } from './response.ts';
+import type { DeepPartial, FieldOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
 
 type Assertions = {
   [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];
@@ -109,10 +109,10 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertDontSee(...args: Parameters<Assertions['assertDontSee']>): this {
     return this.#queue((r) => r.assertDontSee(...args));
   }
-  assertPage<TSource extends PageSource = PageSource>(
-    component: string,
+  assertPage<TSource extends PageSource = PageSource, const V extends string = string>(
+    component: PageNameOf<TSource, V>,
     props?: DeepPartial<PropsOf<TSource>> | ((props: PropsOf<TSource>) => void),
   ): this {
-    return this.#queue((r) => r.assertPage<TSource>(component, props));
+    return this.#queue((r) => r.assertPage<TSource, V>(component, props));
   }
 }

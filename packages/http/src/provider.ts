@@ -26,6 +26,16 @@ declare module '@bespokecore/core' {
       readonly web?: readonly AnyMiddleware[];
       readonly api?: readonly AnyMiddleware[];
     };
+    /**
+     * Which named routes the browser learns from `bootstrap/routes.ts` (`bespoke route:types`) — Ziggy's lesson:
+     * do not ship what the browser has no business knowing. By default the named `web` routes; API routes only when
+     * listed in `include`; `except` wins over both. `*` matches anything: `except: ['admin.*']`.
+     * The server knows every route either way (`redirect().route()`, `router.url()`).
+     */
+    readonly clientRoutes?: {
+      readonly include?: readonly string[];
+      readonly except?: readonly string[];
+    };
   }
 }
 

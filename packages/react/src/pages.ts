@@ -1,4 +1,4 @@
-import { ERROR_PAGE } from '@bespokecore/http/page';
+import { ERROR_PAGE, pageName } from '@bespokecore/http/page';
 import type { ComponentType } from 'react';
 import { ErrorPage } from './error-page.tsx';
 
@@ -8,8 +8,6 @@ export type PageComponent = ComponentType<any>;
 export type ResolvePage = (name: string) => Promise<PageComponent>;
 
 type PageModules = Record<string, () => Promise<unknown>>;
-
-const MODULE_VIEW = /modules\/([^/]+)\/views\/(.+)\.[jt]sx$/;
 
 /**
  * Maps the modular-monolith view convention to page names:
@@ -23,8 +21,8 @@ const MODULE_VIEW = /modules\/([^/]+)\/views\/(.+)\.[jt]sx$/;
 export function resolveModulePages(modules: PageModules): ResolvePage {
   const pages = new Map<string, PageModules[string]>();
   for (const [path, load] of Object.entries(modules)) {
-    const match = MODULE_VIEW.exec(path);
-    if (match) pages.set(`${match[1]}/${match[2]}`, load);
+    const name = pageName(path);
+    if (name) pages.set(name, load);
   }
 
   return async (name) => {

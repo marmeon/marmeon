@@ -1,12 +1,12 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, useForm } from '@bespokecore/react';
-import type { ConfirmPasswordController } from '../controllers/ConfirmPasswordController.ts';
+import { Head, useForm, useRoute } from '@bespokecore/react';
 import type { ShowConfirmPasswordController } from '../controllers/ShowConfirmPasswordController.ts';
 
 type Props = PageProps<ShowConfirmPasswordController>;
 
 export default function ConfirmPassword({ csrfToken }: Props) {
-  const form = useForm<ConfirmPasswordController>({ password: '' });
+  const route = useRoute();
+  const form = useForm('auth.password.confirm.store', { password: '' });
 
   return (
     <main>
@@ -15,11 +15,11 @@ export default function ConfirmPassword({ csrfToken }: Props) {
       <p>This is a sensitive area. Please enter your password to continue.</p>
       <form
         method="post"
-        action="/confirm-password"
+        action={route('auth.password.confirm.store')}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.post('/confirm-password', { onFinish: () => form.reset('password') });
+          void form.submit({ onFinish: () => form.reset('password') });
         }}
       >
         <input type="hidden" name="_token" value={csrfToken} />

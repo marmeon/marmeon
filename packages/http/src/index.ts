@@ -1,11 +1,11 @@
 export { Controller } from './controller.ts';
 export { view, isViewResult } from './view.ts';
 export { ERRORS_KEY, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
-export type { RedirectStatus, UrlGenerator } from './redirect.ts';
-export type { PageProps, Serialize, ViewProps, ViewResult } from './view.ts';
-export { ERROR_PAGE, LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, VERSION_HEADER, isPageObject } from './page.ts';
+export type { RedirectStatus } from './redirect.ts';
+export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
+export { ERROR_PAGE, LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, VERSION_HEADER, isPageObject, pageName } from './page.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
-export type { ErrorPageProps, PageObject, PaginationMeta, SharedProps, SsrRender, SsrResult } from './page.ts';
+export type { CheckViewName, ErrorPageProps, PageObject, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrResult, ViewName, Views } from './page.ts';
 export { SharedData } from './shared-data.ts';
 export { AfterResponse } from './after-response.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
@@ -22,7 +22,12 @@ export type {
   HttpContext,
   Input,
   Middleware,
+  Param,
+  ParamsOf,
+  Query,
   RequestDefinition,
+  RouteName,
+  Routes,
   RouteBinder,
   RouteBindingContext,
   Validated,

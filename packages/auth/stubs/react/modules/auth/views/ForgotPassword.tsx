@@ -1,12 +1,13 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm } from '@bespokecore/react';
-import type { SendPasswordResetLinkController } from '../controllers/SendPasswordResetLinkController.ts';
+import { Head, Link, useForm, useRoute } from '@bespokecore/react';
 import type { ShowForgotPasswordController } from '../controllers/ShowForgotPasswordController.ts';
 
 type Props = PageProps<ShowForgotPasswordController>;
 
 export default function ForgotPassword({ csrfToken, flash }: Props) {
-  const form = useForm<SendPasswordResetLinkController>({ email: '' });
+  const route = useRoute();
+  // Method, URL and fields from the route: auth.password.email → SendPasswordResetLinkController's request.
+  const form = useForm('auth.password.email', { email: '' });
 
   return (
     <main>
@@ -16,11 +17,11 @@ export default function ForgotPassword({ csrfToken, flash }: Props) {
       {flash.status && <p role="status">{flash.status}</p>}
       <form
         method="post"
-        action="/forgot-password"
+        action={route('auth.password.email')}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.post('/forgot-password', { onSuccess: () => form.reset() });
+          void form.submit({ onSuccess: () => form.reset() });
         }}
       >
         <input type="hidden" name="_token" value={csrfToken} />
@@ -43,7 +44,7 @@ export default function ForgotPassword({ csrfToken, flash }: Props) {
         </button>
       </form>
       <p>
-        <Link href="/login">Back to sign in</Link>
+        <Link route="auth.login">Back to sign in</Link>
       </p>
     </main>
   );

@@ -1,19 +1,18 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
-import type { CreateAccessTokenController } from '../controllers/CreateAccessTokenController.ts';
 import type { ShowAccessTokensController } from '../controllers/ShowAccessTokensController.ts';
 
 type Props = PageProps<ShowAccessTokensController>;
 
 export default function AccessTokens({ tokens, abilities, plainText, flash }: Props) {
-  const form = useForm<CreateAccessTokenController>({ name: '', abilities: [] });
+  const form = useForm('auth.tokens.store', { name: '', abilities: [] });
   const selected = [form.data.abilities ?? []].flat();
 
   return (
     <main>
       <Head title="API tokens" />
       <p>
-        <Link href="/settings/security">← Security</Link>
+        <Link route="auth.security">← Security</Link>
       </p>
       <h1>API tokens</h1>
       {flash.status && <p role="status">{flash.status}</p>}
@@ -40,7 +39,7 @@ export default function AccessTokens({ tokens, abilities, plainText, flash }: Pr
             <li key={token.id}>
               <strong>{token.name}</strong> — {token.abilities.join(', ')} · {token.lastUsedAt ? `last used ${token.lastUsedAt.slice(0, 16).replace('T', ' ')} UTC` : 'never used'}
               {token.expiresAt && ` · expires ${token.expiresAt.slice(0, 10)}`}{' '}
-              <Link method="delete" href={`/settings/tokens/${token.id}`}>
+              <Link route="auth.tokens.destroy" params={{ token: token.id }}>
                 Revoke
               </Link>
             </li>
@@ -53,7 +52,7 @@ export default function AccessTokens({ tokens, abilities, plainText, flash }: Pr
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.post('/settings/tokens', { onSuccess: () => form.reset() });
+          void form.submit({ onSuccess: () => form.reset() });
         }}
       >
         <p>

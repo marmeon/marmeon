@@ -1,26 +1,30 @@
-import type { SharedProps } from './page.ts';
+import type { CheckViewName, SharedProps } from './page.ts';
 
 const VIEW_RESULT = Symbol.for('bespokecore.view-result');
 
 export type ViewProps = Record<string, unknown>;
 
 /** What a controller returns to render a page. The server decides how (SSR HTML or JSON). */
-export interface ViewResult<TProps extends ViewProps = ViewProps> {
+export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent extends string = string> {
   readonly [VIEW_RESULT]: true;
-  readonly component: string;
+  readonly component: TComponent;
   readonly props: TProps;
   readonly status: number;
   /** Extra response headers, e.g. `Retry-After` on an error page. */
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-export function view<const TProps extends ViewProps>(
-  component: string,
+/**
+ * A page: the component's name — checked against the app's views (`modules/<module>/views/<Page>.tsx`,
+ * see `bespoke route:types`) — and its props.
+ */
+export function view<const V extends string, const TProps extends ViewProps>(
+  component: CheckViewName<V>,
   props: TProps,
   status = 200,
   headers?: Readonly<Record<string, string>>,
-): ViewResult<TProps> {
-  return { [VIEW_RESULT]: true, component, props, status, ...(headers ? { headers } : {}) };
+): ViewResult<TProps, V> {
+  return { [VIEW_RESULT]: true, component: component as V, props, status, ...(headers ? { headers } : {}) };
 }
 
 export function isViewResult(value: unknown): value is ViewResult {
@@ -98,3 +102,7 @@ export type PageProps<TAction extends PageAction> =
       ? Serialize<Omit<SharedProps, keyof TProps> & TProps>
       : never
     : never;
+
+/** The page name(s) a controller renders: `ViewOf<ShowUserProfileController>` is `'user-profile/Show'`. */
+export type ViewOf<TAction extends PageAction> =
+  Awaited<ActionResult<TAction>> extends infer TResult ? (TResult extends ViewResult<ViewProps, infer V> ? V : never) : never;

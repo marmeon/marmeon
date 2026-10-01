@@ -1,7 +1,9 @@
 export { BespokeApp, usePage, useRouter, xsrfToken } from './app.tsx';
 export type { BespokeAppProps, VisitMethod, VisitOptions } from './app.tsx';
 export { useForm } from './use-form.ts';
-export type { Form, FormSubmitOptions } from './use-form.ts';
+export type { Form, FormState, FormSubmitOptions, RouteForm, RouteFormFields } from './use-form.ts';
+export { useRoute } from './routes.ts';
+export type { RouteFunction } from './routes.ts';
 export { createBespokeApp } from './client.tsx';
 export type { CreateBespokeAppOptions } from './client.tsx';
 export { ErrorPage } from './error-page.tsx';

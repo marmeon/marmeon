@@ -12,10 +12,10 @@ export default function VerifyEmail({ email, flash }: Props) {
       {flash.status && <p role="status">{flash.status}</p>}
       <p>We sent a link to {email}. Click it to confirm the address.</p>
       <p>
-        <Link method="post" href="/email/verification-notification">
+        <Link route="auth.verification.send">
           Send the link again
         </Link>{' '}
-        · <Link href="/dashboard">Back to the dashboard</Link>
+        · <Link route="dashboard">Back to the dashboard</Link>
       </p>
     </main>
   );

@@ -77,6 +77,15 @@ describe('Route registration', () => {
     expect(() => router.url('teams.members.show', { team: 'core' })).toThrow(/Missing required parameter \[id\]/);
     expect(() => router.url('nope')).toThrow(/not defined/);
   });
+
+  it('puts parameters the path does not take, and the query, into the query string — like signed URLs', () => {
+    // Before W5.2, extra parameters were dropped silently.
+    expect(router.url('teams.members.show', { team: 'core', id: 7, tab: 'links' })).toBe('/teams/core/members/7?tab=links');
+    expect(router.url('home', {}, { q: 'a b', page: 2, tag: ['x', 'y'], empty: null, gone: undefined, on: true })).toBe(
+      '/?q=a+b&page=2&tag=x&tag=y&on=true',
+    );
+    expect(router.url('teams.members.show', { team: 'a/b', id: 'ü' })).toBe('/teams/a%2Fb/members/%C3%BC');
+  });
 });
 
 describe('Dispatching', () => {

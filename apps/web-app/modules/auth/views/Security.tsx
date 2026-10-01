@@ -1,26 +1,23 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
-import type { LogoutOtherDevicesController } from '../controllers/LogoutOtherDevicesController.ts';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
-import type { UpdateEmailController } from '../controllers/UpdateEmailController.ts';
-import type { UpdatePasswordController } from '../controllers/UpdatePasswordController.ts';
 
 type Props = PageProps<ShowSecurityController>;
 
 export default function Security({ viaRemember, email, flash, auth }: Props) {
-  const emailForm = useForm<UpdateEmailController>({ email });
-  const passwordForm = useForm<UpdatePasswordController>({ current_password: '', password: '', password_confirmation: '' });
-  const devicesForm = useForm<LogoutOtherDevicesController>({ password: '' });
+  const emailForm = useForm('auth.email.update', { email });
+  const passwordForm = useForm('auth.password.update', { current_password: '', password: '', password_confirmation: '' });
+  const devicesForm = useForm('auth.devices.logout', { password: '' });
 
   return (
     <main>
       <Head title="Security" />
       <p>
-        <Link href="/users/me">← Back to your profile</Link>
+        <Link route="user-profile.me">← Back to your profile</Link>
       </p>
       <h1>Security</h1>
       <p>
-        <Link href="/settings/tokens">API tokens</Link>
+        <Link route="auth.tokens">API tokens</Link>
       </p>
       {flash.status && <p role="status">{flash.status}</p>}
       {viaRemember && (
@@ -35,7 +32,7 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void emailForm.put('/settings/email');
+            void emailForm.submit();
           }}
         >
           <p>
@@ -57,7 +54,7 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void passwordForm.put('/settings/password', { onFinish: () => passwordForm.reset() });
+            void passwordForm.submit({ onFinish: () => passwordForm.reset() });
           }}
         >
           {(
@@ -94,7 +91,7 @@ export default function Security({ viaRemember, email, flash, auth }: Props) {
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void devicesForm.post('/settings/devices/logout', { onFinish: () => devicesForm.reset() });
+            void devicesForm.submit({ onFinish: () => devicesForm.reset() });
           }}
         >
           <p>

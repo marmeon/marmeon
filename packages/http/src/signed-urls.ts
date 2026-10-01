@@ -1,6 +1,13 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { EncryptionConfig } from '@bespokecore/encryption';
-import { HttpError, Router, type HttpContext, type Next } from '@bespokecore/router';
+import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@bespokecore/router';
+
+/** The route's path parameters, plus any others — those are signed into the query. */
+export type SignedParams<N extends string> = ParamsOf<N> & Readonly<Record<string, Param>>;
+
+type SignedArgs<N extends string> = {} extends ParamsOf<N>
+  ? [params?: SignedParams<N>, options?: SignedRouteOptions]
+  : [params: SignedParams<N>, options?: SignedRouteOptions];
 
 /** `3600` seconds, or `'60m'`, `'2h'`, `'7d'`, `'30s'`. */
 export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
@@ -46,13 +53,21 @@ export class UrlSigner {
     this.#keys = [config.key, ...config.previousKeys].map((key) => derive(key, 'signed-url'));
   }
 
-  /** A signed link to a named route that never expires. Parameters the path does not take go into the query. */
-  signedRoute(name: string, params: Record<string, string | number> = {}, options: SignedRouteOptions = {}): string {
-    return this.#sign(this.#route(name, params), undefined, options);
+  /**
+   * A signed link to a named route that never expires. Parameters the path does not take go into the query —
+   * and are signed with it (`{ id, hash, list: 'news' }`).
+   */
+  signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, options = {}]: SignedArgs<N>): string {
+    return this.#sign(this.#route(name, params ?? {}), undefined, options);
   }
 
   /** A signed link that stops working after `expiresIn`. */
-  temporarySignedRoute(name: string, params: Record<string, string | number>, expiresIn: Duration, options: SignedRouteOptions = {}): string {
+  temporarySignedRoute<const N extends RouteNameInput>(
+    name: CheckRouteName<N>,
+    params: SignedParams<N>,
+    expiresIn: Duration,
+    options: SignedRouteOptions = {},
+  ): string {
     return this.#sign(this.#route(name, params), Math.floor(Date.now() / 1000) + seconds(expiresIn), options);
   }
 
@@ -71,16 +86,13 @@ export class UrlSigner {
     return valid;
   }
 
-  #route(name: string, params: Record<string, string | number>): { path: string; query: URLSearchParams } {
+  #route(name: string, params: Readonly<Record<string, Param>>): { path: string; query: URLSearchParams } {
     const route = this.#router.findByName(name);
     if (!route) throw new Error(`Route [${name}] is not defined.`);
-    const inPath = new Set([...route.path.matchAll(/\/:(\w+)/g)].map((match) => match[1]!));
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (key === 'signature' || key === 'expires') throw new Error(`"${key}" is reserved in signed URLs.`);
-      if (!inPath.has(key)) query.append(key, String(value));
-    }
-    return { path: this.#router.url(name, params), query };
+    for (const key of ['signature', 'expires']) if (key in params) throw new Error(`"${key}" is reserved in signed URLs.`);
+    // The same code path as `Router.url()`: path parameters into the path, the rest into the query.
+    const { path, rest } = fillPath(name, route.path, params);
+    return { path, query: toSearchParams(rest) };
   }
 
   #sign({ path, query }: { path: string; query: URLSearchParams }, expires: number | undefined, { base }: SignedRouteOptions): string {

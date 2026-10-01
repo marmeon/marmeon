@@ -5,7 +5,9 @@ import { createRequestState, type RequestState } from './request.ts';
 import { validateRequest } from './request-definition.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
+import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
+import { urlFor } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -117,21 +119,16 @@ export class Router {
     return [...new Set(all)];
   }
 
-  /** Builds a URL for a named route, like Laravel's `route('profile.show', { id: 1 })`. */
-  url(name: string, params: Record<string, string | number> = {}): string {
-    const route = this.findByName(name);
-    if (!route) throw new Error(`Route [${name}] is not defined.`);
-
-    const path = route.path.replace(/\/:(\w+)(\{[^}]*\})?(\?)?/g, (_match, key: string, _pattern, optional?: string) => {
-      const value = params[key];
-      if (value === undefined) {
-        if (optional) return '';
-        throw new Error(`Missing required parameter [${key}] for route [${name}].`);
-      }
-      return `/${encodeURIComponent(String(value))}`;
-    });
-
-    return path || '/';
+  /**
+   * The URL of a named route (Laravel's `route()`): path parameters filled in, the rest — and `query` —
+   * in the query string. Names and parameters are checked against the generated `Routes`.
+   *
+   * ```ts
+   * router.url('user-profile.show', { user: 7 }, { tab: 'links' })   // → /users/7?tab=links
+   * ```
+   */
+  url<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): string {
+    return urlFor(this, name, params, query);
   }
 
   /** Runs a matched route through its middleware pipeline and action. */

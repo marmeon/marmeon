@@ -1,13 +1,12 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useForm } from '@bespokecore/react';
 import type { EditUserProfileController } from '../controllers/EditUserProfileController.ts';
-import type { UpdateUserProfileController } from '../controllers/UpdateUserProfileController.ts';
 
 type Props = PageProps<EditUserProfileController>;
 
 export default function Edit({ profile, old }: Props) {
-  // Fields and errors are typed from UpdateUserProfileRequest's schema (its input type).
-  const form = useForm<UpdateUserProfileController>({ name: old.name ?? profile.name, bio: old.bio ?? profile.bio });
+  // E40: method, URL and fields from the route name — user-profile.update → UpdateUserProfileRequest's schema (its input type).
+  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio });
 
   return (
     <main>
@@ -17,7 +16,7 @@ export default function Edit({ profile, old }: Props) {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.put(`/users/${profile.id}`);
+          void form.submit();
         }}
       >
         <p>
@@ -35,7 +34,9 @@ export default function Edit({ profile, old }: Props) {
         <button type="submit" disabled={form.processing || !form.isDirty}>
           {form.processing ? 'Saving…' : 'Save'}
         </button>{' '}
-        <Link href={`/users/${profile.id}`}>Cancel</Link>
+        <Link route="user-profile.show" params={{ user: profile.id }}>
+          Cancel
+        </Link>
       </form>
     </main>
   );

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { UrlSigner, type Duration } from '@bespokecore/http';
-import { Router, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
+import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@bespokecore/router';
 
 /** What a verifiable user has: an id, an e-mail and when it was verified. */
 export interface VerifiableUser {
@@ -14,13 +14,13 @@ export function emailHash(email: string): string {
   return createHash('sha256').update(email.toLowerCase()).digest('hex');
 }
 
-export interface VerificationLinkOptions {
+export interface VerificationLinkOptions<N extends string = string> {
   /** Absolute links for mails: the app's URL. */
   readonly base: string;
   /** Default `60m`. */
   readonly expiresIn?: Duration;
   /** Default `auth.verification.verify` (a route with `:id` and `:hash`, behind `signed()`). */
-  readonly route?: string;
+  readonly route?: CheckRouteName<N>;
 }
 
 /**
@@ -34,7 +34,10 @@ export class EmailVerification {
     this.#signer = signer;
   }
 
-  link(user: { readonly id: string | number; readonly email: string }, { base, expiresIn = '60m', route = 'auth.verification.verify' }: VerificationLinkOptions): string {
+  link<const N extends RouteNameInput = never>(user: { readonly id: string | number; readonly email: string }, options: VerificationLinkOptions<N>): string {
+    const { base, expiresIn = '60m' } = options;
+    // A configurable name is only known at runtime: checked there (`Route [...] is not defined`).
+    const route = (options.route ?? 'auth.verification.verify') as RouteName;
     return this.#signer.temporarySignedRoute(route, { id: user.id, hash: emailHash(user.email) }, expiresIn, { base });
   }
 
@@ -50,17 +53,17 @@ export class EmailVerification {
   }
 }
 
-export interface VerifiedOptions {
+export interface VerifiedOptions<N extends string = string> {
   /** Named route of the "please verify your e-mail" page (default `auth.verification.notice`). */
-  readonly noticeRoute?: string;
+  readonly noticeRoute?: CheckRouteName<N>;
 }
 
 /**
  * Only for users with a verified e-mail (Laravel's `verified`): after `authenticate()`; the user type
  * must have `email_verified_at`. Others get 403 (JSON) or the notice page.
  */
-export function verified(options: VerifiedOptions = {}): MiddlewareClass<{ readonly user: VerifiableUser }, {}> {
-  const noticeRoute = options.noticeRoute ?? 'auth.verification.notice';
+export function verified<const N extends RouteNameInput = never>(options: VerifiedOptions<N> = {}): MiddlewareClass<{ readonly user: VerifiableUser }, {}> {
+  const noticeRoute: string = options.noticeRoute ?? 'auth.verification.notice';
   const EnsureEmailIsVerified = class {
     readonly #router: Router;
 
@@ -71,7 +74,7 @@ export function verified(options: VerifiedOptions = {}): MiddlewareClass<{ reado
     handle(ctx: HttpContext<{ readonly user: VerifiableUser }>, next: Next<{}>): Promise<Response> | Response {
       if (ctx.user.email_verified_at !== null) return next();
       if (ctx.expectsJson()) return Response.json({ message: 'Your e-mail address is not verified.' }, { status: 403 });
-      return new Response(null, { status: 302, headers: { location: this.#router.url(noticeRoute) } });
+      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, noticeRoute) } });
     }
   };
   Object.defineProperty(EnsureEmailIsVerified, 'name', { value: 'verified' });

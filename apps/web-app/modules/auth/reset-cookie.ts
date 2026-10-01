@@ -1,4 +1,4 @@
-/** Where the reset link's token waits between the link and the form (encrypted like every cookie, path `/reset-password`). */
+/** Where the reset link's token waits between the link and the form (encrypted like every cookie, on the path of `auth.password.reset` only). */
 export const RESET_COOKIE = 'password_reset';
 
 export function resetFromCookie(value: string | undefined): { email: string; token: string } | undefined {

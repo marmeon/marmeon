@@ -1,5 +1,5 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
-import { isPageObject, PAGE_SCRIPT_ID, type FormOf, type PageObject, type PageProps } from '@bespokecore/http/page';
+import { isPageObject, PAGE_SCRIPT_ID, type FormOf, type PageObject, type PageProps, type CheckViewName, type ViewOf } from '@bespokecore/http/page';
 import type { AuthUser } from '@bespokecore/auth';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
 
@@ -14,6 +14,12 @@ export type FieldOf<C> = unknown extends C ? string : (keyof FormOf<C> & string)
 
 /** Props of a page, every level optional — for asserting a subset. */
 export type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+
+/**
+ * The page a controller renders when one is given (`assertPage<ShowUserController>('user-profile/Show')`) — any of the
+ * app's views otherwise (`V`, inferred from the argument, so a typo is named as such).
+ */
+export type PageNameOf<TSource extends PageSource, V extends string = string> = PageSource extends TSource ? CheckViewName<V> : ViewOf<TSource>;
 
 /** Typed props when a controller is given (`assertPage<ShowUserController>`), any record otherwise. */
 export type PropsOf<TSource extends PageSource> = PageSource extends TSource ? Record<string, unknown> : PageProps<TSource>;
@@ -264,8 +270,8 @@ export class TestResponse {
    * (deeply) or pass a callback. Typed against the controller when given:
    * `assertPage<ShowUserProfileController>('user-profile/Show', { isOwnProfile: true })`.
    */
-  assertPage<TSource extends PageSource = PageSource>(
-    component: string,
+  assertPage<TSource extends PageSource = PageSource, const V extends string = string>(
+    component: PageNameOf<TSource, V>,
     props?: DeepPartial<PropsOf<TSource>> | ((props: PropsOf<TSource>) => void),
   ): this {
     const page = this.page();

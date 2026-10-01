@@ -86,6 +86,12 @@ describe('bespoke (in the web app)', () => {
     expect(code).toBe(0);
   });
 
+  it('checks that the committed route types match the routes and views (route:types --check, as in CI)', () => {
+    const { code, stdout } = bespoke(webApp, ['route:types', '--check']);
+    expect(stdout).toContain('✓ bootstrap/routes.ts matches the routes and views.');
+    expect(code).toBe(0);
+  });
+
   it.runIf(process.env.BESPOKE_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
     const { code, stdout } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.BESPOKE_TEST_PGSQL_URL! });
     expect(code).toBe(0);

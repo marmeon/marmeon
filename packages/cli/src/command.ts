@@ -8,6 +8,11 @@ export interface CommandInput {
   readonly output: Output;
   /** The directory `bespoke` runs in — the app root. */
   readonly root: string;
+  /**
+   * Runs another `bespoke` command in a fresh process — one that boots the app anew, e.g. `route:types` after a
+   * generator added a module. Its output goes to this console; resolves with its exit code.
+   */
+  readonly spawn: (...args: string[]) => Promise<number>;
 }
 
 /**

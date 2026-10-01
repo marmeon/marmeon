@@ -1,13 +1,14 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm } from '@bespokecore/react';
-import type { LoginController } from '../controllers/LoginController.ts';
+import { Head, Link, useForm, useRoute } from '@bespokecore/react';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 
 type Props = PageProps<ShowLoginController>;
 
 export default function Login({ appName, old, csrfToken, flash }: Props) {
-  // Fields and errors are typed from LoginRequest; the password never comes back from the server.
-  const form = useForm<LoginController>({ email: old.email ?? '', password: '', remember: false });
+  const route = useRoute();
+  // Method, URL, fields and errors come from the route (auth.login.store → LoginController's LoginRequest).
+  // The password never comes back from the server.
+  const form = useForm('auth.login.store', { email: old.email ?? '', password: '', remember: false });
 
   return (
     <main>
@@ -17,11 +18,11 @@ export default function Login({ appName, old, csrfToken, flash }: Props) {
       {/* Works without JavaScript too: a plain form post with the CSRF token. */}
       <form
         method="post"
-        action="/login"
+        action={route('auth.login.store')}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.post('/login', { onFinish: () => form.set('password', '') });
+          void form.submit({ onFinish: () => form.set('password', '') });
         }}
       >
         <input type="hidden" name="_token" value={csrfToken} />
@@ -63,7 +64,7 @@ export default function Login({ appName, old, csrfToken, flash }: Props) {
         </button>
       </form>
       <p>
-        <Link href="/forgot-password">Forgot your password?</Link> · New here? <Link href="/register">Create an account</Link>
+        <Link route="auth.password.request">Forgot your password?</Link> · New here? <Link route="auth.register">Create an account</Link>
       </p>
     </main>
   );

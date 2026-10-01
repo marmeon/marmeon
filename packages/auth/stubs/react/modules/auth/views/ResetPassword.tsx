@@ -1,12 +1,12 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm } from '@bespokecore/react';
-import type { ResetPasswordController } from '../controllers/ResetPasswordController.ts';
+import { Head, Link, useForm, useRoute } from '@bespokecore/react';
 import type { ShowResetPasswordController } from '../controllers/ShowResetPasswordController.ts';
 
 type Props = PageProps<ShowResetPasswordController>;
 
 export default function ResetPassword({ email, csrfToken }: Props) {
-  const form = useForm<ResetPasswordController>({ password: '', password_confirmation: '' });
+  const route = useRoute();
+  const form = useForm('auth.password.store', { password: '', password_confirmation: '' });
 
   if (email === null) {
     return (
@@ -14,7 +14,7 @@ export default function ResetPassword({ email, csrfToken }: Props) {
         <Head title="Reset your password" />
         <h1>This link has expired</h1>
         <p>
-          Reset links work once, for a limited time. <Link href="/forgot-password">Ask for a new one</Link>.
+          Reset links work once, for a limited time. <Link route="auth.password.request">Ask for a new one</Link>.
         </p>
       </main>
     );
@@ -27,11 +27,11 @@ export default function ResetPassword({ email, csrfToken }: Props) {
       <p>For {email}</p>
       <form
         method="post"
-        action="/reset-password"
+        action={route('auth.password.store')}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.post('/reset-password', { onFinish: () => form.reset() });
+          void form.submit({ onFinish: () => form.reset() });
         }}
       >
         <input type="hidden" name="_token" value={csrfToken} />

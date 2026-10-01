@@ -1,4 +1,5 @@
 import { Controller, type HttpContext } from '@bespokecore/http';
+import { Router } from '@bespokecore/router';
 import { Session } from '@bespokecore/session';
 import { RESET_COOKIE, resetFromCookie } from '../reset-cookie.ts';
 
@@ -9,10 +10,12 @@ import { RESET_COOKIE, resetFromCookie } from '../reset-cookie.ts';
  */
 export class ShowResetPasswordController extends Controller {
   readonly #session: Session;
+  readonly #router: Router;
 
-  constructor(session: Session) {
+  constructor(session: Session, router: Router) {
     super();
     this.#session = session;
+    this.#router = router;
   }
 
   handle(ctx: HttpContext) {
@@ -20,12 +23,12 @@ export class ShowResetPasswordController extends Controller {
     const email = ctx.query.get('email');
     if (token && email) {
       ctx.cookies.set(RESET_COOKIE, JSON.stringify({ email: email.trim().toLowerCase(), token }), {
-        path: '/reset-password',
+        path: this.#router.url('auth.password.reset'),
         httpOnly: true,
         sameSite: 'lax',
         maxAge: 60 * 60,
       });
-      return this.redirect('/reset-password');
+      return this.redirect().route('auth.password.reset');
     }
     const reset = resetFromCookie(ctx.cookies.get(RESET_COOKIE));
     return this.view('auth/ResetPassword', { email: reset?.email ?? null, csrfToken: this.#session.token() });

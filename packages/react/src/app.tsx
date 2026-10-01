@@ -1,7 +1,8 @@
-import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject, type SharedProps } from '@bespokecore/http/page';
+import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject, type RouteManifest, type SharedProps } from '@bespokecore/http/page';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { defaultTitle, HeadContext, type TitleTemplate } from './head.tsx';
 import type { PageComponent, ResolvePage } from './pages.ts';
+import { RoutesContext } from './routes.ts';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -56,6 +57,8 @@ export interface BespokeAppProps {
   resolve: ResolvePage;
   /** Turns a page's `<Head title>` into the document title. */
   title?: TitleTemplate;
+  /** The named routes the browser knows (`routes` of `bootstrap/routes.ts`) — for `route()`, `<Link route>` and `useForm(name, …)`. */
+  routes?: RouteManifest;
   /** Server rendering only: where `<Head>` records itself. */
   headCollector?: { title: string | undefined; tags: ReactElement[] };
 }
@@ -64,7 +67,7 @@ export interface BespokeAppProps {
  * Root component on server and client. Navigations fetch the next page object
  * as JSON (via `PAGE_HEADER`) and swap the page component in place.
  */
-export function BespokeApp({ initialPage, initialComponent, resolve, title = defaultTitle, headCollector }: BespokeAppProps) {
+export function BespokeApp({ initialPage, initialComponent, resolve, title = defaultTitle, routes, headCollector }: BespokeAppProps) {
   // `key` changes remount the page component (fresh state); an unchanged key preserves it.
   const [current, setCurrent] = useState({ page: initialPage, Component: initialComponent, key: 0 });
   const inFlight = useRef<AbortController | null>(null);
@@ -144,9 +147,11 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
 
   return (
     <HeadContext.Provider value={head}>
-      <RouterContext.Provider value={router}>
-        <Component key={key} {...page.props} />
-      </RouterContext.Provider>
+      <RoutesContext.Provider value={routes}>
+        <RouterContext.Provider value={router}>
+          <Component key={key} {...page.props} />
+        </RouterContext.Provider>
+      </RoutesContext.Provider>
     </HeadContext.Provider>
   );
 }

@@ -1,13 +1,13 @@
 import { INTENDED_KEY } from '@bespokecore/http';
-import { Router, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
+import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@bespokecore/router';
 import { Session } from '@bespokecore/session';
 import { Auth } from './auth.ts';
 import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
 import { UserProvider, type Authenticated } from './user.ts';
 
-export interface AuthenticateOptions {
+export interface AuthenticateOptions<N extends string = string> {
   /** Named route of the login page, where browsers are sent (default `auth.login`). */
-  readonly loginRoute?: string;
+  readonly loginRoute?: CheckRouteName<N>;
 }
 
 /**
@@ -19,10 +19,10 @@ export interface AuthenticateOptions {
  * then `ctx.user` and `ctx.token` (its abilities). Anything else is a 401 — a session cookie included.
  */
 export function authenticate(guard: 'api'): MiddlewareClass<{}, Authenticated & WithToken>;
-export function authenticate(options?: AuthenticateOptions): MiddlewareClass<{}, Authenticated>;
+export function authenticate<const N extends RouteNameInput = never>(options?: AuthenticateOptions<N>): MiddlewareClass<{}, Authenticated>;
 export function authenticate(options: AuthenticateOptions | 'api' = {}): MiddlewareClass<{}, Authenticated> | MiddlewareClass<{}, Authenticated & WithToken> {
   if (options === 'api') return tokenGuard();
-  const loginRoute = options.loginRoute ?? 'auth.login';
+  const loginRoute: string = options.loginRoute ?? 'auth.login';
   const Authenticate = class {
     readonly #auth: Auth;
     readonly #session: Session;
@@ -42,7 +42,7 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
       }
-      return new Response(null, { status: 302, headers: { location: this.#router.url(loginRoute) } });
+      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, loginRoute) } });
     }
   };
   Object.defineProperty(Authenticate, 'name', { value: 'authenticate' });
@@ -69,9 +69,9 @@ export function guest(home = '/'): MiddlewareClass<{}, {}> {
   return RedirectIfAuthenticated;
 }
 
-export interface ConfirmedPasswordOptions {
+export interface ConfirmedPasswordOptions<N extends string = string> {
   /** Named route of the confirmation page (default `auth.password.confirm`). */
-  readonly confirmRoute?: string;
+  readonly confirmRoute?: CheckRouteName<N>;
   /** How long a confirmation counts, in seconds (default `AUTH_PASSWORD_TIMEOUT`, 15 minutes). */
   readonly seconds?: number;
 }
@@ -81,8 +81,8 @@ export interface ConfirmedPasswordOptions {
  * `Route.middleware(authenticate()).middleware(confirmedPassword())`. Without a recent confirmation,
  * JSON clients get 423, browsers the confirmation page (and come back afterwards).
  */
-export function confirmedPassword(options: ConfirmedPasswordOptions = {}): MiddlewareClass<Authenticated, {}> {
-  const confirmRoute = options.confirmRoute ?? 'auth.password.confirm';
+export function confirmedPassword<const N extends RouteNameInput = never>(options: ConfirmedPasswordOptions<N> = {}): MiddlewareClass<Authenticated, {}> {
+  const confirmRoute: string = options.confirmRoute ?? 'auth.password.confirm';
   const RequirePassword = class {
     readonly #auth: Auth;
     readonly #session: Session;
@@ -101,7 +101,7 @@ export function confirmedPassword(options: ConfirmedPasswordOptions = {}): Middl
         const url = new URL(ctx.request.url);
         this.#session.put(INTENDED_KEY, url.pathname + url.search);
       }
-      return new Response(null, { status: 302, headers: { location: this.#router.url(confirmRoute) } });
+      return new Response(null, { status: 302, headers: { location: urlFor(this.#router, confirmRoute) } });
     }
   };
   Object.defineProperty(RequirePassword, 'name', { value: 'confirmedPassword' });

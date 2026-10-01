@@ -6,6 +6,9 @@ export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-group
 export { defineMiddleware, isMiddlewareClass, runPipeline } from './middleware.ts';
 export type { PipelineOptions } from './middleware.ts';
 export type * from './types.ts';
+export type * from './routes.ts';
+export { fillPath, toSearchParams, urlFor } from './url.ts';
+export type { Param, Query, QueryValue, RouteLookup } from './url.ts';
 export { abort, HttpError, statusText } from './errors.ts';
 export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
 export type { CookieCodec, CookieOptions } from './cookies.ts';

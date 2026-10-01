@@ -1,6 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, Pagination, useForm } from '@bespokecore/react';
-import type { AddProfileLinkController } from '../controllers/AddProfileLinkController.ts';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 const utc = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
@@ -26,7 +25,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       <header>
         Signed in as {auth.user?.name}
         {/* A visit with the CSRF token from the XSRF-TOKEN cookie — no hidden form field needed. */}
-        <Link method="post" href="/logout" style={{ marginLeft: 8 }}>
+        <Link route="auth.logout" style={{ marginLeft: 8 }}>
           Sign out
         </Link>
       </header>
@@ -43,13 +42,13 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       </p>
       {isOwnProfile && (
         <p>
-          <em>This is your profile.</em> <Link href="/settings/security">Security</Link>
+          <em>This is your profile.</em> <Link route="auth.security">Security</Link>
         </p>
       )}
       {isOwnProfile && auth.user && !auth.user.verified && (
         <p role="note">
           Please confirm your e-mail address — the link is in your inbox.{' '}
-          <Link method="post" href="/email/verification-notification">
+          <Link route="auth.verification.send">
             Send it again
           </Link>
         </p>
@@ -57,7 +56,9 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. */}
       {can.update && (
         <p>
-          <Link href={`/users/${profile.id}/edit`}>Edit profile</Link>
+          <Link route="user-profile.edit" params={{ user: profile.id }}>
+            Edit profile
+          </Link>
         </p>
       )}
 
@@ -72,7 +73,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
                 {can.update && (
                   <>
                     {' '}
-                    <Link method="delete" href={`/users/${profile.id}/links/${link.id}`} aria-label={`Remove ${link.label}`}>
+                    <Link route="user-profile.links.destroy" params={{ user: profile.id, link: link.id }} aria-label={`Remove ${link.label}`}>
                       Remove
                     </Link>
                   </>
@@ -92,13 +93,15 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
         <ul>
           {others.data.map((other) => (
             <li key={other.id}>
-              <Link href={`/users/${other.id}`}>{other.name}</Link>{' '}
+              <Link route="user-profile.show" params={{ user: other.id }}>
+                {other.name}
+              </Link>{' '}
               <small>{other.lastLoginAt ? `last seen ${ago(other.lastLoginAt, now)}` : 'never signed in'}</small>
             </li>
           ))}
           {!isOwnProfile && (
             <li>
-              <Link href="/users/me">Back to my profile</Link>
+              <Link route="user-profile.me">Back to my profile</Link>
             </li>
           )}
         </ul>
@@ -109,13 +112,13 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
 }
 
 function AddLink({ userId }: { userId: number }) {
-  const form = useForm<AddProfileLinkController>({ label: '', url: '' });
+  const form = useForm('user-profile.links.store', { user: userId }, { label: '', url: '' });
   return (
     <form
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        void form.post(`/users/${userId}/links`, { onSuccess: () => form.reset() });
+        void form.submit({ onSuccess: () => form.reset() });
       }}
     >
       <input aria-label="Label" placeholder="Label" value={form.data.label} onChange={(e) => form.set('label', e.target.value)} />{' '}

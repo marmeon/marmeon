@@ -1,4 +1,5 @@
 import { token } from '@bespokecore/core';
+import { urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@bespokecore/router';
 
 const REDIRECT_RESULT = Symbol.for('bespokecore.redirect-result');
 
@@ -16,14 +17,9 @@ export const Flasher = token<Flasher>('Flasher');
 
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 
-/** Builds URLs for named routes — the router. */
-export interface UrlGenerator {
-  url(name: string, params?: Record<string, string | number>): string;
-}
-
 type Target =
   | { readonly kind: 'url'; readonly url: string }
-  | { readonly kind: 'route'; readonly name: string; readonly params: Record<string, string | number> }
+  | { readonly kind: 'route'; readonly name: string; readonly params?: Readonly<Record<string, Param>> | undefined; readonly query?: Query | undefined }
   | { readonly kind: 'back'; readonly fallback: string };
 
 /**
@@ -32,7 +28,7 @@ type Target =
  * the request (`back()`).
  *
  * ```ts
- * return this.redirect().route('user-profile.show', { id: user.id });
+ * return this.redirect().route('user-profile.show', { user: user.id });
  * return this.back();
  * ```
  */
@@ -49,9 +45,12 @@ export class RedirectResult {
     this.#status = status;
   }
 
-  /** Redirects to a named route: `route('user-profile.show', { id: 1 })`. */
-  route(name: string, params: Record<string, string | number> = {}): this {
-    this.#target = { kind: 'route', name, params };
+  /**
+   * Redirects to a named route: `route('user-profile.show', { user: 1 })`, with a query as the third argument.
+   * Name and parameters are checked against the app's routes (`bootstrap/routes.ts`).
+   */
+  route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this {
+    this.#target = { kind: 'route', name, params, query };
     return this;
   }
 
@@ -107,23 +106,23 @@ export class RedirectResult {
     return this.with(OLD_INPUT_KEY, flashableInput(input));
   }
 
-  toResponse(request: Request, urls: UrlGenerator, flasher?: Flasher): Response {
+  toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response {
     if (this.#flash.size > 0) {
       if (!flasher) throw new Error('redirect().with() needs a session: install @bespokecore/session and start it for this route.');
       for (const [key, value] of this.#flash) flasher.flash(key, value);
     }
     const intended = this.#intended ? flasher?.pull(INTENDED_KEY) : undefined;
     const headers = new Headers(this.#headers);
-    headers.set('location', isLocalPath(intended) ? intended : this.#location(request, urls));
+    headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
     return new Response(null, { status, headers });
   }
 
-  #location(request: Request, urls: UrlGenerator): string {
+  #location(request: Request, routes: RouteLookup): string {
     const target = this.#target;
     if (!target) throw new Error('redirect() needs a target: redirect(url), redirect().route(name) or back().');
     if (target.kind === 'url') return target.url;
-    if (target.kind === 'route') return urls.url(target.name, target.params);
+    if (target.kind === 'route') return urlFor(routes, target.name, target.params, target.query);
     return previousUrl(request) ?? target.fallback;
   }
 }
