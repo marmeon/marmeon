@@ -124,7 +124,9 @@ export const LocalePreference = token<LocalePreference>('LocalePreference');
  * after the session, before CSRF verification (its 419 page is translated too).
  *
  * No value from the request becomes a locale unless it is a supported one ({@link Locales}) — in its spelling: what reaches
- * `<html lang>`, the page's `locale` and the browser's language files is always one of the app's own.
+ * `<html lang>`, the page's `locale` and the browser's language files is always one of the app's own. With several
+ * supported locales the answer depends on `Accept-Language`, so it carries `Vary: accept-language`; with one, nothing
+ * is negotiated and no `Vary` is sent (every answer is in that locale).
  */
 export class SetLocale {
   readonly #current: CurrentLocale;
@@ -141,16 +143,20 @@ export class SetLocale {
 
   async handle(ctx: HttpContext, next: Next<{}>): Promise<Response> {
     const locales = this.#locales;
-    const locale =
-      locales.find(this.#session.get('locale')) ??
-      locales.find(await this.#preference.preferredLocale()) ??
-      negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ??
-      locales.default;
+    // One supported locale: every answer is in it — nothing to choose, and nothing caches must keep apart.
+    const choice = locales.supported.length > 1;
+    const locale = choice
+      ? (locales.find(this.#session.get('locale')) ??
+        locales.find(await this.#preference.preferredLocale()) ??
+        negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ??
+        locales.default)
+      : locales.default;
     this.#current.set(locale);
 
     const response = await next();
     const localized = new Response(response.body, response);
     localized.headers.set('content-language', locale);
+    if (!choice) return localized;
     // The answer depends on the browser's languages (for visitors without a choice): caches must keep them apart.
     const vary = localized.headers.get('vary');
     if (!vary?.toLowerCase().split(/\s*,\s*/).includes('accept-language')) localized.headers.set('vary', vary ? `${vary}, accept-language` : 'accept-language');

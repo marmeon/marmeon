@@ -164,8 +164,9 @@ export function createResponseFactory(
     // Shared props and the controller's (which win), resolved as far as this response sends them.
     const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component));
     // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
-    const locale = scope?.has(Translator) ? scope.make(Translator).locale : undefined;
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...(locale ? { locale } : {}) };
+    const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+    const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language };
     const headers = { ...result.headers, vary: PAGE_VARY };
 
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both

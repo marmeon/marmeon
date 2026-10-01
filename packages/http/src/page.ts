@@ -98,6 +98,11 @@ export interface PageObject {
    */
   locale?: string;
   /**
+   * Where messages missing in `locale` come from (`APP_FALLBACK_LOCALE`) — sent with `locale`, so the browser's language
+   * files fall back the way the server's do, configured once.
+   */
+  fallbackLocale?: string;
+  /**
    * Props the response left out to load next (`defer()`), by group: the client fetches each group with a partial
    * reload right after showing the page. Only in full responses.
    */

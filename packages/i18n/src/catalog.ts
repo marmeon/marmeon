@@ -1,5 +1,6 @@
 import { formatParts, LocaleFormats, MessageSyntaxError, parseMessage, type Part } from './format.ts';
 import { baseLanguage } from './locale.ts';
+import type { Translate } from './messages.ts';
 import type { MessageTree } from './types.ts';
 
 /** Numbers, dates and relative times for one locale — `Intl`, with its formatters reused. */
@@ -145,6 +146,20 @@ export class Catalog {
     } catch {
       return fallback;
     }
+  }
+
+  /**
+   * The keys of one namespace in `locale` — `t('login.title')`, typed against the namespace's source file. What a UI
+   * adapter's hook returns: as a method, the adapter needs no runtime import of this package (only its types).
+   */
+  translate<N extends string>(locale: string, namespace: N): Translate<N> {
+    const t = (key: string, params?: Readonly<Record<string, unknown>>) => this.text(locale, `${namespace}.${key}`, params);
+    return Object.assign(t, {
+      locale,
+      namespace,
+      format: this.formatter(locale),
+      has: (key: string) => this.has(locale, `${namespace}.${key}`),
+    }) as unknown as Translate<N>;
   }
 
   /** Numbers, dates and relative times in `locale`. */

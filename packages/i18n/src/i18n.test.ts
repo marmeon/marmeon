@@ -112,7 +112,7 @@ async function boot({ env = {}, override }: { env?: Record<string, string>; over
   return { application, send };
 }
 
-const page = async (response: Response) => (await response.json()) as { component: string; props: Record<string, any>; locale?: string };
+const page = async (response: Response) => (await response.json()) as { component: string; props: Record<string, any>; locale?: string; fallbackLocale?: string };
 
 describe('the request locale (SetLocale)', () => {
   it("speaks the browser's language — the page carries only the locale, the props are translated on the server", async () => {
@@ -137,6 +137,24 @@ describe('the request locale (SetLocale)', () => {
     expect(await locale()).toBe('en'); // not supported → the browser's
     await send('/choose/de');
     expect(await locale()).toBe('de'); // the session's
+  });
+
+  it('sends the fallback locale with the page — the browser falls back like the server (APP_FALLBACK_LOCALE, once)', async () => {
+    const { send } = await boot({ env: { APP_FALLBACK_LOCALE: 'de' } });
+    const response = await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'en' } });
+    expect(await page(response)).toMatchObject({ locale: 'en', fallbackLocale: 'de' });
+  });
+
+  it('with one supported locale there is nothing to negotiate — and no Vary: accept-language for caches', async () => {
+    const { send } = await boot({ env: { APP_LOCALES: 'en' } });
+    await send('/choose/de'); // a session value of a locale the app does not have
+    const response = await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de' } });
+    expect(await page(response)).toMatchObject({ locale: 'en', props: { greeting: 'Hello Ada' } });
+    expect(response.headers.get('content-language')).toBe('en');
+    expect(response.headers.get('vary') ?? '').not.toMatch(/accept-language/);
+    // Several: the answer depends on the browser's languages, and says so.
+    const { send: several } = await boot();
+    expect((await several('/hello', { headers: { [PAGE_HEADER]: 'true' } })).headers.get('vary')).toMatch(/accept-language/);
   });
 
   it('sets <html lang> of the document', async () => {

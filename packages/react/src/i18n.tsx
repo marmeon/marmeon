@@ -1,4 +1,6 @@
-import { createTranslate, type Catalog, type Formatter, type Namespace, type Translate } from '@bespokecore/i18n/messages';
+// Types only: @bespokecore/i18n is an optional peer — apps without translations do not install it (and `bespoke discover`
+// does not find its provider, its middleware and the session it needs).
+import type { Catalog, Formatter, Namespace, Translate } from '@bespokecore/i18n/messages';
 import { createContext, useContext, useMemo } from 'react';
 
 export interface I18nValue {
@@ -35,7 +37,7 @@ function useI18n(hook: string): I18nValue {
  */
 export function useTranslation<N extends Namespace>(namespace: N): Translate<N> {
   const { catalog, locale } = useI18n('useTranslation()');
-  return useMemo(() => createTranslate(catalog, locale, namespace), [catalog, locale, namespace]);
+  return useMemo(() => catalog.translate(locale, namespace), [catalog, locale, namespace]);
 }
 
 /** The page's locale and its formatters — `const { locale, format } = useLocale()`. */

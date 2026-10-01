@@ -14,7 +14,19 @@ import {
   PARTIAL_DATA_HEADER,
   type PageObject,
 } from '../page.ts';
-import { firstErrors, hasServerMarkup, isHistoryState, Navigator, PROGRESS_ATTRIBUTE, readInitialPage, rootElement, showProgress, visitUrlOf } from './index.ts';
+import {
+  firstErrors,
+  hasServerMarkup,
+  isHistoryState,
+  loadPageMessages,
+  Navigator,
+  PROGRESS_ATTRIBUTE,
+  readInitialPage,
+  rootElement,
+  showProgress,
+  visitUrlOf,
+  type PageMessages,
+} from './index.ts';
 
 /** The whole adapter: the hydration entry, rendering a page object, the progress bar. */
 async function createTextApp(rootId = 'app') {
@@ -142,5 +154,14 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(visitUrlOf(click, 'https://example.com/', undefined, location)).toBeUndefined();
     expect(visitUrlOf({ ...click, defaultPrevented: true }, '/users/2', undefined, location)).toBeUndefined();
     expect(firstErrors(page('users/Edit', '/users/1/edit', { errors: { name: ['Too short.', 'Taken.'], bio: 'Too long.' } }))).toEqual({ name: 'Too short.', bio: 'Too long.' });
+  });
+
+  it("loads a page's messages in its locale, falling back where the server says (fallbackLocale)", async () => {
+    const calls: unknown[][] = [];
+    const messages: PageMessages<string> = { fallback: 'en', load: async (...args) => (calls.push(args), 'catalog') };
+    expect(await loadPageMessages(page('users/Show', '/users/1', {}, { locale: 'fr', fallbackLocale: 'de' }), messages)).toBe('catalog');
+    await loadPageMessages(page('users/Show', '/users/1', {}), messages); // a server without i18n: the loader's own fallback
+    expect(calls).toEqual([['fr', { fallback: 'de' }], ['en']]);
+    expect(await loadPageMessages(page('users/Show', '/users/1', {}), undefined)).toBeUndefined();
   });
 });

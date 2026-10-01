@@ -150,4 +150,17 @@ describe('createMessageLoader (virtual:bespoke/lang)', () => {
     expect(evil.text('en', 'shop.greeting')).toBe('Hello');
     expect(Object.values(lang).flatMap((load) => load.mock.calls)).toHaveLength(6); // de: 3 files; the fallback (en): 3 more
   });
+
+  it("falls back to the locale the server names (the page's fallbackLocale) — configured once, on the server", async () => {
+    const lang = { ...files(), '/modules/lab/lang/de.ts': vi.fn(async () => ({ default: { title: 'Labor' } })) };
+    const loader = createMessageLoader(lang); // no fallback of its own
+    // A French page of an app whose APP_FALLBACK_LOCALE is de: namespaces without fr.ts come from de, not en.
+    const french = await loader.load('fr', { fallback: 'de' });
+    expect(french.text('fr', 'lab.title')).toBe('Labor');
+    expect(french.text('fr', 'shop.greeting')).toBe('Hallo');
+    expect(lang['/modules/lab/lang/en.ts']).not.toHaveBeenCalled();
+    // Another fallback is another set of messages; a fallback that is no language tag is never used.
+    expect((await loader.load('fr', { fallback: 'en' })).text('fr', 'lab.title')).toBe('Lab');
+    expect((await loader.load('fr', { fallback: '../../x' })).text('fr', 'lab.title')).toBe('Lab');
+  });
 });

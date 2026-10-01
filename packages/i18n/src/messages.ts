@@ -45,13 +45,7 @@ export interface Translate<N extends string = Namespace> {
   has(key: string): boolean;
 }
 
-/** A {@link Translate} for `namespace` in `locale` — what a UI adapter's hook returns. */
+/** A {@link Translate} for `namespace` in `locale` — `catalog.translate(locale, namespace)`, what a UI adapter's hook returns. */
 export function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N> {
-  const t = (key: string, params?: Readonly<Record<string, unknown>>) => catalog.text(locale, `${namespace}.${key}`, params);
-  return Object.assign(t, {
-    locale,
-    namespace,
-    format: catalog.formatter(locale),
-    has: (key: string) => catalog.has(locale, `${namespace}.${key}`),
-  }) as unknown as Translate<N>;
+  return catalog.translate(locale, namespace);
 }

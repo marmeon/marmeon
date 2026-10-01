@@ -10,6 +10,8 @@ import { token } from './token.ts';
 export interface Translator {
   /** The locale this translator speaks, e.g. `de` — always one of the app's supported locales. */
   readonly locale: string;
+  /** Where a message missing in this locale comes from (`APP_FALLBACK_LOCALE`) — the browser's language files use it too. */
+  readonly fallbackLocale?: string;
   /** Whether `key` (`namespace.path`) has a message in this locale or the fallback locale. */
   has(key: string): boolean;
   /**

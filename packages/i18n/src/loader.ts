@@ -18,13 +18,16 @@ export function langFileOf(path: string): { namespace: string; locale: string } 
 }
 
 export interface MessageLoader {
-  /** The locale used for namespaces that have no file in the requested one (the app's `APP_FALLBACK_LOCALE`). */
+  /**
+   * The fallback locale when a page names none: the server sends its `APP_FALLBACK_LOCALE` with every page
+   * (`PageObject.fallbackLocale`), which is what `load` is given — this one is for pages without (no i18n on the server).
+   */
   readonly fallback: string;
   /**
    * The messages of `locale`: for every namespace its file in `locale`, else in the locale's language
    * (`de-AT` → `de`), else in the fallback locale — nothing else is loaded. Once per locale; later calls share it.
    */
-  load(locale: string): Promise<Catalog>;
+  load(locale: string, options?: { fallback?: string }): Promise<Catalog>;
 }
 
 /**
@@ -32,8 +35,10 @@ export interface MessageLoader {
  *
  * ```ts
  * import lang from 'virtual:bespoke/lang';
- * export const messages = createMessageLoader(lang, { fallback: 'en' });
+ * export const messages = createMessageLoader(lang);
  * ```
+ *
+ * The fallback locale comes from the server with each page (`APP_FALLBACK_LOCALE`): configured once.
  *
  * A locale is only ever a key into `files` (never part of a path), so a page's `locale` cannot load anything but
  * the app's own language files.
@@ -49,9 +54,9 @@ export function createMessageLoader(files: LangFiles, { fallback = 'en' }: { fal
   }
 
   const loaded = new Map<string, Promise<Catalog>>();
-  const loadLocale = async (locale: string): Promise<Catalog> => {
-    const catalog = new Catalog({ fallback });
-    const wanted = [locale, baseLanguage(locale), fallback, baseLanguage(fallback)].filter((candidate) => candidate !== undefined);
+  const loadLocale = async (locale: string, fallbackLocale: string): Promise<Catalog> => {
+    const catalog = new Catalog({ fallback: fallbackLocale });
+    const wanted = [locale, baseLanguage(locale), fallbackLocale, baseLanguage(fallbackLocale)].filter((candidate) => candidate !== undefined);
     await Promise.all(
       [...byNamespace].map(async ([namespace, locales]) => {
         const chosen = wanted.find((candidate) => locales.has(candidate));
@@ -65,11 +70,14 @@ export function createMessageLoader(files: LangFiles, { fallback = 'en' }: { fal
 
   return {
     fallback,
-    load(locale) {
-      const key = isLanguageTag(locale) ? locale : fallback;
+    load(locale, options = {}) {
+      // Locales are only ever keys into `files` — and checked to be language tags first.
+      const fallbackLocale = options.fallback !== undefined && isLanguageTag(options.fallback) ? options.fallback : fallback;
+      const wanted = isLanguageTag(locale) ? locale : fallbackLocale;
+      const key = `${wanted} ${fallbackLocale}`;
       let catalog = loaded.get(key);
       if (!catalog) {
-        catalog = loadLocale(key);
+        catalog = loadLocale(wanted, fallbackLocale);
         loaded.set(key, catalog);
         // A failed load (a chunk the network lost) may be tried again.
         catalog.catch(() => loaded.delete(key));

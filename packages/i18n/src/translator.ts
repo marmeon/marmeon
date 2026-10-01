@@ -65,6 +65,7 @@ export function createTranslator(catalog: Catalog, locale: () => string, { local
   };
   Object.defineProperties(translator, {
     locale: { get: locale, enumerable: true },
+    fallbackLocale: { value: catalog.fallback, enumerable: true },
     locales: { get: locales, enumerable: true },
     format: { get: () => catalog.formatter(locale()), enumerable: true },
   });

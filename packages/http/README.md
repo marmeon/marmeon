@@ -30,7 +30,7 @@ component name and props in text) visits, goes back and forward, loads deferred 
 | `showProgress(navigator, options)` | The progress bar: plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests |
 | `createPoll(run, interval, options)` | Polling, paused while the tab is hidden |
 | `readInitialPage()`, `rootElement(id)`, `hasServerMarkup(root)` | The hydration entry's first steps: the page from `#bespoke-page`, the root (also while streaming), hydrate or render |
-| `loadPageMessages(page, messages)`, `pageLocale(page, messages)` | The page's messages in its locale (any loader with `fallback` and `load(locale)`, e.g. `createMessageLoader` of `@bespokecore/i18n/messages`) — load them before a page renders, in the browser and the SSR entry |
+| `loadPageMessages(page, messages)`, `pageLocale(page, messages)` | The page's messages in its `locale`, falling back to the server's `fallbackLocale` (`APP_FALLBACK_LOCALE`, sent with every page) — any loader with `fallback` and `load(locale, { fallback })`, e.g. `createMessageLoader` of `@bespokecore/i18n/messages`. Load them before a page renders, in the browser and the SSR entry |
 | `resolveRoute(manifest, name, params, query)` | A named route's URL and method from `bootstrap/routes.ts` |
 | `visitUrlOf(click, href, target)`, `prefetchTriggers`, `prefetchUrlOf`, `HOVER_PREFETCH_DELAY` | Which link clicks become visits (plain left clicks, same origin, no other `target`) and when links prefetch |
 | `firstErrors(page)` | The first validation message per field (forms) |
