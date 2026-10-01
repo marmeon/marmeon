@@ -10,7 +10,6 @@ import {
   TableNode,
   type AliasableExpression,
   type ExpressionBuilder,
-  type Kysely,
   type KyselyPlugin,
   type OperationNode,
   type PluginTransformQueryArgs,
@@ -25,6 +24,7 @@ import {
 } from 'kysely';
 import { jsonArrayFrom as pgArray, jsonObjectFrom as pgObject } from 'kysely/helpers/postgres';
 import { jsonArrayFrom as sqliteArray, jsonObjectFrom as sqliteObject } from 'kysely/helpers/sqlite';
+import type { ColumnKind as Kind, SchemaMetadata } from './metadata.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 const MANY = '__bespoke_relation_many__';
@@ -83,7 +83,6 @@ function relation(eb: ExpressionBuilder<any, any>, kind: string, table: string, 
 
 // --- The plugin ----------------------------------------------------------------------------
 
-type Kind = 'boolean' | 'json' | 'timestamp' | { decimal: number } | 'other';
 /** Where each key of a relation's JSON comes from — to give nested values the types `Tables` promises. */
 interface Shape {
   readonly columns: Map<string, { table: string; column: string }>;
@@ -97,17 +96,15 @@ interface Shape {
  */
 export class RelationsPlugin implements KyselyPlugin {
   readonly #driver: Driver;
-  readonly #db: () => Kysely<any>;
+  readonly #metadata: SchemaMetadata;
   readonly #shapes = new WeakMap<QueryId, Map<string, Shape>>();
-  #kinds: Promise<Map<string, Map<string, Kind>>> | undefined;
 
-  constructor(driver: Driver, db: () => Kysely<any>) {
+  constructor(driver: Driver, metadata: SchemaMetadata) {
     this.#driver = driver;
-    this.#db = db;
+    this.#metadata = metadata;
   }
 
   transformQuery({ node, queryId }: PluginTransformQueryArgs): RootOperationNode {
-    if (node.kind === 'CreateTableNode' || node.kind === 'AlterTableNode' || node.kind === 'DropTableNode') this.#kinds = undefined;
     if (!mentionsRelation(node)) return node;
     const shapes = new Map<string, Shape>();
     const transformed = new RelationTransformer(this.#driver, shapes).transformNode(node, queryId);
@@ -118,17 +115,10 @@ export class RelationsPlugin implements KyselyPlugin {
   async transformResult({ result, queryId }: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> {
     const shapes = this.#shapes.get(queryId);
     if (!shapes || result.rows.length === 0) return result;
-    const kinds = await this.#columnKinds();
+    // Loaded by the driver on the connection this query ran on (a lookup here could deadlock inside a transaction).
+    const kinds = this.#metadata.kinds;
     for (const row of result.rows) convertRow(row as Record<string, unknown>, shapes, kinds);
     return result;
-  }
-
-  #columnKinds(): Promise<Map<string, Map<string, Kind>>> {
-    this.#kinds ??= loadKinds(this.#driver, this.#db()).catch((error: unknown) => {
-      this.#kinds = undefined;
-      throw error;
-    });
-    return this.#kinds;
   }
 }
 
@@ -196,7 +186,7 @@ function shapeOf(query: SelectQueryNode): Shape {
   return shape;
 }
 
-function convertRow(row: Record<string, unknown>, shapes: Map<string, Shape>, kinds: Map<string, Map<string, Kind>>): void {
+function convertRow(row: Record<string, unknown>, shapes: Map<string, Shape>, kinds: ReadonlyMap<string, ReadonlyMap<string, Kind>>): void {
   for (const [key, shape] of shapes) {
     let value = row[key];
     // SQLite loses the JSON subtype at a subquery boundary: a relation inside a relation arrives as JSON text.
@@ -206,7 +196,7 @@ function convertRow(row: Record<string, unknown>, shapes: Map<string, Shape>, ki
   }
 }
 
-function convertNested(object: Record<string, unknown>, shape: Shape, kinds: Map<string, Map<string, Kind>>): void {
+function convertNested(object: Record<string, unknown>, shape: Shape, kinds: ReadonlyMap<string, ReadonlyMap<string, Kind>>): void {
   for (const [key, { table, column }] of shape.columns) {
     const kind = kinds.get(table)?.get(column);
     if (kind && key in object) object[key] = convert(object[key], kind);
@@ -221,32 +211,4 @@ function convert(value: unknown, kind: Kind): unknown {
   if (kind === 'timestamp') return typeof value === 'string' && !value.endsWith('Z') ? new Date(value).toISOString() : value;
   if (typeof kind === 'object') return typeof value === 'number' ? value.toFixed(kind.decimal) : value;
   return value;
-}
-
-async function loadKinds(driver: Driver, db: Kysely<any>): Promise<Map<string, Map<string, Kind>>> {
-  const rows =
-    driver === 'sqlite'
-      ? (await sql<{ table_name: string; column_name: string; type: string }>`
-          select m.name as table_name, p.name as column_name, lower(p.type) as type
-          from sqlite_master m join pragma_table_info(m.name) p
-          where m.type = 'table'`.execute(db)).rows
-      : (await sql<{ table_name: string; column_name: string; type: string }>`
-          select table_name, column_name, case when data_type = 'numeric' then 'numeric(' || coalesce(numeric_precision, 0) || ', ' || coalesce(numeric_scale, 0) || ')' else udt_name end as type
-          from information_schema.columns where table_schema = current_schema()`.execute(db)).rows;
-  const kinds = new Map<string, Map<string, Kind>>();
-  for (const { table_name, column_name, type } of rows) {
-    let columns = kinds.get(table_name);
-    if (!columns) kinds.set(table_name, (columns = new Map()));
-    columns.set(column_name, kindOf(type));
-  }
-  return kinds;
-}
-
-function kindOf(type: string): Kind {
-  const decimal = /^(?:numeric|decimal)\(\s*\d+\s*,\s*(\d+)\s*\)$/.exec(type);
-  if (decimal) return { decimal: Number(decimal[1]) };
-  if (type === 'boolean' || type === 'bool') return 'boolean';
-  if (type === 'json' || type === 'jsonb') return 'json';
-  if (type === 'datetime' || type.startsWith('timestamp')) return 'timestamp';
-  return 'other';
 }

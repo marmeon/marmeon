@@ -1,4 +1,5 @@
 import { CompiledQuery, type DatabaseConnection, type Dialect, type Driver, type TransactionSettings } from 'kysely';
+import type { SchemaMetadata } from './metadata.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
 export class DatabaseConnectionError extends Error {
@@ -10,6 +11,8 @@ export interface DriverContext {
   readonly name: string;
   /** Where it points, for error messages: `sqlite storage/database.sqlite`, `pgsql postgres://bespoke:***@localhost/app`. */
   readonly target: string;
+  /** Refreshed on each connection handed out, while stale (see {@link SchemaMetadata}). */
+  readonly metadata?: SchemaMetadata;
 }
 
 /**
@@ -20,6 +23,8 @@ export interface DriverContext {
  *   Laravel's transaction level. That is what lets a test wrap everything in one transaction
  *   ({@link BespokeDriver.isolate}) while the code under test opens its own.
  * - **Connection failures say which connection** failed and where it points.
+ * - **Schema metadata is loaded on the connection being handed out** — never through the pool,
+ *   which a transaction may be holding.
  */
 export function withBespokeDriver(dialect: Dialect, context: DriverContext): { dialect: Dialect; driver: BespokeDriver } {
   const driver = new BespokeDriver(dialect.createDriver(), context);
@@ -57,9 +62,15 @@ export class BespokeDriver implements Driver {
     return this.#init;
   }
 
-  acquireConnection(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
-    if (this.#pinned) return Promise.resolve(this.#pinned);
-    return this.#connecting(() => this.#driver.acquireConnection(options));
+  async acquireConnection(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+    const connection = this.#pinned ?? (await this.#connecting(() => this.#driver.acquireConnection(options)));
+    try {
+      await this.#context.metadata?.refresh(connection);
+    } catch (error) {
+      if (connection !== this.#pinned) await this.#driver.releaseConnection(connection);
+      throw error;
+    }
+    return connection;
   }
 
   releaseConnection(connection: DatabaseConnection, options?: Parameters<Driver['releaseConnection']>[1]): Promise<void> {

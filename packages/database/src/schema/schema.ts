@@ -1,11 +1,18 @@
 import { sql, type Kysely } from 'kysely';
 import { Blueprint, compileColumn, type Driver } from './blueprint.ts';
 
-/** Keeps track of which module owns which table (E20) — the migrator writes it to `table_owners`. */
-export interface TableOwnership {
+/**
+ * Keeps the migrator's books: which module owns which table (E20, `table_owners`) and which
+ * columns are secret (`secret_columns`).
+ */
+export interface SchemaRecorder {
   created(table: string): Promise<void>;
   dropped(table: string): Promise<void>;
   renamed(from: string, to: string): Promise<void>;
+  /** A column was marked `.secret()`. */
+  secret(table: string, column: string): Promise<void>;
+  columnDropped(table: string, column: string): Promise<void>;
+  columnRenamed(table: string, from: string, to: string): Promise<void>;
 }
 
 /**
@@ -21,9 +28,9 @@ export interface TableOwnership {
 export class Schema {
   readonly db: Kysely<any>;
   readonly driver: Driver;
-  readonly #owners: TableOwnership | undefined;
+  readonly #owners: SchemaRecorder | undefined;
 
-  constructor(db: Kysely<any>, driver: Driver, owners?: TableOwnership) {
+  constructor(db: Kysely<any>, driver: Driver, owners?: SchemaRecorder) {
     this.db = db;
     this.driver = driver;
     this.#owners = owners;
@@ -43,6 +50,7 @@ export class Schema {
     await builder.execute();
     await this.#createIndexes(blueprint);
     await this.#owners?.created(table);
+    await this.#recordSecrets(blueprint);
   }
 
   /**
@@ -53,10 +61,21 @@ export class Schema {
     const blueprint = new Blueprint(table);
     build(blueprint);
     for (const name of blueprint.dropIndexes) await this.db.schema.dropIndex(name).execute();
-    for (const { from, to } of blueprint.renames) await this.db.schema.alterTable(table).renameColumn(from, to).execute();
+    for (const { from, to } of blueprint.renames) {
+      await this.db.schema.alterTable(table).renameColumn(from, to).execute();
+      await this.#owners?.columnRenamed(table, from, to);
+    }
     for (const spec of blueprint.columns) await this.db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, this.driver)).execute();
     await this.#createIndexes(blueprint);
-    for (const column of blueprint.drops) await this.db.schema.alterTable(table).dropColumn(column).execute();
+    await this.#recordSecrets(blueprint);
+    for (const column of blueprint.drops) {
+      await this.db.schema.alterTable(table).dropColumn(column).execute();
+      await this.#owners?.columnDropped(table, column);
+    }
+  }
+
+  async #recordSecrets(blueprint: Blueprint): Promise<void> {
+    for (const spec of blueprint.columns) if (spec.secret) await this.#owners?.secret(blueprint.table, spec.name);
   }
 
   async #createIndexes(blueprint: Blueprint): Promise<void> {

@@ -5,8 +5,10 @@ import { Kysely, type Dialect, type LogEvent } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { describeConnection, type ConnectionOptions } from './config.ts';
 import { DatabaseConnectionError, withBespokeDriver, type BespokeDriver } from './driver.ts';
+import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
+import { SecretColumnsPlugin } from './secrets.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
 /**
@@ -118,9 +120,10 @@ export class Connections {
     let instance = this.#instances.get(name);
     if (!instance) {
       const options = this.options(name);
-      const { dialect, driver } = withBespokeDriver(this.#dialect(options), { name, target: describeConnection(options) });
-      const relations = new RelationsPlugin(options.driver, () => db);
-      const db: Kysely<any> = new Kysely<any>({ dialect, plugins: [relations], log: (event) => this.#log(name, event) });
+      const metadata = new SchemaMetadata(options.driver);
+      const { dialect, driver } = withBespokeDriver(this.#dialect(options), { name, target: describeConnection(options), metadata });
+      const plugins = [metadata.plugin(), new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
+      const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
       instance = { db, driver };
       this.#instances.set(name, instance);
     }

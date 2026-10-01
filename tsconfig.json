@@ -35,6 +35,9 @@
       "path": "packages/database"
     },
     {
+      "path": "packages/auth"
+    },
+    {
       "path": "packages/testing"
     }
   ]

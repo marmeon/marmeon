@@ -16,7 +16,8 @@ beforeEach(async () => {
   // A fresh app per test, on a real database: migrated once per worker, seeded and rolled back per test.
   app = await createTestApp(application, { database: 'refresh', seed: true });
   // The seeded demo users. Never assume ids: Postgres does not roll back its sequences.
-  [ada, alan, grace] = (await app.make(UserRepository).query().selectAll().orderBy('id').execute()) as [User, User, User];
+  const users: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
+  [ada, alan, grace] = users as [User, User, User];
 });
 
 /** Signed in as `user`, navigating client-side (answers with the page object). */
@@ -30,6 +31,20 @@ describe('user-profile module', () => {
 
   it('redirects browsers without a session to the login page', async () => {
     await app.get(profile(ada), { headers: { accept: 'text/html' } }).assertRedirect('/login');
+  });
+
+  it('never hands out a password hash — not on pages, not in the API (the profile reads users.*)', async () => {
+    const pages = [
+      await as(ada).get(profile(ada)).assertOk(),
+      await as(ada).get(profile(alan)).assertOk(),
+      await as(ada).get(`${profile(ada)}/edit`).assertOk(),
+      await app.withSession({ user_id: ada.id }).get(profile(ada), { headers: { accept: 'text/html' } }).assertOk(), // the HTML document
+      await app.get('/api/users').assertOk(),
+    ];
+    for (const response of pages) {
+      expect(response.body).not.toContain('$argon2id$');
+      expect(response.body).not.toContain('"password"');
+    }
   });
 
   it('renders the profile with controller-owned props', async () => {

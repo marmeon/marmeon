@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bespokecore/auth": "workspace:*",
     "@bespokecore/cache": "workspace:*",
     "@bespokecore/core": "workspace:*",
     "@bespokecore/database": "workspace:*",

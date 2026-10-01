@@ -17,7 +17,8 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   profile(id: number) {
     return this.#db
       .selectFrom('users')
-      // The row as the migrations define it — its columns reach the view (the controller holds back the e-mail).
+      // The row as the migrations define it — its columns reach the view (the controller holds back the e-mail;
+      // the connection leaves out the secret password hash).
       .selectAll('users')
       .select((eb) => [
         hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),

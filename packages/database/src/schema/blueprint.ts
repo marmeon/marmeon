@@ -15,6 +15,7 @@ interface ColumnSpec {
   primary: boolean;
   identity: boolean;
   unique: boolean;
+  secret: boolean;
   default?: { value: unknown } | { now: true };
   references?: { table: string; column: string; onDelete?: OnDelete };
 }
@@ -49,6 +50,15 @@ export class Column<T> {
 
   default(value: T): this {
     this.spec.default = { value };
+    return this;
+  }
+
+  /**
+   * Never read by accident (a password hash, a 2FA secret): left out of `Row<…>` and removed from
+   * every `selectAll()` / `returningAll()` result. Read it with `secret(eb, 'password')`.
+   */
+  secret(): this {
+    this.spec.secret = true;
     return this;
   }
 }
@@ -228,7 +238,7 @@ export class Blueprint {
 
   #spec(name: string, type: Record<Driver, DataTypeExpression>, extra: Partial<ColumnSpec> = {}): ColumnSpec {
     if (this.columns.some((column) => column.name === name)) throw new Error(`Column "${name}" is defined twice on table "${this.table}".`);
-    const spec: ColumnSpec = { name, type, nullable: false, primary: false, identity: false, unique: false, ...extra };
+    const spec: ColumnSpec = { name, type, nullable: false, primary: false, identity: false, unique: false, secret: false, ...extra };
     this.columns.push(spec);
     return spec;
   }

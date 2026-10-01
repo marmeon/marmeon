@@ -29,6 +29,9 @@ importers:
 
   apps/web-app:
     dependencies:
+      '@bespokecore/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@bespokecore/cache':
         specifier: workspace:*
         version: link:../../packages/cache
@@ -84,6 +87,15 @@ importers:
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)
+
+  packages/auth:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
 
   packages/cache:
     dependencies:

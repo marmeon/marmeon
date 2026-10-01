@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { Application, Logger } from '@bespokecore/core';
 import { sql } from 'kysely';
 import { Connections } from '../connections.ts';
-import { Migrator, MIGRATIONS_TABLE, OWNERS_TABLE } from '../migrations/migrator.ts';
+import { Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from '../migrations/migrator.ts';
 import { renderTypes, type Rendered, type SchemaSnapshot } from './render.ts';
 
 declare module '@bespokecore/core' {
@@ -64,13 +64,15 @@ export class TypeGenerator {
     await migrator.migrate();
     const db = scratch.get<any>();
     const driver = scratch.options().driver;
-    const tables = (await db.introspection.getTables()).filter((t) => t.name !== MIGRATIONS_TABLE && t.name !== OWNERS_TABLE);
+    const bookkeeping = new Set([MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE]);
+    const tables = (await db.introspection.getTables()).filter((t) => !bookkeeping.has(t.name));
     const sqliteKeys = driver === 'sqlite' ? await sqliteKeysOf(scratch, tables.map((t) => t.name)) : undefined;
     return {
       driver,
       tables,
       sqliteKeys,
       owners: await migrator.owners(),
+      secrets: await migrator.secrets(),
       modules: this.#app.modules.map((module) => module.name),
       exposes: new Map(this.#app.modules.filter((m) => m.exposes?.length).map((m) => [m.name, m.exposes!])),
     };

@@ -52,8 +52,7 @@ describe.each(drivers)('relations on %s', (driver) => {
       .orderBy('id');
 
   it('loads a hasMany and a hasOne in the same query as their parents', async () => {
-    await withArticles().execute(); // the first relation query on a connection also looks up its column types, once
-    queries.length = 0;
+    queries.length = 0; // column kinds were loaded on the connection when it was handed out — not as queries of their own
     const users = await withArticles().execute();
     expect(queries).toHaveLength(1); // no N+1 — there is no lazy loading to fall into
 

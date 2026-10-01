@@ -8,6 +8,8 @@ export interface SchemaSnapshot {
   readonly sqliteKeys?: ReadonlyMap<string, { primary: readonly string[]; autoIncrement: string | undefined }>;
   /** Table → owning module (from `table_owners`). */
   readonly owners: ReadonlyMap<string, string>;
+  /** Table → its `.secret()` columns (from `secret_columns`); missing means none. */
+  readonly secrets?: ReadonlyMap<string, ReadonlySet<string>>;
   /** Every module of the app, whether it owns tables or not. */
   readonly modules: readonly string[];
   /** Module → tables it exposes. */
@@ -73,7 +75,7 @@ export function renderTypes(snapshot: SchemaSnapshot): Rendered {
   const block = (name: string, lines: readonly string[]) => (lines.length ? [`  interface ${name} {`, ...lines, '  }'] : [`  interface ${name} {}`]);
   const source = [
     HEADER,
-    "import type { Decimal, Generated, JsonColumn, Timestamp } from '@bespokecore/database';",
+    "import type { Decimal, Generated, JsonColumn, Secret, Timestamp } from '@bespokecore/database';",
     '',
     "declare module '@bespokecore/database' {",
     ...block('Tables', tableLines),
@@ -103,6 +105,7 @@ function render(table: string, column: ColumnMetadata, snapshot: SchemaSnapshot,
     generated = column.hasDefaultValue || keys.autoIncrement === column.name;
   }
   if (nullable) type = `${type} | null`;
+  if (snapshot.secrets?.get(table)?.has(column.name)) type = `Secret<${type}>`;
   return generated ? `Generated<${type}>` : type;
 }
 
@@ -112,9 +115,9 @@ function key(name: string): string {
 
 function pruneImports(source: string): string {
   const body = source.slice(source.indexOf('declare module'));
-  const used = ['Decimal', 'Generated', 'JsonColumn', 'Timestamp'].filter((name) => new RegExp(`\\b${name}\\b`).test(body));
+  const used = ['Decimal', 'Generated', 'JsonColumn', 'Secret', 'Timestamp'].filter((name) => new RegExp(`\\b${name}\\b`).test(body));
   return source.replace(
-    "import type { Decimal, Generated, JsonColumn, Timestamp } from '@bespokecore/database';\n",
+    "import type { Decimal, Generated, JsonColumn, Secret, Timestamp } from '@bespokecore/database';\n",
     used.length ? `import type { ${used.join(', ')} } from '@bespokecore/database';\n` : '',
   );
 }

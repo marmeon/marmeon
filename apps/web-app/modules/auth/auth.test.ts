@@ -1,7 +1,10 @@
+import { Hasher, type PasswordHash } from '@bespokecore/auth';
+import { Database, secret } from '@bespokecore/database';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { UserFactory } from './factories/UserFactory.ts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import type { User } from './users.ts';
 import type { LoginController } from './controllers/LoginController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
 
@@ -88,3 +91,35 @@ describe('auth module', () => {
     await app.navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { appName: 'BespokeCore (test)' });
   });
 });
+
+describe('passwords', () => {
+  /** The stored hash — read the one deliberate way. */
+  const storedHash = async (id: number) =>
+    (await app.make(Database).selectFrom('users').select((eb) => secret(eb, 'password')).where('id', '=', id).executeTakeFirstOrThrow()).password as PasswordHash;
+
+  it('factory users have the password `password`, hashed at the test costs (no rehash needed)', async () => {
+    const user = await app.factory(UserFactory).create();
+    expect(user).not.toHaveProperty('password'); // create() returns the row — without its secret
+    const hasher = app.make(Hasher);
+    expect(await hasher.verify('password', await storedHash(user.id))).toBe(true);
+    expect(hasher.needsRehash(await storedHash(user.id))).toBe(false);
+  });
+
+  it('seeds the demo people with `password`, hashed by the configured Hasher', async () => {
+    await app.close(); // one database app per test
+    app = await createTestApp(application, { database: 'refresh', seed: true });
+    const ada = await app.make(Database).selectFrom('users').select('id').where('email', '=', 'ada@example.com').executeTakeFirstOrThrow();
+    const hash = await storedHash(ada.id);
+    expect(hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/); // .env.test
+    expect(await app.make(Hasher).verify('password', hash)).toBe(true);
+  });
+});
+
+// --- Type guarantees (never called) -----------------------------------------------------------
+
+declare const user: User;
+
+export function userTypes() {
+  // @ts-expect-error — the hash is not part of a user (E24): it travels separately, read with secret()
+  user.password;
+}

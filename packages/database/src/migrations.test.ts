@@ -42,7 +42,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
       ['2026_01_02_000000_create_posts_table', 'blog', 2],
       ['2026_01_03_000000_add_slug_to_posts_table', 'blog', 2],
     ]);
-    expect(await tables()).toEqual(['articles', 'migrations', 'table_owners', 'users']);
+    expect(await tables()).toEqual(['articles', 'migrations', 'secret_columns', 'table_owners', 'users']);
   });
 
   it('records which module owns each table — renames included', async () => {
@@ -83,7 +83,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
     const both = migrator(connections, auth, blog);
     const rolledBack = (await both.rollback()).map((run) => run.name);
     expect(rolledBack).toEqual(['2026_01_03_000000_add_slug_to_posts_table', '2026_01_02_000000_create_posts_table']);
-    expect(await tables()).toEqual(['migrations', 'table_owners', 'users']);
+    expect(await tables()).toEqual(['migrations', 'secret_columns', 'table_owners', 'users']);
     expect(Object.fromEntries(await both.owners())).toEqual({ users: 'auth' });
 
     await both.migrate();
@@ -91,13 +91,13 @@ describe.each(drivers)('migrations on %s', (driver) => {
     const posts = (await db().introspection.getTables()).find((t) => t.name === 'posts')!;
     expect(posts.columns.map((c) => c.name)).toEqual(['id', 'user_id', 'title', 'body', 'published_at']);
     expect((await both.reset()).length).toBe(2);
-    expect(await tables()).toEqual(['migrations', 'table_owners']);
+    expect(await tables()).toEqual(['migrations', 'secret_columns', 'table_owners']);
   });
 
   it('undoes a failing migration completely and does not record it', async () => {
     const withBroken = migrator(connections, auth, broken);
     await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
-    expect(await tables()).toEqual(['migrations', 'table_owners', 'users']); // `half` is gone; users (earlier file) stays
+    expect(await tables()).toEqual(['migrations', 'secret_columns', 'table_owners', 'users']); // `half` is gone; users (earlier file) stays
     expect((await withBroken.status()).map((m) => [m.name, m.batch])).toEqual([
       ['2026_01_01_000000_create_users_table', 1],
       ['2026_01_04_000000_create_half_table', undefined],
@@ -108,7 +108,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
     await sql`create table stray (x integer)`.execute(db());
     const runs = await migrator(connections, auth, blog).fresh();
     expect(runs.map((run) => run.name)).toHaveLength(3);
-    expect(await tables()).toEqual(['articles', 'migrations', 'table_owners', 'users']);
+    expect(await tables()).toEqual(['articles', 'migrations', 'secret_columns', 'table_owners', 'users']);
     expect((await migrator(connections, auth, blog).status()).every((m) => m.batch === 1)).toBe(true);
   });
 });

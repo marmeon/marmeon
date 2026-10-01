@@ -4,7 +4,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Application } from '@bespokecore/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
-import { Schema, type TableOwnership } from '../schema/schema.ts';
+import { SECRETS_TABLE } from '../metadata.ts';
+import { Schema, type SchemaRecorder } from '../schema/schema.ts';
 import type { Migration } from './migration.ts';
 
 /** `2026_10_01_120000_create_users_table.ts` — the timestamp orders migrations across all modules. */
@@ -31,15 +32,18 @@ export interface MigrationRun {
 /** Internal bookkeeping tables — not part of the app's generated `Tables`. */
 export const MIGRATIONS_TABLE = 'migrations';
 export const OWNERS_TABLE = 'table_owners';
+export { SECRETS_TABLE };
 
 interface Bookkeeping {
   migrations: { id: Generated<number>; name: string; module: string; batch: number };
   table_owners: { table_name: string; module: string };
+  secret_columns: { table_name: string; column_name: string };
 }
 
 /**
  * Runs the migrations of every module, ordered by their timestamp — Laravel's migrator, with
- * batches, plus a record of which module's migration created which table (E20).
+ * batches, plus a record of which module's migration created which table (E20) and which
+ * columns are secret.
  */
 export class Migrator {
   readonly #app: Application;
@@ -140,6 +144,18 @@ export class Migrator {
     return new Map(rows.map((row) => [row.table_name, row.module]));
   }
 
+  /** Table name → its secret columns (`.secret()` in the migrations). */
+  async secrets(): Promise<Map<string, Set<string>>> {
+    await this.#prepare();
+    const secrets = new Map<string, Set<string>>();
+    for (const row of await this.#db().selectFrom(SECRETS_TABLE).select(['table_name', 'column_name']).execute()) {
+      let columns = secrets.get(row.table_name);
+      if (!columns) secrets.set(row.table_name, (columns = new Set()));
+      columns.add(row.column_name);
+    }
+    return secrets;
+  }
+
   async #down(rows: readonly { name: string; module: string }[], onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
     const files = new Map(this.files().map((file) => [file.name, file]));
     const db = this.#db();
@@ -162,16 +178,28 @@ export class Migrator {
   }
 
   #schema(trx: Kysely<Bookkeeping>, module: string): Schema {
-    const owners: TableOwnership = {
+    const owners: SchemaRecorder = {
       created: async (table) => {
         await trx.deleteFrom(OWNERS_TABLE).where('table_name', '=', table).execute();
         await trx.insertInto(OWNERS_TABLE).values({ table_name: table, module }).execute();
+        await trx.deleteFrom(SECRETS_TABLE).where('table_name', '=', table).execute();
       },
       dropped: async (table) => {
         await trx.deleteFrom(OWNERS_TABLE).where('table_name', '=', table).execute();
+        await trx.deleteFrom(SECRETS_TABLE).where('table_name', '=', table).execute();
       },
       renamed: async (from, to) => {
         await trx.updateTable(OWNERS_TABLE).set({ table_name: to }).where('table_name', '=', from).execute();
+        await trx.updateTable(SECRETS_TABLE).set({ table_name: to }).where('table_name', '=', from).execute();
+      },
+      secret: async (table, column) => {
+        await trx.insertInto(SECRETS_TABLE).values({ table_name: table, column_name: column }).execute();
+      },
+      columnDropped: async (table, column) => {
+        await trx.deleteFrom(SECRETS_TABLE).where('table_name', '=', table).where('column_name', '=', column).execute();
+      },
+      columnRenamed: async (table, from, to) => {
+        await trx.updateTable(SECRETS_TABLE).set({ column_name: to }).where('table_name', '=', table).where('column_name', '=', from).execute();
       },
     };
     return new Schema(trx, this.#driver(), owners);
@@ -194,6 +222,13 @@ export class Migrator {
       .ifNotExists()
       .addColumn('table_name', 'varchar(255)', (c) => c.primaryKey())
       .addColumn('module', 'varchar(255)', (c) => c.notNull())
+      .execute();
+    await db.schema
+      .createTable(SECRETS_TABLE)
+      .ifNotExists()
+      .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
+      .addColumn('column_name', 'varchar(255)', (c) => c.notNull())
+      .addPrimaryKeyConstraint(`${SECRETS_TABLE}_pkey`, ['table_name', 'column_name'])
       .execute();
   }
 
