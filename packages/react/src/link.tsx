@@ -1,20 +1,22 @@
-import type { BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, ParamsOf, Query } from '@bespokecore/http/page';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, MethodOf, ParamsOf, Query } from '@bespokecore/http/page';
 import { useContext, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent } from 'react';
-import { useRouter, type VisitMethod, type VisitOptions } from './app.tsx';
+import { useRouter, type PartialReloadOptions, type VisitMethod, type VisitOptions } from './app.tsx';
 import { resolveRoute, RoutesContext } from './routes.ts';
 
 interface LinkOptions {
   replace?: boolean;
   preserveScroll?: boolean;
+  preserveState?: boolean;
 }
 
 type AnchorAttributes = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>;
 type ButtonAttributes = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'>;
 
-/** `<Link href="/somewhere">` — any URL, external ones included. */
+/** `<Link href="/somewhere">` — any URL, external ones included. Partial reloads (`only`) are not checked. */
 type HrefLinkProps =
-  | (LinkOptions & AnchorAttributes & { href: string; method?: 'get'; route?: never })
+  | (LinkOptions & PartialReloadOptions & AnchorAttributes & { href: string; method?: 'get'; route?: never })
   | (LinkOptions &
+      PartialReloadOptions &
       ButtonAttributes & {
         href: string;
         /** Other methods render a `<button>` — actions are not links (logout, delete). */
@@ -31,8 +33,14 @@ type MethodProps<N extends string> = [MethodOf<N>] extends ['get']
   ? AnchorAttributes & { method?: 'get' }
   : ButtonAttributes & { method?: MethodOf<N> & VisitMethod; data?: VisitOptions['data'] };
 
-/** `<Link route="user-profile.show" params={{ user: 7 }} query={{ tab: 'links' }}>` — checked against `bootstrap/routes.ts`. */
-type RouteLinkProps<N extends string> = LinkOptions & {
+type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
+
+/**
+ * `<Link route="user-profile.show" params={{ user: 7 }} query={{ tab: 'links' }}>` — checked against `bootstrap/routes.ts`;
+ * `only`/`except` against the props of the route's page (a partial reload applies when it is the page on screen).
+ */
+type RouteLinkProps<N extends string> = LinkOptions &
+  PartialReloadOptions<Instance<ControllerOf<N>>> & {
   route: CheckBrowserRouteName<N>;
   query?: Query;
   href?: never;
@@ -42,6 +50,7 @@ type RouteLinkProps<N extends string> = LinkOptions & {
 export type LinkProps<N extends string = never> = [N] extends [never] ? HrefLinkProps : RouteLinkProps<N>;
 
 type AnyLinkProps = LinkOptions &
+  PartialReloadOptions &
   Omit<AnchorHTMLAttributes<HTMLAnchorElement> & ButtonAttributes, 'href' | 'onClick'> & {
     href?: string;
     route?: string;
@@ -67,7 +76,9 @@ type AnyLinkProps = LinkOptions &
 export function Link<const N extends BrowserRouteNameInput = never>(props: LinkProps<N>) {
   const { visit } = useRouter();
   const manifest = useContext(RoutesContext);
-  const { route, params, query, href: givenHref, method: givenMethod, data, replace, preserveScroll, onClick, ...rest } = props as AnyLinkProps;
+  const { route, params, query, href: givenHref, method: givenMethod, data, replace, preserveScroll, preserveState, only, except, reset, onClick, ...rest } =
+    props as AnyLinkProps;
+  const options = { replace, preserveScroll, preserveState, only, except, reset };
 
   const target = route === undefined ? undefined : resolveRoute(manifest, route, params, query);
   const href = target?.url ?? givenHref ?? '';
@@ -78,7 +89,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       onClick?.(event as MouseEvent<HTMLAnchorElement & HTMLButtonElement>);
       if (event.defaultPrevented) return;
       event.preventDefault();
-      void visit(href, { method, data, replace, preserveScroll });
+      void visit(href, { method, data, ...options });
     };
     return <button type="button" onClick={handleClick} {...(rest as ButtonAttributes)} />;
   }
@@ -93,7 +104,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     if (url.origin !== window.location.origin) return;
 
     event.preventDefault();
-    void visit(url.pathname + url.search + url.hash, { replace, preserveScroll });
+    void visit(url.pathname + url.search + url.hash, options);
   };
 
   return <a href={href} onClick={handleClick} {...(rest as AnchorAttributes)} />;

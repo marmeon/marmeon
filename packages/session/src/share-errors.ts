@@ -1,4 +1,4 @@
-import { SharedData, type ValidationErrors } from '@bespokecore/http';
+import { always, SharedData, type ValidationErrors } from '@bespokecore/http';
 import type { HttpContext, Next } from '@bespokecore/router';
 import { Session } from './session.ts';
 
@@ -9,7 +9,10 @@ declare module '@bespokecore/http/page' {
   }
 }
 
-/** Shares the flashed validation errors with every page of the `web` group (the Inertia pattern). */
+/**
+ * Shares the flashed validation errors with every page of the `web` group (the Inertia pattern) — with every
+ * partial reload, too (`always`): a form sent with `only` that fails comes back with its errors.
+ */
 export class ShareErrorsFromSession {
   readonly #session: Session;
   readonly #shared: SharedData;
@@ -20,7 +23,7 @@ export class ShareErrorsFromSession {
   }
 
   handle(_ctx: HttpContext, next: Next<{}>) {
-    this.#shared.share('errors', () => this.#session.get('errors') ?? {});
+    this.#shared.share('errors', always(() => this.#session.get('errors') ?? {}));
     return next();
   }
 }

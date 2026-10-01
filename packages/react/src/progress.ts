@@ -77,14 +77,17 @@ export function showProgress(navigator: Pick<Navigator, 'on'>, { delay = DEFAULT
   };
 
   const stops = [
-    navigator.on('start', () => {
+    // Background requests (loading deferred props) show no bar — like Inertia's async requests.
+    navigator.on('start', (visit) => {
+      if (visit.async) return;
       running++;
       if (running === 1 && !element && showTimer === undefined) showTimer = setTimeout(show, delay);
     }),
-    navigator.on('progress', ({ percentage }) => {
-      if (percentage !== undefined) set((percentage / 100) * 0.9);
+    navigator.on('progress', ({ percentage }, visit) => {
+      if (percentage !== undefined && !visit.async) set((percentage / 100) * 0.9);
     }),
-    navigator.on('finish', () => {
+    navigator.on('finish', (visit) => {
+      if (visit.async) return;
       running = Math.max(0, running - 1);
       if (running === 0) done();
     }),

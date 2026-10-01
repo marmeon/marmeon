@@ -7,6 +7,7 @@ import type { ViewProps } from './view.ts';
 import type { Suggest } from '@bespokecore/router';
 
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
+export type { AlwaysProp, DeferredProp, MergeProp, OptionalProp, PropKind, ResolvedProp, ResolvedProps, SharedValue, WrappedProp } from './props.ts';
 // Types — erased, so the browser bundle stays free of router code.
 export type {
   BrowserRouteName,
@@ -78,6 +79,15 @@ export interface PageObject {
   url: string;
   /** Build version of the assets (null in development). A client with another version reloads fully. */
   version?: string | null;
+  /**
+   * Props the response left out to load next (`defer()`), by group: the client fetches each group with a partial
+   * reload right after showing the page. Only in full responses.
+   */
+  deferredProps?: Record<string, string[]>;
+  /** Props a partial reload merges into the client's (`merge()`): arrays appended, objects merged one level deep. */
+  mergeProps?: string[];
+  /** Props a partial reload merges all the way down (`deepMerge()`). */
+  deepMergeProps?: string[];
 }
 
 /** Client-side navigations send this header and receive the page object as JSON. */
@@ -91,6 +101,18 @@ export const VERSION_HEADER = 'x-bespoke-version';
  * and after signing in or out (`ClientHistory`), so no page kept in memory outlives either.
  */
 export const LOCATION_HEADER = 'x-bespoke-location';
+
+/**
+ * A partial reload (E7, Inertia's `X-Inertia-Partial-Component`): the component the client shows. The server
+ * answers with only some props when it renders this component — and with all of them for any other.
+ */
+export const PARTIAL_COMPONENT_HEADER = 'x-bespoke-partial-component';
+
+/** With a partial reload: the props to send, comma-separated (`only`). `always()` props come anyway. */
+export const PARTIAL_DATA_HEADER = 'x-bespoke-partial-data';
+
+/** With a partial reload: the props to leave out, comma-separated (`except`). */
+export const PARTIAL_EXCEPT_HEADER = 'x-bespoke-partial-except';
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'bespoke-page';

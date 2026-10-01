@@ -1,5 +1,17 @@
 import type { Container } from '@bespokecore/core';
-import { Flasher, isRedirectResult, isViewResult, PAGE_HEADER, SharedData, type PageObject } from '@bespokecore/http';
+import {
+  Flasher,
+  isRedirectResult,
+  isViewResult,
+  PAGE_HEADER,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  partialReloadOf,
+  resolvePageProps,
+  SharedData,
+  type PageObject,
+} from '@bespokecore/http';
 import { defaultToResponse, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
 import { FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
@@ -15,12 +27,19 @@ export const shellRenderer: PageRenderer = {
   render: async (page) => renderDocument(FALLBACK_TEMPLATE, page, { html: '' }),
 };
 
+/**
+ * Page responses differ by these request headers: a page document or its JSON (`x-bespoke`), all props or some
+ * (a partial reload). A cache (`Cache-Control: private, max-age=…`) must never answer one with the other.
+ */
+const PAGE_VARY = [PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER].join(', ');
+
 /** A response factory that may use the request's container scope (the kernel passes it). */
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
 
 /**
  * Turns controller results into HTTP responses. Client-side navigations get the
- * page object as JSON, full page loads get a server-rendered document. Redirects
+ * page object as JSON, full page loads get a server-rendered document. A partial reload of the rendered component
+ * gets only the props it asks for (and only those are computed — see `resolvePageProps`). Redirects
  * resolve named routes through `routes` (the router) and flash through the scope's `Flasher`.
  */
 export function createResponseFactory(
@@ -42,10 +61,11 @@ export function createResponseFactory(
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
 
     const url = new URL(ctx.request.url);
-    // Shared props first, so a controller's own prop of the same name wins.
-    const shared = scope?.has(SharedData) ? await scope.make(SharedData).resolve() : {};
-    const page: PageObject = { component: result.component, props: { ...shared, ...result.props }, url: url.pathname + url.search, version };
-    const headers = { ...result.headers, vary: PAGE_HEADER };
+    const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
+    // Shared props and the controller's (which win), resolved as far as this response sends them.
+    const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component));
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version };
+    const headers = { ...result.headers, vary: PAGE_VARY };
 
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {
       return Response.json(page, { status: result.status, headers: { ...headers, [PAGE_HEADER]: 'true' } });

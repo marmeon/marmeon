@@ -3,14 +3,28 @@
  * and scroll restoration. No React in here — `<BespokeApp>` renders what the navigator hands it (and Wave 5's
  * adapter core, `@bespokecore/http/client`, will start from this file).
  */
-import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type PageObject, type ValidationErrors } from '@bespokecore/http/page';
+import {
+  isPageObject,
+  LOCATION_HEADER,
+  PAGE_HEADER,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  VERSION_HEADER,
+  type PageObject,
+  type ValidationErrors,
+} from '@bespokecore/http/page';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-/** One request of the navigator: a visit, a reload, or Back/Forward to a page that is not in memory. */
+/**
+ * One request of the navigator: a visit, a reload, Back/Forward to a page that is not in memory — or, `async`, one
+ * in the background that loads a page's deferred props (no progress bar; it neither cancels nor waits for visits).
+ */
 export interface Visit {
   readonly url: string;
   readonly method: VisitMethod;
+  readonly async?: boolean;
 }
 
 /** How far the upload of a `FormData` visit is. `total` and `percentage` are undefined when the size is unknown. */
@@ -36,7 +50,8 @@ export type VisitException =
 /**
  * The events of a visit, in order: `start`, `progress` (uploads), then one of `success`, `error`, `exception` or
  * `cancel`, and always `finish` — Inertia's names and meanings (E44). Back/Forward to a page that is not in memory
- * reports `start`, `exception`/`cancel` and `finish` only (it is no visit of the app's own).
+ * and loading deferred props (`visit.async`) report `start`, `exception`/`cancel` and `finish` only (they are no
+ * visits of the app's own).
  */
 export interface VisitEvents {
   start: (visit: Visit) => void;
@@ -80,6 +95,16 @@ export interface VisitOptions extends VisitCallbacks {
    */
   preserveState?: boolean;
   headers?: Record<string, string>;
+  /**
+   * A partial reload (E7): the server sends only these props of the current page — and computes only them — and
+   * they are merged into the props the page has. Applies when the response is the same page component; any other
+   * page comes in full. Props the controller marked `always()` (the shared `errors`) come anyway.
+   */
+  only?: readonly string[];
+  /** A partial reload of every prop but these (`optional()`/`defer()` props still only by name, with `only`). */
+  except?: readonly string[];
+  /** Props to replace instead of merge, though the server marked them `merge()` (start a list over). */
+  reset?: readonly string[];
 }
 
 export interface ScrollPosition {
@@ -188,6 +213,10 @@ export class Navigator {
   #page: PageObject;
   #key: string | undefined;
   #inFlight: AbortController | undefined;
+  /** Deferred props being loaded — `<history key> <group>`, so no group is asked for twice at once. */
+  readonly #loading = new Set<string>();
+  /** Requests in the background (`visit.async`): they die with the document's pages when it is left. */
+  readonly #background = new Set<AbortController>();
   /** This document was left for a full page load (409, a response that is not a page). */
   #left = false;
   /** A page is being swapped in: scroll events belong to no entry until its position is set. */
@@ -222,6 +251,8 @@ export class Navigator {
     if (this.#window.history.scrollRestoration !== undefined) this.#window.history.scrollRestoration = 'manual';
     // A reload or a session restore keeps the entry: back to where it was.
     if (restored) this.#applyScroll(this.#positionOf(restored));
+    // The first render is on screen — now the props it was sent without.
+    this.#loadDeferred();
     this.#window.addEventListener('popstate', this.#onPopState);
     this.#window.addEventListener('pageshow', this.#onPageShow);
     // Capturing: scroll events of elements do not bubble, but pass the window on their way down.
@@ -259,10 +290,19 @@ export class Navigator {
     }
 
     const request = buildRequest(target, method, data);
+    // A partial reload names the page it reloads: the server sends only some props when it renders that one.
+    const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? this.#page.component : undefined;
+    const partialHeaders = partial === undefined ? {} : partialReloadHeaders(partial, options.only, options.except);
     return this.#request({ url: request.url, method }, options, async (signal, onProgress) => {
-      const response = await this.#send(request.url, { method, headers: { ...request.headers, ...headers }, body: request.body, signal }, onProgress);
-      const page = await this.#read(response, { replace, failed: true }, { url: request.url, method }, options);
+      const response = await this.#send(
+        request.url,
+        { method, headers: { ...request.headers, ...partialHeaders, ...headers }, body: request.body, signal },
+        onProgress,
+      );
+      let page = await this.#read(response, { replace, failed: true }, { url: request.url, method }, options);
       if (!page || signal.aborted) return undefined;
+      // Some props of the same page: into the ones it has. (Another page — a redirect to the login — came in full.)
+      if (partial !== undefined && page.component === partial && this.#page.component === partial) page = mergePage(this.#page, page, options.reset);
       // Redirected back to the same URL (a failed form): replace, don't stack history entries.
       const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
       const history = replace || (method !== 'get' && sameUrl) ? 'replace' : 'push';
@@ -327,6 +367,7 @@ export class Navigator {
       this.#page = page;
       if (!preserveScroll) this.#applyScroll(TOP);
       if (hash) this.#window.document?.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
+      this.#loadDeferred();
       return page;
     } finally {
       this.#transitioning = false;
@@ -361,6 +402,7 @@ export class Navigator {
     try {
       await this.#render(page, { preserveState: false });
       this.#applyScroll(position);
+      this.#loadDeferred();
     } catch {
       this.#leave();
       this.#window.location.reload();
@@ -403,17 +445,68 @@ export class Navigator {
   };
 
   /**
+   * Loads the deferred props of the page on screen (`deferredProps`): one partial reload per group, in parallel, in
+   * the background. Each one lands in the page it was loaded for — on screen, or in memory if it was left meanwhile.
+   */
+  #loadDeferred(): void {
+    const page = this.#page;
+    const key = this.#key;
+    if (!page.deferredProps || key === undefined) return;
+    for (const [group, props] of Object.entries(page.deferredProps)) {
+      const id = `${key} ${group}`;
+      if (props.length === 0 || this.#loading.has(id)) continue;
+      this.#loading.add(id);
+      void this.#loadGroup(key, page, props).finally(() => this.#loading.delete(id));
+    }
+  }
+
+  async #loadGroup(key: string, page: PageObject, props: readonly string[]): Promise<void> {
+    const visit: Visit = { url: page.url, method: 'get', async: true };
+    await this.#request(visit, {}, async (signal) => {
+      const response = await this.#send(page.url, { method: 'get', headers: partialReloadHeaders(page.component, props, undefined), signal });
+      const loaded = await this.#read(response, { replace: true, failed: true }, visit, {});
+      // Another page (signed out meanwhile: the login page) is not what was asked for — the fallback stays.
+      if (!loaded || loaded.component !== page.component) return undefined;
+      // Only the group's props: what comes `always` (the shared errors) belongs to the request that showed the page.
+      const only = { ...loaded, props: Object.fromEntries(props.filter((prop) => Object.hasOwn(loaded.props, prop)).map((prop) => [prop, loaded.props[prop]])) };
+      return this.#land(key, page, only);
+    });
+  }
+
+  /** Merges loaded props into the page of history entry `key` — and shows it, if that is the page on screen. */
+  async #land(key: string, page: PageObject, loaded: PageObject): Promise<PageObject | undefined> {
+    // Left for a full page load (signed out, say): nothing lands in what this document shows any more.
+    if (this.#left) return undefined;
+    const onScreen = this.#key === key && !this.#transitioning;
+    const target = onScreen ? this.#page : this.#cache.peek(key);
+    // The entry shows another URL now (a replacing visit): these props are not for it.
+    if (!target || target.url !== page.url || target.component !== page.component) return undefined;
+    const merged = mergePage(target, loaded);
+    this.#cache.update(key, merged);
+    if (onScreen) {
+      this.#page = merged;
+      await this.#render(merged, { preserveState: true });
+    }
+    return merged;
+  }
+
+  /**
    * One request with its events. A newer request always wins over a slower, older one (it aborts it — the
-   * older one is cancelled). Failures become `error` events, never rejections.
+   * older one is cancelled); requests in the background (`visit.async`) run beside them. Failures become
+   * `exception` events, never rejections.
    */
   async #request(
     visit: Visit,
     callbacks: VisitCallbacks,
     task: (signal: AbortSignal, onProgress: (progress: VisitProgress) => void) => Promise<PageObject | undefined>,
   ): Promise<PageObject | undefined> {
-    this.#inFlight?.abort();
     const controller = new AbortController();
-    this.#inFlight = controller;
+    if (visit.async) {
+      this.#background.add(controller);
+    } else {
+      this.#inFlight?.abort();
+      this.#inFlight = controller;
+    }
     this.#emit('start', callbacks.onStart, visit);
     try {
       const page = await task(controller.signal, (progress) => this.#emit('progress', callbacks.onProgress, progress, visit));
@@ -425,6 +518,7 @@ export class Navigator {
       return undefined;
     } finally {
       if (this.#inFlight === controller) this.#inFlight = undefined;
+      this.#background.delete(controller);
       this.#emit('finish', callbacks.onFinish, visit);
     }
   }
@@ -539,7 +633,72 @@ export class Navigator {
   #leave(): void {
     this.#left = true;
     this.#cache.clear();
+    // A deferred prop still loading must not come back into a page of someone who has left (signed out).
+    for (const request of this.#background) request.abort();
   }
+}
+
+/** The headers of a partial reload of `component`. */
+function partialReloadHeaders(component: string, only: readonly string[] | undefined, except: readonly string[] | undefined): Record<string, string> {
+  return {
+    [PARTIAL_COMPONENT_HEADER]: component,
+    ...(only === undefined ? {} : { [PARTIAL_DATA_HEADER]: only.join(',') }),
+    ...(except && except.length > 0 ? { [PARTIAL_EXCEPT_HEADER]: except.join(',') } : {}),
+  };
+}
+
+/**
+ * The page after a partial reload: the props it had, with the new ones — merged where the server marked them
+ * (`mergeProps`: arrays appended, objects merged one level; `deepMergeProps`: all the way down), unless `reset`.
+ * Deferred props that arrived are no longer pending.
+ */
+export function mergePage(current: PageObject, partial: PageObject, reset: readonly string[] = []): PageObject {
+  const props: Record<string, unknown> = { ...current.props };
+  for (const [key, value] of Object.entries(partial.props)) {
+    if (reset.includes(key)) props[key] = value;
+    else if (partial.mergeProps?.includes(key)) props[key] = mergeValues(props[key], value, false);
+    else if (partial.deepMergeProps?.includes(key)) props[key] = mergeValues(props[key], value, true);
+    else props[key] = value;
+  }
+  const { deferredProps: _pending, mergeProps: _merge, deepMergeProps: _deep, ...rest } = partial;
+  const deferredProps = stillPending(current.deferredProps, Object.keys(partial.props));
+  const mergeProps = union(current.mergeProps, partial.mergeProps);
+  const deepMergeProps = union(current.deepMergeProps, partial.deepMergeProps);
+  return {
+    ...rest,
+    props,
+    ...(deferredProps ? { deferredProps } : {}),
+    ...(mergeProps ? { mergeProps } : {}),
+    ...(deepMergeProps ? { deepMergeProps } : {}),
+  };
+}
+
+function mergeValues(current: unknown, next: unknown, deep: boolean): unknown {
+  if (Array.isArray(current) && Array.isArray(next)) return [...current, ...next];
+  if (isPlainObject(current) && isPlainObject(next)) {
+    if (!deep) return { ...current, ...next };
+    const merged: Record<string, unknown> = { ...current };
+    for (const [key, value] of Object.entries(next)) merged[key] = Object.hasOwn(current, key) ? mergeValues(current[key], value, true) : value;
+    return merged;
+  }
+  return next;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stillPending(groups: PageObject['deferredProps'], arrived: readonly string[]): PageObject['deferredProps'] {
+  if (!groups) return undefined;
+  const pending = Object.entries(groups)
+    .map(([group, props]) => [group, props.filter((prop) => !arrived.includes(prop))] as const)
+    .filter(([, props]) => props.length > 0);
+  return pending.length > 0 ? Object.fromEntries(pending) : undefined;
+}
+
+function union(a: readonly string[] | undefined, b: readonly string[] | undefined): string[] | undefined {
+  if (!a && !b) return undefined;
+  return [...new Set([...(a ?? []), ...(b ?? [])])];
 }
 
 /** The validation errors a page carries (the shared `errors` prop), or undefined when there are none. */
@@ -591,6 +750,16 @@ class BoundedMap<K, V> {
 
   delete(key: K): void {
     this.#entries.delete(key);
+  }
+
+  /** The entry without counting it as used. */
+  peek(key: K): V | undefined {
+    return this.#entries.get(key);
+  }
+
+  /** Replaces an entry that is there, keeping its place. */
+  update(key: K, value: V): void {
+    if (this.#entries.has(key)) this.#entries.set(key, value);
   }
 
   clear(): void {

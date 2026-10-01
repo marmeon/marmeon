@@ -1,4 +1,5 @@
 import type { CheckViewName, SharedProps } from './page.ts';
+import type { ResolvedProps } from './props.ts';
 
 const VIEW_RESULT = Symbol.for('bespokecore.view-result');
 
@@ -94,12 +95,13 @@ type ActionResult<TAction extends PageAction> = TAction extends { handle: (...ar
  *
  * Non-view branches (redirects, JSON `Response`s) are filtered out. The props every
  * page shares (`SharedProps`) are included; a controller's own prop of the same name wins.
- * Props are typed as they arrive — serialized (`Serialize`): a `Date` prop is a `string` in the view.
+ * Props are typed as they arrive — resolved (a function prop is its result, `optional()`/`defer()` props are
+ * `T | undefined`) and serialized (`Serialize`): a `Date` prop is a `string` in the view.
  */
 export type PageProps<TAction extends PageAction> =
   Awaited<ActionResult<TAction>> extends infer TResult
     ? TResult extends ViewResult<infer TProps>
-      ? Serialize<Omit<SharedProps, keyof TProps> & TProps>
+      ? Serialize<Omit<SharedProps, keyof TProps> & ResolvedProps<TProps>>
       : never
     : never;
 

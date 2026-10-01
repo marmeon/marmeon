@@ -1,6 +1,11 @@
 export { BespokeApp, usePage, useRouter, xsrfToken } from './app.tsx';
 export type {
   BespokeAppProps,
+  PartialReloadOptions,
+  PropName,
+  ReloadOptions,
+  Router,
+  TypedVisitOptions,
   Visit,
   VisitCallbacks,
   VisitEvent,
@@ -10,7 +15,9 @@ export type {
   VisitOptions,
   VisitProgress,
 } from './app.tsx';
-export { DEFAULT_PAGE_CACHE_SIZE, isHistoryState, Navigator, SCROLL_REGION_ATTRIBUTE } from './navigation.ts';
+export { DEFAULT_PAGE_CACHE_SIZE, isHistoryState, mergePage, Navigator, SCROLL_REGION_ATTRIBUTE } from './navigation.ts';
+export { Deferred } from './deferred.tsx';
+export type { DeferredProps } from './deferred.tsx';
 export type { HistoryState, NavigatorOptions, NavigatorWindow, ScrollPosition, ScrollRegion } from './navigation.ts';
 export { DEFAULT_PROGRESS_DELAY, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export type { ProgressOptions } from './progress.ts';

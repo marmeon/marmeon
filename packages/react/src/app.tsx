@@ -1,4 +1,4 @@
-import type { PageObject, RouteManifest, SharedProps } from '@bespokecore/http/page';
+import type { PageObject, PageProps, RouteManifest, SharedProps } from '@bespokecore/http/page';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { defaultTitle, HeadContext, TitleRegistry, type TitleTemplate } from './head.tsx';
@@ -10,14 +10,43 @@ import { RoutesContext } from './routes.ts';
 export { xsrfToken } from './navigation.ts';
 export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress } from './navigation.ts';
 
-interface RouterValue {
-  page: PageObject;
+/** The props of page `T`: a controller (`PageProps<T>`) or the props themselves. */
+type PropsOf<T> = T extends { handle: (...args: never[]) => unknown } ? PageProps<T> : T;
+
+/**
+ * The name of a prop of page `T` (a controller or its props) — any string when `T` is not given. What a partial
+ * reload asks for (`only`, `except`) and what `<Deferred data>` waits for.
+ */
+export type PropName<T> = unknown extends T ? string : keyof PropsOf<T> & string;
+
+/** A partial reload's options, typed against the props of page `T`. */
+export interface PartialReloadOptions<T = unknown> {
+  /** Only these props — the server computes and sends nothing else (and `always()` props). */
+  only?: readonly PropName<T>[];
+  /** Every prop but these. */
+  except?: readonly PropName<T>[];
+  /** Replace these instead of merging them (`merge()` props). */
+  reset?: readonly PropName<T>[];
+}
+
+/** {@link VisitOptions}, with the props of a partial reload checked against page `T`. */
+export type TypedVisitOptions<T = unknown> = Omit<VisitOptions, keyof PartialReloadOptions> & PartialReloadOptions<T>;
+
+/** {@link TypedVisitOptions} of a reload — of the current URL, without a method or data. */
+export type ReloadOptions<T = unknown> = Omit<TypedVisitOptions<T>, 'method' | 'data'>;
+
+/** Programmatic navigation, from {@link useRouter}. */
+export interface Router<T = unknown> {
   /** Resolves with the page the visit ended on (undefined if it did not end on one — see `Navigator.visit`). */
-  visit: (url: string, options?: VisitOptions) => Promise<PageObject | undefined>;
-  /** The current page again from the server, keeping scroll position and component state. */
-  reload: (options?: Omit<VisitOptions, 'method' | 'data'>) => Promise<PageObject | undefined>;
+  visit(url: string, options?: TypedVisitOptions<T>): Promise<PageObject | undefined>;
+  /** The current page again from the server, keeping scroll position and component state — `reload({ only: ['stats'] })`. */
+  reload(options?: ReloadOptions<T>): Promise<PageObject | undefined>;
   /** Listens to the events of every visit; returns the function that stops listening (for an effect's cleanup). */
-  on: <E extends VisitEvent>(event: E, listener: VisitEvents[E]) => () => void;
+  on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
+}
+
+interface RouterValue extends Router {
+  page: PageObject;
 }
 
 const RouterContext = createContext<RouterValue | null>(null);
@@ -36,10 +65,18 @@ export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'>
   return useRouterContext().page as Omit<PageObject, 'props'> & { props: SharedProps & TProps };
 }
 
-/** Programmatic navigation: `const { visit, reload, on } = useRouter(); visit('/users/2')`. */
-export function useRouter(): Pick<RouterValue, 'visit' | 'reload' | 'on'> {
+/**
+ * Programmatic navigation: `const { visit, reload, on } = useRouter(); visit('/users/2')`. Given the page's
+ * controller (or props), the props of a partial reload are checked against the page:
+ *
+ * ```ts
+ * const router = useRouter<ShowUserProfileController>();
+ * router.reload({ only: ['stats'] });            // 'stat' would be a compile error
+ * ```
+ */
+export function useRouter<T = unknown>(): Router<T> {
   const { visit, reload, on } = useRouterContext();
-  return { visit, reload, on };
+  return { visit, reload, on } as Router<T>;
 }
 
 export interface BespokeAppProps {
@@ -111,7 +148,8 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
   useEffect(() => {
     const nav = navigator.current;
     if (!nav) return undefined;
-    const stops = [nav.on('exception', setFailure), nav.on('start', () => setFailure(null))];
+    // A new visit takes the failure notice away — loading deferred props in the background does not.
+    const stops = [nav.on('exception', setFailure), nav.on('start', (visit) => visit.async || setFailure(null))];
     if (progress !== false) stops.push(showProgress(nav, progress));
     return () => {
       for (const stop of stops) stop();
@@ -124,7 +162,7 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
     return navigator.current;
   }, []);
   const visit = useCallback((url: string, options?: VisitOptions) => browser().visit(url, options), [browser]);
-  const reload = useCallback((options?: Omit<VisitOptions, 'method' | 'data'>) => browser().reload(options), [browser]);
+  const reload = useCallback((options?: ReloadOptions) => browser().reload(options), [browser]);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
 
   // A page that throws gets one fresh copy of its props from the server: after a hot update, the code may

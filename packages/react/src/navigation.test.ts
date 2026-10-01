@@ -553,3 +553,172 @@ describe('Navigator — scroll restoration', () => {
     expect(order).toEqual(['rendered', 'scroll 0', 'rendered', 'scroll 500']);
   });
 });
+
+describe('Navigator — partial reloads and deferred props (E7)', () => {
+  /** A response the test lets through when it wants to — a slow server. */
+  function gate() {
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    return { open, opened };
+  }
+
+  it('reload({ only }) asks for some props of the page on screen and merges them into it — in memory too, never in the history', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => pageResponse(page('/users/1', { stats: { links: 3 } }));
+    const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada', errors: {} }));
+    await navigator.reload({ only: ['stats'] });
+
+    expect(win.requests.at(-1)!.headers).toMatchObject({
+      'x-bespoke': 'true',
+      'x-bespoke-partial-component': 'pages/Show',
+      'x-bespoke-partial-data': 'stats',
+    });
+    expect(visible().props).toEqual({ name: 'Ada', errors: {}, stats: { links: 3 } });
+    expect(win.entries).toHaveLength(1); // a reload replaces
+    expect(win.current.state).not.toContain('links');
+
+    // The merged page is the entry's page in memory: away and Back shows it without a request.
+    win.handler = () => pageResponse(page('/other'));
+    await navigator.visit('/other');
+    const requests = win.requests.length;
+    win.back();
+    await settle();
+    expect(visible().props).toEqual({ name: 'Ada', errors: {}, stats: { links: 3 } });
+    expect(win.requests.length).toBe(requests);
+  });
+
+  it('sends except, and merges nothing when another page comes back (a redirect to the login)', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => pageResponse(page('/login', { status: null }, 'auth/Login'));
+    const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
+    await navigator.reload({ except: ['others'] });
+    expect(win.requests.at(-1)!.headers).toMatchObject({ 'x-bespoke-partial-component': 'pages/Show', 'x-bespoke-partial-except': 'others' });
+    expect(win.requests.at(-1)!.headers).not.toHaveProperty('x-bespoke-partial-data');
+    expect(visible()).toMatchObject({ component: 'auth/Login', props: { status: null } });
+  });
+
+  it('appends merge props, merges deepMerge props all the way down — unless reset', async () => {
+    const win = new FakeWindow(`${ORIGIN}/people`);
+    const initial = { ...page('/people', { links: [1, 2], feed: { data: [1], meta: { page: 1 } }, total: 4 }), mergeProps: ['links'], deepMergeProps: ['feed'] };
+    win.handler = () => pageResponse({ ...page('/people?page=2', { links: [3, 4], feed: { data: [2], meta: { page: 2 } } }), mergeProps: ['links'], deepMergeProps: ['feed'] });
+    const { navigator, visible } = boot(win, initial);
+    await navigator.visit('/people?page=2', { only: ['links', 'feed'], preserveState: true, preserveScroll: true, replace: true });
+    expect(visible().props).toEqual({ links: [1, 2, 3, 4], feed: { data: [1, 2], meta: { page: 2 } }, total: 4 });
+    expect(visible().url).toBe('/people?page=2');
+
+    await navigator.visit('/people?page=2', { only: ['links'], reset: ['links'], replace: true });
+    expect(visible().props.links).toEqual([3, 4]);
+  });
+
+  it('a deferred prop does not hold up the first render: the page is shown without it, the group is loaded after', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    win.handler = async () => {
+      await slow.opened; // the server takes its time
+      return pageResponse(page('/users/1', { activity: ['signed in'], errors: { stale: ['from the request before'] } }));
+    };
+    const events: string[] = [];
+    const shown: PageObject[] = [];
+    const navigator = new Navigator({
+      initialPage: { ...page('/users/1', { name: 'Ada', errors: {} }), deferredProps: { default: ['activity'] } },
+      window: win,
+      render: async (next) => void shown.push(next),
+    });
+    navigator.on('start', (visit) => events.push(`start${visit.async ? ' async' : ''}`));
+    navigator.on('success', () => events.push('success'));
+    navigator.on('finish', (visit) => events.push(`finish${visit.async ? ' async' : ''}`));
+    navigator.start();
+
+    // The server-rendered page is on screen, without `activity`; the request for it is out.
+    expect(shown).toEqual([]);
+    expect(navigator.page.props).not.toHaveProperty('activity');
+    expect(win.requests).toHaveLength(1);
+    expect(win.requests[0]!.headers).toMatchObject({ 'x-bespoke-partial-component': 'pages/Show', 'x-bespoke-partial-data': 'activity' });
+
+    slow.open();
+    await settle();
+    // Only the group's props landed — the `always` errors of that request did not overwrite the page's.
+    expect(shown.at(-1)!.props).toEqual({ name: 'Ada', errors: {}, activity: ['signed in'] });
+    expect(shown.at(-1)!.deferredProps).toBeUndefined();
+    expect(events).toEqual(['start async', 'finish async']); // a background request: no success of a visit
+  });
+
+  it('loads groups in parallel, and lands a group in the page it was for — also after leaving it', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    win.handler = async (url, init) => {
+      const asked = (init.headers as Record<string, string>)['x-bespoke-partial-data'];
+      if (asked === 'audit') await slow.opened;
+      if (asked === undefined) return pageResponse(page('/other', { other: true }, 'pages/Other'));
+      return pageResponse(page('/users/1', asked === 'audit' ? { audit: ['log'] } : { activity: ['a'], teams: ['t'] }));
+    };
+    const { navigator, visible } = boot(win, { ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity', 'teams'], slow: ['audit'] } });
+    expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual(['activity,teams', 'audit']);
+    await settle();
+    expect(visible().props).toEqual({ name: 'Ada', activity: ['a'], teams: ['t'] });
+    expect(visible().deferredProps).toEqual({ slow: ['audit'] });
+
+    // Away before the slow group is there: the visit is not held up, and the group lands in the page left.
+    await navigator.visit('/other');
+    expect(visible().props).toEqual({ other: true });
+    slow.open();
+    await settle();
+    expect(visible().props).toEqual({ other: true });
+    const requests = win.requests.length;
+    win.back();
+    await settle();
+    expect(visible().props).toEqual({ name: 'Ada', activity: ['a'], teams: ['t'], audit: ['log'] });
+    expect(win.requests.length).toBe(requests); // complete in memory — nothing to load again
+  });
+
+  it('drops deferred props for a URL the entry no longer shows (a replacing visit to another user)', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    win.handler = async (url, init) => {
+      if ((init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'activity') {
+        await slow.opened;
+        return pageResponse(page('/users/1', { activity: ['of user 1'] }));
+      }
+      return pageResponse(page('/users/2', { name: 'Grace' }));
+    };
+    const { navigator, visible } = boot(win, { ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
+    await navigator.visit('/users/2', { replace: true });
+    slow.open();
+    await settle();
+    expect(visible().props).toEqual({ name: 'Grace' });
+  });
+
+  it('lands nothing in a document left for a full page load (signed out while a group was loading) — and aborts it', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    let signal: AbortSignal | undefined;
+    win.handler = async (url, init) => {
+      if ((init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'activity') {
+        signal = init.signal ?? undefined;
+        await slow.opened;
+        return pageResponse(page('/users/1', { activity: ['of ada'] }));
+      }
+      return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: `${ORIGIN}/login` } });
+    };
+    const { navigator, shown } = boot(win, { ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
+    await navigator.visit('/logout', { method: 'post' });
+    expect(win.loads).toEqual([`assign ${ORIGIN}/login`]);
+    expect(signal?.aborted).toBe(true);
+    slow.open();
+    await settle();
+    expect(shown).toEqual([]);
+  });
+
+  it('loads the deferred props of a page a visit arrives at — and of one Back brings from the server', async () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    win.handler = (url, init) =>
+      (init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'activity'
+        ? pageResponse(page('/users/1', { activity: ['x'] }))
+        : pageResponse({ ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
+    const { navigator, visible } = boot(win, page('/a'));
+    await navigator.visit('/users/1');
+    await settle();
+    expect(visible().props).toEqual({ name: 'Ada', activity: ['x'] });
+    expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual([undefined, 'activity']);
+  });
+});

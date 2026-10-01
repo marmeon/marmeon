@@ -42,6 +42,8 @@ export class Session {
   #id = '';
   #data: SessionPayload = {};
   #started = false;
+  /** The session came from the store (it is not new in this request). */
+  #loaded = false;
   readonly #obsolete: string[] = [];
 
   constructor(store: SessionStore, config: SessionConfig) {
@@ -63,6 +65,7 @@ export class Session {
     const data = id && SESSION_ID.test(id) ? await this.#store.read(id) : undefined;
     this.#id = data ? id! : createSessionId();
     this.#data = data ?? {};
+    this.#loaded = data !== undefined;
     this.#started = true;
     if (typeof this.#data[TOKEN] !== 'string') this.regenerateToken();
   }
@@ -171,17 +174,27 @@ export class Session {
 
   // -- Persistence -----------------------------------------------------------
 
-  /** Ages flash data and writes the session. `StartSession` calls this after the route. */
-  async save(): Promise<void> {
+  /**
+   * Ages flash data and writes the session. `StartSession` calls this after the route. Returns false when there
+   * was nothing to write back: another request destroyed this session meanwhile.
+   *
+   * That other request was a sign-out (`invalidate()`) or a sign-in (`regenerate()`) of the same browser, which
+   * overtook this one — say, while a page's deferred props were still loading. Writing the old session back would
+   * undo the sign-out (its data still has the user). So it stays destroyed, and the browser keeps the cookie it got
+   * from the faster request. (The cookie driver cannot know: its data travels with each response.)
+   */
+  async save(): Promise<boolean> {
     this.#ensureStarted();
     const flash = this.#flash();
     for (const key of flash.old) delete this.#data[key];
     flash.old = flash.new;
     flash.new = [];
 
+    if (this.#loaded && this.#obsolete.length === 0 && (await this.#store.read(this.#id)) === undefined) return false;
     const lifetime = this.#config.lifetime * 60;
     for (const id of this.#obsolete.splice(0)) await this.#store.destroy(id);
     await this.#store.write(this.#id, this.#data, lifetime);
+    return true;
   }
 
   #flash(): FlashState {

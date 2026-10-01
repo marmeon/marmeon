@@ -3,7 +3,22 @@ export { view, isViewResult } from './view.ts';
 export { ERRORS_KEY, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
 export type { RedirectStatus } from './redirect.ts';
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
-export { ERROR_PAGE, LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, VERSION_HEADER, isPageObject, pageName } from './page.ts';
+export {
+  ERROR_PAGE,
+  LOCATION_HEADER,
+  PAGE_HEADER,
+  PAGE_SCRIPT_ID,
+  PARTIAL_COMPONENT_HEADER,
+  PARTIAL_DATA_HEADER,
+  PARTIAL_EXCEPT_HEADER,
+  VERSION_HEADER,
+  isPageObject,
+  pageName,
+} from './page.ts';
+export { always, deepMerge, defer, merge, optional, propKind, resolveProp } from './props.ts';
+export type { AlwaysProp, DeferredProp, MergeProp, OptionalProp, PropKind, ResolvedProp, ResolvedProps, SharedValue, WrappedProp } from './props.ts';
+export { partialReloadOf, resolvePageProps } from './page-props.ts';
+export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export type { CheckViewName, ErrorPageProps, PageObject, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrResult, ViewName, Views } from './page.ts';
 export { SharedData } from './shared-data.ts';

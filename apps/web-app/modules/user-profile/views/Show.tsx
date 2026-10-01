@@ -1,5 +1,6 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, Pagination, useForm } from '@bespokecore/react';
+import { useState } from 'react';
+import { Deferred, Head, Link, Pagination, useForm, useRouter } from '@bespokecore/react';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 const utc = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
@@ -16,7 +17,9 @@ function ago(iso: string, now: string): string {
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, now, auth }: Props) {
+export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, activity, stats, now, auth }: Props) {
+  const router = useRouter<ShowUserProfileController>();
+  const [loadingStats, setLoadingStats] = useState(false);
   return (
     <main>
       <Head title={profile.name}>
@@ -52,6 +55,48 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
           </Link>
         </p>
       )}
+
+      <section aria-labelledby="activity">
+        <h2 id="activity">Recent activity</h2>
+        {/* `activity` is deferred: the page renders without it, the browser loads it right after. */}
+        <Deferred<ShowUserProfileController> data="activity" fallback={<p aria-busy="true">Loading activity…</p>}>
+          {() => (
+            <ul>
+              {activity!.map((entry, index) => (
+                <li key={index}>
+                  {entry.kind === 'link' ? `Added the link “${entry.label}”` : entry.kind === 'signed-in' ? 'Signed in' : 'Joined'}{' '}
+                  <small>
+                    <time dateTime={entry.at} title={utc(entry.at)}>
+                      {ago(entry.at, now)}
+                    </time>
+                  </small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Deferred>
+      </section>
+
+      <section aria-labelledby="stats">
+        <h2 id="stats">Statistics</h2>
+        {/* `stats` is optional: never sent with the page — only when asked for, with a partial reload. */}
+        {stats ? (
+          <p>
+            {stats.links === 1 ? '1 link' : `${stats.links} links`} · member {stats.memberNumber} of {stats.members}
+          </p>
+        ) : (
+          <button
+            type="button"
+            disabled={loadingStats}
+            onClick={() => {
+              setLoadingStats(true);
+              void router.reload({ only: ['stats'], onFinish: () => setLoadingStats(false) });
+            }}
+          >
+            Show statistics
+          </button>
+        )}
+      </section>
 
       <section aria-label="Links">
         {profile.links.length > 0 && (

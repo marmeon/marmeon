@@ -9,7 +9,7 @@ import {
 } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
 import { CookieEncryption } from '@bespokecore/http';
-import { PAGE_HEADER } from '@bespokecore/http/page';
+import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
@@ -17,7 +17,7 @@ import type { MailFake } from '@bespokecore/mail';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
-import { TestResponse } from './response.ts';
+import { TestResponse, type PageNameOf, type PageSource, type PropsOf } from './response.ts';
 
 export interface TestAppOptions {
   /** Extra environment on top of `.env` and `.env.test`. */
@@ -403,6 +403,22 @@ export class TestApp {
   /** Requests as a client-side navigation: answered with the page object as JSON. */
   navigating(): TestApp {
     return this.withHeaders({ [PAGE_HEADER]: 'true' });
+  }
+
+  /**
+   * Requests as a partial reload of `component` (the page on screen) — like `router.reload({ only })`:
+   * `app.reloading<ShowUserProfileController>('user-profile/Show', { only: ['stats'] }).get('/users/1')`.
+   */
+  reloading<TSource extends PageSource = PageSource, const V extends string = string>(
+    component: PageNameOf<TSource, V>,
+    { only, except = [] }: { only?: readonly (keyof PropsOf<TSource> & string)[]; except?: readonly (keyof PropsOf<TSource> & string)[] },
+  ): TestApp {
+    return this.withHeaders({
+      [PAGE_HEADER]: 'true',
+      [PARTIAL_COMPONENT_HEADER]: component,
+      ...(only ? { [PARTIAL_DATA_HEADER]: only.join(',') } : {}),
+      ...(except.length > 0 ? { [PARTIAL_EXCEPT_HEADER]: except.join(',') } : {}),
+    });
   }
 
   /** Requests as an API client. */

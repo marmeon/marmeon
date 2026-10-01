@@ -102,6 +102,22 @@ describe('Session', () => {
     await request(store, after.id, (session) => expect(session.get('user_id')).toBeUndefined());
   });
 
+  it('never writes back a session another request destroyed meanwhile — a sign-out stays a sign-out', async () => {
+    const store = new MemorySessionStore();
+    const signedIn = await request(store, undefined, (session) => session.put('user_id', '1'));
+
+    // A slow request (a page's deferred props) starts with the signed-in session …
+    const slow = new Session(store, config);
+    await slow.start(signedIn.id);
+    // … the sign-out overtakes it …
+    const signedOut = await request(store, signedIn.id, (session) => session.invalidate());
+    // … and then the slow one finishes: nothing written, the old id stays gone.
+    expect(await slow.save()).toBe(false);
+    expect(await store.read(signedIn.id)).toBeUndefined();
+    expect((await request(store, signedIn.id)).get('user_id')).toBeUndefined();
+    expect(await store.read(signedOut.id)).toBeDefined();
+  });
+
   it('keeps the CSRF token stable across requests', async () => {
     const store = new MemorySessionStore();
     const first = await request(store, undefined);

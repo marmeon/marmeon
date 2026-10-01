@@ -32,8 +32,9 @@ export class StartSession {
       if (response.status === 409 && response.headers.has(LOCATION_HEADER)) this.#session.reflash();
       return response;
     } finally {
-      await this.#session.save();
-      ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
+      // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
+      // keeps the one the sign-out sent.
+      if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
     }
   }
 

@@ -329,6 +329,7 @@ describe('Back after signing out (E36)', () => {
       'POST /login (visit)', // → 409, x-bespoke-location: /users/me
       'GET /users/me',
       `GET /users/${ada.id}`,
+      `GET /users/${ada.id} (visit)`, // the profile's deferred activity, loaded after the page (a partial reload)
       'GET /settings/tokens (visit)',
       'POST /settings/tokens (visit)',
       'POST /logout (visit)', // → 409, x-bespoke-location: /login, Clear-Site-Data: "cache"
@@ -357,11 +358,12 @@ describe('Cache headers', () => {
     expect(response.headers.get('cache-control')).toBeNull();
   });
 
-  it('varies pages on x-bespoke: the HTML document and the page JSON of one URL are two cache entries', async () => {
+  it('varies pages on x-bespoke (and the partial-reload headers): the HTML document and the page JSON of one URL are two cache entries', async () => {
     const html = await app.get('/login').assertOk();
     const json = await app.navigating().get('/login').assertOk();
-    expect(html.headers.get('vary')).toBe(PAGE_HEADER);
-    expect(json.headers.get('vary')).toBe(PAGE_HEADER);
+    for (const response of [html, json]) {
+      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except']);
+    }
   });
 
   it('answers a sign-out visit with a full page load and Clear-Site-Data; a plain form post keeps its 303', async () => {

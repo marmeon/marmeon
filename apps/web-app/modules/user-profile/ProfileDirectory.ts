@@ -35,6 +35,24 @@ export class ProfileDirectory implements RouteBinder<Profile> {
     return /^\d{1,15}$/.test(value) ? this.profile(Number(value)) : undefined;
   }
 
+  /**
+   * Numbers about a profile: its links, and its place among the members (by sign-up). Counts over every user —
+   * the profile page asks for them only on request (an optional prop).
+   */
+  async stats(id: number): Promise<{ links: number; memberNumber: number; members: number }> {
+    const [links, rank] = await Promise.all([
+      this.#db.selectFrom('profile_links').select((eb) => eb.fn.countAll<number>().as('count')).where('user_id', '=', id).executeTakeFirstOrThrow(),
+      this.#db
+        .selectFrom('users')
+        .select((eb) => [
+          eb.fn.countAll<number>().as('members'),
+          eb.fn.sum<number>(sql<number>`case when users.id <= ${id} then 1 else 0 end`).as('memberNumber'),
+        ])
+        .executeTakeFirstOrThrow(),
+    ]);
+    return { links: Number(links.count), memberNumber: Number(rank.memberNumber), members: Number(rank.members) };
+  }
+
   /** One page of everyone but `except`, by name — optionally only names containing `search` (LIKE wildcards taken literally). */
   people({ search = '', except, page = 1, perPage = 5 }: { search?: string; except: number; page?: number; perPage?: number }) {
     let query = this.#db

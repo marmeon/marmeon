@@ -5,6 +5,7 @@ import { act, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BespokeApp, usePage, useRouter } from './app.tsx';
+import { Deferred } from './deferred.tsx';
 import { Head } from './head.tsx';
 import { resolveModulePages, type DefaultLayout, type PageComponent } from './pages.ts';
 import { showProgress, PROGRESS_ATTRIBUTE } from './progress.ts';
@@ -94,7 +95,22 @@ function Form() {
   );
 }
 
-const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile, Form };
+/** A page with a deferred prop and an optional one (`reload({ only })`), inside the app layout. */
+function Profile({ name, activity, stats }: { name: string; activity?: string[]; stats?: { links: number } }) {
+  const router = useRouter<{ name: string; activity?: string[]; stats?: { links: number } }>();
+  return (
+    <div data-page="profile">
+      <h1>{name}</h1>
+      <Deferred data="activity" fallback={<p data-testid="loading">Loading…</p>}>
+        {() => <ul data-testid="activity">{activity!.map((entry) => <li key={entry}>{entry}</li>)}</ul>}
+      </Deferred>
+      {stats ? <p data-testid="stats">{stats.links}</p> : <button data-testid="show-stats" onClick={() => void router.reload({ only: ['stats'] })} />}
+    </div>
+  );
+}
+Profile.layout = AppLayout;
+
+const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile, Form, Profile };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
@@ -372,5 +388,40 @@ describe('usePage inside layouts', () => {
     }
     await mount(page('Plain', '/plain', { flash: 'Saved.' }), { layout: () => Shared });
     expect($('[data-flash="Saved."] [data-page="plain"]')).not.toBeNull();
+  });
+});
+
+describe('deferred and optional props (E7)', () => {
+  it('renders the page with the fallback first, then the deferred prop the browser loads after mount', async () => {
+    let release!: () => void;
+    const requests: Record<string, string>[] = [];
+    server = async (_url, init) => {
+      requests.push(init.headers as Record<string, string>);
+      await new Promise<void>((done) => (release = done)); // a slow server
+      return respond(page('Profile', '/a', { activity: ['signed in'] }));
+    };
+    await mount({ ...page('Profile', '/a', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
+    await click('count');
+
+    // On screen without it — the request for it is out.
+    expect($('[data-testid="loading"]')).not.toBeNull();
+    expect($('h1')!.textContent).toBe('Ada');
+    expect(requests).toEqual([expect.objectContaining({ 'x-bespoke-partial-component': 'app/Profile', 'x-bespoke-partial-data': 'activity' })]);
+
+    release();
+    await settle();
+    expect($('[data-testid="loading"]')).toBeNull();
+    expect($('[data-testid="activity"]')!.textContent).toBe('signed in');
+    expect($('[data-testid="count"]')!.textContent).toBe('1'); // layout and page state kept
+  });
+
+  it('loads an optional prop on request — merged into the page, the rest kept', async () => {
+    server = () => respond(page('Profile', '/a', { stats: { links: 3 } }));
+    await mount(page('Profile', '/a', { name: 'Ada', activity: ['joined'] }));
+    await click('show-stats');
+    await settle();
+    expect($('[data-testid="stats"]')!.textContent).toBe('3');
+    expect($('h1')!.textContent).toBe('Ada');
+    expect($('[data-testid="activity"]')!.textContent).toBe('joined');
   });
 });
