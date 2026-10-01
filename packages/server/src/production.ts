@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { SsrRender } from '@bespokecore/http';
 import { renderDocument } from './html.ts';
@@ -8,22 +8,22 @@ import type { PageRenderer } from './render.ts';
 
 export interface ProductionOptions {
   root: string;
-  ssrEntry: string;
-  /** Build output, relative to `root`. */
+  /** Build output, relative to `root` (what `bespoke()` from `@bespokecore/vite` writes). */
   clientDir?: string;
-  serverDir?: string;
+  /** The SSR bundle, relative to `root`. */
+  ssrBundle?: string;
 }
 
 /** Loads the built template and SSR bundle once at boot. */
 export async function createProductionRenderer({
   root,
-  ssrEntry,
   clientDir = 'dist/client',
-  serverDir = 'dist/server',
+  ssrBundle = 'dist/server/ssr.js',
 }: ProductionOptions): Promise<PageRenderer> {
-  const template = await readFile(join(root, clientDir, 'index.html'), 'utf8');
-  const bundle = join(root, serverDir, `${basename(ssrEntry, extname(ssrEntry))}.js`);
-  const { render } = (await import(pathToFileURL(bundle).href)) as { render: SsrRender };
+  const template = await readFile(join(root, clientDir, 'index.html'), 'utf8').catch((error: NodeJS.ErrnoException) => {
+    throw error.code === 'ENOENT' ? new Error(`No production build in ${clientDir} — run \`bespoke build\` first.`) : error;
+  });
+  const { render } = (await import(pathToFileURL(join(root, ssrBundle)).href)) as { render: SsrRender };
 
   return {
     render: async (page) => renderDocument(template, page, await render(page)),

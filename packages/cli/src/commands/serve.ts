@@ -1,5 +1,6 @@
 import { Application, Logger } from '@bespokecore/core';
-import { startServer } from '@bespokecore/server';
+import { startServer, ViteSetupError } from '@bespokecore/server';
+import type { CommandInput } from '../command.ts';
 
 /**
  * Runs the HTTP server. `bespoke dev` (with restarts) and `bespoke start` (production) both end up here.
@@ -19,8 +20,16 @@ export class ServeCommand {
     this.#logger = logger;
   }
 
-  async handle(): Promise<void> {
-    const server = await startServer({ app: this.#app, ssrEntry: 'bootstrap/ssr.tsx' });
+  async handle({ output }: CommandInput): Promise<number> {
+    let server;
+    try {
+      server = await startServer({ app: this.#app });
+    } catch (error) {
+      // A setup problem (no Vite, no bespoke() plugin) is a message, not a stack trace.
+      if (!(error instanceof ViteSetupError)) throw error;
+      output.error(error.message);
+      return 1;
+    }
     const signal = await new Promise<string>((resolve) => {
       process.once('SIGINT', resolve).once('SIGTERM', resolve);
     });
@@ -31,5 +40,6 @@ export class ServeCommand {
     setTimeout(() => process.exit(1), 10_000).unref();
     this.#logger.info(`${signal} received, shutting down`);
     await server.close();
+    return 0;
   }
 }

@@ -203,8 +203,8 @@ function remoteAddress(env: unknown): string | undefined {
 
 export interface ServeOptions {
   app: Application;
-  /** SSR entry relative to `root`, e.g. `bootstrap/ssr.tsx`. */
-  ssrEntry: string;
+  /** Development: SSR entry relative to `root`. Defaults to the entry of the `bespoke()` Vite plugin. */
+  ssrEntry?: string;
   /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
   mode?: 'development' | 'production';
@@ -234,7 +234,7 @@ export async function startServer({
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));
     closeVite = () => vite.close();
   } else {
-    const renderer = await createProductionRenderer({ root, ssrEntry });
+    const renderer = await createProductionRenderer({ root });
     const kernel = createHttpKernel(app, { renderer, clientDir: join(root, 'dist/client') });
     server.on('request', getRequestListener(kernel.fetch));
   }

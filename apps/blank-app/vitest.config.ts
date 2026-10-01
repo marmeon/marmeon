@@ -1,9 +1,7 @@
-import { bespokeInjection } from '@bespokecore/core/vite';
-import { defaultServerConditions } from 'vite';
+import { bespoke } from '@bespokecore/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [bespokeInjection()],
-  ssr: { resolve: { conditions: ['@bespokecore/source', ...defaultServerConditions] } },
+  plugins: [bespoke({ test: true })],
   test: { include: ['modules/**/*.test.ts'] },
 });

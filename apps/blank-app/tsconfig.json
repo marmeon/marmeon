@@ -6,7 +6,8 @@
     "jsx": "react-jsx",
     "types": [
       "node",
-      "vite/client"
+      "vite/client",
+      "@bespokecore/vite/client"
     ]
   },
   "include": [

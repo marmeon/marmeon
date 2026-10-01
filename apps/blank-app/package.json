@@ -32,6 +32,7 @@
   "devDependencies": {
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/testing": "workspace:*",
+    "@bespokecore/vite": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -39,5 +40,5 @@
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   },
-  "description": "An app without modules \u2014 the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
+  "description": "An app without modules — the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
 }

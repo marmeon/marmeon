@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createApplication } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { HttpServiceProvider } from '@bespokecore/http';
@@ -13,6 +14,9 @@ const root = mkdtempSync(join(tmpdir(), 'bespoke-serve-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
+// The app's own Vite (an optional peer of the server); no vite.config.ts, so the SSR entry is passed explicitly.
+mkdirSync(join(root, 'node_modules'));
+symlinkSync(dirname(createRequire(import.meta.url).resolve('vite/package.json')), join(root, 'node_modules/vite'), 'dir');
 
 describe('startServer', () => {
   it('closes in development although a browser tab holds the HMR WebSocket and a keep-alive connection', async () => {

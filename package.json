@@ -17,6 +17,7 @@
   "devDependencies": {
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/core": "workspace:*",
+    "@bespokecore/vite": "workspace:*",
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",

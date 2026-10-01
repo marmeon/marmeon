@@ -15,13 +15,19 @@ function build(asset: string): void {
 }
 
 describe('createProductionRenderer', () => {
+  it('asks for a build when there is none', async () => {
+    await expect(createProductionRenderer({ root: join(root, 'nothing-built') })).rejects.toThrow(
+      'No production build in dist/client — run `bespoke build` first.',
+    );
+  });
+
   it('derives the asset version from the build — a new build, a new version', async () => {
     build('index-a1b2.js');
-    const first = await createProductionRenderer({ root, ssrEntry: 'bootstrap/ssr.tsx' });
+    const first = await createProductionRenderer({ root });
     expect(first.version).toMatch(/^[0-9a-f]{12}$/);
-    expect((await createProductionRenderer({ root, ssrEntry: 'bootstrap/ssr.tsx' })).version).toBe(first.version);
+    expect((await createProductionRenderer({ root })).version).toBe(first.version);
 
     build('index-c3d4.js');
-    expect((await createProductionRenderer({ root, ssrEntry: 'bootstrap/ssr.tsx' })).version).not.toBe(first.version);
+    expect((await createProductionRenderer({ root })).version).not.toBe(first.version);
   });
 });

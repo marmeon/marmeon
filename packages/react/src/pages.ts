@@ -16,7 +16,8 @@ const MODULE_VIEW = /modules\/([^/]+)\/views\/(.+)\.[jt]sx$/;
  * `modules/user-profile/views/Show.tsx` -> `user-profile/Show`.
  *
  * ```ts
- * resolveModulePages(import.meta.glob('../modules/*\/views/**\/*.tsx'))
+ * import pages from 'virtual:bespoke/pages'; // from bespoke() in @bespokecore/vite
+ * resolveModulePages(pages)
  * ```
  */
 export function resolveModulePages(modules: PageModules): ResolvePage {

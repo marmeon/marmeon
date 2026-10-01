@@ -8,11 +8,6 @@
       "@bespokecore/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./vitest": {
-      "@bespokecore/source": "./src/vitest.ts",
-      "types": "./dist/vitest.d.ts",
-      "default": "./dist/vitest.js"
     }
   },
   "publishConfig": {
@@ -20,10 +15,6 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "./vitest": {
-        "types": "./dist/vitest.d.ts",
-        "default": "./dist/vitest.js"
       }
     }
   },

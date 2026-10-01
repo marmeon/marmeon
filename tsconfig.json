@@ -42,6 +42,9 @@
     },
     {
       "path": "packages/testing"
+    },
+    {
+      "path": "packages/vite"
     }
   ]
 }

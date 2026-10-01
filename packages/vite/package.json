@@ -1,0 +1,45 @@
+{
+  "name": "@bespokecore/vite",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "description": "The Vite plugin for BespokeCore apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic — the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./client.d.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./client": {
+        "types": "./client.d.ts"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "client.d.ts",
+    "!dist/**/*.test.*"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "vite": "^8.3.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.1"
+  }
+}

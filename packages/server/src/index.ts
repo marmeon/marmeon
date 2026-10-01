@@ -3,6 +3,7 @@ export type { HttpKernel, KernelOptions, RunningServer, ServeOptions } from './k
 export { createResponseFactory, shellRenderer } from './render.ts';
 export type { PageRenderer, ScopedResponseFactory } from './render.ts';
 export { renderDocument, HEAD_OUTLET, HTML_OUTLET } from './html.ts';
-export { createViteDevRenderer } from './vite.ts';
+export { bespokeEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
+export type { ViteDevOptions } from './vite.ts';
 export { createProductionRenderer } from './production.ts';
 export { ServerConfig, ServerServiceProvider } from './provider.ts';

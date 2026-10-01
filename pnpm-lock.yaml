@@ -14,6 +14,9 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:packages/core
+      '@bespokecore/vite':
+        specifier: workspace:*
+        version: link:packages/vite
       '@types/node':
         specifier: ^26.6.3
         version: 26.6.3
@@ -81,6 +84,9 @@ importers:
       '@bespokecore/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@bespokecore/vite':
+        specifier: workspace:*
+        version: link:../../packages/vite
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -154,6 +160,9 @@ importers:
       '@bespokecore/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@bespokecore/vite':
+        specifier: workspace:*
+        version: link:../../packages/vite
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -370,13 +379,13 @@ importers:
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
-      vite:
-        specifier: ^8.3.1
-        version: 8.3.1(@types/node@26.6.3)
     devDependencies:
       '@bespokecore/encryption':
         specifier: workspace:*
         version: link:../encryption
+      vite:
+        specifier: ^8.3.1
+        version: 8.3.1(@types/node@26.6.3)
 
   packages/session:
     dependencies:
@@ -430,6 +439,16 @@ importers:
       '@bespokecore/session':
         specifier: workspace:*
         version: link:../session
+
+  packages/vite:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      vite:
+        specifier: ^8.3.1
+        version: 8.3.1(@types/node@26.6.3)
 
 packages:
 
