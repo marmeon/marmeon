@@ -246,7 +246,7 @@ describe('user-profile module', () => {
   });
 
   it('lets tests replace services before the app boots — singletons included', async () => {
-    const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: null };
+    const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: null, locale: null };
     class StubUserRepository extends UserRepository {
       override async findById(id: number) {
         return id === stub.id ? { user: stub, passwordHash: null } : undefined;
@@ -266,7 +266,7 @@ describe('user-profile module', () => {
   });
 
   it('boots modules and discovered packages through their providers', () => {
-    expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile', 'lab']);
+    expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile', 'locale', 'lab']);
     expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log', '@bespokecore/session']));
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });

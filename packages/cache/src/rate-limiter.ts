@@ -108,12 +108,17 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
         const key = `${name}:${limit.decaySeconds}:${limit.key}`;
         if (await this.#limiter.tooManyAttempts(key, limit.maxAttempts)) {
           const retryAfter = await this.#limiter.availableIn(key);
-          throw new HttpError(429, 'Too Many Attempts.', {
-            'retry-after': String(retryAfter),
-            'x-ratelimit-limit': String(limit.maxAttempts),
-            'x-ratelimit-remaining': '0',
-            'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000) + retryAfter),
-          });
+          throw new HttpError(
+            429,
+            'Too Many Attempts.',
+            {
+              'retry-after': String(retryAfter),
+              'x-ratelimit-limit': String(limit.maxAttempts),
+              'x-ratelimit-remaining': '0',
+              'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000) + retryAfter),
+            },
+            { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } },
+          );
         }
         const attempts = await this.#limiter.hit(key, limit.decaySeconds);
         headers = { 'x-ratelimit-limit': String(limit.maxAttempts), 'x-ratelimit-remaining': String(Math.max(0, limit.maxAttempts - attempts)) };

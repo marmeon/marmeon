@@ -1,6 +1,7 @@
 import { isPageObject, PAGE_SCRIPT_ID, type PageObject, type RouteManifest } from '@bespokecore/http/page';
+import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
-import { BespokeApp } from './app.tsx';
+import { BespokeApp, loadPageMessages } from './app.tsx';
 import { isDevelopment, SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { TitleTemplate } from './head.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
@@ -19,6 +20,11 @@ export interface CreateBespokeAppOptions {
    * `layout: (name) => (name.startsWith('auth/') ? null : AppLayout)`.
    */
   layout?: DefaultLayout;
+  /**
+   * The app's language files — `createMessageLoader(lang)` with `lang` from `virtual:bespoke/lang` — the same as the SSR
+   * entry's. Only the page's locale is loaded (one chunk per file), before hydrating; `useTranslation` reads them.
+   */
+  messages?: MessageLoader;
   /** The progress bar of visits: `{ delay: 250 }` (the default — fast visits show none), or `false`. */
   progress?: ProgressOptions | false;
   /**
@@ -55,14 +61,26 @@ function hasMarkup(root: HTMLElement): boolean {
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
  */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, progress, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
+export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
   const page = readInitialPage();
-  const root = await rootElement(rootId);
 
-  // Resolve before hydrating so the first client render matches the server HTML. The history entry is the
-  // navigator's (<BespokeApp> starts it): its key and URL — never the page's props (E36).
-  const Component = await resolve(page.component);
-  const app = <BespokeApp initialPage={page} initialComponent={Component} resolve={resolve} title={title} routes={routes} layout={layout} progress={progress} />;
+  // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
+  // the page's locale. The history entry is the navigator's (<BespokeApp> starts it): its key and URL — never the
+  // page's props (E36).
+  const [Component, catalog, root] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), rootElement(rootId)]);
+  const app = (
+    <BespokeApp
+      initialPage={page}
+      initialComponent={Component}
+      resolve={resolve}
+      title={title}
+      routes={routes}
+      layout={layout}
+      progress={progress}
+      messages={messages}
+      initialCatalog={catalog}
+    />
+  );
 
   if (!hasMarkup(root)) {
     createRoot(root).render(app);

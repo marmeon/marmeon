@@ -9,3 +9,13 @@ declare module 'virtual:bespoke/pages' {
   const pages: Record<string, () => Promise<unknown>>;
   export default pages;
 }
+
+declare module 'virtual:bespoke/lang' {
+  /**
+   * Every language file — `modules/<module>/lang/<locale>.ts` and the app-wide `lang/<locale>.ts` (the `lang` glob of
+   * `bespoke()`), keyed by its path from the app root and loaded lazily: one chunk per file, so the browser loads only
+   * the locale it shows. Hand it to `createMessageLoader(lang)` from `@bespokecore/i18n/messages`.
+   */
+  const lang: Record<string, () => Promise<unknown>>;
+  export default lang;
+}

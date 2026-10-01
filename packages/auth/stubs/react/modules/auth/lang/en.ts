@@ -1,0 +1,185 @@
+/**
+ * The texts of the auth module — the source language. Another language is a file next to this one, checked against it:
+ *
+ *   // lang/de.ts
+ *   import type { Messages } from '@bespokecore/i18n/messages';
+ *   import type en from './en.ts';
+ *   export default { login: { title: 'Anmelden', … }, … } satisfies Messages<typeof en>;
+ *
+ * Views read them with `useTranslation('auth')`, the server with `translator.get('auth.…')`, request schemas with `trans('auth.…')`.
+ */
+const en = {
+  login: {
+    title: 'Sign in',
+    heading: 'Sign in to {app}',
+    email: 'E-mail',
+    password: 'Password',
+    remember: 'Keep me signed in',
+    submit: 'Sign in',
+    submitting: 'Signing in…',
+    forgot: 'Forgot your password?',
+    new_here: 'New here?',
+    register: 'Create an account',
+    failed: 'These credentials do not match our records.',
+    throttled: 'Too many login attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
+  },
+  register: {
+    title: 'Create an account',
+    name: 'Name',
+    email: 'E-mail',
+    password: 'Password (at least {min} characters)',
+    password_confirmation: 'Repeat the password',
+    submit: 'Create account',
+    submitting: 'Creating…',
+    registered: 'Already registered?',
+    login: 'Sign in',
+  },
+  forgot: {
+    title: 'Forgot your password?',
+    intro: 'Enter your e-mail address. If it belongs to an account, we send you a link to choose a new password.',
+    email: 'E-mail',
+    submit: 'Send the link',
+    back: 'Back to sign in',
+    sent: 'If an account exists for that address, we sent a link to reset its password.',
+  },
+  reset: {
+    title: 'Reset your password',
+    expired: 'This link has expired',
+    expired_text: 'Reset links work once, for a limited time.',
+    ask: 'Ask for a new one',
+    heading: 'Choose a new password',
+    for: 'For {email}',
+    password: 'New password (at least {min} characters)',
+    password_confirmation: 'Repeat the new password',
+    submit: 'Set the new password',
+    invalid: 'This password reset link is invalid or has expired. Ask for a new one.',
+    done: 'Your password has been reset. Sign in with the new one.',
+  },
+  confirm: {
+    title: 'Confirm your password',
+    intro: 'This is a sensitive area. Please enter your password to continue.',
+    password: 'Password',
+    submit: 'Confirm',
+  },
+  verify: {
+    title: 'Confirm your e-mail address',
+    intro: 'We sent a link to {email}. Click it to confirm the address.',
+    resend: 'Send the link again',
+    back: 'Back to the dashboard',
+    sent: 'A new verification link is on its way.',
+    verified: 'Your e-mail address is verified.',
+    wrong_account: 'This verification link is not for your account.',
+  },
+  settings: {
+    label: 'Settings',
+    security: 'Security',
+    tokens: 'API tokens',
+  },
+  security: {
+    title: 'Security',
+    remembered: '{name}, you were signed in by “Keep me signed in” on this device.',
+    email_heading: 'E-mail address',
+    email: 'E-mail',
+    unconfirmed: '(not confirmed yet)',
+    change_email: 'Change e-mail',
+    email_changed: 'E-mail address changed. Please confirm the new one — we sent you a link.',
+    password_heading: 'Change password',
+    current_password: 'Current password',
+    new_password: 'New password (at least {min} characters)',
+    repeat_password: 'Repeat the new password',
+    change_password: 'Change password',
+    password_changed: 'Password changed. You were signed out everywhere else.',
+    devices_heading: 'Other devices',
+    devices_intro: 'Signs you out everywhere else — other browsers, and “Keep me signed in” on other devices. This one stays signed in.',
+    devices_password: 'Password',
+    devices_submit: 'Sign out other devices',
+    devices_done: 'Signed out on all other devices.',
+    tokens_note: 'This does not revoke your API tokens — scripts using them keep working. Revoke them under',
+  },
+  tokens: {
+    title: 'API tokens',
+    new: 'New token',
+    copy: 'Copy your new token now — it will not be shown again:',
+    usage: 'Send it in the Authorization header, e.g.:',
+    yours: 'Your tokens',
+    none: 'No tokens yet.',
+    last_used: 'last used {at}',
+    never_used: 'never used',
+    expires: 'expires {at}',
+    revoke: 'Revoke',
+    revoked: 'Token revoked. Programs using it can no longer sign in.',
+    create: 'Create a token',
+    name: 'Name',
+    name_placeholder: 'e.g. Backup script',
+    may: 'May',
+    submit: 'Create token',
+    abilities: {
+      'users:read': 'Read the directory of people (GET /api/users)',
+    },
+  },
+  status: {
+    signed_out: 'You have been signed out.',
+  },
+  layout: {
+    dashboard: 'Dashboard',
+    account: 'Account',
+    settings: 'Settings',
+    sign_in: 'Sign in',
+    sign_out: 'Sign out',
+    register: 'Create an account',
+  },
+  dashboard: {
+    title: 'Dashboard',
+    welcome: 'Welcome, {name}.',
+    verify: 'Please confirm your e-mail address — the link is in your inbox.',
+    verify_again: 'Send it again',
+  },
+  validation: {
+    name_required: 'Enter your name.',
+    name_min: 'The name needs at least {requirement} characters.',
+    email_required: 'Enter your e-mail address.',
+    email_any: 'Enter an e-mail address.',
+    email_invalid: 'Enter a valid e-mail address.',
+    email_taken: 'This e-mail address is already registered.',
+    password_required: 'Enter your password.',
+    current_password_required: 'Enter your current password.',
+    password_repeat: 'Repeat the password.',
+    new_password_repeat: 'Repeat the new password.',
+    password_incorrect: 'The password is incorrect.',
+    token_name: 'Name the token.',
+    token_abilities: 'Pick what the token may do.',
+    throttled: 'Too many attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
+  },
+  mail: {
+    app: 'BespokeCore',
+    hello: 'Hello {name},',
+    reset: {
+      subject: 'Reset your password',
+      preview: 'A link to choose a new password',
+      intro: 'someone — hopefully you — asked to reset the password of your account.',
+      button: 'Choose a new password',
+      outro: 'The link works once, for {minutes} minutes. If you did not ask for it, ignore this mail: your password stays as it is.',
+    },
+    verify: {
+      subject: 'Confirm your e-mail address',
+      preview: 'One click to confirm your address',
+      intro: 'please confirm that this address is yours.',
+      button: 'Confirm my e-mail address',
+      outro: 'The link works for 60 minutes. If you did not create an account, ignore this mail.',
+    },
+    email_changed: {
+      subject: 'Your e-mail address was changed',
+      preview: 'The address of your account changed',
+      intro: 'the e-mail address of your account was changed to {email}.',
+      outro: 'If that was not you, reset your password now and contact us.',
+    },
+  },
+} as const;
+
+export default en;
+
+declare module '@bespokecore/i18n/messages' {
+  interface Translations {
+    auth: typeof en;
+  }
+}

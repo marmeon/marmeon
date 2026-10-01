@@ -1,5 +1,6 @@
 import { can } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Translator } from '@bespokecore/i18n';
 import * as v from 'valibot';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
@@ -14,14 +15,16 @@ export class DeleteProfileLinkController extends Controller {
   static request = DeleteProfileLinkRequest;
 
   readonly #links: ProfileLinkRepository;
+  readonly #translator: Translator;
 
-  constructor(links: ProfileLinkRepository) {
+  constructor(links: ProfileLinkRepository, translator: Translator) {
     super();
     this.#links = links;
+    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number } } }) {
     await this.#links.delete(ctx.params.link.id);
-    return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).with('status', 'Link removed.');
+    return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).with('status', this.#translator.get('user-profile.status.link_removed'));
   }
 }

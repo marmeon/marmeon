@@ -60,6 +60,7 @@ declare module '@bespokecore/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
       email_verified_at: Timestamp | null;
+      locale: string | null;
     };
   }
   interface TableOwners {
@@ -76,6 +77,7 @@ declare module '@bespokecore/database' {
   interface Modules {
     auth: true;
     lab: true;
+    locale: true;
     'user-profile': true;
   }
 }

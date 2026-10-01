@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm } from '@bespokecore/react';
+import { Head, Link, useForm, useTranslation } from '@bespokecore/react';
 import type { ShowAccessTokensController } from '../controllers/ShowAccessTokensController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
@@ -7,45 +7,49 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 type Props = PageProps<ShowAccessTokensController>;
 
 export default function AccessTokens({ tokens, abilities, plainText }: Props) {
+  const t = useTranslation('auth');
+  // In UTC: the server and the browser render the same text (no time zone of either side).
+  const at = (iso: string) => t.format.date(iso, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
   const form = useForm('auth.tokens.store', { name: '', abilities: [] });
   const selected = [form.data.abilities ?? []].flat();
 
   return (
     <main>
-      <Head title="API tokens" />
-      <h1>API tokens</h1>
+      <Head title={t('tokens.title')} />
+      <h1>{t('tokens.title')}</h1>
       {plainText && (
-        <section aria-label="New token" role="alert">
+        <section aria-label={t('tokens.new')} role="alert">
           <p>
-            <strong>Copy your new token now — it will not be shown again:</strong>
+            <strong>{t('tokens.copy')}</strong>
           </p>
           <pre>
             <code>{plainText}</code>
           </pre>
           <p>
-            Use it as <code>Authorization: Bearer …</code>, e.g. <code>curl -H "Authorization: Bearer {plainText.slice(0, 8)}…" /api/users</code>.
+            {t('tokens.usage')} <code>curl -H "Authorization: Bearer {plainText.slice(0, 8)}…" /api/users</code>
           </p>
         </section>
       )}
 
-      <h2>Your tokens</h2>
+      <h2>{t('tokens.yours')}</h2>
       {tokens.length === 0 ? (
-        <p>No tokens yet.</p>
+        <p>{t('tokens.none')}</p>
       ) : (
         <ul>
           {tokens.map((token) => (
             <li key={token.id}>
-              <strong>{token.name}</strong> — {token.abilities.join(', ')} · {token.lastUsedAt ? `last used ${token.lastUsedAt.slice(0, 16).replace('T', ' ')} UTC` : 'never used'}
-              {token.expiresAt && ` · expires ${token.expiresAt.slice(0, 10)}`}{' '}
+              <strong>{token.name}</strong> — {token.abilities.join(', ')} ·{' '}
+              {token.lastUsedAt ? t('tokens.last_used', { at: `${at(token.lastUsedAt)} UTC` }) : t('tokens.never_used')}
+              {token.expiresAt && ` · ${t('tokens.expires', { at: t.format.date(token.expiresAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}`}{' '}
               <Link route="auth.tokens.destroy" params={{ token: token.id }}>
-                Revoke
+                {t('tokens.revoke')}
               </Link>
             </li>
           ))}
         </ul>
       )}
 
-      <h2>Create a token</h2>
+      <h2>{t('tokens.create')}</h2>
       <form
         noValidate
         onSubmit={(event) => {
@@ -54,13 +58,13 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
         }}
       >
         <p>
-          <label htmlFor="name">Name</label>
+          <label htmlFor="name">{t('tokens.name')}</label>
           <br />
-          <input id="name" value={form.data.name} onChange={(e) => form.set('name', e.target.value)} aria-invalid={!!form.errors.name} placeholder="e.g. Backup script" />
+          <input id="name" value={form.data.name} onChange={(e) => form.set('name', e.target.value)} aria-invalid={!!form.errors.name} placeholder={t('tokens.name_placeholder')} />
           {form.errors.name && <small role="alert"> {form.errors.name}</small>}
         </p>
         <fieldset>
-          <legend>May</legend>
+          <legend>{t('tokens.may')}</legend>
           {Object.entries(abilities).map(([ability, description]) => (
             <label key={ability} style={{ display: 'block' }}>
               <input
@@ -74,7 +78,7 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
           {form.errors.abilities && <small role="alert">{form.errors.abilities}</small>}
         </fieldset>
         <button type="submit" disabled={form.processing}>
-          Create token
+          {t('tokens.submit')}
         </button>
       </form>
     </main>

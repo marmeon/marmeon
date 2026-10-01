@@ -1,0 +1,56 @@
+{
+  "name": "@bespokecore/i18n",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "description": "Translations for BespokeCore apps: typed messages per module (TS files), an ICU subset, a translator per request and the locale middleware. UI-agnostic \u2014 `@bespokecore/i18n/messages` is the browser-safe core the UI adapters build on.",
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./messages": {
+      "@bespokecore/source": "./src/messages.ts",
+      "types": "./dist/messages.d.ts",
+      "default": "./dist/messages.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./messages": {
+        "types": "./dist/messages.d.ts",
+        "default": "./dist/messages.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/__fixtures__"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "I18nServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/session": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@bespokecore/auth": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/server": "workspace:*"
+  }
+}

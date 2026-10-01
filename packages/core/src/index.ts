@@ -12,6 +12,7 @@ export { Application, createApplication, defineApplication } from './application
 export type { ApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, Logger } from './logger.ts';
+export { fillPlaceholders, Translator } from './translator.ts';
 export { EventDispatcher, EventRegistry, listen } from './events.ts';
 export type { EventClass, Listener, ListenerBinding, ListenerLike } from './events.ts';
 export type { LogContext } from './logger.ts';
@@ -19,7 +20,7 @@ export { currentRequest, runWithRequest } from './request-context.ts';
 export type { RequestInfo } from './request-context.ts';
 export { ConfigError, defineConfig, loadEnv, resolveConfig } from './config/config.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
-export type { InferOutput, StandardIssue, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
+export type { InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
 export type { ModuleDefinition } from './module.ts';
 export type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 export { generateManifest, loadDiscoveredPackages, manifestHash, writeManifest, DiscoveryError } from './discovery/discover.ts';

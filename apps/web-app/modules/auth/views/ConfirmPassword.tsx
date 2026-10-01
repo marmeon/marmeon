@@ -1,18 +1,19 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, useForm, useRoute } from '@bespokecore/react';
+import { Head, useForm, useRoute, useTranslation } from '@bespokecore/react';
 import type { ShowConfirmPasswordController } from '../controllers/ShowConfirmPasswordController.ts';
 
 type Props = PageProps<ShowConfirmPasswordController>;
 
 export default function ConfirmPassword({ csrfToken }: Props) {
   const route = useRoute();
+  const t = useTranslation('auth');
   const form = useForm('auth.password.confirm.store', { password: '' });
 
   return (
     <main>
-      <Head title="Confirm your password" />
-      <h1>Confirm your password</h1>
-      <p>This is a sensitive area. Please enter your password to continue.</p>
+      <Head title={t('confirm.title')} />
+      <h1>{t('confirm.title')}</h1>
+      <p>{t('confirm.intro')}</p>
       <form
         method="post"
         action={route('auth.password.confirm.store')}
@@ -24,7 +25,7 @@ export default function ConfirmPassword({ csrfToken }: Props) {
       >
         <input type="hidden" name="_token" value={csrfToken} />
         <p>
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t('confirm.password')}</label>
           <br />
           <input
             id="password"
@@ -38,7 +39,7 @@ export default function ConfirmPassword({ csrfToken }: Props) {
           {form.errors.password && <small role="alert"> {form.errors.password}</small>}
         </p>
         <button type="submit" disabled={form.processing}>
-          Confirm
+          {t('confirm.submit')}
         </button>
       </form>
     </main>

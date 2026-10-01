@@ -1,15 +1,16 @@
 import { Auth, confirmed, password, type Authenticated } from '@bespokecore/auth';
 import { RateLimiter } from '@bespokecore/cache';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
+import { trans, Translator } from '@bespokecore/i18n';
 import * as v from 'valibot';
 import { throttlePasswordChecks } from '../throttle.ts';
 
 export const UpdatePasswordRequest = defineRequest({
   schema: confirmed(
     v.object({
-      current_password: v.pipe(v.string('Enter your current password.'), v.nonEmpty('Enter your current password.'), v.maxLength(4096)),
+      current_password: v.pipe(v.string(trans('auth.validation.current_password_required')), v.nonEmpty(trans('auth.validation.current_password_required')), v.maxLength(4096)),
       password: password(),
-      password_confirmation: v.string('Repeat the new password.'),
+      password_confirmation: v.string(trans('auth.validation.new_password_repeat')),
     }),
   ),
   authorize: (_ctx: HttpContext<Authenticated>) => true,
@@ -21,16 +22,18 @@ export class UpdatePasswordController extends Controller {
 
   readonly #auth: Auth;
   readonly #limiter: RateLimiter;
+  readonly #translator: Translator;
 
-  constructor(auth: Auth, limiter: RateLimiter) {
+  constructor(auth: Auth, limiter: RateLimiter, translator: Translator) {
     super();
     this.#auth = auth;
     this.#limiter = limiter;
+    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof UpdatePasswordRequest>) {
-    await throttlePasswordChecks(this.#limiter, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     await this.#auth.updatePassword(ctx.body.password);
-    return this.back('/settings/security').with('status', 'Password changed. You were signed out everywhere else.');
+    return this.back('/settings/security').with('status', this.#translator.get('auth.security.password_changed'));
   }
 }

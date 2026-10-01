@@ -38,7 +38,9 @@ export class AuthorizationError extends HttpError {
   override name = 'AuthorizationError';
 
   constructor(status: 403 | 404 = 403, message?: string) {
-    super(status, status === 404 ? undefined : (message ?? 'This action is unauthorized.'));
+    // The policy's own reason is the app's text (translated by the app); the default is a framework text by key.
+    const fallback = status === 403 && message === undefined;
+    super(status, status === 404 ? undefined : (message ?? 'This action is unauthorized.'), {}, fallback ? { key: 'bespoke.errors.unauthorized' } : undefined);
   }
 }
 

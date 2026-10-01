@@ -2,14 +2,22 @@ import { Auth, Lockout } from '@bespokecore/auth';
 import { RateLimiter } from '@bespokecore/cache';
 import { EventDispatcher } from '@bespokecore/core';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@bespokecore/http';
+import { trans, Translator } from '@bespokecore/i18n';
 import * as v from 'valibot';
 
 export const LoginRequest = defineRequest({
   schema: v.object({
     // The identifier is normalized here (W2 rule): the throttle key and the lookup see the same value.
-    email: v.pipe(v.string('Enter your e-mail address.'), v.trim(), v.toLowerCase(), v.nonEmpty('Enter your e-mail address.'), v.maxLength(255), v.email('Enter a valid e-mail address.')),
+    email: v.pipe(
+      v.string(trans('auth.validation.email_required')),
+      v.trim(),
+      v.toLowerCase(),
+      v.nonEmpty(trans('auth.validation.email_required')),
+      v.maxLength(255),
+      v.email(trans('auth.validation.email_invalid')),
+    ),
     // Never trimmed: spaces belong to the password. The hasher normalizes Unicode itself.
-    password: v.pipe(v.string('Enter your password.'), v.nonEmpty('Enter your password.'), v.maxLength(4096)),
+    password: v.pipe(v.string(trans('auth.validation.password_required')), v.nonEmpty(trans('auth.validation.password_required')), v.maxLength(4096)),
     // A checkbox: absent when unticked; `on` from an HTML form, `true` from JSON.
     remember: v.optional(v.pipe(v.union([v.boolean(), v.literal('on')]), v.transform((value) => value !== false)), false),
   }),
@@ -25,12 +33,14 @@ export class LoginController extends Controller {
   readonly #auth: Auth;
   readonly #limiter: RateLimiter;
   readonly #events: EventDispatcher;
+  readonly #translator: Translator;
 
-  constructor(auth: Auth, limiter: RateLimiter, events: EventDispatcher) {
+  constructor(auth: Auth, limiter: RateLimiter, events: EventDispatcher, translator: Translator) {
     super();
     this.#auth = auth;
     this.#limiter = limiter;
     this.#events = events;
+    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
@@ -40,13 +50,13 @@ export class LoginController extends Controller {
     if (await this.#limiter.tooManyAttempts(key, MAX_ATTEMPTS)) {
       await this.#events.dispatch(new Lockout(email, ctx.ip));
       const seconds = await this.#limiter.availableIn(key);
-      throw new ValidationError({ email: [`Too many login attempts. Please try again in ${seconds} seconds.`] }, { email });
+      throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds })] }, { email });
     }
 
     // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify).
     if (!(await this.#auth.attempt(email, password, { remember }))) {
       await this.#limiter.hit(key, DECAY_SECONDS);
-      throw new ValidationError({ email: ['These credentials do not match our records.'] }, { email });
+      throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
 
     await this.#limiter.clear(key);

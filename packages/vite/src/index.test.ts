@@ -78,9 +78,12 @@ describe('bespoke()', () => {
     expect(html(bespoke({ test: true }), '<body></body>')).toBeUndefined();
   });
 
-  it('runs the constructor-injection transform and serves virtual:bespoke/pages', () => {
-    const names = bespoke().map((plugin) => plugin.name);
-    expect(names).toEqual(['bespokecore', 'bespokecore:async-entry', 'bespokecore:injection', 'bespokecore:virtual-pages']);
+  it('runs the constructor-injection transform and serves virtual:bespoke/pages and virtual:bespoke/lang', () => {
+    const plugins = bespoke();
+    expect(plugins.map((plugin) => plugin.name)).toEqual(['bespokecore', 'bespokecore:async-entry', 'bespokecore:injection', 'bespokecore:virtual-pages', 'bespokecore:virtual-lang']);
+    const lang = plugins.at(-1)!;
+    // Lazy: one chunk per language file, the browser loads only its locale's.
+    expect((lang.load as (id: string) => unknown)('\0virtual:bespoke/lang')).toBe('export default import.meta.glob(["/modules/*/lang/*.ts","/lang/*.ts"]);\n');
   });
 });
 

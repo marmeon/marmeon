@@ -18,16 +18,31 @@ export function statusText(status: number): string {
   return REASONS[status] ?? 'Error';
 }
 
-/** An error that maps to an HTTP status. Its message is meant for the client. */
+/**
+ * A text by translation key (`namespace.path`), with the values of its placeholders — what a translator
+ * (`Translator` of @bespokecore/core, bound by @bespokecore/i18n) turns into the request's language.
+ */
+export interface TextKey {
+  readonly key: string;
+  readonly params?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * An error that maps to an HTTP status. Its message is meant for the client — in English; `translation` names
+ * the key the exception handler shows instead when a translator is bound (framework errors carry one; without
+ * a message, the status text's: `bespoke.status.404`).
+ */
 export class HttpError extends Error {
   override name = 'HttpError';
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
+  readonly translation: TextKey | undefined;
 
-  constructor(status: number, message = statusText(status), headers: Record<string, string> = {}) {
-    super(message);
+  constructor(status: number, message?: string, headers: Record<string, string> = {}, translation?: TextKey) {
+    super(message ?? statusText(status));
     this.status = status;
     this.headers = headers;
+    this.translation = translation ?? (message === undefined ? { key: `bespoke.status.${status}` } : undefined);
   }
 }
 

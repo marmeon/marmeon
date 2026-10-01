@@ -12,6 +12,8 @@ export const MiddlewarePriority = {
   startSession: 200,
   /** Inside the session, around everything that may answer for a signed-in user (auth's `NoStoreWhenSignedIn`). */
   preventCaching: 210,
+  /** The request's locale (@bespokecore/i18n's `SetLocale`): after the session it reads, before anything that answers with text (CSRF's 419). */
+  setLocale: 220,
   checkAssetVersion: 250,
   verifyCsrfToken: 300,
   shareProps: 400,

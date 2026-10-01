@@ -1,8 +1,12 @@
+import type { Translator } from '@bespokecore/i18n';
 import { mjml, type Html } from '@bespokecore/mail';
 
-/** The frame of every mail of the app — a function returning `mjml`, so mails nest their body into it. */
-export function layout({ preview, body }: { preview: string; body: Html }) {
-  return mjml`<mjml>
+/**
+ * The frame of every mail of the app — a function returning `mjml`, so mails nest their body into it. `t` speaks the
+ * recipient's language (`translator.forLocale(user.locale)`), which also goes into `<mjml lang>`.
+ */
+export function layout(t: Translator, { preview, body }: { preview: string; body: Html }) {
+  return mjml`<mjml lang="${t.locale}">
   <mj-head>
     <mj-preview>${preview}</mj-preview>
     <mj-attributes>
@@ -16,7 +20,7 @@ export function layout({ preview, body }: { preview: string; body: Html }) {
       <mj-column>${body}</mj-column>
     </mj-section>
     <mj-section padding="12px">
-      <mj-column><mj-text font-size="12px" color="#7b8794" align="center">BespokeCore</mj-text></mj-column>
+      <mj-column><mj-text font-size="12px" color="#7b8794" align="center">${t.get('app.name')}</mj-text></mj-column>
     </mj-section>
   </mj-body>
 </mjml>`;

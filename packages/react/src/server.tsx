@@ -1,6 +1,7 @@
 import type { RouteManifest, SsrRender } from '@bespokecore/http/page';
+import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';
-import { BespokeApp } from './app.tsx';
+import { BespokeApp, loadPageMessages } from './app.tsx';
 import { isDevelopment, SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, defaultTitle, markServerTag, renderHead, type HeadCollector, type TitleTemplate } from './head.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
@@ -12,6 +13,11 @@ export interface SsrOptions {
   routes?: RouteManifest;
   /** The same default layout as the client's (`createBespokeApp({ layout })`), so the markup matches. */
   layout?: DefaultLayout;
+  /**
+   * The same language files as the client's (`createBespokeApp({ messages })`). Each page renders with its own
+   * `locale`'s messages, loaded before rendering starts — per request, whatever other requests render meanwhile.
+   */
+  messages?: MessageLoader;
 }
 
 /**
@@ -24,11 +30,11 @@ export interface SsrOptions {
  * An error in the shell rejects (the server then sends the page without markup); an error in a Suspense boundary is
  * reported through `onError`, and the browser renders that boundary when it hydrates.
  */
-export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout }: SsrOptions = {}): SsrRender {
+export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages }: SsrOptions = {}): SsrRender {
   const head = (collector: HeadCollector) => renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(tag)));
 
   return async (page, { complete = false, onError, onWarning, signal } = {}) => {
-    const Component = await resolve(page.component);
+    const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages)]);
     if (Component.ssr === false) return { html: '', head: head(createHeadCollector()) };
 
     const collector = createHeadCollector(
@@ -39,7 +45,17 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
     let shellReady = false;
     const recovered: unknown[] = [];
     const stream = await renderToReadableStream(
-      <BespokeApp initialPage={page} initialComponent={Component} resolve={resolve} title={title} routes={routes} layout={layout} headCollector={collector} />,
+      <BespokeApp
+        initialPage={page}
+        initialComponent={Component}
+        resolve={resolve}
+        title={title}
+        routes={routes}
+        layout={layout}
+        headCollector={collector}
+        messages={messages}
+        initialCatalog={catalog}
+      />,
       {
         signal,
         onError(error) {

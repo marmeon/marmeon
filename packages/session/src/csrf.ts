@@ -90,7 +90,7 @@ export class VerifyCsrfToken {
     const path = new URL(ctx.request.url).pathname;
     if (!READING.has(ctx.request.method) && !this.#protection.skips(path)) {
       if (this.#crossSite(ctx.request) || !(await this.#tokenMatches(ctx))) {
-        throw new HttpError(419, 'CSRF token mismatch.');
+        throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'bespoke.errors.csrf' });
       }
     }
     // After the route: the token may have been rotated (login, logout).

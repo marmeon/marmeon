@@ -93,6 +93,11 @@ export interface PageObject {
   /** Build version of the assets (null in development). A client with another version reloads fully. */
   version?: string | null;
   /**
+   * The language of the page (the request's locale, from @bespokecore/i18n) — one of the app's supported locales.
+   * The browser loads only this locale's messages (`virtual:bespoke/lang`), never the messages themselves from here.
+   */
+  locale?: string;
+  /**
    * Props the response left out to load next (`defer()`), by group: the client fetches each group with a partial
    * reload right after showing the page. Only in full responses.
    */

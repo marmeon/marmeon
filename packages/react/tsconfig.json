@@ -4,7 +4,19 @@
     "composite": true,
     "rootDir": "src",
     "outDir": "dist",
-    "lib": ["ES2025", "ESNext.Array", "ESNext.Collection", "ESNext.Disposable", "ESNext.Error", "ESNext.Iterator", "ESNext.Promise", "ESNext.Temporal", "ESNext.TypedArrays", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2025",
+      "ESNext.Array",
+      "ESNext.Collection",
+      "ESNext.Disposable",
+      "ESNext.Error",
+      "ESNext.Iterator",
+      "ESNext.Promise",
+      "ESNext.Temporal",
+      "ESNext.TypedArrays",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx"
   },
   "include": [
@@ -13,6 +25,9 @@
   "references": [
     {
       "path": "../http"
+    },
+    {
+      "path": "../i18n"
     }
   ]
 }

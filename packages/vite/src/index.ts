@@ -30,6 +30,11 @@ export interface BespokeOptions {
   /** Page components, as a glob relative to the app root (`virtual:bespoke/pages`). Default `modules/*\/views/**\/*.tsx`. */
   pages?: string | string[];
   /**
+   * Language files, as a glob relative to the app root (`virtual:bespoke/lang`, one chunk per file — the browser loads
+   * only the page's locale). Default `modules/*\/lang/*.ts` and `lang/*.ts` (namespace `app`).
+   */
+  lang?: string | string[];
+  /**
    * For `vitest.config.ts`: conditions, injection and virtual modules only — no entries, no HTML,
    * no build settings.
    */
@@ -38,6 +43,7 @@ export interface BespokeOptions {
 
 const DEFAULT_ENTRIES: BespokeEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
 const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
+const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
 
 /**
  * The Vite plugin of a BespokeCore app. UI-agnostic: the adapter brings its own plugin.
@@ -51,7 +57,7 @@ const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
  * - dedupes the peers of the framework packages the app depends on (one React for the adapter and the app);
  * - runs the constructor-injection transform (`@bespokecore/core/vite`);
  * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
- * - serves `virtual:bespoke/pages` (types: `@bespokecore/vite/client`).
+ * - serves `virtual:bespoke/pages` and `virtual:bespoke/lang` (types: `@bespokecore/vite/client`).
  */
 export function bespoke(options: BespokeOptions = {}): Plugin[] {
   const entries: BespokeEntries = { ...DEFAULT_ENTRIES, ...options.entries };
@@ -106,6 +112,7 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
     asyncEntry,
     bespokeInjection() as Plugin,
     virtualGlob('pages', options.pages ?? DEFAULT_PAGES),
+    virtualGlob('lang', options.lang ?? DEFAULT_LANG),
   ];
 }
 

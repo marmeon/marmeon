@@ -47,6 +47,9 @@ importers:
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@bespokecore/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@bespokecore/log':
         specifier: workspace:*
         version: link:../../packages/log
@@ -123,6 +126,9 @@ importers:
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@bespokecore/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@bespokecore/log':
         specifier: workspace:*
         version: link:../../packages/log
@@ -303,6 +309,34 @@ importers:
         specifier: workspace:*
         version: link:../router
 
+  packages/i18n:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      '@bespokecore/session':
+        specifier: workspace:*
+        version: link:../session
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
+
   packages/log:
     dependencies:
       '@bespokecore/core':
@@ -339,6 +373,9 @@ importers:
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http
+      '@bespokecore/i18n':
+        specifier: workspace:*
+        version: link:../i18n
     devDependencies:
       '@types/react':
         specifier: ^19.3.0

@@ -1,5 +1,6 @@
 import type { Authenticated } from '@bespokecore/auth';
 import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@bespokecore/http';
+import { trans, Translator } from '@bespokecore/i18n';
 import { Mailer } from '@bespokecore/mail';
 import * as v from 'valibot';
 import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
@@ -8,7 +9,7 @@ import { VerificationMailer } from '../verification.ts';
 
 export const UpdateEmailRequest = defineRequest({
   schema: v.object({
-    email: v.pipe(v.string('Enter an e-mail address.'), v.trim(), v.toLowerCase(), v.maxLength(255), v.email('Enter a valid e-mail address.')),
+    email: v.pipe(v.string(trans('auth.validation.email_any')), v.trim(), v.toLowerCase(), v.maxLength(255), v.email(trans('auth.validation.email_invalid'))),
   }),
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
@@ -24,22 +25,25 @@ export class UpdateEmailController extends Controller {
   readonly #users: UserRepository;
   readonly #verification: VerificationMailer;
   readonly #mailer: Mailer;
+  readonly #translator: Translator;
 
-  constructor(users: UserRepository, verification: VerificationMailer, mailer: Mailer) {
+  constructor(users: UserRepository, verification: VerificationMailer, mailer: Mailer, translator: Translator) {
     super();
     this.#users = users;
     this.#verification = verification;
     this.#mailer = mailer;
+    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof UpdateEmailRequest>) {
     const { email } = ctx.body;
     if (email === ctx.user.email) return this.back('/settings/security');
     const updated = await this.#users.changeEmail(ctx.user.id, email);
-    if (updated === 'duplicate') throw new ValidationError({ email: ['This e-mail address is already registered.'] }, { email });
+    if (updated === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
     if (!updated) return this.redirect().route('auth.login');
     await this.#verification.send(updated);
-    await this.#mailer.send(new EmailChangedMail(ctx.user.name, ctx.user.email, email));
-    return this.back('/settings/security').with('status', 'E-mail address changed. Please confirm the new one — we sent you a link.');
+    // To the old address, in the user's language (not necessarily this request's).
+    await this.#mailer.send(new EmailChangedMail(ctx.user.name, ctx.user.email, email, this.#translator.forLocale(ctx.user.locale)));
+    return this.back('/settings/security').with('status', this.#translator.get('auth.security.email_changed'));
   }
 }

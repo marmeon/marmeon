@@ -13,6 +13,7 @@
   "include": [
     "bootstrap",
     "config",
+    "lang",
     "modules",
     "vite.config.ts"
   ]

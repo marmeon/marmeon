@@ -29,9 +29,22 @@ export function documentAround(template: string, page: PageObject, head = ''): {
   const pageScript = `<script type="application/json" id="${PAGE_SCRIPT_ID}">${serializePage(page)}</script>`;
   // A page title from <Head> replaces the template's default <title>.
   let before = /<title[\s>]/.test(head) ? template.slice(0, at).replace(/<title>[\s\S]*?<\/title>\s*/, '') : template.slice(0, at);
+  before = withLang(before, page.locale);
   before = before.includes(HEAD_OUTLET) ? before.replace(HEAD_OUTLET, () => head) : before;
   before = before.includes('</head>') ? before.replace('</head>', () => `${pageScript}\n</head>`) : `${before}${pageScript}`;
   return { before, after: template.slice(at + HTML_OUTLET.length) };
+}
+
+/** A language tag — letters, digits and hyphens (BCP 47). Anything else never reaches the document. */
+const LANGUAGE_TAG = /^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$/;
+
+/** `<html lang>` of the template set to the page's locale (the template's own when the page has none). */
+export function withLang(html: string, locale: string | undefined): string {
+  if (!locale || !LANGUAGE_TAG.test(locale)) return html;
+  return html.replace(/<html\b([^>]*)>/i, (_tag, attributes: string) => {
+    const rest = attributes.replace(/\slang\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i, '');
+    return `<html lang="${locale}"${rest}>`;
+  });
 }
 
 /** The whole document as a string — for markup that is a string (or none: the browser renders the page). */

@@ -1,19 +1,20 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useRoute } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
 import type { ShowForgotPasswordController } from '../controllers/ShowForgotPasswordController.ts';
 
 type Props = PageProps<ShowForgotPasswordController>;
 
 export default function ForgotPassword({ csrfToken }: Props) {
   const route = useRoute();
+  const t = useTranslation('auth');
   // Method, URL and fields from the route: auth.password.email → SendPasswordResetLinkController's request.
   const form = useForm('auth.password.email', { email: '' });
 
   return (
     <main>
-      <Head title="Forgot your password?" />
-      <h1>Forgot your password?</h1>
-      <p>Enter your e-mail address. If it belongs to an account, we send you a link to choose a new password.</p>
+      <Head title={t('forgot.title')} />
+      <h1>{t('forgot.title')}</h1>
+      <p>{t('forgot.intro')}</p>
       <form
         method="post"
         action={route('auth.password.email')}
@@ -25,7 +26,7 @@ export default function ForgotPassword({ csrfToken }: Props) {
       >
         <input type="hidden" name="_token" value={csrfToken} />
         <p>
-          <label htmlFor="email">E-mail</label>
+          <label htmlFor="email">{t('forgot.email')}</label>
           <br />
           <input
             id="email"
@@ -39,11 +40,11 @@ export default function ForgotPassword({ csrfToken }: Props) {
           {form.errors.email && <small role="alert"> {form.errors.email}</small>}
         </p>
         <button type="submit" disabled={form.processing}>
-          Send the link
+          {t('forgot.submit')}
         </button>
       </form>
       <p>
-        <Link route="auth.login">Back to sign in</Link>
+        <Link route="auth.login">{t('forgot.back')}</Link>
       </p>
     </main>
   );

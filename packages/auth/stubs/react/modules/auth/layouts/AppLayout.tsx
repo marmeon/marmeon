@@ -1,4 +1,4 @@
-import { Link, usePage, type LayoutProps } from '@bespokecore/react';
+import { Link, usePage, useTranslation, type LayoutProps } from '@bespokecore/react';
 
 /**
  * Navigation and flash messages around the auth pages: `Page.layout = AppLayout`. It stays mounted while
@@ -6,18 +6,19 @@ import { Link, usePage, type LayoutProps } from '@bespokecore/react';
  */
 export function AppLayout({ children }: LayoutProps) {
   const { auth, flash } = usePage().props;
+  const t = useTranslation('auth');
 
   return (
     <>
       <header style={{ display: 'flex', gap: 16, justifyContent: 'space-between', borderBottom: '1px solid #ddd', paddingBottom: 8 }}>
-        <strong>{auth.user ? <Link route="dashboard">Dashboard</Link> : <Link route="auth.login">Sign in</Link>}</strong>
+        <strong>{auth.user ? <Link route="dashboard">{t('layout.dashboard')}</Link> : <Link route="auth.login">{t('layout.sign_in')}</Link>}</strong>
         {auth.user ? (
-          <nav aria-label="Account">
-            {auth.user.name} · <Link route="auth.security">Settings</Link> · <Link route="auth.logout">Sign out</Link>
+          <nav aria-label={t('layout.account')}>
+            {auth.user.name} · <Link route="auth.security">{t('layout.settings')}</Link> · <Link route="auth.logout">{t('layout.sign_out')}</Link>
           </nav>
         ) : (
-          <nav aria-label="Account">
-            <Link route="auth.register">Create an account</Link>
+          <nav aria-label={t('layout.account')}>
+            <Link route="auth.register">{t('layout.register')}</Link>
           </nav>
         )}
       </header>

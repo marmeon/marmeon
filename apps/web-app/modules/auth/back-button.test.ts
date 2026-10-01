@@ -386,11 +386,11 @@ describe('Cache headers', () => {
     expect(response.headers.get('cache-control')).toBeNull();
   });
 
-  it('varies pages on x-bespoke (and the partial-reload and prefetch headers): the HTML document and the page JSON of one URL are two cache entries', async () => {
+  it('varies pages on x-bespoke (and the partial-reload and prefetch headers, and the language): the HTML document and the page JSON of one URL are two cache entries', async () => {
     const html = await app.get('/login').assertOk();
     const json = await app.navigating().get('/login').assertOk();
     for (const response of [html, json]) {
-      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose']);
+      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose', 'accept-language']);
     }
   });
 

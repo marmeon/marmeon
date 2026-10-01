@@ -23,7 +23,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/http": "workspace:*"
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/i18n": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

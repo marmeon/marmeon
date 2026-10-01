@@ -119,7 +119,7 @@ export class ValidateSignature {
   }
 
   handle(ctx: HttpContext, next: Next<{}>) {
-    if (!this.#signer.hasValidSignature(ctx.request.url)) throw new HttpError(403, 'Invalid signature.');
+    if (!this.#signer.hasValidSignature(ctx.request.url)) throw new HttpError(403, 'Invalid signature.', {}, { key: 'bespoke.errors.signature' });
     return next();
   }
 }

@@ -18,6 +18,7 @@
     "@bespokecore/core": "workspace:*",
     "@bespokecore/database": "workspace:*",
     "@bespokecore/http": "workspace:*",
+    "@bespokecore/i18n": "workspace:*",
     "@bespokecore/log": "workspace:*",
     "@bespokecore/mail": "workspace:*",
     "@bespokecore/react": "workspace:*",
@@ -40,5 +41,5 @@
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   },
-  "description": "An app without modules — the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
+  "description": "An app without modules \u2014 the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
 }

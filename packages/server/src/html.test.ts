@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { documentOf, renderDocument } from './html.ts';
+import { documentOf, renderDocument, withLang } from './html.ts';
 
 const template = '<html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>';
 const page = { component: 'x/Y', props: { bio: '</script><script>alert(1)</script>' }, url: '/' };
+
+describe('withLang', () => {
+  it('sets <html lang> to the page locale — replacing the template’s, keeping its other attributes', () => {
+    expect(withLang('<!doctype html>\n<html lang="en" class="x">', 'de')).toBe('<!doctype html>\n<html lang="de" class="x">');
+    expect(withLang('<html>', 'de-AT')).toBe('<html lang="de-AT">');
+    expect(renderDocument('<html lang="en"><head></head><body><div id="app"><!--app-html--></div></body></html>', { ...page, locale: 'de' }, { html: '' })).toMatch(/^<html lang="de">/);
+  });
+
+  it('a locale that is no language tag never reaches the document (the second line behind the allow-list of @bespokecore/i18n)', () => {
+    for (const locale of ['de"><script>alert(1)</script>', '../../x', 'de en', '']) expect(withLang('<html lang="en">', locale)).toBe('<html lang="en">');
+  });
+});
 
 describe('renderDocument', () => {
   it('fills the outlets and puts the page script into the head — before the markup, which may still be streaming', () => {

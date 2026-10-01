@@ -4,7 +4,7 @@ import { deny, type AuthUser } from '@bespokecore/auth';
 export class ProfilePolicy {
   /** Edit the profile and its links: only your own. */
   update(user: AuthUser, profile: { readonly id: number }) {
-    return user.id === profile.id || deny('You can only change your own profile.');
+    return user.id === profile.id || deny('user-profile.validation.own_profile') /* a key: the exception handler translates it */;
   }
 
   /** See the e-mail address: only your own. */

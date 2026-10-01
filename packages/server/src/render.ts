@@ -1,4 +1,4 @@
-import { ConsoleLogger, type Container, type Logger } from '@bespokecore/core';
+import { ConsoleLogger, Translator, type Container, type Logger } from '@bespokecore/core';
 import {
   Flasher,
   isRedirectResult,
@@ -163,7 +163,9 @@ export function createResponseFactory(
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     // Shared props and the controller's (which win), resolved as far as this response sends them.
     const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component));
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version };
+    // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
+    const locale = scope?.has(Translator) ? scope.make(Translator).locale : undefined;
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...(locale ? { locale } : {}) };
     const headers = { ...result.headers, vary: PAGE_VARY };
 
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both

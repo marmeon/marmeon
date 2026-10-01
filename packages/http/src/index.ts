@@ -43,7 +43,7 @@ export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { defineMiddleware, defineRequest, defineRoutes, ValidationError } from '@bespokecore/router';
+export { defineMiddleware, defineRequest, defineRoutes, translatable, ValidationError } from '@bespokecore/router';
 export type {
   ContextOf,
   CookieJar,
@@ -61,10 +61,12 @@ export type {
   Routes,
   RouteBinder,
   RouteBindingContext,
+  TextKey,
   Validated,
   ValidationErrors,
 } from '@bespokecore/router';
 export { HttpServiceProvider } from './provider.ts';
 export { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 export { abort, DefaultExceptionHandler, ExceptionHandler, HttpError } from './errors.ts';
+export type { ExceptionRenderOptions } from './errors.ts';
 export type { MiddlewareClass, Next } from '@bespokecore/router';

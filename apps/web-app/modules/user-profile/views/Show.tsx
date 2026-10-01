@@ -1,17 +1,7 @@
 import type { PageProps } from '@bespokecore/http';
-import { Deferred, Head, Link, useForm, usePoll, WhenVisible } from '@bespokecore/react';
+import { Deferred, Head, Link, useForm, usePoll, useTranslation, WhenVisible } from '@bespokecore/react';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
-const utc = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
-
-const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-/** "3 minutes ago" — against the server's `now`, so server and browser render the same. */
-function ago(iso: string, now: string): string {
-  const seconds = Math.round((Date.parse(iso) - Date.parse(now)) / 1000);
-  const [value, unit] =
-    Math.abs(seconds) < 60 ? [seconds, 'second'] : Math.abs(seconds) < 3600 ? [seconds / 60, 'minute'] : Math.abs(seconds) < 86_400 ? [seconds / 3600, 'hour'] : [seconds / 86_400, 'day'];
-  return relative.format(Math.round(value), unit as Intl.RelativeTimeFormatUnit);
-}
 
 /** How often the recent activity is refreshed while the page is open (ms). */
 const ACTIVITY_POLL = 15_000;
@@ -22,6 +12,10 @@ type Props = PageProps<ShowUserProfileController>;
 export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, activity, stats, now, auth }: Props) {
   // The activity panel keeps itself current: a background reload of just `activity`, paused while the tab is hidden.
   usePoll<ShowUserProfileController>(ACTIVITY_POLL, { only: ['activity'] });
+  const t = useTranslation('user-profile');
+  // "3 minutes ago", "gestern" — against the server's `now`, so server and browser render the same; the date in UTC alike.
+  const ago = (iso: string) => t.format.relative(iso, now);
+  const utc = (iso: string) => `${t.format.date(iso, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`;
   return (
     <main>
       <Head title={profile.name}>
@@ -31,45 +25,51 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
       <p>
-        <small>Member since {profile.created_at.slice(0, 10)}</small>
+        <small>{t('show.member_since', { date: t.format.date(profile.created_at, { dateStyle: 'long', timeZone: 'UTC' }) })}</small>
       </p>
       <p>
-        <small>Last signed in: {lastLoginAt ? <time dateTime={lastLoginAt} title={utc(lastLoginAt)}>{ago(lastLoginAt, now)}</time> : 'never'}</small>
+        <small>
+          {t('show.last_signed_in')}{' '}
+          {lastLoginAt ? (
+            <time dateTime={lastLoginAt} title={utc(lastLoginAt)}>
+              {ago(lastLoginAt)}
+            </time>
+          ) : (
+            t('show.never')
+          )}
+        </small>
       </p>
       {isOwnProfile && (
         <p>
-          <em>This is your profile.</em> <Link route="auth.security">Settings</Link>
+          <em>{t('show.own')}</em> <Link route="auth.security">{t('show.settings')}</Link>
         </p>
       )}
       {isOwnProfile && auth.user && !auth.user.verified && (
         <p role="note">
-          Please confirm your e-mail address — the link is in your inbox.{' '}
-          <Link route="auth.verification.send">
-            Send it again
-          </Link>
+          {t('show.verify')} <Link route="auth.verification.send">{t('show.verify_again')}</Link>
         </p>
       )}
       {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. */}
       {can.update && (
         <p>
           <Link route="user-profile.edit" params={{ user: profile.id }}>
-            Edit profile
+            {t('show.edit')}
           </Link>
         </p>
       )}
 
       <section aria-labelledby="activity">
-        <h2 id="activity">Recent activity</h2>
+        <h2 id="activity">{t('show.activity')}</h2>
         {/* `activity` is deferred: the page renders without it, the browser loads it right after. */}
-        <Deferred<ShowUserProfileController> data="activity" fallback={<p aria-busy="true">Loading activity…</p>}>
+        <Deferred<ShowUserProfileController> data="activity" fallback={<p aria-busy="true">{t('show.activity_loading')}</p>}>
           {() => (
             <ul>
               {activity!.map((entry, index) => (
                 <li key={index}>
-                  {entry.kind === 'link' ? `Added the link “${entry.label}”` : entry.kind === 'signed-in' ? 'Signed in' : 'Joined'}{' '}
+                  {t('show.activity_entry', { kind: entry.kind, label: entry.label ?? '' })}{' '}
                   <small>
                     <time dateTime={entry.at} title={utc(entry.at)}>
-                      {ago(entry.at, now)}
+                      {ago(entry.at)}
                     </time>
                   </small>
                 </li>
@@ -80,18 +80,16 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       </section>
 
       <section aria-labelledby="stats">
-        <h2 id="stats">Statistics</h2>
+        <h2 id="stats">{t('show.stats')}</h2>
         {/* `stats` is optional: never sent with the page — asked for (a partial reload) once this section scrolls into view. */}
-        <WhenVisible<ShowUserProfileController> data="stats" buffer={100} fallback={<p aria-busy="true">Loading statistics…</p>}>
+        <WhenVisible<ShowUserProfileController> data="stats" buffer={100} fallback={<p aria-busy="true">{t('show.stats_loading')}</p>}>
           {() => (
-            <p>
-              {stats!.links === 1 ? '1 link' : `${stats!.links} links`} · member {stats!.memberNumber} of {stats!.members}
-            </p>
+            <p>{t('show.stats_text', { links: stats!.links, number: stats!.memberNumber, members: stats!.members })}</p>
           )}
         </WhenVisible>
       </section>
 
-      <section aria-label="Links">
+      <section aria-label={t('show.links')}>
         {profile.links.length > 0 && (
           <ul>
             {profile.links.map((link) => (
@@ -102,8 +100,8 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
                 {can.update && (
                   <>
                     {' '}
-                    <Link route="user-profile.links.destroy" params={{ user: profile.id, link: link.id }} aria-label={`Remove ${link.label}`}>
-                      Remove
+                    <Link route="user-profile.links.destroy" params={{ user: profile.id, link: link.id }} aria-label={t('show.remove_label', { label: link.label })}>
+                      {t('show.remove')}
                     </Link>
                   </>
                 )}
@@ -115,9 +113,9 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       </section>
 
       <nav>
-        <h2>Other people</h2>
+        <h2>{t('show.others')}</h2>
         <form method="get">
-          <input type="search" name="q" defaultValue={filter} placeholder="Filter by name" aria-label="Filter by name" />
+          <input type="search" name="q" defaultValue={filter} placeholder={t('show.filter')} aria-label={t('show.filter')} />
         </form>
         <ul>
           {others.data.map((other) => (
@@ -126,12 +124,12 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
               <Link route="user-profile.show" params={{ user: other.id }} prefetch>
                 {other.name}
               </Link>{' '}
-              <small>{other.lastLoginAt ? `last seen ${ago(other.lastLoginAt, now)}` : 'never signed in'}</small>
+              <small>{other.lastLoginAt ? t('show.last_seen', { when: ago(other.lastLoginAt) }) : t('show.never_signed_in')}</small>
             </li>
           ))}
           {!isOwnProfile && (
             <li>
-              <Link route="user-profile.me">Back to my profile</Link>
+              <Link route="user-profile.me">{t('show.back')}</Link>
             </li>
           )}
         </ul>
@@ -148,7 +146,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
             preserveScroll
             preserveState
           >
-            Load more
+            {t('show.more')}
           </Link>
         )}
       </nav>
@@ -157,6 +155,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
 }
 
 function AddLink({ userId }: { userId: number }) {
+  const t = useTranslation('user-profile');
   const form = useForm('user-profile.links.store', { user: userId }, { label: '', url: '' });
   return (
     <form
@@ -166,9 +165,9 @@ function AddLink({ userId }: { userId: number }) {
         void form.submit({ onSuccess: () => form.reset() });
       }}
     >
-      <input aria-label="Label" placeholder="Label" value={form.data.label} onChange={(e) => form.set('label', e.target.value)} />{' '}
-      <input aria-label="URL" placeholder="https://…" value={form.data.url} onChange={(e) => form.set('url', e.target.value)} />{' '}
-      <button disabled={form.processing}>Add link</button>
+      <input aria-label={t('show.add_label')} placeholder={t('show.add_label')} value={form.data.label} onChange={(e) => form.set('label', e.target.value)} />{' '}
+      <input aria-label={t('show.add_url')} placeholder="https://…" value={form.data.url} onChange={(e) => form.set('url', e.target.value)} />{' '}
+      <button disabled={form.processing}>{t('show.add')}</button>
       {form.errors.label && <small role="alert"> {form.errors.label}</small>}
       {form.errors.url && <small role="alert"> {form.errors.url}</small>}
     </form>

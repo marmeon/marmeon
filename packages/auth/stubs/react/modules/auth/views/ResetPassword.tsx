@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useRoute } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
 import type { ShowResetPasswordController } from '../controllers/ShowResetPasswordController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
@@ -7,15 +7,16 @@ type Props = PageProps<ShowResetPasswordController>;
 
 export default function ResetPassword({ email, csrfToken }: Props) {
   const route = useRoute();
+  const t = useTranslation('auth');
   const form = useForm('auth.password.store', { password: '', password_confirmation: '' });
 
   if (email === null) {
     return (
       <main>
-        <Head title="Reset your password" />
-        <h1>This link has expired</h1>
+        <Head title={t('reset.title')} />
+        <h1>{t('reset.expired')}</h1>
         <p>
-          Reset links work once, for a limited time. <Link route="auth.password.request">Ask for a new one</Link>.
+          {t('reset.expired_text')} <Link route="auth.password.request">{t('reset.ask')}</Link>.
         </p>
       </main>
     );
@@ -23,9 +24,9 @@ export default function ResetPassword({ email, csrfToken }: Props) {
 
   return (
     <main>
-      <Head title="Reset your password" />
-      <h1>Choose a new password</h1>
-      <p>For {email}</p>
+      <Head title={t('reset.title')} />
+      <h1>{t('reset.heading')}</h1>
+      <p>{t('reset.for', { email })}</p>
       <form
         method="post"
         action={route('auth.password.store')}
@@ -38,8 +39,8 @@ export default function ResetPassword({ email, csrfToken }: Props) {
         <input type="hidden" name="_token" value={csrfToken} />
         {(
           [
-            ['password', 'New password (at least 8 characters)'],
-            ['password_confirmation', 'Repeat the new password'],
+            ['password', t('reset.password', { min: 8 })],
+            ['password_confirmation', t('reset.password_confirmation')],
           ] as const
         ).map(([name, label]) => (
           <p key={name}>
@@ -58,7 +59,7 @@ export default function ResetPassword({ email, csrfToken }: Props) {
           </p>
         ))}
         <button type="submit" disabled={form.processing}>
-          Set the new password
+          {t('reset.submit')}
         </button>
       </form>
     </main>

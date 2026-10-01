@@ -1,18 +1,21 @@
 import type { Authenticated } from '@bespokecore/auth';
 import { Controller, type HttpContext } from '@bespokecore/http';
+import { Translator } from '@bespokecore/i18n';
 import { VerificationMailer } from '../verification.ts';
 
 export class ResendVerificationController extends Controller {
   readonly #mailer: VerificationMailer;
+  readonly #translator: Translator;
 
-  constructor(mailer: VerificationMailer) {
+  constructor(mailer: VerificationMailer, translator: Translator) {
     super();
     this.#mailer = mailer;
+    this.#translator = translator;
   }
 
   async handle(ctx: HttpContext<Authenticated>) {
     if (ctx.user.email_verified_at !== null) return this.redirect().route('user-profile.me');
     await this.#mailer.send(ctx.user);
-    return this.back('/email/verify').with('status', 'A new verification link is on its way.');
+    return this.back('/email/verify').with('status', this.#translator.get('auth.verify.sent'));
   }
 }

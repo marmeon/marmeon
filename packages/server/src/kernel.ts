@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
-import { Logger, runWithRequest, type Application, type Container } from '@bespokecore/core';
+import { Logger, runWithRequest, Translator, type Application, type Container } from '@bespokecore/core';
 import { AfterResponse, AssetVersion, ExceptionHandler, HttpError } from '@bespokecore/http';
 import {
   clientIp,
@@ -80,7 +80,9 @@ export function createHttpKernel(
     const handler = container.make(ExceptionHandler);
     handler.report(error);
     try {
-      return await toResponse(handler.render(error, request, { debug }), { request }, scope);
+      // In the request's language, when a translator is bound (@bespokecore/i18n) — the error page, its title, validation messages.
+      const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+      return await toResponse(handler.render(error, request, { debug, translator }), { request }, scope);
     } catch (failure) {
       // Building the error page failed too — most likely a shared prop (the database is down). Once more without
       // the request's scope, so with the error's own props only; server rendering failing is no reason (the browser

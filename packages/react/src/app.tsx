@@ -1,7 +1,9 @@
 import type { PageObject, PageProps, RouteManifest, SharedProps } from '@bespokecore/http/page';
+import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { defaultTitle, HeadContext, TitleRegistry, type HeadCollector, type TitleTemplate } from './head.tsx';
+import { I18nContext } from './i18n.tsx';
 import { Navigator, type PrefetchOptions, type VisitException, type VisitEvent, type VisitEvents, type VisitOptions } from './navigation.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { showProgress, type ProgressOptions } from './progress.ts';
@@ -98,11 +100,30 @@ export interface BespokeAppProps {
   progress?: ProgressOptions | false;
   /** Server rendering only: where `<Head>` records itself. */
   headCollector?: HeadCollector;
+  /**
+   * The app's language files (`createMessageLoader(lang)` of @bespokecore/i18n/messages) — each page renders with the
+   * messages of its `locale`, loaded before it renders (`useTranslation`). Without them, `useTranslation` throws.
+   */
+  messages?: MessageLoader;
+  /** The first page's messages, loaded before hydrating (by `createBespokeApp` and the SSR entry). */
+  initialCatalog?: Catalog;
+}
+
+/** The locale a page renders in: its own, else the fallback locale of the language files. */
+export function pageLocale(page: PageObject, messages: MessageLoader): string {
+  return page.locale ?? messages.fallback;
+}
+
+/** The messages a page renders with — loaded once per locale; undefined without language files. */
+export function loadPageMessages(page: PageObject, messages: MessageLoader | undefined): Promise<Catalog | undefined> {
+  return messages ? messages.load(pageLocale(page, messages)) : Promise.resolve(undefined);
 }
 
 interface Current {
   page: PageObject;
   Component: PageComponent;
+  /** The page's messages (in its locale). */
+  catalog: Catalog | undefined;
   /** Changes remount the page component (fresh state); an unchanged key preserves it. */
   key: number;
 }
@@ -116,8 +137,19 @@ interface Current {
  * fresh copy of its props from the server — what changed may be the props' shape, e.g. after a hot update);
  * a visit that fails (offline, 5xx) leaves the page as it is and shows the failure over it.
  */
-export function BespokeApp({ initialPage, initialComponent, resolve, title = defaultTitle, routes, layout, progress, headCollector }: BespokeAppProps) {
-  const [current, setCurrent] = useState<Current>({ page: initialPage, Component: initialComponent, key: 0 });
+export function BespokeApp({
+  initialPage,
+  initialComponent,
+  resolve,
+  title = defaultTitle,
+  routes,
+  layout,
+  progress,
+  headCollector,
+  messages,
+  initialCatalog,
+}: BespokeAppProps) {
+  const [current, setCurrent] = useState<Current>({ page: initialPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
   const [failure, setFailure] = useState<VisitException | null>(null);
 
   // The navigator waits until a page is on screen before it restores the scroll position.
@@ -128,17 +160,20 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
 
   const render = useCallback(
     async (page: PageObject, { preserveState }: { preserveState: boolean }) => {
-      const Component = await resolve(page.component);
+      // The page's component and its locale's messages, both before it renders: a page in another language (another
+      // tab switched it) loads that language's files first.
+      const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages)]);
       await new Promise<void>((done) => {
         committed.current.push(done);
         setCurrent((previous) => ({
           page,
           Component,
+          catalog,
           key: preserveState && previous.Component === Component ? previous.key : previous.key + 1,
         }));
       });
     },
-    [resolve],
+    [resolve, messages],
   );
   const renderRef = useRef(render);
   renderRef.current = render;
@@ -194,7 +229,14 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
   }, []);
 
   const router = useMemo(() => ({ page: current.page, visit, reload, prefetch, on }), [current.page, visit, reload, prefetch, on]);
-  const { Component, page, key } = current;
+  const { Component, page, key, catalog } = current;
+
+  const locale = messages ? pageLocale(page, messages) : page.locale;
+  const i18n = useMemo(() => (catalog && locale ? { catalog, locale } : null), [catalog, locale]);
+  // The document's language follows the page's (the server set it for the first one).
+  useEffect(() => {
+    if (locale && typeof document !== 'undefined' && document.documentElement.lang !== locale) document.documentElement.lang = locale;
+  }, [locale]);
 
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
   const head = useMemo(() => ({ template: title, collector: headCollector, titles }), [title, headCollector, titles]);
@@ -210,13 +252,15 @@ export function BespokeApp({ initialPage, initialComponent, resolve, title = def
   return (
     <HeadContext.Provider value={head}>
       <RoutesContext.Provider value={routes}>
-        <RouterContext.Provider value={router}>
-          {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
-          <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
-            {tree}
-          </ErrorBoundary>
-          <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
-        </RouterContext.Provider>
+        <I18nContext.Provider value={i18n}>
+          <RouterContext.Provider value={router}>
+            {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
+            <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
+              {tree}
+            </ErrorBoundary>
+            <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
+          </RouterContext.Provider>
+        </I18nContext.Provider>
       </RoutesContext.Provider>
     </HeadContext.Provider>
   );

@@ -27,6 +27,7 @@ import type { ShowSecurityController } from '../modules/auth/controllers/ShowSec
 import type { ShowUserProfileController } from '../modules/user-profile/controllers/ShowUserProfileController.ts';
 import type { ShowVerifyEmailNoticeController } from '../modules/auth/controllers/ShowVerifyEmailNoticeController.ts';
 import type { UpdateEmailController } from '../modules/auth/controllers/UpdateEmailController.ts';
+import type { UpdateLocaleController } from '../modules/locale/controllers/UpdateLocaleController.ts';
 import type { UpdatePasswordController } from '../modules/auth/controllers/UpdatePasswordController.ts';
 import type { UpdateUserProfileController } from '../modules/user-profile/controllers/UpdateUserProfileController.ts';
 import type { VerifyEmailController } from '../modules/auth/controllers/VerifyEmailController.ts';
@@ -55,6 +56,7 @@ declare module '@bespokecore/router' {
     'auth.verification.notice': { method: 'get'; path: '/email/verify'; controller: typeof ShowVerifyEmailNoticeController };
     'auth.verification.send': { method: 'post'; path: '/email/verification-notification'; controller: typeof ResendVerificationController };
     'auth.verification.verify': { method: 'get'; path: '/email/verify/:id/:hash'; controller: typeof VerifyEmailController; browser: false };
+    'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
@@ -109,6 +111,7 @@ export const routes = {
   'auth.tokens.store': { method: 'post', path: '/settings/tokens' },
   'auth.verification.notice': { method: 'get', path: '/email/verify' },
   'auth.verification.send': { method: 'post', path: '/email/verification-notification' },
+  'locale.update': { method: 'post', path: '/locale' },
   'user-profile.edit': { method: 'get', path: '/users/:user/edit' },
   'user-profile.links.destroy': { method: 'delete', path: '/users/:user/links/:link' },
   'user-profile.links.store': { method: 'post', path: '/users/:user/links' },

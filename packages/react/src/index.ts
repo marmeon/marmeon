@@ -1,4 +1,6 @@
-export { BespokeApp, usePage, useRouter, xsrfToken } from './app.tsx';
+export { BespokeApp, loadPageMessages, pageLocale, usePage, useRouter, xsrfToken } from './app.tsx';
+export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
+export type { I18nValue } from './i18n.tsx';
 export type {
   BespokeAppProps,
   PartialReloadOptions,

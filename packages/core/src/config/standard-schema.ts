@@ -7,9 +7,14 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
   readonly '~standard': {
     readonly version: 1;
     readonly vendor: string;
-    readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
+    readonly validate: (value: unknown, options?: StandardOptions | undefined) => StandardResult<Output> | Promise<StandardResult<Output>>;
     readonly types?: { readonly input: Input; readonly output: Output } | undefined;
   };
+}
+
+/** Spec 1.1: options of one validation — `libraryOptions` are the library's own (not all libraries read them). */
+export interface StandardOptions {
+  readonly libraryOptions?: Record<string, unknown> | undefined;
 }
 
 export type StandardResult<Output> =

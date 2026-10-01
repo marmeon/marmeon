@@ -1,17 +1,18 @@
 import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
+import { trans, Translator } from '@bespokecore/i18n';
 import { Session } from '@bespokecore/session';
 import * as v from 'valibot';
-import { TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
+import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
 
-const abilityNames = Object.keys(TOKEN_ABILITIES) as [TokenAbility, ...TokenAbility[]];
+const abilityNames = [...TOKEN_ABILITIES] as [TokenAbility, ...TokenAbility[]];
 
 export const CreateAccessTokenRequest = defineRequest({
   schema: v.object({
-    name: v.pipe(v.string('Name the token.'), v.trim(), v.minLength(1, 'Name the token.'), v.maxLength(60)),
+    name: v.pipe(v.string(trans('auth.validation.token_name')), v.trim(), v.minLength(1, trans('auth.validation.token_name')), v.maxLength(60)),
     // One ability or several (an HTML form sends one value per checkbox).
     abilities: v.pipe(
-      v.union([v.picklist(abilityNames), v.pipe(v.array(v.picklist(abilityNames)), v.minLength(1))], 'Pick what the token may do.'),
+      v.union([v.picklist(abilityNames), v.pipe(v.array(v.picklist(abilityNames)), v.minLength(1))], trans('auth.validation.token_abilities')),
       v.transform((value) => [value].flat()),
     ),
   }),
@@ -27,18 +28,20 @@ export class CreateAccessTokenController extends Controller {
 
   readonly #tokens: AccessTokenStore;
   readonly #session: Session;
+  readonly #translator: Translator;
 
-  constructor(tokens: AccessTokenStore, session: Session) {
+  constructor(tokens: AccessTokenStore, session: Session, translator: Translator) {
     super();
     this.#tokens = tokens;
     this.#session = session;
+    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof CreateAccessTokenRequest>) {
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
     return this.view('auth/AccessTokens', {
       tokens: await this.#tokens.list(ctx.user.id),
-      abilities: TOKEN_ABILITIES,
+      abilities: abilityDescriptions(this.#translator),
       plainText: plainText as string | null,
       csrfToken: this.#session.token(),
     });

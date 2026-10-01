@@ -21,7 +21,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /** A new user — `undefined` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
-  register(values: { name: string; email: string; password: PasswordHash }): Promise<User | undefined> {
+  register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
     return this.tryInsert(values);
   }
 

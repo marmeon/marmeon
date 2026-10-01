@@ -1,4 +1,4 @@
-import { Logger, token } from '@bespokecore/core';
+import { Logger, token, type Translator } from '@bespokecore/core';
 import { expectsJson, HttpError, statusText, ValidationError } from '@bespokecore/router';
 import { ERROR_PAGE, PAGE_HEADER, type ErrorPageProps } from './page.ts';
 import { RedirectResult } from './redirect.ts';
@@ -14,8 +14,17 @@ export { abort, HttpError } from '@bespokecore/router';
 export interface ExceptionHandler {
   /** Records the error (logs it). Client errors (4xx) are not reported. */
   report(error: unknown): void;
-  /** Turns the error into a result: a view for pages and navigations, JSON for APIs. */
-  render(error: unknown, request: Request, options: { debug: boolean }): unknown;
+  /**
+   * Turns the error into a result: a view for pages and navigations, JSON for APIs — in the request's language when
+   * a `translator` is given (the kernel passes the request's, when @bespokecore/i18n binds one).
+   */
+  render(error: unknown, request: Request, options: ExceptionRenderOptions): unknown;
+}
+
+export interface ExceptionRenderOptions {
+  debug: boolean;
+  /** The request's translator (`Translator` of @bespokecore/core); without one, texts stay in English. */
+  translator?: Translator;
 }
 export const ExceptionHandler = token<ExceptionHandler>('ExceptionHandler');
 
@@ -32,12 +41,22 @@ export class DefaultExceptionHandler implements ExceptionHandler {
     this.#logger.error(message, { exception: name, stack });
   }
 
-  render(error: unknown, request: Request, { debug }: { debug: boolean }): unknown {
-    if (error instanceof ValidationError) return renderInvalid(error, request);
+  render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown {
+    if (error instanceof ValidationError) return renderInvalid(translator ? error.translate(translator) : error, request);
     const status = error instanceof HttpError ? error.status : 500;
-    const title = statusText(status);
+    // Framework texts by key (`bespoke.status.404`), English without a translator.
+    const title = translator ? translator.text(`bespoke.status.${status}`, {}, statusText(status)) : statusText(status);
     const exposed = error instanceof HttpError || debug;
-    const message = exposed ? asError(error).message : title;
+    const translation = error instanceof HttpError ? error.translation : undefined;
+    // An error's own message may be a key too: `abort(403, 'auth.verify.wrong_account')`, `deny('…')` of a policy.
+    const raw = asError(error).message;
+    const message = !exposed
+      ? title
+      : translator && translation
+        ? translator.text(translation.key, translation.params, raw)
+        : translator?.has(raw)
+          ? translator.text(raw)
+          : raw;
     // A deliberate abort(4xx) is not a bug: no stack trace, not even in debug mode (like Laravel).
     const exception = debug && status >= 500 ? asError(error) : null;
     const headers = error instanceof HttpError ? error.headers : {};
