@@ -78,6 +78,12 @@ describe('VerifyCsrfToken', () => {
     expect((await send('/save', form({ _token: 'x'.repeat(40) }))).status).toBe(419);
   });
 
+  it('never takes the token from the query string — it would end up in logs and Referers (E65)', async () => {
+    const { send, token } = await boot();
+    await send('/form');
+    expect((await send(`/save?_token=${token()}`, form({}))).status).toBe(419);
+  });
+
   it('rotates the token with the session id — the old one stops working', async () => {
     const { send, token } = await boot();
     await send('/form');

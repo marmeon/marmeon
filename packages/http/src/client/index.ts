@@ -43,3 +43,5 @@ export type { LinkClick, PrefetchSetting, PrefetchTrigger } from './links.ts';
 export { firstErrors } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export type { TitleTemplate } from './title.ts';
+export { assertQueryPage, linkQuery, pageQuery, QueryState, queryUrl, withoutDefaults } from './query-state.ts';
+export type { QueryStateOptions, QueryUpdate } from './query-state.ts';

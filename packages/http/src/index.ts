@@ -58,6 +58,8 @@ export type {
   Param,
   ParamsOf,
   Query,
+  QueryOf,
+  QueryOptions,
   RequestDefinition,
   RouteName,
   Routes,

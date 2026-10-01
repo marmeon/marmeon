@@ -200,6 +200,18 @@ describe('registration', () => {
     const ada = await app.factory(UserFactory).create();
     await app.actingAs(ada).get('/register').assertRedirect('/users/me');
   });
+
+  it('counter-check (E65): a password in the query string of the POST is never taken — 422 at the field, no account', async () => {
+    // A link (or a log line, a Referer) carrying the password must not be able to fill in the form's fields.
+    const url = '/register?password=geheim123&password_confirmation=geheim123';
+    await app
+      .post(url, { form: { name: 'Ada Lovelace', email: 'ada@example.com' }, headers: { referer: 'http://localhost/register' } })
+      .assertRedirect('/register')
+      .assertInvalid<RegisterController>(['password'])
+      .assertGuest();
+    await app.expectingJson().post(url, { json: { name: 'Ada Lovelace', email: 'ada@example.com' } }).assertUnprocessable().assertInvalid<RegisterController>(['password']);
+    await app.assertDatabaseCount('users', 0);
+  });
 });
 
 describe('remember me', () => {

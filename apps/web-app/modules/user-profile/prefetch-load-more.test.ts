@@ -4,7 +4,6 @@ import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
-import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 
 let app: TestApp;
 beforeEach(async () => {
@@ -35,31 +34,5 @@ describe('prefetching (W5 step 6)', () => {
     const ada = await app.factory(UserFactory).create();
     await app.actingAs(ada).prefetching().get('/settings/tokens').assertRedirect('/confirm-password').assertSessionMissing(INTENDED_KEY);
     await app.actingAs(ada).navigating().get('/settings/tokens').assertRedirect('/confirm-password').assertSessionHas(INTENDED_KEY, '/settings/tokens');
-  });
-});
-
-describe('the people list: "Load more" (cursor pagination + deepMerge)', () => {
-  it('sends the next five with a partial reload — merged by the browser: data appended, matched on id; meta replaced', async () => {
-    const ada = await app.factory(UserFactory).create();
-    await app.factory(UserFactory).count(7).create();
-    const first = (await app.actingAs(ada).navigating().get(`/users/${ada.id}`).assertOk()).page()!;
-    const others = first.props.others as { data: { id: number }[]; meta: { nextCursor: string | null } };
-    expect(others.data).toHaveLength(5);
-    expect(first.deepMergeProps).toEqual(['others']);
-    expect(first.matchPropsOn).toEqual(['others.data.id']);
-
-    const more = (
-      await app
-        .actingAs(ada)
-        .reloading<ShowUserProfileController>('user-profile/Show', { only: ['others'] })
-        .get(`/users/${ada.id}?cursor=${others.meta.nextCursor}`)
-        .assertOk()
-    ).page()!;
-    expect(Object.keys(more.props).sort()).toEqual(['errors', 'others']);
-    const next = more.props.others as typeof others;
-    expect(next.data).toHaveLength(2);
-    expect(next.meta.nextCursor).toBeNull();
-    expect(new Set([...others.data, ...next.data].map((person) => person.id)).size).toBe(7);
-    expect(more).toMatchObject({ deepMergeProps: ['others'], matchPropsOn: ['others.data.id'] });
   });
 });

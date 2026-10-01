@@ -1,3 +1,4 @@
+import type { InferOutput, QuerySchemaOf } from './request-definition.ts';
 import type { ExtractParams } from './types.ts';
 import type { Param, Query } from './url.ts';
 
@@ -91,17 +92,38 @@ export type MethodOf<N extends string> = Entry<N> extends { readonly method: inf
 /** The controller class behind route `N` (`typeof UpdateUserProfileController`), or `never` for a closure. */
 export type ControllerOf<N extends string> = Entry<N> extends { readonly controller: infer C } ? C : never;
 
+/** The parsed query of controller class `C` (its `static request`'s `query` schema output), or `never`. */
+type ControllerQuery<C> = C extends { readonly request?: infer R } ? ([QuerySchemaOf<R>] extends [never] ? never : InferOutput<QuerySchemaOf<R>>) : never;
+
+/**
+ * The parsed query of route `N` — its controller's query schema, defaults filled in (what `ctx.query` is, and what
+ * `useQueryState` holds). `never` for a route without a query schema.
+ */
+export type RouteQueryOf<N extends string> = true extends IsUnion<N> ? never : ControllerQuery<ControllerOf<N>>;
+
+/** A query to write into a URL of a route: any of its fields, typed by the schema's *output* (`page: 2`, not `'2'`). */
+export type QueryFields<Q> = { readonly [K in keyof Q]?: (Q[K] extends readonly (infer E)[] ? readonly E[] : Q[K]) | undefined };
+
+/**
+ * The query a URL of route `N` may carry (E55): with a query schema, its fields — a wrong key or value is a compile
+ * error, renaming a field breaks every link that sets it; without one (or for a name that is not one literal), any.
+ * Values are written with `String()`, lists as repeated keys — the server parses them back.
+ */
+export type QueryParams<N extends string> = [RouteQueryOf<N>] extends [never] ? Query : QueryFields<RouteQueryOf<N>>;
+
 type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
 
 /**
  * The arguments after a route name: its path parameters — required when the path has required ones — and a
- * query. A name that is not one literal (a `RouteName` variable) takes any parameters: they are checked at runtime.
+ * query (typed by the route's query schema, see {@link QueryParams}). A name that is not one literal (a `RouteName` variable) takes any parameters: they are checked at runtime.
  *
  * ```ts
  * redirect().route('user-profile.show', { user: 7 }, { tab: 'links' });   // → /users/7?tab=links
  * ```
  */
-export type RouteArgs<N extends string> = {} extends ParamsOf<N> ? [params?: ParamsOf<N>, query?: Query] : [params: ParamsOf<N>, query?: Query];
+export type RouteArgs<N extends string> = {} extends ParamsOf<N>
+  ? [params?: ParamsOf<N>, query?: QueryParams<N>]
+  : [params: ParamsOf<N>, query?: QueryParams<N>];
 
 // -- "Did you mean …?" ---------------------------------------------------------------------------------------
 

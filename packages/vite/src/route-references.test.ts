@@ -28,6 +28,21 @@ describe('collectRouteReferences', () => {
     expect(names).toEqual(['auth.login', 'user-profile.edit', 'user-profile.me', 'user-profile.show', 'user-profile.update']);
   });
 
+  it('collects the route of useQueryState(name, …) — its page needs its pattern (W5b step 2)', () => {
+    const { names, problems } = collect(`
+      import { useQueryState } from '@bespokecore/react';
+      export default function People() {
+        const [query, setQuery] = useQueryState('user-profile.show', { only: ['people'], debounce: 300 });
+        return null;
+      }
+    `);
+    expect(problems).toEqual([]);
+    expect(names).toEqual(['user-profile.show']);
+    expect(collect(`import { useQueryState } from '@bespokecore/react'; export const X = ({ name }) => useQueryState(name);`).problems[0]).toContain(
+      'useQueryState()',
+    );
+  });
+
   it('follows import aliases, namespace imports, as const and const bindings in the module', () => {
     const { names, problems } = collect(`
       import { Link as L, useRoute as useUrl } from '@bespokecore/react';

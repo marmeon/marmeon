@@ -68,39 +68,6 @@ describe('user-profile module', () => {
     await app.actingAs(ada).get(profile(ada)).assertOk().assertPage('user-profile/Show');
   });
 
-  it('filters the other people by name from the query string', async () => {
-    await as(ada)
-      .get(`${profile(ada)}?q=  TUR `)
-      .assertPage<ShowUserProfileController>('user-profile/Show', {
-        filter: 'TUR',
-        others: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null }], meta: { perPage: 5, nextCursor: null } },
-      });
-    await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.others.data.map((other) => other.name)).toEqual(['Alan Turing', 'Grace Hopper']);
-    });
-    // LIKE wildcards in the search are taken literally
-    await as(ada).get(`${profile(ada)}?q=%25`).assertPage<ShowUserProfileController>('user-profile/Show', { others: { data: [] } });
-  });
-
-  it('pages through the people by cursor — five at a time, the filter kept, a bad cursor harmless', async () => {
-    await app.factory(UserFactory).count(11).create(); // "User 1" … "User 11", plus Alan and Grace
-    const names: string[] = [];
-    let cursor: string | null = '';
-    for (let page = 0; cursor !== null; page++) {
-      await as(ada).get(`${profile(ada)}?q=user${cursor ? `&cursor=${cursor}` : ''}`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-        expect(props.others.data.length).toBeLessThanOrEqual(5);
-        names.push(...props.others.data.map((other) => other.name));
-        cursor = props.others.meta.nextCursor;
-      });
-      expect(page).toBeLessThan(3);
-    }
-    expect(names).toHaveLength(11);
-    expect(new Set(names).size).toBe(11);
-    await as(ada).get(`${profile(ada)}?cursor=not-a-cursor`).assertPage<ShowUserProfileController>('user-profile/Show', (props) => {
-      expect(props.others.data[0]!.name).toBe('Alan Turing');
-    });
-  });
-
   it('serves a stateless API under /api — a token, no session, no cookies', async () => {
     const response = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=2').assertOk().assertCookieMissing('bespoke_session');
     expect(response.json()).toEqual({
@@ -146,6 +113,12 @@ describe('user-profile module', () => {
         .assertRedirect(`${profile(ada)}/edit`)
         .assertInvalid<UpdateUserProfileController>(['name'])
         .assertSessionHas('_old_input', { name: 'A', bio: 'ok' });
+    });
+
+    it('counter-check (E65): fields in the query string of a PUT change nothing — only the body is validated', async () => {
+      await app.actingAs(ada).expectingJson().put(`${profile(ada)}?name=Mallory`, { json: { bio: 'Countess.' } }).assertUnprocessable().assertInvalid<UpdateUserProfileController>(['name']);
+      await app.actingAs(ada).put(`${profile(ada)}?name=Mallory&bio=pwned`, { json: { name: 'Ada King', bio: 'Countess.' } }).assertRedirect(profile(ada));
+      await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King', bio: 'Countess.' });
     });
 
     it('forbids editing someone else (403 before validation)', async () => {
@@ -278,11 +251,11 @@ describe('user-profile module', () => {
     const queries: string[] = [];
     app.make(Connections).onQuery((query) => queries.push(query.sql));
 
-    const people = await directory.people({ except: ada.id, perPage: 50 });
-    // 7 people, each with their last sign-in: ONE query for the rows and their relation (keyset pagination counts nothing).
+    const people = await directory.people({ q: '', sort: 'name' }, { perPage: 50 });
+    // 8 people, each with their last sign-in: ONE query for the rows and their relation (keyset pagination counts nothing).
     expect(queries).toHaveLength(1);
     expect(queries.filter((sql) => /login_activity/.test(sql))).toHaveLength(1);
-    expect(people.data).toHaveLength(7);
+    expect(people.data).toHaveLength(8);
     expect(people.data.find((person) => person.id === grace.id)?.activity).toEqual({ last_login_at: expect.stringMatching(/Z$/) });
     expect(people.data.find((person) => person.id === alan.id)?.activity).toBeNull();
   });

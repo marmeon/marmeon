@@ -1,4 +1,4 @@
-import { Controller, deepMerge, defer, optional, type HttpContext } from '@bespokecore/http';
+import { Controller, defer, optional, type HttpContext } from '@bespokecore/http';
 import { Gate, type Authenticated } from '@bespokecore/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileActivity } from '../ProfileActivity.ts';
@@ -21,7 +21,6 @@ export class ShowUserProfileController extends Controller {
     // The selected row goes to the view as it is — the migration's column types reach the view.
     // Held back on purpose: the e-mail (owner only) and the last sign-in (shown as lastLoginAt).
     const { email, activity: login, ...user } = ctx.params.user;
-    const filter = ctx.query.get('q')?.trim() ?? '';
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
@@ -32,17 +31,6 @@ export class ShowUserProfileController extends Controller {
       // What the page may offer — explicit, from the policies (E28). The server checks again on every action.
       can: { update: await this.#gate.allows(ProfilePolicy, 'update', user) },
       lastLoginAt: login?.last_login_at ?? null,
-      filter,
-      // Five at a time, "Load more" asks for the next ones (`?cursor=…`, a partial reload of `others`) and the browser
-      // appends them: `deepMerge` appends `data` and replaces `meta` (the next cursor); `matchOn('data.id')` keeps
-      // anyone from appearing twice when the same people come again. A function: computed only when sent.
-      others: deepMerge(async () => {
-        const people = await this.#directory.people({ search: filter, except: user.id, cursor: ctx.query.get('cursor'), perPage: 5 });
-        return {
-          data: people.data.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null })),
-          meta: people.meta,
-        };
-      }).matchOn('data.id'),
       // Loaded after the page (E7): the page renders without it, the browser asks for it next — `<Deferred data="activity">`.
       activity: defer(() => this.#activity.recent(user.id)),
       // Never in a full response, only when the page asks — `reload({ only: ['stats'] })` behind "Show statistics".

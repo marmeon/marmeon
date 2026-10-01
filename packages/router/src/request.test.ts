@@ -23,11 +23,25 @@ async function rejection(promise: Promise<unknown>): Promise<HttpError> {
 }
 
 describe('ctx.input()', () => {
-  it('parses JSON bodies and merges the query (the body wins)', async () => {
+  it('parses JSON bodies — never merging the query in (E65)', async () => {
     const request = post('/?page=2&name=query', JSON.stringify({ name: 'Ada', tags: ['a'], age: 36 }), {
       'content-type': 'application/json; charset=utf-8',
     });
-    expect(await createRequestState(request).input()).toEqual({ page: '2', name: 'Ada', tags: ['a'], age: 36 });
+    const state = createRequestState(request);
+    expect(await state.input()).toEqual({ name: 'Ada', tags: ['a'], age: 36 });
+    expect(state.query.get('page')).toBe('2');
+  });
+
+  it('counter-check (E65): a field missing from the body cannot come from the URL — JSON, forms and multipart alike', async () => {
+    const url = '/register?password=geheim123&role=admin';
+    const multipart = new FormData();
+    multipart.set('name', 'Ada');
+    const requests = [
+      post(url, JSON.stringify({ name: 'Ada' }), { 'content-type': 'application/json' }),
+      form('name=Ada', url),
+      new Request(URL_BASE + url, { method: 'POST', body: multipart }),
+    ];
+    for (const request of requests) expect(await createRequestState(request).input()).toEqual({ name: 'Ada' });
   });
 
   it('parses forms with bracket notation into objects and arrays', async () => {
@@ -78,9 +92,9 @@ describe('ctx.input()', () => {
     expect(await first).toEqual({ a: '1' });
   });
 
-  it('uses only the query for GET requests and non-input bodies', async () => {
-    expect(await createRequestState(new Request(`${URL_BASE}/?q=ada`)).input()).toEqual({ q: 'ada' });
-    expect(await createRequestState(post('/?q=ada', 'raw text', { 'content-type': 'text/plain' })).input()).toEqual({ q: 'ada' });
+  it('is empty for GET requests (no body) and for bodies that are no input — the query stays in ctx.query', async () => {
+    expect(await createRequestState(new Request(`${URL_BASE}/?q=ada`)).input()).toEqual({});
+    expect(await createRequestState(post('/?q=ada', 'raw text', { 'content-type': 'text/plain' })).input()).toEqual({});
   });
 
   it('rejects bodies over the limit — by header and by actually counting', async () => {
@@ -109,7 +123,7 @@ describe('ctx.input()', () => {
     const json = { 'content-type': 'application/json' };
     expect((await rejection(createRequestState(post('/', '{nope', json)).input())).message).toBe('Malformed JSON body.');
     expect((await rejection(createRequestState(post('/', '[1,2]', json)).input())).message).toBe('The JSON body must be an object.');
-    expect(await createRequestState(post('/?a=1', '', json)).input()).toEqual({ a: '1' });
+    expect(await createRequestState(post('/?a=1', '', json)).input()).toEqual({});
   });
 
   it('cannot be abused: no prototype pollution, no huge sparse arrays, limited depth', async () => {

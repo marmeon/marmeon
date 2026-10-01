@@ -9,7 +9,7 @@ const ACTIVITY_POLL = 15_000;
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, filter, others, activity, stats, now, auth }: Props) {
+export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, activity, stats, now, auth }: Props) {
   // The activity panel keeps itself current: a background reload of just `activity`, paused while the tab is hidden.
   usePoll<ShowUserProfileController>(ACTIVITY_POLL, { only: ['activity'] });
   const t = useTranslation('user-profile');
@@ -113,42 +113,19 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, f
       </section>
 
       <nav>
-        <h2>{t('show.others')}</h2>
-        <form method="get">
-          <input type="search" name="q" defaultValue={filter} placeholder={t('show.filter')} aria-label={t('show.filter')} />
-        </form>
         <ul>
-          {others.data.map((other) => (
-            <li key={other.id}>
-              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once. */}
-              <Link route="user-profile.show" params={{ user: other.id }} prefetch>
-                {other.name}
-              </Link>{' '}
-              <small>{other.lastLoginAt ? t('show.last_seen', { when: ago(other.lastLoginAt) }) : t('show.never_signed_in')}</small>
-            </li>
-          ))}
+          <li>
+            {/* The list of everyone lives on its own page now, its filters in the URL (useQueryState). */}
+            <Link route="user-profile.people" prefetch>
+              {t('show.people')}
+            </Link>
+          </li>
           {!isOwnProfile && (
             <li>
               <Link route="user-profile.me">{t('show.back')}</Link>
             </li>
           )}
         </ul>
-        {others.meta.nextCursor && (
-          // The next five, appended (`others` is deepMerge()d on the server) — the URL stays the list's, so a reload
-          // starts over at the top; Back and Forward keep what was loaded (the page in memory). Without JavaScript,
-          // an ordinary link to the next five.
-          <Link
-            route="user-profile.show"
-            params={{ user: profile.id }}
-            query={{ ...(filter ? { q: filter } : {}), cursor: others.meta.nextCursor }}
-            only={['others']}
-            preserveUrl
-            preserveScroll
-            preserveState
-          >
-            {t('show.more')}
-          </Link>
-        )}
       </nav>
     </main>
   );

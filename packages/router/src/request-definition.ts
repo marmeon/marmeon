@@ -36,12 +36,26 @@ export interface StandardIssue {
 export type InferInput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['input'];
 export type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
 
+/** What an invalid query field does — never a 422: links outlive their pages, and people type URLs (E56). */
+export interface QueryOptions {
+  /**
+   * `'fallback'` (the default): an invalid field takes its default, an unknown one is ignored. `'redirect'`: the same,
+   * and a GET with an invalid or unknown field is redirected (302) to its canonical URL — without them, so the address
+   * bar shows what the page shows. Other methods always fall back.
+   */
+  readonly onInvalid?: 'fallback' | 'redirect';
+}
+
 /**
- * What an endpoint accepts (REPR): the schema of its input and who may call it.
- * Declared next to the controller and attached with `static request = …` (E13).
+ * What an endpoint accepts (REPR): the schema of its body, the schema of its query and who may call it.
+ * Declared next to the controller and attached with `static request = …` (E13). Body and query never mix (E65):
+ * `schema` validates the body only — a GET has none, so a GET route takes `query` instead.
  */
-export interface RequestDefinition<TSchema extends StandardSchemaV1 = StandardSchemaV1, TCtx = any> {
-  readonly schema: TSchema;
+export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx = any, TQuery extends StandardSchemaV1 = any> {
+  readonly schema?: TSchema | undefined;
+  /** The query string, parsed (`ctx.query`): every field optional or with a default — an invalid one falls back to it. */
+  readonly query?: TQuery | undefined;
+  readonly queryOptions?: QueryOptions | undefined;
   /**
    * Runs after route binding, before validation; `false` answers 403 (or it throws its own `HttpError`).
    * Its context type is what the route must provide. `resolve` builds classes from the request's container
@@ -49,6 +63,43 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = StandardSc
    */
   readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
 }
+
+/** What a query value may become: what the URL can carry back (`String()` of it — see `toSearchParams`). */
+type QueryScalar = string | number | boolean;
+type QueryFieldValue = QueryScalar | readonly QueryScalar[] | undefined;
+
+type RequiredKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
+type Quoted<K> = `'${K & string}'`;
+type JoinKeys<K> = [K] extends [never] ? '' : Quoted<K>; // one name is enough to point at the problem
+
+/** Fields whose input is no string: the URL only ever has strings (`unknown` — a coercing schema — is fine). */
+type NonStringFields<I> = {
+  [K in keyof I]-?: unknown extends I[K] ? never : [Extract<Exclude<I[K], undefined>, string | readonly string[]>] extends [never] ? K : never;
+}[keyof I];
+
+/** Fields whose output cannot go back into a URL (a Date, an object). */
+type UnserializableFields<O> = { [K in keyof O]-?: O[K] extends QueryFieldValue ? never : K }[keyof O];
+
+type First<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? (I extends () => infer R ? R : never) : never;
+
+/**
+ * `TQuery` when it describes a query; otherwise the message the compiler shows as the expected type:
+ * - total (E56): an empty query must be valid, so each field can fall back — never a 422;
+ * - string input: the URL has strings, so a number is parsed (`v.pipe(v.string(), v.toNumber())`);
+ * - serializable output: what a link puts back into the URL (`String()`) must parse to the same value.
+ */
+export type CheckQuery<TQuery extends StandardSchemaV1> =
+  InferOutput<TQuery> extends Record<string, unknown>
+    ? InferInput<TQuery> extends Record<string, unknown>
+      ? [RequiredKeys<InferInput<TQuery>>] extends [never]
+        ? [NonStringFields<InferInput<TQuery>>] extends [never]
+          ? [UnserializableFields<InferOutput<TQuery>>] extends [never]
+            ? TQuery
+            : `query field ${JoinKeys<First<UnserializableFields<InferOutput<TQuery>>>>} cannot go back into a URL — a query value is a string, number, boolean or an array of them`
+          : `query fields are read from the URL as strings: ${JoinKeys<First<NonStringFields<InferInput<TQuery>>>>} does not take one — parse the string, e.g. v.pipe(v.string(), v.toNumber())`
+        : `query fields need a default or must be optional: ${JoinKeys<First<RequiredKeys<InferInput<TQuery>>>>} is required`
+      : 'a query schema describes an object of fields — v.object({ … })'
+    : 'a query schema describes an object of fields — v.object({ … })';
 
 /**
  * ```ts
@@ -61,27 +112,45 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = StandardSc
  *   static request = UpdateUserProfileRequest;
  *   handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) { ctx.body.name; }
  * }
+ *
+ * // A GET: the query, parsed — an invalid field falls back to its default (E56).
+ * export const ListPeopleRequest = defineRequest({
+ *   query: v.object({ sort: v.optional(v.picklist(['name', '-name']), 'name'), page: v.optional(v.pipe(v.string(), v.toNumber()), '1') }),
+ * });
+ * handle(ctx: ContextOf<typeof ListPeopleRequest>) { ctx.query.sort; ctx.query.page; }   // 'name' | '-name', number
  * ```
  */
-export function defineRequest<TSchema extends StandardSchemaV1, TCtx = HttpContext>(definition: {
-  schema: TSchema;
+export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TCtx = HttpContext>(definition: {
+  schema?: TSchema;
+  query?: CheckQuery<TQuery>;
+  queryOptions?: QueryOptions;
   authorize?: (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
-}): RequestDefinition<TSchema, TCtx> {
-  return definition;
+}): RequestDefinition<TSchema, TCtx, TQuery> {
+  return definition as RequestDefinition<TSchema, TCtx, TQuery>;
 }
 
 /** Type-only marker: carries the request in a handler's context, so `FormOf<Controller>` can find it. */
 declare const REQUEST: unique symbol;
 
-/** What validation adds to the context — like a middleware's `next({ body })`. */
-export type Validated<R extends RequestDefinition> = {
-  readonly body: InferOutput<R['schema']>;
+/** The body schema of a request — `never` without one. */
+export type SchemaOf<R> = R extends { readonly schema?: infer S } ? (S extends StandardSchemaV1 ? S : never) : never;
+
+/** The query schema of a request — `never` without one. */
+export type QuerySchemaOf<R> = R extends { readonly query?: infer Q } ? (Q extends StandardSchemaV1 ? Q : never) : never;
+
+/** What validation adds to the context — like a middleware's `next({ body })`. (The parsed query: {@link ContextOf}.) */
+export type Validated<R extends RequestDefinition> = BodyOf<SchemaOf<R>> & {
   readonly [REQUEST]?: R;
 };
 
-/** The full context of an endpoint: what its `authorize` needs, plus the validated body. */
+/** `ctx` with the parsed query in place of the raw `URLSearchParams` — when there is a query schema. */
+export type WithQuery<TCtx, TQuery extends StandardSchemaV1> = [TQuery] extends [never]
+  ? TCtx
+  : Omit<TCtx, 'query'> & { readonly query: InferOutput<TQuery> };
+
+/** The full context of an endpoint: what its `authorize` needs, plus the validated body and the parsed query. */
 export type ContextOf<R extends RequestDefinition> =
-  R extends RequestDefinition<StandardSchemaV1, infer TCtx> ? TCtx & Validated<R> : never;
+  R extends RequestDefinition<StandardSchemaV1, infer TCtx> ? WithQuery<TCtx, QuerySchemaOf<R>> & Validated<R> : never;
 
 /** The request a controller's `handle` accepts (via `ContextOf` / `Validated`), or `never`. */
 export type RequestOf<C> = C extends { handle: (ctx: infer TCtx, ...rest: any[]) => unknown }
@@ -91,7 +160,10 @@ export type RequestOf<C> = C extends { handle: (ctx: infer TCtx, ...rest: any[])
   : never;
 
 /** The form a controller accepts — its schema's *input* type (what the browser sends). */
-export type FormOf<C> = InferInput<RequestOf<C>['schema']>;
+export type FormOf<C> = InferInput<SchemaOf<RequestOf<C>>>;
+
+/** The parsed query of a controller (`ctx.query`, defaults filled in) — `never` without a query schema. */
+export type QueryOf<C> = [QuerySchemaOf<RequestOf<C>>] extends [never] ? never : InferOutput<QuerySchemaOf<RequestOf<C>>>;
 
 /** A route's controller either has no request (`never`) or adds a validated body to the context. */
 export type BodyOf<TSchema extends StandardSchemaV1> = [TSchema] extends [never]
@@ -207,13 +279,123 @@ export class ValidationError extends HttpError {
   }
 }
 
-/** Runs a request definition: authorize (403), then validate (422). Returns the validated body. */
-export async function validateRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<unknown> {
+/** What {@link validateRequest} hands the controller. */
+export interface ValidatedRequest {
+  /** The validated body — only when the request has a `schema`. */
+  readonly body?: unknown;
+  /** The parsed query — only when the request has a `query` schema. */
+  readonly query?: ParsedQuery;
+}
+
+/**
+ * Runs a request definition: authorize (403), then parse the query (never fails — invalid fields fall back), then
+ * validate the body (422). Body and query never mix (E65): `schema` sees `ctx.input()`, which is the body alone.
+ */
+export async function validateRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<ValidatedRequest> {
   if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
     throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'bespoke.errors.unauthorized' });
   }
+  const query = definition.query ? await parseQuery(definition.query, ctx.query) : undefined;
+  if (!definition.schema) return query ? { query } : {};
   const input = await ctx.input();
   const result = await definition.schema['~standard'].validate(input);
   if (result.issues) throw ValidationError.fromIssues(result.issues, input);
-  return result.value;
+  return query ? { body: result.value, query } : { body: result.value };
+}
+
+/** A query, parsed against its schema (E56). */
+export interface ParsedQuery {
+  /** The parsed query, defaults filled in — `ctx.query`. */
+  readonly value: Record<string, unknown>;
+  /**
+   * The fields the URL set — valid, parsed, and not just the default: what the page object carries (`PageObject.query`)
+   * and what the canonical URL has.
+   */
+  readonly canonical: Record<string, unknown>;
+  /** What an empty query parses to — the defaults (the browser leaves them out of URLs it builds). */
+  readonly defaults: Record<string, unknown>;
+  /** Keys of the URL that were left out: invalid (they fell back to their default) or unknown. */
+  readonly dropped: readonly string[];
+}
+
+/**
+ * The query as a schema's input: a key once is a string, a key repeated (`?tag=a&tag=b`) a list of them — what
+ * `toSearchParams` writes for a list. (`__proto__` is not a key.)
+ */
+export function queryInput(search: URLSearchParams): Record<string, string | string[]> {
+  const input: Record<string, string | string[]> = Object.create(null);
+  for (const [key, value] of search) {
+    if (key === '__proto__') continue;
+    const seen = input[key];
+    input[key] = seen === undefined ? value : Array.isArray(seen) ? [...seen, value] : [seen, value];
+  }
+  return input;
+}
+
+/**
+ * Parses a query against its schema — and never fails for what the URL holds (E56): a field the schema rejects is
+ * taken out, and the rest is validated again, so it falls back to its default (by the issues' paths, so it works with
+ * any Standard Schema library — at most twice per field). One value where the schema wants a list is tried as a list
+ * of one first (`?tag=a` for `v.array(…)`). Keys the schema does not know are left out of {@link ParsedQuery.canonical}.
+ *
+ * Throws only for a schema that is not total — one an empty query fails (the types refuse it: `CheckQuery`).
+ */
+export async function parseQuery(schema: StandardSchemaV1, search: URLSearchParams): Promise<ParsedQuery> {
+  const validate = async (value: unknown) => schema['~standard'].validate(value);
+  const empty = await validate({});
+  if (empty.issues) throw notTotal(empty.issues);
+  const defaults = asRecord(empty.value);
+
+  const input: Record<string, unknown> = queryInput(search);
+  const keys = Object.keys(input);
+  const dropped = new Set<string>();
+  const asList = new Set<string>();
+  let value = defaults;
+  for (let attempt = 0; attempt <= keys.length * 2; attempt++) {
+    const result = await validate({ ...input });
+    if (!result.issues) {
+      value = asRecord(result.value);
+      break;
+    }
+    const failing = [...new Set(result.issues.map(topKey))].filter((key): key is string => key !== undefined && Object.hasOwn(input, key));
+    // An issue no key of the URL can be blamed for (a check over the whole object): nothing of the URL counts.
+    for (const key of failing.length > 0 ? failing : Object.keys(input)) {
+      if (typeof input[key] === 'string' && !asList.has(key)) {
+        asList.add(key);
+        input[key] = [input[key]];
+      } else {
+        delete input[key];
+        dropped.add(key);
+      }
+    }
+    if (Object.keys(input).length === 0) break; // the empty query is valid: `value` stays the defaults
+  }
+  const canonical: Record<string, unknown> = {};
+  for (const key of Object.keys(input)) {
+    if (!Object.hasOwn(value, key)) dropped.add(key); // unknown to the schema
+    else if (!sameValue(value[key], defaults[key])) canonical[key] = value[key];
+  }
+  return { value, canonical, defaults, dropped: [...dropped] };
+}
+
+function topKey(issue: StandardIssue): string | undefined {
+  const first = issue.path?.[0];
+  if (first === undefined) return undefined;
+  return String(typeof first === 'object' ? first.key : first);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+/** Query values are JSON values (strings, numbers, booleans, lists of them). */
+function sameValue(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+function notTotal(issues: readonly StandardIssue[]): Error {
+  const fields = [...new Set(issues.map(topKey).filter((key) => key !== undefined))];
+  return new Error(
+    `A query schema must accept an empty query — every field needs a default or must be optional${fields.length > 0 ? ` (${fields.map((f) => `'${f}'`).join(', ')} ${fields.length === 1 ? 'is' : 'are'} required)` : ''}: an invalid field falls back to its default, a URL never answers 422.`,
+  );
 }

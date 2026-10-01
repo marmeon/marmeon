@@ -77,7 +77,7 @@ class UpdatePostController extends Controller {
   }
 }
 
-const ShowPostRequest = defineRequest({ schema: v.object({}), authorize: can(PostPolicy, 'view', (ctx: HttpContext<Authenticated, { post: Post }>) => ctx.params.post) });
+const ShowPostRequest = defineRequest({ authorize: can(PostPolicy, 'view', (ctx: HttpContext<Authenticated, { post: Post }>) => ctx.params.post) });
 class ShowPostController extends Controller {
   static request = ShowPostRequest;
   readonly #gate: Gate;
@@ -91,7 +91,7 @@ class ShowPostController extends Controller {
   }
 }
 
-const CreatePostRequest = defineRequest({ schema: v.object({}), authorize: can(PostPolicy, 'create') });
+const CreatePostRequest = defineRequest({ authorize: can(PostPolicy, 'create') });
 class CreatePostController extends Controller {
   static request = CreatePostRequest;
   handle() {

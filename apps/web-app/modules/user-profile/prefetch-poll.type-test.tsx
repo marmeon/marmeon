@@ -11,7 +11,7 @@ export function OnTheProfilePage() {
   const router = useRouter<ShowUserProfileController>();
   void router.prefetch('/users/7');
   void router.prefetch('/users/7', { cacheFor: 60_000, data: { q: 'ada' } });
-  void router.reload({ data: { cursor: 'c2' }, only: ['others'], preserveUrl: true, async: true });
+  void router.reload({ data: { tab: 'links' }, only: ['stats'], preserveUrl: true, async: true });
   usePoll<ShowUserProfileController>(15_000, { only: ['activity'] });
   usePoll(15_000, {}, { keepAlive: true, autoStart: false });
 
@@ -53,13 +53,13 @@ export function OnTheProfilePage() {
       <WhenVisible<ShowUserProfileController> data="stats" buffer={100} fallback="…">
         {() => 'ready'}
       </WhenVisible>
-      <WhenVisible<ShowUserProfileController> always params={{ data: { cursor: 'c2' }, only: ['others'], preserveUrl: true }} />
+      <WhenVisible<ShowUserProfileController> always params={{ data: { tab: 'links' }, only: ['stats'], preserveUrl: true }} />
       {/* Type '"stat"' is not assignable to type '"activity" | … | "stats" | readonly (…)[] | undefined'. Did you mean '"stats"'? */}
       {/* @ts-expect-error */}
       <WhenVisible<ShowUserProfileController> data="stat">ready</WhenVisible>
-      {/* Type '"other"' is not assignable to type '…'. Did you mean '"others"'? */}
+      {/* Type '"activty"' is not assignable to type '…'. Did you mean '"activity"'? */}
       {/* @ts-expect-error */}
-      <WhenVisible<ShowUserProfileController> params={{ only: ['other'] }} />
+      <WhenVisible<ShowUserProfileController> params={{ only: ['activty'] }} />
     </>
   );
 }

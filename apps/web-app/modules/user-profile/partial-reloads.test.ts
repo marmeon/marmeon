@@ -16,7 +16,7 @@ beforeEach(async () => {
 
 const profile = (user: User) => `/users/${user.id}`;
 /** The profile page reloading some of its props, as `router.reload({ only })` does. */
-const reload = (user: User, only: readonly ('activity' | 'stats' | 'email' | 'others' | 'errors' | 'flash')[]) =>
+const reload = (user: User, only: readonly ('activity' | 'stats' | 'email' | 'errors' | 'flash')[]) =>
   app.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only });
 
 describe('profile page: deferred and optional props (E7)', () => {
@@ -26,7 +26,7 @@ describe('profile page: deferred and optional props (E7)', () => {
     expect(page.props).not.toHaveProperty('activity');
     expect(page.props).not.toHaveProperty('stats');
     expect(page.deferredProps).toEqual({ default: ['activity'] });
-    expect(page.props).toHaveProperty('others');
+    expect(page.props).toHaveProperty('profile');
   });
 
   it('loads the activity with a partial reload — only it (and the always-sent errors)', async () => {
@@ -39,13 +39,13 @@ describe('profile page: deferred and optional props (E7)', () => {
     expect(activity).toContainEqual(expect.objectContaining({ kind: 'link', label: 'Notes' }));
   });
 
-  it('computes the stats only when asked for — and the people list not then', async () => {
+  it('computes the stats only when asked for — and the deferred activity not then', async () => {
     const queries: string[] = [];
     app.make(Connections).onQuery((query) => queries.push(query.sql));
     const page = (await reload(ada, ['stats']).get(profile(ada)).assertOk()).page()!;
     expect(page.props).toEqual({ errors: {}, stats: { links: 2, memberNumber: 1, members: 3 } });
-    // `others` is a function prop: a partial reload for other props never runs its query.
-    expect(queries.some((sql) => /order by "users"\."name"/i.test(sql))).toBe(false);
+    // `activity` is deferred: a partial reload for other props never runs its query.
+    expect(queries.some((sql) => /order by "created_at" desc/i.test(sql))).toBe(false);
   });
 
   it('is a normal request: signed out → the login page (the middleware runs), not the props', async () => {

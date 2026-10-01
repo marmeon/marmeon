@@ -85,13 +85,21 @@ export class MakeControllerCommand {
     const module = input.options.module as string;
     const page = name.replace(/Controller$/, '');
     const withView = input.options.view === true;
-    const template = input.options.request === true ? REQUEST_CONTROLLER(name, page) : CONTROLLER(name, withView ? `${module}/${page}` : undefined);
+    // A GET has no body (E65): a reading endpoint (Show…, List…) gets a `query` schema, any other a body `schema`.
+    const reads = READING.test(name);
+    const template =
+      input.options.request === true
+        ? reads
+          ? QUERY_REQUEST_CONTROLLER(name, page, withView ? `${module}/${page}` : undefined)
+          : REQUEST_CONTROLLER(name, page)
+        : CONTROLLER(name, withView ? `${module}/${page}` : undefined);
     if (!write(input, join(dir, 'controllers', `${name}.ts`), template)) return 1;
     if (withView && !write(input, join(dir, 'views', `${page}.tsx`), VIEW(name, page))) return 1;
 
     input.output.line();
     input.output.line(`Add a route in modules/${module}/routes.ts:`);
-    input.output.line(style('dim', `  Route.get('/…', ${name}).name('${module}.…');`));
+    const method = input.options.request === true && !reads ? 'post' : 'get';
+    input.output.line(style('dim', `  Route.${method}('/…', ${name}).name('${module}.…');`));
     return 0;
   }
 }
@@ -211,6 +219,32 @@ const CONTROLLER = (name: string, page: string | undefined) => `import { Control
 export class ${name} extends Controller {
   handle(ctx: HttpContext) {
 ${page ? `    return this.view('${page}', {});` : `    return this.json({ path: new URL(ctx.request.url).pathname });`}
+  }
+}
+`;
+
+/** Controllers that read (GET routes) — their request validates the query, never a body (E65). */
+const READING = /^(Show|List|Index|Search|Get|Find|Browse)[A-Z]/;
+
+/** REPR for a GET: the query schema (every field optional or with a default — an invalid one falls back to it, E56). */
+const QUERY_REQUEST_CONTROLLER = (name: string, subject: string, page: string | undefined) => `import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import * as v from 'valibot';
+
+export const ${subject}Request = defineRequest({
+  // The URL's query, parsed: \`ctx.query\` is typed, and so are \`<Link query>\` and \`useQueryState\`. The URL has strings —
+  // parse numbers (v.pipe(v.string(), v.toNumber())); every field needs a default or must be optional.
+  query: v.object({
+    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(100)), ''),
+    page: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(1)), '1'),
+  }),
+});
+
+/** One endpoint. The query is parsed before \`handle\` runs; dependencies are injected into the constructor. */
+export class ${name} extends Controller {
+  static request = ${subject}Request;
+
+  handle(ctx: ContextOf<typeof ${subject}Request>) {
+${page ? `    return this.view('${page}', { q: ctx.query.q, page: ctx.query.page });` : `    return this.json({ q: ctx.query.q, page: ctx.query.page });`}
   }
 }
 `;

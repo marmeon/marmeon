@@ -30,6 +30,7 @@ export const ROUTE_SINKS: readonly RouteSink[] = [
   { module: REACT, export: 'useForm', kind: 'call', argument: 0, minArguments: 2 },
   { module: REACT, export: 'useAction', kind: 'call', argument: 0 },
   { module: REACT, export: 'usePending', kind: 'call', argument: 0 },
+  { module: REACT, export: 'useQueryState', kind: 'call', argument: 0 },
 ];
 
 /** A route name written out in client code. */

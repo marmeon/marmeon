@@ -42,6 +42,8 @@ export type { HeadProps, TitleTemplate } from './head.tsx';
 export { Pagination, pagesAround } from './pagination.tsx';
 export type { PaginationProps } from './pagination.tsx';
 export { usePoll } from './use-poll.ts';
+export { useQueryState } from './use-query-state.ts';
+export type { SetQueryState, UseQueryStateOptions } from './use-query-state.ts';
 export type { UsePollOptions } from './use-poll.ts';
 export { WhenVisible } from './when-visible.tsx';
 export type { WhenVisibleProps } from './when-visible.tsx';

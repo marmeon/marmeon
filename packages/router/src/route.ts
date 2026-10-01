@@ -38,12 +38,32 @@ type RouteContext<TState extends object, TParams extends object, TBindings exten
  * The action — or, when a bound parameter is missing from the path, a type that says so
  * (`Route.bind('user', …).get('/users/:id', …)` is a compile error naming `user`).
  */
-type RouteAction<TState extends object, TParams extends object, TBindings extends object, TPath extends string, TSchema extends StandardSchemaV1> =
+type RouteAction<
+  TState extends object,
+  TParams extends object,
+  TBindings extends object,
+  TPath extends string,
+  TSchema extends StandardSchemaV1,
+  TQuery extends StandardSchemaV1,
+> =
   Exclude<keyof TBindings, keyof (TParams & ExtractParams<TPath>)> extends infer Missing extends PropertyKey
     ? [Missing] extends [never]
-      ? Action<RouteContext<TState, TParams, TBindings, TPath>, TSchema>
+      ? Action<RouteContext<TState, TParams, TBindings, TPath>, TSchema, TQuery>
       : `Route.bind('${Missing & string}') needs a :${Missing & string} parameter in the path`
     : never;
+
+/** What a GET route says to a controller whose request validates a body (E65): there is none. */
+export const GET_HAS_NO_BODY = 'a GET request has no body — validate its URL with `query` (defineRequest({ query }))';
+
+/** A GET route's action: like any other, but a request with a body `schema` is refused (E65). */
+type GetRouteAction<
+  TState extends object,
+  TParams extends object,
+  TBindings extends object,
+  TPath extends string,
+  TSchema extends StandardSchemaV1,
+  TQuery extends StandardSchemaV1,
+> = [TSchema] extends [never] ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery> : typeof GET_HAS_NO_BODY;
 
 export function joinPaths(...segments: string[]): string {
   const parts = segments.flatMap((segment) => segment.split('/')).filter(Boolean);
@@ -131,59 +151,60 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   // -- Route registration ----------------------------------------------------
 
-  get<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  /** A GET route (HEAD too). Its controller reads the URL — `query` — never a body: a request with a `schema` is a type error (E65). */
+  get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
-    return this.#add(['GET'], path, action);
+    return this.#add(['GET'], path, action as unknown as AnyAction);
   }
 
-  post<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  post<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(['POST'], path, action);
   }
 
-  put<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  put<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(['PUT'], path, action);
   }
 
-  patch<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  patch<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(['PATCH'], path, action);
   }
 
-  delete<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  delete<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(['DELETE'], path, action);
   }
 
-  options<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  options<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(['OPTIONS'], path, action);
   }
 
-  match<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  match<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     methods: readonly HttpMethod[],
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(methods, path, action);
   }
 
-  any<const TPath extends string, TSchema extends StandardSchemaV1 = never>(
+  any<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(
     path: TPath,
-    action: RouteAction<TState, TParams, TBindings, TPath, TSchema>,
+    action: RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>,
   ): RouteDefinition {
     return this.#add(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], path, action);
   }
@@ -198,6 +219,11 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   #add(methods: readonly HttpMethod[], path: string, action: AnyAction | string): RouteDefinition {
     const fullPath = joinPaths(this.#attributes.prefix, path);
+    // The types refuse this already (E65); a route built without them fails at boot.
+    const request = typeof action === 'function' ? (action as { request?: { schema?: unknown } }).request : undefined;
+    if (request?.schema && methods.every((method) => method === 'GET' || method === 'HEAD')) {
+      throw new Error(`Route GET ${fullPath}: ${GET_HAS_NO_BODY} — ${(action as { name?: string }).name || 'its controller'} has a body schema.`);
+    }
     const bindings = this.#attributes.bindings ?? [];
     for (const { param } of bindings) {
       // The types already refuse this; a route built without them (plain JS) fails here, at boot.

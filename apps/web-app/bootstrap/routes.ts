@@ -6,6 +6,7 @@ import type { ConfirmPasswordController } from '../modules/auth/controllers/Conf
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
+import type { ListPeopleController } from '../modules/user-profile/controllers/ListPeopleController.ts';
 import type { ListUsersController } from '../modules/user-profile/controllers/ListUsersController.ts';
 import type { LoginController } from '../modules/auth/controllers/LoginController.ts';
 import type { LogoutController } from '../modules/auth/controllers/LogoutController.ts';
@@ -60,6 +61,7 @@ declare module '@bespokecore/router' {
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
     'user-profile.me': { method: 'get'; path: '/users/me'; controller: typeof RedirectToOwnProfileController };
+    'user-profile.people': { method: 'get'; path: '/people'; controller: typeof ListPeopleController };
     'user-profile.show': { method: 'get'; path: '/users/:user'; controller: typeof ShowUserProfileController };
     'user-profile.update': { method: 'put'; path: '/users/:user'; controller: typeof UpdateUserProfileController };
   }
@@ -81,6 +83,7 @@ declare module '@bespokecore/http/page' {
     'lab/LateError': true;
     'lab/Streaming': true;
     'user-profile/Edit': true;
+    'user-profile/People': true;
     'user-profile/Show': true;
   }
 }

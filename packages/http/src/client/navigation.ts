@@ -15,6 +15,7 @@ import {
   type PageObject,
   type ValidationErrors,
 } from '../page.ts';
+import { QueryState, type QueryStateOptions } from './query-state.ts';
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -250,6 +251,8 @@ export class Navigator {
    * out) and when a non-GET visit changes what they show.
    */
   readonly #prefetched = new BoundedMap<string, Prefetched>(PREFETCH_LIMIT);
+  /** Who follows the page on screen (`subscribe`) — query state, say. */
+  readonly #pageListeners = new Set<(page: PageObject) => void>();
   /** This document was left for a full page load (409, a response that is not a page). */
   #left = false;
   /** A page is being swapped in: scroll events belong to no entry until its position is set. */
@@ -296,6 +299,23 @@ export class Navigator {
       this.#window.removeEventListener('scroll', this.#onScroll, { capture: true });
       clearTimeout(this.#saveTimer);
     };
+  }
+
+  /**
+   * Follows the page on screen: `listener` runs whenever it changes — a visit landed, Back/Forward, props merged in.
+   * Returns the function that stops it.
+   */
+  subscribe(listener: (page: PageObject) => void): () => void {
+    this.#pageListeners.add(listener);
+    return () => void this.#pageListeners.delete(listener);
+  }
+
+  /**
+   * Typed URL state of the page on screen (E55): its query, parsed by the server (`PageObject.query`), changed with
+   * visits of the same page — debounced, partial, keeping state and scroll. See {@link QueryState}.
+   */
+  queryState<Q extends Record<string, unknown> = Record<string, unknown>>(options: QueryStateOptions = {}): QueryState<Q> {
+    return new QueryState<Q>(this, options);
   }
 
   /** Listens to the events of every request (a progress bar, logging). Returns the function that stops listening. */
@@ -348,7 +368,8 @@ export class Navigator {
       if (background && (this.#left || this.#key !== from || this.#transitioning)) return undefined;
       // Some props of the same page: into the ones it has. (Another page — a redirect to the login — came in full.)
       if (partial !== undefined && page.component === partial && this.#page.component === partial) page = mergePage(this.#page, page, options.reset);
-      if (preserveUrl) page = { ...page, url: this.#page.url };
+      // The URL — and so the query state — stays the one of the page on screen.
+      if (preserveUrl) page = withQueryOf({ ...page, url: this.#page.url }, this.#page);
       // Redirected back to the same URL (a failed form), or kept the URL ("load more"): replace, don't stack history entries.
       const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
       const history = replace || preserveUrl || (method !== 'get' && sameUrl) ? 'replace' : 'push';
@@ -482,7 +503,7 @@ export class Navigator {
       }
       this.#positions.set(this.#key!, arrived);
       this.#cache.set(this.#key!, page);
-      this.#page = page;
+      this.#setPage(page);
       if (!preserveScroll) this.#applyScroll(TOP);
       if (hash) this.#window.document?.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
       this.#loadDeferred();
@@ -503,7 +524,7 @@ export class Navigator {
       const cached = this.#cache.get(state.key);
       if (cached) {
         this.#key = state.key;
-        this.#page = cached;
+        this.#setPage(cached);
         void this.#arrive(cached, this.#positionOf(state));
         return;
       }
@@ -550,7 +571,7 @@ export class Navigator {
       this.#window.history.replaceState(entry(page, key, position), '', page.url);
       this.#key = key;
       this.#cache.set(key, page);
-      this.#page = page;
+      this.#setPage(page);
       await this.#arrive(page, position);
       return page;
     });
@@ -602,7 +623,7 @@ export class Navigator {
     const merged = mergePage(target, loaded);
     this.#cache.update(key, merged);
     if (onScreen) {
-      this.#page = merged;
+      this.#setPage(merged);
       await this.#render(merged, { preserveState: true });
     }
     return merged;
@@ -747,6 +768,19 @@ export class Navigator {
     });
   }
 
+  #setPage(page: PageObject): void {
+    this.#page = page;
+    for (const listener of this.#pageListeners) {
+      try {
+        listener(page);
+      } catch (error) {
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }
+  }
+
   /** Before a full page load: nothing kept in memory survives it, should the browser bring this document back. */
   #leave(): void {
     this.#left = true;
@@ -756,6 +790,16 @@ export class Navigator {
     // A deferred prop still loading must not come back into a page of someone who has left (signed out).
     for (const request of this.#background) request.abort();
   }
+}
+
+/** `page` with the query of `from` (or without one, when `from` has none). */
+function withQueryOf(page: PageObject, from: PageObject): PageObject {
+  const { query: _query, queryDefaults: _defaults, ...rest } = page;
+  return {
+    ...rest,
+    ...(from.query ? { query: from.query } : {}),
+    ...(from.queryDefaults ? { queryDefaults: from.queryDefaults } : {}),
+  };
 }
 
 /** The headers of a partial reload of `component`. */

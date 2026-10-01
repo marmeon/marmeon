@@ -7,7 +7,7 @@ import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
-import { urlFor } from './url.ts';
+import { toSearchParams, urlFor, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -38,8 +38,23 @@ export interface DispatchInput {
   params: Record<string, string>;
 }
 
+/**
+ * The parsed query of a page's request (`defineRequest({ query })`), for the page object: the fields the URL set
+ * (without defaults) and the defaults — so the browser never parses a URL itself (`useQueryState`).
+ */
+export interface PageQuery {
+  readonly values: Readonly<Record<string, unknown>>;
+  readonly defaults: Readonly<Record<string, unknown>>;
+}
+
+/** What a response factory gets besides the result: the request — and, behind a query schema, its parsed query. */
+export interface ResponseContext {
+  readonly request: Request;
+  readonly pageQuery?: PageQuery | undefined;
+}
+
 /** Turns a handler result into a Response. Needs only the request, so errors outside a route can use it too. */
-export type ResponseFactory = (result: unknown, ctx: { readonly request: Request }) => Response | Promise<Response>;
+export type ResponseFactory = (result: unknown, ctx: ResponseContext) => Response | Promise<Response>;
 
 export interface DispatchOptions {
   toResponse?: ResponseFactory;
@@ -128,7 +143,7 @@ export class Router {
    * ```
    */
   url<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): string {
-    return urlFor(this, name, params, query);
+    return urlFor(this, name, params, query as Query | undefined);
   }
 
   /** Runs a matched route through its middleware pipeline and action. */
@@ -147,14 +162,31 @@ export class Router {
         const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
         const { action } = route;
         let result: unknown;
+        let pageQuery: PageQuery | undefined;
         if (isControllerClass(action)) {
           // REPR: authorize and validate before the controller is even built.
-          const handlerCtx = action.request ? { ...finalCtx, body: await validateRequest(action.request, finalCtx, resolve) } : finalCtx;
-          result = await resolve(action).handle(handlerCtx);
+          let handlerCtx: HttpContext = finalCtx;
+          if (action.request) {
+            const { body, query } = await validateRequest(action.request, finalCtx, resolve);
+            if (query) {
+              const method = finalCtx.request.method;
+              // E56: a URL with an invalid or unknown field may go to its canonical form instead (GET only).
+              if (query.dropped.length > 0 && action.request.queryOptions?.onInvalid === 'redirect' && (method === 'GET' || method === 'HEAD')) {
+                return canonicalRedirect(finalCtx.request, query.canonical);
+              }
+              pageQuery = { values: query.canonical, defaults: query.defaults };
+            }
+            handlerCtx = {
+              ...finalCtx,
+              ...(action.request.schema ? { body } : {}),
+              ...(query ? { query: query.value as unknown as URLSearchParams } : {}),
+            };
+          }
+          result = await (resolve(action) as unknown as { handle: (ctx: HttpContext) => unknown }).handle(handlerCtx);
         } else {
           result = await action(finalCtx);
         }
-        return toResponse(result, finalCtx);
+        return toResponse(result, pageQuery ? { ...finalCtx, pageQuery } : finalCtx);
       },
       { resolve, onTerminable: options.onTerminable, onError: options.onError },
     );
@@ -191,6 +223,13 @@ export class Router {
     }
     this.#byName = byName;
   }
+}
+
+/** 302 to the same path with only the valid, non-default fields of the query (E56). */
+function canonicalRedirect(request: Request, canonical: Readonly<Record<string, unknown>>): Response {
+  const search = toSearchParams(canonical as Query).toString();
+  const { pathname } = new URL(request.url);
+  return new Response(null, { status: 302, headers: { location: search ? `${pathname}?${search}` : pathname } });
 }
 
 /** Resolves the route's bound parameters in order — a scoped one within its already resolved parent. */

@@ -1,5 +1,6 @@
 import {
   HOVER_PREFETCH_DELAY,
+  linkQuery,
   prefetchTriggers,
   prefetchUrlOf,
   resolveRoute,
@@ -8,9 +9,9 @@ import {
   type VisitMethod,
   type VisitOptions,
 } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, MethodOf, ParamsOf, Query } from '@bespokecore/http/page';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
-import { useRouter, type PartialReloadOptions } from './app.tsx';
+import { usePage, useRouter, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 
 export type { PrefetchTrigger } from '@bespokecore/http/client';
@@ -76,7 +77,11 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
 type RouteLinkProps<N extends string> = LinkOptions &
   PartialReloadOptions<Instance<ControllerOf<N>>> & {
   route: CheckBrowserRouteName<N>;
-  query?: Query;
+  /**
+   * The query, typed by the route's query schema (E55) — a wrong key or value is a compile error. For the page on
+   * screen, fields that are just its defaults are left out of the URL.
+   */
+  query?: QueryParams<N>;
   href?: never;
 } & ParamsProp<N> &
   MethodProps<N>;
@@ -143,7 +148,11 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   } = props as AnyLinkProps;
   const options = { replace, preserveScroll, preserveState, preserveUrl, async, only, except, reset };
 
-  const target = route === undefined ? undefined : resolveRoute(manifest, route, params, query);
+  const page = usePage();
+  const target =
+    route === undefined
+      ? undefined
+      : resolveRoute(manifest, route, params, query && linkQuery(page, resolveRoute(manifest, route, params).url, query));
   const href = target?.url ?? givenHref ?? '';
   const method = (givenMethod ?? target?.method ?? 'get') as VisitMethod;
 

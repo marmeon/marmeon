@@ -67,3 +67,25 @@ export function urlFor(routes: RouteLookup, name: string, params: Readonly<Recor
   const search = toSearchParams(rest, query).toString();
   return search ? `${path}?${search}` : path;
 }
+
+/**
+ * Whether `pathname` is a path of route pattern `pattern` (`/users/:user/links/:link?`, constraints like `:id{[0-9]+}`
+ * included) — how the browser tells which route the page on screen belongs to, without the server naming it.
+ */
+export function matchesPath(pattern: string, pathname: string): boolean {
+  let source = '';
+  let last = 0;
+  for (const match of pattern.matchAll(PARAMETER)) {
+    source += escapeRegExp(pattern.slice(last, match.index));
+    const segment = `/(${match[2] ? match[2].slice(1, -1) : '[^/]+'})`;
+    source += match[3] ? `(?:${segment})?` : segment;
+    last = match.index + match[0].length;
+  }
+  source += escapeRegExp(pattern.slice(last));
+  const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  return new RegExp(`^${source || '/'}$`).test(trimmed || '/');
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

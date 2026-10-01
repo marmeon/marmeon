@@ -54,25 +54,38 @@ export class ProfileDirectory implements RouteBinder<Profile> {
   }
 
   /**
-   * The next people after `cursor` (from the query string — anything that does not decode starts at the top), by
-   * name: everyone but `except`, optionally only names containing `search` (LIKE wildcards taken literally). Keyset
-   * pagination on (name, id) — names repeat, ids break the tie — for "load more": no count, no offset, nobody twice.
+   * The people of the list page (`/people`), as its query asks (`ListPeopleRequest`, already parsed): names containing
+   * `q` (LIKE wildcards taken literally), in `sort` order, the next `perPage` after `cursor` (anything that does not
+   * decode starts at the top). Keyset pagination — names repeat, ids break the tie — for "load more": no count, no
+   * offset, nobody twice. Sign-up order is the id's.
    */
-  people({ search = '', except, cursor, perPage = 5 }: { search?: string; except: number; cursor?: string | null; perPage?: number }) {
+  people({ q, sort, cursor }: PeopleQuery, { perPage = 10 }: { perPage?: number } = {}) {
     let query = this.#db
       .selectFrom('users')
       .select((eb) => [
         'users.id',
         'users.name',
-        hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
-      ])
-      .where('users.id', '!=', except);
-    if (search) {
-      const pattern = `%${search.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        hasOne(eb, 'login_activity', 'user_id', 'users.id', (activity) => activity.select('login_activity.last_login_at')).as('activity'),
+      ]);
+    if (q) {
+      const pattern = `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       query = query.where(sql<boolean>`lower(users.name) like ${pattern} escape '\\'`);
     }
-    return cursorPaginate(query, { column: ['name', 'id'], cursor, perPage });
+    const direction = sort.startsWith('-') ? 'desc' : 'asc';
+    return sort.endsWith('name')
+      ? cursorPaginate(query, { column: ['name', 'id'], cursor, perPage, direction })
+      : cursorPaginate(query, { column: 'id', cursor, perPage, direction });
   }
+}
+
+/** How the people list sorts: by name, or by sign-up (`joined`) — `-` for descending. */
+export const PEOPLE_SORTS = ['name', '-name', 'joined', '-joined'] as const;
+
+/** What the people list asks for — the parsed query of `/people`. */
+export interface PeopleQuery {
+  readonly q: string;
+  readonly sort: (typeof PEOPLE_SORTS)[number];
+  readonly cursor?: string | undefined;
 }
 
 export type Profile = NonNullable<Awaited<ReturnType<ProfileDirectory['profile']>>>;

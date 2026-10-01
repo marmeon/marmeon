@@ -166,7 +166,9 @@ export function createResponseFactory(
     // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
     const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language };
+    // The parsed query (E55), for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
+    const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query };
     const headers = { ...result.headers, vary: PAGE_VARY };
 
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both

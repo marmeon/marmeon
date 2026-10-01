@@ -1,12 +1,10 @@
 import { can } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import { Translator } from '@bespokecore/i18n';
-import * as v from 'valibot';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
 export const DeleteProfileLinkRequest = defineRequest({
-  schema: v.object({}),
   // The route binds `link` scoped to `user` (another user's link id is a 404); the policy decides who may remove it.
   authorize: can(ProfileLinkPolicy, 'delete', 'link'),
 });

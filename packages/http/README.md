@@ -27,6 +27,8 @@ component name and props in text) visits, goes back and forward, loads deferred 
 | --- | --- |
 | `Navigator` | Visits (`visit`, `reload`, `prefetch`), their events (`on('start' \| 'progress' \| 'success' \| 'error' \| 'exception' \| 'cancel' \| 'finish')` and per-visit `onX` callbacks, E44), the `x-bespoke` request headers (asset version, XSRF from the `XSRF-TOKEN` cookie, partial reloads), JSON or multipart bodies (upload progress via XHR), 409 + `x-bespoke-location` → full page load and every kept page dropped, history entries **without props** plus an in-memory page cache (E36, refetch on a miss), Back/Forward, bfcache, scroll restoration (window and `[scroll-region]`), deferred props loaded per group after every show, `merge`/`deepMerge`/`matchOn`, `async` and `preserveUrl` visits, prefetching (GET only, `Purpose: prefetch`, `cacheFor`) |
 | `mergePage` | A partial reload's props merged into the page (what the navigator does) |
+| `navigator.queryState(options)` → `QueryState` | Typed URL state (E55): `value(page)` is the page's query as the server parsed it (`PageObject.query` + `queryDefaults` — the browser never parses a URL) or what is being typed (`draft`); `set(patch \| fn)` changes it at once and visits the page's URL after `debounce` ms (partial with `only`, `reset` = `only` by default, `history: 'push' \| 'replace'`, state and scroll kept); the draft gives way when the page changes otherwise (Back/Forward, a link). `navigator.subscribe(listener)` follows the page on screen |
+| `queryUrl`, `pageQuery`, `withoutDefaults`, `linkQuery`, `assertQueryPage` | Query helpers: a URL without the defaults, the page's query with them, a link's query for the page on screen, the "only on its route's page" check |
 | `showProgress(navigator, options)` | The progress bar: plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests |
 | `createPoll(run, interval, options)` | Polling, paused while the tab is hidden |
 | `readInitialPage()`, `rootElement(id)`, `hasServerMarkup(root)` | The hydration entry's first steps: the page from `#bespoke-page`, the root (also while streaming), hydrate or render |
@@ -61,9 +63,11 @@ component name and props in text) visits, goes back and forward, loads deferred 
    `rootElement('app')` when `hasServerMarkup(root)`, else render into it.
 6. **Hooks/components on top of the navigator**, in the framework's idiom: the current page and shared props, a router
    (`visit`/`reload`/`prefetch`/`on`), `<Link>` (with `visitUrlOf` and the prefetch triggers), forms (`visit` with
-   `method` + `data`, `firstErrors`), route URLs (`resolveRoute`), deferred props, polling, translations.
+   `method` + `data`, `firstErrors`), route URLs (`resolveRoute`), deferred props, polling, translations, query state
+   (`navigator.queryState`, rendering `value(page)` — on the server from the page object alone; links to the page on
+   screen leave its defaults out, `linkQuery`).
 7. **Its route sinks** (E57): every place where app code hands the adapter a route name (`<Link route>`, the function of
-   `useRoute()`, `useForm(name, …)`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })`).
+   `useRoute()`, `useForm(name, …)`, `useQueryState(name, …)`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })`).
    The client build ships only the names written out at a sink; a name built at runtime fails the build. Route names
    never come from props — the server sends URLs (`router.url()`).
 

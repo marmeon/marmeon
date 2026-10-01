@@ -4,6 +4,7 @@ import { UserRepository } from '#modules/auth';
 import { AddProfileLinkController } from './controllers/AddProfileLinkController.ts';
 import { DeleteProfileLinkController } from './controllers/DeleteProfileLinkController.ts';
 import { EditUserProfileController } from './controllers/EditUserProfileController.ts';
+import { ListPeopleController } from './controllers/ListPeopleController.ts';
 import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
@@ -11,6 +12,9 @@ import { ProfileDirectory } from './ProfileDirectory.ts';
 import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
 
 export default defineRoutes((Route) => {
+  // Everyone, filtered and sorted by the query string (`ListPeopleRequest`) — state that lives in the URL.
+  Route.middleware(authenticate()).get('/people', ListPeopleController).name('user-profile.people');
+
   const users = Route.prefix('/users').middleware(authenticate()).name('user-profile.');
   users.get('/me', RedirectToOwnProfileController).name('me');
 

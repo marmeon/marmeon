@@ -50,7 +50,7 @@ export class RedirectResult {
    * Name and parameters are checked against the app's routes (`bootstrap/routes.ts`).
    */
   route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this {
-    this.#target = { kind: 'route', name, params, query };
+    this.#target = { kind: 'route', name, params, query: query as Query | undefined };
     return this;
   }
 

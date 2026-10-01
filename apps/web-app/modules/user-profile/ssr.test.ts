@@ -33,9 +33,27 @@ describe('the profile page, rendered on the server', () => {
       .assertSee('<h1>Alan Turing</h1>');
   });
 
-  it('renders the people list with links on the server (and it hydrates)', async () => {
+  it('renders with the deferred part still loading (and it hydrates)', async () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}`, page).assertServerRendered().assertHydrates();
-    expect(response.body).toContain(`<a href="/users/${alan.id}">Alan Turing</a>`);
+    expect(response.body).toContain('<a href="/people">All people</a>');
     expect(response.body).toContain('Loading activity…'); // deferred: the browser loads it next
+  });
+});
+
+describe('the people list, rendered on the server — its query state included (E55)', () => {
+  it('renders the filtered, sorted list from the URL, and it hydrates: useQueryState reads the parsed query of the page', async () => {
+    const response = await app.actingAs(ada).get('/people?q=a&sort=-name', page).assertServerRendered().assertHydrates();
+    expect(response.body).toContain('value="a"'); // the search field holds the query
+    expect(response.body.indexOf('>Grace Hopper</a>')).toBeLessThan(response.body.indexOf('>Ada Lovelace</a>'));
+    expect(response.body).toContain(`<a href="/users/${alan.id}">Alan Turing</a>`);
+    // The sort links: defaults left out of their URLs (`q` stays — it is no default), the current one marked.
+    expect(response.body).toContain('<a href="/people?q=a">Name A–Z</a>');
+    expect(response.body).toContain('href="/people?q=a&amp;sort=-name" aria-current="true"');
+  });
+
+  it('falls back on an invalid query on the server as well — the default sort, the search field empty', async () => {
+    const response = await app.actingAs(ada).get('/people?sort=DROP%20TABLE&q=' + 'x'.repeat(61), page).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('value=""');
+    expect(response.body.indexOf('>Ada Lovelace</a>')).toBeLessThan(response.body.indexOf('>Grace Hopper</a>'));
   });
 });

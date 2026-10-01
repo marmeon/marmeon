@@ -1,4 +1,4 @@
-import type { BodyOf, RequestDefinition, StandardSchemaV1 } from './request-definition.ts';
+import type { BodyOf, RequestDefinition, StandardSchemaV1, WithQuery } from './request-definition.ts';
 import type { RequestState } from './request.ts';
 import type { RouteDefinition } from './route-definition.ts';
 
@@ -125,15 +125,15 @@ export interface Invokable<TCtx> {
  *
  * With `static request = defineRequest(…)`, the route checks both halves against
  * its context: `authorize(ctx)` must accept the route's context, and `handle`
- * gets it plus the validated `body`. *One* type with an optional `request` on
+ * gets it plus the validated `body` and the parsed `query`. *One* type with an optional `request` on
  * purpose: a union of "with" and "without request" let a controller whose
  * `authorize` needs more context than the route has slip through the "without"
  * branch — and made TypeScript explain the wrong branch (type spike for E13).
  */
-export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any> = (new (
+export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, TQuery extends StandardSchemaV1 = any> = (new (
   ...args: any[]
-) => Invokable<TCtx & BodyOf<TSchema>>) & {
-  readonly request?: RequestDefinition<TSchema, TCtx>;
+) => Invokable<WithQuery<TCtx, TQuery> & BodyOf<TSchema>>) & {
+  readonly request?: RequestDefinition<TSchema, TCtx, TQuery>;
 };
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,9 @@ export interface RouteBinding {
 /** Builds controller and middleware classes — per request, from the container. */
 export type ClassResolver = <T>(Class: new (...args: any[]) => T) => T;
 
-/** A closure or a controller class. `TSchema` is inferred from the controller's `request` (`never` without one). */
-export type Action<TCtx, TSchema extends StandardSchemaV1 = never> = Handler<TCtx> | ControllerClass<TCtx, TSchema>;
+/** A closure or a controller class. `TSchema` and `TQuery` are inferred from the controller's `request` (`never` without them). */
+export type Action<TCtx, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never> =
+  | Handler<TCtx>
+  | ControllerClass<TCtx, TSchema, TQuery>;
 
-export type AnyAction = Action<any, any>;
+export type AnyAction = Action<any, any, any>;

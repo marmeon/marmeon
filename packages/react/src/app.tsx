@@ -77,11 +77,13 @@ export interface Router<T = unknown> {
 
 interface RouterValue extends Router {
   page: PageObject;
+  /** The navigator — null while rendering on the server (for the hooks of this package). */
+  navigator(): Navigator | null;
 }
 
 const RouterContext = createContext<RouterValue | null>(null);
 
-function useRouterContext(): RouterValue {
+export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
   if (!value) throw new Error('BespokeCore hooks must be used inside <BespokeApp>.');
   return value;
@@ -241,7 +243,11 @@ export function BespokeApp({
     if (retried.current && retried.current !== page) retried.current = null;
   }, []);
 
-  const router = useMemo(() => ({ page: current.page, visit, reload, prefetch, on }), [current.page, visit, reload, prefetch, on]);
+  const getNavigator = useCallback(() => navigator.current, []);
+  const router = useMemo(
+    () => ({ page: current.page, visit, reload, prefetch, on, navigator: getNavigator }),
+    [current.page, visit, reload, prefetch, on, getNavigator],
+  );
   const { Component, page, key, catalog } = current;
 
   const locale = messages ? pageLocale(page, messages) : page.locale;

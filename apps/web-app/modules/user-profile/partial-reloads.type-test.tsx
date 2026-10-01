@@ -9,18 +9,18 @@ import type { ShowUserProfileController } from './controllers/ShowUserProfileCon
 
 type Props = PageProps<ShowUserProfileController>;
 
-export function OnTheProfilePage({ activity, stats, others }: Props) {
+export function OnTheProfilePage({ activity, stats, profile }: Props) {
   const router = useRouter<ShowUserProfileController>();
   void router.reload({ only: ['stats'] });
-  void router.reload({ only: ['activity', 'others'], except: ['flash'] });
-  void router.visit('/users/7?page=2', { only: ['others'], preserveState: true });
+  void router.reload({ only: ['activity', 'stats'], except: ['flash'] });
+  void router.visit('/users/7?tab=links', { only: ['profile'], preserveState: true });
   // Typed with the props, too.
   void useRouter<Props>().reload({ only: ['stats'] });
   // Untyped without a page: any name.
   void useRouter().reload({ only: ['anything'] });
 
-  // Type '"stat"' is not assignable to type '"activity" | "auth" | "can" | "email" | "errors" | "filter" | "flash" |
-  // "isOwnProfile" | "lastLoginAt" | "now" | "others" | "profile" | "stats"'. Did you mean '"stats"'?
+  // Type '"stat"' is not assignable to type '"activity" | "auth" | "can" | "email" | "errors" | "flash" |
+  // "isOwnProfile" | "lastLoginAt" | "locales" | "now" | "profile" | "stats"'. Did you mean '"stats"'?
   // @ts-expect-error
   void router.reload({ only: ['stat'] });
   // Type '"profil"' is not assignable to type '…'. Did you mean '"profile"'?
@@ -31,7 +31,7 @@ export function OnTheProfilePage({ activity, stats, others }: Props) {
   void router.visit('/users/7', { only: ['links'] });
 
   // A function prop is its result; optional() and defer() props may be missing.
-  void others.data.length;
+  void profile.links.length;
   void stats?.members;
   void activity?.length;
   // 'stats' is possibly 'undefined'.
@@ -43,12 +43,12 @@ export function OnTheProfilePage({ activity, stats, others }: Props) {
 
   return (
     <>
-      <Link route="user-profile.show" params={{ user: 7 }} only={['others']} preserveState>
+      <Link route="user-profile.show" params={{ user: 7 }} only={['stats']} preserveState>
         Next
       </Link>
-      {/* Checked against the props of the route's page — Type '"other"' is not assignable to type '…'. Did you mean '"others"'? */}
+      {/* Checked against the props of the route's page — Type '"stat"' is not assignable to type '…'. Did you mean '"stats"'? */}
       {/* @ts-expect-error */}
-      <Link route="user-profile.show" params={{ user: 7 }} only={['other']}>
+      <Link route="user-profile.show" params={{ user: 7 }} only={['stat']}>
         Next
       </Link>
       <Link href="/users/7" only={['whatever']}>

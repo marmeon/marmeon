@@ -147,7 +147,9 @@ describe('bespoke make:* (generated code compiles)', () => {
       'listeners: [listen(InvoicePaid, SendReceipt)]',
     );
     expect(bespoke(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
-    expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).code).toBe(0);
+    expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
+    // A reading endpoint is a GET, and a GET has no body (E65): its request validates the query.
+    expect(bespoke(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
     expect(bespoke(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
       "migrations: new URL('./migrations/', import.meta.url)",
     );
@@ -162,6 +164,11 @@ describe('bespoke make:* (generated code compiles)', () => {
     expect(withRequest).toContain('export const UpdateInvoiceRequest = defineRequest({');
     expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
     expect(withRequest).toContain('handle(ctx: ContextOf<typeof UpdateInvoiceRequest>) {');
+    expect(withRequest).toContain('  schema: v.object({');
+    const withQuery = readFileSync(join(app, 'modules/billing/controllers/ListInvoicesController.ts'), 'utf8');
+    expect(withQuery).toContain('  query: v.object({');
+    expect(withQuery).not.toContain('schema:');
+    expect(withQuery).toContain('return this.json({ q: ctx.query.q, page: ctx.query.page });');
 
     // Generated in quick succession, they still sort in the order they were made.
     const migrations = readdirSync(join(app, 'modules/billing/migrations')).sort();

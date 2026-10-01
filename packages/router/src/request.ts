@@ -1,7 +1,10 @@
 import { CookieJar } from './cookies.ts';
 import { HttpError } from './errors.ts';
 
-/** Request input: query and body merged, nested by bracket notation (`user[name]`, `tags[]`). */
+/**
+ * Request input: the body, nested by bracket notation (`user[name]`, `tags[]`). Never the query (E65): a field of the
+ * body cannot be set through the URL — a link, a log line or a `Referer` must not be able to fill in a form.
+ */
 export type Input = Record<string, unknown>;
 
 export interface RequestStateOptions {
@@ -16,10 +19,14 @@ export interface RequestStateOptions {
  * the query, the parsed input, cookies and content negotiation.
  */
 export interface RequestState {
-  /** The query string. `ctx.query.get('page')`. */
+  /**
+   * The query string, `ctx.query.get('page')` — or, behind a request with a `query` schema, the parsed query
+   * (`defineRequest({ query })`).
+   */
   readonly query: URLSearchParams;
   /**
-   * Query and body as one object, like Laravel's `$request->all()` — the body wins.
+   * The body — and only the body (E65): unlike Laravel's `$request->all()`, the query is never merged in, so no
+   * field can be set through the URL (read it from `ctx.query`). A GET or HEAD request has no body: `{}`.
    * JSON, `application/x-www-form-urlencoded` and `multipart/form-data` (files are
    * `File`s) are parsed alike. Parsed once and cached: a request body can only be
    * read once, so don't read `ctx.request` yourself after calling this.
@@ -43,7 +50,7 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
 
   return {
     query,
-    input: () => (input ??= parseInput(request, query, maxBodySize)),
+    input: () => (input ??= parseInput(request, maxBodySize)),
     cookies: new CookieJar(request.headers.get('cookie')),
     ip,
     expectsJson: () => expectsJson(request),
@@ -76,15 +83,15 @@ export function expectsJson(request: Request): boolean {
   return request.headers.get('x-requested-with') === 'XMLHttpRequest' && (first === '' || first === '*/*');
 }
 
-async function parseInput(request: Request, query: URLSearchParams, maxBodySize: number): Promise<Input> {
+async function parseInput(request: Request, maxBodySize: number): Promise<Input> {
   const type = mediaType(request);
   if (request.method === 'GET' || request.method === 'HEAD' || request.body === null || type === undefined) {
-    return build(query);
+    return build([]);
   }
 
   if (type === 'application/json' || type.endsWith('+json')) {
     const text = new TextDecoder().decode(await readBody(request, maxBodySize));
-    if (text.trim() === '') return build(query);
+    if (text.trim() === '') return build([]);
     let body: unknown;
     try {
       body = JSON.parse(text);
@@ -94,12 +101,12 @@ async function parseInput(request: Request, query: URLSearchParams, maxBodySize:
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       throw new HttpError(400, 'The JSON body must be an object.');
     }
-    return { ...build(query), ...body };
+    return { ...body };
   }
 
   if (type === 'application/x-www-form-urlencoded') {
     const form = new URLSearchParams(new TextDecoder().decode(await readBody(request, maxBodySize)));
-    return build([...query, ...form]);
+    return build(form);
   }
 
   if (type === 'multipart/form-data') {
@@ -110,11 +117,11 @@ async function parseInput(request: Request, query: URLSearchParams, maxBodySize:
     } catch {
       throw new HttpError(400, 'Malformed multipart body.');
     }
-    return build([...query, ...form]);
+    return build(form);
   }
 
   // Other bodies (text/plain, binary uploads) are not input; read them from `ctx.request`.
-  return build(query);
+  return build([]);
 }
 
 function mediaType(request: Request): string | undefined {

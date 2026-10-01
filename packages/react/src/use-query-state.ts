@@ -1,0 +1,79 @@
+import { assertQueryPage, pageQuery, resolveRoute, type QueryState, type QueryStateOptions, type QueryUpdate } from '@bespokecore/http/client';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, Routes, RouteQueryOf } from '@bespokecore/http/page';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useRouterContext, type PartialReloadOptions } from './app.tsx';
+import { RoutesContext } from './routes.ts';
+
+type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
+
+/** A browser route whose controller has a query schema — the state's fields come from it. (Any name while no routes are generated.) */
+type CheckQueryRoute<N extends string> =
+  CheckBrowserRouteName<N> extends N
+    ? N extends keyof Routes
+      ? [RouteQueryOf<N>] extends [never]
+        ? `'${N}' has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\``
+        : N
+      : N
+    : CheckBrowserRouteName<N>;
+
+/** The state of route `N`: its parsed query, defaults filled in (any fields while no routes are generated). */
+type QueryStateOf<N extends string> = [RouteQueryOf<N>] extends [never] ? Record<string, unknown> : RouteQueryOf<N>;
+
+/** Options of {@link useQueryState} — `only`/`except`/`reset` checked against the props of the route's page. */
+export type UseQueryStateOptions<N extends string = string> = Omit<QueryStateOptions, 'only' | 'except' | 'reset'> &
+  PartialReloadOptions<Instance<ControllerOf<N>>>;
+
+/**
+ * Sets the state: some fields (`undefined` → back to the default) or a function of the current state. (One signature,
+ * not two overloads: a wrong value then reads "Did you mean '"name"'?" instead of "No overload matches this call".)
+ */
+export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
+
+/**
+ * Typed URL state (E55): the page's query as its controller's `query` schema parsed it — and a setter that changes
+ * the URL with a visit of the same page (partial with `only`, keeping component state and scroll):
+ *
+ * ```tsx
+ * const [query, setQuery] = useQueryState('user-profile.people', { only: ['people'], debounce: 300, history: 'replace' });
+ * <input value={query.q} onChange={(e) => setQuery({ q: e.target.value })} />
+ * <button onClick={() => setQuery((current) => ({ sort: current.sort === 'name' ? '-name' : 'name' }))}>Sort</button>
+ * ```
+ *
+ * The state changes at once (what is typed shows), the URL after `debounce` ms; Back/Forward and links bring the state
+ * of their page. Only on the page of route `name` (checked at runtime); a route without a query schema is a compile
+ * error. The browser never parses the URL — the page object carries the parsed query.
+ */
+export function useQueryState<const N extends BrowserRouteNameInput>(
+  name: CheckQueryRoute<N>,
+  options: UseQueryStateOptions<N> = {},
+): [QueryStateOf<N>, SetQueryState<QueryStateOf<N>>] {
+  const router = useRouterContext();
+  const manifest = useContext(RoutesContext);
+  const { page } = router;
+  resolveRoute(manifest, name); // a name the manifest lacks throws the usual message
+  assertQueryPage(name, manifest![name]!.path, page);
+
+  const latest = useRef(options);
+  latest.current = options;
+  const state = useRef<QueryState | null>(null);
+  const [draft, setDraft] = useState<Record<string, unknown> | undefined>(undefined);
+  useEffect(() => {
+    const navigator = router.navigator();
+    if (!navigator) return undefined;
+    const current = navigator.queryState(latest.current as QueryStateOptions);
+    state.current = current;
+    const stop = current.subscribe(() => setDraft(current.draft));
+    return () => {
+      stop();
+      current.dispose();
+      if (state.current === current) state.current = null;
+    };
+  }, []);
+  if (state.current) state.current.options = options as QueryStateOptions;
+
+  const set = useCallback(
+    (update: QueryUpdate<Record<string, unknown>>) => state.current?.set(update),
+    [],
+  ) as SetQueryState<QueryStateOf<N>>;
+  return [(draft ?? pageQuery(page)) as QueryStateOf<N>, set];
+}
