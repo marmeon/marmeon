@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -24,7 +24,7 @@ function write(root: string, files: Record<string, string>): void {
  * A minimal app outside the workspace: no UI adapter (the plugin is UI-agnostic), and one framework
  * package whose `@bespokecore/source` condition points at different code than its build.
  */
-function app({ vite = true, plugin = true }: { vite?: boolean; plugin?: boolean } = {}): string {
+function app({ vite = true, plugin = true, typescript }: { vite?: boolean; plugin?: boolean; typescript?: string } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'bespoke-vite-'));
   temporary.push(root);
   write(root, {
@@ -57,14 +57,22 @@ function app({ vite = true, plugin = true }: { vite?: boolean; plugin?: boolean 
     symlinkSync(vitePackage, join(root, 'node_modules/vite'), 'dir');
     symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@bespokecore/vite'), 'dir');
   }
+  if (typescript !== undefined) {
+    // An app with its own TypeScript: `bespoke build` type-checks `modules/` first.
+    symlinkSync(realpathSync(join(repo, 'node_modules/typescript')), join(root, 'node_modules/typescript'), 'dir');
+    write(root, {
+      'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, noEmit: true, module: 'nodenext', types: [] }, include: ['modules/**/*.ts'] }),
+      'modules/demo/total.ts': typescript,
+    });
+  }
   return root;
 }
 
 /** `bespoke build` as an app runs it: a fresh process, no test environment. */
-function build(root: string): { code: number | null; out: string } {
+function build(root: string, ...args: string[]): { code: number | null; out: string } {
   const env: Record<string, string | undefined> = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST' || key === 'NODE_ENV' || key === 'NODE_OPTIONS') delete env[key];
-  const result = spawnSync(process.execPath, [join(repo, 'packages/cli/bin/bespoke.js'), 'build'], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
+  const result = spawnSync(process.execPath, [join(repo, 'packages/cli/bin/bespoke.js'), 'build', ...args], { cwd: root, env, encoding: 'utf8', timeout: 60_000 });
   return { code: result.status, out: `${result.stdout}${result.stderr}` };
 }
 
@@ -102,6 +110,24 @@ describe('bespoke build with the bespoke() plugin', () => {
       env: { PATH: process.env.PATH },
     });
     expect(ssr.stdout.trim()).toBe('from-dist');
+  }, 60_000);
+
+  it('type-checks the app first, like next build: a type error fails the build and is printed; --no-typecheck builds anyway', () => {
+    const root = app({ typescript: "export const total: number = 'forty-two';\n" });
+    const failed = build(root);
+    expect(failed.out).toContain("modules/demo/total.ts(1,14): error TS2322: Type 'string' is not assignable to type 'number'.");
+    expect(failed.out).toContain('Not built: 1 type error in 1 file (tsc --noEmit). Fix them — or build anyway with --no-typecheck.');
+    expect(failed.out).not.toContain('Built dist/client');
+    expect(failed.code).toBe(1);
+
+    const skipped = build(root, '--no-typecheck');
+    expect(skipped.out).toContain('Built dist/client and dist/server');
+    expect(skipped.code).toBe(0);
+
+    writeFileSync(join(root, 'modules/demo/total.ts'), 'export const total: number = 42;\n');
+    const passed = build(root);
+    expect(passed.out).toContain('✓ Type-checked the app');
+    expect(passed.code).toBe(0);
   }, 60_000);
 
   it('says how to install Vite when the app has none', () => {
