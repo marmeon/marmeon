@@ -10,6 +10,7 @@ export default {
     range: 'Zeitraum',
     range_option: '{range, select, 7d {7 Tage} 30d {30 Tage} other {Gesamt}}',
     none: 'In diesem Zeitraum hat sich niemand angemeldet.',
+    edit: 'Profil bearbeiten',
   },
   activity: {
     title: 'Meine Aktivität',

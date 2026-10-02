@@ -23,7 +23,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
       .select((eb) => [
         hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
         hasMany(eb, 'profile_links', 'user_id', 'users.id', (q) =>
-          q.select(['profile_links.id', 'profile_links.label', 'profile_links.url']).orderBy('profile_links.id'),
+          q.select(['profile_links.id', 'profile_links.user_id', 'profile_links.label', 'profile_links.url']).orderBy('profile_links.id'),
         ).as('links'),
       ])
       .where('users.id', '=', id)
@@ -37,7 +37,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
 
   /** A profile's links, oldest first — what the edit layer lists (and removes). */
   links(id: number) {
-    return this.#db.selectFrom('profile_links').select(['id', 'label', 'url']).where('user_id', '=', id).orderBy('id').execute();
+    return this.#db.selectFrom('profile_links').select(['id', 'user_id', 'label', 'url']).where('user_id', '=', id).orderBy('id').execute();
   }
 
   /**

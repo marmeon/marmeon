@@ -1,5 +1,6 @@
 import { Controller, defer, optional, type HttpContext } from '@bespokecore/http';
 import { Gate, type Authenticated } from '@bespokecore/auth';
+import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileActivity } from '../ProfileActivity.ts';
 import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
@@ -20,16 +21,21 @@ export class ShowUserProfileController extends Controller {
   async handle(ctx: HttpContext<Authenticated, { user: Profile }>) {
     // The selected row goes to the view as it is — the migration's column types reach the view.
     // Held back on purpose: the e-mail (owner only) and the last sign-in (shown as lastLoginAt).
-    const { email, activity: login, ...user } = ctx.params.user;
+    const { email, activity: login, links, ...user } = ctx.params.user;
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
-      profile: user,
+      // Each link with what the viewer may do with it (E61): `link.can.delete`, one ProfileLinkPolicy call per link.
+      // Inside the prop on purpose: a reload of `profile` (a link added) brings the new link's abilities with it.
+      // A function: a partial reload for other props (the activity poll) never asks the policy.
+      profile: async () => ({ ...user, links: await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete']) }),
       // Only the owner may see their e-mail (ProfilePolicy) — the controller decides what leaves the server.
       email: (await this.#gate.allows(ProfilePolicy, 'viewEmail', user)) ? email : null,
+      // Who this is, not what they may do: "this is your profile" (no policy behind it).
       isOwnProfile,
-      // What the page may offer — explicit, from the policies (E28). The server checks again on every action.
-      can: { update: await this.#gate.allows(ProfilePolicy, 'update', user) },
+      // What the page may offer (E61) — explicit, typed against the policy, only booleans. The UI's hint: the server
+      // checks again on every action (UpdateUserProfileRequest, the edit layer's Gate call).
+      abilities: this.#gate.abilities(user, ProfilePolicy, ['update']),
       lastLoginAt: login?.last_login_at ?? null,
       // Loaded after the page (E7): the page renders without it, the browser asks for it next — `<Deferred data="activity">`.
       activity: defer(() => this.#activity.recent(user.id)),

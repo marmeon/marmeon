@@ -2,6 +2,7 @@ import { Gate, type Authenticated } from '@bespokecore/auth';
 import { Controller, type HttpContext } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
 import type { User } from '#modules/auth';
+import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileDirectory } from '../ProfileDirectory.ts';
 
@@ -27,7 +28,8 @@ export class EditUserProfileController extends Controller {
     await this.#gate.authorize(ProfilePolicy, 'update', user);
 
     return this.view('user-profile/Edit', {
-      profile: { id: user.id, name: user.name, bio: user.bio, links: await this.#directory.links(user.id) },
+      // The layer's own projection (E61): each link with `can.delete` — a region asks its own policies.
+      profile: { id: user.id, name: user.name, bio: user.bio, links: await this.#gate.withAbilities(await this.#directory.links(user.id), ProfileLinkPolicy, ['delete']) },
       // A failed submit without JavaScript comes back here: refill the fields from old().
       old: this.#session.old() as { name?: string; bio?: string },
     }).layer({ base: 'user-profile.show', params: { user: user.id } });

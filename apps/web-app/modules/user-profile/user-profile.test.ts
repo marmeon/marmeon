@@ -274,9 +274,9 @@ describe('user-profile module', () => {
 });
 
 describe('policies (ProfilePolicy, ProfileLinkPolicy)', () => {
-  it('tell the page what it may offer — explicit `can` props, and the e-mail only to its owner', async () => {
-    await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', { can: { update: true }, email: 'ada@example.com' });
-    await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', { can: { update: false }, email: null });
+  it('tell the page what it may offer — an explicit `abilities` projection (E61), and the e-mail only to its owner', async () => {
+    await as(ada).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', { abilities: { update: true }, email: 'ada@example.com' });
+    await as(ada).get(profile(alan)).assertPage<ShowUserProfileController>('user-profile/Show', { abilities: { update: false }, email: null });
   });
 
   it('refuse with the policy’s reason — at the request (can) and in code (Gate)', async () => {

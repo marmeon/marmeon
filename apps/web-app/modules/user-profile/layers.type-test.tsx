@@ -62,7 +62,7 @@ export class Layers extends Controller {
 
 export function Views(props: PageProps<EditUserProfileController>) {
   // A layer's props are a page's: `PageProps<C>` (the shared ones included).
-  expectTypeOf(props.profile.links).toEqualTypeOf<{ id: number; label: string; url: string }[]>();
+  expectTypeOf(props.profile.links).toEqualTypeOf<{ id: number; user_id: number; label: string; url: string; can: { delete: boolean } }[]>();
   const layer = useLayer<EditUserProfileController>();
   expectTypeOf(layer.depth).toEqualTypeOf<number>();
   expectTypeOf(layer.isLayer).toEqualTypeOf<boolean>();

@@ -1,4 +1,4 @@
-import { HttpError, type ClassResolver, type HttpContext } from '@bespokecore/router';
+import { HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@bespokecore/router';
 import { Auth } from './auth.ts';
 import type { AuthUser, Authenticated } from './user.ts';
 
@@ -66,6 +66,63 @@ interface Before {
   before?(user: AuthUser, ability: string): boolean | undefined | void | Promise<boolean | undefined | void>;
 }
 
+type PolicyMethod = (user: AuthUser, ...resources: unknown[]) => PolicyResult | Promise<PolicyResult>;
+
+/** Abilities of `P` a projection can answer for one resource: they take one resource besides the user, or none. */
+export type ProjectableAbility<P> = {
+  [K in AbilityOf<P>]: ResourcesOf<P, K> extends [] | [unknown] | [unknown?] ? K : never;
+}[AbilityOf<P>];
+
+/** Abilities of `P` that take no resource (`create(user)`) — projected with `gate.abilities(Policy, names)`. */
+export type ResourcelessAbility<P> = { [K in AbilityOf<P>]: [] extends ResourcesOf<P, K> ? K : never }[AbilityOf<P>];
+
+type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
+
+/** The resource that fits every ability in `K` — what their policy methods take after the user (an intersection). */
+export type ResourceOf<P, K extends keyof P> = (
+  K extends unknown ? Contravariant<ResourcesOf<P, K> extends [] ? unknown : ResourcesOf<P, K> extends [(infer R)?] ? R : never> : never
+) extends (resource: infer R) => void
+  ? R
+  : never;
+
+/**
+ * `K` when a projection can ask it — otherwise the message: not an ability (with the policy's abilities), one that needs
+ * its resource, or one that takes more than one.
+ */
+export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string> = string extends K
+  ? Allowed
+  : K extends Allowed
+    ? K
+    : K extends AbilityOf<P>
+      ? K extends ProjectableAbility<P>
+        ? `'${K}' ${Missing}`
+        : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)`
+      : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
+
+/** The projection's answer: one boolean per named ability — never the policy's reasons. */
+export type Abilities<K extends string> = { [N in K]: boolean };
+
+/** A row with its abilities: `{ ...row, can: { delete: boolean } }`. */
+export type WithAbilities<T, K extends string> = { [F in keyof T as F extends 'can' ? never : F]: T[F] } & { can: Abilities<K> } extends infer R
+  ? { [F in keyof R]: R[F] }
+  : never;
+
+type Projectable<P, K> = Extract<K, ProjectableAbility<P>>;
+
+/**
+ * A projection, computed when it is first asked for — and then once: as a page prop it is a lazy prop (a partial
+ * reload that asks for other props never runs a policy), `await` it for its value anywhere else.
+ */
+export interface Projection<T> extends PromiseLike<T> {
+  (): Promise<T>;
+}
+
+function projection<T>(compute: () => Promise<T>): Projection<T> {
+  let answer: Promise<T> | undefined;
+  const run = () => (answer ??= compute());
+  return Object.assign(run, { then: <A = T, B = never>(fulfilled?: ((value: T) => A | PromiseLike<A>) | null, rejected?: ((reason: unknown) => B | PromiseLike<B>) | null) => run().then(fulfilled, rejected) });
+}
+
 /**
  * Asks policies (E28): explicitly named, type-checked, no string gates — Laravel's `Gate`, per request.
  *
@@ -111,8 +168,90 @@ export class Gate {
       const early = await instance.before(user, ability);
       if (typeof early === 'boolean') return new PolicyResponse(early);
     }
-    const result = (await (method as (user: AuthUser, ...resources: unknown[]) => PolicyResult | Promise<PolicyResult>).call(instance, user, ...resources)) as PolicyResult;
+    const result = (await (method as PolicyMethod).call(instance, user, ...resources)) as PolicyResult;
     return result instanceof PolicyResponse ? result : new PolicyResponse(result === true);
+  }
+
+  /**
+   * What the page may offer for `resource` (E61) — one boolean per named ability, from the policy:
+   *
+   * ```ts
+   * abilities: this.#gate.abilities(profile, ProfilePolicy, ['update']),   // the view: abilities.update
+   * abilities: this.#gate.abilities(PostPolicy, ['create']),              // abilities without a resource
+   * ```
+   *
+   * Explicit: nothing is asked that is not named, and only booleans leave the server (never a `deny()` reason).
+   * Lazy: as a page prop it runs only when the response includes it — a partial reload for other props skips it,
+   * and so does a reload of the data it is about; name it, or project it inside that prop (`profile: async () =>
+   * ({ ...profile, can: await gate.abilities(…) })`), to refresh it with the data.
+   *
+   * The UI's hint only: the server checks again on every request (`can()` in `authorize`, `gate.authorize`).
+   */
+  abilities<P extends object, const K extends string>(
+    policy: PolicyClass<P>,
+    names: readonly CheckAbility<P, K, ResourcelessAbility<P>, `needs its resource — gate.abilities(resource, Policy, ['${K}'])`>[],
+  ): Projection<Abilities<K>>;
+  abilities<P extends object, const K extends string>(
+    resource: NoInfer<ResourceOf<P, Projectable<P, K>>>,
+    policy: PolicyClass<P>,
+    names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[],
+  ): Projection<Abilities<K>>;
+  abilities(...args: [PolicyClass, readonly string[]] | [unknown, PolicyClass, readonly string[]]): Projection<Abilities<string>> {
+    const [resources, policy, names] = args.length === 2 ? [[], args[0], args[1]] : [[args[0]], args[1], args[2]];
+    return projection(async () => (await this.#project(policy, names, [resources]))[0]!);
+  }
+
+  /**
+   * Each row with its abilities (E61): `{ ...link, can: { delete: boolean } }` — for lists, where every row is
+   * asked on its own:
+   *
+   * ```ts
+   * links: this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete']),   // the view: link.can.delete
+   * ```
+   *
+   * The cost, honestly: the policy method runs once per row and named ability (50 rows, one ability: 50 calls) —
+   * cheap for a comparison, a query per row for a policy that queries (load what it needs with the rows instead).
+   * `before()` runs once per ability for the whole list, the policy is built once, and abilities not named never run.
+   * Lazy like {@link Gate.abilities}.
+   */
+  withAbilities<P extends object, const K extends string, T extends ResourceOf<P, Projectable<P, K>>>(
+    rows: readonly T[],
+    policy: PolicyClass<P>,
+    names: readonly CheckAbility<P, K, ProjectableAbility<P>, never>[],
+  ): Projection<WithAbilities<T, K>[]> {
+    return projection(async () => {
+      const answers = await this.#project(policy, names, rows.map((row) => [row]));
+      return rows.map((row, index) => ({ ...(row as object), can: answers[index]! }) as unknown as WithAbilities<T, K>);
+    });
+  }
+
+  /** One answer per resource list: the user and the policy once, `before()` once per ability, then every method call. */
+  async #project(policy: PolicyClass, names: readonly string[], resources: readonly unknown[][]): Promise<Abilities<string>[]> {
+    const denied = () => Object.fromEntries(names.map((name) => [name, false]));
+    if (resources.length === 0) return [];
+    const user = await this.#auth.user();
+    if (user === undefined) return resources.map(denied);
+    const instance = this.#resolve(policy) as Record<string, unknown> & Before;
+    for (const name of names) if (typeof instance[name] !== 'function') throw new TypeError(`${policy.name} has no ability "${name}".`);
+    const early = new Map<string, boolean>();
+    if (instance.before) {
+      for (const name of names) {
+        const answer = await instance.before(user, name);
+        if (typeof answer === 'boolean') early.set(name, answer);
+      }
+    }
+    const answers: Abilities<string>[] = [];
+    // One after another: a policy that queries must not open a connection per row at once.
+    for (const args of resources) {
+      const answer: Abilities<string> = {};
+      for (const name of names) {
+        const decided = early.get(name);
+        const result = decided ?? ((await (instance[name] as PolicyMethod).call(instance, user, ...args)) as PolicyResult);
+        answer[name] = result instanceof PolicyResponse ? result.allowed : result === true;
+      }
+      answers.push(answer);
+    }
+    return answers;
   }
 }
 

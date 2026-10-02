@@ -8,6 +8,7 @@ const en = {
     range: 'Time range',
     range_option: '{range, select, 7d {7 days} 30d {30 days} other {All time}}',
     none: 'Nobody signed in in this time.',
+    edit: 'Edit profile',
   },
   activity: {
     title: 'My activity',

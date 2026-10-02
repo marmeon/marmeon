@@ -1,4 +1,5 @@
 import { can } from '@bespokecore/auth';
+import type { Row } from '@bespokecore/database';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import { Translator } from '@bespokecore/i18n';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
@@ -21,7 +22,7 @@ export class DeleteProfileLinkController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number } } }) {
+  async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number }; link: Row<'profile_links'> } }) {
     await this.#links.delete(ctx.params.link.id);
     // Confirmed in its layer: it closes, and what is beneath (the profile, or the edit layer) loses the link.
     return this.closeLayer({ reload: ['profile'] })

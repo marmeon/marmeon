@@ -1,4 +1,5 @@
 import { can } from '@bespokecore/auth';
+import type { Row } from '@bespokecore/database';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 
@@ -14,7 +15,7 @@ export const ConfirmRemoveLinkRequest = defineRequest({
 export class ConfirmRemoveLinkController extends Controller {
   static request = ConfirmRemoveLinkRequest;
 
-  handle(ctx: ContextOf<typeof ConfirmRemoveLinkRequest> & { params: { user: { id: number } } }) {
+  handle(ctx: ContextOf<typeof ConfirmRemoveLinkRequest> & { params: { user: { id: number }; link: Row<'profile_links'> } }) {
     const { link, user } = ctx.params;
     return this.view('user-profile/RemoveLink', { link: { id: link.id, label: link.label, url: link.url }, userId: user.id }).layer({
       base: 'user-profile.edit',

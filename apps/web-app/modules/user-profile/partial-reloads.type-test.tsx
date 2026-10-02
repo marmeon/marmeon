@@ -19,7 +19,7 @@ export function OnTheProfilePage({ activity, stats, profile }: Props) {
   // Untyped without a page: any name.
   void useRouter().reload({ only: ['anything'] });
 
-  // Type '"stat"' is not assignable to type '"activity" | "auth" | "can" | "email" | "errors" | "isOwnProfile" |
+  // Type '"stat"' is not assignable to type '"abilities" | "activity" | "auth" | "email" | "errors" | "isOwnProfile" |
   // "lastLoginAt" | "locales" | "now" | "profile" | "stats"'. Did you mean '"stats"'?
   // @ts-expect-error
   void router.reload({ only: ['stat'] });

@@ -1,6 +1,7 @@
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import * as v from 'valibot';
-import { ProfileDirectory } from '#modules/user-profile';
+import { Gate } from '@bespokecore/auth';
+import { ProfileDirectory, ProfilePolicy } from '#modules/user-profile';
 
 /** The time ranges of the range picker, in the order the island offers them. */
 export const SIGN_IN_RANGES = ['7d', '30d', 'all'] as const;
@@ -23,10 +24,12 @@ export class ShowRecentSignInsController extends Controller {
   static request = RecentSignInsRequest;
 
   readonly #directory: ProfileDirectory;
+  readonly #gate: Gate;
 
-  constructor(directory: ProfileDirectory) {
+  constructor(directory: ProfileDirectory, gate: Gate) {
     super();
     this.#directory = directory;
+    this.#gate = gate;
   }
 
   async handle(ctx: ContextOf<typeof RecentSignInsRequest>) {
@@ -34,7 +37,12 @@ export class ShowRecentSignInsController extends Controller {
     const since = range === 'all' ? undefined : new Date(Date.now() - (range === '7d' ? 7 : 30) * DAY);
     const rows = await this.#directory.recentSignIns({ since, limit });
     return this.island('dashboard/RecentSignIns', {
-      entries: rows.map((row) => ({ id: row.id, name: row.name, at: row.last_login_at })),
+      // The island's own projection (E61): each entry with `can.update` — "Edit profile" next to your own name only.
+      entries: this.#gate.withAbilities(
+        rows.map((row) => ({ id: row.id, name: row.name, at: row.last_login_at })),
+        ProfilePolicy,
+        ['update'],
+      ),
       // The server's clock for "5 minutes ago".
       now: new Date(),
     });

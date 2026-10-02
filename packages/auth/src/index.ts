@@ -26,7 +26,7 @@ export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware
 export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
 export type { RememberResult, RememberTokenTable } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
-export type { AbilityOf, PolicyClass, PolicyResult, ResourcesOf } from './gate.ts';
+export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
 export { confirmed, password } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';

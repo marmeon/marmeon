@@ -22,7 +22,7 @@ const ACTIVITY_POLL = 15_000;
 // Props are inferred from the controller — change the controller, and this view type-checks against it.
 type Props = PageProps<ShowUserProfileController>;
 
-export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, activity, stats, now, auth }: Props) {
+export default function Show({ profile, email, isOwnProfile, abilities, lastLoginAt, activity, stats, now, auth }: Props) {
   // The activity panel keeps itself current: a background reload of just `activity`, paused while the tab is hidden.
   usePoll<ShowUserProfileController>(ACTIVITY_POLL, { only: ['activity'] });
   const t = useTranslation('user-profile');
@@ -77,9 +77,9 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
           {t('show.verify')} <Link route="auth.verification.send">{t('show.verify_again')}</Link>
         </p>
       )}
-      {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. A layer (E53): the
-          profile stays under it, with its activity and statistics as loaded. */}
-      {can.update && (
+      {/* Offered only when the policy allows it (`abilities`, E61) — plain booleans, the server checks again on submit. A
+          layer (E53): the profile stays under it, with its activity and statistics as loaded. */}
+      {abilities.update && (
         <p>
           <Link route="user-profile.edit" params={{ user: profile.id }} layer prefetch>
             {t('show.edit')}
@@ -126,7 +126,8 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
                 <a href={link.url} rel="nofollow noopener" target="_blank">
                   {link.label}
                 </a>
-                {can.update && (
+                {/* Per link (E61): the controller projected `can.delete` onto every link. */}
+                {link.can.delete && (
                   <>
                     {' '}
                     <button type="button" onClick={() => removeLink(link.id, link.label)} aria-label={t('show.remove_label', { label: link.label })}>
@@ -144,7 +145,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
           </ul>
         )}
         <ActionFailure exception={remove.exception} />
-        {can.update && <AddLink userId={profile.id} />}
+        {abilities.update && <AddLink userId={profile.id} />}
       </section>
 
       <nav>

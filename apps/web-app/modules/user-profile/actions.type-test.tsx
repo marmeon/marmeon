@@ -66,7 +66,7 @@ export function Actions() {
     // label: string; url: string; }[]'.
     // @ts-expect-error
     router.optimistic((props) => ({ profile: { ...props.profile, links: 5 } }));
-    // Type '"activty"' is not assignable to type '"activity" | "auth" | "can" | … | "stats"'. Did you mean '"activity"'?
+    // Type '"activty"' is not assignable to type '"abilities" | "activity" | "auth" | … | "stats"'. Did you mean '"activity"'?
     // @ts-expect-error
     router.reloading({ only: ['activty'] });
     // Type '"dashboard.sign-in"' is not assignable to type '"'dashboard.sign-in' is not a route name — did you mean dashboard.show,

@@ -37,6 +37,15 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
               <small>
                 <time dateTime={entry.at}>{t.format.relative(entry.at, now)}</time>
               </small>
+              {/* Projected by the island's controller (E61) — the edit layer checks the policy again. */}
+              {entry.can.update && (
+                <>
+                  {' '}
+                  <Link route="user-profile.edit" params={{ user: entry.id }} layer>
+                    {t('sign_ins.edit')}
+                  </Link>
+                </>
+              )}
             </li>
           ))}
         </ul>

@@ -77,10 +77,12 @@ export default function Edit({ profile, old }: Props) {
             {profile.links.map((link) => (
               <li key={link.id}>
                 {link.label}{' '}
-                {/* A second layer over this one (depth 2): "Remove this link?" */}
-                <Link route="user-profile.links.remove" params={{ user: profile.id, link: link.id }} layer aria-label={t('show.remove_label', { label: link.label })}>
-                  {t('show.remove')}
-                </Link>
+                {/* A second layer over this one (depth 2): "Remove this link?" — offered when the policy allows it (E61). */}
+                {link.can.delete && (
+                  <Link route="user-profile.links.remove" params={{ user: profile.id, link: link.id }} layer aria-label={t('show.remove_label', { label: link.label })}>
+                    {t('show.remove')}
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
