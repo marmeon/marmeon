@@ -222,7 +222,9 @@ await navigator.load(loadInstant);                           // async: fetch the
   history fields with `host.history.field`, add it to `ALL_FEATURES` of the security matrix and a row to the leak test (below).
 
 **The size budget** (E75). `packages/react/size-budget.json` holds a limit per scenario, in KB gzip of the initial download,
-measured in Vite's app mode against `dist/` (minified, production defines, React and i18n left out):
+measured in Vite's app mode against `dist/` (minified, production defines, React and i18n left out, and without Vite's preload
+helper — the first `import()` of any client build brings it, so it is no framework code). The limits are where Wave 5c ended
+(core 11.2, `emptyApp` 13.6, `minimalApp` 18.2, `blank-app` 14.1, `web-app` 22.6 KB gzip) and only go down:
 
 | Scenario | What |
 | --- | --- |

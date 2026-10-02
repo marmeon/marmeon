@@ -134,12 +134,27 @@ export async function appClientBuild(root: string, { sourcemap = false }: Pick<B
   return measure({ root, logLevel: 'silent', build: {} }, { sourcemap });
 }
 
+/** Vite's helper around every `import()` of a client build (it preloads a lazy chunk's dependencies). */
+const PRELOAD_HELPER = '\0vite/preload-helper.js';
+
+/**
+ * Measured without Vite's preload helper (≈ 0.5 KB gzip, Max 02.10.: E75 as decided at the end of Wave 5c): the first `import()`
+ * of a build brings it — every app with lazy pages ships it whatever the framework does, so it is no framework code. A stub
+ * takes its place in the measured builds only (it loads the chunk without preloading its dependencies); nothing ships it.
+ */
+const withoutPreloadHelper = {
+  name: 'bespokecore:measure-without-preload-helper',
+  enforce: 'pre' as const,
+  resolveId: (id: string) => (id === PRELOAD_HELPER ? id : undefined),
+  load: (id: string) => (id === PRELOAD_HELPER ? 'export const __vitePreload = (load) => load();' : undefined),
+};
+
 async function measure(config: InlineConfig, { sourcemap, entry }: { sourcemap: boolean; entry?: string }): Promise<AppBundle> {
   let outDir = '';
   const result = (await build({
     ...config,
     mode: 'production',
-    plugins: [...(config.plugins ?? []), { name: 'bespokecore:measure', configResolved: (resolved) => void (outDir = resolve(resolved.root, resolved.build.outDir)) }],
+    plugins: [...(config.plugins ?? []), withoutPreloadHelper, { name: 'bespokecore:measure', configResolved: (resolved) => void (outDir = resolve(resolved.root, resolved.build.outDir)) }],
     // `hidden`: no `sourceMappingURL` comment, so the measured code is the shipped code.
     build: { ...config.build, write: false, sourcemap: sourcemap ? 'hidden' : false, reportCompressedSize: false },
   })) as Rolldown.RolldownOutput | Rolldown.RolldownOutput[];
@@ -336,7 +351,7 @@ export type Scenario = keyof typeof SCENARIOS;
 export interface BudgetLine {
   /** The ratchet: the size may not grow over it, and it only ever goes down. */
   readonly limit: number;
-  /** Where Wave 5c takes it (informational). */
+  /** What Wave 5c ended at (informational: the limit is the ratchet). */
   readonly target?: number;
   /** A ceiling, not a ratchet: no request to lower it when the size shrinks (totals that may shift between chunks). */
   readonly ceiling?: boolean;
