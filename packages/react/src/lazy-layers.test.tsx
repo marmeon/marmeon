@@ -102,7 +102,8 @@ describe('layers loaded on demand in React (E71)', () => {
     await mount(page('Profile', '/users/1', { name: 'Ada' }));
     const heading = $('[data-testid="name"]');
     await click('[data-testid="plain"]');
-    await wait();
+    // The layers' code loads now (fresh modules) — under a busy test run, that may take more than a tick.
+    for (let tries = 0; tries < 100 && dialogs().length === 0; tries++) await wait(10);
     expect(loadedLate()).toHaveLength(1);
     expect(dialogs()).toHaveLength(1);
     expect($('[data-testid="depth"]')!.textContent).toBe('1');
@@ -119,6 +120,9 @@ describe('layers loaded on demand in React (E71)', () => {
   it('<Link layer> loads them where it renders — they are here before the click, which waits for nothing', async () => {
     await mount(page('Linked', '/users/1'));
     await wait();
+    // Here before the click: the stack (with the core's layers) has loaded already — asking for it again finds it settled.
+    const stack = (await import('./app.tsx')).loadLayerStack() as Promise<unknown> & { status?: string };
+    expect(stack.status).toBe('fulfilled');
     await click('[data-testid="edit"]');
     await wait();
     expect(dialogs()).toHaveLength(1);
