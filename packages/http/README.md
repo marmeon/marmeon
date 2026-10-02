@@ -149,6 +149,84 @@ Pages come from `virtual:bespoke/pages` (`bespoke({ pages })` in `@bespokecore/v
 language files from `virtual:bespoke/lang` and the route manifest from `virtual:bespoke/routes`; the adapter brings its framework's Vite plugin
 (`plugins: [bespoke(), react()]`).
 
+### Features
+
+An app pays in the browser only for what it uses (Wave 5c, E70–E75). The navigator alone is the **fixed core**; everything
+optional is a feature (`defineFeature`) that is attached where it is used — no app configuration, no list to keep in sync.
+Nothing is attached by default (`NavigatorOptions.features` is empty). A feature comes in one of three ways:
+
+| How | Features | Attached by (React) |
+| --- | --- | --- |
+| **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack` | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`) |
+| **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders |
+| **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers | an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry) |
+
+The core itself loads uploads with progress (`FormData` with a progress listener, over XHR) with the first such upload — a
+chunk that cannot load sends it with `fetch`, without progress. The progress bar (`showProgress`), `markBusy`, polling
+(`createPoll`), `<Form>` and pagination are plain modules: in an app when it imports them (`createBespokeApp` turns the progress
+bar on by default).
+
+**Always in the core, and why.** What the server can send to any request is handled whatever the client imported, and every
+security invariant is structural — no feature can forget it (E72, E36):
+
+- the visit pipeline, Back/Forward, scroll restoration, the in-memory page cache (LRU) and the history writer, which writes
+  positions only — never props (`host.history`, see the feature host above);
+- the 409 of a document change (`version` may wait, `history` — signing in or out — never does): it leaves the document
+  (`#leave`), empties **every** slot of every feature, aborts every request in the background **and the visit under way**, so
+  nothing of the signed-in user lands afterwards;
+- once props, flash messages (each once, by its id), deferred, merged and streamed props — protocol fields any answer may carry;
+- a visit's own `confirm` (asked with no guard attached) and a visit's optimistic patches (of any target: the page's, a layer's,
+  an island's);
+- the small `RegionOwner` of each entry on screen (remembered state, layers and rendering need it without islands).
+
+`security-matrix.test.ts` holds every feature — and the core alone (`features: []`) — to these rules: after a 409 (signed out,
+a new build) and when memory lets go of an entry, no slot, no hook and no API hands out what the signed-in user saw, a visit or a
+Back still under way does not land, and `history.state` never holds any of it; a page of another once scope drops the once props.
+
+**What an adapter does with features** (React today, Vue next — E39, E73): it calls feature functions, never methods of the
+navigator. In a composable or hook:
+
+```ts
+const regions = navigator.use(islands);                      // sync: attached on the first call, the same API after (React: useFeature(islands))
+const region = regions.region(url, { owner, initial });
+const live = liveValidationOnFirstUse(navigator, url, opts); // lazy: loads its chunk on the first change, replays what came meanwhile
+void prefetchWith(navigator, url, { cacheFor });             // lazy: the first prefetch loads the code; then it prefetches at once
+navigator.loaded(loadPrefetch)?.prefetch(url);               // sync, once a lazy feature is here — for what must happen in this task
+await navigator.load(loadInstant);                           // async: fetch the chunk now (when a link that needs it renders)
+```
+
+- `navigator.load(loader)` fetches a feature's chunk once and attaches it; `navigator.loaded(loader)` hands it over synchronously
+  once it is there (a press on a link must prefetch before the click's visit, not a task later).
+- Layers: give the navigator `loadLayers` — a loader that brings the adapter's layer UI in the **same chunk graph** as the core's
+  `layers` (React: `layer-stack.tsx` re-exports them; Vue: a module with the layer stack component that re-exports `layers`,
+  loaded with `import()` and rendered with `defineAsyncComponent`). Use the same loader where layers open, and await it before
+  hydrating a document with `page.layers` — attached before the navigator takes over the history, so the layers hydrate.
+- A new feature: `defineFeature(name, setup, order?)`; keep state **only** in slots (`host.entry`, `host.document`), register
+  history fields with `host.history.field`, add it to `ALL_FEATURES` of the security matrix and a row to the leak test (below).
+
+**The size budget** (E75). `packages/react/size-budget.json` holds a limit per scenario, in KB gzip of the initial download,
+measured in Vite's app mode against `dist/` (minified, production defines, React and i18n left out):
+
+| Scenario | What |
+| --- | --- |
+| `core` | the client core as an adapter uses it: the navigator, the document, links, forms, routes, titles, messages |
+| `emptyApp` | `createBespokeApp` alone — an app without a page |
+| `minimalApp` | `createBespokeApp`, `Link`, `useForm`, `usePage`, `Head` |
+| `everything` | all of `@bespokecore/react` — a ceiling, not a ratchet |
+| `blank-app`, `web-app` (`appsGzipKB`) | the real apps' client builds: the marginal cost of core + adapter in the initial load (what the download loses without their bytes) |
+
+- `bundle-size.test.ts` (part of `pnpm test`) builds the scenarios and fails when one grows over its limit — and when one is
+  more than 0.3 KB under it, until the limit follows (`BESPOKE_SIZE_BUDGET=update` lowers limits in place, never raises them).
+  Limits only go down: raising one is a decision on record (E78, E79, E81), not a fix. The same test is the **leak test**: every
+  feature has markers (its modules) and must be in a bundle only with its own import — a lazy one only in a lazy chunk
+  (`stillLeaking` is `[]` in every scenario).
+- `pnpm size` attributes every byte of the scenarios and of the real apps to its module (source maps), prints the marginal cost
+  of core + adapter, and checks the apps against `appsGzipKB`; `pnpm size web-app` lists every module. Both measure `dist/`:
+  run `pnpm build` first.
+- `bespoke()` splits an app's first download into two chunks — `vendor` (third-party packages) and `index` (the framework with the
+  app's entry): `CLIENT_CHUNKS` of `@bespokecore/vite`, initial modules only, so what loads on first use stays in its own chunks.
+  The scenarios are built the same way.
+
 ### Error codes
 
 A mistake in app code (a hook outside its app, a page with a broken export, a route the browser does not know) throws an
