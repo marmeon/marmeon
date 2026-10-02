@@ -502,15 +502,15 @@ export class TestResponse {
   assertHydrates(): this {
     this.#requireSsr('assertHydrates');
     this.assertServerRendered();
-    const { rerendered } = this.#ssr!;
+    const { rerendered, rendered = this.body } = this.#ssr!;
     if (rerendered === undefined) this.#fail('Could not render the page again from its JSON');
-    if (rerendered !== this.body) {
+    if (rerendered !== rendered) {
       let at = 0;
-      while (at < this.body.length && this.body[at] === rerendered[at]) at++;
+      while (at < rendered.length && rendered[at] === rerendered[at]) at++;
       const around = (text: string) => JSON.stringify(text.slice(Math.max(0, at - 80), at + 80));
       this.#fail(
         `Expected the page to hydrate: the server rendered other markup than the browser will from the page object.\n` +
-          `  server:  ${around(this.body)}\n  browser: ${around(rerendered)}`,
+          `  server:  ${around(rendered)}\n  browser: ${around(rerendered)}`,
       );
     }
     return this;

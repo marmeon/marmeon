@@ -130,3 +130,11 @@ describe('a deep link of a layer, streamed (E53, E71)', () => {
     expect(html).toContain('<!--$--><div data-bespoke-layers="">');
   });
 });
+
+describe('hydration, streamed (assertHydrates with ssr: "stream")', () => {
+  it('the dashboard, the profile with its streamed activity and a layer’s deep link hydrate — compared as the browser has them once everything streamed in', async () => {
+    await app.actingAs(ada).get('/dashboard', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
+    await app.actingAs(ada).get(`/users/${ada.id}`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
+    await app.actingAs(ada).get(`/users/${ada.id}/edit`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
+  });
+});
