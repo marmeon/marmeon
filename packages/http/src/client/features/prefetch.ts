@@ -43,7 +43,7 @@ export const PREFETCHED = slot(
   },
 );
 
-type PrefetchCore = Pick<FeatureHost, 'window' | 'page' | 'left' | 'once' | 'send' | 'document'>;
+type PrefetchCore = Pick<FeatureHost, 'navigator' | 'window' | 'page' | 'left' | 'once' | 'send' | 'document'>;
 
 /** The prefetched pages of one navigator, by URL. */
 export class Prefetches {
@@ -77,6 +77,9 @@ export class Prefetches {
     if (this.#core.left || (method !== undefined && String(method).toLowerCase() !== 'get') || target.origin !== window.location.origin) return Promise.resolve();
     const { url: path } = buildRequest(target, 'get', options.data);
     if (path === page.url && !options.layer) return Promise.resolve();
+    // Its visit went already (a press loaded this code, and the click came first): it asks the server itself.
+    const visiting = this.#core.navigator.visiting;
+    if (visiting && !visiting.async && visiting.url === path) return Promise.resolve();
     const key = prefetchKey(path, options.layer === true);
     const existing = this.#pages.peek(key);
     if (existing && !existing.expired()) return existing.page.then(() => undefined);

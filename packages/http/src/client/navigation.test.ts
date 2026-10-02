@@ -708,6 +708,26 @@ describe('Navigator — prefetching', () => {
     expect(navigator.use(prefetch).size).toBe(0);
   });
 
+  it('counter-check: the very first press (no hover before, the prefetch code not here yet) asks once — the click’s visit, not a prefetch for nobody', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    win.handler = async (url) => {
+      await slow.opened;
+      return pageResponse(page(new URL(url).pathname, { name: 'Grace' }));
+    };
+    const navigator = new Navigator({ initialPage: page('/users/1'), window: win, render: async () => undefined, features: [] });
+    navigator.start();
+    // Pressed (a touch screen, or a click without a hover first): the prefetch code starts loading — then the click's visit goes.
+    const pressed = prefetchWith(navigator, '/users/2');
+    const visiting = navigator.visit('/users/2');
+    await settle();
+    slow.open();
+    await Promise.all([pressed, visiting]);
+    expect(navigator.page.url).toBe('/users/2');
+    expect(win.requests.map(purpose)).toEqual([undefined]);
+    expect(navigator.use(prefetch).size).toBe(0);
+  });
+
   it('counter-check: never prefetches anything but a GET — nor another site', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => pageResponse(page('/x'));
