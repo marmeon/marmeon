@@ -2,6 +2,7 @@ import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../page.ts';
 import { describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { prefetch } from './features/prefetch.ts';
 
 describe('Navigator — the history without props (E36)', () => {
   it('keeps only { component, url, scroll, key, index } in history.state — never the props', async () => {
@@ -655,7 +656,7 @@ describe('Navigator — prefetching', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = (url) => pageResponse(page(new URL(url).pathname, { name: 'Grace' }));
     const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
-    await navigator.prefetch('/users/2');
+    await navigator.use(prefetch).prefetch('/users/2');
     expect(win.requests).toEqual([{ url: `${ORIGIN}/users/2`, method: 'GET', headers: expect.objectContaining({ [PAGE_HEADER]: 'true', purpose: 'prefetch' }) }]);
     expect(visible().props).toEqual({ name: 'Ada' }); // fetched, not shown
 
@@ -677,8 +678,8 @@ describe('Navigator — prefetching', () => {
       return pageResponse(page('/users/2', { name: 'Grace' }));
     };
     const { navigator, visible } = boot(win, page('/users/1'));
-    void navigator.prefetch('/users/2');
-    void navigator.prefetch('/users/2'); // hovered again: still the one request
+    void navigator.use(prefetch).prefetch('/users/2');
+    void navigator.use(prefetch).prefetch('/users/2'); // hovered again: still the one request
     const visiting = navigator.visit('/users/2');
     slow.open();
     await visiting;
@@ -690,9 +691,9 @@ describe('Navigator — prefetching', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => pageResponse(page('/x'));
     const { navigator } = boot(win, page('/users/1'));
-    for (const method of ['post', 'put', 'patch', 'delete', 'POST']) await navigator.prefetch('/logout', { method } as never);
-    await navigator.prefetch('https://elsewhere.test/page');
-    await navigator.prefetch('/users/1'); // the page on screen
+    for (const method of ['post', 'put', 'patch', 'delete', 'POST']) await navigator.use(prefetch).prefetch('/logout', { method } as never);
+    await navigator.use(prefetch).prefetch('https://elsewhere.test/page');
+    await navigator.use(prefetch).prefetch('/users/1'); // the page on screen
     expect(win.requests).toEqual([]);
   });
 
@@ -701,13 +702,13 @@ describe('Navigator — prefetching', () => {
     let n = 0;
     win.handler = (url) => pageResponse(page(new URL(url).pathname, { n: ++n }));
     const { navigator, visible } = boot(win, page('/a'));
-    await navigator.prefetch('/b');
+    await navigator.use(prefetch).prefetch('/b');
     await navigator.visit('/b');
     await navigator.visit('/a');
     await navigator.visit('/b');
     expect(visible().props).toEqual({ n: 3 }); // not the prefetched n: 1 again
 
-    await navigator.prefetch('/c', { cacheFor: 0 }); // stale as soon as it arrives
+    await navigator.use(prefetch).prefetch('/c', { cacheFor: 0 }); // stale as soon as it arrives
     await navigator.visit('/c');
     expect(visible().props).toEqual({ n: 5 });
     expect(win.requests.map(purpose)).toEqual(['prefetch', undefined, undefined, 'prefetch', undefined]);
@@ -727,11 +728,11 @@ describe('Navigator — prefetching', () => {
       return signedIn ? pageResponse(page('/settings/security', { email: 'ada@example.com' }, 'auth/Security')) : pageResponse(page('/login', {}, 'auth/Login'));
     };
     const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
-    await navigator.prefetch('/settings/security');
-    expect(navigator.prefetchedPages).toBe(1);
+    await navigator.use(prefetch).prefetch('/settings/security');
+    expect(navigator.use(prefetch).size).toBe(1);
     await navigator.visit('/logout', { method });
     expect(win.loads).toEqual(['assign /login']);
-    expect(navigator.prefetchedPages).toBe(0);
+    expect(navigator.use(prefetch).size).toBe(0);
 
     // Should this document live on (the browser brings it back, a click before it unloads): the server is asked.
     await navigator.visit('/settings/security');
@@ -752,12 +753,12 @@ describe('Navigator — prefetching', () => {
       return pageResponse(page('/settings/security', { email: 'ada@example.com' }));
     };
     const { navigator } = boot(win, page('/users/1'));
-    const prefetching = navigator.prefetch('/settings/security');
+    const prefetching = navigator.use(prefetch).prefetch('/settings/security');
     await navigator.visit('/logout', { method: 'post' });
     expect(signal?.aborted).toBe(true);
     slow.open();
     await prefetching;
-    expect(navigator.prefetchedPages).toBe(0);
+    expect(navigator.use(prefetch).size).toBe(0);
   });
 
   it('forgets what is no page to show as it is — 409 after a deployment, a download, offline, 5xx — without navigating or events', async () => {
@@ -775,35 +776,35 @@ describe('Navigator — prefetching', () => {
       const exceptions: unknown[] = [];
       navigator.on('exception', (exception) => exceptions.push(exception));
       navigator.on('start', (visit) => exceptions.push(visit));
-      await navigator.prefetch('/b');
+      await navigator.use(prefetch).prefetch('/b');
       expect(win.loads).toEqual([]);
       expect(exceptions).toEqual([]); // no events, no fallback for a prefetch
-      expect(navigator.prefetchedPages).toBe(0);
+      expect(navigator.use(prefetch).size).toBe(0);
       stop();
     }
     // A 5xx error page with the page header is not kept either.
     win.handler = () => new Response(JSON.stringify(page('/b', {}, 'errors/Error')), { status: 500, headers: { [PAGE_HEADER]: 'true' } });
     const { navigator } = boot(win, page('/a'));
-    await navigator.prefetch('/b');
-    expect(navigator.prefetchedPages).toBe(0);
+    await navigator.use(prefetch).prefetch('/b');
+    expect(navigator.use(prefetch).size).toBe(0);
   });
 
   it('a form (non-GET visit) drops every prefetched page — what they show may have changed', async () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     win.handler = (url, init) => pageResponse(page(init.method === 'POST' ? '/a' : new URL(url).pathname));
     const { navigator } = boot(win, page('/a'));
-    await navigator.prefetch('/b');
-    await navigator.prefetch('/c');
-    expect(navigator.prefetchedPages).toBe(2);
+    await navigator.use(prefetch).prefetch('/b');
+    await navigator.use(prefetch).prefetch('/c');
+    expect(navigator.use(prefetch).size).toBe(2);
     await navigator.visit('/a', { method: 'post', data: { name: 'x' } });
-    expect(navigator.prefetchedPages).toBe(0);
+    expect(navigator.use(prefetch).size).toBe(0);
   });
 
   it('takes data into the query string — and never a prefetch for a partial reload or a visit with its own headers', async () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
     win.handler = (url) => pageResponse(page(new URL(url).pathname + new URL(url).search));
     const { navigator } = boot(win, page('/a'));
-    await navigator.prefetch('/b', { data: { tab: 'links' } });
+    await navigator.use(prefetch).prefetch('/b', { data: { tab: 'links' } });
     expect(win.requests[0]!.url).toBe(`${ORIGIN}/b?tab=links`);
     await navigator.visit('/b?tab=links', { headers: { 'x-custom': '1' } });
     expect(win.requests).toHaveLength(2);

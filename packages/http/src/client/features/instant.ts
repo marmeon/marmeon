@@ -100,4 +100,4 @@ export const instant = defineFeature('instant', (host) => {
   host.on('draw', () => visits.replaced());
   host.on('popState', () => visits.cancel());
   return visits;
-});
+}, 3);

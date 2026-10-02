@@ -4,6 +4,7 @@ import {
   Navigator,
   optimistic as optimisticFeature,
   pageLocale,
+  prefetchWith,
   RegionOwner,
   showProgress,
   TitleRegistry,
@@ -407,8 +408,8 @@ export function BespokeApp({
   }, []);
   const visit = useCallback((url: string, options?: VisitOptions) => browser().visit(url, options), [browser]);
   const reload = useCallback((options?: ReloadOptions) => browser().reload(options), [browser]);
-  // A prefetch while rendering on the server (an effect never runs there) has nothing to do.
-  const prefetch = useCallback((url: string, options?: PrefetchOptions) => navigator.current?.prefetch(url, options) ?? Promise.resolve(), []);
+  // A prefetch while rendering on the server (an effect never runs there) has nothing to do. Its code loads with the first (E74).
+  const prefetch = useCallback((url: string, options?: PrefetchOptions) => (navigator.current ? prefetchWith(navigator.current, url, options) : Promise.resolve()), []);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
   // The page's patches and reloads are those of its history entry (E59) — never in its props in memory.
   const optimistic = useCallback((patch: (props: Readonly<Record<string, unknown>>) => object) => ({ target: browser().use(optimisticFeature).page, patch: patch as never }), [browser]);

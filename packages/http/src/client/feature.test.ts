@@ -40,11 +40,23 @@ describe('navigator.use — a feature attaches once per navigator (E70)', () => 
   });
 
   it('attaches the features still in the default list (Wave 5c step 4 takes them out one by one) — and none when told so', () => {
-    expect(DEFAULT_FEATURES.map((feature) => feature.name)).toEqual(['guard', 'prefetch', 'instant', 'layers', 'islands', 'revalidateOnBack']);
+    expect(DEFAULT_FEATURES.map((feature) => feature.name)).toEqual(['guard', 'instant', 'layers', 'islands', 'revalidateOnBack']);
     const { navigator } = tab('/a', { features: [] });
     const setup = vi.fn(() => 'api');
     expect(navigator.use(defineFeature('late', setup))).toBe('api');
     expect(setup).toHaveBeenCalledOnce();
+  });
+
+  it("runs the hooks in the features' order, whenever each was attached — a hook registered outside a setup last", async () => {
+    const { navigator } = tab('/a', { features: [] });
+    const ran: string[] = [];
+    const host = hostOf(navigator);
+    host.on('write', () => void ran.push('outside'));
+    const writer = (name: string, order?: number) => defineFeature(name, (given) => given.on('write', () => void ran.push(name)), order);
+    // Attached in the order a page uses them: a form guards first, a link prefetches on hover, a third-party feature has no order.
+    for (const feature of [writer('third-party'), writer('instant', 3), writer('guard', 1), writer('prefetch', 2), writer('guard-2', 1)]) navigator.use(feature);
+    await navigator.visit('/a', { method: 'post' });
+    expect(ran).toEqual(['guard', 'guard-2', 'prefetch', 'instant', 'outside', 'third-party']);
   });
 
   it('takes a hook out again', async () => {

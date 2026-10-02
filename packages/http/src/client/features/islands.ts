@@ -65,4 +65,4 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
 export const islands = defineFeature('islands', (host) => {
   host.transport = regionTransport(host);
   return host.transport;
-});
+}, 7);

@@ -5,11 +5,24 @@
  */
 import type { Feature } from './feature.ts';
 import type { LiveValidationFeature } from './features/live-validation.ts';
+import type { Prefetches, PrefetchOptions } from './features/prefetch.ts';
 import type { LiveValidation, LiveValidationOptions } from './live-validation.ts';
 import type { Navigator } from './navigation.ts';
 
 /** Live validation (E62) — `navigator.load(loadLiveValidation)`. */
 export const loadLiveValidation = (): Promise<Feature<LiveValidationFeature>> => import('./features/live-validation.ts').then((module) => module.liveValidation);
+
+/** Prefetching (W5.6) — `navigator.load(loadPrefetch)`. */
+export const loadPrefetch = (): Promise<Feature<Prefetches>> => import('./features/prefetch.ts').then((module) => module.prefetch);
+
+/**
+ * Fetches the page of `url` ahead (a hovered link, `router.prefetch`), loading the prefetch code first the first time (E74):
+ * it is there while the pointer rests on the link, before the click. A chunk that cannot load fetches nothing — the visit
+ * asks the server, as for any prefetch that fails.
+ */
+export function prefetchWith(navigator: Pick<Navigator, 'load'>, url: string, options?: PrefetchOptions): Promise<void> {
+  return navigator.load(loadPrefetch).then((feature) => feature.prefetch(url, options), () => undefined);
+}
 
 /** What a form uses of its live validation (E62). */
 export type FormLiveValidation = Pick<LiveValidation, 'changed' | 'blurred' | 'validate' | 'cancel' | 'reset' | 'pending' | 'subscribe'>;

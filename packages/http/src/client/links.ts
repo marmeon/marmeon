@@ -32,6 +32,9 @@ export type PrefetchTrigger = 'hover' | 'mount';
 /** A link's `prefetch` option: `true` is `'hover'`. */
 export type PrefetchSetting = boolean | PrefetchTrigger | readonly PrefetchTrigger[] | undefined;
 
+/** How long a prefetched page is used by default: 30 s, like Inertia. */
+export const DEFAULT_PREFETCH_CACHE_FOR = 30_000;
+
 /** How long the pointer rests on a link before it prefetches (Inertia's 75 ms): passing over it does not. */
 export const HOVER_PREFETCH_DELAY = 75;
 

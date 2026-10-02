@@ -156,4 +156,4 @@ export const guard = defineFeature('guard', (host) => {
   host.on('stopped', () => guards.stop());
   host.on('unload', () => guards.allowUnload());
   return guards;
-});
+}, 1);

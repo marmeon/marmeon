@@ -19,7 +19,6 @@ import { DEFAULT_FEATURES } from './features/defaults.ts';
 import { guard as guardFeature, type NavigationGuard } from './features/guard.ts';
 import type { InstantVisit } from './features/instant.ts';
 import { layers } from './features/layers.ts';
-import { prefetch as prefetchFeature, type PrefetchOptions } from './features/prefetch.ts';
 import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
 import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
 import { entry, HistoryWriter, isHistoryState, newKey, withPosition, type HistoryState } from './history.ts';
@@ -39,7 +38,6 @@ export { DEFAULT_NEW_VERSION_MESSAGE } from './document-change.ts';
 export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitProgress, VersionChange } from './events.ts';
 export type { NavigationGuard } from './features/guard.ts';
 export type { InstantVisit } from './features/instant.ts';
-export { DEFAULT_PREFETCH_CACHE_FOR } from './features/prefetch.ts';
 export type { PrefetchOptions } from './features/prefetch.ts';
 export type { RevalidateOnBack } from './features/revalidate-on-back.ts';
 export { isHistoryState } from './history.ts';
@@ -247,8 +245,12 @@ export class Navigator implements LayerHost {
   readonly #visitingListeners = new Set<() => void>();
   /** The features attached (`use`), with what their setup returned. */
   readonly #features = new Map<Feature, unknown>();
-  /** Their hooks, by name — in the order they were attached. */
+  /** Their hooks, by name — in the features' order (`Feature.order`), then in the order they were attached. */
   readonly #hooks: Hooks = {};
+  /** The order of the feature each hook belongs to. */
+  readonly #orders = new WeakMap<object, number>();
+  /** The order of the feature whose setup runs (`use`) — a hook registered outside a setup comes last. */
+  #order = Infinity;
   /** What the history entries keep in slots, by key — emptied when memory lets go of an entry, and when the document is left. */
   readonly #entries = new Map<string, Map<Slot<unknown>, unknown>>();
   /** What the document keeps in slots — emptied when it is left. */
@@ -289,9 +291,14 @@ export class Navigator implements LayerHost {
         return nav.#extras().layers ?? [];
       },
       on: (name, hook) => {
-        const hooks = (this.#hooks[name] ??= []) as unknown[];
-        hooks.push(hook);
-        return () => void (hooks.includes(hook) && hooks.splice(hooks.indexOf(hook), 1));
+        // A new list each time: a hook loop under way (a visit waiting for its guard's answer) runs the hooks it started with.
+        const hooks = (this.#hooks[name] ?? []) as object[];
+        const order = this.#order;
+        this.#orders.set(hook, order);
+        let at = hooks.length;
+        while (at > 0 && this.#orders.get(hooks[at - 1]!)! > order) at--;
+        this.#hooks[name] = [...hooks.slice(0, at), hook, ...hooks.slice(at)] as never;
+        return () => void (this.#hooks[name] = (this.#hooks[name] as object[] | undefined)?.filter((other) => other !== hook) as never);
       },
       fire: (name, ...args) => void this.#all(name, ...args),
       entry: (slot, key = core.key!) => {
@@ -360,7 +367,15 @@ export class Navigator implements LayerHost {
    * call. What adapters use of a feature they get from here (`useFeature(islands)` in React).
    */
   use<API>(feature: Feature<API>): API {
-    if (!this.#features.has(feature)) this.#features.set(feature, feature.setup(this.#core));
+    if (!this.#features.has(feature)) {
+      const outer = this.#order;
+      this.#order = feature.order ?? Infinity;
+      try {
+        this.#features.set(feature, feature.setup(this.#core));
+      } finally {
+        this.#order = outer;
+      }
+    }
     return this.#features.get(feature) as API;
   }
 
@@ -546,25 +561,6 @@ export class Navigator implements LayerHost {
    */
   closeLayer(layer: Layer, close: LayerClose): Promise<void> {
     return this.use(layers).closeLayer(layer, close);
-  }
-
-  /**
-   * Fetches a page ahead of the visit (a hovered link): GET only, with `Purpose: prefetch`, so the server can tell
-   * and leave out side effects. A visit of the same URL within `cacheFor` shows it without asking again — or
-   * waits for it, if it is still under way. No events, no progress bar, no fallback: a prefetch that fails (offline,
-   * 5xx, a 409 after a deployment, anything but a page) is forgotten, and the visit asks the server itself.
-   */
-  prefetch(url: string, options: PrefetchOptions = {}): Promise<void> {
-    // Never anything but a GET — whatever a caller passes (a form, an action, is no page to fetch ahead).
-    const method = (options as { method?: unknown }).method;
-    if (this.#core.left || (method !== undefined && String(method).toLowerCase() !== 'get')) return Promise.resolve();
-    this.#adopt();
-    return this.use(prefetchFeature).prefetch(url, options);
-  }
-
-  /** How many prefetched pages are kept (tests). */
-  get prefetchedPages(): number {
-    return this.use(prefetchFeature).size;
   }
 
   // -- The core ---------------------------------------------------------------------------------------------------------

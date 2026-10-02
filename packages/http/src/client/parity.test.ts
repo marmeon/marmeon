@@ -6,6 +6,7 @@ import { remember } from './features/remember.ts';
 import { OnceStore } from './once.ts';
 import { isSensitiveRememberField, rememberable } from './remember.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { prefetch } from './features/prefetch.ts';
 
 /** Remember state, once props, instant visits and the cancelable asset-version reload in the client core (W5b step 10, E63/E64). */
 
@@ -160,7 +161,7 @@ describe('once props (E64) — kept by the tab, skipped by the server', () => {
   it('a prefetched page is filled when it arrives — the visit that takes it shows the kept value', async () => {
     const { win, navigator } = tab(withLocales('/a', { locales: ['en'] }));
     win.handler = () => pageResponse(withLocales('/b', {}));
-    await navigator.prefetch('/b');
+    await navigator.use(prefetch).prefetch('/b');
     expect(win.requests[0]!.headers).toMatchObject({ [ONCE_HEADER]: 'locales' });
     win.handler = () => new Response('unused', { status: 500 });
     const shown = await navigator.visit('/b');
@@ -249,7 +250,7 @@ describe('instant visits (E64) — the placeholder first, the page when it lands
   it('a page fetched ahead shows at once — no placeholder in between', async () => {
     const { win, navigator, renders } = tab(page('/users/1', {}, 'users/Show'));
     win.handler = () => people();
-    await navigator.prefetch('/people');
+    await navigator.use(prefetch).prefetch('/people');
     await navigator.visit('/people', { instant: { component: 'pages/People' } });
     expect(renders.some((render) => render.placeholder)).toBe(false);
     expect(navigator.page.url).toBe('/people');

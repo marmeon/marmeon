@@ -39,4 +39,4 @@ export const actions = defineFeature('actions', (host): ActionsFeature => {
     run: (url, options) => host.document(running).run(url, options),
     submissions,
   };
-});
+}, 6);

@@ -191,7 +191,7 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       // A visit or a form inside the layer is the layer's (E53): its answer replaces it, opens another or closes it.
       visit: (url, options) => (layer ? layer.visit(url, options) : Promise.resolve(undefined)),
       reload: (options) => (layer ? layer.reload(options) : Promise.resolve(undefined)),
-      prefetch: (url, options) => base.navigator()?.prefetch(url, { ...options, layer: true }) ?? Promise.resolve(),
+      prefetch: (url, options) => base.prefetch(url, { ...options, layer: true }),
       // An action's patches and reloads from inside the layer are the layer's (E59).
       optimistic: (patch) => {
         if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');

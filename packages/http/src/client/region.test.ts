@@ -2,6 +2,7 @@ import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HE
 import { describe, expect, it } from 'vitest';
 import { regionId, regionInitial } from './region.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { prefetch } from './features/prefetch.ts';
 
 const island = (url: string, props: Record<string, unknown> = {}, extra: Partial<RegionObject> = {}): RegionObject => ({
   component: 'dashboard/RecentSignIns',
@@ -335,7 +336,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
     const win = new FakeWindow(`${ORIGIN}/people`);
     win.handler = () => pageResponse(page('/dashboard', {}, 'dashboard/Show'));
     const { navigator } = boot(win, page('/people', {}, 'user-profile/People'));
-    await navigator.prefetch('/dashboard');
+    await navigator.use(prefetch).prefetch('/dashboard');
     expect(win.requests).toHaveLength(1);
     expect(islandRequests(win)).toEqual([]);
   });

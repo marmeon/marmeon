@@ -9,7 +9,6 @@ export {
   DEFAULT_LEAVE_MESSAGE,
   DEFAULT_NEW_VERSION_MESSAGE,
   DEFAULT_PAGE_CACHE_SIZE,
-  DEFAULT_PREFETCH_CACHE_FOR,
   isHistoryState,
   mergePage,
   Navigator,
@@ -60,7 +59,7 @@ export { hasServerMarkup, isDevelopment, readInitialPage, rootElement } from './
 export { loadPageMessages, pageLocale } from './messages.ts';
 export type { PageMessages } from './messages.ts';
 export { resolveRoute } from './routes.ts';
-export { HOVER_PREFETCH_DELAY, isCurrentLink, matchesRouteName, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
+export { DEFAULT_PREFETCH_CACHE_FOR, HOVER_PREFETCH_DELAY, isCurrentLink, matchesRouteName, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
 export type { LinkClick, PrefetchSetting, PrefetchTrigger } from './links.ts';
 export { defaultFormEntries, dirtyPaths, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, isDirtyPath, restoreFormEntries, sameEntries } from './forms.ts';
 export type { FormEntries } from './forms.ts';
@@ -79,7 +78,8 @@ export { applyPatches, PatchQueue, Revalidations, rollBack } from './optimistic.
 export { DEFAULT_LIVE_VALIDATION_DEBOUNCE, isSensitiveField, LiveValidation, liveValidationData, SENSITIVE_FIELD, sendLiveValidation } from './live-validation.ts';
 export { liveValidation } from './features/live-validation.ts';
 export type { LiveValidationFeature } from './features/live-validation.ts';
-export { liveValidationOnFirstUse, loadLiveValidation } from './lazy.ts';
+export { prefetch, Prefetches } from './features/prefetch.ts';
+export { liveValidationOnFirstUse, loadLiveValidation, loadPrefetch, prefetchWith } from './lazy.ts';
 export type { FormLiveValidation } from './lazy.ts';
 export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';
 export type { OptimisticUpdate, PatchTarget, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';

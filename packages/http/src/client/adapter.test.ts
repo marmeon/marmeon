@@ -18,6 +18,7 @@ import {
   PAGE_SCRIPT_ID,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
+  PURPOSE_HEADER,
   REGION_HEADER,
   REGION_STATUS_HEADER,
   RELOAD_HEADER,
@@ -36,6 +37,7 @@ import {
   loadPageMessages,
   Navigator,
   optimistic,
+  prefetchWith,
   PROGRESS_ATTRIBUTE,
   queryState,
   readInitialPage,
@@ -492,6 +494,43 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(root.textContent).toContain('"user":"Ada"');
     navigator.reloadForNewVersion();
     expect(loads).toEqual(['/users/2']);
+    stop();
+  });
+
+  it('prefetches with the code loaded on the first hover (E74): the click asks nothing, an instant link to it shows no placeholder', async () => {
+    window.fetch = server as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    const root = await rootElement('app');
+    const placeholders: string[] = [];
+    const navigator = new Navigator({
+      initialPage: readInitialPage(),
+      render: async (next, options) => {
+        if (options.placeholder) placeholders.push(next.url);
+        root.textContent = `${next.component} ${JSON.stringify(next.props)}`;
+      },
+    });
+    const stop = navigator.start();
+    // Page requests — not the deferred props a page loads after it.
+    const pages = () => requests.filter((request) => !request.headers[PARTIAL_DATA_HEADER]).map((request) => `${request.method} ${request.url} ${request.headers[PURPOSE_HEADER] ?? ''}`.trim());
+
+    // What a hovered link does: the prefetch feature attaches with its chunk, after the instant visits (attached at start) —
+    // its hooks still run first (`order`), so the instant visit knows the page is here.
+    await prefetchWith(navigator, '/users/2');
+    expect(pages()).toEqual(['GET /users/2 prefetch']);
+    await navigator.visit('/users/2', { instant: { component: 'users/Show', props: { name: 'Grace' } } });
+    expect(root.textContent).toContain('"user":"Grace"');
+    expect(pages()).toEqual(['GET /users/2 prefetch']);
+    expect(placeholders).toEqual([]);
+
+    // Never across a write: what a form changed is asked for again.
+    await prefetchWith(navigator, '/users/1');
+    await navigator.visit('/users/2', { method: 'put', data: { name: 'Grace H.' } });
+    await navigator.visit('/users/1');
+    expect(pages()).toEqual(['GET /users/2 prefetch', 'GET /users/1 prefetch', 'PUT /users/2', 'GET /users/1']);
+    // Never anything but a GET.
+    await prefetchWith(navigator, '/logout', { method: 'post' } as never);
+    expect(pages()).toHaveLength(4);
     stop();
   });
 

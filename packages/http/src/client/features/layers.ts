@@ -561,4 +561,4 @@ export const layers = defineFeature('layers', (host) => {
   host.on('page', () => void stack.dismissFrom(0));
   host.on('deferred', () => stack.loadAllDeferred());
   return stack;
-});
+}, 4);

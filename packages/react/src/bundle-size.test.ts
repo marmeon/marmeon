@@ -59,7 +59,8 @@ const FEATURES = {
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
   progress: { markers: ['http/client/progress'], use: inCore('showProgress') },
-  prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link') },
+  // <Link prefetch>, router.prefetch: on the first prefetch (E74), in a chunk of its own.
+  prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link'), lazy: true },
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
   guard: { markers: ['http/client/features/guard', 'http/client/confirm', 'react/confirm'], use: inApp('useBlocker') },
   instant: { markers: ['http/client/features/instant'], use: inApp('Link') },
@@ -70,7 +71,7 @@ type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');

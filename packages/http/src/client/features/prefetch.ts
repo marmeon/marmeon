@@ -1,13 +1,14 @@
 /**
  * Prefetching (W5.6): a page fetched ahead of its visit (a hovered link) — GET only, `Purpose: prefetch`, in memory only (E36).
  * Used once, by the visit it was fetched for, within its `cacheFor`; dropped when the document is left (signing out) and
- * when a non-GET visit changes what it shows.
+ * when a non-GET visit changes what it shows. Its code loads with the first prefetch (E74, `prefetchWith` in `lazy.ts`).
  */
 import { FLASH_WAITING_HEADER, PAGE_HEADER, PURPOSE_HEADER, REGION_HEADER, type PageObject } from '../../page.ts';
 import { LruMap } from '../cache.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { takeFlash } from '../flash.ts';
+import { DEFAULT_PREFETCH_CACHE_FOR } from '../links.ts';
 import { buildRequest } from '../request.ts';
 
 /** A prefetch: always a GET (`data` goes into the query string). */
@@ -18,9 +19,6 @@ export interface PrefetchOptions {
   /** Fetched as a layer's request — for `<Link layer prefetch>` (the visit that opens it takes it). */
   layer?: boolean;
 }
-
-/** How long a prefetched page is used by default: 30 s, like Inertia. */
-export const DEFAULT_PREFETCH_CACHE_FOR = 30_000;
 
 /** Prefetched pages kept at most (the oldest goes first). */
 const PREFETCH_LIMIT = 30;
@@ -64,11 +62,19 @@ export class Prefetches {
     return this.#pages.size;
   }
 
-  /** Fetches the page of `url` ahead — see `Navigator.prefetch` (which turned away anything but a GET already). */
-  prefetch(url: string, options: PrefetchOptions): Promise<void> {
+  /**
+   * Fetches the page of `url` ahead of its visit (a hovered link): GET only, with `Purpose: prefetch`, so the server can tell
+   * and leave out side effects. A visit of the same URL within `cacheFor` shows it without asking again — or waits for it,
+   * if it is still under way. No events, no progress bar, no fallback: a prefetch that fails (offline, 5xx, a 409 after a
+   * deployment, anything but a page) is forgotten, and the visit asks the server itself.
+   */
+  prefetch(url: string, options: PrefetchOptions = {}): Promise<void> {
     const { window, page } = this.#core;
     const target = new URL(url, window.location.href);
-    if (target.origin !== window.location.origin) return Promise.resolve();
+    // Never anything but a GET — whatever a caller passes (a form, an action, is no page to fetch ahead) — and never once the
+    // document was left, nor from another site.
+    const method = (options as { method?: unknown }).method;
+    if (this.#core.left || (method !== undefined && String(method).toLowerCase() !== 'get') || target.origin !== window.location.origin) return Promise.resolve();
     const { url: path } = buildRequest(target, 'get', options.data);
     if (path === page.url && !options.layer) return Promise.resolve();
     const key = prefetchKey(path, options.layer === true);
@@ -153,4 +159,4 @@ export const prefetch = defineFeature('prefetch', (host) => {
     return { page: prefetches.take(visit.url, visit.layer) };
   });
   return prefetches;
-});
+}, 2);

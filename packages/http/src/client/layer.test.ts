@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LAYER_BACKDROP, LAYER_CLOSE_HEADER, LOCATION_HEADER, MAX_LAYER_DEPTH, PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../page.ts';
 import { isHistoryState } from './navigation.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { prefetch } from './features/prefetch.ts';
 
 /** A layer's page object, as the server answers `this.view(…).layer({ base })`. */
 const layer = (url: string, props: Record<string, unknown> = {}, component = 'users/Edit', info: Partial<NonNullable<PageObject['layer']>> = {}): PageObject => ({
@@ -384,7 +385,7 @@ describe('Layers — deep links, sign-out, prefetch', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => pageResponse(layer('/users/1/edit'));
     const app = profile(win);
-    await app.navigator.prefetch('/users/1/edit', { layer: true });
+    await app.navigator.use(prefetch).prefetch('/users/1/edit', { layer: true });
     expect(win.requests.at(-1)!.headers).toMatchObject({ [REGION_HEADER]: 'layer', purpose: 'prefetch' });
     await app.navigator.visit('/users/1/edit', { layer: true });
     expect(win.requests).toHaveLength(1);

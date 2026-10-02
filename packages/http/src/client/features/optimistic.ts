@@ -125,4 +125,4 @@ export const optimistic = defineFeature('optimistic', (host) => {
     };
   });
   return patches;
-});
+}, 5);

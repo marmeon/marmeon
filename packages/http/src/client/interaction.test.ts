@@ -4,6 +4,7 @@ import type { ConfirmRequest } from './confirm.ts';
 import { dirtyPaths, isDirtyPath } from './forms.ts';
 import { isCurrentLink } from './links.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
+import { prefetch } from './features/prefetch.ts';
 
 /** Flash, state attributes, the navigation guard and confirm in the client core (W5b step 7, E60/E64). */
 
@@ -85,7 +86,7 @@ describe('flash messages in the core (E60)', () => {
       asked++;
       return pageResponse(withFlash(page('/people', { people: 'fresh' }), toast('waiting', 'From the other tab.')));
     };
-    await navigator.prefetch('/people');
+    await navigator.use(prefetch).prefetch('/people');
     await navigator.visit('/people');
     expect(asked).toBe(1);
     expect(visible().props).toEqual({ people: 'fresh' });

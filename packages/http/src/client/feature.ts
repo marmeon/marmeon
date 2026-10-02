@@ -2,8 +2,8 @@
  * The feature host (Wave 5c, E70/E73): how a feature of the client core attaches to the navigator. A feature is a name and a
  * `setup` that runs once per navigator (`navigator.use(feature)`, idempotent) and returns the feature's API — the adapters
  * reach it through that (`useFeature(islands)` in React), not through methods of the navigator. Setup registers hooks into
- * the visit pipeline (`host.on('place', …)`); the core calls them in the order the features were registered, without
- * knowing any feature.
+ * the visit pipeline (`host.on('place', …)`); the core calls them in the features' `order`, without knowing any feature —
+ * whenever each was attached (a link prefetches on first hover, a form guards when it renders).
  *
  * What a feature keeps from the server or the user (pages, props, messages, typed input, requests under way) it keeps in
  * SLOTS only — per history entry (`host.entry(slot, key)`) or per document (`host.document(slot)`). The core empties them
@@ -27,11 +27,18 @@ export type { FeatureHost } from './core.ts';
 export interface Feature<API = unknown> {
   readonly name: string;
   setup(host: FeatureHost): API;
+  /**
+   * Where its hooks run among those of the other features: lower first; without one, after all that have one. Then in the
+   * order the features were attached. The core's own: guard 1 (it sees a Back first, and may stop it), prefetch 2 (a page
+   * fetched ahead is known before an instant visit decides on its placeholder), instant 3, layers 4, optimistic 5, actions 6,
+   * islands 7, revalidateOnBack 8.
+   */
+  readonly order?: number;
 }
 
-/** A feature — `defineFeature('islands', (host) => ({ region: … }))`. */
-export function defineFeature<API>(name: string, setup: (host: FeatureHost) => API): Feature<API> {
-  return { name, setup };
+/** A feature — `defineFeature('islands', (host) => ({ region: … }), 7)`. */
+export function defineFeature<API>(name: string, setup: (host: FeatureHost) => API, order?: number): Feature<API> {
+  return { name, setup, order };
 }
 
 /**
@@ -113,8 +120,8 @@ export interface EntryStack {
 }
 
 /**
- * The hooks of the pipeline. Pipeline hooks run in the order the features were registered and the first result that is not
- * `undefined` wins; events (`void`) all run.
+ * The hooks of the pipeline. Pipeline hooks run in the features' order (`Feature.order`, then the order they were attached) and
+ * the first result that is not `undefined` wins; events (`void`) all run.
  */
 export interface FeatureHooks {
   /** Before a visit: `false` (or a promise of it) stops it — a confirmation, unsaved changes. A promise only when asking. */

@@ -1,6 +1,6 @@
 import { NO_STORE } from '@bespokecore/auth';
 import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { actions, Navigator, optimistic, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
+import { actions, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -134,7 +134,8 @@ class FakeTab {
 
   /** A hovered `<Link prefetch>` in the current document. */
   async prefetch(url: string): Promise<void> {
-    await this.#current!.navigator.prefetch(url);
+    // As `<Link prefetch>` does: the prefetch code loads with the first one (E74).
+    await prefetchWith(this.#current!.navigator, url);
     await this.idle();
   }
 
