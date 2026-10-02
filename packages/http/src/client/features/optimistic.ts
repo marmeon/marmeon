@@ -7,7 +7,7 @@ import type { PageObject } from '../../page.ts';
 import { updatePage } from '../cache.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
-import { applyPatches, listOf, PatchQueue, Revalidations, rollBack, type PatchTarget } from '../optimistic.ts';
+import { PatchQueue, Revalidations, type PatchTarget } from '../optimistic.ts';
 
 /** The optimistic patches of one history entry's page, and the reloads actions start for it. */
 interface EntryPatches {
@@ -106,23 +106,12 @@ export class PagePatches {
 
 /**
  * Optimistic patches (E59) on the pages of history entries, as a feature: painted over the props in memory, never into them —
- * `navigator.use(optimistic).target(key)`. A form's visit shows its patches (of the page, a layer or an island) until its answer
- * lands, and rolls them back when it fails.
+ * `navigator.use(optimistic).target(key)`, attached where a page's patch is made (React: `router.optimistic`). A visit with
+ * patches (`visit({ optimistic })`, a form's) shows them until its answer lands, and rolls them back when it fails — the core
+ * does that, for patches of any target (a layer and an island keep their own).
  */
 export const optimistic = defineFeature('optimistic', (host) => {
   const patches = new PagePatches(host);
   host.on('paint', (key, page) => patches.paint(key, page));
-  host.on('start', ({ options }) => {
-    if (!options.optimistic) return undefined;
-    const applied = applyPatches(listOf(options.optimistic));
-    return {
-      // The answer replaces what the patches showed — in the same render (the server's props then, or its errors).
-      landed: () => {
-        for (const [target, ids] of applied) target.settle(ids, false, { quiet: true });
-      },
-      // Failed, cancelled, or the browser took over: nothing of the patches stays.
-      end: () => rollBack(applied),
-    };
-  });
   return patches;
 }, 5);

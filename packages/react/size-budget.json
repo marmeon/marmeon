@@ -15,16 +15,17 @@
     "4i guard (static where a component guards: useBlocker, useForm/Form guard; a visit's own confirm is now the core's) — core 16.6 → 16.1, emptyApp 21.6 → 21.1, blank-app 22.0 → 21.5 (minimalApp keeps it: useForm guards). Raised (E81, Max, 02.10., until step 6 sets the chunk strategy): web-app 32.1 → 32.2 — the guard lands with state.ts in the web app's entry chunk beside react-dom instead of the shared framework chunk: +0.18 gzip at the same min (32.02 → 32.20). everything 34.76 → 34.79.",
     "4k islands (attached where an island renders; the core keeps a small RegionOwner per entry on screen — entry, Back flag, signal, live regions — and the islands feature makes the regions on it) — core 16.1 → 14.4, emptyApp 21.1 → 19.4, minimalApp 26.1 → 24.4, blank-app 21.5 → 19.7, web-app 32.2 → 28.9 (its islands now come with the pages that show them, in their chunks). everything 34.79 → 34.87.",
     "Step 5 layers (E71: a chunk the core loads when the server answers with a layer, a layer's request is sent or Back/Forward goes to a layer's entry; the React layer stack loads with it in the same round trip, <Link layer> loads it where it renders, createBespokeApp and the SSR entry before a deep link's document; the navigator lost its layer methods — the stack is each layer's host) — core 14.4 → 11.9, emptyApp 19.4 → 16.4, minimalApp 24.4 → 20.7, blank-app 19.7 → 16.5, web-app 28.9 → 26.2 (everything 34.87 → 31.83). No default feature is left: stillLeaking is [] in every scenario.",
-    "Step 6 — 6a: a visit under way is aborted when the document is left (core 11.72 → 11.73, within its limit). 6d chunk strategy: bespoke() splits an app's initial load into two chunks, vendor (third-party) and index (the rest), only $initial modules — lazy code stays in its own chunks (the web app's initial module set is unchanged); the scenarios are built the same way. Initial chunks web-app 9 → 3 (with rolldown's runtime), blank-app 3 → 3 (index, vendor, runtime), emptyApp 3 → 1, minimalApp 2 → 1. emptyApp 16.4 → 15.7, minimalApp 20.7 → 20.2, blank-app 16.5 → 15.6, web-app 26.2 → 23.3 (its whole initial load 99.83 → 95.73 KB gzip). everything 31.85 → 31.33."
+    "Step 6 — 6a: a visit under way is aborted when the document is left (core 11.72 → 11.73, within its limit). 6d chunk strategy: bespoke() splits an app's initial load into two chunks, vendor (third-party) and index (the rest), only $initial modules — lazy code stays in its own chunks (the web app's initial module set is unchanged); the scenarios are built the same way. Initial chunks web-app 9 → 3 (with rolldown's runtime), blank-app 3 → 3 (index, vendor, runtime), emptyApp 3 → 1, minimalApp 2 → 1. emptyApp 16.4 → 15.7, minimalApp 20.7 → 20.2, blank-app 16.5 → 15.6, web-app 26.2 → 23.3 (its whole initial load 99.83 → 95.73 KB gzip). everything 31.85 → 31.33.",
+    "6e optimistic on first use: the page's patches attach where one is made (useRouter's router.optimistic/reloading), not with every navigator; the core applies a visit's patches itself, of any target (patches.ts, +0.11 on core within its limit: 11.73 → 11.84). emptyApp 15.7 → 14.9, minimalApp 20.2 → 19.4, blank-app 15.6 → 14.8 (web-app 23.20 → 23.22 — it patches its pages)."
   ],
   "gzipKB": {
     "core": { "limit": 11.9, "target": 8.5 },
-    "emptyApp": { "limit": 15.7, "target": 12.5 },
-    "minimalApp": { "limit": 20.2, "target": 14 },
+    "emptyApp": { "limit": 14.9, "target": 12.5 },
+    "minimalApp": { "limit": 19.4, "target": 14 },
     "everything": { "limit": 36.4, "ceiling": true }
   },
   "appsGzipKB": {
-    "blank-app": { "limit": 15.6 },
+    "blank-app": { "limit": 14.8 },
     "web-app": { "limit": 23.3, "target": 27 }
   },
   "stillLeaking": {

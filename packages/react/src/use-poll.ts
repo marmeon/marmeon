@@ -1,6 +1,6 @@
 import { createPoll, type Poll } from '@bespokecore/http/client';
 import { useEffect, useMemo, useRef } from 'react';
-import { useRouter, type ReloadOptions } from './app.tsx';
+import { useRouterContext, type ReloadOptions } from './app.tsx';
 
 export interface UsePollOptions {
   /** Keep polling while the tab is hidden (default: pause, and catch up when it is shown again). */
@@ -18,7 +18,7 @@ export interface UsePollOptions {
  * ```
  */
 export function usePoll<T = unknown>(interval: number, options: ReloadOptions<T> = {}, { keepAlive = false, autoStart = true }: UsePollOptions = {}): Pick<Poll, 'start' | 'stop'> {
-  const router = useRouter<T>();
+  const router = useRouterContext();
   // The latest options and router, read on every turn: an inline object does not restart the poll.
   const latest = useRef({ router, options });
   latest.current = { router, options };

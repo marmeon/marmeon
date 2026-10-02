@@ -155,7 +155,8 @@ describe('Layers in React (E53)', () => {
     const heading = $('[data-testid="name"]');
 
     await click('[data-testid="edit"]');
-    await wait();
+    // The first layer of the file: the stack's chunk loads with it (E71) — under a busy test run, that may take more than a tick.
+    for (let tries = 0; tries < 100 && dialogs().length === 0; tries++) await wait();
     expect(requests.at(-1)).toMatchObject({ url: '/users/1/edit', headers: { [REGION_HEADER]: 'layer' } });
     const [dialog] = dialogs();
     expect(dialog!.getAttribute('aria-modal')).toBe('true');
@@ -233,7 +234,7 @@ describe('Layers in React (E53)', () => {
     await wait();
     await click('[data-testid="save-optimistic"]');
     await wait();
-    // The app attaches optimistic patches with the navigator: a layer's patch on a visit shows, though nothing on the page asked.
+    // The core applies a visit's patches, whatever is attached: a layer's patch shows, though nothing on the page made one.
     expect(dialogs()[0]!.querySelector('h2')!.textContent).toBe('Edit Saving…');
     await act(async () => answer(respond(layer('Edit', '/users/1/edit', { name: 'Ada', errors: { name: 'Too short.' } }))));
     await wait();

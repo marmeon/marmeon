@@ -31,11 +31,10 @@ const budget = readBudget();
 type LeakScenario = Exclude<Scenario, 'everything'>;
 
 /**
- * What each scenario uses on purpose: `createBespokeApp` turns the progress bar on and gives every router optimistic patches
- * (`router.optimistic`/`reloading`, E59); `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
+ * What each scenario uses on purpose: `createBespokeApp` turns the progress bar on; `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
  * static in it — a guard loaded later could not stop a navigation that came first; E74 loads only `validate` on first use).
  */
-const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['optimistic', 'progress'], minimalApp: ['guard', 'optimistic', 'progress', 'remember'], everything: [] };
+const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['progress'], minimalApp: ['guard', 'progress', 'remember'], everything: [] };
 
 /** A feature's entry: the scenario it adds to, plus its import. */
 const inCore = (...names: string[]) => ({ base: 'core' as const, entry: coreEntry(...names) });
@@ -54,9 +53,9 @@ const FEATURES = {
   layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer-stack'], use: inApp('Link'), lazy: true },
   islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
   actions: { markers: ['http/client/features/actions', 'http/client/action', 'react/use-action'], use: inApp('useAction') },
-  // The page's patches (E59): every app's router offers them (`router.optimistic`, `submit({ optimistic })`). `optimistic.ts` (the
-  // patch queue) is no marker: layers and islands keep their own patches with it.
-  optimistic: { markers: ['http/client/features/optimistic'], use: inCore('optimistic') },
+  // The page's patches (E59): with `useRouter()` (`router.optimistic`/`reloading`), attached on first use (W5c.6). `optimistic.ts`
+  // (the patch queue) is no marker: layers and islands keep their own patches with it; the core applies a visit's (`patches.ts`).
+  optimistic: { markers: ['http/client/features/optimistic'], use: inApp('useRouter') },
   // useForm(…, { validate }): on a form's first use (E74), in a chunk of its own. useForm remembers (static).
   liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['guard', 'remember'], lazy: true },
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },

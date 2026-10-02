@@ -14,7 +14,7 @@ import {
 } from '@bespokecore/http/client';
 import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
-import { loadLayers, usePage, useRouter, useRouterContext, type PartialReloadOptions } from './app.tsx';
+import { loadLayers, usePage, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 
 export type { PrefetchTrigger } from '@bespokecore/http/client';
@@ -168,7 +168,7 @@ type AnyLinkProps = LinkOptions &
  * (and are never prefetched: `prefetch` on one is a compile error, and ignored at runtime).
  */
 export function Link<const N extends BrowserRouteNameInput = never>(props: LinkProps<N>) {
-  const { visit, prefetch: prefetchPage } = useRouter();
+  const { visit, prefetch: prefetchPage } = useRouterContext();
   const navigator = useRouterContext().navigator();
   const manifest = useContext(RoutesContext);
   const {

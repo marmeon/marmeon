@@ -1,5 +1,5 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
-import { usePage, useRouter, type PropName, type ReloadOptions } from './app.tsx';
+import { usePage, useRouterContext, type PropName, type ReloadOptions } from './app.tsx';
 
 export interface WhenVisibleProps<T = unknown> {
   /** The prop(s) to load once this is scrolled into view (`optional()` or `defer()` ones) — of page `T`, when given. */
@@ -32,7 +32,7 @@ export interface WhenVisibleProps<T = unknown> {
  */
 export function WhenVisible<T = unknown>({ data, params, buffer = 0, always = false, as = 'div', fallback = null, children }: WhenVisibleProps<T>) {
   const { props } = usePage<Record<string, unknown>>();
-  const router = useRouter<T>();
+  const router = useRouterContext();
   const names: readonly string[] = data === undefined ? [] : typeof data === 'string' ? [data] : (data as readonly string[]);
   const ready = names.length > 0 && names.every((name) => props[name] !== undefined);
   const [loading, setLoading] = useState(false);

@@ -11,7 +11,8 @@ import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type FlashMessa
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
 import { notify } from './notify.ts';
-import { applyPatches, listOf, rollBack, type OptimisticUpdate, type PatchTarget, type Reloading } from './optimistic.ts';
+import type { OptimisticUpdate, PatchTarget, Reloading } from './optimistic.ts';
+import { applyPatches, listOf, rollBack } from './patches.ts';
 
 /** The methods of an action — a GET reads (its `data` goes into the query), the others write. */
 export type ActionMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';

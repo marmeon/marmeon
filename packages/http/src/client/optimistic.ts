@@ -186,25 +186,3 @@ export class Revalidations {
     this.#controller?.abort();
   }
 }
-
-/** One or several (`optimistic`, `reload` of a visit or an action) as a list. */
-export function listOf<T>(value: T | readonly T[] | undefined): readonly T[] {
-  if (value === undefined) return [];
-  return Array.isArray(value) ? (value as readonly T[]) : [value as T];
-}
-
-/** Applies the patches of an action (or a form's visit) — their ids by target. */
-export function applyPatches(updates: readonly OptimisticUpdate[]): Map<PatchTarget, number[]> {
-  const applied = new Map<PatchTarget, number[]>();
-  for (const { target, patch } of updates) {
-    const ids = applied.get(target) ?? [];
-    ids.push(target.add(patch));
-    applied.set(target, ids);
-  }
-  return applied;
-}
-
-/** Rolls the patches of an action (or a form's visit) back. */
-export function rollBack(applied: ReadonlyMap<PatchTarget, readonly number[]>): void {
-  for (const [target, ids] of applied) target.settle(ids, false);
-}

@@ -27,6 +27,7 @@ import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
 import type { OptimisticUpdate } from './optimistic.ts';
+import { applyPatches, listOf, rollBack } from './patches.ts';
 import { RegionOwner } from './owner.ts';
 import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
@@ -657,9 +658,11 @@ export class Navigator {
     }
     // A plain GET visit — it may take a page fetched ahead (or wait for its request, still under way).
     pending.takes = method === 'get' && partial === undefined && Object.keys(headers).length === 0;
-    // What the features add to it: a page fetched ahead, an instant visit's placeholder (E64), a form's optimistic patches (E59),
-    // a layer's request header.
+    // What the features add to it: a page fetched ahead, an instant visit's placeholder (E64), a form's ghost row (E59).
     const parts = this.#all('start', pending).filter(Boolean) as VisitPart[];
+    // A form's optimistic patches (E59) — of the page, a layer or an island: shown while it is under way. The core applies them,
+    // whatever is attached: each target keeps its own (the page's are the optimistic feature's, attached where they are made).
+    const patched = applyPatches(listOf(options.optimistic));
     const prefetched = parts.find((part) => part.page)?.page;
     const named = options.name !== undefined ? { name: options.name } : {};
     const visit: Visit = background ? { url: request.url, method, async: true, ...named } : { url: request.url, method, ...named };
@@ -689,8 +692,9 @@ export class Navigator {
         // first — never shown as a page, never dropped.
         if (page.layer && !(await this.#needLayers(signal, page.url))) return undefined;
         if (background && (core.left || core.key !== fromKey || core.transitioning || from?.layer.closed)) return undefined;
-        // The answer replaces what the parts showed (patches) — in the same render (the server's props then, or its errors).
+        // The answer replaces what the parts and the patches showed — in the same render (the server's props then, or its errors).
         for (const part of parts) part.landed?.();
+        for (const [target, ids] of patched) target.settle(ids, false, { quiet: true });
         // Some props of the same page (or layer): into the ones it has. (Another page — a redirect to the login — came in full.)
         if (partial !== undefined && page.component === partial && current.component === partial) page = mergePage(current, page, options.reset);
         // The URL — and so the query state — stays the one of the page on screen.
@@ -704,8 +708,9 @@ export class Navigator {
         return shown;
       });
     } finally {
-      // Failed, cancelled, or the browser took over: nothing of the parts stays (patches rolled back, the placeholder gone).
+      // Failed, cancelled, or the browser took over: nothing of the parts stays (the placeholder gone), the patches roll back.
       for (const part of parts.reverse()) part.end?.();
+      rollBack(patched);
     }
   }
 

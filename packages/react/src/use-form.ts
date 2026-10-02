@@ -1,7 +1,7 @@
 import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, resolveRoute, type FormLiveValidation, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { useRouter, useRouterContext } from './app.tsx';
+import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
 import { RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
@@ -220,7 +220,7 @@ export function useForm(...args: unknown[]): unknown {
   const params = named && args.length >= 3 ? (args[1] as Record<string, string | number>) : undefined;
   const initial = (named ? args[args.length === 4 ? 2 : args.length - 1] : args[0]) as Record<string, unknown>;
 
-  const { visit } = useRouter();
+  const { visit } = useRouterContext();
   const manifest = useContext(RoutesContext);
   const target = name === undefined ? undefined : resolveRoute(manifest, name, params);
   // Remembered input (E63): what this history entry kept of the form, back where it was typed — sensitive fields never were.

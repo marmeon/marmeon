@@ -15,6 +15,7 @@ import {
   type Layer,
   type LayerStack as LayersFeature,
   type OptimisticUpdate,
+  type PatchTarget,
   type PrefetchOptions,
   type Reloading,
   type RegionOwner as RegionOwnerType,
@@ -121,8 +122,11 @@ export interface Router<T = unknown> {
   reloading<const I extends readonly BrowserRouteNameInput[] = []>(options?: ReloadingOptions<T, I>): readonly Reloading[];
 }
 
-/** @internal What the hooks read: the page (or the layer) around them and how to navigate from it. */
-export interface RouterValue extends Router {
+/**
+ * @internal What the hooks read: the page (or the layer) around them and how to navigate from it. A layer brings its own patches
+ * and reloads (E59); the page's are its history entry's — `useRouter()` makes them, attaching the optimistic patches on first use.
+ */
+export interface RouterValue extends Omit<Router, 'optimistic' | 'reloading'>, Partial<Pick<Router, 'optimistic' | 'reloading'>> {
   page: PageObject;
   /** The navigator — null while rendering on the server (for the hooks of this package). */
   navigator(): Navigator | null;
@@ -252,8 +256,26 @@ export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'>
  * ```
  */
 export function useRouter<T = unknown>(): Router<T> {
-  const { visit, reload, prefetch, on, optimistic, reloading } = useRouterContext();
+  const { visit, reload, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
+  const routes = useContext(RoutesContext);
+  // The page's patches and reloads are those of its history entry (E59) — never in its props in memory. The optimistic patches
+  // attach on first use (E70): an app that never patches the page carries none of their code (a layer brings its own).
+  const optimistic = useCallback(
+    (patch: (props: Readonly<Record<string, unknown>>) => object) => (own ? own(patch as never) : { target: pagePatches(navigator()), patch: patch as never }),
+    [own, navigator],
+  );
+  const reloading = useCallback(
+    (options?: ReloadingOptions) =>
+      ownReloading ? ownReloading(options as never) : reloadsOf((spec) => ({ target: pagePatches(navigator()), spec }), navigator()?.regionOwner ?? null, routes, options as { islands?: readonly string[] }),
+    [ownReloading, navigator, routes],
+  );
   return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as Router<T>, [visit, reload, prefetch, on, optimistic, reloading]);
+}
+
+/** The optimistic patches of the page on screen — its history entry's (E59), the feature attached on first use. */
+function pagePatches(navigator: Navigator | null): PatchTarget {
+  if (!navigator) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R11] Visits run in the browser, not while rendering on the server.' : '[bespoke:R11]');
+  return navigator.use(optimisticFeature).page;
 }
 
 export interface BespokeAppProps {
@@ -410,8 +432,6 @@ export function BespokeApp({
     });
     // A deep link's layers: their code was loaded before hydrating (createBespokeApp) — attached before the navigator stacks them.
     if (stackModule?.value) navigator.current.use(stackModule.value.layers);
-    // Optimistic patches (E59): every router offers them (`router.optimistic`, a form's `submit({ optimistic })`).
-    navigator.current.use(optimisticFeature);
     // What the views use (E70): `revalidateOnBack` with the pages of `resolveModulePages`.
     for (const feature of resolve.features ?? []) navigator.current.use(feature);
   }
@@ -461,12 +481,6 @@ export function BespokeApp({
   // A prefetch while rendering on the server (an effect never runs there) has nothing to do. Its code loads with the first (E74).
   const prefetch = useCallback((url: string, options?: PrefetchOptions) => (navigator.current ? prefetchWith(navigator.current, url, options) : Promise.resolve()), []);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
-  // The page's patches and reloads are those of its history entry (E59) — never in its props in memory.
-  const optimistic = useCallback((patch: (props: Readonly<Record<string, unknown>>) => object) => ({ target: browser().use(optimisticFeature).page, patch: patch as never }), [browser]);
-  const reloading = useCallback(
-    (options?: ReloadingOptions) => reloadsOf((spec) => ({ target: browser().use(optimisticFeature).page, spec }), browser().regionOwner, routes, options as { islands?: readonly string[] }),
-    [browser, routes],
-  );
 
   // A page that throws gets one fresh copy of its props from the server: after a hot update, the code may
   // expect a shape the props in memory do not have yet (the controller changed with it). Throws again → fallback.
@@ -487,8 +501,8 @@ export function BespokeApp({
 
   const getNavigator = useCallback(() => navigator.current, []);
   const router = useMemo(
-    () => ({ page: current.page, visit, reload, prefetch, on, optimistic, reloading, navigator: getNavigator, resolve, layer: null }) as RouterValue,
-    [current.page, visit, reload, prefetch, on, optimistic, reloading, getNavigator, resolve],
+    () => ({ page: current.page, visit, reload, prefetch, on, navigator: getNavigator, resolve, layer: null }) as RouterValue,
+    [current.page, visit, reload, prefetch, on, getNavigator, resolve],
   );
   const { Component, page, key, catalog, placeholder } = current;
   const owner = current.owner ?? navigator.current?.regionOwner ?? null;

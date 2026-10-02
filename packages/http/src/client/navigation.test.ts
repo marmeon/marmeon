@@ -1,6 +1,7 @@
 import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../page.ts';
 import { describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
+import type { PatchTarget } from './optimistic.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
 import { prefetchWith } from './lazy.ts';
@@ -651,6 +652,44 @@ function gate() {
 }
 
 const purpose = (request: { headers: Record<string, string> }) => request.headers.purpose;
+
+describe('Navigator — a visit’s optimistic patches (E59)', () => {
+  /** A target that keeps its own patches (a layer, an island) — recording what the core does with them. */
+  function target() {
+    const calls: string[] = [];
+    let next = 0;
+    const patchTarget: PatchTarget = {
+      add: () => (calls.push('add'), ++next),
+      settle: (ids, commit, options) => void calls.push(`settle ${ids.join(',')} ${commit ? 'commit' : 'drop'}${options?.quiet ? ' quiet' : ''}`),
+      revalidate: async () => undefined,
+    };
+    return { calls, patchTarget };
+  }
+
+  it('the core shows them while the visit is under way, and takes them out with its answer — no feature attached (W5c.6)', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    const slow = gate();
+    win.handler = async () => (await slow.opened, pageResponse(page('/users/1', { name: 'Grace' })));
+    const { navigator } = boot(win, page('/users/1'), { features: [] });
+    const { calls, patchTarget } = target();
+    const visiting = navigator.visit('/users/1', { method: 'put', data: {}, optimistic: { target: patchTarget, patch: () => ({ name: 'Saving…' }) } });
+    await settle();
+    expect(calls).toEqual(['add']);
+    slow.open();
+    await visiting;
+    // Taken out in the render of the answer (quiet), then nothing left to roll back.
+    expect(calls).toEqual(['add', 'settle 1 drop quiet', 'settle 1 drop']);
+  });
+
+  it('counter-check: a visit that fails rolls them back', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => Promise.reject(new TypeError('offline'));
+    const { navigator } = boot(win, page('/users/1'), { features: [] });
+    const { calls, patchTarget } = target();
+    await navigator.visit('/users/1', { method: 'put', data: {}, optimistic: [{ target: patchTarget, patch: () => ({}) }, { target: patchTarget, patch: () => ({}) }] });
+    expect(calls).toEqual(['add', 'add', 'settle 1,2 drop']);
+  });
+});
 
 describe('Navigator — prefetching', () => {
   it('fetches a page ahead (GET, Purpose: prefetch) — the visit shows it without asking again', async () => {
