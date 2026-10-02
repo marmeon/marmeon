@@ -12,6 +12,8 @@
  * at any depth, and files. Passwords never, even when asked; the others when a form names them (`include`).
  */
 
+import { slot } from './feature.ts';
+
 /** Field names whose values are never remembered — unless a form names them in `include` (passwords: never). */
 export const SENSITIVE_REMEMBER_FIELD = /password|secret|token|card|cvc/i;
 
@@ -90,3 +92,6 @@ export class Remembered {
     return [...this.#values.keys()];
   }
 }
+
+/** What a history entry's components remembered (E63) — a slot of the entry: the core empties it with the entry. */
+export const REMEMBERED = slot('remembered', () => new Remembered());

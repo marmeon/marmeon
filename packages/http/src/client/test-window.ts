@@ -174,7 +174,7 @@ export class FakeWindow implements NavigatorWindow {
   }
 }
 
-export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm'> = {}) {
+export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm' | 'features'> = {}) {
   const shown: PageObject[] = [];
   /** The region owner handed with each page rendered (islands live there). */
   const owners: RegionOwner[] = [];

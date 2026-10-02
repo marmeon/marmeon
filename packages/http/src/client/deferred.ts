@@ -13,7 +13,7 @@ import { partialReloadHeaders } from './request.ts';
 
 type PropsCore = Pick<
   NavigatorCore,
-  'window' | 'cache' | 'page' | 'key' | 'owner' | 'layers' | 'left' | 'transitioning' | 'request' | 'send' | 'read' | 'fetchPage' | 'flushFlash' | 'draw' | 'paint' | 'setPage' | 'patches'
+  'window' | 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'request' | 'send' | 'read' | 'fetchPage' | 'flushFlash' | 'draw' | 'paint' | 'setPage'
 >;
 
 /** The props one navigator loads in the background. */
@@ -88,10 +88,10 @@ export class PropLoader {
 
   /**
    * Merges loaded props into the page of history entry `key` — and shows it, if that is the page on screen. `replace`: the
-   * loaded page is the whole page now (a full reload) — its deferred props keep their values until they load again. `drop`:
-   * optimistic patches the landing props take the place of (E59), gone in the same render.
+   * loaded page is the whole page now (a full reload) — its deferred props keep their values until they load again. `landed`:
+   * what the landing props take the place of goes (an action's optimistic patches, E59) — in the same render.
    */
-  async land(key: string, page: PageObject, loaded: PageObject, { replace = false, drop }: { replace?: boolean; drop?: ReadonlySet<number> } = {}): Promise<PageObject | undefined> {
+  async land(key: string, page: PageObject, loaded: PageObject, { replace = false, landed }: { replace?: boolean; landed?: () => void } = {}): Promise<PageObject | undefined> {
     // Left for a full page load (signed out, say): nothing lands in what this document shows any more.
     if (this.#core.left) return undefined;
     const onScreen = this.#core.key === key && !this.#core.transitioning;
@@ -100,10 +100,10 @@ export class PropLoader {
     if (!target || target.url !== page.url || target.component !== page.component) return undefined;
     const merged = replace ? keepDeferred(target, loaded) : mergePage(target, loaded);
     updatePage(this.#core.cache, key, merged);
-    if (drop) this.#core.patches.drop(key, drop);
+    landed?.();
     if (onScreen) {
       this.#core.setPage(merged);
-      await this.#core.draw(this.#core.paint(key, merged), { preserveState: true, owner: this.#core.owner, layers: this.#core.layers });
+      await this.#core.draw(this.#core.paint(key, merged), { preserveState: true });
       if (replace) this.load();
     }
     return merged;
@@ -111,10 +111,10 @@ export class PropLoader {
 
   /**
    * Reloads the page of entry `key` in the background — some props, or all — and lands them there (on screen or in memory),
-   * taking the patches `drop` out in the same render. No events, no progress bar, no failure notice: what is shown stays when
-   * it fails. Resolves with whether it landed.
+   * `landed` running in the same render (an action's patches go). No events, no progress bar, no failure notice: what is shown
+   * stays when it fails. Resolves with whether it landed.
    */
-  async revalidate(key: string, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
+  async revalidate(key: string, spec: ReloadSpec, signal: AbortSignal, landed?: () => void): Promise<boolean> {
     const base = this.base(key);
     if (!base || this.#core.left) return false;
     const partial = spec.only !== undefined || (spec.except?.length ?? 0) > 0;
@@ -125,9 +125,9 @@ export class PropLoader {
       return false;
     }
     const props = partial && spec.only ? pick(loaded.props, spec.only) : loaded.props;
-    const landed = await this.land(key, base, { ...loaded, props }, { replace: !partial, drop });
+    const merged = await this.land(key, base, { ...loaded, props }, { replace: !partial, landed });
     this.#core.flushFlash();
-    return landed !== undefined;
+    return merged !== undefined;
   }
 
   async #loadGroup(key: string, page: PageObject, props: readonly string[]): Promise<void> {

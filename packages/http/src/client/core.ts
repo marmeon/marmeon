@@ -1,24 +1,21 @@
 /**
- * @internal What the navigator shares with the modules around it (Wave 5c): the page on screen, its history entry, memory,
- * the request pipeline — and, while every feature is still wired in statically, the features themselves. The navigator
- * keeps this state here itself, so every module reads it the same way (and compresses alike). Each module names the part it
- * uses (`Pick<NavigatorCore, …>`); the feature host of Wave 5c step 3 grows out of this. Not part of the adapter contract.
+ * The feature host (Wave 5c): what the navigator shares with the modules around it and with its features — the page on
+ * screen, its history entry, memory, the request pipeline, the hooks (`on`) and the slots the core empties itself (`entry`,
+ * `document`). The navigator keeps this state here itself, so every module reads it the same way (and compresses alike).
+ * Each core module names the part it uses (`Pick<NavigatorCore, …>`); a feature gets all of it in `setup`.
  */
 import type { FlashMessage, PageObject } from '../page.ts';
 import type { PageCache } from './cache.ts';
+import type { ConfirmRequest } from './confirm.ts';
 import type { DocumentChange } from './document-change.ts';
 import type { PropLoader } from './deferred.ts';
 import type { Visit, VisitCallbacks, VisitEmitter, VisitProgress } from './events.ts';
+import type { FeatureHook, FeatureHooks, Slot } from './feature.ts';
 import type { FlashChannel } from './flash.ts';
-import type { Guards, NavigationGuard } from './features/guard.ts';
-import type { InstantVisits } from './features/instant.ts';
-import type { LayerStack } from './features/layers.ts';
-import type { PagePatches } from './features/optimistic.ts';
-import type { Prefetches } from './features/prefetch.ts';
-import type { BackRevalidation } from './features/revalidate-on-back.ts';
+import type { NavigationGuard } from './features/guard.ts';
 import type { HistoryWriter } from './history.ts';
-import type { LayerControl } from './layer.ts';
-import type { Navigator, NavigatorWindow, RenderOptions, VisitMethod, VisitOptions } from './navigation.ts';
+import type { Layer, LayerControl } from './layer.ts';
+import type { Navigator, NavigatorOptions, NavigatorWindow, RenderOptions, VisitMethod, VisitOptions } from './navigation.ts';
 import type { OnceStore } from './once.ts';
 import type { RegionOwner, RegionTransport } from './region.ts';
 import type { Scroll, ScrollMemory } from './scroll.ts';
@@ -49,20 +46,33 @@ export interface PlaceOptions {
   readonly hash: string;
 }
 
-export interface NavigatorCore {
+/** The hooks that are events: they return nothing, all of them run. */
+export type FeatureEvent = 'write' | 'unload' | 'started' | 'stopped' | 'draw' | 'page' | 'arrive' | 'popped' | 'deferred' | 'restored';
+
+/** A render as the core's modules ask for it: the page's owner and the features' contributions are filled in. */
+export type DrawOptions = Pick<RenderOptions, 'preserveState'> & Partial<RenderOptions>;
+
+export interface FeatureHost {
   /** The navigator itself — its public API (and the host of its layers). */
   readonly navigator: Navigator;
   readonly window: NavigatorWindow;
+  /** What the app passed to the navigator (`revalidateOnBack`, `confirm`, …). */
+  readonly options: NavigatorOptions;
+  /** The page the document came with, as the server sent it (a deep link's layers) — until the navigator takes over the history. */
+  readonly initial: PageObject | undefined;
   /** The pages of the history entries, in memory (E36). */
   readonly cache: PageCache;
   readonly scroll: ScrollMemory;
+  /** Writes history entries — and refuses anything that is not a position (E36). */
   readonly history: HistoryWriter;
+  /** Once props (E64) — a slot of the document. */
   readonly once: OnceStore;
+  /** Flash messages (E60) — a slot of the document. */
   readonly flash: FlashChannel;
-  /** Flash messages of answers on their way to the screen — fired once what they came with is rendered. */
+  /** Flash messages of answers on their way to the screen — fired once what they came with is rendered (a slot of the document). */
   readonly inbox: FlashMessage[];
-  /** How the islands' regions send their requests. */
-  readonly transport: RegionTransport;
+  /** How the islands' regions send their requests (the islands feature sets it). */
+  transport: RegionTransport;
   /** The asset version this tab runs. */
   readonly version: string | null;
 
@@ -72,8 +82,8 @@ export interface NavigatorCore {
   readonly key: string | undefined;
   /** Where the islands of the page on screen live. */
   readonly owner: RegionOwner;
-  /** The layers on screen, bottom first. */
-  readonly layers: readonly LayerControl['layer'][];
+  /** The layers on screen, bottom first (what features contribute to a render). */
+  readonly layers: readonly Layer[];
   /** This document was left for a full page load: nothing lands any more. */
   readonly left: boolean;
   /** `start()` took over the history. */
@@ -81,11 +91,38 @@ export interface NavigatorCore {
   /** A page is being swapped in: scroll events belong to no entry, and what lands for the page on screen goes to memory. */
   transitioning: boolean;
 
-  /** The adapter's render — as it is (no flash messages fired, no placeholder ended). */
+  // -- Hooks and slots ------------------------------------------------------------------------------------------------------
+
+  /** Hooks into the pipeline — in the order the features were registered. Returns the function that takes it out. */
+  on<K extends FeatureHook>(name: K, hook: FeatureHooks[K]): () => void;
+  /** Runs the hooks of an event. */
+  fire<K extends FeatureEvent>(name: K, ...args: Parameters<FeatureHooks[K]>): void;
+  /** What entry `key` (default: the page on screen's) keeps in `slot` — created on first use, emptied with the entry. */
+  entry<T>(slot: Slot<T>, key?: string): T;
+  /** What entry `key` keeps in `slot`, without creating it. */
+  peek<T>(slot: Slot<T>, key: string): T | undefined;
+  /** Empties what entry `key` keeps — in `slot`, or in all of them (it shows another page now). */
+  forget<T>(key: string, slot?: Slot<T>): void;
+  /** What this document keeps in `slot` — created on first use, emptied when the document is left. */
+  document<T>(slot: Slot<T>): T;
+
+  // -- The core's services --------------------------------------------------------------------------------------------------
+
+  /** The current history entry: the top layer's, or the page's. */
+  top(): string;
+  /** A region owner for the islands of entry `key` — `back`: brought back by Back/Forward (what views declare reloads, E58). */
+  ownerOf(key: string, back?: boolean): RegionOwner;
+  /** The unsaved changes on the levels `leaving` takes off the screen — but `ignore` (E64). */
+  blocking(leaving: (level: number) => boolean, ignore?: readonly NavigationGuard[]): NavigationGuard[];
+  /** Whether a navigation that takes the levels `leaving` off the screen may go — asking, when unsaved changes are on one. */
+  mayLeave(leaving: (level: number) => boolean, ignore?: true | readonly NavigationGuard[]): Promise<boolean>;
+  /** Asks the user (E64); a failing dialog is a no. */
+  ask(request: ConfirmRequest): Promise<boolean>;
+  /** The adapter's render — as it is (no flash messages fired, nothing filled in). */
   render(page: PageObject, options: RenderOptions): Promise<void>;
-  /** Renders, then fires what the rendered answer brought (E60). */
-  draw(page: PageObject, options: RenderOptions): Promise<void>;
-  /** The page of entry `key` as it is shown: with the optimistic patches under way over it. */
+  /** Renders, then fires what the rendered answer brought (E60) — with the owner on screen and the features' contributions. */
+  draw(page: PageObject, options: DrawOptions): Promise<void>;
+  /** The page of entry `key` as it is shown: with what features paint over it (optimistic patches). */
   paint(key: string, page: PageObject): PageObject;
   setPage(page: PageObject): void;
   /** Before a full page load: nothing kept in memory survives it. */
@@ -109,13 +146,11 @@ export interface NavigatorCore {
   /** The entry `key` shows `page` now — the server's answer for an entry not in memory. */
   restorePage(page: PageObject, key: string, position: Scroll): Promise<void>;
 
-  // The features — statically wired until Wave 5c steps 3 and 4 make them pluggable.
+  /** Props that load in the background (deferred, streamed, reloads) — fixed in the core (E72). */
   readonly props: PropLoader;
+  /** Full loads the server asks for (409) — fixed in the core (E72). */
   readonly documentChange: DocumentChange;
-  readonly guards: Guards;
-  readonly stack: LayerStack;
-  readonly patches: PagePatches;
-  readonly prefetches: Prefetches;
-  readonly instant: InstantVisits;
-  readonly back: BackRevalidation;
 }
+
+/** @internal The name the core's own modules know the host by. */
+export type NavigatorCore = FeatureHost;

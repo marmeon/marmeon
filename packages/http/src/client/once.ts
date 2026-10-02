@@ -9,6 +9,7 @@
  * session's, sends them anyway. A full load (sign-in, sign-out, a new build, a language switch) starts with nothing.
  */
 import { ONCE_HEADER, ONCE_SCOPE_HEADER, type PageObject } from '../page.ts';
+import { slot } from './feature.ts';
 
 interface Kept {
   readonly value: unknown;
@@ -71,3 +72,6 @@ export class OnceStore {
     this.#scope = undefined;
   }
 }
+
+/** The once props of the document (E64) — a slot of it: the core empties it when the document is left. */
+export const ONCE = slot('once', () => new OnceStore());

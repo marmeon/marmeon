@@ -1,10 +1,11 @@
 /**
  * The navigation guard and confirmations (E64): unsaved changes a visit, Back/Forward or closing a layer would lose ask
  * first; closing the tab or reloading gets the browser's own question (`beforeunload`). A full load the server asks for (a
- * 409) is never stopped. Also the question itself — the app's dialog, or the browser's (`confirm`, `prompt`).
+ * 409) is never stopped. Also a visit's own confirmation (`confirm`) — asked by the core (`host.ask`).
  */
-import { accepted, type ConfirmHandler, type ConfirmRequest } from '../confirm.ts';
-import type { NavigatorCore } from '../core.ts';
+import { confirmRequest, DEFAULT_LEAVE_MESSAGE } from '../confirm.ts';
+import type { FeatureHost } from '../core.ts';
+import { defineFeature, type PendingVisit } from '../feature.ts';
 import { isHistoryState, type HistoryState } from '../history.ts';
 import type { Layer } from '../layer.ts';
 
@@ -23,15 +24,11 @@ export interface NavigationGuard {
   active?(): boolean;
 }
 
-/** What the navigation guard asks by default. */
-export const DEFAULT_LEAVE_MESSAGE = 'You have unsaved changes. Leave anyway?';
+type GuardCore = Pick<FeatureHost, 'window' | 'history' | 'key' | 'layers' | 'left' | 'started' | 'top' | 'ask' | 'mayLeave'>;
 
-type GuardCore = Pick<NavigatorCore, 'window' | 'history' | 'key' | 'layers' | 'left' | 'started' | 'stack'>;
-
-/** The guards of one navigator, and how it asks. */
+/** The guards of one navigator. */
 export class Guards {
   readonly #core: GuardCore;
-  readonly #ask: ConfirmHandler;
   /** Unsaved changes (E64): what a navigation asks about first. */
   readonly #guards = new Set<NavigationGuard>();
   /** The guard undid a Back/Forward (`history.go`): the popstate that brings the entry back is not a navigation. */
@@ -41,9 +38,18 @@ export class Guards {
   /** The user chose to leave for another site (or a full load): the browser's own question does not ask again. */
   #unloadAllowed = false;
 
-  constructor(core: GuardCore, ask: ConfirmHandler) {
+  constructor(core: GuardCore) {
     this.#core = core;
-    this.#ask = ask;
+  }
+
+  /**
+   * Whether a visit may start (the `visit` hook): its own confirmation first (E64), then the unsaved changes it would take off
+   * the screen — a promise only when something is asked, so a visit nobody guards starts at once.
+   */
+  check({ options, keeps, leaving }: PendingVisit): boolean | Promise<boolean> {
+    const { confirm, ignoreGuards } = options;
+    const pass = () => keeps || ignoreGuards === true || this.blocking(leaving, ignoreGuards).length === 0 || this.#core.mayLeave(leaving, ignoreGuards);
+    return confirm === undefined ? pass() : this.#core.ask(confirmRequest(confirm)).then((yes) => yes && pass());
   }
 
   /** Guards `guard` until the returned function lifts it — see `Navigator.guard`. */
@@ -81,23 +87,6 @@ export class Guards {
     });
   }
 
-  /** Whether a navigation that takes the levels `leaving` off the screen may go — asking, when a guard is on one. */
-  async mayLeave(leaving: (level: number) => boolean, ignore?: true | readonly NavigationGuard[]): Promise<boolean> {
-    if (ignore === true) return true;
-    const blocking = this.blocking(leaving, ignore);
-    if (blocking.length === 0) return true;
-    return this.question({ kind: 'leave', message: blocking[0]!.message ?? DEFAULT_LEAVE_MESSAGE });
-  }
-
-  /** Asks the adapter; a failing dialog is a no. */
-  async question(request: ConfirmRequest): Promise<boolean> {
-    try {
-      return accepted(request, await this.#ask(request));
-    } catch {
-      return false;
-    }
-  }
-
   /**
    * A popstate, before the navigator follows it: whether the guard takes it — the one that brings back the entry it undid,
    * or a Back/Forward it stops (unsaved changes on what it would take off the screen). `closing`: a layer closes by going
@@ -128,9 +117,9 @@ export class Guards {
     const delta = typeof state.index === 'number' ? state.index - history.index : undefined;
     const go = window.history.go?.bind(window.history);
     if (blocking.length === 0 || delta === undefined || delta === 0 || !go) return false;
-    this.#undoing = this.#core.stack.top();
+    this.#undoing = this.#core.top();
     go(-delta);
-    void this.question({ kind: 'leave', message: blocking[0]!.message ?? DEFAULT_LEAVE_MESSAGE }).then((leave) => {
+    void this.#core.ask({ kind: 'leave', message: blocking[0]!.message ?? DEFAULT_LEAVE_MESSAGE }).then((leave) => {
       if (!leave || this.#core.left) return;
       this.#redoing = true;
       go(delta);
@@ -152,3 +141,19 @@ export class Guards {
     (event as unknown as { returnValue: unknown }).returnValue = '';
   };
 }
+
+/**
+ * The navigation guard (E64) as a feature: asks before a visit (its confirmation, unsaved changes), undoes a Back/Forward it
+ * stops, says what is unsaved to the core (a postponed new build, closing a layer) and the browser's own question. Holds no
+ * data — only the guards the app registers.
+ */
+export const guard = defineFeature('guard', (host) => {
+  const guards = new Guards(host);
+  host.on('visit', (visit) => guards.check(visit));
+  host.on('unsaved', (leaving, ignore) => guards.blocking(leaving, ignore));
+  host.on('popState', (state, own) => guards.popState(state, own) || undefined);
+  host.on('started', () => guards.start());
+  host.on('stopped', () => guards.stop());
+  host.on('unload', () => guards.allowUnload());
+  return guards;
+});

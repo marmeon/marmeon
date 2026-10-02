@@ -5,7 +5,8 @@
  */
 import type { PageObject } from '../../page.ts';
 import { updatePage } from '../cache.ts';
-import type { NavigatorCore } from '../core.ts';
+import type { FeatureHost } from '../core.ts';
+import { defineFeature, slot } from '../feature.ts';
 import { PatchQueue, Revalidations, type PatchTarget } from '../optimistic.ts';
 
 /** The optimistic patches of one history entry's page, and the reloads actions start for it. */
@@ -15,15 +16,34 @@ interface EntryPatches {
   readonly target: PatchTarget;
 }
 
-type PatchesCore = Pick<NavigatorCore, 'cache' | 'page' | 'key' | 'owner' | 'layers' | 'left' | 'transitioning' | 'draw' | 'setPage' | 'props'>;
+/**
+ * The patches of the history entries' pages, by key — a slot of the document: nothing optimistic stays, and no reload lands,
+ * when it is left. (Per document, not per entry: an action under way still settles its patches on an entry that left memory.)
+ */
+export const PATCHES = slot(
+  'patches',
+  () => new Map<string, EntryPatches>(),
+  (entries) => {
+    for (const { queue, revalidations } of entries.values()) {
+      queue.clear();
+      revalidations.abort();
+    }
+    entries.clear();
+  },
+);
+
+type PatchesCore = Pick<FeatureHost, 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'draw' | 'setPage' | 'props' | 'document'>;
 
 /** The patches of one navigator's history entries, by key. */
 export class PagePatches {
   readonly #core: PatchesCore;
-  readonly #entries = new Map<string, EntryPatches>();
 
   constructor(core: PatchesCore) {
     this.#core = core;
+  }
+
+  get #entries(): Map<string, EntryPatches> {
+    return this.#core.document(PATCHES);
   }
 
   /** The page of entry `key` as it is shown: the props in memory with the optimistic patches under way over them. */
@@ -34,15 +54,6 @@ export class PagePatches {
   /** The patches the landing props of entry `key` take the place of (`drop`): gone in the same render. */
   drop(key: string, ids: ReadonlySet<number>): void {
     this.#entries.get(key)?.queue.remove(ids);
-  }
-
-  /** Nothing optimistic stays, and no reload lands any more — the document is left. */
-  clear(): void {
-    for (const { queue, revalidations } of this.#entries.values()) {
-      queue.clear();
-      revalidations.abort();
-    }
-    this.#entries.clear();
   }
 
   /** The optimistic patches of entry `key` — a target for actions, kept apart from the page in memory. */
@@ -73,7 +84,7 @@ export class PagePatches {
         revalidations.run(
           spec,
           ids,
-          (united, all, signal) => this.#core.props.revalidate(key, united, all, signal),
+          (united, all, signal) => this.#core.props.revalidate(key, united, signal, () => this.drop(key, all)),
           (all) => target.settle(all, true),
         ),
     };
@@ -84,6 +95,13 @@ export class PagePatches {
   /** The patches of entry `key` changed: shown again, if it is the page on screen. */
   #repaint(key: string): void {
     if (key !== this.#core.key || this.#core.transitioning || this.#core.left) return;
-    void this.#core.draw(this.paint(key, this.#core.page), { preserveState: true, owner: this.#core.owner, layers: this.#core.layers });
+    void this.#core.draw(this.paint(key, this.#core.page), { preserveState: true });
   }
 }
+
+/** Optimistic patches (E59) on the pages of history entries, as a feature: painted over the props in memory, never into them. */
+export const optimistic = defineFeature('optimistic', (host) => {
+  const patches = new PagePatches(host);
+  host.on('paint', (key, page) => patches.paint(key, page));
+  return patches;
+});

@@ -24,6 +24,9 @@ export interface ConfirmOptions {
   readonly destructive?: boolean;
 }
 
+/** What the navigation guard asks by default (E64). */
+export const DEFAULT_LEAVE_MESSAGE = 'You have unsaved changes. Leave anyway?';
+
 /** A confirmation as `confirm` takes it: the question, or {@link ConfirmOptions}. */
 export type Confirm = string | ConfirmOptions;
 

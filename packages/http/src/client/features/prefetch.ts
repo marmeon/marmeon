@@ -5,7 +5,8 @@
  */
 import { FLASH_WAITING_HEADER, PAGE_HEADER, PURPOSE_HEADER, REGION_HEADER, type PageObject } from '../../page.ts';
 import { LruMap } from '../cache.ts';
-import type { NavigatorCore } from '../core.ts';
+import type { FeatureHost } from '../core.ts';
+import { defineFeature, slot } from '../feature.ts';
 import { takeFlash } from '../flash.ts';
 import { buildRequest } from '../request.ts';
 
@@ -34,15 +35,28 @@ interface Prefetched {
   settled: boolean;
 }
 
-type PrefetchCore = Pick<NavigatorCore, 'window' | 'page' | 'left' | 'once' | 'send'>;
+/** The pages fetched ahead, by URL — a slot of the document: dropped (their requests aborted) when it is left. */
+export const PREFETCHED = slot(
+  'prefetched',
+  () => new LruMap<string, Prefetched>(PREFETCH_LIMIT),
+  (pages) => {
+    for (const entry of pages.values()) entry.controller.abort();
+    pages.clear();
+  },
+);
+
+type PrefetchCore = Pick<FeatureHost, 'window' | 'page' | 'left' | 'once' | 'send' | 'document'>;
 
 /** The prefetched pages of one navigator, by URL. */
 export class Prefetches {
   readonly #core: PrefetchCore;
-  readonly #pages = new LruMap<string, Prefetched>(PREFETCH_LIMIT);
 
   constructor(core: PrefetchCore) {
     this.#core = core;
+  }
+
+  get #pages(): LruMap<string, Prefetched> {
+    return this.#core.document(PREFETCHED);
   }
 
   /** How many prefetched pages are kept (tests). */
@@ -97,8 +111,7 @@ export class Prefetches {
 
   /** Every prefetched page goes — a write changed what they show, or the document is left. */
   flush(): void {
-    for (const entry of this.#pages.values()) entry.controller.abort();
-    this.#pages.clear();
+    PREFETCHED.clear!(this.#pages);
   }
 
   /** The page of a prefetch — undefined for anything that is not a page to show as it is. */
@@ -126,15 +139,18 @@ function prefetchKey(url: string, layer: boolean): string {
   return layer ? `layer ${url}` : url;
 }
 
-/** `promise`, or undefined as soon as `signal` aborts — a newer visit does not wait for a prefetch it does not need. */
-export function untilAborted<T>(promise: Promise<T | undefined>, signal: AbortSignal): Promise<T | undefined> {
-  if (signal.aborted) return Promise.resolve(undefined);
-  return new Promise((resolve) => {
-    const abort = () => resolve(undefined);
-    signal.addEventListener('abort', abort, { once: true });
-    void promise.then((value) => {
-      signal.removeEventListener('abort', abort);
-      resolve(value);
-    });
+/**
+ * Prefetching as a feature: a plain GET visit takes the page fetched ahead (or waits for it), a write drops them all. What it
+ * fetched lives in its slot of the document — gone when the document is left (signing out).
+ */
+export const prefetch = defineFeature('prefetch', (host) => {
+  const prefetches = new Prefetches(host);
+  host.on('write', () => prefetches.flush());
+  host.on('start', (visit) => {
+    if (!visit.takes) return undefined;
+    // An instant visit (E64) shows no placeholder for a page that is here already.
+    visit.ready = prefetches.ready(visit.url, visit.layer);
+    return { page: prefetches.take(visit.url, visit.layer) };
   });
-}
+  return prefetches;
+});

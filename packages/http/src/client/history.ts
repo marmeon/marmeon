@@ -60,24 +60,67 @@ export function newKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** Writes the history entries of one navigator — each at its place in the tab's history (`index`). */
+/** Checks the value of one field of a history entry: whether it is a position (never anything a page showed). */
+export type PositionCheck = (value: unknown) => boolean;
+
+const isPosition: PositionCheck = (value) => typeof value === 'object' && value !== null && Object.keys(value).length === 2 && typeof (value as ScrollPosition).x === 'number' && typeof (value as ScrollPosition).y === 'number';
+const isString: PositionCheck = (value) => typeof value === 'string';
+
+/** The fields of an entry the core writes itself — features register theirs (`field`). */
+const POSITIONS: [string, PositionCheck][] = [
+  ['component', isString],
+  ['url', isString],
+  ['key', isString],
+  ['index', Number.isInteger],
+  ['scroll', isPosition],
+  ['scrollRegions', (value) => Array.isArray(value) && value.every(isPosition)],
+];
+
+/**
+ * Writes the history entries of one navigator — each at its place in the tab's history (`index`). It is the only writer of
+ * `history.state`, and it refuses anything that is not a position (E36): a field it does not know, or a value its check
+ * rejects, throws in development and is left out in production. So no feature (and no adapter) can put props on disk.
+ */
 export class HistoryWriter {
   /** Where the current entry is in the tab's history (`HistoryState.index`) — for undoing a Back the guard stops. */
   index = 0;
   readonly #window: NavigatorWindow;
+  readonly #fields = new Map(POSITIONS);
 
   constructor(window: NavigatorWindow) {
     this.#window = window;
   }
 
+  /** A field a feature writes into its entries (a layer's depth and the keys beneath) — `check` says what a position of it is. */
+  field(name: string, check: PositionCheck): void {
+    this.#fields.set(name, check);
+  }
+
   /** A new history entry — counted (`index`), so the guard can undo a Back to it. */
   push(state: HistoryState, url: string): void {
     this.index += 1;
-    this.#window.history.pushState({ ...state, index: this.index }, '', url);
+    this.#window.history.pushState(this.#positions(state), '', url);
   }
 
   /** The current history entry, rewritten — at its place. */
   replace(state: HistoryState, url: string): void {
-    this.#window.history.replaceState({ ...state, index: this.index }, '', url);
+    this.#window.history.replaceState(this.#positions(state), '', url);
+  }
+
+  /** The state with only its positions — never anything else (E36). */
+  #positions(state: HistoryState): HistoryState {
+    const kept: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries({ ...state, index: this.index })) {
+      if (value === undefined) continue;
+      if (this.#fields.get(name)?.(value)) kept[name] = value;
+      // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the message.
+      else if (process.env.NODE_ENV !== 'production') {
+        throw new Error(
+          `[bespoke] A history entry holds where it is, never what it showed (E36): "${name}" is ${this.#fields.has(name) ? 'not a position' : 'no field of it'}. ` +
+            'Keep what a page showed in memory — a slot of the feature (host.entry, host.document) — and register a position a feature needs with host.history.field().',
+        );
+      }
+    }
+    return kept as unknown as HistoryState;
   }
 }

@@ -15,7 +15,7 @@ export const DEFAULT_NEW_VERSION_MESSAGE = 'A new version of this app is availab
 /** How the page loads fully: the URL of the 409 (`assign`, or `replace` the entry), or the page on screen again (`reload`). */
 export type DocumentChangeHow = 'assign' | 'replace' | 'reload';
 
-type DocumentChangeCore = Pick<NavigatorCore, 'window' | 'left' | 'leave' | 'emit' | 'guards'>;
+type DocumentChangeCore = Pick<NavigatorCore, 'window' | 'left' | 'leave' | 'emit' | 'fire' | 'blocking' | 'ask'>;
 
 /** The full loads of one navigator, and the new build it postponed. */
 export class DocumentChange {
@@ -45,7 +45,7 @@ export class DocumentChange {
   /** Loads the new build now — a full load of the page on screen (or where the postponed one was going). */
   reloadNow(): void {
     if (this.#core.left) return;
-    this.#core.guards.allowUnload();
+    this.#core.fire('unload');
     const location = this.#newVersion ?? this.#core.window.location.href;
     this.#core.leave();
     this.#core.window.location.assign(location);
@@ -62,7 +62,7 @@ export class DocumentChange {
     await response.body?.cancel();
     const go = () => {
       if (this.#core.left) return;
-      this.#core.guards.allowUnload();
+      this.#core.fire('unload');
       this.#core.leave();
       if (how === 'reload') this.#core.window.location.reload();
       else if (how === 'replace') this.#core.window.location.replace(location);
@@ -76,7 +76,7 @@ export class DocumentChange {
     if (this.#core.left) return true;
     // Postponed already: no new question for every request that finds out again (a poll, an island).
     if (this.#newVersion !== undefined) return false;
-    const unsaved = consented === true ? [] : this.#core.guards.blocking(() => true, consented ?? []);
+    const unsaved = consented === true ? [] : this.#core.blocking(() => true, consented ?? []);
     let prevented = false;
     const event: VersionChange = {
       location,
@@ -89,7 +89,7 @@ export class DocumentChange {
     };
     this.#core.emit('version', undefined, event);
     if (this.#core.left) return true;
-    const stay = prevented || (unsaved.length > 0 && !(await this.#core.guards.question({ kind: 'leave', message: unsaved[0]!.message ?? DEFAULT_NEW_VERSION_MESSAGE })));
+    const stay = prevented || (unsaved.length > 0 && !(await this.#core.ask({ kind: 'leave', message: unsaved[0]!.message ?? DEFAULT_NEW_VERSION_MESSAGE })));
     if (this.#core.left) return true;
     if (stay) {
       this.#newVersion = location;

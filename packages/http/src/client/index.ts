@@ -37,8 +37,11 @@ export type {
   VisitProgress,
   VersionChange,
 } from './navigation.ts';
+export { defineFeature, slot } from './feature.ts';
+export type { EntryStack, Feature, FeatureHook, FeatureHooks, FeatureHost, PendingVisit, Slot, VisitPart } from './feature.ts';
+export type { PositionCheck } from './history.ts';
 export { OnceStore } from './once.ts';
-export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, Remembered, rememberable, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
+export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, REMEMBERED, Remembered, rememberable, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
 export { DEFAULT_PROGRESS_DELAY, markBusy, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export { accepted, confirmRequest, nativeConfirm } from './confirm.ts';
 export type { Confirm, ConfirmAnswer, ConfirmHandler, ConfirmOptions, ConfirmRequest, NativeDialogs } from './confirm.ts';
@@ -57,7 +60,7 @@ export { defaultFormEntries, dirtyPaths, fieldPath, firstErrors, FORM_METHOD_FIE
 export type { FormEntries } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export type { TitleTemplate } from './title.ts';
-export { Region, regionId, regionInitial, RegionOwner } from './region.ts';
+export { Region, regionId, regionInitial, RegionOwner, REGIONS } from './region.ts';
 export { Layer, MAX_LAYER_DEPTH } from './layer.ts';
 export type { LayerCloseOptions, LayerControl, LayerHost } from './layer.ts';
 export type { KeptRegion, RegionInitial, RegionFailure, RegionReloadOptions, RegionResponse, RegionSnapshot, RegionStatus, RegionTransport } from './region.ts';

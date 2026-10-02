@@ -5,6 +5,7 @@
  * twice (another id). A message nobody listens to yet waits for the first listener of its key — the page that mounts with it.
  */
 import { FLASH_HEADER, type FlashKey, type FlashMessage, type PageObject } from '../page.ts';
+import { slot } from './feature.ts';
 import { call } from './notify.ts';
 
 /** How many ids the core remembers (a message delivered twice by a race of two requests fires once). */
@@ -57,6 +58,12 @@ export class FlashChannel {
     this.#waiting = [];
   }
 }
+
+/** The flash messages of the document (E60) — a slot of it: what waits for a listener goes when the document is left. */
+export const FLASH = slot('flash', () => new FlashChannel());
+
+/** Flash messages of answers on their way to the screen — a slot of the document. */
+export const INBOX = slot('inbox', (): FlashMessage[] => [], (inbox) => void inbox.splice(0));
 
 /** The page without its flash messages, and the messages — the core keeps pages, never what they delivered. */
 export function takeFlash(page: PageObject): { page: PageObject; flash: readonly FlashMessage[] } {

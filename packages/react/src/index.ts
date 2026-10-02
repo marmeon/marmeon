@@ -3,7 +3,7 @@
  * components, hooks, context, layouts, error boundaries and `<Head>`. Visits, history, caching, prefetching, polling
  * and the progress bar come from the core (import `Navigator`, `createPoll` … from there).
  */
-export { BespokeApp, usePage, useRouter } from './app.tsx';
+export { BespokeApp, useFeature, usePage, useRouter } from './app.tsx';
 export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {

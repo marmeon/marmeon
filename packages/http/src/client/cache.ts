@@ -4,14 +4,14 @@
  * `history.state`, never in any storage.
  */
 import type { PageObject } from '../page.ts';
-import type { Remembered } from './remember.ts';
-import type { KeptRegion, RegionOwner } from './region.ts';
 
 export interface LruOptions<K, V> {
   /** Never evicted while in here (what is on screen) — nor is the entry just set. */
   pinned?: () => ReadonlySet<K>;
-  /** The keys used together with `value` — moved up with it (what is beneath a layer stays while the layer does). */
-  together?: (value: V) => Iterable<K> | undefined;
+  /** The keys used together with `key` — moved up with it (what is beneath a layer stays while the layer does). */
+  together?: (key: K) => Iterable<K> | undefined;
+  /** An entry is let go of — evicted or deleted (not on `clear`). */
+  forget?: (key: K) => void;
 }
 
 /** A Map that forgets its least recently set (or gotten) entries beyond `size`. */
@@ -20,11 +20,13 @@ export class LruMap<K, V> {
   readonly #size: number;
   readonly #pinned: LruOptions<K, V>['pinned'];
   readonly #together: LruOptions<K, V>['together'];
+  readonly #forget: LruOptions<K, V>['forget'];
 
-  constructor(size: number, { pinned, together }: LruOptions<K, V> = {}) {
+  constructor(size: number, { pinned, together, forget }: LruOptions<K, V> = {}) {
     this.#size = Math.max(1, size);
     this.#pinned = pinned;
     this.#together = together;
+    this.#forget = forget;
   }
 
   get size(): number {
@@ -47,7 +49,7 @@ export class LruMap<K, V> {
     this.#entries.delete(key);
     this.#entries.set(key, value);
     // What is used with it is newer than it, so it goes after it.
-    for (const along of this.#together?.(value) ?? []) {
+    for (const along of this.#together?.(key) ?? []) {
       const entry = this.#entries.get(along);
       if (entry === undefined) continue;
       this.#entries.delete(along);
@@ -58,7 +60,7 @@ export class LruMap<K, V> {
     const pinned = this.#pinned?.();
     for (const oldest of [...this.#entries.keys()]) {
       if (this.#entries.size <= this.#size) break;
-      if (!pinned?.has(oldest) && oldest !== key) this.#entries.delete(oldest);
+      if (!pinned?.has(oldest) && oldest !== key) this.delete(oldest);
     }
   }
 
@@ -68,7 +70,7 @@ export class LruMap<K, V> {
   }
 
   delete(key: K): void {
-    this.#entries.delete(key);
+    if (this.#entries.delete(key)) this.#forget?.(key);
   }
 
   clear(): void {
@@ -81,40 +83,24 @@ export class LruMap<K, V> {
 }
 
 /**
- * What memory keeps of a history entry: its page (a layer's, for a layer's entry) and the region objects of its islands —
- * one entry of the LRU together. A layer's entry also names the entries beneath it.
+ * What memory keeps of a history entry: its page (a layer's, for a layer's entry). What features keep of it besides — its
+ * islands' region objects, remembered state, a layer's place in the stack — lives in the entry's slots (`host.entry`), which
+ * the core empties when memory lets go of the entry.
  */
 export interface CachedEntry {
   readonly page: PageObject;
-  readonly regions: Map<string, KeptRegion>;
-  /** What the entry's components remembered (E63) — in memory only, gone with the entry. */
-  readonly remembered: Remembered;
-  /** A layer's entry (E53): the keys of the entries beneath it, the page's first. */
-  readonly below?: readonly string[];
-  /** It was pushed right over the entry beneath it, in this document: closing it is Back. */
-  readonly pushed?: boolean;
 }
 
 /**
- * History entries by key, least recently used first out — but never an entry on screen, and a layer's entries beneath
- * count as used with it (the page under a layer stays while the layer does).
+ * History entries by key, least recently used first out — but never an entry on screen, and the entries an entry is used
+ * together with (beneath a layer) count as used with it.
  */
 export type PageCache = LruMap<string, CachedEntry>;
 
 /** How many pages the in-memory cache keeps by default. */
 export const DEFAULT_PAGE_CACHE_SIZE = 20;
 
-export function pageCache(size: number, onScreen: () => ReadonlySet<string>): PageCache {
-  return new LruMap(size, { pinned: onScreen, together: (entry) => entry.below });
-}
-
-/** A new page object for an entry that is there (props merged in), keeping its regions and its place. */
+/** A new page object for an entry that is there (props merged in), keeping its place. */
 export function updatePage(cache: PageCache, key: string, page: PageObject): void {
-  const cached = cache.peek(key);
-  if (cached) cache.update(key, { ...cached, page });
-}
-
-/** What memory keeps of an entry besides its page: its islands' region objects and what its components remembered. */
-export function keptOf(owner: RegionOwner): Pick<CachedEntry, 'regions' | 'remembered'> {
-  return { regions: owner.regions, remembered: owner.remembered };
+  cache.update(key, { page });
 }

@@ -8,8 +8,9 @@
  * tab's memory only (E36), never in `history.state` or any storage. Back/Forward shows them from there without a request;
  * leaving the document (signing out, a new build) drops them with the pages.
  */
-import { Remembered } from './remember.ts';
 import type { PageObject, RegionObject, RegionResult } from '../page.ts';
+import { slot } from './feature.ts';
+import { Remembered } from './remember.ts';
 import { mergePage, pick } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
@@ -96,6 +97,9 @@ export function regionInitial(result: RegionResult): RegionInitial | undefined {
   }
 }
 
+/** What a history entry keeps of its islands (E48): their region objects by id — what Back/Forward shows without a request. */
+export const REGIONS = slot('regions', () => new Map<string, KeptRegion>());
+
 /** A region's identity: its URL with the query sorted (`?b=2&a=1` and `?a=1&b=2` are one island). */
 export function regionId(url: string): string {
   const parsed = new URL(url, 'http://bespoke.invalid');
@@ -104,15 +108,15 @@ export function regionId(url: string): string {
 }
 
 /**
- * Where regions live — for islands, one history entry of the page (the navigator makes one per entry it shows). It keeps
- * their region objects (`regions`, the entry's memory) and their live {@link Region}s: one per id, so two identical
- * islands share one request and one state. Closed when its entry leaves the screen or the document is left: every request
- * still under way is aborted, and nothing lands any more.
+ * Where regions live — for islands, one history entry of the page (the navigator makes one per entry it shows). It holds
+ * their live {@link Region}s — one per id, so two identical islands share one request and one state — and writes what they
+ * loaded into `regions`, the entry's slot ({@link REGIONS}; the core empties it with the entry). Closed when its entry leaves
+ * the screen or the document is left: every request still under way is aborted, and nothing lands any more.
  */
 export class RegionOwner {
-  /** What this owner keeps of its regions, by {@link regionId} — what Back/Forward shows without a request. */
+  /** What its entry keeps of its regions, by {@link regionId} — what Back/Forward shows without a request (the entry's slot). */
   readonly regions: Map<string, KeptRegion>;
-  /** What the entry's components remembered (E63) — kept with its regions, in memory only. */
+  /** What the entry's components remembered (E63) — the entry's slot, in memory only. */
   readonly remembered: Remembered;
   readonly #transport: RegionTransport;
   readonly #controller = new AbortController();

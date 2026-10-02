@@ -1,44 +1,47 @@
 /**
  * The heart of the UI-free client core (`@bespokecore/http/client`): the Navigator — visits and their pipeline, the browser
  * history and Back/Forward, the request primitives and leaving the document. What it builds on lives next to it (history,
- * cache, scroll, request, events, document-change, deferred), each feature in `features/` (layers, guard, prefetch, instant,
- * optimistic patches, islands' requests, actions' host, revalidateOnBack) — still wired in here statically.
+ * cache, scroll, request, events, document-change, deferred); the features (`features/`: layers, guard, prefetch, instant,
+ * optimistic patches, actions, islands' requests, revalidateOnBack) attach through the feature host (`feature.ts`): hooks
+ * into the pipeline, and slots the core empties itself. Until Wave 5c step 4, every feature is attached by default.
  * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
  */
-import { isPageObject, LAYER_CLOSE_HEADER, LOCATION_HEADER, MAX_LAYER_DEPTH, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type LayerClose, type PageObject, type ValidationErrors } from '../page.ts';
-import { Actions, applyPatches, rollBack, Submissions, type ActionHost, type ActionOptions, type ActionOutcome, type Submission } from './action.ts';
-import { keptOf, pageCache, DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
-import { confirmRequest, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
-import type { NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';
+import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type LayerClose, type PageObject, type ValidationErrors } from '../page.ts';
+import type { ActionOptions, ActionOutcome, Submission } from './action.ts';
+import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
+import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
+import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';
 import { PropLoader } from './deferred.ts';
 import { DocumentChange } from './document-change.ts';
 import { VisitEmitter, type Visit, type VisitCallbacks, type VisitEvent, type VisitEvents, type VisitProgress } from './events.ts';
-import { actionHost } from './features/actions.ts';
-import { Guards, type NavigationGuard } from './features/guard.ts';
-import { InstantVisits, type InstantShown, type InstantVisit } from './features/instant.ts';
-import { regionTransport } from './features/islands.ts';
-import { LayerStack, type CachedStack, type PendingClose } from './features/layers.ts';
-import { PagePatches } from './features/optimistic.ts';
-import { Prefetches, untilAborted, type PrefetchOptions } from './features/prefetch.ts';
-import { BackRevalidation, type DeclaredRevalidation } from './features/revalidate-on-back.ts';
-import { FlashChannel, takeFlash, type FlashListener } from './flash.ts';
+import { emptySlot, emptySlots, type EntryStack, type Feature, type FeatureHook, type FeatureHooks, type PendingVisit, type Slot, type VisitPart } from './feature.ts';
+import { actions } from './features/actions.ts';
+import { DEFAULT_FEATURES } from './features/defaults.ts';
+import { guard as guardFeature, type NavigationGuard } from './features/guard.ts';
+import type { InstantVisit } from './features/instant.ts';
+import { layers } from './features/layers.ts';
+import { optimistic as optimisticFeature } from './features/optimistic.ts';
+import { prefetch as prefetchFeature, type PrefetchOptions } from './features/prefetch.ts';
+import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
+import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
 import { entry, HistoryWriter, isHistoryState, newKey, withPosition, type HistoryState } from './history.ts';
 import type { Layer, LayerControl, LayerHost } from './layer.ts';
-import { LiveValidation, sendLiveValidation, type LiveValidationOptions, type LiveValidationOutcome, type LiveValidationRequest } from './live-validation.ts';
+import { LiveValidation, type LiveValidationOptions, type LiveValidationOutcome, type LiveValidationRequest } from './live-validation.ts';
 import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
-import { OnceStore } from './once.ts';
-import { listOf, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
+import { ONCE } from './once.ts';
+import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
 import { QueryState, type QueryStateOptions } from './query-state.ts';
-import { RegionOwner, type Region, type RegionInitial } from './region.ts';
-import { buildRequest, partialReloadHeaders, sendWithProgress } from './request.ts';
+import { REGIONS, RegionOwner, type Region, type RegionInitial } from './region.ts';
+import { REMEMBERED } from './remember.ts';
+import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
 // The public API that lives in the modules around the navigator — exported from here as before (W5c.2).
 export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
+export { DEFAULT_LEAVE_MESSAGE } from './confirm.ts';
 export { DEFAULT_NEW_VERSION_MESSAGE } from './document-change.ts';
 export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitProgress, VersionChange } from './events.ts';
-export { DEFAULT_LEAVE_MESSAGE } from './features/guard.ts';
 export type { NavigationGuard } from './features/guard.ts';
 export type { InstantVisit } from './features/instant.ts';
 export { DEFAULT_PREFETCH_CACHE_FOR } from './features/prefetch.ts';
@@ -167,7 +170,8 @@ export interface RenderOptions {
   readonly owner: RegionOwner;
   /**
    * The layers over the page, bottom first (E53) — rendered over it, each with its own page object, visits and islands.
-   * When only these change, `page` is the one on screen already (with `preserveState`): it must not render again.
+   * When only these change, `page` is the one on screen already (with `preserveState`): it must not render again. What the
+   * layers feature contributes to a render (`extras` hook) — empty without it.
    */
   readonly layers: readonly Layer[];
   /**
@@ -203,10 +207,24 @@ export interface NavigatorOptions {
    * the core compares it.
    */
   confirm?: ConfirmHandler;
+  /**
+   * The features to attach from the start (E70) — default: all of them (Wave 5c step 3). An adapter attaches the others as it
+   * uses them (`navigator.use(feature)`).
+   */
+  features?: readonly Feature[];
 }
 
 /** The core while the navigator builds it: what is made after it joins it once. */
 type Writable<T> = { -readonly [K in keyof T]: T[K] };
+
+/** The hooks of the features, by name. */
+type Hooks = { [K in FeatureHook]?: FeatureHooks[K][] };
+
+/** What `slots` keeps in `slot` — created on first use. */
+function held<T>(slots: Map<Slot<unknown>, unknown>, slot: Slot<T>): T {
+  if (!slots.has(slot)) slots.set(slot, slot.create());
+  return slots.get(slot) as T;
+}
 
 /**
  * Navigates without full page loads: a visit fetches the next page object as JSON (`x-bespoke`), keeps it
@@ -217,8 +235,9 @@ type Writable<T> = { -readonly [K in keyof T]: T[K] };
  */
 export class Navigator implements LayerHost {
   /**
-   * What the navigator shares with the modules around it (`NavigatorCore`): the page on screen, its entry, memory, the
-   * features — kept there, so every module reads them the same way. First, so minifiers give it the same short name in each class.
+   * What the navigator shares with the modules around it and with its features (`FeatureHost`): the page on screen, its
+   * entry, memory, the hooks and slots — kept there, so every module reads them the same way. First, so minifiers give it
+   * the same short name in each class.
    */
   readonly #core: Writable<NavigatorCore>;
   readonly #render: NavigatorOptions['render'];
@@ -228,69 +247,125 @@ export class Navigator implements LayerHost {
   readonly #background = new Set<AbortController>();
   /** Who follows the page on screen (`subscribe`) — query state, say. */
   readonly #pageListeners = new Set<(page: PageObject) => void>();
-  /** Actions and route forms under way — what ghost rows are made of (E59). */
-  readonly #submissions = new Submissions();
-  readonly #actions: Actions;
-  readonly #actionHost: ActionHost;
   /** The visit under way in the foreground (not in the background) — `data-pending`, `usePending` (E64). */
   #visiting: Visit | undefined;
   readonly #visitingListeners = new Set<() => void>();
+  /** The features attached (`use`), with what their setup returned. */
+  readonly #features = new Map<Feature, unknown>();
+  /** Their hooks, by name — in the order they were attached. */
+  readonly #hooks: Hooks = {};
+  /** What the history entries keep in slots, by key — emptied when memory lets go of an entry, and when the document is left. */
+  readonly #entries = new Map<string, Map<Slot<unknown>, unknown>>();
+  /** What the document keeps in slots — emptied when it is left. */
+  readonly #document = new Map<Slot<unknown>, unknown>();
 
-  constructor({ initialPage, render, window: win = globalThis.window, cacheSize = DEFAULT_PAGE_CACHE_SIZE, revalidateOnBack, confirm }: NavigatorOptions) {
+  constructor(options: NavigatorOptions) {
+    const { initialPage, render, window: win = globalThis.window, cacheSize = DEFAULT_PAGE_CACHE_SIZE, features = DEFAULT_FEATURES } = options;
     this.#render = render;
+    const ask = options.confirm ?? nativeConfirm(win);
+    const nav = this;
     const core = {
       navigator: this as Navigator,
       window: win,
-      cache: pageCache(cacheSize, () => core.stack.onScreen()),
+      options,
+      initial: initialPage,
+      // One entry per history entry — never one on screen, and what an entry is used together with (beneath a layer) stays with it.
+      cache: new LruMap<string, CachedEntry>(cacheSize, {
+        pinned: () => new Set([core.key!, ...this.#all('pinned').flat()]),
+        together: (key) => [...(this.#entries.get(key) ?? [])].flatMap(([slot, value]) => [...(slot.along?.(value) ?? [])]),
+        forget: (key) => core.forget(key),
+      }),
       scroll: new ScrollMemory(win),
       history: new HistoryWriter(win),
-      once: new OnceStore(),
-      flash: new FlashChannel(),
-      inbox: [] as FlashMessage[],
+      get once() {
+        return core.document(ONCE);
+      },
+      get flash() {
+        return core.document(FLASH);
+      },
+      get inbox() {
+        return core.document(INBOX);
+      },
       key: undefined as string | undefined,
       left: false,
       started: false,
       transitioning: false,
-      get layers() {
-        return core.stack.list;
+      get layers(): readonly Layer[] {
+        return nav.#extras().layers ?? [];
       },
-      render: (page, options) => this.#render(page, options),
-      draw: (page, options) => this.#draw(page, options),
-      paint: (key, page) => core.patches.paint(key, page),
+      on: (name, hook) => {
+        const hooks = (this.#hooks[name] ??= []) as unknown[];
+        hooks.push(hook);
+        return () => void (hooks.includes(hook) && hooks.splice(hooks.indexOf(hook), 1));
+      },
+      fire: (name, ...args) => void this.#all(name, ...args),
+      entry: (slot, key = core.key!) => {
+        let slots = this.#entries.get(key);
+        if (!slots) this.#entries.set(key, (slots = new Map()));
+        return held(slots, slot);
+      },
+      peek: (slot, key) => this.#entries.get(key)?.get(slot) as never,
+      forget: (key, slot) => {
+        const slots = this.#entries.get(key);
+        if (slot) {
+          if (slots?.has(slot)) emptySlot(slot, slots.get(slot) as never);
+          slots?.delete(slot);
+        } else if (slots) {
+          emptySlots(slots);
+          this.#entries.delete(key);
+        }
+      },
+      document: (slot) => held(this.#document, slot),
+      top: () => this.#first('top') ?? core.key!,
+      ownerOf: (key, back) =>
+        new RegionOwner(core.transport, core.entry(REGIONS, key), { remembered: core.entry(REMEMBERED, key), ...(back ? { onBack: (component: string) => this.#first('declared', component) ?? Promise.resolve(undefined) } : {}) }),
+      blocking: (leaving, ignore = []) => this.#all('unsaved', leaving, ignore).flat(),
+      mayLeave: async (leaving, ignore) => {
+        if (ignore === true) return true;
+        const blocking = core.blocking(leaving, ignore);
+        return blocking.length === 0 || core.ask({ kind: 'leave', message: blocking[0]!.message ?? DEFAULT_LEAVE_MESSAGE });
+      },
+      ask: async (request) => {
+        try {
+          return accepted(request, await ask(request));
+        } catch {
+          return false;
+        }
+      },
+      render: (page, renderOptions) => this.#render(page, renderOptions),
+      draw: (page, drawOptions) => this.#draw(page, drawOptions),
+      paint: (key, page) => (this.#hooks.paint ?? []).reduce((shown, paint) => paint(key, shown), page),
       setPage: (page) => this.#setPage(page),
       leave: () => this.#leave(),
       emit: this.#events.emit.bind(this.#events),
       request: (visit, callbacks, task) => this.#request(visit, callbacks, task),
       send: (url, init, onProgress) => this.#send(url, init, onProgress),
-      read: (response, options, visit, callbacks) => this.#read(response, options, visit, callbacks),
+      read: (response, readOptions, visit, callbacks) => this.#read(response, readOptions, visit, callbacks),
       fetchPage: (url, headers, signal) => this.#fetchPage(url, headers, signal),
       flushFlash: () => this.#flushFlash(),
-      visit: (from, url, options) => this.#visit(from, url, options),
-      show: (page, history, options) => this.#show(page, history, options),
+      visit: (from, url, visitOptions) => this.#visit(from, url, visitOptions),
+      show: (page, history, showOptions) => this.#show(page, history, showOptions),
       restorePage: (page, key, position) => this.#restorePage(page, key, position),
     } satisfies Partial<NavigatorCore> as Partial<Writable<NavigatorCore>> as Writable<NavigatorCore>;
     this.#core = core;
     core.version = initialPage.version ?? null;
-    core.transport = regionTransport(core);
-    core.guards = new Guards(core, confirm ?? nativeConfirm(win));
     core.documentChange = new DocumentChange(core);
-    core.prefetches = new Prefetches(core);
-    core.instant = new InstantVisits(core);
-    core.patches = new PagePatches(core);
-    core.back = new BackRevalidation(core, revalidateOnBack);
-    this.#actionHost = actionHost(core);
-    this.#actions = new Actions(this.#actionHost, this.#submissions);
-    // A deep link of a layer's URL: the page under it (its base, or the neutral surface), the layers apart.
-    const { layers: initialLayers, ...withFlash } = initialPage;
-    core.stack = new LayerStack(
-      core,
-      (initialLayers ?? []).slice(0, MAX_LAYER_DEPTH).map((layer) => core.once.receive(takeFlash(layer).page)),
-    );
+    // Every feature, until Wave 5c step 4 lets each attach where it is used (a deep link's layers take theirs from `initial`).
+    for (const feature of features) this.use(feature);
     // The first page's flash messages (E60) fire once the app has started — never kept with the page.
+    const { layers: _layers, ...withFlash } = initialPage;
     const page = this.#collect(withFlash);
     core.page = page;
-    core.owner = new RegionOwner(core.transport);
     core.props = new PropLoader(core, page, initialPage.streamedProps ?? []);
+  }
+
+  /**
+   * Attaches a feature (E70): its setup runs once per navigator — the first call — and what it returned comes back on every
+   * call. What adapters use of a feature they get from here (`useFeature(islands)` in React).
+   */
+  use<API>(feature: Feature<API>): API {
+    if (!this.#features.has(feature)) this.#features.set(feature, feature.setup(this.#core));
+    return this.#features.get(feature) as API;
   }
 
   /** The page on screen — under the layers, when some are open. */
@@ -301,7 +376,7 @@ export class Navigator implements LayerHost {
   /** The layers on screen over the page, bottom first (E53). */
   get layers(): readonly Layer[] {
     this.#adopt();
-    return this.#core.stack.list;
+    return this.#core.layers;
   }
 
   /** How many pages are kept in memory (tests). */
@@ -344,29 +419,30 @@ export class Navigator implements LayerHost {
    * that stops it.
    */
   start(): () => void {
+    const core = this.#core;
     const restored = this.#adopt();
     // The navigator restores scroll positions itself — the browser's would apply before the page is rendered.
-    if (this.#core.window.history.scrollRestoration !== undefined) this.#core.window.history.scrollRestoration = 'manual';
+    if (core.window.history.scrollRestoration !== undefined) core.window.history.scrollRestoration = 'manual';
     // A reload or a session restore keeps the entry: back to where it was.
-    if (restored) this.#core.scroll.apply(this.#core.scroll.of(restored));
+    if (restored) core.scroll.apply(core.scroll.of(restored));
     // The first render is on screen — now the props it was sent without (the layers' too).
-    this.#core.props.load();
-    this.#core.stack.loadAllDeferred();
-    this.#core.window.addEventListener('popstate', this.#onPopState);
-    this.#core.window.addEventListener('pageshow', this.#onPageShow);
+    core.props.load();
+    this.#all('deferred');
+    core.window.addEventListener('popstate', this.#onPopState);
+    core.window.addEventListener('pageshow', this.#onPageShow);
     // Capturing: scroll events of elements do not bubble, but pass the window on their way down.
-    this.#core.window.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
-    this.#core.started = true;
-    this.#core.guards.start();
+    core.window.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
+    core.started = true;
+    this.#all('started');
     // The first page's flash messages (E60): on screen now.
     this.#flushFlash();
     return () => {
-      this.#core.started = false;
-      this.#core.window.removeEventListener('popstate', this.#onPopState);
-      this.#core.window.removeEventListener('pageshow', this.#onPageShow);
-      this.#core.window.removeEventListener('scroll', this.#onScroll, { capture: true });
-      this.#core.guards.stop();
-      this.#core.scroll.cancelSave();
+      core.started = false;
+      core.window.removeEventListener('popstate', this.#onPopState);
+      core.window.removeEventListener('pageshow', this.#onPageShow);
+      core.window.removeEventListener('scroll', this.#onScroll, { capture: true });
+      this.#all('stopped');
+      core.scroll.cancelSave();
     };
   }
 
@@ -417,16 +493,18 @@ export class Navigator implements LayerHost {
 
   /** Whether a request of route `name` is under way — a visit (`<Link route>`, a route form) or an action (E64, `usePending`). */
   isPending(name: string): boolean {
-    return this.#visiting?.name === name || this.#submissions.list.some((submission) => submission.name === name);
+    return this.#visiting?.name === name || this.submissions.some((submission) => submission.name === name);
   }
 
   /**
    * Asks the user (E64) — what `confirm` of a visit or an action does: resolves with yes or no. A type-to-confirm question
    * (`prompt`) is a yes only when exactly that text was typed.
    */
-  async confirm(confirm: Confirm): Promise<boolean> {
-    return this.#core.guards.question(confirmRequest(confirm));
+  confirm(confirm: Confirm): Promise<boolean> {
+    return this.#core.ask(confirmRequest(confirm));
   }
+
+  // -- What adapters use of the features — moving to the features themselves in Wave 5c step 4 (E73) ---------------------
 
   /**
    * Guards unsaved changes (E64): from now on — while `guard.active()` says so — a visit, Back/Forward or closing its layer asks
@@ -435,12 +513,12 @@ export class Navigator implements LayerHost {
    * signed out, a new build) is never stopped.
    */
   guard(guard: NavigationGuard): () => void {
-    return this.#core.guards.add(guard);
+    return this.use(guardFeature).add(guard);
   }
 
   /** Whether a guard would ask before leaving now (unsaved changes anywhere on screen). */
   isGuarded(): boolean {
-    return this.#core.guards.blocking(() => true).length > 0;
+    return this.#core.blocking(() => true).length > 0;
   }
 
   /**
@@ -451,7 +529,7 @@ export class Navigator implements LayerHost {
    */
   action(url: string, options: ActionOptions = {}): Promise<ActionOutcome> {
     this.#adopt();
-    return this.#actions.run(url, options);
+    return this.use(actions).run(url, options);
   }
 
   /**
@@ -460,7 +538,7 @@ export class Navigator implements LayerHost {
    * submission, never changes what was fetched ahead. Resolves with how it ended — never rejects for a failed request.
    */
   validate(url: string, request: LiveValidationRequest): Promise<LiveValidationOutcome> {
-    return sendLiveValidation(this.#actionHost, url, request);
+    return this.use(actions).validate(url, request);
   }
 
   /** The live validation of one form at `url` (E62): touched fields, debounce, the check under way — see {@link LiveValidation}. */
@@ -470,12 +548,12 @@ export class Navigator implements LayerHost {
 
   /** Actions and route forms under way, oldest first — what ghost rows are made of (E59 model 2). A new array on each change. */
   get submissions(): readonly Submission[] {
-    return this.#submissions.list;
+    return this.use(actions).submissions().list;
   }
 
   /** Follows {@link submissions}. Returns the function that stops it. */
   subscribeSubmissions(listener: () => void): () => void {
-    return this.#submissions.subscribe(listener);
+    return this.use(actions).submissions().subscribe(listener);
   }
 
   /**
@@ -484,26 +562,18 @@ export class Navigator implements LayerHost {
    */
   optimistic(patch: PropsPatch): OptimisticUpdate {
     this.#adopt();
-    return { target: this.#core.patches.target(this.#core.key!), patch };
+    return { target: this.use(optimisticFeature).target(this.#core.key!), patch };
   }
 
   /** A reload of the page on screen for an action to run once it succeeded — some props (`only`), or all of them. */
   reloading(spec: ReloadSpec = {}): Reloading {
     this.#adopt();
-    return { target: this.#core.patches.target(this.#core.key!), spec };
-  }
-
-  /**
-   * Resolves with the page the visit ended on — undefined if it did not end on a page: the browser took over,
-   * a newer visit replaced it (`onCancel`), or it failed (`onException`). It never rejects for a failed request.
-   */
-  async visit(url: string, options: VisitOptions = {}): Promise<PageObject | undefined> {
-    return this.#visit(undefined, url, options);
+    return { target: this.use(optimisticFeature).target(this.#core.key!), spec };
   }
 
   /** A visit from inside a layer (E53) — `layer.visit()`: sent as the layer's, its answer placed for it. */
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined> {
-    const from = this.#core.stack.find(layer);
+    const from = this.use(layers).find(layer);
     // A layer that left the screen visits nothing any more.
     if (!from) return Promise.resolve(undefined);
     return this.#visit(from, url, options);
@@ -511,12 +581,12 @@ export class Navigator implements LayerHost {
 
   /** @internal A layer's reload for an action (E59) — see {@link LayerHost.reloadLayer}. */
   reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
-    return this.#core.stack.reloadLayer(layer, spec, drop, signal);
+    return this.use(layers).reloadLayer(layer, spec, drop, signal);
   }
 
   /** @internal Memory keeps what a layer's props became (an action's patches committed). */
   layerChanged(layer: Layer): void {
-    this.#core.stack.changed(layer);
+    this.use(layers).changed(layer);
   }
 
   /**
@@ -526,7 +596,7 @@ export class Navigator implements LayerHost {
    * the layers that stay — and a layer shown once (an action's answer) reloads them fully.
    */
   closeLayer(layer: Layer, close: LayerClose): Promise<void> {
-    return this.#core.stack.closeLayer(layer, close);
+    return this.use(layers).closeLayer(layer, close);
   }
 
   /**
@@ -540,13 +610,15 @@ export class Navigator implements LayerHost {
     const method = (options as { method?: unknown }).method;
     if (this.#core.left || (method !== undefined && String(method).toLowerCase() !== 'get')) return Promise.resolve();
     this.#adopt();
-    return this.#core.prefetches.prefetch(url, options);
+    return this.use(prefetchFeature).prefetch(url, options);
   }
 
   /** How many prefetched pages are kept (tests). */
   get prefetchedPages(): number {
-    return this.#core.prefetches.size;
+    return this.use(prefetchFeature).size;
   }
+
+  // -- The core ---------------------------------------------------------------------------------------------------------
 
   /**
    * The current page again from the server (fresh props), keeping scroll position and component state. `data`
@@ -572,94 +644,127 @@ export class Navigator implements LayerHost {
     this.#core.documentChange.reloadNow();
   }
 
+  /**
+   * Resolves with the page the visit ended on — undefined if it did not end on a page: the browser took over,
+   * a newer visit replaced it (`onCancel`), or it failed (`onException`). It never rejects for a failed request.
+   */
+  async visit(url: string, options: VisitOptions = {}): Promise<PageObject | undefined> {
+    return this.#visit(undefined, url, options);
+  }
+
+  // -- The hooks of the features ------------------------------------------------------------------------------------------
+
+  /** What every hook `name` returns, in order — an event's (all run). */
+  #all<K extends FeatureHook>(name: K, ...args: Parameters<FeatureHooks[K]>): ReturnType<FeatureHooks[K]>[] {
+    return (this.#hooks[name] ?? []).map((hook) => (hook as (...args: unknown[]) => ReturnType<FeatureHooks[K]>)(...args));
+  }
+
+  /** The first result of hook `name` that is not undefined — a pipeline hook's (the feature that takes it). */
+  #first<K extends FeatureHook>(name: K, ...args: Parameters<FeatureHooks[K]>): Exclude<ReturnType<FeatureHooks[K]>, void> | undefined {
+    for (const hook of this.#hooks[name] ?? []) {
+      const result = (hook as (...args: unknown[]) => unknown)(...args);
+      if (result !== undefined) return result as Exclude<ReturnType<FeatureHooks[K]>, void>;
+    }
+    return undefined;
+  }
+
+  /** What the features contribute to a render (the layers on screen). */
+  #extras(): Partial<RenderOptions> {
+    return Object.assign({}, ...this.#all('extras'));
+  }
+
   // -- The visit pipeline -----------------------------------------------------------------------------------------------
 
   /**
    * A visit — of the page (`from` undefined) or of a layer over it. Where its answer goes: a page replaces the page (and
-   * the layers go) — unless it is a reload of the page under the layers, which lands there; a layer's answer opens over
-   * the level it came from — or replaces that layer in place when it is the same one (its key: a failed form). A layer's
-   * request that the server answers with `closeLayer()` closes it.
+   * the layers go) — unless a feature takes it (a layer's answer opens over the level it came from, a reload of the page under
+   * the layers lands there); a layer's request that the server answers with `closeLayer()` closes it.
    */
   async #visit(from: LayerControl | undefined, url: string, options: VisitOptions): Promise<PageObject | undefined> {
     this.#adopt();
+    const core = this.#core;
     const { method = 'get', data, replace = false, preserveScroll = false, headers = {}, async: background = false, preserveUrl = false } = options;
     const preserveState = options.preserveState ?? method !== 'get';
 
-    const target = new URL(url, this.#core.window.location.href);
-    // Ask first (E64): the visit's own confirmation — a no sends nothing.
-    if (options.confirm !== undefined && !(await this.confirm(options.confirm))) return undefined;
-    // Unsaved changes it would take off the screen: the page and every layer — or, opening a layer, those over where it opens.
-    // A visit that keeps what is on screen (in the background, a partial reload, "load more", a reload of the same page) asks nothing.
-    const level = from ? this.#core.stack.indexOf(from) + 1 : 0;
-    const keeps =
-      background || preserveUrl || options.only !== undefined || (options.except?.length ?? 0) > 0 || (preserveState && target.pathname + target.search === (from ? from.layer.page.url : this.#core.page.url));
-    const leaving = (at: number) => (options.layer === true ? at > level : at >= level);
-    // Asked only when a guard is concerned — otherwise the visit starts at once (in the same task).
-    if (!keeps && options.ignoreGuards !== true && this.#core.guards.blocking(leaving, options.ignoreGuards).length > 0 && !(await this.#core.guards.mayLeave(leaving, options.ignoreGuards))) return undefined;
-    if (target.origin !== this.#core.window.location.origin) {
+    const target = new URL(url, core.window.location.href);
+    const current = from ? from.layer.page : core.page;
+    // A partial reload names the page (or layer) it reloads: the server sends only some props when it renders that one.
+    const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? current.component : undefined;
+    // The levels it takes off the screen: the page and every layer — or, opening a layer, those over where it opens. A visit that
+    // keeps what is on screen (in the background, a partial reload, "load more", a reload of the same page) takes none.
+    const level = from ? from.layer.depth : 0;
+    const keeps = background || preserveUrl || partial !== undefined || (preserveState && target.pathname + target.search === current.url);
+    const pending: PendingVisit = {
+      options,
+      method,
+      target,
+      from,
+      layer: from !== undefined || options.layer === true,
+      keeps,
+      leaving: (at) => (options.layer === true ? at > level : at >= level),
+      url: '',
+      partial: partial !== undefined,
+      takes: false,
+    };
+    // A feature may stop it (E64: its confirmation, unsaved changes) — asking only when one is concerned: otherwise it starts
+    // at once (in the same task).
+    for (const hook of this.#hooks.visit ?? []) {
+      let go = hook(pending);
+      if (go instanceof Promise) go = await go;
+      if (go === false) return undefined;
+    }
+    if (target.origin !== core.window.location.origin) {
       // Another site: the browser goes there. Visits only ever read answers of this one.
-      this.#core.guards.allowUnload();
+      this.#all('unload');
       this.#leave();
-      this.#core.window.location.assign(target.href);
+      core.window.location.assign(target.href);
       return undefined;
     }
     // A new build was postponed (E64): the user's next visit (a GET — a form is never thrown away) loads its page fully. One
     // that would have kept the page (a partial reload) asks first when unsaved changes are on screen.
-    if (this.#core.documentChange.newVersion !== undefined && !background && method === 'get') {
-      if (keeps && options.ignoreGuards !== true && !(await this.#core.guards.mayLeave(() => true, options.ignoreGuards))) return undefined;
-      this.#core.guards.allowUnload();
+    if (core.documentChange.newVersion !== undefined && !background && method === 'get') {
+      if (keeps && options.ignoreGuards !== true && !(await core.mayLeave(() => true, options.ignoreGuards))) return undefined;
+      this.#all('unload');
       this.#leave();
-      this.#core.window.location.assign(target.href);
+      core.window.location.assign(target.href);
       return undefined;
     }
     // What a full load the server asks for (a new build) would lose that this visit was allowed to leave already (E64).
     const consented = options.ignoreGuards === true || (!keeps && level === 0 && options.layer !== true) ? true : options.ignoreGuards;
-    // A form changes what prefetched pages show: none of them is used after it.
-    if (method !== 'get') this.#core.prefetches.flush();
+    // A write changes what pages fetched ahead show: none of them is used after it.
+    if (method !== 'get') this.#all('write');
 
     const request = buildRequest(target, method, data);
-    const current = from ? from.layer.page : this.#core.page;
-    // A partial reload names the page (or layer) it reloads: the server sends only some props when it renders that one.
-    const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? current.component : undefined;
-    const partialHeaders = partial === undefined ? {} : partialReloadHeaders(partial, options.only, options.except);
-    // A layer's request (E53): from inside one, or opening one.
-    const asLayer = from !== undefined || options.layer === true;
-    const regionHeaders: Record<string, string> = asLayer ? { [REGION_HEADER]: 'layer' } : {};
-    // A plain GET visit of a prefetched URL takes that page (or waits for its request, still under way).
-    const takesPrefetch = method === 'get' && partial === undefined && Object.keys(headers).length === 0;
-    // An instant visit (E64) shows its placeholder — unless the page is here already (fetched ahead).
-    const instant =
-      options.instant && method === 'get' && !keeps && partial === undefined && !asLayer && !background && !preserveUrl && !(takesPrefetch && this.#core.prefetches.ready(request.url, asLayer))
-        ? options.instant
-        : undefined;
-    const prefetched = takesPrefetch ? this.#core.prefetches.take(request.url, asLayer) : undefined;
+    pending.url = request.url;
+    // A plain GET visit — it may take a page fetched ahead (or wait for its request, still under way).
+    pending.takes = method === 'get' && partial === undefined && Object.keys(headers).length === 0;
+    // What the features add to it: a page fetched ahead, an instant visit's placeholder (E64), a form's optimistic patches (E59),
+    // a layer's request header.
+    const parts = this.#all('start', pending).filter(Boolean) as VisitPart[];
+    const prefetched = parts.find((part) => part.page)?.page;
     const named = options.name !== undefined ? { name: options.name } : {};
     const visit: Visit = background ? { url: request.url, method, async: true, ...named } : { url: request.url, method, ...named };
     // An async visit lands only on the page (or the layer) it started from.
-    const fromKey = this.#core.key;
-    // A form's optimistic patches (E59): shown while it is under way, gone with its answer (or its failure).
-    const applied = applyPatches(listOf(options.optimistic));
-    const untrack = options.name !== undefined && method !== 'get' ? this.#submissions.add({ name: options.name, method, url: request.url, input: data }) : undefined;
-    let placeholder: InstantShown | undefined;
+    const fromKey = core.key;
     try {
       return await this.#request(visit, options, async (signal, onProgress) => {
-        // Its newer visit took over the screen (the older one's placeholder ends when it ends — after this one shows its own).
-        if (instant && !signal.aborted) placeholder = this.#core.instant.show(instant, request.url);
+        for (const part of parts) part.sending?.(signal);
         let page = prefetched ? await untilAborted(prefetched, signal) : undefined;
         if (!page) {
           if (signal.aborted) return undefined;
           const response = await this.#send(
             request.url,
-            { method, headers: { ...request.headers, ...regionHeaders, ...partialHeaders, ...headers }, body: request.body, signal },
+            { method, headers: { ...request.headers, ...Object.assign({}, ...parts.map((part) => part.headers)), ...(partial === undefined ? {} : partialReloadHeaders(partial, options.only, options.except)), ...headers }, body: request.body, signal },
             onProgress,
           );
-          if (response.headers.get(LAYER_CLOSE_HEADER) === 'true') return this.#core.stack.closed(from, response, visit, options);
+          const answered = this.#first('response', response, pending, visit);
+          if (answered) return answered;
           page = await this.#read(response, { replace, failed: true, consented }, visit, options);
         }
         if (!page || signal.aborted) return undefined;
-        if (background && (this.#core.left || this.#core.key !== fromKey || this.#core.transitioning || from?.layer.closed)) return undefined;
-        // The answer replaces what the patches showed — in the same render (the server's props then, or its errors).
-        for (const [target, ids] of applied) target.settle(ids, false, { quiet: true });
+        if (background && (core.left || core.key !== fromKey || core.transitioning || from?.layer.closed)) return undefined;
+        // The answer replaces what the parts showed (patches) — in the same render (the server's props then, or its errors).
+        for (const part of parts) part.landed?.();
         // Some props of the same page (or layer): into the ones it has. (Another page — a redirect to the login — came in full.)
         if (partial !== undefined && page.component === partial && current.component === partial) page = mergePage(current, page, options.reset);
         // The URL — and so the query state — stays the one of the page on screen.
@@ -673,17 +778,14 @@ export class Navigator implements LayerHost {
         return shown;
       });
     } finally {
-      // Failed, cancelled, or the browser took over: nothing of the patches stays.
-      rollBack(applied);
-      untrack?.();
-      // Ended without its page (failed, cancelled, a 409 postponed): the page on screen comes back, where it was scrolled to.
-      if (placeholder) this.#core.instant.end(placeholder);
+      // Failed, cancelled, or the browser took over: nothing of the parts stays (patches rolled back, the placeholder gone).
+      for (const part of parts.reverse()) part.end?.();
     }
   }
 
-  /** Where a visit's answer goes — see {@link Navigator.#visit}: the layers take theirs, anything else is the page. */
+  /** Where a visit's answer goes — see {@link Navigator.#visit}: a feature takes it (layers), anything else is the page. */
   async #place(from: LayerControl | undefined, page: PageObject, options: PlaceOptions): Promise<PageObject | undefined> {
-    const placed = this.#core.stack.place(from, page, options);
+    const placed = this.#first('place', from, page, options);
     if (placed) return placed;
     const { method, replace, preserveScroll, preserveState, preserveUrl, hash } = options;
     // Redirected back to the same URL (a failed form), or kept the URL ("load more"): replace, don't stack history entries.
@@ -697,19 +799,23 @@ export class Navigator implements LayerHost {
    * deep link): the page under them has no entry of its own then, the entry is the top layer's. Returns a restored entry.
    */
   #adopt(): HistoryState | undefined {
-    if (this.#core.key !== undefined) return undefined;
-    const state: unknown = this.#core.window.history.state;
+    const core = this.#core;
+    if (core.key !== undefined) return undefined;
+    const state: unknown = core.window.history.state;
     // A reload or session restore keeps the entry's key (and scroll); the page itself came fresh from the server.
     const restored = isHistoryState(state) ? state : undefined;
     // Where the entry is: kept by a reload or a session restore, else the last (a fresh load pushes its entry at the end).
-    this.#core.history.index = typeof restored?.index === 'number' ? restored.index : Math.max(0, (this.#core.window.history.length ?? 1) - 1);
+    core.history.index = typeof restored?.index === 'number' ? restored.index : Math.max(0, (core.window.history.length ?? 1) - 1);
     const key = restored?.key ?? newKey();
-    const position = restored ? this.#core.scroll.of(restored) : TOP;
-    this.#core.key = this.#core.stack.deepLink ? newKey() : key;
-    this.#core.props.adopt(this.#core.key, this.#core.page);
-    this.#core.cache.set(this.#core.key, { page: this.#core.page, ...keptOf(this.#core.owner) });
-    if (this.#core.stack.deepLink) this.#core.stack.adopt(this.#core.key, key, position);
-    else this.#core.history.replace(entry(this.#core.page, this.#core.key, position), this.#core.window.location.href);
+    const position = restored ? core.scroll.of(restored) : TOP;
+    // A deep link (a layer's URL): the layers take the entry — the page under them gets a key of its own, in memory only.
+    const pageKey = this.#first('adopt', key, position) ?? key;
+    core.initial = undefined;
+    core.key = pageKey;
+    core.owner = core.ownerOf(pageKey);
+    core.props.adopt(pageKey, core.page);
+    core.cache.set(pageKey, { page: core.page });
+    if (pageKey === key) core.history.replace(entry(core.page, key, position), core.window.location.href);
     return restored;
   }
 
@@ -718,52 +824,54 @@ export class Navigator implements LayerHost {
     history: 'push' | 'replace',
     { preserveScroll, preserveState, hash }: { preserveScroll: boolean; preserveState: boolean; hash: string },
   ): Promise<PageObject | undefined> {
+    const core = this.#core;
     // Under an instant visit's placeholder (E64), the page being left was scrolled where it was before it showed.
-    const leaving = this.#core.instant.leaving ?? this.#core.scroll.current();
-    this.#core.scroll.cancelSave();
-    this.#core.transitioning = true;
-    // The page's islands: those of the page on screen when its state is kept (the same component — a partial reload, a
-    // sort link): replaced in place, they stay; pushed, the new entry starts with a copy. Any other page starts empty.
-    const keep = preserveState && page.component === this.#core.page.component;
-    // A page replaces the layers too (E53): the entry being left (or replaced) is the top layer's.
-    const layered = this.#core.stack.controls.length > 0;
-    const owner = history === 'replace' && keep && !layered ? this.#core.owner : new RegionOwner(this.#core.transport, keep ? new Map(this.#core.owner.regions) : new Map());
+    const leaving = this.#first('position') ?? core.scroll.current();
+    core.scroll.cancelSave();
+    core.transitioning = true;
+    const keep = preserveState && page.component === core.page.component;
+    // The entry being left (or replaced): the top layer's, when layers are open — a page replaces them too (E53).
+    const top = core.top();
     // The entry the page goes into: a new one, or the one on screen (then its optimistic patches still show over the answer).
-    const top = this.#core.stack.top();
     const key = history === 'push' ? newKey() : top;
+    // The page's islands: those of the page on screen when its state is kept (the same component — a partial reload, a
+    // sort link): replaced in place, they stay; pushed, the new entry starts with a copy. Any other page starts empty — an
+    // entry replaced by it forgets what it kept.
+    let owner = core.owner;
+    if (history === 'push' || !keep || top !== core.key) {
+      if (history === 'replace') core.forget(key);
+      owner = core.ownerOf(key);
+      if (keep) for (const [id, region] of core.owner.regions) owner.regions.set(id, region);
+    }
     try {
       try {
-        await this.#draw(this.#core.patches.paint(key, page), { preserveState, owner, layers: [] });
+        await this.#draw(core.paint(key, page), { preserveState, owner, layers: [] });
       } catch {
         // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
-        if (owner !== this.#core.owner) owner.close();
+        if (owner !== core.owner) owner.close();
         this.#leave();
-        this.#core.window.location.assign(page.url);
+        core.window.location.assign(page.url);
         return undefined;
       }
-      const arrived = preserveScroll ? this.#core.scroll.current() : TOP;
+      const arrived = preserveScroll ? core.scroll.current() : TOP;
       if (history === 'push') {
         // Remember where the page being left was scrolled to — Back restores it.
-        this.#core.scroll.set(top, leaving);
-        this.#core.history.replace(this.#core.stack.stateOf(top, leaving), this.#core.window.location.href);
-        this.#core.key = key;
-        this.#core.history.push(entry(page, this.#core.key, arrived), page.url + hash);
-      } else {
-        // Replacing a layer's entry: the entry is this page's now.
-        this.#core.key = top;
-        this.#core.history.replace(entry(page, this.#core.key, arrived), page.url + hash);
+        core.scroll.set(top, leaving);
+        core.history.replace(this.#first('state', top, leaving) ?? entry(core.page, top, leaving), core.window.location.href);
       }
-      this.#core.stack.dismissFrom(0);
-      this.#core.scroll.set(this.#core.key!, arrived);
-      this.#core.cache.set(this.#core.key!, { page, ...keptOf(owner) });
+      core.key = key;
+      core.history[history](entry(page, key, arrived), page.url + hash);
+      this.#all('page');
+      core.scroll.set(key, arrived);
+      core.cache.set(key, { page });
       this.#switchOwner(owner);
       this.#setPage(page);
-      if (!preserveScroll) this.#core.scroll.apply(TOP);
-      if (hash) this.#core.window.document?.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
-      this.#core.props.load();
+      if (!preserveScroll) core.scroll.apply(TOP);
+      if (hash) core.window.document?.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
+      core.props.load();
       return page;
     } finally {
-      this.#core.transitioning = false;
+      core.transitioning = false;
     }
   }
 
@@ -773,84 +881,71 @@ export class Navigator implements LayerHost {
     const state: unknown = (event as PopStateEvent).state;
     // `null`: an entry of a fragment link (`#section`) on the same page.
     if (state === null || state === undefined) return;
-    // The guard's own popstate, or a Back/Forward it stops (E64) — not for a layer closing by going back: its close asked.
-    if (this.#core.guards.popState(state, this.#core.stack.closing)) return;
-    // Back/Forward during an instant visit (E64): the visit is cancelled, and what the entry shows takes the placeholder's place.
-    this.#core.instant.cancel();
+    // A popstate a feature caused itself (a layer closing by going back): the visit that caused it is not cancelled by it.
+    const own = this.#first('own') === true;
+    // A feature takes it (E64: the guard's own popstate, or a Back/Forward it stops); others follow it (an instant visit ends).
+    if (this.#first('popState', state, own)) return;
     if (isHistoryState(state) && typeof state.index === 'number') this.#core.history.index = state.index;
-    // Going back because a layer closes: the visit that closed it (a form's `closeLayer()`) is not cancelled by it.
-    const closing = this.#core.stack.takeClose();
-    if (!closing) this.#inFlight?.abort();
+    if (!own) this.#inFlight?.abort();
     // A save still pending belongs to the entry just left; the browser already switched to the new one.
     this.#core.scroll.cancelSave();
     if (isHistoryState(state)) {
-      const stack = this.#core.stack.cached(state.key);
+      const stack = this.#first('stack', state.key) ?? (this.#core.cache.get(state.key) && { page: state.key });
       if (stack) {
-        void this.#arriveAt(state, stack, closing);
+        void this.#arriveAt(state, stack, own);
         return;
       }
-      closing?.done();
-      if (state.layer) void this.#core.stack.restore(state);
-      else void this.#restore(state.url, state.key, this.#core.scroll.of(state));
+      this.#all('popped');
+      if (!this.#first('restore', state)) void this.#restore(state.url, state.key, this.#core.scroll.of(state));
       return;
     }
-    closing?.done();
+    this.#all('popped');
     // An entry of an older client, which kept whole pages in the history: never shown — the server is asked.
     if (isPageObject(state)) void this.#restore(state.url, newKey(), TOP);
   };
 
   /**
-   * Back/Forward to an entry in memory: its page and the layers over it. When it is the page on screen with other layers
-   * (a layer closed by Back, opened again by Forward), only the layers change — the page is not rendered again, does not
+   * Back/Forward to an entry in memory: its page and what features put over it (layers). When it is the page on screen (a
+   * layer closed by Back, opened again by Forward), only what is over it changes — the page is not rendered again, does not
    * scroll, and none of its deferred props or islands load again.
    */
-  async #arriveAt(state: HistoryState, stack: CachedStack, closing: PendingClose | undefined): Promise<void> {
+  async #arriveAt(state: HistoryState, stack: EntryStack, own: boolean): Promise<void> {
+    const core = this.#core;
     try {
-      if (stack.page === this.#core.key && !this.#core.left) {
-        const before = new Set(this.#core.stack.controls);
-        const removed = this.#core.stack.set(stack.layers);
-        for (const key of closing?.forget ?? []) this.#core.cache.delete(key);
-        await this.#core.stack.render();
-        // Layers Forward opened again from memory: what their views declare reloads (E58) — the page stayed on screen.
-        if (!closing) for (const control of this.#core.stack.controls) if (!before.has(control)) void this.#core.back.layer(control);
-        // An action's answer (shown once) left: what is beneath reloads — or what the closing asked for.
-        const reload = closing?.reload ?? (removed.some((layer) => layer.once) ? true : undefined);
-        if (reload !== undefined) await this.#core.stack.reloadTop(reload);
+      if (stack.page === core.key && !core.left) {
+        await this.#first('rearrange', stack, own);
         return;
       }
-      this.#core.stack.dismissFrom(0);
-      for (const key of closing?.forget ?? []) this.#core.cache.delete(key);
-      const base = this.#core.cache.peek(stack.page)!;
-      this.#core.key = stack.page;
+      this.#all('page');
+      const base = core.cache.peek(stack.page)!;
+      core.key = stack.page;
       // The entry's islands come back with it, from memory — no request (but what their views declare reloads, E58).
-      const owner = new RegionOwner(this.#core.transport, base.regions, { onBack: this.#core.back.region, remembered: base.remembered });
+      const owner = core.ownerOf(stack.page, true);
       this.#switchOwner(owner);
       this.#setPage(base.page);
-      this.#core.stack.set(stack.layers, { restored: true });
-      await this.#arrive(base.page, this.#core.scroll.of(state), owner);
+      this.#all('arrive', stack);
+      await this.#arrive(base.page, core.scroll.of(state), owner);
       // Shown from memory at once — then what the views declare reloads in the background (E58).
-      if (!closing && this.#core.key === stack.page) {
-        void this.#core.back.page(stack.page, base.page);
-        for (const control of this.#core.stack.controls) void this.#core.back.layer(control);
-      }
+      if (!own && core.key === stack.page) this.#all('restored', base.page, stack.page);
     } finally {
-      closing?.done();
+      this.#all('popped');
     }
   }
 
   /** Renders a page of the history and scrolls to where it was. */
   async #arrive(page: PageObject, position: Scroll, owner: RegionOwner): Promise<void> {
-    this.#core.transitioning = true;
+    const core = this.#core;
+    core.transitioning = true;
     try {
-      await this.#draw(this.#core.patches.paint(this.#core.key!, page), { preserveState: false, owner, layers: this.layers });
-      this.#core.scroll.apply(position);
-      this.#core.props.load();
-      this.#core.stack.loadAllDeferred();
+      await this.#draw(core.paint(core.key!, page), { preserveState: false, owner });
+      core.scroll.apply(position);
+      core.props.load();
+      this.#all('deferred');
     } catch {
       this.#leave();
-      this.#core.window.location.reload();
+      core.window.location.reload();
     } finally {
-      this.#core.transitioning = false;
+      core.transitioning = false;
     }
   }
 
@@ -879,11 +974,13 @@ export class Navigator implements LayerHost {
 
   /** The entry `key` shows `page` now (the server's answer for an entry not in memory — a page where a layer was, too). */
   async #restorePage(page: PageObject, key: string, position: Scroll): Promise<void> {
-    this.#core.history.replace(entry(page, key, position), page.url);
-    this.#core.stack.dismissFrom(0);
-    this.#core.key = key;
-    const owner = new RegionOwner(this.#core.transport);
-    this.#core.cache.set(key, { page, ...keptOf(owner) });
+    const core = this.#core;
+    core.history.replace(entry(page, key, position), page.url);
+    this.#all('page');
+    core.key = key;
+    core.forget(key);
+    const owner = core.ownerOf(key);
+    core.cache.set(key, { page });
     this.#switchOwner(owner);
     this.#setPage(page);
     await this.#arrive(page, position, owner);
@@ -896,15 +993,16 @@ export class Navigator implements LayerHost {
   };
 
   readonly #onScroll = (): void => {
-    if (this.#core.transitioning || this.#core.key === undefined) return;
-    this.#core.scroll.set(this.#core.key, this.#core.scroll.current());
+    const core = this.#core;
+    if (core.transitioning || core.key === undefined) return;
+    core.scroll.set(core.key, core.scroll.current());
     // Into the entry too, for a reload or a session restore — debounced: browsers throttle replaceState.
-    this.#core.scroll.saveLater(() => {
-      const key = this.#core.key;
-      const state: unknown = this.#core.window.history.state;
-      if (this.#core.transitioning || key === undefined || !isHistoryState(state) || state.key !== key) return;
-      const position = this.#core.scroll.get(key);
-      if (position) this.#core.history.replace(withPosition(state, position), this.#core.window.location.href);
+    core.scroll.saveLater(() => {
+      const key = core.key;
+      const state: unknown = core.window.history.state;
+      if (core.transitioning || key === undefined || !isHistoryState(state) || state.key !== key) return;
+      const position = core.scroll.get(key);
+      if (position) core.history.replace(withPosition(state, position), core.window.location.href);
     });
   };
 
@@ -1048,11 +1146,13 @@ export class Navigator implements LayerHost {
     this.#core.flash.deliver(this.#core.inbox.splice(0));
   }
 
-  /** Renders, then fires what the rendered answer brought (E60) — the page's layout shows a toast over the new page, not the old. */
-  async #draw(page: PageObject, options: RenderOptions): Promise<void> {
-    // A page takes the place of an instant visit's placeholder (E64).
-    this.#core.instant.replaced();
-    await this.#render(page, options);
+  /**
+   * Renders — the owner on screen and what the features contribute (the layers) filled in — then fires what the rendered answer
+   * brought (E60): the page's layout shows a toast over the new page, not the old.
+   */
+  async #draw(page: PageObject, options: DrawOptions): Promise<void> {
+    this.#all('draw');
+    await this.#render(page, { owner: this.#core.owner, layers: [], ...this.#extras(), ...options });
     this.#flushFlash();
   }
 
@@ -1062,27 +1162,20 @@ export class Navigator implements LayerHost {
     notify(this.#visitingListeners);
   }
 
-  /** Before a full page load: nothing kept in memory survives it, should the browser bring this document back. */
+  /**
+   * Before a full page load: nothing kept in memory survives it, should the browser bring this document back. What the
+   * features keep is in their slots — emptied here, whichever feature it is: remembered state, once props, flash messages
+   * waiting, optimistic patches, actions under way, layers, islands, pages fetched ahead.
+   */
   #leave(): void {
-    this.#core.left = true;
-    // Remembered state (E63) and once props (E64): not for whoever comes next — forgotten, also where a component still holds them.
-    for (const kept of this.#core.cache.values()) kept.remembered.clear();
-    this.#core.owner.remembered.clear();
-    for (const layer of this.#core.stack.list) layer.owner.remembered.clear();
-    this.#core.once.clear();
-    // Flash messages waiting for a listener are not for whoever comes next (signed out); the server keeps a 409's.
-    this.#core.inbox.length = 0;
-    this.#core.flash.clear();
-    // Nothing optimistic either, and no action lands any more (signed out: their answers are not for whoever comes next).
-    this.#core.patches.clear();
-    this.#actions.abortAll();
-    this.#submissions.clear();
-    // Islands too: none of them lands any more, and none of what they showed survives (signing out). Layers alike.
-    this.#core.owner.close();
-    this.#core.stack.leave();
-    this.#core.cache.clear();
-    // Prefetched while signed in: not for whoever comes next — and one still under way lands nowhere.
-    this.#core.prefetches.flush();
+    const core = this.#core;
+    core.left = true;
+    for (const slots of this.#entries.values()) emptySlots(slots);
+    this.#entries.clear();
+    emptySlots(this.#document);
+    // The islands of the page on screen: none of them lands any more (signing out).
+    core.owner?.close();
+    core.cache.clear();
     // A deferred prop still loading must not come back into a page of someone who has left (signed out).
     for (const request of this.#background) request.abort();
   }

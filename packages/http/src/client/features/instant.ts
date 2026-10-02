@@ -3,7 +3,8 @@
  * stays the navigator's (and its entry the current one) until then — a visit that ends without its page shows it again.
  */
 import type { PageObject } from '../../page.ts';
-import type { NavigatorCore } from '../core.ts';
+import type { FeatureHost } from '../core.ts';
+import { defineFeature, type PendingVisit, type VisitPart } from '../feature.ts';
 import type { Scroll } from '../scroll.ts';
 
 /** The placeholder an instant visit shows (E64): the target's view and what the link hands its placeholder. */
@@ -17,10 +18,7 @@ export interface InstantShown {
   readonly leaving: Scroll;
 }
 
-type InstantCore = Pick<
-  NavigatorCore,
-  'window' | 'scroll' | 'cache' | 'page' | 'key' | 'owner' | 'layers' | 'left' | 'transitioning' | 'render' | 'draw' | 'paint' | 'setPage'
->;
+type InstantCore = Pick<FeatureHost, 'window' | 'scroll' | 'cache' | 'page' | 'key' | 'owner' | 'left' | 'transitioning' | 'render' | 'draw' | 'paint' | 'setPage'>;
 
 /** The instant visits of one navigator — the placeholder on screen, if any. */
 export class InstantVisits {
@@ -30,6 +28,22 @@ export class InstantVisits {
 
   constructor(core: InstantCore) {
     this.#core = core;
+  }
+
+  /**
+   * What an instant visit adds to a visit that starts (the `start` hook): its placeholder once the request goes, gone when it
+   * ends without its page. Only for a plain GET visit of a page that is not here already (fetched ahead) — nothing it keeps.
+   */
+  start({ options, method, keeps, layer, takes, ready, url }: PendingVisit): VisitPart | undefined {
+    const instant = options.instant;
+    if (!instant || method !== 'get' || keeps || layer || (takes && ready)) return undefined;
+    let shown: InstantShown | undefined;
+    return {
+      // Its newer visit took over the screen (the older one's placeholder ends when it ends — after this one shows its own).
+      sending: (signal) => void (signal.aborted || (shown = this.show(instant, url))),
+      // Ended without its page (failed, cancelled, a 409 postponed): the page on screen comes back, where it was scrolled to.
+      end: () => shown && this.end(shown),
+    };
   }
 
   /** Where the page under the placeholder on screen was scrolled to — undefined without one. */
@@ -62,7 +76,7 @@ export class InstantVisits {
     const key = this.#core.key!;
     const page = this.#core.cache.peek(key)?.page ?? this.#core.page;
     this.#core.setPage(page);
-    void this.#core.draw(this.#core.paint(key, page), { preserveState: false, owner: this.#core.owner, layers: this.#core.layers }).then(() => this.#core.scroll.apply(shown.leaving));
+    void this.#core.draw(this.#core.paint(key, page), { preserveState: false }).then(() => this.#core.scroll.apply(shown.leaving));
   }
 
   /** A page takes the place of the placeholder. */
@@ -77,3 +91,13 @@ export class InstantVisits {
     this.#core.transitioning = false;
   }
 }
+
+/** Instant visits (E64) as a feature: the placeholder while the page loads. Keeps no data — only where the page under it was scrolled. */
+export const instant = defineFeature('instant', (host) => {
+  const visits = new InstantVisits(host);
+  host.on('start', (visit) => visits.start(visit));
+  host.on('position', () => visits.leaving);
+  host.on('draw', () => visits.replaced());
+  host.on('popState', () => visits.cancel());
+  return visits;
+});

@@ -2,7 +2,9 @@
  * `pnpm size` — where the bytes of the client core and the React adapter go (Wave 5c, E75): the scenarios of
  * `bundle-size.test.ts` and the real apps' client builds, every byte attributed to its module by source map — and the
  * marginal cost of core + adapter (gzip with and without their bytes), which module granularity does not distort.
- * Checks the apps against `appsGzipKB` in `packages/react/size-budget.json` (the scenarios are `pnpm test`'s job).
+ * Checks the apps' marginal cost of core + adapter against `appsGzipKB` in `packages/react/size-budget.json` (the scenarios are
+ * `pnpm test`'s job). Marginal, not the attributed share: the share is a scaled stand-alone gzip per module, which grows with
+ * the number of modules (Wave 5c step 2: +2.96 KB attributed for +1.05 KB real) — it would punish splitting the core up.
  * Measures `dist/` — run `pnpm build` first. Nothing is written.
  *
  *   pnpm size                 # scenarios and apps
@@ -55,7 +57,7 @@ function groups(attribution: ReadonlyMap<string, ModuleShare>): Map<string, Modu
   return total;
 }
 
-function print(key: string, title: string, bundle: AppBundle, { top }: { top: number }): ModuleShare {
+function print(key: string, title: string, bundle: AppBundle, { top }: { top: number }): number {
   const { initial, lazy } = bundle.attribution!;
   console.log(`\n${title} — initial ${(bundle.min / 1024).toFixed(1)} KB min / ${(bundle.gzip / 1024).toFixed(2)} KB gzip in ${bundle.initial.length} chunk(s)` +
     (bundle.lazy.length ? `, ${bundle.lazy.length} lazy chunk(s) ${(bundle.lazy.reduce((sum, chunk) => sum + chunk.gzip, 0) / 1024).toFixed(2)} KB gzip` : ''));
@@ -73,7 +75,7 @@ function print(key: string, title: string, bundle: AppBundle, { top }: { top: nu
   console.log(`  ${'  marginal'.padEnd(16)} ${(marginal / 1024).toFixed(2).padStart(17)} gzip  (what the download loses without core + adapter)`);
   for (const [module, share] of framework.slice(0, top)) console.log(`    ${module.padEnd(44)} ${format(share)}`);
   if (framework.length > top) console.log(`    … ${framework.length - top} more (pnpm size ${key})`);
-  return sum;
+  return marginal;
 }
 
 const problems: string[] = [];
@@ -91,10 +93,10 @@ for (const app of APPS) {
   if (!wanted(app)) continue;
   const bundle = await appClientBuild(join(PACKAGES, '../apps', app), { sourcemap: true });
   const line = budget.appsGzipKB[app];
-  const framework = print(app, `${app}${line ? ` (core + adapter limit ${line.limit.toFixed(1)})` : ''}`, bundle, { top });
+  const marginal = print(app, `${app}${line ? ` (core + adapter marginal limit ${line.limit.toFixed(1)})` : ''}`, bundle, { top });
   if (!line) continue;
-  const size = kb(framework.gzip);
-  const problem = budgetProblem(`${app}: core + adapter`, size, line);
+  const size = kb(marginal);
+  const problem = budgetProblem(`${app}: core + adapter (marginal)`, size, line);
   if (problem && update && size < line.limit) lowered[app] = limitFor(size);
   else if (problem) problems.push(problem);
 }

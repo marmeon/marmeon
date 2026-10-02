@@ -4,10 +4,11 @@
  * change), so the whole page loads again (the island's code of this build may be gone).
  */
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../../page.ts';
-import type { NavigatorCore } from '../core.ts';
+import type { FeatureHost } from '../core.ts';
+import { defineFeature } from '../feature.ts';
 import type { RegionResponse, RegionTransport } from '../region.ts';
 
-type IslandsCore = Pick<NavigatorCore, 'window' | 'left' | 'version' | 'documentChange'>;
+type IslandsCore = Pick<FeatureHost, 'window' | 'left' | 'version' | 'documentChange'>;
 
 /** How the islands of one navigator send their requests. */
 export function regionTransport(core: IslandsCore): RegionTransport {
@@ -56,3 +57,12 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
   }
   return { kind: 'exception', failure: { status: response.status || undefined, message } };
 }
+
+/**
+ * Islands (E48–E52) as a feature: how their regions send requests. The region owners of the history entries are still made
+ * by the core (Wave 5c step 4 moves them in here); what they load lives in the entries' slots (`REGIONS`).
+ */
+export const islands = defineFeature('islands', (host) => {
+  host.transport = regionTransport(host);
+  return host.transport;
+});

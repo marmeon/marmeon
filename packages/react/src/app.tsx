@@ -8,6 +8,7 @@ import {
   TitleRegistry,
   type ConfirmAnswer,
   type ConfirmRequest,
+  type Feature,
   type Layer,
   type OptimisticUpdate,
   type PrefetchOptions,
@@ -175,6 +176,21 @@ export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
   if (!value) throw new Error('BespokeCore hooks must be used inside <BespokeApp>.');
   return value;
+}
+
+/**
+ * A feature of the client core (E73) — what an adapter component uses of it, `useFeature(islands).region(…)` (Wave 5c step 4):
+ * attached to the app's navigator on first use, once per navigator (E70; `navigator.use`). In the browser only — there is no
+ * navigator while rendering on the server.
+ */
+export function useFeature<API>(feature: Feature<API>): API {
+  const navigator = useRouterContext().navigator();
+  if (!navigator) {
+    throw new Error(
+      `useFeature(${feature.name}): the ${feature.name} feature runs in the browser — there is no navigator while rendering on the server. Use it in a component that renders in the browser only.`,
+    );
+  }
+  return navigator.use(feature);
 }
 
 /**

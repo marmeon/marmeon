@@ -98,3 +98,16 @@ export function sendWithProgress(
     xhr.send(body as XMLHttpRequestBodyInit);
   });
 }
+
+/** `promise`, or undefined as soon as `signal` aborts — a newer visit does not wait for a page fetched ahead it does not need. */
+export function untilAborted<T>(promise: Promise<T | undefined>, signal: AbortSignal): Promise<T | undefined> {
+  if (signal.aborted) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const abort = () => resolve(undefined);
+    signal.addEventListener('abort', abort, { once: true });
+    void promise.then((value) => {
+      signal.removeEventListener('abort', abort);
+      resolve(value);
+    });
+  });
+}
