@@ -1,7 +1,7 @@
 /**
  * `@bespokecore/http/client` — the UI-free client core (E39). Everything a UI adapter needs that is not rendering:
  * visits and their events, 409/hard page changes, XSRF, the history and the in-memory page cache (E36), regions
- * (islands, E50) with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
+ * (islands, E50) and layers (E53) with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
  * scroll restoration, the progress bar, the first page, route URLs and the page's messages. It may use DOM APIs, but no UI framework — and it never imports server code
  * (only `../page.ts`, the shared page contract). The adapter contract is in this package's README.
  */
@@ -45,6 +45,8 @@ export { firstErrors } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export type { TitleTemplate } from './title.ts';
 export { Region, regionId, regionInitial, RegionOwner } from './region.ts';
+export { Layer, MAX_LAYER_DEPTH } from './layer.ts';
+export type { LayerCloseOptions, LayerControl, LayerHost } from './layer.ts';
 export type { KeptRegion, RegionInitial, RegionFailure, RegionReloadOptions, RegionResponse, RegionSnapshot, RegionStatus, RegionTransport } from './region.ts';
 export { assertQueryPage, linkQuery, pageQuery, QueryState, queryUrl, withoutDefaults } from './query-state.ts';
 export type { QueryStateOptions, QueryUpdate } from './query-state.ts';

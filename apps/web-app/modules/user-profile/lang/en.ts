@@ -48,6 +48,12 @@ const en = {
     saving: 'Saving…',
     cancel: 'Cancel',
   },
+  remove: {
+    title: 'Remove “{label}”?',
+    text: 'The link disappears from your profile. You can add it again any time.',
+    confirm: 'Remove',
+    keep: 'Keep it',
+  },
   status: {
     saved: 'Profile saved.',
     link_added: 'Link added.',

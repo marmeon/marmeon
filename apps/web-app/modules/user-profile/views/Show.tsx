@@ -49,10 +49,11 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
           {t('show.verify')} <Link route="auth.verification.send">{t('show.verify_again')}</Link>
         </p>
       )}
-      {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. */}
+      {/* Offered only when the policy allows it (the `can` prop) — the server checks again on submit. A layer (E53): the
+          profile stays under it, with its activity and statistics as loaded. */}
       {can.update && (
         <p>
-          <Link route="user-profile.edit" params={{ user: profile.id }}>
+          <Link route="user-profile.edit" params={{ user: profile.id }} layer prefetch>
             {t('show.edit')}
           </Link>
         </p>
@@ -100,7 +101,8 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
                 {can.update && (
                   <>
                     {' '}
-                    <Link route="user-profile.links.destroy" params={{ user: profile.id, link: link.id }} aria-label={t('show.remove_label', { label: link.label })}>
+                    {/* Asks first — a layer over the profile ("Remove this link?"). */}
+                    <Link route="user-profile.links.remove" params={{ user: profile.id, link: link.id }} layer aria-label={t('show.remove_label', { label: link.label })}>
                       {t('show.remove')}
                     </Link>
                   </>

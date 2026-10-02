@@ -19,6 +19,8 @@ import {
   regionOf,
   ResponseLifecycle,
   VERSION_HEADER,
+  isPageObject,
+  type PageObject,
   type RegionObject,
   type RegionResult,
 } from '@bespokecore/http';
@@ -36,7 +38,7 @@ import {
 } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
-import { createResponseFactory, toRegionResponse, type PageRenderer } from './render.ts';
+import { createResponseFactory, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { ServerConfig } from './provider.ts';
 import { createViteDevRenderer } from './vite.ts';
 
@@ -158,17 +160,53 @@ export function createHttpKernel(
     }
   };
 
+  /**
+   * The base of a layer whose URL was loaded as a document (E53): a GET of its URL as a layer's client would send it
+   * (`x-bespoke`, `x-bespoke-region: layer`) with the page request's cookies and headers, run in-process through the base
+   * route's own middleware and authorization — read-only, its session a copy of the request's. Its page object, or what kept
+   * it from showing one: a redirect, 401 or 403 (E54: the layer shows alone), anything else.
+   */
+  const dispatchLayerBase = async (url: string, parent: IslandParent): Promise<LayerBaseResult> => {
+    const origin = new URL(parent.request.url);
+    const target = new URL(url, origin);
+    if (target.origin !== origin.origin) return { status: 'unavailable', httpStatus: 400 };
+    const headers = new Headers();
+    for (const name of ISLAND_HEADERS) {
+      const value = parent.request.headers.get(name);
+      if (value !== null) headers.set(name, value);
+    }
+    headers.set(PAGE_HEADER, 'true');
+    headers.set(REGION_HEADER, 'layer');
+    if (version) headers.set(VERSION_HEADER, version);
+    if (parent.requestId) headers.set('x-request-id', parent.requestId);
+    const request = new Request(target, { method: 'GET', headers, signal: parent.request.signal });
+    try {
+      const response = await app.fetch(request, { parent });
+      if (response.status === 200 && response.headers.get(PAGE_HEADER) === 'true') {
+        const page: unknown = await response.json();
+        if (isPageObject(page)) return { status: 'page', page: page as PageObject };
+        return { status: 'unavailable', httpStatus: 500 };
+      }
+      await response.body?.cancel();
+      return { status: 'unavailable', httpStatus: response.status };
+    } catch (error) {
+      logger.error(`Resolving the layer base ${target.pathname}${target.search} failed`, { exception: String(error) });
+      return { status: 'unavailable', httpStatus: 500 };
+    }
+  };
+
   const toResponse = createResponseFactory(renderer, router, version, {
     logger: container.make(Logger).child({ channel: 'ssr' }),
     ssr,
     debug,
     islands: dispatchIsland,
+    layerBases: dispatchLayerBase,
   });
 
   const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
     const handler = container.make(ExceptionHandler);
     handler.report(error);
-    if (regionOf(request)) return renderRegionError(handler, error, request, scope);
+    if (regionOf(request) === 'island') return renderRegionError(handler, error, request, scope);
     try {
       // In the request's language, when a translator is bound (@bespokecore/i18n) — the error page, its title, validation messages.
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
@@ -239,12 +277,14 @@ export function createHttpKernel(
     const state = createRequestState(request, { maxBodySize, ip });
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
-    // An island's request is read-only (E52): no session write, no cookie, no work after the response.
-    const region = regionOf(request);
+    // An island's request is read-only (E52): no session write, no cookie, no work after the response — and so is every
+    // request resolved in-process for another (an island while its page renders, a layer's base for its deep link).
+    const island = regionOf(request) === 'island';
     const { pathname } = new URL(request.url);
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
-    if (region && readOnly) {
-      readOnly.engage({ reason: `an island request (${request.method} ${pathname})`, strict: strictReadOnly, report: (message) => logger.error(message) });
+    if ((island || parent) && readOnly) {
+      const reason = island ? `an island request (${request.method} ${pathname})` : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
+      readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message) });
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
     }
@@ -258,7 +298,7 @@ export function createHttpKernel(
       response = await renderError(error, request, scope);
     }
     // Redirects, 401 and 403 of an island become its fallback — never a navigation of the page.
-    if (region) response = await toRegionResponse(response);
+    if (island) response = await toRegionResponse(response);
     // Cookies queued during the request reach the client whatever the outcome (like Laravel).
     const final = await withQueuedCookies(response, state.cookies);
 
@@ -277,7 +317,7 @@ export function createHttpKernel(
     const deferred = scope.has(AfterResponse) ? scope.make(AfterResponse).take() : [];
     // The headers are out (the session saved, its cookie set): what still runs in this request — a server-rendered page
     // streams on, computing its deferred props (E49) — cannot change the session, cookies or work after the response.
-    if (!region && readOnly) {
+    if (!island && !parent && readOnly) {
       readOnly.engage({
         reason: `${request.method} ${pathname} after its response headers were sent (a deferred prop, streamed with the page)`,
         strict: strictReadOnly,

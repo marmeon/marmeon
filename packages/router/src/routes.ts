@@ -1,5 +1,5 @@
 import type { InferOutput, QuerySchemaOf } from './request-definition.ts';
-import type { ExtractParams, RegionResultMarker } from './types.ts';
+import type { ExtractParams, LayerResultMarker, RegionResultMarker } from './types.ts';
 import type { Param, Query } from './url.ts';
 
 /**
@@ -112,6 +112,52 @@ export type CheckPageRouteName<N extends string> = string extends N
       ? `'${N}' is an island, not a page — embed it with <Island route="${N}">; links and visits go to pages`
       : N
     : CheckBrowserRouteName<N>;
+
+/** Whether route `N` can open a layer: its controller answers with `this.view(…).layer(…)` (E53) — in some branch, at least. */
+type IsLayer<N> = [Extract<AnswerOf<N>, LayerResultMarker>] extends [never] ? false : true;
+
+/** Names of layer routes the browser may know — what `<Link layer>` opens (E53). Any string while no routes are generated. */
+export type LayerRouteName = Registered extends true ? { [N in BrowserRouteName]: IsLayer<N> extends true ? N : never }[BrowserRouteName] : string;
+
+/**
+ * `N` when it opens a layer; otherwise a message — `'user-profile.show' does not open a layer — its controller returns
+ * this.view(…) without .layer(…)`. For `<Link route layer>`.
+ */
+export type CheckLayerRouteName<N extends string> = string extends N
+  ? LayerRouteName
+  : N extends LayerRouteName
+    ? N
+    : N extends IslandRouteName
+      ? `'${N}' is an island, not a layer — embed it with <Island route="${N}">`
+      : N extends BrowserRouteName
+        ? `'${N}' does not open a layer — its controller returns this.view(…) without .layer({ base }); drop \`layer\` to visit it as a page`
+        : CheckBrowserRouteName<N>;
+
+/**
+ * GET routes — what a layer's base may be: a page, or another layer (a deep link stacks them). By the method alone: what
+ * the controllers answer is not looked at here (a layer's own answer names its base — that would be circular); an island
+ * is refused by {@link CheckLayerBase} for the one name given.
+ */
+export type LayerBaseName = Registered extends true
+  ? { [N in keyof Routes & string]: Entry<N> extends { readonly method: 'get' } ? N : never }[keyof Routes & string]
+  : string;
+
+/**
+ * `N` when it can be a layer's base (E53); otherwise a message: an island, a route of another method, or no route at all
+ * (with "did you mean").
+ */
+export type CheckLayerBase<N extends string> = string extends N
+  ? LayerBaseName
+  : // Not distributed, and the controller looked at only for one name: what a controller answers may name its own base.
+    [N] extends [LayerBaseName]
+    ? true extends IsUnion<N>
+      ? N
+      : IsIsland<N> extends true
+        ? `'${N}' is an island — a layer's base is a page (or another layer) that a deep link shows under it`
+        : N
+    : N extends RouteName
+      ? `'${N}' is a ${Uppercase<MethodOf<N>>} route — a layer's base is a page: a GET route that answers this.view(…)`
+      : `'${N}' is not a route name${Suggest<N, LayerBaseName>}`;
 
 /** The path parameters of route `N`: `{ user: Param }`, optional ones optional. Any for a name that is not one literal. */
 export type ParamsOf<N extends string> = true extends IsUnion<N>

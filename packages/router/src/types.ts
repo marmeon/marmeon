@@ -199,4 +199,12 @@ export interface RegionResultMarker {
   readonly region: 'island';
 }
 
+/**
+ * What a layer result carries — `this.view(…).layer({ base })` of @bespokecore/http (E53) — so the router's types can tell a
+ * layer route by its controller alone: `<Link layer>` takes only them.
+ */
+export interface LayerResultMarker {
+  readonly region: 'layer';
+}
+
 export type AnyAction = Action<any, any, any>;

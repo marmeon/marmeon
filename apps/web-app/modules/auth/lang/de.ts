@@ -108,6 +108,8 @@ export default {
     name_placeholder: 'z. B. Backup-Skript',
     may: 'Darf',
     submit: 'Token erstellen',
+    done: 'Fertig — ich habe es kopiert',
+    cancel: 'Abbrechen',
     abilities: {
       'users:read': 'Das Personenverzeichnis lesen (GET /api/users)',
     },

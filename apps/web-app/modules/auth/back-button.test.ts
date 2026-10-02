@@ -34,6 +34,8 @@ interface Doc {
   readonly listeners: Map<string, Set<(event: Event) => void>>;
   /** What the tab shows: the page the navigator rendered last. */
   visible: PageObject;
+  /** The layers over it (E53), as the navigator rendered them last. */
+  layers: PageObject[];
   /** The document's response said `no-store`: it never enters the back/forward cache. */
   readonly noStore: boolean;
 }
@@ -62,6 +64,17 @@ class FakeTab {
 
   get visible(): PageObject {
     return this.#current!.visible;
+  }
+
+  /** The layers on screen over the page (E53). */
+  get layers(): PageObject[] {
+    return this.#current!.layers;
+  }
+
+  /** A click or a form inside the top layer — the layer's own visit. */
+  async layerVisit(url: string, options?: Parameters<Navigator['visit']>[1]): Promise<void> {
+    await this.#current!.navigator.layers.at(-1)!.visit(url, options);
+    await this.idle();
   }
 
   /** Typing a URL: a full page load in a new entry. */
@@ -96,6 +109,23 @@ class FakeTab {
     } else {
       await this.#load(to.url, 'traverse');
     }
+    await this.idle();
+  }
+
+  /** Forward within the history — like `back()`. */
+  async forward(): Promise<void> {
+    const from = this.entries[this.index]!;
+    this.index++;
+    const to = this.entries[this.index]!;
+    const live = this.#docs.get(to.docState);
+    if (live && live === this.#current && to.docState === from.docState) this.#dispatch(live, 'popstate', { state: JSON.parse(to.state) });
+    else await this.#load(to.url, 'traverse');
+    await this.idle();
+  }
+
+  /** The reload button: the entry's URL loaded fully again (its state kept). */
+  async reload(): Promise<void> {
+    await this.#load(this.entries[this.index]!.url, 'reload');
     await this.idle();
   }
 
@@ -147,11 +177,13 @@ class FakeTab {
       listeners,
       noStore,
       visible: page,
+      layers: page.layers ?? [],
       navigator: new Navigator({
         initialPage: page,
         window: this.#window(listeners),
-        render: async (next) => {
+        render: async (next, { layers }) => {
           doc.visible = next;
+          doc.layers = layers.map((layer) => layer.page);
         },
       }),
     };
@@ -178,6 +210,10 @@ class FakeTab {
         },
         replaceState(state: unknown, _title: string, url?: string | URL | null) {
           tab.entries[tab.index] = { ...entry(), url: new URL(url ?? entry().url, entry().url).href, state: JSON.stringify(state) };
+        },
+        // Closing a layer goes back (E53) — a task later, like the browser's.
+        go(delta: number) {
+          if (delta === -1) tab.#pending.push(new Promise((resolve) => setTimeout(resolve, 0)).then(() => tab.back()));
         },
       } as NavigatorWindow['history'],
       get location() {
@@ -266,17 +302,20 @@ async function createTokenThenSignOut() {
   await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
   expect(tab.visible.component).toBe('user-profile/Show');
   await tab.visit('/settings/tokens');
-  await tab.visit('/settings/tokens', { method: 'post', data: { name: 'Backup script', abilities: ['users:read'] } });
-  const plainText = tab.visible.props.plainText as string;
+  // The form is a layer over the list; its answer — the plain text — replaces it, shown once (E53).
+  await tab.visit('/settings/tokens/create', { layer: true });
+  await tab.layerVisit('/settings/tokens', { method: 'post', data: { name: 'Backup script', abilities: ['users:read'] } });
+  expect(tab.layers.map((layer) => layer.component)).toEqual(['auth/NewAccessToken']);
+  const plainText = tab.layers[0]!.props.plainText as string;
   expect(plainText).toMatch(/^bc_\d+\|/);
   await tab.visit('/logout', { method: 'post' });
   expect(tab.visible.component).toBe('auth/Login');
   return { ada, plainText };
 }
 
-/** Everything a page shows that would give the signed-out user away. */
+/** Everything a page (and the layers over it) shows that would give the signed-out user away. */
 const leaks = (page: PageObject, plainText: string) => {
-  const shown = JSON.stringify(page);
+  const shown = JSON.stringify([page, tab.layers]);
   return [plainText, 'ada@example.com', 'Ada Lovelace'].filter((secret) => shown.includes(secret));
 };
 
@@ -287,7 +326,7 @@ describe('Back after signing out (E36)', () => {
   ])('counter-check of the attack (%s): Back after signing out shows neither the token nor the profile — the login page', async (_, bfcache) => {
     tab = new FakeTab(createHttpKernel(app.application), { bfcache });
     const { plainText } = await createTokenThenSignOut();
-    // Back through every entry: /settings/tokens (the token page replaced the list), the profile, /login.
+    // Back through every entry: the token layer's (the plain text), the list, the profile, /login.
     while (tab.index > 0) {
       await tab.back();
       expect(leaks(tab.visible, plainText), `Back to ${tab.entries[tab.index]!.url} shows ${tab.visible.component}`).toEqual([]);
@@ -345,7 +384,8 @@ describe('Back after signing out (E36)', () => {
     for (const { state } of tab.entries) {
       expect(state).not.toContain(plainText);
       expect(state).not.toContain('ada@example.com');
-      if (state !== 'null') expect(Object.keys(JSON.parse(state)).sort()).toEqual(['component', 'key', 'scroll', 'url']);
+      // A layer's entry adds its depth and the keys beneath it — never what it shows.
+      if (state !== 'null') expect(Object.keys(JSON.parse(state)).filter((key) => key !== 'layer').sort()).toEqual(['component', 'key', 'scroll', 'url']);
     }
   });
 
@@ -359,7 +399,8 @@ describe('Back after signing out (E36)', () => {
       `GET /users/${ada.id}`,
       `GET /users/${ada.id} (visit)`, // the profile's deferred activity, loaded after the page (a partial reload)
       'GET /settings/tokens (visit)',
-      'POST /settings/tokens (visit)',
+      'GET /settings/tokens/create (visit)', // the form: a layer
+      'POST /settings/tokens (visit)', // its answer: the plain text, a layer shown once
       'POST /logout (visit)', // → 409, x-bespoke-location: /login, Clear-Site-Data: "cache"
       'GET /login',
     ]);
@@ -420,5 +461,72 @@ describe('Cache headers', () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' } });
     // A new browser session (no session cookie), the remember-me cookie signs in during an ordinary visit.
     await app.withCookie('remember_web', login.cookie('remember_web')!).navigating().get(`/users/${ada.id}`).assertOk().assertAuthenticated(ada);
+  });
+});
+
+describe('Layers in a tab (E53) — the real app, the real navigator', () => {
+  /** Signed in on Ada's profile, its deferred activity loaded. */
+  async function onProfile() {
+    const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com' });
+    await tab.open('/login');
+    await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
+    expect(tab.visible.component).toBe('user-profile/Show');
+    return ada;
+  }
+
+  it('counter-check: Back closes the layer, not the page — no request, the profile’s deferred props not asked again; Forward opens it from memory', async () => {
+    const ada = await onProfile();
+    const entries = tab.entries.length;
+    const asked = tab.requests.length;
+    await tab.visit(`/users/${ada.id}/edit`, { layer: true });
+    expect(tab.layers.map((layer) => layer.component)).toEqual(['user-profile/Edit']);
+    expect(tab.entries.length).toBe(entries + 1);
+    expect(tab.visible.component).toBe('user-profile/Show');
+
+    await tab.back();
+    expect(tab.layers).toEqual([]);
+    expect(tab.visible.component).toBe('user-profile/Show');
+    await tab.forward();
+    expect(tab.layers.map((layer) => layer.component)).toEqual(['user-profile/Edit']);
+    // One request in all — the layer's. Not the profile again, not its deferred activity.
+    expect(tab.requests.slice(asked)).toEqual([`GET /users/${ada.id}/edit (visit)`]);
+    for (const { state } of tab.entries) expect(state).not.toContain('ada@example.com');
+  });
+
+  it('a reload on the layer’s URL shows the declared base and the layer — from one document', async () => {
+    const ada = await onProfile();
+    await tab.visit('/people');
+    await tab.visit(`/users/${ada.id}/edit`, { layer: true });
+    expect(tab.visible.component).toBe('user-profile/People'); // opened over the page on screen (Max, 02.10.)
+
+    const asked = tab.requests.length;
+    await tab.reload();
+    // One document (then the base's deferred activity, as after any full load of the profile).
+    expect(tab.requests.slice(asked)).toEqual([`GET /users/${ada.id}/edit`, `GET /users/${ada.id} (visit)`]);
+    expect(tab.visible.component).toBe('user-profile/Show'); // its declared base now
+    expect(tab.layers.map((layer) => layer.component)).toEqual(['user-profile/Edit']);
+  });
+
+  it('saving in the layer closes it — Back in the history — and the profile beneath shows the new name', async () => {
+    const ada = await onProfile();
+    const entries = tab.entries.length;
+    await tab.visit(`/users/${ada.id}/edit`, { layer: true });
+    await tab.layerVisit(`/users/${ada.id}`, { method: 'put', data: { name: 'Ada King', bio: '' } });
+    expect(tab.layers).toEqual([]);
+    expect(tab.index).toBe(entries - 1);
+    expect(tab.visible.props).toMatchObject({ profile: { name: 'Ada King' }, flash: { status: 'Profile saved.' } });
+  });
+
+  it('counter-check: after signing out, Back shows no layer — neither the plain text of a token nor the profile form', async () => {
+    const ada = await onProfile();
+    await tab.visit(`/users/${ada.id}/edit`, { layer: true });
+    // Signed out underneath (the page's visit, as the session expiring would): a full page load.
+    await tab.visit('/logout', { method: 'post' });
+    expect(tab.visible.component).toBe('auth/Login');
+    while (tab.index > 0) {
+      await tab.back();
+      expect(tab.layers, `Back to ${tab.entries[tab.index]!.url}`).toEqual([]);
+      expect(leaks(tab.visible, 'no token here')).toEqual([]);
+    }
   });
 });

@@ -3,6 +3,7 @@
 
 import type { AddProfileLinkController } from '../modules/user-profile/controllers/AddProfileLinkController.ts';
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
+import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
@@ -19,6 +20,7 @@ import type { RevokeAccessTokenController } from '../modules/auth/controllers/Re
 import type { SendPasswordResetLinkController } from '../modules/auth/controllers/SendPasswordResetLinkController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
 import type { ShowConfirmPasswordController } from '../modules/auth/controllers/ShowConfirmPasswordController.ts';
+import type { ShowCreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
 import type { ShowForgotPasswordController } from '../modules/auth/controllers/ShowForgotPasswordController.ts';
 import type { ShowLoginController } from '../modules/auth/controllers/ShowLoginController.ts';
@@ -55,6 +57,7 @@ declare module '@bespokecore/router' {
     'auth.register.store': { method: 'post'; path: '/register'; controller: typeof RegisterController };
     'auth.security': { method: 'get'; path: '/settings/security'; controller: typeof ShowSecurityController };
     'auth.tokens': { method: 'get'; path: '/settings/tokens'; controller: typeof ShowAccessTokensController };
+    'auth.tokens.create': { method: 'get'; path: '/settings/tokens/create'; controller: typeof ShowCreateAccessTokenController };
     'auth.tokens.destroy': { method: 'delete'; path: '/settings/tokens/:token'; controller: typeof RevokeAccessTokenController };
     'auth.tokens.store': { method: 'post'; path: '/settings/tokens'; controller: typeof CreateAccessTokenController };
     'auth.verification.notice': { method: 'get'; path: '/email/verify'; controller: typeof ShowVerifyEmailNoticeController };
@@ -67,6 +70,7 @@ declare module '@bespokecore/router' {
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
+    'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
     'user-profile.me': { method: 'get'; path: '/users/me'; controller: typeof RedirectToOwnProfileController };
     'user-profile.people': { method: 'get'; path: '/people'; controller: typeof ListPeopleController };
@@ -79,8 +83,10 @@ declare module '@bespokecore/http/page' {
   interface Views {
     'auth/AccessTokens': true;
     'auth/ConfirmPassword': true;
+    'auth/CreateAccessToken': true;
     'auth/ForgotPassword': true;
     'auth/Login': true;
+    'auth/NewAccessToken': true;
     'auth/Register': true;
     'auth/ResetPassword': true;
     'auth/Security': true;
@@ -96,6 +102,7 @@ declare module '@bespokecore/http/page' {
     'lab/Streaming': true;
     'user-profile/Edit': true;
     'user-profile/People': true;
+    'user-profile/RemoveLink': true;
     'user-profile/Show': true;
   }
 }

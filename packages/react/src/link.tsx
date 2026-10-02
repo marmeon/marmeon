@@ -9,7 +9,7 @@ import {
   type VisitMethod,
   type VisitOptions,
 } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckPageRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
+import type { BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { usePage, useRouter, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
@@ -83,6 +83,11 @@ type RouteLinkProps<N extends string> = LinkOptions &
    * screen, fields that are just its defaults are left out of the URL.
    */
   query?: QueryParams<N>;
+  /**
+   * Open it as a layer over the page on screen (E53) — a modal, a slide-over, with a history entry of its own (Back closes
+   * it). Only for routes whose controller answers `this.view(…).layer({ base })`; anything else is a compile error.
+   */
+  layer?: CheckLayerRouteName<N> extends N ? boolean : CheckLayerRouteName<N>;
   href?: never;
 } & ParamsProp<N> &
   MethodProps<N>;
@@ -99,6 +104,7 @@ type AnyLinkProps = LinkOptions &
     query?: Query;
     method?: VisitMethod;
     data?: VisitOptions['data'];
+    layer?: boolean;
     onClick?: (event: MouseEvent<HTMLAnchorElement & HTMLButtonElement>) => void;
     onMouseEnter?: (event: MouseEvent<HTMLAnchorElement & HTMLButtonElement>) => void;
     onMouseLeave?: (event: MouseEvent<HTMLAnchorElement & HTMLButtonElement>) => void;
@@ -114,6 +120,7 @@ type AnyLinkProps = LinkOptions &
  * <Link route="auth.logout">Sign out</Link>            // a POST route: a <button> sending the visit with the CSRF token
  * <Link href="https://example.com">elsewhere</Link>
  * <Link route="user-profile.show" params={{ user: 7 }} prefetch>Grace</Link>   // fetched on hover, shown at once on click
+ * <Link route="user-profile.edit" params={{ user: 7 }} layer>Edit</Link>     // a layer (modal) over the page on screen
  * ```
  *
  * With `route`, name, parameters and method come from `bootstrap/routes.ts`: a typo, a missing parameter or
@@ -140,6 +147,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     reset,
     prefetch,
     cacheFor,
+    layer,
     onClick,
     onMouseEnter,
     onMouseLeave,
@@ -147,7 +155,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     onTouchStart,
     ...rest
   } = props as AnyLinkProps;
-  const options = { replace, preserveScroll, preserveState, preserveUrl, async, only, except, reset };
+  const options = { replace, preserveScroll, preserveState, preserveUrl, async, only, except, reset, ...(layer ? { layer: true } : {}) };
 
   const page = usePage();
   const target =
@@ -163,7 +171,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const fetchAhead = () => {
     clearTimeout(hover.current);
     const url = prefetchUrlOf(href);
-    if (url !== undefined) void prefetchPage(url, cacheFor === undefined ? {} : { cacheFor });
+    if (url !== undefined) void prefetchPage(url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) });
   };
   const onMount = triggers.has('mount');
   useEffect(() => {

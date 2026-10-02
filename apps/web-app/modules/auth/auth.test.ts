@@ -559,19 +559,32 @@ describe('API tokens', () => {
   };
   const api = (token?: string) => app.withHeaders(token === undefined ? {} : { authorization: `Bearer ${token}` }).expectingJson();
 
-  it('creates a token on the token page — shown once, in that answer only — and the API takes it', async () => {
+  it('creates a token in a layer over the list — its plain text is that answer only, a layer shown once (E53) — and the API takes it', async () => {
     const ada = await app.factory(UserFactory).create();
     const session = await sudo(ada);
-    const created = await session.navigating().post('/settings/tokens', { json: { name: 'Backup script', abilities: ['users:read'] } }).assertOk();
+    // The form: a layer over the list, its base the list (for a deep link).
+    await session.layer('auth.tokens.create').assertOk().assertLayer('auth/CreateAccessToken');
+    // Its answer, sent as the layer's request: the same layer key (it replaces the form), shown once — a POST answered it.
+    const created = await session.layering().post('/settings/tokens', { json: { name: 'Backup script', abilities: ['users:read'] } }).assertOk().assertLayer('auth/NewAccessToken');
+    expect(created.page()!.layer).toEqual({ key: 'tokens.create', base: '/settings/tokens', once: true });
     const plainText = (created.page()!.props as { plainText: string }).plainText;
     expect(plainText).toMatch(/^bc_\d+\|[A-Za-z0-9]{40}[0-9a-f]{8}$/);
     expect(JSON.stringify(created.session())).not.toContain(plainText); // not flashed
+    expect(created.headers.get('cache-control')).toContain('no-store');
     await session.navigating().get('/settings/tokens').assertPage('auth/AccessTokens', (props) => {
-      expect((props as { plainText: unknown }).plainText).toBeNull();
       expect(JSON.stringify(props)).not.toContain(plainText.slice(-48));
       expect((props as { tokens: { name: string }[] }).tokens.map((token) => token.name)).toEqual(['Backup script']);
     });
     await api(plainText).get('/api/users').assertOk();
+  });
+
+  it('a failed token form stays in its layer: back to the form, with the errors', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const session = await sudo(ada);
+    await session
+      .layering()
+      .post('/settings/tokens', { json: { name: '', abilities: [] }, headers: { referer: 'http://localhost/settings/tokens/create' } })
+      .assertRedirect('/settings/tokens/create');
   });
 
   it('counter-checks: no token, a revoked one, a missing ability, a session cookie — 401 / 403', async () => {

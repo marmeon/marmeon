@@ -8,6 +8,7 @@ import type { Suggest } from '@bespokecore/router';
 
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
+export type { LayerResult } from './layer.ts';
 export type {
   AlwaysProp,
   DeferredProp,
@@ -28,11 +29,15 @@ export type {
   BrowserRouteNameInput,
   CheckBrowserRouteName,
   CheckIslandRouteName,
+  CheckLayerBase,
+  CheckLayerRouteName,
   CheckPageRouteName,
   CheckRouteName,
   ControllerOf,
   FormOf,
   IslandRouteName,
+  LayerBaseName,
+  LayerRouteName,
   MethodOf,
   Param,
   ParamsOf,
@@ -137,6 +142,57 @@ export interface PageObject {
    * browser does not ask for them again. Only on a server-rendered document's page object.
    */
   streamedProps?: string[];
+  /**
+   * The page object is a layer's (E53): the view of a route whose controller answered `this.view(…).layer({ base })` — shown
+   * over the page (or the layers) on screen, with a history entry of its own. Absent for pages.
+   */
+  layer?: LayerInfo;
+  /**
+   * The layers over this page, bottom first — only on a server-rendered document's page object, for a deep link (or a reload)
+   * of a layer's URL: this page is the layer's declared base (resolved in-process), or the neutral surface ({@link LAYER_BACKDROP})
+   * when the base turned the user away (E54). Never in a client-side navigation's answer.
+   */
+  layers?: PageObject[];
+}
+
+/** What a layer's page object says about it (E53). */
+export interface LayerInfo {
+  /**
+   * Its identity in a stack: an answer of the layer with the same key replaces it in place (a form that failed validation,
+   * the next step of a wizard) — another key stacks on top. Default: the view's name.
+   */
+  readonly key: string;
+  /** The URL of its declared base — the page a deep link or a reload shows under it. */
+  readonly base: string;
+  /**
+   * The answer of an action (a POST, …), not of a GET: shown once — when it leaves the screen it is gone from memory (its URL
+   * asked again with GET is something else), and what is beneath it is reloaded (the action changed it). A new API token's
+   * plain text, say.
+   */
+  readonly once?: true;
+}
+
+/** How deep layers stack (E53): an answer that would open an eleventh is shown as a page instead. */
+export const MAX_LAYER_DEPTH = 10;
+
+/**
+ * The neutral surface under a layer whose base the user may not see (E54) — a deep link to the layer renders it alone over
+ * this page, and the base's data is never loaded. Apps override it with `modules/layers/views/Backdrop.tsx`.
+ */
+export const LAYER_BACKDROP = 'layers/Backdrop';
+
+/**
+ * The answer of `closeLayer()` to a layer's request (E53): JSON {@link LayerClose} — the client closes that many layers and
+ * reloads what is beneath them. (Without a layer — no JavaScript — the same result is a redirect.)
+ */
+export const LAYER_CLOSE_HEADER = 'x-bespoke-layer-close';
+
+/** What the server tells a layer's client to do instead of showing a page: close. */
+export interface LayerClose {
+  /** How many layers close, from the one that asked down (default 1). */
+  readonly layers: number;
+  /** Then reload what is beneath them — the page and the layers that stay: some props (a partial reload of each), or `true` all. */
+  readonly reload?: readonly string[] | true;
 }
 
 /** Client-side navigations send this header and receive the page object as JSON. */
@@ -189,8 +245,11 @@ export function isPrefetch(request: Request): boolean {
  */
 export const REGION_HEADER = 'x-bespoke-region';
 
-/** The kinds of region a request may ask for. (Layers come next to islands.) */
-export type RegionKind = 'island';
+/**
+ * The kinds of region a request may ask for: `island` — an `<Island route>`; `layer` — a layer's request (opening it, or a visit
+ * or a form inside it, E53): a layer route answers with its page object (`layer`), a page route with its page as usual.
+ */
+export type RegionKind = 'island' | 'layer';
 
 /**
  * How a region request ended when it brought no region object — the server answers `204` with this header instead of
@@ -206,14 +265,15 @@ export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 export function regionOf(request: Request): RegionKind | undefined {
   const { headers } = request;
   if (headers.get(PAGE_HEADER) !== 'true') return undefined;
-  return headers.get(REGION_HEADER) === 'island' ? 'island' : undefined;
+  const region = headers.get(REGION_HEADER);
+  return region === 'island' || region === 'layer' ? region : undefined;
 }
 
 /**
  * The wire format of a region (an island): the page object of the route it shows — its component, props, URL and query,
  * deferred and merged props — without the page's language (`locale`, `fallbackLocale`): it renders in the page's.
  */
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers'>;
 
 /**
  * What the server resolved of an island while rendering the page (E49) — streamed into the document inside the island's

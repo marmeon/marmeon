@@ -30,6 +30,10 @@ export class UpdateUserProfileController extends Controller {
   async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
     // ctx.body is { name: string; bio: string } — validated and trimmed
     await this.#users.update(ctx.params.user.id, ctx.body);
-    return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).with('status', this.#translator.get('user-profile.status.saved'));
+    // Saved from the edit layer: it closes, and what is beneath shows the new name (and the message). Without JavaScript
+    // (or the form opened as a page): to the profile.
+    return this.closeLayer({ reload: ['profile', 'flash'] })
+      .route('user-profile.show', { user: ctx.params.user.id })
+      .with('status', this.#translator.get('user-profile.status.saved'));
   }
 }

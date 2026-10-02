@@ -50,6 +50,12 @@ export default {
     saving: 'Wird gespeichert …',
     cancel: 'Abbrechen',
   },
+  remove: {
+    title: '„{label}“ entfernen?',
+    text: 'Der Link verschwindet von deinem Profil. Du kannst ihn jederzeit wieder hinzufügen.',
+    confirm: 'Entfernen',
+    keep: 'Behalten',
+  },
   status: {
     saved: 'Profil gespeichert.',
     link_added: 'Link hinzugefügt.',

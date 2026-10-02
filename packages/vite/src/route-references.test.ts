@@ -43,6 +43,22 @@ describe('collectRouteReferences', () => {
     );
   });
 
+  it('collects a layer link’s route — `layer` is a flag, never a name (W5b step 5)', () => {
+    const { names, problems } = collect(`
+      import { Link } from '@bespokecore/react';
+      export default function Page({ profile, asLayer }: Props) {
+        return (
+          <>
+            <Link route="user-profile.edit" params={{ user: profile.id }} layer>Edit</Link>
+            <Link route="user-profile.show" params={{ user: profile.id }} layer={asLayer}>Show</Link>
+          </>
+        );
+      }
+    `);
+    expect(problems).toEqual([]);
+    expect(names).toEqual(['user-profile.edit', 'user-profile.show']);
+  });
+
   it('follows import aliases, namespace imports, as const and const bindings in the module', () => {
     const { names, problems } = collect(`
       import { Link as L, useRoute as useUrl } from '@bespokecore/react';

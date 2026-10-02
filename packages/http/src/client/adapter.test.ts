@@ -192,6 +192,48 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
+  it('renders layers (E53): each over the page in an element of its own — Back closes the top one, the page untouched', async () => {
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      const headers = { ...(init.headers as Record<string, string>) };
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers });
+      if (url.pathname !== '/users/1/edit') return server(input, init);
+      // The server's side: a layer's page object (`this.view(…).layer({ base })`).
+      return respond(page('users/Edit', '/users/1/edit', { name: 'Ada' }, { layer: { key: 'users/Edit', base: '/users/1' } }));
+    }) as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    const initialPage = readInitialPage();
+    const root = await rootElement('app');
+    let pageRenders = 0;
+    // The adapter: the page as before — and, when only the layers change (the same page), the layers alone.
+    let shown: PageObject | undefined;
+    const navigator = new Navigator({
+      initialPage,
+      render: async (next, { layers }) => {
+        if (next !== shown) {
+          shown = next;
+          pageRenders++;
+          root.innerHTML = `<p>${next.component}</p><div id="layers"></div>`;
+        }
+        root.querySelector('#layers')!.innerHTML = layers.map((layer) => `<dialog open data-depth="${layer.depth}">${layer.page.component}</dialog>`).join('');
+      },
+    });
+    const stop = navigator.start();
+    const dialogs = () => [...root.querySelectorAll('dialog')].map((dialog) => dialog.textContent);
+    await navigator.visit('/users/1/edit', { layer: true });
+    expect(dialogs()).toEqual(['users/Edit']);
+    expect(window.location.pathname).toBe('/users/1/edit');
+    const renders = pageRenders;
+
+    window.history.back();
+    await vi.waitFor(() => expect(dialogs()).toEqual([]));
+    expect(window.location.pathname).toBe('/users/1');
+    expect(pageRenders).toBe(renders); // the page was not rendered again
+    expect(JSON.stringify(window.history.state)).not.toContain('Ada');
+    stop();
+  });
+
   it('renders the page itself when the server sent no markup (SSR failed or ssr = false)', async () => {
     serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
     document.getElementById('app')!.innerHTML = '\n  ';

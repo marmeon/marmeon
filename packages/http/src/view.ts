@@ -1,5 +1,6 @@
 import type { CheckViewName, SharedProps } from './page.ts';
 import type { ResolvedProps } from './props.ts';
+import { toLayer, type LayerMethod } from './layer.ts';
 
 const VIEW_RESULT = Symbol.for('bespokecore.view-result');
 
@@ -16,6 +17,23 @@ export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent ext
 }
 
 /**
+ * What `view()` returns: a page — or, with `.layer({ base })`, a layer over the page on screen (E53):
+ *
+ * ```ts
+ * return this.view('user-profile/Edit', { profile }).layer({ base: 'user-profile.show', params: { user: profile.id } });
+ * ```
+ */
+export interface PageResult<TProps extends ViewProps = ViewProps, TComponent extends string = string> extends ViewResult<TProps, TComponent> {
+  /**
+   * Shows the view as a layer (a modal, a slide-over) over whatever is on screen, with a history entry of its own — Back
+   * closes it. `base` (with its `params`) is the page a deep link or a reload of its URL shows under it — checked against the
+   * app's routes, like a link's. `key` (default: the view's name): an answer with the same key replaces the layer in
+   * place (a failed form, a wizard's next step), another key stacks on top.
+   */
+  readonly layer: LayerMethod<TProps, TComponent>;
+}
+
+/**
  * A page: the component's name — checked against the app's views (`modules/<module>/views/<Page>.tsx`,
  * see `bespoke route:types`) — and its props.
  */
@@ -24,8 +42,18 @@ export function view<const V extends string, const TProps extends ViewProps>(
   props: TProps,
   status = 200,
   headers?: Readonly<Record<string, string>>,
-): ViewResult<TProps, V> {
-  return { [VIEW_RESULT]: true, component: component as V, props, status, ...(headers ? { headers } : {}) };
+): PageResult<TProps, V> {
+  const result: PageResult<TProps, V> = {
+    [VIEW_RESULT]: true,
+    component: component as V,
+    props,
+    status,
+    ...(headers ? { headers } : {}),
+    layer: (options) => toLayer(result, options),
+  };
+  // Not enumerable: a result is data (spread, compared in tests) — the method is no part of it.
+  Object.defineProperty(result, 'layer', { enumerable: false });
+  return result;
 }
 
 export function isViewResult(value: unknown): value is ViewResult {

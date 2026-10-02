@@ -1,6 +1,7 @@
 /** The browser of the client core's tests: one tab's history, location, fetch and events — in memory. */
 import { PAGE_HEADER, type PageObject } from '../page.ts';
 import { Navigator, type NavigatorWindow, type ScrollRegion } from './navigation.ts';
+import type { Layer } from './layer.ts';
 import type { RegionOwner } from './region.ts';
 
 export const ORIGIN = 'https://app.test';
@@ -67,6 +68,15 @@ export class FakeWindow implements NavigatorWindow {
       },
       replaceState(state: unknown, _title: string, url?: string | URL | null) {
         win.entries[win.index] = { url: win.#resolve(url), state: JSON.stringify(state) };
+      },
+      // Like the browser's: asynchronous — the entry changes a task later, then popstate.
+      go(delta: number) {
+        setTimeout(() => {
+          const index = win.index + delta;
+          if (delta === 0 || index < 0 || index >= win.entries.length) return;
+          win.index = index;
+          win.dispatch('popstate', { state: win.history.state });
+        }, 0);
       },
       get scrollRestoration() {
         return win.scrollRestoration;
@@ -146,17 +156,31 @@ export function boot(win: FakeWindow, initial: PageObject, options: { cacheSize?
   const shown: PageObject[] = [];
   /** The region owner handed with each page rendered (islands live there). */
   const owners: RegionOwner[] = [];
+  /** The layers handed with each render (E53). */
+  const stacks: (readonly Layer[])[] = [];
   const navigator = new Navigator({
     initialPage: initial,
     window: win,
-    render: async (next, { owner }) => {
+    render: async (next, { owner, layers }) => {
       shown.push(next);
       owners.push(owner);
+      stacks.push(layers);
     },
     ...options,
   });
   const stop = navigator.start();
-  return { navigator, shown, owners, stop, visible: () => shown.at(-1) ?? initial, owner: () => owners.at(-1) ?? navigator.regionOwner };
+  const { layers: _layers, ...base } = initial;
+  return {
+    navigator,
+    shown,
+    owners,
+    stacks,
+    stop,
+    visible: () => shown.at(-1) ?? base,
+    owner: () => owners.at(-1) ?? navigator.regionOwner,
+    /** The layers on screen now — what the last render showed (the document's, before any). */
+    layers: () => stacks.at(-1) ?? navigator.layers,
+  };
 }
 
 /** Lets the async work of a popstate (a refetch, a render) finish. */

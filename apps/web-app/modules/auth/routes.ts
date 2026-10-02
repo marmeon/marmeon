@@ -2,7 +2,7 @@ import { authenticate, confirmedPassword, guest } from '@bespokecore/auth';
 import { throttle } from '@bespokecore/cache';
 import { defineRoutes, signed } from '@bespokecore/http';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
-import { CreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
+import { CreateAccessTokenController, ShowCreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
 import { LoginController } from './controllers/LoginController.ts';
 import { LogoutController } from './controllers/LogoutController.ts';
 import { LogoutOtherDevicesController } from './controllers/LogoutOtherDevicesController.ts';
@@ -49,6 +49,8 @@ export default defineRoutes((Route) => {
   // API tokens: as good as a session — sudo mode for all of it.
   const sudo = signedIn.middleware(confirmedPassword());
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
+  // Creating one is a layer over the list (E53); its answer — the plain text — replaces it, shown once.
+  sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');
   sudo.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
 

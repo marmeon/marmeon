@@ -19,7 +19,7 @@ A UI adapter (`@bespokecore/react` today, a Vue adapter later) is a **rendering 
 the history, caching, background requests — is in `@bespokecore/http/client`, uses DOM APIs where it must, and knows no
 UI framework. `src/client/adapter.test.ts` is the proof: a complete adapter in plain DOM (it renders a page as its
 component name and props in text) visits, goes back and forward, loads deferred props, reloads partially, follows a
-409 and renders islands — with no UI framework anywhere.
+409 and renders islands and layers — with no UI framework anywhere.
 
 ### What the core provides
 
@@ -31,6 +31,7 @@ component name and props in text) visits, goes back and forward, loads deferred 
 | `regionInitial(result)` | What a region starts with when the server resolved it while rendering the page (E49): the `RegionResult` it streamed into the island's boundary (`<script type="application/json">`) → `navigator.region(url, { owner, initial })` — `ready` with its region object, `unauthorized`/`forbidden` (no data), `exception` (shown, not kept), or nothing (`browser`: the region loads itself). No request |
 | `navigator.receiveStreamed(group, result \| null)` | A deferred group of the first page that the server streamed with the document (`PageObject.streamedProps`, E49): the navigator does not ask for it, lands it once the document has finished streaming (`DOMContentLoaded` — an update earlier would make React render a still-streaming island in the browser), and asks for it after all when it gets `null` |
 | `RegionOwner` | Where regions keep what they loaded: the history entry of their page (`render` hands it over), in memory only — Back/Forward shows islands without a request, `history.state` never holds them (E36). Closed (requests aborted, nothing lands) when the entry leaves the screen or the document is left. Pluggable for layers |
+| `navigator.layers` → `Layer[]` | Layers (E53) — a region with a history entry over the page: a page object whose `layer` (`{ key, base, once? }`) says so. `visit(url, { layer: true })` (header `x-bespoke-region: layer`) — and any visit answered with a layer — opens one over what is on screen (stacked, up to `MAX_LAYER_DEPTH`; beyond, it is shown as a page); a history entry of its own (`HistoryState.layer = { depth, below }`: keys only, E36). `layer.visit/reload/close/onClose`, `page` + `subscribe`, `owner` (its islands): an answer with the same key replaces it in place (validation errors), another key stacks, `LAYER_CLOSE_HEADER` (`closeLayer()`) closes it and reloads what stays (the page first). Back closes the top one from memory — the page is not rendered again, its deferred props and islands are not asked again; `close()` is Back when it was pushed over what is beneath (and forgets it: Forward asks the server), else the entry is replaced. A deep link's document brings `page.layers`. `once` layers (an action's answer) are forgotten when they leave the screen, and what stays reloads. Sign-out/409 drops them with the pages |
 | `navigator.queryState(options)` → `QueryState` | Typed URL state (E55): `value(page)` is the page's query as the server parsed it (`PageObject.query` + `queryDefaults` — the browser never parses a URL) or what is being typed (`draft`); `set(patch \| fn)` changes it at once and visits the page's URL after `debounce` ms (partial with `only`, `reset` = `only` by default, `history: 'push' \| 'replace'`, state and scroll kept); the draft gives way when the page changes otherwise (Back/Forward, a link). `navigator.subscribe(listener)` follows the page on screen |
 | `queryUrl`, `pageQuery`, `withoutDefaults`, `linkQuery`, `assertQueryPage` | Query helpers: a URL without the defaults, the page's query with them, a link's query for the page on screen, the "only on its route's page" check |
 | `showProgress(navigator, options)` | The progress bar: plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests |
@@ -45,7 +46,7 @@ component name and props in text) visits, goes back and forward, loads deferred 
 
 ### What an adapter provides
 
-1. **Rendering a page object.** `new Navigator({ initialPage, render })`: `render(page, { preserveState, owner })` resolves the
+1. **Rendering a page object.** `new Navigator({ initialPage, render })`: `render(page, { preserveState, owner, layers })` resolves the
    page's component (and its messages), shows it with `page.props`, and **resolves once it is on screen** — the navigator
    restores the scroll position after that. `preserveState: true` keeps component state when the same component comes
    back (a form that failed validation); otherwise the page mounts fresh. A rejection makes the browser load the URL
@@ -54,7 +55,10 @@ component name and props in text) visits, goes back and forward, loads deferred 
    the page stays. `owner` is where the page's islands live: render them with `navigator.region(url, { owner })` (the
    first page: `navigator.regionOwner`), each into an element of its own, from its `snapshot` — its fallback while
    `loading`, an `unauthorized` UI, an error UI with a retry (`reload()`), and its view otherwise, inside an error boundary
-   of its own.
+   of its own. `layers` are the layers over the page (E53), bottom first: render each in a frame over it (a modal `<dialog>`:
+   focus kept inside and returned to the opener, Escape and the backdrop `layer.close()`, the page beneath inert and not
+   scrolling), with its own page context so visits and forms inside go through `layer.visit()`; when only they changed,
+   `page` is the page on screen (with `preserveState`) and must not render again.
 2. **Persistent layouts** (E35): `Page.layout = Layout | [Outer, Inner] | null`, a default per app; the same layout at the
    same depth stays mounted across visits. Error boundaries inside them (a page that throws shows the error page).
 3. **Head management**: a head component that sets the title through a `TitleRegistry` and adds/removes its tags in the

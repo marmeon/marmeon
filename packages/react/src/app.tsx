@@ -5,6 +5,7 @@ import {
   RegionOwner,
   showProgress,
   TitleRegistry,
+  type Layer,
   type PrefetchOptions,
   type ProgressOptions,
   type TitleTemplate,
@@ -19,6 +20,8 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
+import { LayerStack, type LayerEntry, type LayerFrame } from './layer.tsx';
+import { loadView } from './views.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
 import { SsrContext, StreamedDeferred, type SsrResolvers } from './streamed.tsx';
@@ -77,7 +80,8 @@ export interface Router<T = unknown> {
   on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
 }
 
-interface RouterValue extends Router {
+/** @internal What the hooks read: the page (or the layer) around them and how to navigate from it. */
+export interface RouterValue extends Router {
   page: PageObject;
   /** The navigator — null while rendering on the server (for the hooks of this package). */
   navigator(): Navigator | null;
@@ -85,10 +89,29 @@ interface RouterValue extends Router {
   resolve: ResolvePage;
 }
 
+/** One id per layer object — a layer replaced by a fresh one (another state) mounts anew, even in the same entry. */
+const layerIds = new WeakMap<Layer, string>();
+let nextLayerId = 0;
+
+/** A layer of the core, as the stack renders it. */
+function entryOf(layer: Layer): LayerEntry {
+  let id = layerIds.get(layer);
+  if (id === undefined) layerIds.set(layer, (id = `layer-${++nextLayerId}`));
+  return { id, layer, page: layer.page, depth: layer.depth };
+}
+
+/** The page object without the layers a deep link brought (they render over it). */
+function withoutLayers(page: PageObject): PageObject {
+  if (!page.layers) return page;
+  const { layers: _layers, ...rest } = page;
+  return rest;
+}
+
 /** The regions (islands) of the page on screen — its history entry's (null on the server: islands load in the browser). */
 export const RegionOwnerContext = createContext<RegionOwner | null>(null);
 
-const RouterContext = createContext<RouterValue | null>(null);
+/** @internal A layer provides its own (E53): `usePage`, `useRouter` and `useForm` inside it act as the layer. */
+export const RouterContext = createContext<RouterValue | null>(null);
 
 export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
@@ -141,6 +164,8 @@ export interface BespokeAppProps {
   initialCatalog?: Catalog;
   /** Server rendering only (E49): islands and deferred groups, resolved in-process by the page's request (the SSR entry). */
   ssr?: SsrResolvers;
+  /** The frame around every layer's view (E53) — default `LayerDialog`, a native modal `<dialog>`. A view's own `layer` wins. */
+  layer?: LayerFrame;
 }
 
 interface Current {
@@ -175,30 +200,30 @@ export function BespokeApp({
   messages,
   initialCatalog,
   ssr,
+  layer: frame,
 }: BespokeAppProps) {
-  const [current, setCurrent] = useState<Current>({ page: initialPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
+  // A deep link's document brings the layers over its page (E53): rendered over it, apart from it.
+  const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
+  const [current, setCurrent] = useState<Current>({ page: firstPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
   const [failure, setFailure] = useState<VisitException | null>(null);
 
   // The navigator waits until a page is on screen before it restores the scroll position.
   const committed = useRef<(() => void)[]>([]);
-  useLayoutEffect(() => {
-    for (const done of committed.current.splice(0)) done();
-  }, [current]);
 
   const render = useCallback(
-    async (page: PageObject, { preserveState, owner }: { preserveState: boolean; owner: RegionOwner }) => {
+    async (page: PageObject, { preserveState, owner, layers }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[] }) => {
       // The page's component and its locale's messages, both before it renders: a page in another language (another
-      // tab switched it) loads that language's files first.
-      const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages)]);
+      // tab switched it) loads that language's files first. The layers' views too — they show at once.
+      const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), ...layers.map((layer) => loadView(resolve, layer.page.component))]);
       await new Promise<void>((done) => {
         committed.current.push(done);
-        setCurrent((previous) => ({
-          page,
-          Component,
-          catalog,
-          key: preserveState && previous.Component === Component ? previous.key : previous.key + 1,
-          owner,
-        }));
+        // Only the layers changed: the page stays exactly as it is (no render of it, nothing above it changes).
+        setCurrent((previous) =>
+          previous.page === page && previous.owner === owner && preserveState
+            ? previous
+            : { page, Component, catalog, key: preserveState && previous.Component === Component ? previous.key : previous.key + 1, owner },
+        );
+        setLayers(layers.map(entryOf));
       });
     },
     [resolve, messages],
@@ -212,6 +237,15 @@ export function BespokeApp({
   if (navigator.current === null && typeof window !== 'undefined') {
     navigator.current = new Navigator({ initialPage, render: (page, options) => renderRef.current(page, options) });
   }
+  // The layers on screen — the core's in the browser; on the server, the deep link's page objects.
+  const [layers, setLayers] = useState<readonly LayerEntry[]>(() =>
+    navigator.current
+      ? navigator.current.layers.map(entryOf)
+      : (initialPage.layers ?? []).map((page, index) => ({ id: `layer-${index}`, layer: null, page, depth: index + 1 })),
+  );
+  useLayoutEffect(() => {
+    for (const done of committed.current.splice(0)) done();
+  }, [current, layers]);
   useEffect(() => {
     // When the first page became interactive (hydrated, or rendered when the server sent no markup) — for measuring.
     if (typeof performance !== 'undefined') performance.mark('bespoke:hydrated');
@@ -294,6 +328,8 @@ export function BespokeApp({
                   {tree}
                 </ErrorBoundary>
               </RegionOwnerContext.Provider>
+              {/* The layers over the page (E53) — apart from it: opening one changes nothing the page renders from. */}
+              <LayerStack entries={layers} resolve={resolve} frame={frame} base={router} />
               <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
               {/* The first page's deferred groups the server streams with the document (E49): to the navigator as they arrive. */}
               <StreamedDeferred groups={initialPage.streamedProps} navigator={getNavigator} />

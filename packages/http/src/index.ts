@@ -2,12 +2,17 @@ export { Controller } from './controller.ts';
 export { view, isViewResult } from './view.ts';
 export { island, isIslandResult } from './island.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
+export { CloseLayerResult, isCloseLayerResult, isLayerResult, toLayer } from './layer.ts';
+export type { CloseLayerOptions, LayerBaseRoute, LayerMethod, LayerOptions, LayerResult } from './layer.ts';
 export { ERRORS_KEY, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
 export type { RedirectStatus } from './redirect.ts';
-export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
+export type { PageProps, PageResult, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export {
   ERROR_PAGE,
+  LAYER_BACKDROP,
+  LAYER_CLOSE_HEADER,
   LOCATION_HEADER,
+  MAX_LAYER_DEPTH,
   PAGE_HEADER,
   PAGE_SCRIPT_ID,
   PARTIAL_COMPONENT_HEADER,
@@ -41,7 +46,7 @@ export type {
 export { partialReloadOf, resolvePageProps } from './page-props.ts';
 export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
-export type { CheckViewName, DeferredResult, ErrorPageProps, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export type { CheckViewName, DeferredResult, ErrorPageProps, LayerClose, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';

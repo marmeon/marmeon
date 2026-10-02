@@ -35,6 +35,11 @@ export class ProfileDirectory implements RouteBinder<Profile> {
     return /^\d{1,15}$/.test(value) ? this.profile(Number(value)) : undefined;
   }
 
+  /** A profile's links, oldest first — what the edit layer lists (and removes). */
+  links(id: number) {
+    return this.#db.selectFrom('profile_links').select(['id', 'label', 'url']).where('user_id', '=', id).orderBy('id').execute();
+  }
+
   /**
    * Numbers about a profile: its links, and its place among the members (by sign-up). Counts over every user —
    * the profile page asks for them only on request (an optional prop).

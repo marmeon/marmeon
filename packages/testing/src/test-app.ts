@@ -18,6 +18,7 @@ import {
   REGION_HEADER,
   urlFor,
   type CheckIslandRouteName,
+  type CheckLayerRouteName,
   type Param,
   type Query,
   type RouteArgs,
@@ -484,6 +485,21 @@ export class TestApp {
   island<const N extends RouteNameInput>(name: CheckIslandRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse {
     const path = urlFor(this.make(Router), name, params as Readonly<Record<string, Param>> | undefined, query as Query | undefined);
     return this.islanding().get(path);
+  }
+
+  /**
+   * Requests as a layer does (E53) — opening one (`<Link layer>`), or a visit or form inside one: a client-side request
+   * with `x-bespoke-region: layer`. A layer route answers with its page object (`assertLayer`), `closeLayer()` with "close"
+   * (`assertLayerClosed`), a page route with its page.
+   */
+  layering(): TestApp {
+    return this.withHeaders({ [PAGE_HEADER]: 'true', [REGION_HEADER]: 'layer' });
+  }
+
+  /** Opens a layer by route name — what `<Link route params layer>` sends: `app.layer('user-profile.edit', { user: ada.id })`. */
+  layer<const N extends RouteNameInput>(name: CheckLayerRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse {
+    const path = urlFor(this.make(Router), name, params as Readonly<Record<string, Param>> | undefined, query as Query | undefined);
+    return this.layering().get(path);
   }
 
   /** Requests as an API client. */

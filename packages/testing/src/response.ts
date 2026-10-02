@@ -1,6 +1,7 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import {
   isPageObject,
+  LAYER_CLOSE_HEADER,
   PAGE_SCRIPT_ID,
   REGION_HEADER,
   REGION_STATUS_HEADER,
@@ -8,6 +9,7 @@ import {
   type FormOf,
   type IslandOf,
   type IslandProps,
+  type LayerClose,
   type PageObject,
   type PageProps,
   type RegionObject,
@@ -346,6 +348,39 @@ export class TestResponse {
   assertIslandStatus(status: RegionOutcomeStatus): this {
     const outcome = this.headers.get(REGION_STATUS_HEADER);
     if (outcome !== status) this.#fail(`Expected the island's outcome "${status}", got ${outcome ? `"${outcome}"` : 'none'} (status ${this.status})`);
+    return this;
+  }
+
+  // --- Layers (E53) ------------------------------------------------------------------
+
+  /**
+   * The response is layer `component`'s page object (a client-side request — `app.layering()` — answered by
+   * `this.view(…).layer(…)`), optionally with props that contain `props` or pass a callback — typed against the controller
+   * when given: `assertLayer<EditUserProfileController>('user-profile/Edit', { profile: { id: ada.id } })`.
+   */
+  assertLayer<TSource extends PageSource = PageSource, const V extends string = string>(
+    component: PageNameOf<TSource, V>,
+    props?: DeepPartial<PropsOf<TSource>> | ((props: PropsOf<TSource>) => void),
+  ): this {
+    const page = this.page();
+    if (!page?.layer) this.#fail(`Expected the layer ${component}, got ${page ? `the page "${page.component}"` : `no page (status ${this.status})`}`);
+    return this.assertPage<TSource, V>(component, props);
+  }
+
+  /** The layers a document stacks over its page (a deep link of a layer's URL), bottom first — empty for any other page. */
+  layers(): PageObject[] {
+    return this.page()?.layers ?? [];
+  }
+
+  /**
+   * The response tells the layer's client to close (`closeLayer()`, E53): `layers` of them (default 1) and, when given, to
+   * reload `reload` beneath them.
+   */
+  assertLayerClosed(expected: Partial<LayerClose> = {}): this {
+    if (this.headers.get(LAYER_CLOSE_HEADER) !== 'true') this.#fail(`Expected the layer to close, got status ${this.status}${this.headers.get('location') ? ` → ${this.headers.get('location')}` : ''}`);
+    const { close } = this.json<{ close: LayerClose }>();
+    const want = { layers: expected.layers ?? 1, ...(expected.reload === undefined ? {} : { reload: expected.reload }) };
+    this.#compare(() => partialDeepStrictEqual(close, want), 'The layer closes otherwise');
     return this;
   }
 

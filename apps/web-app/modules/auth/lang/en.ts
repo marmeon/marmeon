@@ -108,6 +108,8 @@ const en = {
     name_placeholder: 'e.g. Backup script',
     may: 'May',
     submit: 'Create token',
+    done: 'Done — I copied it',
+    cancel: 'Cancel',
     abilities: {
       'users:read': 'Read the directory of people (GET /api/users)',
     },

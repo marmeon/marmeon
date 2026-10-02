@@ -1,6 +1,8 @@
-import { ERROR_PAGE, pageName } from '@bespokecore/http/page';
+import { ERROR_PAGE, LAYER_BACKDROP, pageName } from '@bespokecore/http/page';
 import type { ComponentType, ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
+import { Backdrop } from './backdrop.tsx';
+import type { PageLayer } from './layer.tsx';
 
 /** A layout: a component around pages — `function AppLayout({ children }: LayoutProps) { … }`. Shared data via `usePage()`. */
 export type Layout = ComponentType<LayoutProps>;
@@ -24,7 +26,12 @@ export type PageLayout = Layout | readonly Layout[] | null;
 export type PageSsr = boolean | 'complete';
 
 // Page props are validated at the controller boundary (PageProps<...>), not here.
-export type PageComponent = ComponentType<any> & { layout?: PageLayout; ssr?: PageSsr };
+export type PageComponent = ComponentType<any> & {
+  layout?: PageLayout;
+  ssr?: PageSsr;
+  /** How the view looks when it is a layer (E53): `'modal'` (the default), `'slideover'`, or a frame of its own. */
+  layer?: PageLayer;
+};
 
 /** The app's default layout per page name — for pages without their own `layout`: `createBespokeApp({ layout: () => AppLayout })`. */
 export type DefaultLayout = (name: string) => PageLayout | undefined;
@@ -77,6 +84,7 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
   return async (name) => {
     const load = pages.get(name);
     if (!load && name === ERROR_PAGE) return ErrorPage; // built-in until the app brings its own
+    if (!load && name === LAYER_BACKDROP) return Backdrop; // the neutral surface under a layer whose base is not shown (E54)
     if (!load) {
       const [module, ...rest] = name.split('/');
       throw new Error(`Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx`);

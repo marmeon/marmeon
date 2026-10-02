@@ -5,7 +5,9 @@ import { defaultTitle, isDevelopment, loadPageMessages, type TitleTemplate } fro
 import { BespokeApp } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
+import type { LayerFrame } from './layer.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
+import { loadView } from './views.ts';
 import { ssrResolvers } from './streamed.tsx';
 
 export interface SsrOptions {
@@ -20,6 +22,8 @@ export interface SsrOptions {
    * `locale`'s messages, loaded before rendering starts — per request, whatever other requests render meanwhile.
    */
   messages?: MessageLoader;
+  /** The same layer frame as the client's (`createBespokeApp({ layer })`), so a deep link's layers render alike. */
+  layer?: LayerFrame;
 }
 
 /**
@@ -32,11 +36,12 @@ export interface SsrOptions {
  * An error in the shell rejects (the server then sends the page without markup); an error in a Suspense boundary is
  * reported through `onError`, and the browser renders that boundary when it hydrates.
  */
-export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages }: SsrOptions = {}): SsrRender {
+export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages, layer }: SsrOptions = {}): SsrRender {
   const head = (collector: HeadCollector) => renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(tag)));
 
   return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred } = {}) => {
-    const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages)]);
+    // A deep link's layers (E53) render with the page, in the shell: their views are loaded first.
+    const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), ...(page.layers ?? []).map((layered) => loadView(resolve, layered.component))]);
     if (Component.ssr === false) return { html: '', head: head(createHeadCollector()) };
     const whole = complete || Component.ssr === 'complete';
     // Deferred groups stream with the page (E49) — not when it is sent whole: they are computed once the headers are out.
@@ -64,6 +69,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
         messages={messages}
         initialCatalog={catalog}
         ssr={ssr}
+        layer={layer}
       />,
       {
         signal,

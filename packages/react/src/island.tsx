@@ -31,8 +31,9 @@ import { RegionOwnerContext, useRouterContext } from './app.tsx';
 import { ErrorBoundary } from './fallbacks.tsx';
 import { IslandHeadContext } from './head.tsx';
 import { DataScript, SsrContext, streamedText, type SsrResolvers } from './streamed.tsx';
-import type { PageComponent, ResolvePage } from './pages.ts';
+import type { ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
+import { viewOf } from './views.ts';
 
 /** The path parameters of the island's route: required when its path has required ones. */
 type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
@@ -82,15 +83,6 @@ const LOADING: RegionSnapshot = { status: 'loading', region: undefined, pending:
 const NOT_RESOLVED: RegionResult = { status: 'browser' };
 const noSubscription = () => () => {};
 const noReload = () => Promise.resolve();
-
-/** A view being loaded or loaded — marked the way React reads a settled promise (`use()` returns at once, no suspending). */
-type ViewPromise = Promise<PageComponent> & { status?: 'pending' | 'fulfilled' | 'rejected'; value?: PageComponent; reason?: unknown };
-
-/**
- * Island views by `resolve` and name — one promise each (loaded once per app, like a module): a view shown before
- * renders at once (Back/Forward), a new one suspends its boundary until it is there.
- */
-const islandViews = new WeakMap<ResolvePage, Map<string, ViewPromise>>();
 
 /**
  * A part of the page that loads by itself — the view of another route (E48, E50): its own controller, middleware,
@@ -324,31 +316,6 @@ function IslandFrame({ as, route, className, id, snapshot, frameRef, children }:
 function IslandView({ resolve, region }: { resolve: ResolvePage; region: RegionObject }) {
   const Component = viewOf(resolve, region.component);
   return <Component {...region.props} />;
-}
-
-function viewOf(resolve: ResolvePage, name: string): PageComponent {
-  let views = islandViews.get(resolve);
-  if (!views) islandViews.set(resolve, (views = new Map()));
-  let view = views.get(name);
-  if (!view) {
-    const loading: ViewPromise = resolve(name);
-    loading.status = 'pending';
-    const known = views;
-    loading.then(
-      (Component) => {
-        loading.status = 'fulfilled';
-        loading.value = Component;
-      },
-      (error: unknown) => {
-        loading.status = 'rejected';
-        loading.reason = error;
-        known.delete(name); // asked again next time (offline, a chunk gone)
-      },
-    );
-    views.set(name, (view = loading));
-  }
-  // Always through `use()` — the same call whether it suspends or not.
-  return use(view as Promise<PageComponent>);
 }
 
 /** The default `error` of an island — a short notice with a retry (framework text, English like the other fallbacks). */

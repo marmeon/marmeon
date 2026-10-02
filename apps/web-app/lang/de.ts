@@ -10,6 +10,7 @@ export default {
   sign_out: 'Abmelden',
   sign_in: 'Anmelden',
   register: 'Konto anlegen',
+  close: 'Schließen',
   language: 'Sprache',
   locale: {
     changed: 'Sprache geändert.',

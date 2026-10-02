@@ -4,7 +4,9 @@ import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
 import { BespokeApp } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
+import type { LayerFrame } from './layer.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
+import { loadView } from './views.ts';
 
 export interface CreateBespokeAppOptions {
   resolve: ResolvePage;
@@ -27,6 +29,11 @@ export interface CreateBespokeAppOptions {
   /** The progress bar of visits: `{ delay: 250 }` (the default — fast visits show none), or `false`. */
   progress?: ProgressOptions | false;
   /**
+   * The frame around every layer's view (E53) — the same as the SSR entry's. Default `LayerDialog` (a native modal
+   * `<dialog>`); wrap it for the app's labels: `layer: (props) => <LayerDialog {...props} closeLabel="Schließen" />`.
+   */
+  layer?: LayerFrame;
+  /**
    * Errors React recovered from while hydrating: the server's markup did not match (React rendered that part again in
    * the browser), or a part failed on the server (the browser rendered it). Default: reported to the console — in
    * development with the page's name and a notice on the page, so a mismatch is not missed.
@@ -38,13 +45,19 @@ export interface CreateBespokeAppOptions {
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
  */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
+export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
   const page = readInitialPage();
 
   // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
   // the page's locale. The history entry is the navigator's (<BespokeApp> starts it): its key and URL — never the
   // page's props (E36).
-  const [Component, catalog, root] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), rootElement(rootId)]);
+  // A deep link's layers (E53) too: their views render in the server's markup.
+  const [Component, catalog, root] = await Promise.all([
+    resolve(page.component),
+    loadPageMessages(page, messages),
+    rootElement(rootId),
+    ...(page.layers ?? []).map((layered) => loadView(resolve, layered.component)),
+  ]);
   const app = (
     <BespokeApp
       initialPage={page}
@@ -56,6 +69,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
       progress={progress}
       messages={messages}
       initialCatalog={catalog}
+      layer={layer}
     />
   );
 

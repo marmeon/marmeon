@@ -3,10 +3,13 @@ import {
   Flasher,
   HttpError,
   isIslandResult,
+  isLayerResult,
   isPrefetch,
   isRedirectResult,
   isViewResult,
+  LAYER_BACKDROP,
   LOCATION_HEADER,
+  MAX_LAYER_DEPTH,
   PAGE_HEADER,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
@@ -21,13 +24,14 @@ import {
   SharedData,
   type DeferredResult,
   type IslandResult,
+  type LayerResult,
   type PageObject,
   type RegionObject,
   type RegionOutcomeStatus,
   type RegionResult,
   type SsrRender,
 } from '@bespokecore/http';
-import { defaultToResponse, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
+import { defaultToResponse, urlFor, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
 import { documentOf, FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
 export interface PageRenderOptions {
@@ -141,7 +145,19 @@ export interface ResponseFactoryOptions {
   islands?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<RegionResult>;
   /** How long a deferred group streamed with its page may take before the browser loads it instead (ms, default 10 s). */
   deferredTimeout?: number;
+  /**
+   * Resolves the base of a layer whose URL was loaded as a document — a deep link or a reload (E53): the kernel's, a GET of
+   * `url` in-process through the base route's own middleware and authorization, read-only. Without it, a layer's document
+   * shows the layer over the neutral surface.
+   */
+  layerBases?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<LayerBaseResult>;
 }
+
+/**
+ * What the base of a deep-linked layer answered (E53, E54): its page object — a page, or another layer (`layer` set: its
+ * base comes next) — or nothing to show: a redirect (not signed in), 401, 403, 404, an error. `status` is the HTTP status.
+ */
+export type LayerBaseResult = { readonly status: 'page'; readonly page: PageObject } | { readonly status: 'unavailable'; readonly httpStatus: number };
 
 /**
  * Turns controller results into HTTP responses. Client-side navigations get the
@@ -156,7 +172,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000 }: ResponseFactoryOptions = {},
+  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   const noRouter: RouteLookup = {
     findByName: (name) => {
@@ -235,6 +251,52 @@ export function createResponseFactory(
     }
   };
 
+  /** A layer's page object says what it is: its key (default: the view), its base's URL, and whether an action answered it. */
+  const layerInfo = (result: LayerResult, request: Request): NonNullable<PageObject['layer']> => {
+    const { base, key } = result.layer;
+    const target = urlFor(routes ?? noRouter, base.name, base.params, base.query);
+    const once = request.method !== 'GET' && request.method !== 'HEAD';
+    return { key: key ?? result.component, base: target, ...(once ? { once: true as const } : {}) };
+  };
+
+  /**
+   * The document of a layer's URL (E53): its base — a page, or another layer, whose base comes next (up to
+   * {@link MAX_LAYER_DEPTH}) — then the layers over it. A base that does not answer with its page (a redirect to the login,
+   * 401, 403, 404, an error) leaves the layers alone over the neutral surface ({@link LAYER_BACKDROP}, E54): nothing of the
+   * base is computed for the browser, let alone sent.
+   */
+  const deepLink = async (layer: PageObject, request: Request, scope: Container | undefined): Promise<PageObject> => {
+    const layers: PageObject[] = [layer];
+    let base: PageObject | undefined;
+    let next = layer.layer?.base;
+    const parent = scope ? { request, scope, requestId: currentRequest()?.requestId } : undefined;
+    while (layerBases && parent && next !== undefined) {
+      const answer = await layerBases(next, parent);
+      if (answer.status !== 'page') {
+        if (answer.httpStatus >= 500) logger.error(`The base ${next} of the layer [${layer.component}] failed (${answer.httpStatus}) — the layer shows alone`, { component: layer.component });
+        break;
+      }
+      if (!answer.page.layer) {
+        base = answer.page;
+        break;
+      }
+      if (layers.length >= MAX_LAYER_DEPTH) {
+        logger.error(`The layer [${layer.component}] has more than ${MAX_LAYER_DEPTH} bases stacked (a cycle?) — it shows alone`, { component: layer.component });
+        layers.splice(0, layers.length - 1);
+        break;
+      }
+      layers.unshift(answer.page);
+      next = answer.page.layer.base;
+    }
+    if (base) return { ...base, layers };
+    // The neutral surface: the shared props only (the layout's), under the declared base's URL — never the base's data.
+    const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
+    const resolved = await resolvePageProps({}, shared, undefined);
+    const surface: PageObject = { component: LAYER_BACKDROP, ...resolved, url: layers[0]!.layer?.base ?? layer.url, version };
+    for (const key of ['locale', 'fallbackLocale'] as const) if (layer[key] !== undefined) surface[key] = layer[key];
+    return JSON.parse(JSON.stringify({ ...surface, layers })) as PageObject;
+  };
+
   return async (result, ctx, scope) => {
     if (isRedirectResult(result)) {
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
@@ -242,7 +304,7 @@ export function createResponseFactory(
     }
     if (isIslandResult(result)) return islandResponse(result, ctx, version, debug);
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
-    if (regionOf(ctx.request)) {
+    if (regionOf(ctx.request) === 'island') {
       // `<Island route>` takes island routes only (a type error otherwise) — at runtime a page is not one either.
       throw new HttpError(404, debug ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
     }
@@ -256,17 +318,32 @@ export function createResponseFactory(
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
     // The parsed query (E55), for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
     const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query };
+    const layer = isLayerResult(result) ? layerInfo(result, ctx.request) : undefined;
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}) };
     const headers = { ...result.headers, vary: PAGE_VARY };
 
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both
     // sides (`Serialize<T>`), so the markup hydrates.
     const json = JSON.stringify(page);
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {
-      return new Response(json, { status: result.status, headers: { ...headers, 'content-type': 'application/json', [PAGE_HEADER]: 'true' } });
+      // A layer's page object, also to a plain visit: the client opens it over what is on screen (E53).
+      return new Response(json, {
+        status: result.status,
+        headers: { ...headers, 'content-type': 'application/json', [PAGE_HEADER]: 'true', ...(layer ? { [REGION_HEADER]: 'layer' } : {}) },
+      });
     }
 
     const sent = JSON.parse(json) as PageObject;
+    if (layer) {
+      // A deep link or a reload of a layer's URL: its declared base under it, resolved in-process (E53) — or the neutral
+      // surface, when the base turns the user away (E54). The base's deferred props load in the browser (its scope is gone).
+      const stacked = await deepLink(sent, ctx.request, scope);
+      const { resolveIsland } = streaming(stacked, ctx.request, {}, scope);
+      return new Response(await document(stacked, ctx.request, resolveIsland ? { resolveIsland } : {}), {
+        status: result.status,
+        headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
+      });
+    }
     return new Response(await document(sent, ctx.request, streaming(sent, ctx.request, result.props, scope)), {
       status: result.status,
       headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },

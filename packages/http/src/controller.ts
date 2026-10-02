@@ -1,7 +1,8 @@
 import { RedirectResult, type RedirectStatus } from './redirect.ts';
 import type { CheckViewName } from './page.ts';
 import { island, type IslandResult } from './island.ts';
-import { view, type ViewProps, type ViewResult } from './view.ts';
+import { view, type PageResult, type ViewProps } from './view.ts';
+import { CloseLayerResult, type CloseLayerOptions } from './layer.ts';
 
 /**
  * Base class for invokable controllers (REPR): one class per endpoint.
@@ -12,9 +13,21 @@ import { view, type ViewProps, type ViewResult } from './view.ts';
  * router enforces its presence when the route is registered.
  */
 export abstract class Controller {
-  /** A page: `this.view('user-profile/Show', { profile })` — the name is checked against `modules/*\/views/**`. */
-  protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status = 200): ViewResult<TProps, V> {
+  /**
+   * A page: `this.view('user-profile/Show', { profile })` — the name is checked against `modules/*\/views/**`. Or a layer
+   * over the page on screen (E53): `this.view('user-profile/Edit', { profile }).layer({ base: 'user-profile.show', params: { user } })`.
+   */
+  protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status = 200): PageResult<TProps, V> {
     return view<V, TProps>(component, props, status);
+  }
+
+  /**
+   * Closes the layer the request came from (E53, Inertia's `close()`) — after a form in it was saved, say — and reloads what
+   * is beneath: `this.closeLayer({ reload: ['profile'] })`. Without a layer (no JavaScript) it is a redirect: back, or where
+   * `.route(…)` says. `.with(…)` flashes for the next request either way.
+   */
+  protected closeLayer(options?: CloseLayerOptions): CloseLayerResult {
+    return new CloseLayerResult(options);
   }
 
   /**

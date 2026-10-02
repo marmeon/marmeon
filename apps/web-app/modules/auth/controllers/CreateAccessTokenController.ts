@@ -1,7 +1,6 @@
 import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
 import { trans, Translator } from '@bespokecore/i18n';
-import { Session } from '@bespokecore/session';
 import * as v from 'valibot';
 import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
 
@@ -19,31 +18,41 @@ export const CreateAccessTokenRequest = defineRequest({
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 
+/** The two steps of creating a token share one layer: the answer replaces the form in place (E53). */
+const LAYER = { base: 'auth.tokens', key: 'tokens.create' } as const;
+
+/** The form for a new token — a layer over the list (`<Link route="auth.tokens.create" layer>`). */
+export class ShowCreateAccessTokenController extends Controller {
+  readonly #translator: Translator;
+
+  constructor(translator: Translator) {
+    super();
+    this.#translator = translator;
+  }
+
+  handle(_ctx: HttpContext<Authenticated>) {
+    return this.view('auth/CreateAccessToken', { abilities: abilityDescriptions(this.#translator) }).layer(LAYER);
+  }
+}
+
 /**
- * A new token. Its plain text is in this one response — rendered, not redirected, so it never sits in
- * the session (a flash would store it). The database keeps only its hash.
+ * A new token. Its plain text is in this one response — rendered, not redirected, so it never sits in the session (a
+ * flash would store it); the database keeps only its hash. It is a layer answered by a POST, so it is shown once (E53):
+ * it replaces the form, and when it closes — the button, Escape, Back — it is gone from the tab's memory too (Forward asks
+ * the server, whose GET is the list), and the list beneath reloads with the new token in it.
  */
 export class CreateAccessTokenController extends Controller {
   static request = CreateAccessTokenRequest;
 
   readonly #tokens: AccessTokenStore;
-  readonly #session: Session;
-  readonly #translator: Translator;
 
-  constructor(tokens: AccessTokenStore, session: Session, translator: Translator) {
+  constructor(tokens: AccessTokenStore) {
     super();
     this.#tokens = tokens;
-    this.#session = session;
-    this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof CreateAccessTokenRequest>) {
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
-    return this.view('auth/AccessTokens', {
-      tokens: await this.#tokens.list(ctx.user.id),
-      abilities: abilityDescriptions(this.#translator),
-      plainText: plainText as string | null,
-      csrfToken: this.#session.token(),
-    });
+    return this.view('auth/NewAccessToken', { name: ctx.body.name, plainText: plainText as string }).layer(LAYER);
   }
 }

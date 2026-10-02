@@ -5,7 +5,10 @@
  */
 import {
   isPageObject,
+  LAYER_BACKDROP,
+  LAYER_CLOSE_HEADER,
   LOCATION_HEADER,
+  MAX_LAYER_DEPTH,
   PAGE_HEADER,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
@@ -15,11 +18,13 @@ import {
   REGION_STATUS_HEADER,
   VERSION_HEADER,
   type DeferredResult,
+  type LayerClose,
   type PageObject,
   type RegionObject,
   type ValidationErrors,
 } from '../page.ts';
 import { mergePage } from './merge.ts';
+import { Layer, type LayerControl, type LayerHost } from './layer.ts';
 import { QueryState, type QueryStateOptions } from './query-state.ts';
 import { RegionOwner, type KeptRegion, type Region, type RegionInitial, type RegionResponse, type RegionTransport } from './region.ts';
 
@@ -123,6 +128,11 @@ export interface VisitOptions extends VisitCallbacks {
    */
   async?: boolean;
   /**
+   * Open the answer as a layer (E53) — `<Link layer>`: sent as a layer's request (`x-bespoke-region: layer`). An answer
+   * that is a layer opens over what is on screen whatever this says; one that is a page is shown as the page.
+   */
+  layer?: boolean;
+  /**
    * Keep the URL of the page on screen, though the request went elsewhere — "load more" with `data: { cursor }`:
    * the history entry stays the list's URL (replaced, not a new one), so a reload starts it over instead of showing
    * one later page alone.
@@ -135,6 +145,8 @@ export interface PrefetchOptions {
   /** How long the prefetched page may be shown instead of asking the server, in ms (default 30 000). */
   cacheFor?: number;
   data?: Record<string, unknown>;
+  /** Fetched as a layer's request — for `<Link layer prefetch>` (the visit that opens it takes it). */
+  layer?: boolean;
 }
 
 /** How long a prefetched page is used by default: 30 s, like Inertia. */
@@ -166,6 +178,11 @@ export interface HistoryState {
   readonly scrollRegions?: readonly ScrollPosition[];
   /** The entry's page in the in-memory cache — random, so entries of an earlier document never match. */
   readonly key: string;
+  /**
+   * A layer's entry (E53): how deep it is, and the keys of the entries beneath it (the page's first) — what Back/Forward
+   * puts on screen with it. Keys only: what they show lives in memory.
+   */
+  readonly layer?: { readonly depth: number; readonly below: readonly string[] };
 }
 
 export function isHistoryState(value: unknown): value is HistoryState {
@@ -187,7 +204,11 @@ type WindowEvent = 'popstate' | 'pageshow' | 'scroll';
 
 /** The parts of `window` the navigator uses (a fake one in tests). The optional ones only add features. */
 export interface NavigatorWindow {
-  readonly history: Pick<History, 'state' | 'pushState' | 'replaceState'> & { scrollRestoration?: ScrollRestoration };
+  readonly history: Pick<History, 'state' | 'pushState' | 'replaceState'> & {
+    scrollRestoration?: ScrollRestoration;
+    /** Back (`go(-n)`) — closing a layer goes back to the entry beneath. Without it, the entry is replaced. */
+    go?(delta: number): void;
+  };
   readonly location: Pick<Location, 'href' | 'origin' | 'pathname' | 'search' | 'assign' | 'replace' | 'reload'>;
   readonly scrollX: number;
   readonly scrollY: number;
@@ -213,6 +234,11 @@ export interface RenderOptions {
   readonly preserveState: boolean;
   /** The regions of this page's history entry (see {@link Navigator.region}). */
   readonly owner: RegionOwner;
+  /**
+   * The layers over the page, bottom first (E53) — rendered over it, each with its own page object, visits and islands.
+   * When only these change, `page` is the one on screen already (with `preserveState`): it must not render again.
+   */
+  readonly layers: readonly Layer[];
 }
 
 export interface NavigatorOptions {
@@ -250,7 +276,7 @@ const TOP: Scroll = { scroll: { x: 0, y: 0 }, scrollRegions: [] };
  * `x-bespoke-location` (a new build, or signing in or out — `ClientHistory` on the server) loads that URL
  * fully and drops every page kept in memory. Every request reports its events (`on('start', …)`).
  */
-export class Navigator {
+export class Navigator implements LayerHost {
   readonly #window: NavigatorWindow;
   readonly #render: NavigatorOptions['render'];
   readonly #cache: PageCache;
@@ -298,21 +324,39 @@ export class Navigator {
   /** A page is being swapped in: scroll events belong to no entry until its position is set. */
   #transitioning = false;
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The layers on screen over the page (E53), bottom first. `#key` stays the page's entry: the current history entry is the
+   * top layer's (`#topKey()`).
+   */
+  #layers: LayerControl[] = [];
+  /** The layers the document came with (a deep link of a layer's URL) — stacked once the history is taken over. */
+  readonly #initialLayers: readonly PageObject[];
+  /** A layer closing by going back in the history: what the popstate it caused finishes. */
+  #pendingClose: PendingClose | undefined;
 
   constructor({ initialPage, render, window: win = globalThis.window, cacheSize = DEFAULT_PAGE_CACHE_SIZE }: NavigatorOptions) {
     this.#window = win;
     this.#render = render;
-    this.#cache = new PageCache(cacheSize);
-    this.#page = initialPage;
-    this.#firstPage = initialPage;
+    this.#cache = new PageCache(cacheSize, () => this.#onScreen());
+    // A deep link of a layer's URL: the page under it (its base, or the neutral surface), the layers apart.
+    const { layers: initialLayers, ...page } = initialPage;
+    this.#initialLayers = (initialLayers ?? []).slice(0, MAX_LAYER_DEPTH);
+    this.#page = page;
+    this.#firstPage = page;
     this.#version = initialPage.version ?? null;
     this.#owner = new RegionOwner(this.#transport);
     this.#streaming = new Set(initialPage.streamedProps ?? []);
   }
 
-  /** The page on screen. */
+  /** The page on screen — under the layers, when some are open. */
   get page(): PageObject {
     return this.#page;
+  }
+
+  /** The layers on screen over the page, bottom first (E53). */
+  get layers(): readonly Layer[] {
+    this.#adopt();
+    return this.#layers.map((control) => control.layer);
   }
 
   /** How many pages are kept in memory (tests). */
@@ -371,8 +415,9 @@ export class Navigator {
     if (this.#window.history.scrollRestoration !== undefined) this.#window.history.scrollRestoration = 'manual';
     // A reload or a session restore keeps the entry: back to where it was.
     if (restored) this.#applyScroll(this.#positionOf(restored));
-    // The first render is on screen — now the props it was sent without.
+    // The first render is on screen — now the props it was sent without (the layers' too).
     this.#loadDeferred();
+    for (const control of this.#layers) this.#loadLayerDeferred(control);
     this.#window.addEventListener('popstate', this.#onPopState);
     this.#window.addEventListener('pageshow', this.#onPageShow);
     // Capturing: scroll events of elements do not bubble, but pass the window on their way down.
@@ -414,6 +459,24 @@ export class Navigator {
    * a newer visit replaced it (`onCancel`), or it failed (`onException`). It never rejects for a failed request.
    */
   async visit(url: string, options: VisitOptions = {}): Promise<PageObject | undefined> {
+    return this.#visit(undefined, url, options);
+  }
+
+  /** A visit from inside a layer (E53) — `layer.visit()`: sent as the layer's, its answer placed for it. */
+  layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined> {
+    const from = this.#layers.find((control) => control.layer === layer);
+    // A layer that left the screen visits nothing any more.
+    if (!from) return Promise.resolve(undefined);
+    return this.#visit(from, url, options);
+  }
+
+  /**
+   * A visit — of the page (`from` undefined) or of a layer over it. Where its answer goes: a page replaces the page (and
+   * the layers go) — unless it is a reload of the page under the layers, which lands there; a layer's answer opens over
+   * the level it came from — or replaces that layer in place when it is the same one (its key: a failed form). A layer's
+   * request that the server answers with `closeLayer()` closes it.
+   */
+  async #visit(from: LayerControl | undefined, url: string, options: VisitOptions): Promise<PageObject | undefined> {
     this.#adopt();
     const { method = 'get', data, replace = false, preserveScroll = false, headers = {}, async: background = false, preserveUrl = false } = options;
     const preserveState = options.preserveState ?? method !== 'get';
@@ -429,35 +492,38 @@ export class Navigator {
     if (method !== 'get') this.#flushPrefetched();
 
     const request = buildRequest(target, method, data);
-    // A partial reload names the page it reloads: the server sends only some props when it renders that one.
-    const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? this.#page.component : undefined;
+    const current = from ? from.layer.page : this.#page;
+    // A partial reload names the page (or layer) it reloads: the server sends only some props when it renders that one.
+    const partial = options.only !== undefined || (options.except?.length ?? 0) > 0 ? current.component : undefined;
     const partialHeaders = partial === undefined ? {} : partialReloadHeaders(partial, options.only, options.except);
+    // A layer's request (E53): from inside one, or opening one.
+    const asLayer = from !== undefined || options.layer === true;
+    const regionHeaders: Record<string, string> = asLayer ? { [REGION_HEADER]: 'layer' } : {};
     // A plain GET visit of a prefetched URL takes that page (or waits for its request, still under way).
-    const prefetched = method === 'get' && partial === undefined && Object.keys(headers).length === 0 ? this.#takePrefetched(request.url) : undefined;
+    const prefetched =
+      method === 'get' && partial === undefined && Object.keys(headers).length === 0 ? this.#takePrefetched(prefetchKey(request.url, asLayer)) : undefined;
     const visit: Visit = background ? { url: request.url, method, async: true } : { url: request.url, method };
-    // An async visit lands only on the page it started from.
-    const from = this.#key;
+    // An async visit lands only on the page (or the layer) it started from.
+    const fromKey = this.#key;
     return this.#request(visit, options, async (signal, onProgress) => {
       let page = prefetched ? await untilAborted(prefetched, signal) : undefined;
       if (!page) {
         if (signal.aborted) return undefined;
         const response = await this.#send(
           request.url,
-          { method, headers: { ...request.headers, ...partialHeaders, ...headers }, body: request.body, signal },
+          { method, headers: { ...request.headers, ...regionHeaders, ...partialHeaders, ...headers }, body: request.body, signal },
           onProgress,
         );
+        if (response.headers.get(LAYER_CLOSE_HEADER) === 'true') return this.#closed(from, response, visit, options);
         page = await this.#read(response, { replace, failed: true }, visit, options);
       }
       if (!page || signal.aborted) return undefined;
-      if (background && (this.#left || this.#key !== from || this.#transitioning)) return undefined;
-      // Some props of the same page: into the ones it has. (Another page — a redirect to the login — came in full.)
-      if (partial !== undefined && page.component === partial && this.#page.component === partial) page = mergePage(this.#page, page, options.reset);
+      if (background && (this.#left || this.#key !== fromKey || this.#transitioning || from?.layer.closed)) return undefined;
+      // Some props of the same page (or layer): into the ones it has. (Another page — a redirect to the login — came in full.)
+      if (partial !== undefined && page.component === partial && current.component === partial) page = mergePage(current, page, options.reset);
       // The URL — and so the query state — stays the one of the page on screen.
-      if (preserveUrl) page = withQueryOf({ ...page, url: this.#page.url }, this.#page);
-      // Redirected back to the same URL (a failed form), or kept the URL ("load more"): replace, don't stack history entries.
-      const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
-      const history = replace || preserveUrl || (method !== 'get' && sameUrl) ? 'replace' : 'push';
-      const shown = await this.#show(page, history, { preserveScroll, preserveState, hash: preserveUrl ? '' : target.hash });
+      if (preserveUrl) page = withQueryOf({ ...page, url: current.url }, current);
+      const shown = await this.#place(from, page, { method, replace, preserveScroll, preserveState, preserveUrl, partial: partial !== undefined, hash: preserveUrl ? '' : target.hash });
       if (shown) {
         const errors = validationErrors(shown);
         if (errors) this.#emit('error', options.onError, errors, visit);
@@ -465,6 +531,190 @@ export class Navigator {
       }
       return shown;
     });
+  }
+
+  /** `closeLayer()` answered a layer's request: close, then the visit ends on what is beneath (a success). */
+  async #closed(from: LayerControl | undefined, response: Response, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined> {
+    let close: LayerClose = { layers: 1 };
+    try {
+      const body = (await response.json()) as { close?: LayerClose };
+      if (body.close && Number.isInteger(body.close.layers) && body.close.layers > 0) close = body.close;
+    } catch {
+      // No body: close the one layer.
+    }
+    if (!from || from.layer.closed) return undefined;
+    await this.closeLayer(from.layer, close);
+    const shown = this.#layers.at(-1)?.layer.page ?? this.#page;
+    this.#emit('success', callbacks.onSuccess, shown, visit);
+    return shown;
+  }
+
+  /** Where a visit's answer goes — see {@link Navigator.#visit}. */
+  async #place(
+    from: LayerControl | undefined,
+    page: PageObject,
+    options: { method: VisitMethod; replace: boolean; preserveScroll: boolean; preserveState: boolean; preserveUrl: boolean; partial: boolean; hash: string },
+  ): Promise<PageObject | undefined> {
+    const { method, replace, preserveScroll, preserveState, preserveUrl, partial, hash } = options;
+    if (!page.layer) {
+      // The page under the layers reloaded (a poll, deferred props, `reload({ only })`): it lands there, the layers and
+      // their history entries stay.
+      if (!from && this.#layers.length > 0 && page.component === this.#page.component && (partial || replace || preserveUrl)) {
+        return this.#landPage(page, preserveState);
+      }
+      // Redirected back to the same URL (a failed form), or kept the URL ("load more"): replace, don't stack history entries.
+      const sameUrl = page.url === this.#window.location.pathname + this.#window.location.search;
+      const history = replace || preserveUrl || (method !== 'get' && sameUrl) ? 'replace' : 'push';
+      return this.#show(page, history, { preserveScroll, preserveState, hash });
+    }
+    const at = from ? this.#layers.indexOf(from) : -1;
+    if (from && at >= 0 && (page.layer.key === from.layer.key || (partial && page.component === from.layer.page.component))) {
+      // The same layer — validation errors, a reload, the next step: in place. A GET that is no reload is a step of its own.
+      const inPlace = replace || preserveUrl || partial || method !== 'get';
+      return this.#replaceLayer(at, page, { push: !inPlace, preserveState });
+    }
+    // One more than the protocol allows: shown as a page.
+    if (at + 2 > MAX_LAYER_DEPTH) return this.#show(page, 'push', { preserveScroll: false, preserveState: false, hash: '' });
+    return this.#openLayer(at, page);
+  }
+
+  /** The page under the layers, reloaded: in place — its entry and the layers' stay, nothing scrolls. */
+  async #landPage(page: PageObject, preserveState: boolean): Promise<PageObject> {
+    this.#cache.updatePage(this.#key!, page);
+    this.#setPage(page);
+    await this.#render(page, { preserveState, owner: this.#owner, layers: this.layers });
+    this.#loadDeferred();
+    return page;
+  }
+
+  /**
+   * Opens a layer over level `at` (-1: the page) — what was over that level goes. A history entry of its own (Back closes
+   * it), the scroll position stays: the page does not move under it.
+   */
+  async #openLayer(at: number, page: PageObject): Promise<PageObject> {
+    const wasTop = at === this.#layers.length - 1;
+    this.#dismissFrom(at + 1);
+    const leaving = this.#currentScroll();
+    this.#cancelScrollSave();
+    const top = this.#topKey();
+    // The entry being left keeps where it was scrolled to.
+    this.#positions.set(top, leaving);
+    if (wasTop) this.#window.history.replaceState(this.#stateOf(top, leaving), '', this.#window.location.href);
+    const below = this.#belowOf(at + 1);
+    const key = newKey();
+    const control = Layer.create(this, key, below.length, page, new RegionOwner(this.#transport));
+    // Pushed right over the entry beneath: closing it is Back.
+    this.#cache.set(key, { page, regions: control.layer.owner.regions, below, pushed: wasTop });
+    this.#window.history.pushState(layerEntry(page, key, leaving, below), '', page.url);
+    this.#positions.set(key, leaving);
+    this.#layers.push(control);
+    await this.#renderLayers();
+    this.#loadLayerDeferred(control);
+    return page;
+  }
+
+  /**
+   * The layer at `at` answered with itself: replaced in place (its state kept when `preserveState`) — or, `push`, a new
+   * entry at the same depth (a wizard's next step: Back goes to the step before).
+   */
+  async #replaceLayer(at: number, page: PageObject, { push, preserveState }: { push: boolean; preserveState: boolean }): Promise<PageObject> {
+    this.#dismissFrom(at + 1);
+    const current = this.#layers[at]!;
+    const below = this.#belowOf(at);
+    const position = this.#currentScroll();
+    if (!push && preserveState) {
+      current.update(page);
+      const cached = this.#cache.peek(current.layer.entry);
+      this.#cache.set(current.layer.entry, { page, regions: current.layer.owner.regions, below, pushed: cached?.pushed ?? false });
+      this.#window.history.replaceState(layerEntry(page, current.layer.entry, position, below), '', page.url);
+    } else {
+      const key = push ? newKey() : current.layer.entry;
+      const pushed = push ? true : (this.#cache.peek(key)?.pushed ?? false);
+      // A new layer object (a fresh state) — the one it replaces is not forgotten when pushed over: Back shows it again.
+      this.#layers.splice(at, 1);
+      current.dismiss();
+      if (!push && current.layer.once) this.#cache.delete(current.layer.entry);
+      const control = Layer.create(this, key, below.length, page, new RegionOwner(this.#transport));
+      this.#cache.set(key, { page, regions: control.layer.owner.regions, below, pushed });
+      if (push) {
+        this.#positions.set(current.layer.entry, position);
+        this.#window.history.replaceState(layerEntry(current.layer.page, current.layer.entry, position, below), '', this.#window.location.href);
+        this.#window.history.pushState(layerEntry(page, key, position, below), '', page.url);
+      } else {
+        this.#window.history.replaceState(layerEntry(page, key, position, below), '', page.url);
+      }
+      this.#positions.set(key, position);
+      this.#layers.splice(at, 0, control);
+      this.#loadLayerDeferred(control);
+    }
+    await this.#renderLayers();
+    return page;
+  }
+
+  /**
+   * Closes `layer` and `close.layers - 1` beneath it — and every layer over it (E53). When their entries were pushed one
+   * over the other right over what stays, that is Back in the history (Forward then asks the server again: what closed is
+   * forgotten); otherwise the current entry becomes what stays. Then `close.reload` reloads what is beneath — the page and
+   * the layers that stay — and a layer shown once (an action's answer) reloads them fully.
+   */
+  async closeLayer(layer: Layer, close: LayerClose): Promise<void> {
+    const index = this.#layers.findIndex((control) => control.layer === layer);
+    if (index < 0 || this.#left) return;
+    const keep = Math.max(0, index + 1 - Math.max(1, close.layers));
+    const closing = this.#layers.slice(keep);
+    const target = keep === 0 ? this.#key! : this.#layers[keep - 1]!.layer.entry;
+    const forget = new Set(closing.map((control) => control.layer.entry));
+    const state: unknown = this.#window.history.state;
+    const onTop = isHistoryState(state) && state.key === this.#topKey();
+    const back = this.#window.history.go !== undefined && onTop && closing.every((control) => this.#cache.peek(control.layer.entry)?.pushed === true);
+    const reload = close.reload ?? (closing.some((control) => control.layer.once) ? true : undefined);
+    if (back) {
+      await new Promise<void>((done) => {
+        const pending: PendingClose = { target, forget, reload, done };
+        this.#pendingClose = pending;
+        this.#window.history.go!(-closing.length);
+        // The browser did not go back (it may refuse): the entry becomes what stays.
+        setTimeout(() => {
+          if (this.#pendingClose !== pending) return;
+          this.#pendingClose = undefined;
+          void this.#closeInPlace(keep, forget, reload).finally(done);
+        }, CLOSE_TIMEOUT);
+      });
+      return;
+    }
+    await this.#closeInPlace(keep, forget, reload);
+  }
+
+  /** Closes every layer above `keep` by replacing the current entry with what stays. */
+  async #closeInPlace(keep: number, forget: ReadonlySet<string>, reload: LayerClose['reload']): Promise<void> {
+    if (this.#left) return;
+    // Over the neutral surface (E54) there is nothing to go back to: the base is visited — the server says what it shows.
+    if (keep === 0 && this.#page.component === LAYER_BACKDROP) {
+      this.#dismissFrom(0);
+      await this.visit(this.#page.url, { replace: true });
+      return;
+    }
+    const position = this.#currentScroll();
+    this.#dismissFrom(keep);
+    for (const key of forget) this.#cache.delete(key);
+    const top = this.#topKey();
+    this.#window.history.replaceState(this.#stateOf(top, position), '', keep === 0 ? this.#page.url : this.#layers[keep - 1]!.layer.page.url);
+    await this.#renderLayers();
+    if (reload !== undefined) await this.#reloadTop(reload);
+  }
+
+  /**
+   * Reloads what is on screen now — the page and every layer still over it, from the bottom up — some props (those a level
+   * does not have are ignored), or (`true`) all of them: what the closed layer changed may show on any of them (a removed
+   * link on the edit layer and on the profile under it). In the background, each landing in place; the page first, so a
+   * flash message reaches the page's layout.
+   */
+  async #reloadTop(reload: NonNullable<LayerClose['reload']>): Promise<void> {
+    if (reload !== true && reload.length === 0) return;
+    const options: VisitOptions = { replace: true, preserveScroll: true, preserveState: true, async: true, ...(reload === true ? {} : { only: reload }) };
+    const layers = [...this.#layers];
+    await this.#visit(undefined, this.#page.url, options);
+    for (const control of layers) if (!control.layer.closed) await this.#visit(control, control.layer.page.url, options);
   }
 
   /**
@@ -480,8 +730,9 @@ export class Navigator {
     this.#adopt();
     const target = new URL(url, this.#window.location.href);
     if (target.origin !== this.#window.location.origin) return Promise.resolve();
-    const { url: key } = buildRequest(target, 'get', options.data);
-    if (key === this.#page.url) return Promise.resolve();
+    const { url: path } = buildRequest(target, 'get', options.data);
+    if (path === this.#page.url && !options.layer) return Promise.resolve();
+    const key = prefetchKey(path, options.layer === true);
     const existing = this.#prefetched.peek(key);
     if (existing && !existing.expired()) return existing.page.then(() => undefined);
 
@@ -489,7 +740,7 @@ export class Navigator {
     const controller = new AbortController();
     const entry: Prefetched = {
       controller,
-      page: this.#fetchAhead(key, controller.signal).then((page) => {
+      page: this.#fetchAhead(path, controller.signal, options.layer === true).then((page) => {
         // Kept from when it arrived; nothing to keep → the visit asks the server.
         if (page && this.#prefetched.peek(key) === entry) entry.expiresAt = Date.now() + cacheFor;
         else if (this.#prefetched.peek(key) === entry) this.#prefetched.delete(key);
@@ -503,9 +754,10 @@ export class Navigator {
   }
 
   /** The page of a prefetch — undefined for anything that is not a page to show as it is. */
-  async #fetchAhead(url: string, signal: AbortSignal): Promise<PageObject | undefined> {
+  async #fetchAhead(url: string, signal: AbortSignal, layer: boolean): Promise<PageObject | undefined> {
     try {
-      const response = await this.#send(url, { method: 'get', headers: { [PURPOSE_HEADER]: 'prefetch' }, signal });
+      const headers: Record<string, string> = layer ? { [PURPOSE_HEADER]: 'prefetch', [REGION_HEADER]: 'layer' } : { [PURPOSE_HEADER]: 'prefetch' };
+      const response = await this.#send(url, { method: 'get', headers, signal });
       // 409 (a new build, signing in or out), 5xx, a 4xx page, not a page: the visit asks again and handles it.
       if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true') {
         await response.body?.cancel();
@@ -541,21 +793,40 @@ export class Navigator {
    * goes into the query string — `reload({ data: { cursor }, only: ['people'], preserveUrl: true })` loads more.
    */
   reload(options: Omit<VisitOptions, 'method'> = {}): Promise<PageObject | undefined> {
-    const { pathname, search } = this.#window.location;
-    return this.visit(pathname + search, { replace: true, preserveScroll: true, preserveState: true, ...options });
+    // The page's URL — not the window's: under a layer, the window shows the layer's.
+    return this.visit(this.#page.url, { replace: true, preserveScroll: true, preserveState: true, ...options });
   }
 
-  /** The entry the document was loaded into gets a key, and its page goes into the cache. Returns a restored entry. */
+  /**
+   * The entry the document was loaded into gets a key, and its page goes into the cache — with the layers it came with (a
+   * deep link): the page under them has no entry of its own then, the entry is the top layer's. Returns a restored entry.
+   */
   #adopt(): HistoryState | undefined {
     if (this.#key !== undefined) return undefined;
     const state: unknown = this.#window.history.state;
     // A reload or session restore keeps the entry's key (and scroll); the page itself came fresh from the server.
     const restored = isHistoryState(state) ? state : undefined;
-    this.#key = restored?.key ?? newKey();
+    const key = restored?.key ?? newKey();
+    const position = restored ? this.#positionOf(restored) : TOP;
+    this.#key = this.#initialLayers.length > 0 ? newKey() : key;
     this.#firstKey = this.#key;
     this.#firstPage = this.#page;
     this.#cache.set(this.#key, { page: this.#page, regions: this.#owner.regions });
-    this.#window.history.replaceState(entry(this.#page, this.#key, restored ? this.#positionOf(restored) : TOP), '', this.#window.location.href);
+    if (this.#initialLayers.length === 0) {
+      this.#window.history.replaceState(entry(this.#page, this.#key, position), '', this.#window.location.href);
+      return restored;
+    }
+    const below = [this.#key];
+    this.#initialLayers.forEach((page, index) => {
+      const own = index === this.#initialLayers.length - 1 ? key : newKey();
+      const control = Layer.create(this, own, index + 1, page, new RegionOwner(this.#transport));
+      // Not pushed over an entry of their own: closing one replaces the entry with what is beneath.
+      this.#cache.set(own, { page, regions: control.layer.owner.regions, below: [...below], pushed: false });
+      this.#layers.push(control);
+      below.push(own);
+    });
+    const top = this.#layers.at(-1)!.layer;
+    this.#window.history.replaceState(layerEntry(top.page, key, position, below.slice(0, -1)), '', this.#window.location.href);
     return restored;
   }
 
@@ -570,10 +841,12 @@ export class Navigator {
     // The page's islands: those of the page on screen when its state is kept (the same component — a partial reload, a
     // sort link): replaced in place, they stay; pushed, the new entry starts with a copy. Any other page starts empty.
     const keep = preserveState && page.component === this.#page.component;
-    const owner = history === 'replace' && keep ? this.#owner : new RegionOwner(this.#transport, keep ? new Map(this.#owner.regions) : new Map());
+    // A page replaces the layers too (E53): the entry being left (or replaced) is the top layer's.
+    const layered = this.#layers.length > 0;
+    const owner = history === 'replace' && keep && !layered ? this.#owner : new RegionOwner(this.#transport, keep ? new Map(this.#owner.regions) : new Map());
     try {
       try {
-        await this.#render(page, { preserveState, owner });
+        await this.#render(page, { preserveState, owner, layers: [] });
       } catch {
         // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
         if (owner !== this.#owner) owner.close();
@@ -583,15 +856,19 @@ export class Navigator {
       }
       const { history: browserHistory } = this.#window;
       const arrived = preserveScroll ? this.#currentScroll() : TOP;
+      const top = this.#topKey();
       if (history === 'push') {
         // Remember where the page being left was scrolled to — Back restores it.
-        this.#positions.set(this.#key!, leaving);
-        browserHistory.replaceState(entry(this.#page, this.#key!, leaving), '', this.#window.location.href);
+        this.#positions.set(top, leaving);
+        browserHistory.replaceState(this.#stateOf(top, leaving), '', this.#window.location.href);
         this.#key = newKey();
         browserHistory.pushState(entry(page, this.#key, arrived), '', page.url + hash);
       } else {
-        browserHistory.replaceState(entry(page, this.#key!, arrived), '', page.url + hash);
+        // Replacing a layer's entry: the entry is this page's now.
+        this.#key = top;
+        browserHistory.replaceState(entry(page, this.#key, arrived), '', page.url + hash);
       }
+      this.#dismissFrom(0);
       this.#positions.set(this.#key!, arrived);
       this.#cache.set(this.#key!, { page, regions: owner.regions });
       this.#switchOwner(owner);
@@ -609,34 +886,67 @@ export class Navigator {
     const state: unknown = (event as PopStateEvent).state;
     // `null`: an entry of a fragment link (`#section`) on the same page.
     if (state === null || state === undefined) return;
-    this.#inFlight?.abort();
+    // Going back because a layer closes: the visit that closed it (a form's `closeLayer()`) is not cancelled by it.
+    const closing = this.#pendingClose;
+    this.#pendingClose = undefined;
+    if (!closing) this.#inFlight?.abort();
     // A save still pending belongs to the entry just left; the browser already switched to the new one.
     this.#cancelScrollSave();
     if (isHistoryState(state)) {
-      const cached = this.#cache.get(state.key);
-      if (cached) {
-        this.#key = state.key;
-        // The entry's islands come back with it, from memory — no request.
-        const owner = new RegionOwner(this.#transport, cached.regions);
-        this.#switchOwner(owner);
-        this.#setPage(cached.page);
-        void this.#arrive(cached.page, this.#positionOf(state), owner);
+      const stack = this.#cachedStack(state.key);
+      if (stack) {
+        void this.#arriveAt(state, stack, closing);
         return;
       }
-      void this.#restore(state.url, state.key, this.#positionOf(state));
+      closing?.done();
+      if (state.layer) void this.#restoreLayer(state);
+      else void this.#restore(state.url, state.key, this.#positionOf(state));
       return;
     }
+    closing?.done();
     // An entry of an older client, which kept whole pages in the history: never shown — the server is asked.
     if (isPageObject(state)) void this.#restore(state.url, newKey(), TOP);
   };
+
+  /**
+   * Back/Forward to an entry in memory: its page and the layers over it. When it is the page on screen with other layers
+   * (a layer closed by Back, opened again by Forward), only the layers change — the page is not rendered again, does not
+   * scroll, and none of its deferred props or islands load again.
+   */
+  async #arriveAt(state: HistoryState, stack: CachedStack, closing: PendingClose | undefined): Promise<void> {
+    try {
+      if (stack.page === this.#key && !this.#left) {
+        const removed = this.#setLayers(stack.layers);
+        for (const key of closing?.forget ?? []) this.#cache.delete(key);
+        await this.#renderLayers();
+        // An action's answer (shown once) left: what is beneath reloads — or what the closing asked for.
+        const reload = closing?.reload ?? (removed.some((layer) => layer.once) ? true : undefined);
+        if (reload !== undefined) await this.#reloadTop(reload);
+        return;
+      }
+      this.#dismissFrom(0);
+      for (const key of closing?.forget ?? []) this.#cache.delete(key);
+      const base = this.#cache.peek(stack.page)!;
+      this.#key = stack.page;
+      // The entry's islands come back with it, from memory — no request.
+      const owner = new RegionOwner(this.#transport, base.regions);
+      this.#switchOwner(owner);
+      this.#setPage(base.page);
+      this.#setLayers(stack.layers);
+      await this.#arrive(base.page, this.#positionOf(state), owner);
+    } finally {
+      closing?.done();
+    }
+  }
 
   /** Renders a page of the history and scrolls to where it was. */
   async #arrive(page: PageObject, position: Scroll, owner: RegionOwner): Promise<void> {
     this.#transitioning = true;
     try {
-      await this.#render(page, { preserveState: false, owner });
+      await this.#render(page, { preserveState: false, owner, layers: this.layers });
       this.#applyScroll(position);
       this.#loadDeferred();
+      for (const control of this.#layers) this.#loadLayerDeferred(control);
     } catch {
       this.#leave();
       this.#window.location.reload();
@@ -664,6 +974,7 @@ export class Navigator {
       if (!page || signal.aborted) return undefined;
       // Signed out meanwhile? Then the server sent the login page — and the entry is the login page now.
       this.#window.history.replaceState(entry(page, key, position), '', page.url);
+      this.#dismissFrom(0);
       this.#key = key;
       const owner = new RegionOwner(this.#transport);
       this.#cache.set(key, { page, regions: owner.regions });
@@ -672,6 +983,54 @@ export class Navigator {
       await this.#arrive(page, position, owner);
       return page;
     });
+  }
+
+  /**
+   * Back/Forward to a layer's entry that is not in memory (closed explicitly, shown once, evicted): asked for again — over
+   * what is beneath it, when that is on screen or in memory. Otherwise the whole stack loads like a deep link (the server
+   * puts the layer's declared base under it).
+   */
+  async #restoreLayer(state: HistoryState): Promise<void> {
+    const below = state.layer?.below ?? [];
+    const beneath = below.length > 0 ? this.#cachedStack(below.at(-1)!) : undefined;
+    if (!beneath || beneath.page !== this.#key) {
+      this.#leave();
+      this.#window.location.reload();
+      return;
+    }
+    const position = this.#positionOf(state);
+    const visit: Visit = { url: state.url, method: 'get' };
+    await this.#request(visit, {}, async (signal) => {
+      const response = await this.#send(state.url, { method: 'get', headers: { [REGION_HEADER]: 'layer' }, signal });
+      const page = await this.#read(response, { replace: true, failed: false }, visit, {});
+      if (!page || signal.aborted) return undefined;
+      if (!page.layer) {
+        // A page now (signed out: the login page): the entry is that page.
+        await this.#restorePage(page, state.key, position);
+        return page;
+      }
+      this.#setLayers(beneath.layers);
+      const control = Layer.create(this, state.key, beneath.layers.length + 1, page, new RegionOwner(this.#transport));
+      const keys = [beneath.page, ...beneath.layers.map((level) => level.key)];
+      this.#cache.set(state.key, { page, regions: control.layer.owner.regions, below: keys, pushed: false });
+      this.#window.history.replaceState(layerEntry(page, state.key, position, keys), '', page.url);
+      this.#layers.push(control);
+      await this.#renderLayers();
+      this.#loadLayerDeferred(control);
+      return page;
+    });
+  }
+
+  /** The entry `key` shows `page` now (a page where a layer was). */
+  async #restorePage(page: PageObject, key: string, position: Scroll): Promise<void> {
+    this.#window.history.replaceState(entry(page, key, position), '', page.url);
+    this.#dismissFrom(0);
+    this.#key = key;
+    const owner = new RegionOwner(this.#transport);
+    this.#cache.set(key, { page, regions: owner.regions });
+    this.#switchOwner(owner);
+    this.#setPage(page);
+    await this.#arrive(page, position, owner);
   }
 
   readonly #onPageShow = (event: Event): void => {
@@ -723,7 +1082,7 @@ export class Navigator {
     this.#cache.updatePage(key, merged);
     if (onScreen) {
       this.#setPage(merged);
-      await this.#render(merged, { preserveState: true, owner: this.#owner });
+      await this.#render(merged, { preserveState: true, owner: this.#owner, layers: this.layers });
     }
     return merged;
   }
@@ -937,11 +1296,115 @@ export class Navigator {
     return { kind: 'exception', failure: { status: response.status || undefined, message } };
   }
 
+  // -- Layers (E53) ----------------------------------------------------------------------------------------------
+
+  /** The current history entry: the top layer's, or the page's. */
+  #topKey(): string {
+    return this.#layers.at(-1)?.layer.entry ?? this.#key!;
+  }
+
+  /** The history state of entry `key` on screen — the page's, or a layer's (with the keys beneath it). */
+  #stateOf(key: string, position: Scroll): HistoryState {
+    const index = this.#layers.findIndex((control) => control.layer.entry === key);
+    if (index < 0) return entry(this.#page, key, position);
+    return layerEntry(this.#layers[index]!.layer.page, key, position, this.#belowOf(index));
+  }
+
+  /** The keys of the entries beneath the layer at `index`: the page's, then the layers' under it. */
+  #belowOf(index: number): string[] {
+    return [this.#key!, ...this.#layers.slice(0, index).map((control) => control.layer.entry)];
+  }
+
+  /** The keys on screen — never evicted from memory while they are. */
+  #onScreen(): ReadonlySet<string> {
+    const keys = new Set<string>();
+    if (this.#key !== undefined) keys.add(this.#key);
+    for (const control of this.#layers) keys.add(control.layer.entry);
+    return keys;
+  }
+
+  /**
+   * The layers from `index` up leave the screen (in their order from the top): their islands stop, `onClose` runs, and a
+   * layer shown once is forgotten. Returns them.
+   */
+  #dismissFrom(index: number): Layer[] {
+    const removed = this.#layers.splice(Math.max(0, index));
+    for (const control of removed.reverse()) {
+      control.dismiss();
+      if (control.layer.once) this.#cache.delete(control.layer.entry);
+    }
+    return removed.map((control) => control.layer);
+  }
+
+  /**
+   * The layers on screen become `levels` (from memory): the ones they share at the bottom stay as they are, the others
+   * leave, the new ones are made from memory. Returns the layers that left.
+   */
+  #setLayers(levels: readonly CachedLevel[]): Layer[] {
+    let same = 0;
+    while (same < levels.length && same < this.#layers.length && this.#layers[same]!.layer.entry === levels[same]!.key) same++;
+    const removed = this.#dismissFrom(same);
+    for (const level of levels.slice(same)) {
+      const control = Layer.create(this, level.key, level.depth, level.entry.page, new RegionOwner(this.#transport, level.entry.regions));
+      this.#layers.push(control);
+      this.#loadLayerDeferred(control);
+    }
+    return removed;
+  }
+
+  /** The layers changed, the page did not: rendered with the same page (kept as it is). */
+  async #renderLayers(): Promise<void> {
+    await this.#render(this.#page, { preserveState: true, owner: this.#owner, layers: this.layers });
+  }
+
+  /** What memory keeps of the stack of entry `key` — its page's entry and the layers' — or undefined when a part is gone. */
+  #cachedStack(key: string): CachedStack | undefined {
+    const top = this.#cache.get(key);
+    if (!top) return undefined;
+    if (!top.below || top.below.length === 0) return { page: key, layers: [] };
+    const [page, ...under] = top.below;
+    if (!this.#cache.peek(page!)) return undefined;
+    const layers: CachedLevel[] = [];
+    for (const [index, below] of under.entries()) {
+      const cached = this.#cache.peek(below);
+      if (!cached) return undefined;
+      layers.push({ key: below, depth: index + 1, entry: cached });
+    }
+    layers.push({ key, depth: under.length + 1, entry: top });
+    return { page: page!, layers };
+  }
+
+  /** A layer's deferred props: one partial request per group, as the layer's — each merged in if it still shows that page. */
+  #loadLayerDeferred(control: LayerControl): void {
+    const page = control.layer.page;
+    if (!page.deferredProps) return;
+    for (const [group, props] of Object.entries(page.deferredProps)) {
+      const id = `${control.layer.entry} ${group}`;
+      if (props.length === 0 || this.#loading.has(id)) continue;
+      this.#loading.add(id);
+      const visit: Visit = { url: page.url, method: 'get', async: true };
+      void this.#request(visit, {}, async (signal) => {
+        const response = await this.#send(page.url, { method: 'get', headers: { [REGION_HEADER]: 'layer', ...partialReloadHeaders(page.component, props, undefined) }, signal });
+        const loaded = await this.#read(response, { replace: true, failed: true }, visit, {});
+        const current = control.layer.page;
+        if (!loaded || control.layer.closed || this.#left || current.url !== page.url || current.component !== loaded.component) return undefined;
+        const only = { ...loaded, props: Object.fromEntries(props.filter((prop) => Object.hasOwn(loaded.props, prop)).map((prop) => [prop, loaded.props[prop]])) };
+        const merged = mergePage(current, only);
+        control.update(merged);
+        this.#cache.updatePage(control.layer.entry, merged);
+        await this.#renderLayers();
+        return merged;
+      }).finally(() => this.#loading.delete(id));
+    }
+  }
+
   /** Before a full page load: nothing kept in memory survives it, should the browser bring this document back. */
   #leave(): void {
     this.#left = true;
-    // Islands too: none of them lands any more, and none of what they showed survives (signing out).
+    // Islands too: none of them lands any more, and none of what they showed survives (signing out). Layers alike.
     this.#owner.close();
+    for (const control of this.#layers) control.dismiss();
+    this.#layers = [];
     this.#cache.clear();
     // Prefetched while signed in: not for whoever comes next — and one still under way lands nowhere.
     this.#flushPrefetched();
@@ -958,6 +1421,42 @@ function withQueryOf(page: PageObject, from: PageObject): PageObject {
     ...(from.query ? { query: from.query } : {}),
     ...(from.queryDefaults ? { queryDefaults: from.queryDefaults } : {}),
   };
+}
+
+/** A layer closing by going back: what the popstate it caused finishes (and the closing visit waits for). */
+interface PendingClose {
+  /** The entry it goes back to. */
+  readonly target: string;
+  /** The entries of the layers that close — forgotten: Forward asks the server again. */
+  readonly forget: ReadonlySet<string>;
+  readonly reload: LayerClose['reload'];
+  readonly done: () => void;
+}
+
+/** How long a layer's close waits for the browser to go back before it replaces the entry instead (ms). */
+const CLOSE_TIMEOUT = 1000;
+
+/** One layer of a stack kept in memory. */
+interface CachedLevel {
+  readonly key: string;
+  readonly depth: number;
+  readonly entry: CachedEntry;
+}
+
+/** What memory keeps of an entry's stack: the key of the page's entry, the layers over it. */
+interface CachedStack {
+  readonly page: string;
+  readonly layers: readonly CachedLevel[];
+}
+
+/** The prefetch of `url` — kept apart for a layer's request (another answer: the layer's, not a page). */
+function prefetchKey(url: string, layer: boolean): string {
+  return layer ? `layer ${url}` : url;
+}
+
+/** The history state of a layer's entry: where it is, how deep, and the keys beneath it — never what it shows (E36). */
+function layerEntry(page: PageObject, key: string, position: Scroll, below: readonly string[]): HistoryState {
+  return { ...entry(page, key, position), layer: { depth: below.length, below: [...below] } };
 }
 
 /** The headers of a partial reload of `component`. */
@@ -1060,24 +1559,78 @@ function untilAborted<T>(promise: Promise<T | undefined>, signal: AbortSignal): 
   });
 }
 
-/** What memory keeps of a history entry: its page, and the region objects of its islands — one entry of the LRU together. */
+/**
+ * What memory keeps of a history entry: its page (a layer's, for a layer's entry) and the region objects of its islands —
+ * one entry of the LRU together. A layer's entry also names the entries beneath it.
+ */
 interface CachedEntry {
   readonly page: PageObject;
   readonly regions: Map<string, KeptRegion>;
+  /** A layer's entry (E53): the keys of the entries beneath it, the page's first. */
+  readonly below?: readonly string[];
+  /** It was pushed right over the entry beneath it, in this document: closing it is Back. */
+  readonly pushed?: boolean;
 }
 
-/** History entries by key, least recently used first out. */
-class PageCache extends BoundedMap<string, CachedEntry> {
-  override get(key: string): CachedEntry | undefined {
-    const cached = super.get(key);
+/**
+ * History entries by key, least recently used first out — but never an entry on screen, and a layer's entries beneath
+ * count as used with it (the page under a layer stays while the layer does).
+ */
+class PageCache {
+  readonly #entries = new Map<string, CachedEntry>();
+  readonly #size: number;
+  readonly #pinned: () => ReadonlySet<string>;
+
+  constructor(size: number, pinned: () => ReadonlySet<string>) {
+    this.#size = Math.max(1, size);
+    this.#pinned = pinned;
+  }
+
+  get size(): number {
+    return this.#entries.size;
+  }
+
+  get(key: string): CachedEntry | undefined {
+    const cached = this.#entries.get(key);
     if (cached) this.set(key, cached);
     return cached;
   }
 
+  peek(key: string): CachedEntry | undefined {
+    return this.#entries.get(key);
+  }
+
+  set(key: string, value: CachedEntry): void {
+    this.#entries.delete(key);
+    this.#entries.set(key, value);
+    // What is beneath a layer is used with it — newer than it, so it goes after it.
+    for (const below of value.below ?? []) {
+      const entry = this.#entries.get(below);
+      if (!entry) continue;
+      this.#entries.delete(below);
+      this.#entries.set(below, entry);
+    }
+    if (this.#entries.size <= this.#size) return;
+    // Never what is on screen — nor the entry just set (it may be going on screen).
+    const pinned = this.#pinned();
+    for (const oldest of [...this.#entries.keys()]) {
+      if (this.#entries.size <= this.#size) break;
+      if (!pinned.has(oldest) && oldest !== key) this.#entries.delete(oldest);
+    }
+  }
+
+  delete(key: string): void {
+    this.#entries.delete(key);
+  }
+
+  clear(): void {
+    this.#entries.clear();
+  }
+
   /** A new page object for an entry that is there (props merged in), keeping its regions and its place. */
   updatePage(key: string, page: PageObject): void {
-    const cached = this.peek(key);
-    if (cached) this.update(key, { page, regions: cached.regions });
+    const cached = this.#entries.get(key);
+    if (cached) this.#entries.set(key, { ...cached, page });
   }
 }
 

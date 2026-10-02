@@ -8,6 +8,7 @@ const en = {
   sign_out: 'Sign out',
   sign_in: 'Sign in',
   register: 'Create an account',
+  close: 'Close',
   language: 'Language',
   locale: {
     changed: 'Language changed.',
