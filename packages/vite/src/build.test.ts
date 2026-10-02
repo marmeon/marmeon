@@ -114,6 +114,43 @@ describe('bespoke build with the bespoke() plugin', () => {
     expect(ssr.stdout.trim()).toBe('from-dist');
   }, 60_000);
 
+  it('loads the first page in two chunks — third-party code (vendor) and the rest (index) — and keeps what loads later out of them', () => {
+    const root = app({
+      files: {
+        'bootstrap/client.ts': [
+          "import { pad } from 'left-pad';",
+          "import { origin } from '@bespokecore/fake';",
+          "import { shared } from '../modules/demo/shared.ts';",
+          "import pages from 'virtual:bespoke/pages';",
+          'document.title = pad(`${origin} ${shared}`);',
+          'for (const load of Object.values(pages)) void load();',
+        ].join('\n'),
+        'modules/demo/shared.ts': "export const shared = 'shared-with-a-page';\n",
+        // A page (loaded on first use) that shares a module with the first page — without the groups, that module is a chunk of its own.
+        'modules/demo/views/Home.ts': "import { shared } from '../shared.ts';\nexport default `home page ${shared}`;\n",
+        'node_modules/left-pad/package.json': JSON.stringify({ name: 'left-pad', type: 'module', exports: './index.js' }),
+        'node_modules/left-pad/index.js': "export const pad = (text) => `third-party ${text}`;\n",
+      },
+    });
+    const { code, out } = build(root, '--no-typecheck');
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(code).toBe(0);
+    const assets = join(root, 'dist/client/assets');
+    const files = readdirSync(assets).filter((file) => file.endsWith('.js'));
+    const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
+    const initial = files.filter((file) => html.includes(file));
+    expect(initial.map((file) => file.replace(/-[\w-]+\.js$/, '')).sort()).toEqual(['index', 'vendor']);
+    const read = (prefix: string) => readFileSync(join(assets, files.find((file) => file.startsWith(`${prefix}-`))!), 'utf8');
+    expect(read('vendor')).toContain('third-party');
+    expect(read('vendor')).not.toContain('from-dist');
+    expect(read('index')).toContain('from-dist');
+    expect(read('index')).toContain('shared-with-a-page');
+    // The page stays a chunk of its own, loaded on first use.
+    expect(read('index')).not.toContain('home page');
+    expect(read('Home')).toContain('home page');
+    expect(files.filter((file) => !/^(index|vendor|Home|rolldown-runtime)-/.test(file))).toEqual([]);
+  }, 60_000);
+
   it('type-checks the app first, like next build: a type error fails the build and is printed; --no-typecheck builds anyway', () => {
     const root = app({ typescript: "export const total: number = 'forty-two';\n" });
     const failed = build(root);

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { bespokeInjection } from '@bespokecore/core/vite';
-import { defaultClientConditions, defaultServerConditions, type Plugin, type UserConfig } from 'vite';
+import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
 
@@ -53,6 +53,25 @@ export interface BespokeOptions {
   test?: boolean;
 }
 
+/** A module of a third-party package — not one of the framework's (`@bespokecore/*`), not the app's own. */
+function isThirdParty(id: string): boolean {
+  return /[\\/]node_modules[\\/]/.test(id) && !/[\\/]node_modules[\\/]@bespokecore[\\/]/.test(id);
+}
+
+/**
+ * How the client build splits what the first page loads (Wave 5c): two chunks — the third-party libraries (`vendor`: the UI
+ * library and its DOM renderer, cached across the app's own deployments) and the rest (`index`: the framework's client core and
+ * adapter with the app's entry and layouts). Without it, every module a lazy chunk shares with the first page became a chunk
+ * of its own (the web app loaded 9 initial chunks, each compressed on its own). Only what the first page loads (`$initial`):
+ * what loads on first use — pages, layers, live validation, prefetching, instant visits — stays in its own chunks.
+ */
+export const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions = {
+  groups: [
+    { name: 'vendor', test: isThirdParty, tags: ['$initial'], priority: 1 },
+    { name: 'index', tags: ['$initial'] },
+  ],
+};
+
 const DEFAULT_ENTRIES: BespokeEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
 const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
 const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
@@ -69,6 +88,7 @@ const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
  * - dedupes the peers of the framework packages the app depends on (one React for the adapter and the app);
  * - runs the constructor-injection transform (`@bespokecore/core/vite`);
  * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
+ * - splits the client build's initial load into two chunks, `vendor` and `index` ({@link CLIENT_CHUNKS});
  * - serves `virtual:bespoke/pages`, `virtual:bespoke/lang` and `virtual:bespoke/routes` (types: `@bespokecore/vite/client`) —
  *   the route manifest with only the names client code writes out (E57).
  */
@@ -90,7 +110,7 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild
           ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }
-          : { outDir: 'dist/client', emptyOutDir: true };
+          : { outDir: 'dist/client', emptyOutDir: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } };
       }
       return result;
     },

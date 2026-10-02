@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ConfigEnv, Plugin, UserConfig } from 'vite';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { adapterPeers, bespoke, PLUGIN_NAME, routesModule, SOURCE_CONDITION, virtualGlob, type BespokePluginApi } from './index.ts';
+import { adapterPeers, bespoke, CLIENT_CHUNKS, PLUGIN_NAME, routesModule, SOURCE_CONDITION, virtualGlob, type BespokePluginApi } from './index.ts';
 
 const temporary: string[] = [];
 afterAll(() => {
@@ -53,7 +53,7 @@ describe('bespoke()', () => {
   });
 
   it('builds the client to dist/client and the SSR entry to dist/server/ssr.js — not in test mode', () => {
-    expect(configFor(bespoke(), { command: 'build', mode: 'production' }).build).toEqual({ outDir: 'dist/client', emptyOutDir: true });
+    expect(configFor(bespoke(), { command: 'build', mode: 'production' }).build).toEqual({ outDir: 'dist/client', emptyOutDir: true, rolldownOptions: { output: { codeSplitting: CLIENT_CHUNKS } } });
     expect(configFor(bespoke({ entries: { ssr: 'src/server.tsx' } }), { command: 'build', mode: 'production', isSsrBuild: true }).build).toEqual({
       outDir: 'dist/server',
       emptyOutDir: true,

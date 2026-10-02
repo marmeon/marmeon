@@ -112,7 +112,9 @@ export async function appBundle(code: string, { external = EXTERNAL, sourcemap =
           outDir: join(root, 'dist'),
           minify: true,
           modulePreload: false,
-          rolldownOptions: { input: { entry }, external: (id) => external.test(id) },
+          // The first page's code in one chunk, as `bespoke()` splits an app's client build (`CLIENT_CHUNKS` of @bespokecore/vite —
+          // its `vendor` group stays empty here, React being external): not a chunk for each module a lazy chunk shares with it.
+          rolldownOptions: { input: { entry }, external: (id) => external.test(id), output: { codeSplitting: { groups: [{ name: 'index', tags: ['$initial'] }] } } },
         },
       },
       { sourcemap, entry },
@@ -258,7 +260,8 @@ function decodeMappings(mappings: string): [number, number][][] {
 /** A chunk's code in order, as `[module, text]` pieces by its source map — joined, they are the code again. */
 function segmentsOf(chunk: Rolldown.OutputChunk, dir: string, entry: string | undefined): [string, string][] {
   const map = chunk.map;
-  if (!map) throw new Error(`${chunk.fileName} has no source map.`);
+  // A chunk the bundler made of its own code (rolldown's runtime, when chunk groups split modules apart): no module of ours.
+  if (!map) return [['(unmapped)', chunk.code]];
   const sources = map.sources.map((source) => {
     const absolute = resolve(dir, source);
     return absolute === entry ? '(entry)' : moduleName(absolute);
