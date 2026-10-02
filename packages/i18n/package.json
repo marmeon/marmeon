@@ -39,6 +39,13 @@
   "bespoke": {
     "providers": [
       "I18nServiceProvider"
+    ],
+    "browser": [
+      "src/catalog.ts",
+      "src/format.ts",
+      "src/locale.ts",
+      "src/loader.ts",
+      "src/messages.ts"
     ]
   },
   "dependencies": {

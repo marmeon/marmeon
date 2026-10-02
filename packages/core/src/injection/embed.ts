@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseSync } from 'oxc-parser';
 import { analyzeInjections, classesOf, InjectionError, insertInjections, UNRESOLVABLE, type InjectionSite } from './analyze.ts';
+import { matchesBrowserSource } from './browser.ts';
 
 type Node = { type: string; start: number; [key: string]: any };
 
@@ -57,11 +58,34 @@ export function embedInjections(tsSource: string, tsFile: string, jsSource: stri
 }
 
 function alreadyEmbedded(classNode: Node, source: string): boolean {
-  return classNode.body.body.some(
-    (member: Node) =>
-      member.static &&
-      (member.key?.name === 'inject' || (member.computed && source.slice(member.key.start, member.key.end).includes(UNRESOLVABLE))),
-  );
+  return classNode.body.body.some((member: Node) => isInjectionField(member, source));
+}
+
+function isInjectionField(member: Node, source: string): boolean {
+  return member.static && (member.key?.name === 'inject' || (member.computed && source.slice(member.key.start, member.key.end).includes(UNRESOLVABLE)));
+}
+
+/**
+ * Takes out what {@link embedInjections} inserted — only fields right after a class body's `{`, where it puts them,
+ * never a list someone wrote by hand. For browser sources whose `dist/` still carries fields from an earlier build
+ * (`tsc -b` leaves up-to-date output untouched).
+ */
+export function removeEmbeddedInjections(jsSource: string, jsFile: string): string {
+  if (!jsSource.includes('static inject') && !jsSource.includes(UNRESOLVABLE)) return jsSource;
+  const { program } = parseSync(jsFile, jsSource);
+  const spans: [number, number][] = [];
+  for (const { node } of classesOf(program)) {
+    let at = node.body.start + 1;
+    for (const member of node.body.body as Node[]) {
+      if (member.start !== at + 1 || jsSource[at] !== ' ' || !isInjectionField(member, jsSource)) break;
+      const end = jsSource[member.end] === ';' ? member.end + 1 : member.end;
+      spans.push([at, end]);
+      at = end;
+    }
+  }
+  let output = jsSource;
+  for (const [start, end] of spans.sort((a, b) => b[0] - a[0])) output = output.slice(0, start) + output.slice(end);
+  return output;
 }
 
 export interface EmbedPackageOptions {
@@ -69,10 +93,15 @@ export interface EmbedPackageOptions {
   srcDir: string;
   /** Compiled output (tsconfig `outDir`). */
   outDir: string;
+  /**
+   * Browser-only sources, as globs relative to the package directory (the parent of `srcDir`) — the package's
+   * `"bespoke": { "browser": [...] }`. Their classes get nothing (roadmap E76), and fields an earlier build left there are taken out.
+   */
+  browser?: readonly string[];
 }
 
 /** Runs {@link embedInjections} over a whole package. Returns the files that changed. */
-export function embedPackageInjections({ srcDir, outDir }: EmbedPackageOptions): string[] {
+export function embedPackageInjections({ srcDir, outDir, browser = [] }: EmbedPackageOptions): string[] {
   const changed: string[] = [];
 
   for (const tsFile of walk(srcDir)) {
@@ -87,7 +116,9 @@ export function embedPackageInjections({ srcDir, outDir }: EmbedPackageOptions):
     }
     // Reasons name the file relative to the package, so no build-machine paths get published.
     const packageRelative = relative(dirname(srcDir), tsFile);
-    const output = embedInjections(readFileSync(tsFile, 'utf8'), packageRelative, jsSource, jsFile);
+    const output = matchesBrowserSource(packageRelative, browser)
+      ? removeEmbeddedInjections(jsSource, jsFile)
+      : embedInjections(readFileSync(tsFile, 'utf8'), packageRelative, jsSource, jsFile);
     if (output !== jsSource) {
       writeFileSync(jsFile, output);
       changed.push(jsFile);

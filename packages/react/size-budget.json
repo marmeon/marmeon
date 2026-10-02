@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "What a browser downloads for the client core and the React adapter, in KB gzip (Vite app mode, production, minified, dist/, without React and i18n).",
+    "Checked by packages/react/src/bundle-size.test.ts (roadmap E75). Limits are a ratchet: only ever lower them. A size more than 0.3 KB under its limit fails until the limit follows (BESPOKE_SIZE_BUDGET=update lowers it).",
+    "A ceiling (everything) is not ratcheted: the whole adapter may shift between chunks, but not grow more than 2 KB over its size when Wave 5c started.",
+    "stillLeaking: features in a scenario that does not use them. Wave 5c takes them out one by one, until every list is []. A new leak fails, and so does a listed one that is gone."
+  ],
+  "gzipKB": {
+    "core": { "limit": 18.7, "target": 8.5 },
+    "emptyApp": { "limit": 23.0, "target": 12.5 },
+    "minimalApp": { "limit": 26.6, "target": 14 },
+    "everything": { "limit": 35.9, "ceiling": true }
+  },
+  "appsGzipKB": {
+    "blank-app": { "limit": 27.4 },
+    "web-app": { "limit": 34.1, "target": 27 }
+  },
+  "stillLeaking": {
+    "core": ["actions", "guard", "instant", "islands", "layers", "liveValidation", "prefetch", "queryState", "remember", "revalidateOnBack"],
+    "emptyApp": ["actions", "guard", "instant", "islands", "layers", "liveValidation", "prefetch", "queryState", "remember", "revalidateOnBack"],
+    "minimalApp": ["actions", "guard", "instant", "islands", "layers", "liveValidation", "prefetch", "queryState", "remember", "revalidateOnBack"]
+  }
+}

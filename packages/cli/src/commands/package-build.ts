@@ -2,12 +2,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
-import { embedPackageInjections } from '@bespokecore/core';
+import { browserSources, embedPackageInjections } from '@bespokecore/core';
 import type { CommandInput } from '../command.ts';
 
 /**
  * Builds packages with `tsc -b`, then embeds the injection lists into dist/ — so a
- * published package carries them and consumers need nothing (roadmap E1).
+ * published package carries them and consumers need nothing (roadmap E1). Browser-only
+ * sources (`"bespoke": { "browser": [...] }` in package.json) get none (E76).
  */
 export class PackageBuildCommand {
   static command = 'package:build';
@@ -28,7 +29,7 @@ export class PackageBuildCommand {
       if (result.status !== 0) return result.status ?? 1;
 
       const { rootDir = 'src', outDir = 'dist' } = readCompilerOptions(join(dir, 'tsconfig.json'));
-      const changed = embedPackageInjections({ srcDir: join(dir, rootDir), outDir: join(dir, outDir) });
+      const changed = embedPackageInjections({ srcDir: join(dir, rootDir), outDir: join(dir, outDir), browser: browserSources(dir) });
       for (const file of changed) output.line(`  embedded → ${relative(root, file)}`);
     }
     output.success(`Built ${directories.length} package(s)`);

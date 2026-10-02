@@ -55,6 +55,10 @@
   "bespoke": {
     "providers": [
       "HttpServiceProvider"
+    ],
+    "browser": [
+      "src/client/**",
+      "src/page.ts"
     ]
   }
 }

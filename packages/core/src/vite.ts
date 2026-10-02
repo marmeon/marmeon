@@ -1,4 +1,5 @@
 import { injectConstructorDependencies } from './injection/analyze.ts';
+import { isBrowserSource } from './injection/browser.ts';
 
 /** The subset of Vite's plugin interface this plugin uses — keeps `vite` out of core's dependencies. */
 export interface InjectionPlugin {
@@ -9,7 +10,8 @@ export interface InjectionPlugin {
 
 /**
  * Vite plugin with the same transform as `@bespokecore/core/register`, for code that
- * Vite loads (Vitest, SSR). Runs before Vite strips the types (`enforce: 'pre'`).
+ * Vite loads (Vitest, SSR). Runs before Vite strips the types (`enforce: 'pre'`). Like
+ * `bespoke package:build`, it leaves a package's browser-only sources alone (E76).
  */
 export function bespokeInjection(): InjectionPlugin {
   return {
@@ -17,7 +19,7 @@ export function bespokeInjection(): InjectionPlugin {
     enforce: 'pre',
     transform(code, id) {
       const file = id.split('?')[0]!;
-      if (!/\.[cm]?tsx?$/.test(file) || file.includes('/node_modules/')) return null;
+      if (!/\.[cm]?tsx?$/.test(file) || file.includes('/node_modules/') || isBrowserSource(file)) return null;
 
       const output = injectConstructorDependencies(code, file);
       // Insertions stay on the class's own line, so the existing mapping is still accurate.

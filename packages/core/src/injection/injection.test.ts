@@ -1,8 +1,13 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { analyzeInjections, injectConstructorDependencies } from './analyze.ts';
-import { embedInjections } from './embed.ts';
+import { browserSources, isBrowserSource } from './browser.ts';
+import { bespokeInjection } from '../vite.ts';
+import { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './embed.ts';
 
 const inject = (source: string) => injectConstructorDependencies(source, 'app/Example.ts');
 
@@ -158,6 +163,83 @@ describe('embedInjections (bespoke package:build)', () => {
   it('fails when tsc elided an import the list needs', () => {
     const elided = "import { Clock } from '@acme/clock';\nexport class SmtpMailer {\n    constructor(clock, formatter) {}\n}";
     expect(() => embedInjections(ts, 'src/smtp.ts', elided, 'dist/smtp.js')).toThrow(/"Formatter".*verbatimModuleSyntax/);
+  });
+});
+
+describe('browser sources get no injection metadata (E76)', () => {
+  /** A package with a browser class and a server class, both with a constructor parameter the container cannot fill. */
+  function fixture(browser: readonly string[] | undefined): string {
+    const dir = mkdtempSync(join(tmpdir(), 'bespoke-embed-'));
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({ name: '@acme/ui', bespoke: { providers: [], ...(browser ? { browser } : {}) } }),
+      'src/client/widget.ts': 'export class Widget { constructor(label: string) {} }',
+      'src/server.ts': 'export class Mailer { constructor(host: string) {} }',
+      'dist/client/widget.js': 'export class Widget {\n    constructor(label) { }\n}',
+      'dist/server.js': 'export class Mailer {\n    constructor(host) { }\n}',
+    };
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(join(dir, file, '..'), { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+    return dir;
+  }
+  const embed = (dir: string) => embedPackageInjections({ srcDir: join(dir, 'src'), outDir: join(dir, 'dist'), browser: browserSources(dir) });
+  const read = (dir: string, file: string) => readFileSync(join(dir, 'dist', file), 'utf8');
+
+  it('bespoke package:build embeds only into server sources — the browser globs come from package.json', () => {
+    const dir = fixture(['src/client/**']);
+    try {
+      expect(embed(dir)).toEqual([join(dir, 'dist/server.js')]);
+      expect(read(dir, 'server.js')).toContain('Cannot inject src/server.ts:1 — Mailer');
+      expect(read(dir, 'client/widget.js')).toBe('export class Widget {\n    constructor(label) { }\n}');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('takes out what an earlier build embedded into a browser source (tsc -b leaves up-to-date output alone)', () => {
+    const dir = fixture(undefined);
+    try {
+      embed(dir);
+      expect(read(dir, 'client/widget.js')).toContain('bespokecore.injection.unresolvable');
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@acme/ui', bespoke: { browser: ['src/client/**'] } }));
+      expect(embed(dir)).toEqual([join(dir, 'dist/client/widget.js')]);
+      expect(read(dir, 'client/widget.js')).toBe('export class Widget {\n    constructor(label) { }\n}');
+      expect(read(dir, 'server.js')).toContain('Cannot inject');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('only removes what it inserted — never a list written by hand', () => {
+    const embedded = 'class A { static inject = [B]; static [Symbol.for("bespokecore.injection.unresolvable")] = "x";\n    constructor(b) {}\n}';
+    expect(removeEmbeddedInjections(embedded, 'a.js')).toBe('class A {\n    constructor(b) {}\n}');
+    const handWritten = 'class A {\n    static inject = [B];\n    constructor(b) {}\n}';
+    expect(removeEmbeddedInjections(handWritten, 'a.js')).toBe(handWritten);
+  });
+
+  it('the Vite plugin and the load hook skip browser sources too (by the nearest package.json)', () => {
+    const dir = fixture(['src/client/**']);
+    try {
+      const widget = join(dir, 'src/client/widget.ts');
+      const mailer = join(dir, 'src/server.ts');
+      expect([isBrowserSource(widget), isBrowserSource(mailer)]).toEqual([true, false]);
+      const plugin = bespokeInjection();
+      expect(plugin.transform(readFileSync(widget, 'utf8'), widget)).toBeNull();
+      expect(plugin.transform(readFileSync(mailer, 'utf8'), mailer)?.code).toContain('Cannot inject');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a malformed list is an error, not silently ignored', () => {
+    const dir = fixture(undefined);
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ bespoke: { browser: 'src/client/**' } }));
+      expect(() => browserSources(dir)).toThrow(/"bespoke\.browser" must be a list of globs/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

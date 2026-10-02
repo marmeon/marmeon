@@ -9,6 +9,7 @@
 import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { injectConstructorDependencies } from './injection/analyze.ts';
+import { isBrowserSource } from './injection/browser.ts';
 
 const decoder = new TextDecoder();
 
@@ -17,8 +18,10 @@ registerHooks({
     const result = nextLoad(url, context);
     const typescript = result.format === 'module-typescript' || result.format === 'commonjs-typescript';
     if (!typescript || url.includes('/node_modules/') || result.source == null) return result;
+    const file = fileURLToPath(url);
+    if (isBrowserSource(file)) return result; // never built by the container (E76)
 
     const source = typeof result.source === 'string' ? result.source : decoder.decode(result.source);
-    return { ...result, source: injectConstructorDependencies(source, fileURLToPath(url)) };
+    return { ...result, source: injectConstructorDependencies(source, file) };
   },
 });

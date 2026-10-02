@@ -17,7 +17,8 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "!dist/**/*.test.*",
+    "!dist/**/__fixtures__"
   ],
   "scripts": {
     "build": "tsc -b"
@@ -55,5 +56,10 @@
         "default": "./dist/server.js"
       }
     }
+  },
+  "bespoke": {
+    "browser": [
+      "src/**"
+    ]
   }
 }
