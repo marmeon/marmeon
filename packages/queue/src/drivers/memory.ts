@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
-import type { FailedJob, FailedJobStore, QueueDriver, ReservedJob } from '../driver.ts';
+import type { FailedJob, FailedJobStore, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 interface Entry {
   readonly id: string;
@@ -47,8 +47,10 @@ export class MemoryQueueDriver implements QueueDriver {
     return undefined;
   }
 
-  async ack(job: ReservedJob): Promise<boolean> {
-    return this.#remove(job);
+  async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
+    if (!this.#remove(job)) return false;
+    for (const push of next) await this.push(push.queue, push.payload, push.delay);
+    return true;
   }
 
   async release(job: ReservedJob, delay: number): Promise<boolean> {
@@ -65,6 +67,10 @@ export class MemoryQueueDriver implements QueueDriver {
 
   async size(queue: string): Promise<number> {
     return this.#entries.filter((entry) => entry.queue === queue).length;
+  }
+
+  async queues(): Promise<string[]> {
+    return [...new Set(this.#entries.map((entry) => entry.queue))].sort();
   }
 
   /** Every job waiting or running, oldest first (for the fake's inspection). */

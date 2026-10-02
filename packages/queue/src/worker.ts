@@ -1,8 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describeError, outsideTransaction, redactText, type Clock, type Logger } from '@bespokecore/core';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
+import { releaseUnique } from './locks.ts';
 import { timeoutOf } from './registry.ts';
-import type { JobRunner, Prepared, Requested } from './runner.ts';
+import { nextInChain, parseRecord, type JobRunner, type Prepared, type Requested } from './runner.ts';
 
 /** A job did not stop within its timeout plus the grace period: Node cannot cancel it, so its worker must end. */
 export class JobStuckError extends Error {
@@ -15,7 +17,10 @@ export class JobTimeoutError extends Error {
 }
 
 export interface WorkOptions {
-  /** Queues in priority order: a job of the first is taken before any of the second. */
+  /**
+   * Queues in priority order: a job of the first is taken before any of the second. `*` stands for every other queue
+   * that holds jobs (alphabetically, looked up again at least every second): `['*']`, `['mail', '*']`.
+   */
   readonly queues: readonly string[];
   /** Seconds to wait when no job is available (default 1). */
   readonly sleep?: number;
@@ -57,6 +62,10 @@ export interface WorkerDependencies {
   readonly failed: FailedJobStore;
   readonly clock: Clock;
   readonly logger: Logger;
+  /** Seconds a claim holds on this connection — what `withoutOverlapping` locks for by default. */
+  readonly retryAfter?: number;
+  /** Job events (`JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, `JobQueued` for the next of a chain) — the app's `EventDispatcher`. */
+  readonly events?: JobEvents;
 }
 
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
@@ -89,13 +98,15 @@ export class Worker {
     const started = performance.now();
     const counts = { processed: 0, failed: 0, released: 0 };
     const result = (reason: WorkResult['reason']): WorkResult => ({ ...counts, reason });
+    const queues = this.#queues(options.queues);
     for (;;) {
       if (options.signal?.aborted) return result('stopped');
       if (options.maxJobs !== undefined && counts.processed >= options.maxJobs) return result('max-jobs');
       if (options.maxTime !== undefined && performance.now() - started >= options.maxTime * 1000) return result('max-time');
 
-      const job = await this.#deps.driver.reserve(options.queues);
+      const job = await this.#deps.driver.reserve(await queues.current());
       if (!job) {
+        queues.stale();
         if (options.stopWhenEmpty) return result('empty');
         try {
           await sleep((options.sleep ?? 1) * 1000, undefined, { signal: options.signal });
@@ -123,7 +134,7 @@ export class Worker {
     const { record } = prepared;
     if (prepared.kind === 'unknown') {
       const reason = `No job named "${record.job}" is registered in this app (a deploy in progress, or a module's jobs: [...] is missing it).`;
-      return this.#retryOrFail(reserved, record, new Error(reason));
+      return this.#retryOrFail(reserved, record, new Error(reason), undefined, 'unknown');
     }
     // A job that comes back more often than it may — its worker died during each attempt — fails instead of looping.
     if (reserved.attempts > record.tries) {
@@ -131,39 +142,108 @@ export class Worker {
       return 'failed';
     }
 
-    logger.info(`Processing ${record.job}`, { job: record.job, jobId: record.uuid, attempt: reserved.attempts });
+    const base = { job: record.job, jobId: record.uuid, attempt: reserved.attempts, queue: reserved.queue };
+    logger.info(`Processing ${record.job}`, base);
+    await this.#emit(new JobProcessing({ ...this.#about(reserved, record), attempt: reserved.attempts }));
+    // A job unique until processing: a new one with its key may be queued from now on.
+    await this.#releaseUnique(record, 'processing');
     const started = performance.now();
     const settled = await this.#attempt(reserved, prepared, options);
     const ms = Math.round(performance.now() - started);
-    const context = { job: record.job, jobId: record.uuid, attempt: reserved.attempts, ms };
+    const context = { ...base, ms };
 
     switch (settled.kind) {
       case 'interrupted':
         // Asked to stop and the job did not finish in time: back to the queue at once, for another worker.
         await this.#deps.driver.release(reserved, 0);
         logger.warn(`Released ${record.job}: the worker is stopping and the job did not finish within the stop timeout`, context);
+        await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: 0, reason: 'stopping', ms }));
         return 'interrupted';
       case 'error':
-        return this.#retryOrFail(reserved, record, settled.error, ms);
+        return this.#retryOrFail(reserved, record, settled.error, ms, 'error');
       case 'done':
         break;
     }
 
     const requested: Requested | undefined = settled.requested;
     if (requested?.kind === 'release') {
+      // Released on its last attempt (by the job, or a middleware like withoutOverlapping): no attempt is left to run it.
+      if (reserved.attempts >= record.tries) {
+        await this.#fail(reserved, record, new Error(`${record.job} was released on its last attempt (${reserved.attempts} of ${record.tries}) — give it more tries if it waits for something.`), '', ms);
+        return 'failed';
+      }
       await this.#deps.driver.release(reserved, requested.delay);
       logger.info(`Released ${record.job} (by the job), again in ${requested.delay}s`, context);
+      await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: requested.delay, reason: 'job', ms }));
       return 'released';
     }
     if (requested?.kind === 'fail') {
-      await this.#fail(reserved, record, typeof requested.reason === 'string' ? new Error(requested.reason) : requested.reason, ' (by the job)');
+      await this.#fail(reserved, record, typeof requested.reason === 'string' ? new Error(requested.reason) : requested.reason, ' (by the job)', ms);
       return 'failed';
     }
-    const acknowledged = await this.#deps.driver.ack(reserved);
-    if (!acknowledged) logger.warn(`${record.job} finished after its claim expired (retryAfter) — another worker may have run it as well`, context);
-    if (requested?.kind === 'discard') logger.info(`Discarded ${record.job}${requested.reason ? `: ${requested.reason}` : ''}`, context);
+    // Success hands the chain on — together with the acknowledgement (one atomic step of the driver). A discarded job
+    // ends its chain: what comes next was waiting for it.
+    const next = requested?.kind === 'discard' ? undefined : nextInChain(record);
+    const acknowledged = await this.#deps.driver.ack(reserved, next ? [{ queue: reserved.queue, payload: next, delay: 0 }] : []);
+    if (!acknowledged) {
+      // Another worker holds the job now: it acknowledges, frees the unique lock and hands the chain on.
+      logger.warn(`${record.job} finished after its claim expired (retryAfter) — another worker may have run it as well`, context);
+    } else {
+      await this.#releaseUnique(record, 'done');
+    }
+    const dropped = requested?.kind === 'discard' && record.chain?.length ? ` (and the ${record.chain.length} job(s) chained after it)` : '';
+    if (requested?.kind === 'discard') logger.info(`Discarded ${record.job}${dropped}${requested.reason ? `: ${requested.reason}` : ''}`, context);
     else logger.info(`Processed ${record.job}`, context);
+    await this.#emit(new JobProcessed({ ...this.#about(reserved, record), attempt: reserved.attempts, ms, discarded: requested?.kind === 'discard' }));
+    if (acknowledged && next) {
+      const queued = parseRecord(next)!;
+      await this.#emit(new JobQueued({ connection: this.#deps.connection, queue: reserved.queue, job: queued.job, jobId: queued.uuid, delay: 0 }));
+    }
     return 'processed';
+  }
+
+  /** The queues to take from now: the list as given, `*` expanded to the driver's queues (again after a second, or when none had a job). */
+  #queues(list: readonly string[]): { current(): Promise<readonly string[]>; stale(): void } {
+    if (!list.includes('*')) return { current: async () => list, stale: () => {} };
+    if (!this.#deps.driver.queues) throw new Error('This queue driver cannot list its queues, so --queue=* is not possible — name the queues.');
+    let expanded: readonly string[] | undefined;
+    let at = 0;
+    return {
+      current: async () => {
+        if (expanded && performance.now() - at < 1000) return expanded;
+        const named = new Set(list.filter((queue) => queue !== '*'));
+        const others = (await this.#deps.driver.queues()).filter((queue) => !named.has(queue));
+        expanded = list.flatMap((queue) => (queue === '*' ? others : [queue]));
+        at = performance.now();
+        return expanded;
+      },
+      stale: () => {
+        expanded = undefined;
+      },
+    };
+  }
+
+  #about(reserved: ReservedJob, record: JobRecord) {
+    return { connection: this.#deps.connection, queue: reserved.queue, job: record.job, jobId: record.uuid };
+  }
+
+  /** Frees a unique job's lock; a cache that fails is logged — the lock then expires after `uniqueFor`. */
+  async #releaseUnique(record: JobRecord, moment: 'processing' | 'done'): Promise<void> {
+    try {
+      await releaseUnique(this.#deps.runner.cache, record, moment);
+    } catch (error) {
+      this.#deps.logger.warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${messageOf(error)}`, { job: record.job, jobId: record.uuid });
+    }
+  }
+
+  /** A job event to the app's listeners — whose errors are logged, never the job's. */
+  async #emit(event: JobEvent): Promise<void> {
+    if (!this.#deps.events) return;
+    try {
+      await this.#deps.events(event);
+    } catch (error) {
+      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${messageOf(error)}`, { job: event.job, jobId: event.jobId });
+    }
   }
 
   /**
@@ -181,7 +261,13 @@ export class Worker {
     const abort = new AbortController();
     const timers = new AbortController();
     const running = this.#deps.runner
-      .run(prepared, { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection, signal: abort.signal })
+      .run(prepared, {
+        attempt: reserved.attempts,
+        queue: reserved.queue,
+        connection: this.#deps.connection,
+        signal: abort.signal,
+        ...(this.#deps.retryAfter === undefined ? {} : { retryAfter: this.#deps.retryAfter }),
+      })
       .then(
         (requested) => ({ kind: 'done' as const, requested }),
         (error: unknown) => ({ kind: 'error' as const, error }),
@@ -226,19 +312,20 @@ export class Worker {
     }
   }
 
-  async #retryOrFail(reserved: ReservedJob, record: JobRecord, error: unknown, ms?: number): Promise<Outcome> {
-    const context = { job: record.job, jobId: record.uuid, attempt: reserved.attempts, ...(ms === undefined ? {} : { ms }) };
+  async #retryOrFail(reserved: ReservedJob, record: JobRecord, error: unknown, ms: number | undefined, reason: 'error' | 'unknown'): Promise<Outcome> {
+    const context = { job: record.job, jobId: record.uuid, attempt: reserved.attempts, queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
     if (reserved.attempts < record.tries) {
       const delay = backoffDelay(record.backoff, reserved.attempts);
       await this.#deps.driver.release(reserved, delay);
       this.#deps.logger.warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${messageOf(error)}`, context);
+      await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay, reason, ...(ms === undefined ? {} : { ms }) }));
       return 'released';
     }
-    await this.#fail(reserved, record, error, record.tries > 1 ? ` after ${record.tries} attempts` : '');
+    await this.#fail(reserved, record, error, record.tries > 1 ? ` after ${record.tries} attempts` : '', ms);
     return 'failed';
   }
 
-  async #fail(reserved: ReservedJob, record: JobRecord | undefined, error: unknown, how: string): Promise<void> {
+  async #fail(reserved: ReservedJob, record: JobRecord | undefined, error: unknown, how: string, ms?: number): Promise<void> {
     const name = record?.job ?? '?';
     // Recorded first, then removed: a crash in between runs the job once more (at-least-once), it never vanishes.
     await this.#deps.failed.record({
@@ -250,8 +337,19 @@ export class Worker {
       exception: describeError(error),
       failedAt: this.#deps.clock.now(),
     });
-    await this.#deps.driver.fail(reserved);
-    this.#deps.logger.error(`Failed ${name}${how}: ${messageOf(error)}`, { job: name, ...(record ? { jobId: record.uuid } : {}), attempt: reserved.attempts });
+    const removed = await this.#deps.driver.fail(reserved);
+    const dropped = record?.chain?.length ? ` — the ${record.chain.length} job(s) chained after it will not run` : '';
+    this.#deps.logger.error(`Failed ${name}${how}${dropped}: ${messageOf(error)}`, {
+      job: name,
+      ...(record ? { jobId: record.uuid } : {}),
+      attempt: reserved.attempts,
+      queue: reserved.queue,
+      ...(ms === undefined ? {} : { ms }),
+    });
+    if (!record) return;
+    // A unique job that failed for good is done: a new one with its key may be queued.
+    if (removed) await this.#releaseUnique(record, 'done');
+    await this.#emit(new JobFailed({ ...this.#about(reserved, record), attempt: reserved.attempts, error: error instanceof Error ? error : new Error(String(error)) }));
   }
 }
 

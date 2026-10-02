@@ -76,6 +76,10 @@ export function checkJobClass(job: JobClass, source: string): string {
   if (!Array.isArray(delays) || delays.some((delay) => !(typeof delay === 'number' && delay >= 0))) {
     throw new QueueSetupError(`${label}: static backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`);
   }
+  const { middleware } = job;
+  if (middleware !== undefined && (!Array.isArray(middleware) || middleware.some((layer) => typeof (layer as { handle?: unknown } | null)?.handle !== 'function'))) {
+    throw new QueueSetupError(`${label}: static middleware must be a list of job middleware — objects with handle(context, next), like withoutOverlapping(…).`);
+  }
   return job.job;
 }
 

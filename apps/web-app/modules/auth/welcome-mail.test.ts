@@ -1,7 +1,7 @@
 import { Registered } from '@bespokecore/auth';
 import { EventRegistry } from '@bespokecore/core';
 import { Connections, sql } from '@bespokecore/database';
-import { QueueConnections } from '@bespokecore/queue';
+import { Queue, QueueConnections } from '@bespokecore/queue';
 import { createTestApp } from '@bespokecore/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -26,7 +26,8 @@ describe('the welcome mail', () => {
     app.queue.assertDispatchedTimes(SendWelcomeMailJob, 1).assertDispatched(SendWelcomeMailJob, (payload, job) => payload.userId === user.id && job.delay === 0);
     app.mail.assertNotSent(WelcomeMail);
 
-    expect(await app.queue.work()).toMatchObject({ processed: 1, failed: 0 });
+    // The welcome mail and the dashboard's member numbers (user-profile, a unique job).
+    expect(await app.queue.work()).toMatchObject({ processed: 2, failed: 0 });
     const [sent] = app.mail.sent(WelcomeMail);
     expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei BespokeCore' });
     expect(sent!.message.html).toContain('href="http://localhost/users/me"');
@@ -38,7 +39,7 @@ describe('the welcome mail', () => {
     const user = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;
     await app.make(UserRepository).delete(user.id);
 
-    expect(await app.queue.work()).toMatchObject({ processed: 1, failed: 0 });
+    expect(await app.queue.work({ queues: ['default'], maxJobs: 1 })).toMatchObject({ processed: 1, failed: 0 });
     app.mail.assertNotSent(WelcomeMail);
     expect(await app.queue.failed()).toEqual([]);
   });
@@ -48,11 +49,11 @@ describe('the welcome mail', () => {
     await register(app).assertRedirect('/users/me');
     await app.assertDatabaseHas('jobs', { queue: 'default', attempts: 0 });
     const db = app.make(Connections).get();
-    const { rows } = await sql<{ payload: string }>`select payload from jobs`.execute(db);
+    const { rows } = await sql<{ payload: string }>`select payload from jobs order by id`.execute(db);
     expect(JSON.parse(rows[0]!.payload)).toMatchObject({ job: 'auth.send-welcome-mail', data: { userId: expect.any(Number) }, tries: 5, backoff: [10, 60, 300] });
 
     const result = await app.make(QueueConnections).worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true });
-    expect(result).toMatchObject({ processed: 1, failed: 0 });
+    expect(result).toMatchObject({ processed: 2, failed: 0 });
     app.mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'Welcome to BespokeCore');
     await app.assertDatabaseCount('jobs', 0);
   });
@@ -73,7 +74,16 @@ describe('the welcome mail', () => {
     const ok = await createTestApp(application, { database: 'refresh', queue: 'real' });
     await register(ok).assertRedirect('/users/me');
     await ok.assertDatabaseHas('users', { email: 'kj@example.com' });
-    await ok.assertDatabaseCount('jobs', 1);
+    await ok.assertDatabaseCount('jobs', 2);
     ok.mail.assertSent(VerifyEmailMail);
+  });
+
+  it('is sent once per account (job.once, E85): a second job for the same account — or a retry after the mail went out — sends nothing', async () => {
+    const app = await createTestApp(application, { database: 'refresh' });
+    await register(app).assertRedirect('/users/me');
+    const user = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;
+    await app.make(Queue).dispatch(SendWelcomeMailJob, { userId: user.id });
+    await app.queue.work();
+    app.mail.assertSentCount(WelcomeMail, 1);
   });
 });

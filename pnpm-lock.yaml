@@ -402,6 +402,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
+      '@bespokecore/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@bespokecore/cli':
         specifier: workspace:*
         version: link:../cli
@@ -411,6 +414,9 @@ importers:
       '@bespokecore/encryption':
         specifier: workspace:*
         version: link:../encryption
+      '@bespokecore/redis':
+        specifier: workspace:*
+        version: link:../redis
 
   packages/react:
     dependencies:

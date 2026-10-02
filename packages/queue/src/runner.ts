@@ -1,7 +1,8 @@
 import { durationToMilliseconds, outsideTransaction, runWithJob, type Container, type Duration, type StandardIssue } from '@bespokecore/core';
-import type { JobRecord } from './driver.ts';
-import type { JobClass, JobContext } from './job.ts';
-import { QueueError, type JobRegistry } from './registry.ts';
+import type { JobRecord, UniqueRecord } from './driver.ts';
+import type { JobClass, JobContext, JobMiddleware } from './job.ts';
+import { runOnce, type CacheSource } from './locks.ts';
+import { QueueError, timeoutOf, type JobRegistry } from './registry.ts';
 
 /** Encrypts and decrypts encrypted payloads (`static encrypted`, E105) — the app's `Encrypter`. */
 export interface PayloadCipher {
@@ -86,11 +87,19 @@ export class JobRunner {
   readonly #container: Container;
   readonly #registry: JobRegistry;
   readonly #cipher: () => Promise<PayloadCipher>;
+  readonly #cache: CacheSource;
 
-  constructor(container: Container, registry: JobRegistry, cipher: () => Promise<PayloadCipher>) {
+  /** `cache`: the app's cache, for `job.once` and middleware like `withoutOverlapping` (asked for only when used). */
+  constructor(container: Container, registry: JobRegistry, cipher: () => Promise<PayloadCipher>, cache?: CacheSource) {
     this.#container = container;
     this.#registry = registry;
     this.#cipher = cipher;
+    this.#cache = cache ?? (() => Promise.reject(new QueueError('job.once() and job middleware need the app\'s cache — this runner was built without one.')));
+  }
+
+  /** The cache this runner gives jobs (`job.once`, middleware). */
+  get cache(): CacheSource {
+    return this.#cache;
   }
 
   async prepare(payload: string): Promise<Prepared> {
@@ -124,7 +133,7 @@ export class JobRunner {
    */
   async run(
     prepared: Extract<Prepared, { kind: 'ready' }>,
-    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal },
+    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfter?: number },
   ): Promise<Requested | undefined> {
     const { record, job, payload } = prepared;
     let requested: Requested | undefined;
@@ -145,13 +154,33 @@ export class JobRunner {
       fail: (reason) => {
         requested ??= { kind: 'fail', reason };
       },
+      once: (key, fn, options = {}) =>
+        runOnce(this.#cache, key, fn, { ...(options.for === undefined ? {} : { for: options.for }), lockSeconds: attempt.retryAfter ?? timeoutOf(job) + 60 }),
     };
+    const middleware: readonly JobMiddleware[] = job.middleware ?? [];
     // A job is a boundary (E107): it never runs inside a transaction that was open where it was dispatched or worked on.
     await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt }, async () => {
       // One scope per attempt, like a request: scoped services (a Translator, a unit of work) start fresh each time.
       const scope = this.#container.createScope();
       const instance = scope.make(job as never) as { handle(payload: unknown, job: JobContext): unknown };
-      await instance.handle(payload, context);
+      // The job's middleware, first to last, around handle(): each may run the rest (`next()`) or end the attempt.
+      const step = async (index: number): Promise<void> => {
+        const layer = middleware[index];
+        if (!layer) {
+          await instance.handle(payload, context);
+          return;
+        }
+        let called = false;
+        await layer.handle(
+          { payload, job: context, timeout: timeoutOf(job), retryAfter: attempt.retryAfter, cache: this.#cache },
+          () => {
+            if (called) throw new QueueError(`A middleware of ${record.job} called next() twice — the job would run twice.`);
+            called = true;
+            return step(index + 1);
+          },
+        );
+      };
+      await step(0);
     }));
     return requested;
   }
@@ -177,5 +206,28 @@ export function parseRecord(payload: string): JobRecord | undefined {
     tries,
     backoff,
     dispatchedAt: typeof record.dispatchedAt === 'number' ? record.dispatchedAt : 0,
+    ...(isUnique(record.unique) ? { unique: record.unique } : {}),
+    ...(Array.isArray(record.chain) && record.chain.length > 0 ? { chain: record.chain.map((link) => parseRecord(JSON.stringify(link))).filter((link) => link !== undefined) } : {}),
   };
+}
+
+function isUnique(value: unknown): value is UniqueRecord {
+  const unique = value as Partial<UniqueRecord> | undefined;
+  return (
+    typeof unique === 'object' &&
+    unique !== null &&
+    typeof unique.lock === 'string' &&
+    typeof unique.key === 'string' &&
+    typeof unique.for === 'number' &&
+    unique.for > 0 &&
+    (unique.until === 'processing' || unique.until === 'done')
+  );
+}
+
+/** The next job of a record's chain, as the queue stores it — carrying the rest of the chain; undefined at its end. */
+export function nextInChain(record: JobRecord): string | undefined {
+  const [next, ...rest] = record.chain ?? [];
+  if (!next) return undefined;
+  const { chain: _ignored, ...link } = next;
+  return JSON.stringify(rest.length > 0 ? { ...link, chain: rest } : link);
 }

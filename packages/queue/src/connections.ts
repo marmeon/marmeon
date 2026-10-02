@@ -1,8 +1,11 @@
-import { Clock, Logger, type Container } from '@bespokecore/core';
+import type { Cache } from '@bespokecore/cache';
+import { Clock, EventDispatcher, Logger, type Container } from '@bespokecore/core';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, QueueDriver } from './driver.ts';
 import { DatabaseFailedJobStore, DatabaseQueueDriver, type DatabaseQueueConnection } from './drivers/database.ts';
 import { NullFailedJobStore } from './drivers/memory.ts';
+import { RedisQueueDriver } from './drivers/redis.ts';
+import type { JobEvent } from './events.ts';
 import type { QueueConnectionOptions } from './queue.ts';
 import { JobRegistry, QueueSetupError, timeoutOf } from './registry.ts';
 import { JobRunner, type PayloadCipher } from './runner.ts';
@@ -25,6 +28,9 @@ export const importDatabase = (what = 'QUEUE_CONNECTION=database') =>
   importOptional(() => import('@bespokecore/database'), '@bespokecore/database', what, 'pnpm add @bespokecore/database');
 export const importEncryption = () =>
   importOptional(() => import('@bespokecore/encryption'), '@bespokecore/encryption', 'An encrypted job (static encrypted)', 'pnpm add @bespokecore/encryption');
+export const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis', 'QUEUE_CONNECTION=redis', 'pnpm add @bespokecore/redis redis');
+export const importCache = () =>
+  importOptional(() => import('@bespokecore/cache'), '@bespokecore/cache', 'Unique jobs, withoutOverlapping and job.once', 'pnpm add @bespokecore/cache');
 
 /**
  * The queue's connections, built on first use: a driver per connection, the failed-job store, and workers for
@@ -63,7 +69,10 @@ export class QueueConnections {
       const options = this.options(name);
       if (options.driver === 'sync') throw new QueueSetupError(`The sync queue connection runs each job when it is dispatched — it keeps no jobs to work on.`);
       const clock = this.#container.make(Clock);
-      driver = new DatabaseQueueDriver(async () => this.#database(options.connection), { retryAfter: options.retryAfter, clock });
+      driver =
+        options.driver === 'redis'
+          ? new RedisQueueDriver(async () => this.#container.make((await importRedis()).RedisConnections).get(options.connection), { retryAfter: options.retryAfter, clock })
+          : new DatabaseQueueDriver(async () => this.#database(options.connection), { retryAfter: options.retryAfter, clock });
       this.#drivers.set(name, driver);
     }
     return driver;
@@ -79,9 +88,21 @@ export class QueueConnections {
   }
 
   runner(): JobRunner {
-    this.#runner ??= new JobRunner(this.#container, this.#container.make(JobRegistry), () => this.cipher());
+    this.#runner ??= new JobRunner(this.#container, this.#container.make(JobRegistry), () => this.cipher(), () => this.cache());
     return this.#runner;
   }
+
+  /** The app's cache (@bespokecore/cache) — for unique jobs, `withoutOverlapping` and `job.once`. */
+  async cache(): Promise<Cache> {
+    const { Cache } = await importCache();
+    if (!this.#container.has(Cache)) {
+      throw new QueueSetupError('Unique jobs, withoutOverlapping and job.once keep their locks in the app\'s cache — register the CacheServiceProvider of @bespokecore/cache (installed packages register it: bespoke discover).');
+    }
+    return this.#container.make(Cache);
+  }
+
+  /** Dispatches a job event through the app's `EventDispatcher` (listeners built from the root container). */
+  readonly events = (event: JobEvent): Promise<void> => this.#container.make(EventDispatcher).dispatch(event);
 
   /** The app's `Encrypter`, for `static encrypted` jobs (E105). */
   async cipher(): Promise<PayloadCipher> {
@@ -97,7 +118,7 @@ export class QueueConnections {
    */
   worker(connection: string, stopTimeout: number): Worker {
     const options = this.options(connection);
-    if (options.driver === 'sync') throw new QueueSetupError('The sync queue connection runs each job when it is dispatched — there is nothing for a worker to do. Use --connection=database.');
+    if (options.driver === 'sync') throw new QueueSetupError('The sync queue connection runs each job when it is dispatched — there is nothing for a worker to do. Use --connection=database (or redis).');
     checkTimeouts(this.#container.make(JobRegistry), connection, options.retryAfter, stopTimeout);
     return new Worker({
       driver: this.driver(connection),
@@ -106,13 +127,20 @@ export class QueueConnections {
       failed: this.failed(),
       clock: this.#container.make(Clock),
       logger: this.#container.make(Logger).child({ channel: 'queue' }),
+      retryAfter: options.retryAfter,
+      events: this.events,
     });
   }
 
   async #database(connection: string, what?: string): Promise<DatabaseQueueConnection> {
     const { Connections } = await importDatabase(what);
     const connections = this.#container.make(Connections);
-    return { db: connections.get(connection), driver: connections.options(connection).driver, inTransaction: () => connections.inTransaction(connection) };
+    return {
+      db: connections.get(connection),
+      driver: connections.options(connection).driver,
+      inTransaction: () => connections.inTransaction(connection),
+      transaction: (work) => connections.transaction(() => work(), { connection }),
+    };
   }
 }
 

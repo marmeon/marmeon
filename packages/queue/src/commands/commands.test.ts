@@ -67,7 +67,7 @@ describe('the queue provider', () => {
     expect(commands).toEqual(
       expect.arrayContaining(['queue:work', 'queue:failed', 'queue:retry', 'queue:forget', 'queue:flush', 'queue:prune-failed', 'queue:size', 'make:queue-table']),
     );
-    expect(application.container.make(DevProcesses).all()).toEqual([{ name: 'queue', args: ['queue:work', '--stop-timeout=5'] }]);
+    expect(application.container.make(DevProcesses).all()).toEqual([{ name: 'queue', args: ['queue:work', '--queue=*', '--stop-timeout=5'] }]);
 
     await using sync = await app({ env: { QUEUE_CONNECTION: 'sync' } });
     expect(sync.container.make(DevProcesses).all()).toEqual([]);
@@ -81,6 +81,9 @@ describe('the queue provider', () => {
     expect(sync.container.make(Queue)).toBeDefined();
     await expect(app({ providers: 'no-encryption', jobs: [SecretJob] })).rejects.toThrow('An encrypted job (static encrypted) needs the EncryptionServiceProvider');
     await expect(app({ env: { DB_QUEUE_CONNECTION: 'reporting' } })).rejects.toThrow(/Database connection "reporting" is not configured/);
+    await expect(app({ env: { QUEUE_CONNECTION: 'redis' } })).rejects.toThrow(
+      'QUEUE_CONNECTION=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).',
+    );
   });
 });
 
@@ -125,6 +128,11 @@ describe('the queue commands', () => {
     const sized = input('/tmp', ['mail', 'default']);
     await application.container.make(QueueSizeCommand).handle(sized.input);
     expect(sized.lines).toEqual(['database/mail: 1', 'database/default: 0']);
+    // Without names: every queue that holds jobs, the default one first (also when empty).
+    await application.container.make(Queue).dispatch(PingJob, { n: 2 }, { queue: 'reports' });
+    const all = input('/tmp');
+    await application.container.make(QueueSizeCommand).handle(all.input);
+    expect(all.lines).toEqual(['database/default: 0', 'database/mail: 1', 'database/reports: 1']);
 
     await failed.record({ uuid: 'x', connection: 'database', queue: 'default', job: 'test.ping', payload: payload('x'), exception: 'Error: x', failedAt: 0 });
     const forgot = input('/tmp', ['x']);

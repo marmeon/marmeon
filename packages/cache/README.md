@@ -50,3 +50,12 @@ database driver; otherwise on `default`).
 A lock taken for work that is part of a transaction — a unique job whose row is in it — must be released if the
 transaction rolls back: `afterRollback(() => lock.release())` (from `@bespokecore/database`) runs right after the rollback
 and never after a commit.
+The queue does exactly this for unique jobs (`queue.dispatch(Job, payload, { unique })`, W6 step 4): lock, then
+`afterRollback`, then the dispatch.
+
+### Locks and markers of the queue
+
+`@bespokecore/queue` keeps three things in this cache: the locks of unique jobs (`queue:unique:<job>:<key>`, owner = the
+job's id, so the worker that finishes the job frees it), the locks of the `withoutOverlapping` job middleware
+(`queue:overlap:…`) and the markers of `job.once` (`queue:once:<key>`, kept a day by default). With workers on several
+machines the cache must be shared: `database` or `redis` — `file` and `memory` lock only one machine (one process).

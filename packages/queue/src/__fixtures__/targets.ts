@@ -5,46 +5,65 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { CACHE_MIGRATION } from '@bespokecore/cache';
 import { TestClock, type Clock, type Logger } from '@bespokecore/core';
 import { Connections, Schema, sql, type ConnectionOptions } from '@bespokecore/database';
+import { RedisConnections } from '@bespokecore/redis';
 import { QUEUE_MIGRATION } from '../commands/failed.ts';
 import type { FailedJobStore, QueueDriver } from '../driver.ts';
 import { DatabaseFailedJobStore, DatabaseQueueDriver } from '../drivers/database.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from '../drivers/memory.ts';
+import { RedisQueueDriver } from '../drivers/redis.ts';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
+/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), Redis when `BESPOKE_TEST_REDIS_URL` is (`pnpm test:redis`). */
 export const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+export const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
 
 export const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
-/** Where a queue keeps its jobs — enough for another process to open the same one. */
-export type QueueTarget = { kind: 'memory' } | { kind: 'sqlite'; file: string } | { kind: 'pgsql'; url: string };
+/**
+ * Where a queue keeps its jobs — enough for another process to open the same one. A Redis queue keeps the rest (the
+ * fixture's `handled` table, failed jobs) in a SQLite file.
+ */
+export type QueueTarget = { kind: 'memory' } | { kind: 'sqlite'; file: string } | { kind: 'pgsql'; url: string } | { kind: 'redis'; url: string; prefix: string; file: string };
 export type QueueKind = QueueTarget['kind'];
+/** A target worker processes can share. */
+export type SharedTarget = Exclude<QueueTarget, { kind: 'memory' }>;
 
-/** Every driver the suite runs against: memory and SQLite always, Postgres with its URL. */
-export const queueKinds: readonly QueueKind[] = ['memory', 'sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : [])];
-/** The database drivers (what the worker processes and transactions need). */
-export const databaseKinds: readonly Exclude<QueueKind, 'memory'>[] = ['sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : [])];
+/** Every driver the suite runs against: memory and SQLite always, Postgres and Redis with their URLs. */
+export const queueKinds: readonly QueueKind[] = ['memory', 'sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : []), ...(REDIS_URL ? (['redis'] as const) : [])];
+/** The database drivers (what the transactions of the database queue need). */
+export const databaseKinds: readonly Exclude<QueueKind, 'memory' | 'redis'>[] = ['sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : [])];
+/** The drivers real `queue:work` processes run against (one suite for all, E83). */
+export const processKinds: readonly SharedTarget['kind'][] = [...databaseKinds, ...(REDIS_URL ? (['redis'] as const) : [])];
 
 export function databaseConnections(options: ConnectionOptions): Connections {
   return new Connections({ connections: { default: options }, root: '/', logger: silent });
 }
 
-export function connectionOptions(target: Exclude<QueueTarget, { kind: 'memory' }>, poolMax = 5): ConnectionOptions {
-  return target.kind === 'sqlite' ? { driver: 'sqlite', database: target.file } : { driver: 'pgsql', url: target.url, poolMax };
+/** The database of a target — for a Redis queue, the SQLite file beside it. */
+export function connectionOptions(target: SharedTarget, poolMax = 5): ConnectionOptions {
+  return target.kind === 'pgsql' ? { driver: 'pgsql', url: target.url, poolMax } : { driver: 'sqlite', database: target.file };
 }
 
-/** Runs the queue migration (the file `make:queue-table` copies) and the fixture table `handled`. */
+export function redisConnections(url: string, prefix: string): RedisConnections {
+  return new RedisConnections({ connections: { default: { url, prefix } }, logger: silent });
+}
+
+/** Runs the queue migration (the file `make:queue-table` copies), the cache's (locks) and the fixture table `handled`. */
 export async function migrate(connections: Connections): Promise<void> {
-  const migration = ((await import(QUEUE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
   const schema = new Schema(connections.get(), connections.options().driver);
-  await migration.up(schema);
+  for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) {
+    const migration = ((await import(file.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
+    await migration.up(schema);
+  }
   await schema.create('handled', (table) => {
     table.string('uuid', 64);
     table.integer('n');
     table.integer('attempt');
     table.integer('pid');
     table.string('event');
+    table.bigInteger('at').nullable();
   });
 }
 
@@ -53,13 +72,26 @@ export async function freshTarget(kind: QueueKind): Promise<{ target: QueueTarge
   switch (kind) {
     case 'memory':
       return { target: { kind }, drop: async () => {} };
-    case 'sqlite': {
+    case 'sqlite':
+    case 'redis': {
       const directory = mkdtempSync(join(tmpdir(), 'bespoke-queue-'));
       const file = join(directory, 'queue.sqlite');
       const connections = databaseConnections({ driver: 'sqlite', database: file });
       await migrate(connections);
       await connections.destroy();
-      return { target: { kind, file }, drop: async () => rmSync(directory, { recursive: true, force: true }) };
+      const removeFile = async () => rmSync(directory, { recursive: true, force: true });
+      if (kind === 'sqlite') return { target: { kind, file }, drop: removeFile };
+      const prefix = `bespoke-queue-test-${crypto.randomUUID().slice(0, 8)}:`;
+      return {
+        target: { kind, url: REDIS_URL!, prefix, file },
+        drop: async () => {
+          const redis = redisConnections(REDIS_URL!, prefix);
+          const keys = await redis.get().command<string[]>(['KEYS', `${prefix}*`]);
+          if (keys.length > 0) await redis.get().command(['DEL', ...keys]);
+          await redis.close();
+          await removeFile();
+        },
+      };
     }
     case 'pgsql': {
       const name = `bespoke_queue_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -99,18 +131,43 @@ export async function queueUnderTest(kind: QueueKind, options: { retryAfter?: nu
     return { driver: new MemoryQueueDriver({ clock, retryAfter }), failed: new MemoryFailedJobStore(), clock, target, connections: undefined, close: drop };
   }
   const connections = databaseConnections(connectionOptions(target));
-  const connection = { db: connections.get(), driver: target.kind };
+  const connection = { db: connections.get(), driver: connections.options().driver };
+  const redis = target.kind === 'redis' ? redisConnections(target.url, target.prefix) : undefined;
   return {
-    driver: new DatabaseQueueDriver(connection, { retryAfter, clock: clock as Clock }),
+    driver: redis ? new RedisQueueDriver(redis.get(), { retryAfter, clock: clock as Clock }) : new DatabaseQueueDriver(connection, { retryAfter, clock: clock as Clock }),
     failed: new DatabaseFailedJobStore(connection),
     clock,
     target,
     connections,
     close: async () => {
+      await redis?.close();
       await connections.destroy();
       await drop();
     },
   };
+}
+
+/** The queue driver of a shared target, as another process opens it (with the system clock). */
+export function openDriver(target: SharedTarget, connections: Connections, options: { retryAfter?: number } = {}): { driver: QueueDriver; close(): Promise<void> } {
+  const retryAfter = options.retryAfter ?? 90;
+  if (target.kind === 'redis') {
+    const redis = redisConnections(target.url, target.prefix);
+    return { driver: new RedisQueueDriver(redis.get(), { retryAfter }), close: () => redis.close() };
+  }
+  return { driver: new DatabaseQueueDriver({ db: connections.get(), driver: target.kind }, { retryAfter }), close: async () => {} };
+}
+
+/** What a target's queue and cache settings are for an app process (the fixture app's environment). */
+export function targetEnv(target: SharedTarget, retryAfter?: number): Record<string, string> {
+  const retry = retryAfter === undefined ? {} : { [target.kind === 'redis' ? 'REDIS_QUEUE_RETRY_AFTER' : 'DB_QUEUE_RETRY_AFTER']: String(retryAfter) };
+  switch (target.kind) {
+    case 'sqlite':
+      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
+    case 'pgsql':
+      return { DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
+    case 'redis':
+      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'redis', CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix, ...retry };
+  }
 }
 
 const CLI = fileURLToPath(new URL('../../../cli/bin/bespoke.js', import.meta.url));
@@ -127,12 +184,20 @@ export interface WorkerProcess {
   exited(ms?: number): Promise<number | string>;
 }
 
-export function startWorker(target: Exclude<QueueTarget, { kind: 'memory' }>, args: readonly string[], env: Record<string, string> = {}): WorkerProcess {
-  const database = target.kind === 'sqlite' ? { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file } : { DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3' };
-  const child = spawn(process.execPath, ['--conditions=@bespokecore/source', CLI, 'queue:work', ...args], {
+export function startWorker(target: SharedTarget, args: readonly string[], env: Record<string, string> = {}): WorkerProcess {
+  return startProcess(['--conditions=@bespokecore/source', CLI, 'queue:work', ...args], { ...targetEnv(target), ...env });
+}
+
+/** `bespoke fixture:dispatch` in the fixture app: says "ready", waits for "go" on stdin, then dispatches. */
+export function startDispatcher(target: SharedTarget, args: readonly string[], env: Record<string, string> = {}): WorkerProcess {
+  return startProcess(['--conditions=@bespokecore/source', CLI, 'fixture:dispatch', ...args], { ...targetEnv(target), ...env }, 'pipe');
+}
+
+function startProcess(argv: readonly string[], env: Record<string, string>, stdin: 'ignore' | 'pipe' = 'ignore'): WorkerProcess {
+  const child = spawn(process.execPath, argv, {
     cwd: APP,
-    env: { PATH: process.env.PATH ?? '', BESPOKE_CHILD: '1', NODE_ENV: 'test', QUEUE_CONNECTION: 'database', ...database, ...env },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { PATH: process.env.PATH ?? '', BESPOKE_CHILD: '1', NODE_ENV: 'test', ...env },
+    stdio: [stdin, 'pipe', 'pipe'],
   });
   const lines: string[] = [];
   const waiters = new Set<() => void>();

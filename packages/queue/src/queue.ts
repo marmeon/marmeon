@@ -1,11 +1,13 @@
-import { afterCommit, inTransaction, token, type Clock, type Logger } from '@bespokecore/core';
+import { afterCommit, afterRollback, inTransaction, token, type Clock, type Logger } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
-import type { JobRecord, QueueDriver } from './driver.ts';
-import type { CheckJob, DispatchOptions, JobClass, JobInput, PendingJob } from './job.ts';
+import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
+import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
+import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './locks.ts';
 import { backoffOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
-import { cipherContext, delaySeconds, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
+import { cipherContext, delaySeconds, nextInChain, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
 
-/** A `bulk()` list: each entry's payload typed by its job class, checked like a single dispatch. */
+/** A `bulk()` or `chain()` list: each entry's payload typed by its job class, checked like a single dispatch. */
 export type PendingJobs<J extends readonly JobClass[]> = { readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>] };
 
 /**
@@ -20,15 +22,32 @@ export type PendingJobs<J extends readonly JobClass[]> = { readonly [K in keyof 
  * {@link JobPayloadError}) and again before the job runs. Delivery is at-least-once (E85).
  *
  * **Inside a transaction** (`connections.transaction()`, E107) a job is queued only if the transaction commits: the
- * `database` driver writes it into the same transaction; every other connection (`sync`, later `redis`) holds it until
- * the outermost commit — and drops it on a rollback. A `sync` job then runs after the commit, outside the transaction;
+ * `database` driver writes it into the same transaction; every other connection (`sync`, `redis`) holds it until the
+ * outermost commit — and drops it on a rollback. A `sync` job then runs after the commit, outside the transaction;
  * its error is thrown by the `transaction()` call.
  */
 export interface Queue {
-  /** Queues one job. Returns its id (stable over retries). */
-  dispatch<J extends JobClass>(job: J & CheckJob<J>, payload: JobInput<J>, options?: DispatchOptions): Promise<string>;
+  /**
+   * Queues one job. Returns its id (stable over retries).
+   *
+   * With `unique` (E85): a no-op — resolving `undefined` — while one of this job with the same key is queued (or
+   * running, with `uniqueUntil: 'done'`). The key's lock lives in the app's cache, taken right here (visible to every
+   * process at once); a rollback of a transaction around the dispatch frees it again.
+   */
+  dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
   /** Queues several jobs at once: `bulk([[SendWelcomeMailJob, { userId: 1 }], [SendWelcomeMailJob, { userId: 2 }]])`. Returns their ids. */
-  bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: DispatchOptions): Promise<string[]>;
+  bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
+  /**
+   * Queues jobs to run one after the other (E98): the first now, each next one only once the one before succeeded —
+   * a job that fails for good (or discards itself) ends the chain. Every payload is checked now; the rest of the chain
+   * travels in the job's record and is queued together with the acknowledgement of the job before it (one atomic step
+   * of the driver). Returns the ids of all of them.
+   *
+   * ```ts
+   * await queue.chain([[ImportProfileJob, { id }], [RebuildStatsJob, { userId }]]);
+   * ```
+   */
+  chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
    * The queue, writing through a database transaction you control yourself (E85) — like `repository.using(trx)`. Inside
    * `connections.transaction()` no `using()` is needed: a dispatch joins the transaction by itself (E107).
@@ -45,10 +64,10 @@ export interface Queue {
 }
 export const Queue = token<Queue>('Queue');
 
-/** A queue connection as configured: which driver, its default queue, and (for `database`) how long a claim holds. */
+/** A queue connection as configured: which driver, its default queue, and (for `database`/`redis`) how long a claim holds. */
 export type QueueConnectionOptions =
   | { readonly driver: 'sync'; readonly queue: string }
-  | { readonly driver: 'database'; readonly queue: string; readonly connection: string; readonly retryAfter: number };
+  | { readonly driver: 'database' | 'redis'; readonly queue: string; readonly connection: string; readonly retryAfter: number };
 
 export interface QueueManagerDependencies {
   readonly connections: Readonly<Record<string, QueueConnectionOptions>>;
@@ -61,6 +80,16 @@ export interface QueueManagerDependencies {
   readonly cipher: () => Promise<PayloadCipher>;
   readonly clock: Clock;
   readonly logger: Logger;
+  /** The app's cache — for the locks of unique jobs (asked for only when one is dispatched). */
+  readonly cache?: CacheSource;
+  /** `JobQueued` (and, for `sync`, `JobProcessing`, `JobProcessed`, `JobFailed`) — the app's `EventDispatcher`. */
+  readonly events?: JobEvents;
+}
+
+/** A job checked and ready to queue: its record and that record as stored. */
+interface Prepared {
+  readonly record: JobRecord;
+  readonly serialized: string;
 }
 
 /** The `Queue` of a running app: one driver per connection (`QUEUE_CONNECTION`, or `{ connection }` per dispatch). */
@@ -73,12 +102,27 @@ export class QueueManager implements Queue {
     this.#transaction = transaction;
   }
 
-  dispatch<J extends JobClass>(job: J & CheckJob<J>, payload: JobInput<J>, options: DispatchOptions = {}): Promise<string> {
-    return this.#push([[job, payload]], options).then(([id]) => id!);
+  dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>> {
+    return this.#dispatch(job, payload, options ?? {}) as Promise<DispatchResult<O>>;
   }
 
-  bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: DispatchOptions = {}): Promise<string[]> {
-    return this.#push(jobs as unknown as readonly PendingJob[], options);
+  async #dispatch(job: JobClass, payload: unknown, options: DispatchOptions | UniqueDispatchOptions): Promise<string | undefined> {
+    const unique = options.unique === undefined ? undefined : uniqueRecord(job, options as UniqueDispatchOptions);
+    const prepared = await prepareRecord(this.#deps, job, payload, unique ? { unique } : {});
+    if (!unique) return (await this.#push([prepared], options))[0]!;
+    return this.#pushUnique(prepared as Prepared & { record: { unique: UniqueRecord } }, options);
+  }
+
+  bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
+    if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('bulk() queues no unique jobs — dispatch them one by one.');
+    return this.#prepareAll(jobs as unknown as readonly PendingJob[]).then((prepared) => this.#push(prepared, options as DispatchOptions));
+  }
+
+  async chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
+    if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('chain() takes no unique key — a chain is queued as it is.');
+    const { first, ids } = await prepareChain(this.#deps, jobs as unknown as readonly PendingJob[]);
+    await this.#push([first], options as DispatchOptions);
+    return ids;
   }
 
   using(transaction: Kysely<any>): Queue {
@@ -102,45 +146,120 @@ export class QueueManager implements Queue {
     return driver.using(this.#transaction);
   }
 
-  async #push(jobs: readonly PendingJob[], options: DispatchOptions): Promise<string[]> {
+  #prepareAll(jobs: readonly PendingJob[]): Promise<Prepared[]> {
+    // Every payload is checked before the first is queued: a bad one queues none.
+    return Promise.all(jobs.map(([job, payload]) => prepareRecord(this.#deps, job, payload)));
+  }
+
+  /**
+   * A unique job: its lock first — on the cache's own connection, outside any transaction (E108), so every process sees
+   * it at once — then, inside a transaction, `afterRollback` to free it again if the job never comes to exist, then the
+   * push (into the transaction, or held until its commit).
+   */
+  async #pushUnique(prepared: Prepared & { record: { unique: UniqueRecord } }, options: DispatchOptions | UniqueDispatchOptions): Promise<string | undefined> {
+    const { record } = prepared;
+    const lock = uniqueLock(await this.#cache(), record);
+    if (!(await lock.get())) {
+      this.#deps.logger.debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`, { job: record.job, unique: record.unique.key });
+      return undefined;
+    }
+    await afterRollback(() => lock.release());
+    try {
+      await this.#push([prepared], options, () => lock.release());
+    } catch (error) {
+      await lock.release().catch(() => {});
+      throw error;
+    }
+    return record.uuid;
+  }
+
+  /** `failed`: frees what the dispatch took (a unique lock) when a push held until the commit fails after it. */
+  async #push(prepared: readonly Prepared[], options: DispatchOptions | UniqueDispatchOptions, failed?: () => Promise<unknown>): Promise<string[]> {
     const name = options.connection ?? this.#deps.default;
     const connection = this.#connection(name);
     const queue = options.queue ?? connection.queue;
     const delay = delaySeconds(options.delay);
-    // Every payload is checked before the first is queued: a bad one queues none.
-    const records = await Promise.all(jobs.map(([job, payload]) => prepareRecord(this.#deps, job, payload)));
+    const ids = prepared.map(({ record }) => record.uuid);
+    const queued = () => Promise.all(prepared.map(({ record }) => this.#emit(new JobQueued({ connection: name, queue, job: record.job, jobId: record.uuid, delay }))));
 
-    const ids = records.map(({ record }) => record.uuid);
     if (connection.driver === 'sync') {
       // Held until the commit inside a transaction (E107): a sync job must never act on data that is rolled back.
-      await afterCommit(() => this.#runNow(records, queue, name));
+      await afterCommit(async () => {
+        await queued();
+        await this.#runNow(prepared, queue, name);
+      });
       return ids;
     }
 
     const driver = this.#driver(name);
     const push = async () => {
-      for (const { serialized } of records) await driver.push(queue, serialized, delay);
+      for (const { serialized } of prepared) await driver.push(queue, serialized, delay);
     };
     // Explicitly through a transaction (`using(trx)`), or joining the ambient one: part of it. Inside a transaction the
     // driver cannot join (another database connection, redis): after the commit.
-    if (this.#transaction === undefined && inTransaction() && !(await driver.joinsTransaction?.())) await afterCommit(push);
-    else await push();
+    if (this.#transaction === undefined && inTransaction() && !(await driver.joinsTransaction?.())) {
+      await afterCommit(async () => {
+        try {
+          await push();
+        } catch (error) {
+          await failed?.().catch(() => {});
+          throw error;
+        }
+        await queued();
+      });
+    } else {
+      await push();
+      // Joined a transaction: queued once it commits.
+      if (this.#transaction === undefined) await afterCommit(queued);
+      else await queued();
+    }
     return ids;
   }
 
-  /** The `sync` connection: each job runs now, in its own scope; an error reaches the caller. */
-  async #runNow(records: readonly { record: JobRecord; serialized: string }[], queue: string, connection: string): Promise<string[]> {
+  /** The `sync` connection: each job (and the rest of its chain) runs now, in its own scope; an error reaches the caller. */
+  async #runNow(prepared: readonly Prepared[], queue: string, connection: string): Promise<void> {
     const runner = this.#deps.runner();
-    for (const { record, serialized } of records) {
-      const prepared = await runner.prepare(serialized);
-      if (prepared.kind !== 'ready') throw new QueueError(prepared.kind === 'poison' ? prepared.reason : `No job named "${record.job}" is registered.`);
-      const requested = await runner.run(prepared, { attempt: 1, queue, connection, signal: new AbortController().signal });
-      if (requested?.kind === 'fail') throw requested.reason instanceof Error ? requested.reason : new QueueError(`${record.job} failed: ${requested.reason}`);
-      if (requested?.kind === 'release') {
-        throw new QueueError(`${record.job} released itself, but the sync connection runs a job only once, at dispatch — queue it on a worker's connection to run it again later.`);
+    for (const { serialized } of prepared) {
+      let next: string | undefined = serialized;
+      while (next !== undefined) {
+        const ready = await runner.prepare(next);
+        if (ready.kind !== 'ready') throw new QueueError(ready.kind === 'poison' ? ready.reason : `No job named "${ready.record.job}" is registered.`);
+        const { record } = ready;
+        const about = { connection, queue, job: record.job, jobId: record.uuid };
+        await this.#emit(new JobProcessing({ ...about, attempt: 1 }));
+        await releaseUnique(this.#cache, record, 'processing');
+        const started = performance.now();
+        let requested;
+        try {
+          requested = await runner.run(ready, { attempt: 1, queue, connection, signal: new AbortController().signal });
+          if (requested?.kind === 'fail') throw requested.reason instanceof Error ? requested.reason : new QueueError(`${record.job} failed: ${requested.reason}`);
+          if (requested?.kind === 'release') {
+            throw new QueueError(`${record.job} released itself, but the sync connection runs a job only once, at dispatch — queue it on a worker's connection to run it again later.`);
+          }
+        } catch (error) {
+          await this.#emit(new JobFailed({ ...about, attempt: 1, error: error instanceof Error ? error : new Error(String(error)) }));
+          throw error;
+        } finally {
+          await releaseUnique(this.#cache, record, 'done');
+        }
+        await this.#emit(new JobProcessed({ ...about, attempt: 1, ms: Math.round(performance.now() - started), discarded: requested?.kind === 'discard' }));
+        next = requested?.kind === 'discard' ? undefined : nextInChain(record);
       }
     }
-    return records.map(({ record }) => record.uuid);
+  }
+
+  #cache = async () => {
+    if (!this.#deps.cache) throw new QueueError('Unique jobs need the app\'s cache (@bespokecore/cache) — this queue was built without one.');
+    return this.#deps.cache();
+  };
+
+  async #emit(event: JobEvent): Promise<void> {
+    if (!this.#deps.events) return;
+    try {
+      await this.#deps.events(event);
+    } catch (error) {
+      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${error instanceof Error ? error.message : String(error)}`, { job: event.job, jobId: event.jobId });
+    }
   }
 
   #connection(name: string): QueueConnectionOptions {
@@ -150,11 +269,24 @@ export class QueueManager implements Queue {
   }
 }
 
+/** A chain checked and ready to queue: its first job's record carries the rest (E98). */
+export async function prepareChain(
+  deps: Parameters<typeof prepareRecord>[0],
+  jobs: readonly PendingJob[],
+): Promise<{ first: Prepared; ids: string[] }> {
+  if (jobs.length === 0) throw new QueueError('chain() needs at least one job.');
+  const links = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload)));
+  const [head, ...rest] = links.map(({ record }) => record);
+  const record: JobRecord = rest.length > 0 ? { ...head!, chain: rest } : head!;
+  return { first: { record, serialized: JSON.stringify(record) }, ids: links.map(({ record }) => record.uuid) };
+}
+
 /** Checks a job and its payload and builds what the queue stores (encrypted with `static encrypted`). */
 export async function prepareRecord(
   deps: { readonly registry: JobRegistry; readonly cipher: () => Promise<PayloadCipher>; readonly clock: Clock },
   job: JobClass,
   payload: unknown,
+  extra: { readonly unique?: UniqueRecord } = {},
 ): Promise<{ record: JobRecord; serialized: string }> {
   if (typeof job !== 'function' || typeof job.job !== 'string') throw new QueueError(`Only job classes can be dispatched (a class with static job and static schema), not ${String(job)}.`);
   if (!deps.registry.has(job)) {
@@ -178,6 +310,7 @@ export async function prepareRecord(
     tries: triesOf(job),
     backoff: backoffOf(job),
     dispatchedAt: deps.clock.now(),
+    ...(extra.unique ? { unique: extra.unique } : {}),
   };
   return { record, serialized: JSON.stringify(record) };
 }

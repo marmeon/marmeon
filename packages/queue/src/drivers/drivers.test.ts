@@ -97,6 +97,41 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     );
   });
 
+  it('acknowledges and queues the next job of a chain in one step — only while the claim is its own', async () => {
+    await withQueue(
+      kind,
+      async ({ driver, clock }) => {
+        clock.freeze();
+        await driver.push('default', 'first', 0);
+        const lost = (await driver.reserve(['default']))!;
+        clock.travel({ seconds: 60 });
+        const taken = (await driver.reserve(['default']))!;
+        // The late worker's hand-off changes nothing: no second "next".
+        expect(await driver.ack(lost, [{ queue: 'default', payload: 'next', delay: 0 }])).toBe(false);
+        expect(await driver.size('default')).toBe(1);
+        expect(await driver.ack(taken, [{ queue: 'later', payload: 'next', delay: 0 }, { queue: 'later', payload: 'delayed', delay: 30 }])).toBe(true);
+        expect(await driver.size('default')).toBe(0);
+        expect(await driver.size('later')).toBe(2);
+        expect((await driver.reserve(['later']))?.payload).toBe('next');
+        expect(await driver.reserve(['later'])).toBeUndefined();
+        clock.travel({ seconds: 30 });
+        expect((await driver.reserve(['later']))?.payload).toBe('delayed');
+      },
+      { retryAfter: 60 },
+    );
+  });
+
+  it('counts waiting, delayed and running jobs, and lists its queues', async () => {
+    await withQueue(kind, async ({ driver }) => {
+      await driver.push('mail', 'a', 0);
+      await driver.push('mail', 'b', 60);
+      await driver.push('default', 'c', 0);
+      await driver.reserve(['mail']);
+      expect(await driver.size('mail')).toBe(2);
+      expect(await driver.queues()).toEqual(['default', 'mail']);
+    });
+  });
+
   it('keeps failed jobs, newest first; prunes, forgets and flushes them', async () => {
     await withQueue(kind, async ({ failed }) => {
       const base = { connection: 'database', queue: 'default', job: 'test.job', payload: '{}', exception: 'Error: boom' };
@@ -144,6 +179,27 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction 
       } finally {
         await other.destroy();
       }
+    });
+  });
+
+  it('hands a chain on in one transaction: when queuing the next job fails, the job stays claimed (and runs again)', async () => {
+    await withQueue(kind, async ({ driver, connections }) => {
+      const db = connections!.get();
+      // The next job cannot be inserted — a failure between the acknowledgement and the hand-off.
+      if (kind === 'sqlite') {
+        await sql`create trigger refuse before insert on jobs when new.payload = 'explode' begin select raise(abort, 'refused'); end`.execute(db);
+      } else {
+        await sql.raw(`create function refuse() returns trigger language plpgsql as $$ begin if new.payload = 'explode' then raise exception 'refused'; end if; return new; end $$`).execute(db);
+        await sql`create trigger refuse before insert on jobs for each row execute function refuse()`.execute(db);
+      }
+      await driver.push('default', 'first', 0);
+      const job = (await driver.reserve(['default']))!;
+      await expect(driver.ack(job, [{ queue: 'default', payload: 'explode', delay: 0 }])).rejects.toThrow(/refused/);
+      // Not acknowledged: still there, still claimed — after retryAfter it runs again and hands on then.
+      const { rows } = await sql<{ payload: string; reserved_at: unknown }>`select payload, reserved_at from jobs`.execute(db);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.payload).toBe('first');
+      expect(rows[0]!.reserved_at).not.toBeNull();
     });
   });
 

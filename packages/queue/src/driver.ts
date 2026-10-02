@@ -17,11 +17,19 @@ export interface ReservedJob extends QueuedJob {
   readonly reservedAt: number;
 }
 
+/** A job to queue: what `push` takes, and what `ack` queues together with the acknowledgement (the next job of a chain). */
+export interface QueuedPush {
+  readonly queue: string;
+  readonly payload: string;
+  /** Seconds before it may be claimed. */
+  readonly delay: number;
+}
+
 /**
- * The contract of a queue driver (E83): `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` (W6
- * step 4) in lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts
- * the attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after
- * `retryAfter`) and another worker holds the job now, they change nothing and return false.
+ * The contract of a queue driver (E83): `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
+ * lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts the
+ * attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after `retryAfter`)
+ * and another worker holds the job now, they change nothing and return false.
  */
 export interface QueueDriver {
   /** Queues `payload` on `queue`, to be claimed no earlier than `delay` seconds from now. Returns the entry's id. */
@@ -31,14 +39,20 @@ export interface QueueDriver {
    * `retryAfter` (its worker died). Increments `attempts`. `undefined` when there is none.
    */
   reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
-  /** Done: the job leaves the queue. */
-  ack(job: ReservedJob): Promise<boolean>;
+  /**
+   * Done: the job leaves the queue — and `next` (the rest of a chain) is queued in the same atomic step: both happen, or
+   * neither (a database transaction, one Lua script). Only while the claim is this worker's: an expired claim queues
+   * nothing — the worker that holds the job now hands the chain on.
+   */
+  ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
   /** Back to the queue, available again in `delay` seconds; the attempt stays counted. */
   release(job: ReservedJob, delay: number): Promise<boolean>;
   /** Leaves the queue for good — the worker has recorded it in the failed jobs first. */
   fail(job: ReservedJob): Promise<boolean>;
-  /** Jobs waiting or running on `queue`. */
+  /** Jobs waiting, delayed or running on `queue`. */
   size(queue: string): Promise<number>;
+  /** The queues that hold jobs (or held some — a driver may remember a queue after it ran empty), sorted — `--queue=*`, `queue:size`. */
+  queues(): Promise<string[]>;
   /** Drivers that keep jobs in the database: the same driver writing through a transaction (E85). */
   using?(transaction: Kysely<any>): QueueDriver;
   /**
@@ -65,6 +79,22 @@ export interface JobRecord {
   readonly backoff: readonly number[];
   /** When it was first dispatched (epoch ms). */
   readonly dispatchedAt: number;
+  /** A unique job (`dispatch(…, { unique })`): the lock that keeps a second one off the queue, and when the worker frees it. */
+  readonly unique?: UniqueRecord;
+  /** The rest of its chain (`queue.chain([...])`): queued one after the other, each when the one before succeeded. */
+  readonly chain?: readonly JobRecord[];
+}
+
+/** The unique lock of a job, as its record carries it: the lock's name (the job's id is its owner), how long it holds, until when. */
+export interface UniqueRecord {
+  /** The lock's name in the cache: `queue:unique:<job>:<key>`. */
+  readonly lock: string;
+  /** The key as dispatched (`unique: 'stats:7'`). */
+  readonly key: string;
+  /** Seconds the lock holds at most. */
+  readonly for: number;
+  /** `processing`: freed when a worker starts the job; `done`: when it leaves the queue (processed, failed, discarded). */
+  readonly until: 'processing' | 'done';
 }
 
 /** Seconds before attempt `attempt + 1`, after attempt `attempt` failed: the attempt's entry of `backoff`, else its last. */

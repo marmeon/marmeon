@@ -17,6 +17,9 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 /**
  * `bespoke queue:work`: processes jobs until stopped — one at a time, each in its own container scope (E84).
  *
+ * - **Queues:** `--queue=mail,default` in priority order; `*` stands for every other queue that holds jobs
+ *   (`--queue=*`, `--queue=mail,*`). Default: the connection's queue.
+ *
  * - **SIGTERM/SIGINT:** no new claim; the running job may finish for `--stop-timeout` seconds, then it is released and the
  *   worker exits with 0. Later signals do not cut that short.
  * - **A job past its timeout:** `job.signal` aborts; if it has not stopped `--stop-timeout` seconds later, the worker exits
@@ -26,7 +29,7 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 export class QueueWorkCommand {
   static command = 'queue:work';
   static description = 'Process jobs from the queue';
-  static usage = '[--connection=database] [--queue=mail,default] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]';
+  static usage = '[--connection=database|redis] [--queue=mail,default|*] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]';
   static options = {
     connection: { type: 'string' },
     queue: { type: 'string' },
@@ -68,7 +71,7 @@ export class QueueWorkCommand {
     };
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
-    output.line(`Processing jobs of the ${connection} connection: ${queues.join(', ')}`);
+    output.line(`Processing jobs of the ${connection} connection: ${queues.map((queue) => (queue === '*' ? '* (every queue)' : queue)).join(', ')}`);
     try {
       const result = await worker.run({
         queues,
@@ -98,6 +101,7 @@ export class QueueWorkCommand {
         ? options.queue.split(',').map((queue) => queue.trim()).filter(Boolean)
         : [this.#connections.options(connection).queue];
     if (queues.length === 0) throw new QueueSetupError('--queue names no queue.');
+    if (queues.includes('*') && this.#connections.options(connection).driver === 'sync') throw new QueueSetupError('--queue=* needs a connection that keeps jobs.');
     const worker = this.#connections.worker(connection, stopTimeout);
     return { connection, stopTimeout, queues, worker, sleep: number(input, 'sleep', 1)!, maxJobs: number(input, 'max-jobs'), maxTime: number(input, 'max-time') };
   }

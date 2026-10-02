@@ -13,6 +13,9 @@
       "path": "../core"
     },
     {
+      "path": "../cache"
+    },
+    {
       "path": "../database"
     },
     {
@@ -20,6 +23,9 @@
     },
     {
       "path": "../cli"
+    },
+    {
+      "path": "../redis"
     }
   ]
 }

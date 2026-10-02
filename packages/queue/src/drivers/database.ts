@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
-import type { FailedJob, FailedJobStore, QueueDriver, ReservedJob } from '../driver.ts';
+import type { FailedJob, FailedJobStore, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 /** The tables `bespoke make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
 export const JOBS_TABLE = 'jobs';
@@ -12,6 +12,12 @@ export interface DatabaseQueueConnection {
   readonly driver: 'sqlite' | 'pgsql';
   /** Whether the current call chain runs inside a `transaction()` of this connection (E107) — `db` then writes into it. */
   readonly inTransaction?: () => boolean;
+  /**
+   * Runs `work` in a transaction of its own on this connection (`connections.transaction()`, E107: `db` joins it) — for
+   * steps that must happen together, like acknowledging a job and queuing the next of its chain. Without it, Kysely's
+   * `db.transaction()` with its `trx`.
+   */
+  readonly transaction?: <R>(work: () => Promise<R>) => Promise<R>;
 }
 
 type Sql = (typeof import('@bespokecore/database'))['sql'];
@@ -66,6 +72,10 @@ export class DatabaseQueueDriver implements QueueDriver {
 
   async push(queue: string, payload: string, delay: number): Promise<string> {
     const { db, sql } = await use(this.#connection, this.#cache);
+    return this.#insert(db, sql, { queue, payload, delay });
+  }
+
+  async #insert(db: Kysely<any>, sql: Sql, { queue, payload, delay }: QueuedPush): Promise<string> {
     const now = this.#clock.now();
     const { rows } = await sql<{ id: number | string }>`insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at)
       values (${queue}, ${payload}, 0, null, cast(${now + Math.round(delay * 1000)} as bigint), cast(${now} as bigint)) returning id`.execute(db);
@@ -92,8 +102,19 @@ export class DatabaseQueueDriver implements QueueDriver {
     return undefined;
   }
 
-  async ack(job: ReservedJob): Promise<boolean> {
-    return this.#delete(job);
+  async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
+    if (next.length === 0) return this.#delete(job);
+    // The acknowledgement and the next job of the chain in ONE transaction: a crash (or a failed insert) between the two
+    // would otherwise lose the rest of the chain — now the job stays claimed and runs again after retryAfter.
+    const connection = await use(this.#connection, this.#cache);
+    const handOff = async (db: Kysely<any>) => {
+      if (!(await this.#delete(job, db))) return false;
+      for (const push of next) await this.#insert(db, connection.sql, push);
+      return true;
+    };
+    if (connection.inTransaction?.()) return handOff(connection.db);
+    if (connection.transaction) return connection.transaction(() => handOff(connection.db));
+    return connection.db.transaction().execute((trx) => handOff(trx));
   }
 
   async release(job: ReservedJob, delay: number): Promise<boolean> {
@@ -113,8 +134,16 @@ export class DatabaseQueueDriver implements QueueDriver {
     return Number(rows[0]?.count ?? 0);
   }
 
-  async #delete(job: ReservedJob): Promise<boolean> {
+  async queues(): Promise<string[]> {
     const { db, sql } = await use(this.#connection, this.#cache);
+    const { rows } = await sql<{ queue: string }>`select distinct queue from jobs order by queue`.execute(db);
+    return rows.map((row) => row.queue);
+  }
+
+  async #delete(job: ReservedJob, through?: Kysely<any>): Promise<boolean> {
+    const connection = await use(this.#connection, this.#cache);
+    const { sql } = connection;
+    const db = through ?? connection.db;
     const result = await sql`delete from jobs where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
     return result.numAffectedRows === 1n;
   }

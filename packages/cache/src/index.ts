@@ -18,7 +18,7 @@ export { FileStore } from './stores/file.ts';
 export { MemoryStore } from './stores/memory.ts';
 export { RedisStore } from './stores/redis.ts';
 export type { RedisStoreConnection } from './stores/redis.ts';
-export { MakeCacheTableCommand } from './commands/make-cache-table.ts';
+export { CACHE_MIGRATION, MakeCacheTableCommand } from './commands/make-cache-table.ts';
 export { DEFAULT_LIVE_VALIDATION_LIMIT, Limit, LimitLiveValidation, LIVE_VALIDATION_LIMITER, RateLimiter, throttle } from './rate-limiter.ts';
 export type { LimiterCallback } from './rate-limiter.ts';
 

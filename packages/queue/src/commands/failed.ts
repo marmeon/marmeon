@@ -166,7 +166,7 @@ export class QueuePruneFailedCommand {
 export class QueueSizeCommand {
   static command = 'queue:size';
   static description = 'Show how many jobs each queue holds';
-  static usage = '[queue…] [--connection=database]';
+  static usage = '[queue…] [--connection=database|redis]';
   static options = { connection: { type: 'string' } } as const;
 
   readonly #connections: QueueConnections;
@@ -183,7 +183,9 @@ export class QueueSizeCommand {
       return 0;
     }
     const driver = this.#connections.driver(connection);
-    for (const queue of args.length > 0 ? args : [settings.queue]) output.line(`${connection}/${queue}: ${await driver.size(queue)}`);
+    // Without names: every queue that holds jobs — and the default one, also when it is empty.
+    const queues = args.length > 0 ? args : [...new Set([settings.queue, ...(await driver.queues())])];
+    for (const queue of queues) output.line(`${connection}/${queue}: ${await driver.size(queue)}`);
     return 0;
   }
 }

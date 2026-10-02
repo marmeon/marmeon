@@ -2,30 +2,52 @@ import { Application, Clock, Logger, type Container, type ServiceProvider } from
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
-import { importDatabase, importEncryption, QueueConnections } from './connections.ts';
+import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
 import type { JobClass } from './job.ts';
 import { Queue, QueueManager } from './queue.ts';
 import { JobRegistry, QueueSetupError } from './registry.ts';
 
-// The queue (E83–E85): jobs as injectable classes with a stable name and a payload schema, drivers behind one contract
-// (sync, database; redis in W6 step 4), a worker with a scope per job, retries, failed jobs — and a fake for tests.
+// The queue (E83–E85, E98): jobs as injectable classes with a stable name and a payload schema, drivers behind one
+// contract (sync, database, redis), a worker with a scope per job, retries, failed jobs, unique jobs, chains, job
+// middleware, job events — and a fake for tests.
 export { QueueConfig } from './config.ts';
 export { checkTimeouts, QueueConnections } from './connections.ts';
 export { backoffDelay } from './driver.ts';
-export type { FailedJob, FailedJobStore, JobRecord, QueueDriver, QueuedJob, ReservedJob } from './driver.ts';
+export type { FailedJob, FailedJobStore, JobRecord, QueueDriver, QueuedJob, QueuedPush, ReservedJob, UniqueRecord } from './driver.ts';
 export { DatabaseFailedJobStore, DatabaseQueueDriver, FAILED_JOBS_TABLE, JOBS_TABLE } from './drivers/database.ts';
 export type { DatabaseQueueConnection } from './drivers/database.ts';
 export { MemoryFailedJobStore, MemoryQueueDriver, NullFailedJobStore } from './drivers/memory.ts';
-export type { CheckJob, DispatchOptions, JobClass, JobContext, JobInput, JobInstance, JobPayload, JobStatics, PendingJob } from './job.ts';
-export { prepareRecord, Queue, QueueManager } from './queue.ts';
+export { RedisQueueDriver } from './drivers/redis.ts';
+export type { RedisQueueConnection } from './drivers/redis.ts';
+export { JobEvent, JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased } from './events.ts';
+export type { JobEvents } from './events.ts';
+export type {
+  BatchOptions,
+  CheckJob,
+  DispatchOptions,
+  DispatchResult,
+  JobClass,
+  JobContext,
+  JobInput,
+  JobInstance,
+  JobMiddleware,
+  JobMiddlewareContext,
+  JobPayload,
+  JobStatics,
+  PendingJob,
+  UniqueDispatchOptions,
+} from './job.ts';
+export { DEFAULT_ONCE_FOR, DEFAULT_UNIQUE_FOR, JobOnceBusyError, withoutOverlapping } from './locks.ts';
+export type { CacheSource, WithoutOverlappingOptions } from './locks.ts';
+export { prepareChain, prepareRecord, Queue, QueueManager } from './queue.ts';
 export type { PendingJobs, QueueConnectionOptions, QueueManagerDependencies } from './queue.ts';
 export { checkJobClass, DEFAULT_TIMEOUT, FRAMEWORK_PREFIX, JobRegistry, QueueError, QueueSetupError } from './registry.ts';
-export { cipherContext, describeIssues, JobPayloadError, JobRunner, parseRecord } from './runner.ts';
+export { cipherContext, describeIssues, JobPayloadError, JobRunner, nextInChain, parseRecord } from './runner.ts';
 export type { PayloadCipher, Prepared } from './runner.ts';
 export { JobStuckError, JobTimeoutError, Worker } from './worker.ts';
 export type { WorkerDependencies, WorkOptions, WorkResult } from './worker.ts';
 export { QueueFake } from './fake.ts';
-export type { DispatchedJob, DispatchMatch } from './fake.ts';
+export type { ChainMatch, DispatchedJob, DispatchMatch } from './fake.ts';
 export { EXIT_STUCK, QueueWorkCommand } from './commands/work.ts';
 export { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 
@@ -62,6 +84,8 @@ export class QueueServiceProvider implements ServiceProvider {
         cipher: () => connections.cipher(),
         clock: c.make(Clock),
         logger: c.make(Logger),
+        cache: () => connections.cache(),
+        events: connections.events,
       });
     });
   }
@@ -83,6 +107,16 @@ export class QueueServiceProvider implements ServiceProvider {
       // An unknown database connection name fails here, with the known ones.
       for (const connection of databases) app.container.make(database.Connections).options(connection);
     }
+    if (used.driver === 'redis') {
+      const redis = await importRedis();
+      if (!app.container.has(redis.RedisConnections)) {
+        throw new QueueSetupError('QUEUE_CONNECTION=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).');
+      }
+      // An unknown Redis connection name fails here, with the known ones; a missing client with what to install.
+      const connections = app.container.make(redis.RedisConnections);
+      connections.options(used.connection);
+      await connections.verify();
+    }
     if (registry.all().some((job) => job.encrypted)) {
       const { Encrypter } = await importEncryption();
       if (!app.container.has(Encrypter)) throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @bespokecore/encryption and an APP_KEY.');
@@ -94,9 +128,9 @@ export class QueueServiceProvider implements ServiceProvider {
         .make(cli.CommandRegistry)
         .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand]);
     }
-    // `bespoke dev` runs a worker next to the server (E101) — unless jobs run at dispatch anyway.
+    // `bespoke dev` runs a worker next to the server (E101) — on every queue (mails go to `mail`), unless jobs run at dispatch anyway.
     if (cli && app.container.has(cli.DevProcesses) && config.default !== 'sync') {
-      app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--stop-timeout=5'] });
+      app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--queue=*', '--stop-timeout=5'] });
     }
   }
 }
