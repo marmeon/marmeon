@@ -7,6 +7,7 @@ import { OnceStore } from './once.ts';
 import { isSensitiveRememberField, rememberable } from './remember.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
+import { instant } from './features/instant.ts';
 
 /** Remember state, once props, instant visits and the cancelable asset-version reload in the client core (W5b step 10, E63/E64). */
 
@@ -174,6 +175,7 @@ describe('instant visits (E64) — the placeholder first, the page when it lands
 
   it('renders the target view’s placeholder with what the link gave it — never the view with partial props — then the page', async () => {
     const { win, navigator, renders } = tab(page('/users/1', { name: 'Ada' }, 'users/Show'));
+    navigator.use(instant); // attached where an instant link renders (E74)
     let answer!: () => void;
     win.handler = () => new Promise<Response>((resolve) => (answer = () => resolve(pageResponse(page('/users/2', { profile: { id: 2, name: 'Grace', bio: 'Hopper' } }, 'users/Show')))));
     const visiting = navigator.visit('/users/2', { instant: { component: 'users/Show', props: { name: 'Grace' } } });
@@ -192,6 +194,7 @@ describe('instant visits (E64) — the placeholder first, the page when it lands
 
   it('a visit that fails shows the page on screen again — the history untouched, scrolled where it was', async () => {
     const { win, navigator, renders } = tab(page('/users/1', { name: 'Ada' }, 'users/Show'));
+    navigator.use(instant); // attached where an instant link renders (E74)
     win.scroll(420);
     win.handler = () => new Response('<h1>Down</h1>', { status: 503 });
     await navigator.visit('/people', { instant: { component: 'pages/People' } });
@@ -206,6 +209,7 @@ describe('instant visits (E64) — the placeholder first, the page when it lands
 
   it('counter-check: Back during an instant visit cancels it — what the entry shows takes the placeholder’s place, the page never lands', async () => {
     const { win, navigator, renders } = tab(page('/a', {}, 'pages/A'));
+    navigator.use(instant); // attached where an instant link renders (E74)
     win.handler = () => pageResponse(page('/b', {}, 'pages/B'));
     await navigator.visit('/b');
     let answer!: () => void;
@@ -225,6 +229,7 @@ describe('instant visits (E64) — the placeholder first, the page when it lands
 
   it('counter-check: Back to an entry not in memory during an instant visit — the page left is not shown again under its URL', async () => {
     const { win, navigator, renders } = tab(page('/a', {}, 'pages/A'), { cacheSize: 1 });
+    navigator.use(instant); // attached where an instant link renders (E74)
     win.handler = () => pageResponse(page('/b', {}, 'pages/B'));
     await navigator.visit('/b');
     const answers: Record<string, () => void> = {};
@@ -249,6 +254,7 @@ describe('instant visits (E64) — the placeholder first, the page when it lands
 
   it('a page fetched ahead shows at once — no placeholder in between', async () => {
     const { win, navigator, renders } = tab(page('/users/1', {}, 'users/Show'));
+    navigator.use(instant); // attached where an instant link renders (E74)
     win.handler = () => people();
     await navigator.use(prefetch).prefetch('/people');
     await navigator.visit('/people', { instant: { component: 'pages/People' } });

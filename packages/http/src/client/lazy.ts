@@ -5,6 +5,7 @@
  */
 import type { Feature } from './feature.ts';
 import type { LiveValidationFeature } from './features/live-validation.ts';
+import type { InstantVisits } from './features/instant.ts';
 import type { Prefetches, PrefetchOptions } from './features/prefetch.ts';
 import type { LiveValidation, LiveValidationOptions } from './live-validation.ts';
 import type { Navigator } from './navigation.ts';
@@ -23,6 +24,12 @@ export const loadPrefetch = (): Promise<Feature<Prefetches>> => import('./featur
 export function prefetchWith(navigator: Pick<Navigator, 'load'>, url: string, options?: PrefetchOptions): Promise<void> {
   return navigator.load(loadPrefetch).then((feature) => feature.prefetch(url, options), () => undefined);
 }
+
+/**
+ * Instant visits (E64) — `navigator.load(loadInstant)`: an adapter loads it where a link with a placeholder renders, before
+ * anyone clicks it. A visit with `instant` before the code is there goes without its placeholder (the page comes as always).
+ */
+export const loadInstant = (): Promise<Feature<InstantVisits>> => import('./features/instant.ts').then((module) => module.instant);
 
 /** What a form uses of its live validation (E62). */
 export type FormLiveValidation = Pick<LiveValidation, 'changed' | 'blurred' | 'validate' | 'cancel' | 'reset' | 'pending' | 'subscribe'>;

@@ -64,7 +64,8 @@ const FEATURES = {
   // Any view of resolveModulePages may declare it (E58): the resolver brings it, <BespokeApp> attaches it.
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
   guard: { markers: ['http/client/features/guard', 'http/client/confirm', 'react/confirm'], use: inApp('useBlocker') },
-  instant: { markers: ['http/client/features/instant'], use: inApp('Link') },
+  // <Link instant>: loaded where one renders (E74), in a chunk of its own.
+  instant: { markers: ['http/client/features/instant'], use: inApp('Link'), lazy: true },
   form: { markers: ['react/form'], use: inApp('Form'), brings: ['remember'] }, // <Form remember>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
@@ -72,7 +73,7 @@ type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');

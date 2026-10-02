@@ -4,6 +4,7 @@ import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
 import { actions, type ActionsFeature } from './features/actions.ts';
 import { DEFAULT_FEATURES } from './features/defaults.ts';
+import { instant } from './features/instant.ts';
 import { optimistic, type PagePatches } from './features/optimistic.ts';
 import { prefetch, type Prefetches } from './features/prefetch.ts';
 import { queryState } from './features/query-state.ts';
@@ -157,7 +158,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach: those attached by default and those an adapter attaches where they are used (Wave 5c
  * step 4, E70) — the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [...DEFAULT_FEATURES, optimistic, actions, remember, queryState, prefetch, revalidateOnBack];
+const ALL_FEATURES: readonly Feature[] = [...DEFAULT_FEATURES, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant];
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
 async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; cacheSize?: number } = {}) {

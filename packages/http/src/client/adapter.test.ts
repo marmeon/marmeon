@@ -32,6 +32,7 @@ import {
   actions,
   firstErrors,
   hasServerMarkup,
+  instant,
   isHistoryState,
   liveValidationOnFirstUse,
   loadPageMessages,
@@ -469,6 +470,8 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       },
     });
     owner = navigator.regionOwner;
+    // Instant visits — attached where an instant link renders (E74; React loads them then).
+    navigator.use(instant);
     const stop = navigator.start();
     // Remembered state of /users/1's entry (E63) — the feature attached where a component remembers.
     const remembered = () => navigator.use(remember).of(owner.entry!);
@@ -515,8 +518,9 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     // Page requests — not the deferred props a page loads after it.
     const pages = () => requests.filter((request) => !request.headers[PARTIAL_DATA_HEADER]).map((request) => `${request.method} ${request.url} ${request.headers[PURPOSE_HEADER] ?? ''}`.trim());
 
-    // What a hovered link does: the prefetch feature attaches with its chunk, after the instant visits (attached at start) —
-    // its hooks still run first (`order`), so the instant visit knows the page is here.
+    // An instant link rendered (its feature attached), then the pointer rested on it: the prefetch feature attaches with its
+    // chunk, after the instant visits — its hooks still run first (`order`), so the instant visit knows the page is here.
+    navigator.use(instant);
     await prefetchWith(navigator, '/users/2');
     expect(pages()).toEqual(['GET /users/2 prefetch']);
     await navigator.visit('/users/2', { instant: { component: 'users/Show', props: { name: 'Grace' } } });

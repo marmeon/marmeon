@@ -1,4 +1,5 @@
 import {
+  loadInstant,
   loadPageMessages,
   markBusy,
   Navigator,
@@ -408,7 +409,16 @@ export function BespokeApp({
     if (!navigator.current) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R11] Visits run in the browser, not while rendering on the server.' : '[bespoke:R11]');
     return navigator.current;
   }, []);
-  const visit = useCallback((url: string, options?: VisitOptions) => browser().visit(url, options), [browser]);
+  const visit = useCallback(
+    (url: string, options?: VisitOptions) => {
+      const nav = browser();
+      // An instant visit (E64) needs the instant code (E74): `<Link instant>` loads it when it renders. A visit before it is here
+      // goes without its placeholder.
+      if (options?.instant) nav.load(loadInstant).catch(() => undefined);
+      return nav.visit(url, options);
+    },
+    [browser],
+  );
   const reload = useCallback((options?: ReloadOptions) => browser().reload(options), [browser]);
   // A prefetch while rendering on the server (an effect never runs there) has nothing to do. Its code loads with the first (E74).
   const prefetch = useCallback((url: string, options?: PrefetchOptions) => (navigator.current ? prefetchWith(navigator.current, url, options) : Promise.resolve()), []);

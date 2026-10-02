@@ -2,6 +2,7 @@ import {
   HOVER_PREFETCH_DELAY,
   isCurrentLink,
   linkQuery,
+  loadInstant,
   prefetchTriggers,
   prefetchUrlOf,
   resolveRoute,
@@ -236,6 +237,11 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     const url = prefetchUrlOf(href);
     if (url !== undefined) void prefetchPage(url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) });
   };
+  // An instant link (E64): the instant code loads when it renders (E74) — it is there before anyone clicks.
+  const instantly = options.instant !== undefined;
+  useEffect(() => {
+    if (instantly && navigator) navigator.load(loadInstant).catch(() => undefined);
+  }, [instantly, navigator]);
   const onMount = triggers.has('mount');
   useEffect(() => {
     if (onMount) fetchAhead();

@@ -1,6 +1,7 @@
 /**
  * Instant visits (E64): the target view's placeholder shows at once, the page when its answer lands. The page on screen
- * stays the navigator's (and its entry the current one) until then — a visit that ends without its page shows it again.
+ * stays the navigator's (and its entry the current one) until then — a visit that ends without its page shows it again. Its
+ * code loads where an instant link renders (E74, `loadInstant` in `lazy.ts`): a visit before then shows no placeholder.
  */
 import type { PageObject } from '../../page.ts';
 import type { FeatureHost } from '../core.ts';
