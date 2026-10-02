@@ -1,4 +1,4 @@
-import { defaultTitle, type TitleRegistry, type TitleTemplate } from '@bespokecore/http/client';
+import { defaultTitle, isDevelopment, type TitleRegistry, type TitleTemplate } from '@bespokecore/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 
 export { defaultTitle } from '@bespokecore/http/client';
@@ -43,7 +43,23 @@ const MARKER = 'data-bespoke-head';
  * </Head>
  * ```
  */
-export function Head({ title, children }: HeadProps) {
+export function Head(props: HeadProps) {
+  const island = useContext(IslandHeadContext);
+  if (island === null) return <PageHead {...props} />;
+  // An island renders after the document head went out (streamed, E49) — and beside a page that has its own.
+  if (isDevelopment()) {
+    throw new Error(`<Head> in island [${island}] — islands cannot change the document head; set it on the page.`);
+  }
+  return null;
+}
+
+/**
+ * The component of the island around (its view's name) — `<Head>` refuses to render there. Null outside an island.
+ * @internal
+ */
+export const IslandHeadContext = createContext<string | null>(null);
+
+function PageHead({ title, children }: HeadProps) {
   const { template, collector, titles } = useContext(HeadContext);
   const [order] = useState(() => titles?.order() ?? 0);
   const tags = Children.toArray(children).filter(isValidElement) as ReactElement[];

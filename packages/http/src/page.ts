@@ -132,6 +132,11 @@ export interface PageObject {
   query?: Record<string, unknown>;
   /** What an empty query parses to (the schema's defaults) — left out of the URLs the browser builds for this page. */
   queryDefaults?: Record<string, unknown>;
+  /**
+   * Deferred groups the server streams with this document (E49) — computed while the page streams and sent in it, so the
+   * browser does not ask for them again. Only on a server-rendered document's page object.
+   */
+  streamedProps?: string[];
 }
 
 /** Client-side navigations send this header and receive the page object as JSON. */
@@ -208,10 +213,34 @@ export function regionOf(request: Request): RegionKind | undefined {
  * The wire format of a region (an island): the page object of the route it shows — its component, props, URL and query,
  * deferred and merged props — without the page's language (`locale`, `fallbackLocale`): it renders in the page's.
  */
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps'>;
+
+/**
+ * What the server resolved of an island while rendering the page (E49) — streamed into the document inside the island's
+ * Suspense boundary, so the browser shows it without a request. The outcomes are a region request's (E52): its region
+ * object, or `unauthorized`/`forbidden` (no data), or `exception`. `browser`: not resolved on the server — the browser
+ * loads it as on a client-side visit (a `409` of the island route: the document is out of date, the browser's request
+ * reloads the page).
+ */
+export type RegionResult =
+  | { readonly status: 'ready'; readonly region: RegionObject }
+  | { readonly status: 'unauthorized' | 'forbidden' }
+  | { readonly status: 'exception'; readonly failure: { readonly status?: number; readonly message?: string } }
+  | { readonly status: 'browser' };
+
+/** A deferred group as the server streams it (E49): its props, and how they merge — what a partial reload would answer. */
+export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'bespoke-page';
+
+/**
+ * JSON for a `<script type="application/json">` in HTML: `<` is escaped (`<`), so a value can never close the script
+ * element early (`</script>`) or open a comment — the page object, islands and deferred props streamed into the document.
+ */
+export function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replaceAll('<', '\\u003c');
+}
 
 /** What an SSR entry renders of a page. */
 export interface SsrResult {
@@ -222,6 +251,8 @@ export interface SsrResult {
   html: string | ReadableStream<Uint8Array>;
   /** Tags for the document head (`<Head>` in the shell): the title and meta tags. */
   head?: string;
+  /** The deferred groups this render streams (`resolveDeferred`) — the server lists them in the page object (`streamedProps`). */
+  streamedProps?: string[];
 }
 
 export interface SsrRenderOptions {
@@ -239,6 +270,19 @@ export interface SsrRenderOptions {
   onWarning?: (message: string) => void;
   /** Stops rendering, e.g. when the client went away. */
   signal?: AbortSignal;
+  /**
+   * Per request (E49): resolves an island in-process while the page renders — `url` is its route's (with its query), run
+   * through that route's own middleware and authorization, read-only, with the page request's session and cookies. The
+   * adapter renders it behind a Suspense boundary and streams it with its data; the shell never waits for it. Without
+   * it, islands load in the browser.
+   */
+  resolveIsland?: (url: string) => Promise<RegionResult>;
+  /**
+   * Per request (E49): computes a deferred group of the page while it streams — read-only, once the response's headers
+   * are sent. `null`: not streamed (it failed or took too long) — the browser loads it as before. Without it, the
+   * browser loads every group after showing the page.
+   */
+  resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
 }
 
 /**

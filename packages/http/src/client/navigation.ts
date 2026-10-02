@@ -14,13 +14,14 @@ import {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   VERSION_HEADER,
+  type DeferredResult,
   type PageObject,
   type RegionObject,
   type ValidationErrors,
 } from '../page.ts';
 import { mergePage } from './merge.ts';
 import { QueryState, type QueryStateOptions } from './query-state.ts';
-import { RegionOwner, type KeptRegion, type Region, type RegionResponse, type RegionTransport } from './region.ts';
+import { RegionOwner, type KeptRegion, type Region, type RegionInitial, type RegionResponse, type RegionTransport } from './region.ts';
 
 export { mergePage } from './merge.ts';
 
@@ -195,7 +196,13 @@ export interface NavigatorWindow {
   addEventListener(type: WindowEvent, listener: (event: Event) => void, options?: AddEventListenerOptions): void;
   removeEventListener(type: WindowEvent, listener: (event: Event) => void, options?: EventListenerOptions): void;
   /** For `scroll-region` elements and `#fragment` targets. */
-  readonly document?: { querySelectorAll(selectors: string): Iterable<ScrollRegion>; getElementById(id: string): { scrollIntoView(): void } | null };
+  readonly document?: {
+    querySelectorAll(selectors: string): Iterable<ScrollRegion>;
+    getElementById(id: string): { scrollIntoView(): void } | null;
+    /** `loading` while the document still streams in — streamed deferred props wait for its end (E49). */
+    readonly readyState?: string;
+    addEventListener?(type: 'DOMContentLoaded', listener: () => void, options?: AddEventListenerOptions): void;
+  };
   /** For the upload progress of `FormData` visits — `fetch` cannot report it (over HTTP/1.1). */
   readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
@@ -265,6 +272,11 @@ export class Navigator {
   #inFlight: AbortController | undefined;
   /** Deferred props being loaded — `<history key> <group>`, so no group is asked for twice at once. */
   readonly #loading = new Set<string>();
+  /**
+   * Deferred groups of the first page that the server streams with the document (E49, `streamedProps`): not asked for —
+   * the adapter hands them over as they arrive (`receiveStreamed`).
+   */
+  readonly #streaming: Set<string>;
   /** Requests in the background (`visit.async`): they die with the document's pages when it is left. */
   readonly #background = new Set<AbortController>();
   /**
@@ -277,6 +289,9 @@ export class Navigator {
   readonly #pageListeners = new Set<(page: PageObject) => void>();
   /** This document was left for a full page load (409, a response that is not a page). */
   #left = false;
+  /** The history entry and page the document was loaded with — what streamed deferred groups land in. */
+  #firstKey: string | undefined;
+  #firstPage: PageObject;
   /** Where the regions (islands) of the page on screen live — its history entry's; closed when the entry leaves the screen. */
   #owner: RegionOwner;
   readonly #transport: RegionTransport = { request: (url, headers, signal) => this.#regionRequest(url, headers, signal) };
@@ -289,8 +304,10 @@ export class Navigator {
     this.#render = render;
     this.#cache = new PageCache(cacheSize);
     this.#page = initialPage;
+    this.#firstPage = initialPage;
     this.#version = initialPage.version ?? null;
     this.#owner = new RegionOwner(this.#transport);
+    this.#streaming = new Set(initialPage.streamedProps ?? []);
   }
 
   /** The page on screen. */
@@ -315,11 +332,33 @@ export class Navigator {
    * identical islands); what it loaded stays in the entry's memory, so Back/Forward shows it without a request. `initial`
    * is a region object the server already sent (streamed with the page). Islands never load ahead (no prefetch, E52).
    */
-  region(url: string, { owner, initial }: { owner?: RegionOwner; initial?: RegionObject } = {}): Region {
+  region(url: string, { owner, initial }: { owner?: RegionOwner; initial?: RegionInitial } = {}): Region {
     this.#adopt();
     const target = new URL(url, this.#window.location.href);
     if (target.origin !== this.#window.location.origin) throw new Error(`A region comes from this site, not from ${target.origin} (${url}).`);
     return (owner ?? this.#owner).region(target.pathname + target.search, initial);
+  }
+
+  /**
+   * A deferred group of the first page, as the server streamed it with the document (E49) — `null` when it did not
+   * arrive (it failed on the server, or the adapter rendered its part in the browser): then it is asked for, as without
+   * streaming. It lands once the document has finished streaming: an update of the page while an island of it is still
+   * streaming would make the adapter render that island in the browser — and load it again.
+   */
+  async receiveStreamed(group: string, streamed: DeferredResult | null): Promise<void> {
+    this.#adopt();
+    if (!this.#streaming.delete(group) || this.#left) return;
+    const key = this.#firstKey;
+    const page = this.#firstPage;
+    if (streamed === null) {
+      // Not streamed after all: loaded like any deferred group — for the first page when it is on screen (else when it is shown again).
+      if (this.#key === key) this.#loadDeferred();
+      return;
+    }
+    const doc = this.#window.document;
+    if (doc?.readyState === 'loading' && doc.addEventListener) await new Promise<void>((done) => doc.addEventListener!('DOMContentLoaded', done, { once: true }));
+    if (key === undefined) return;
+    await this.#land(key, page, { ...page, ...streamed, deferredProps: undefined } as PageObject);
   }
 
   /**
@@ -513,6 +552,8 @@ export class Navigator {
     // A reload or session restore keeps the entry's key (and scroll); the page itself came fresh from the server.
     const restored = isHistoryState(state) ? state : undefined;
     this.#key = restored?.key ?? newKey();
+    this.#firstKey = this.#key;
+    this.#firstPage = this.#page;
     this.#cache.set(this.#key, { page: this.#page, regions: this.#owner.regions });
     this.#window.history.replaceState(entry(this.#page, this.#key, restored ? this.#positionOf(restored) : TOP), '', this.#window.location.href);
     return restored;
@@ -650,6 +691,8 @@ export class Navigator {
     for (const [group, props] of Object.entries(page.deferredProps)) {
       const id = `${key} ${group}`;
       if (props.length === 0 || this.#loading.has(id)) continue;
+      // On its way in the document's stream (E49): not asked for.
+      if (key === this.#firstKey && this.#streaming.has(group)) continue;
       this.#loading.add(id);
       void this.#loadGroup(key, page, props).finally(() => this.#loading.delete(id));
     }

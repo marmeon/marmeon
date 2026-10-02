@@ -65,17 +65,28 @@ describe('documentOf — streamed markup', () => {
         controller.close();
       },
     });
-    const document = documentOf(template, page, { html: markup, head: '<title>T</title>' });
+    const document = await documentOf(template, page, { html: markup, head: '<title>T</title>' });
     expect(typeof document).not.toBe('string');
     const html = await new Response(document).text();
     expect(html).toMatch(/^<html><head><title>T<\/title><script type="application\/json" id="bespoke-page">.*<\/script>\n<\/head><body><div id="app"><p>shell<\/p><p>later<\/p><\/div><\/body><\/html>$/);
 
     const endless = new ReadableStream<Uint8Array>({ pull: (controller) => controller.enqueue(encoder.encode('.')) });
-    await (documentOf(template, page, { html: endless }, (reason) => (cancelled = reason)) as ReadableStream<Uint8Array>).cancel('gone');
+    await ((await documentOf(template, page, { html: endless }, (reason) => (cancelled = reason))) as ReadableStream<Uint8Array>).cancel('gone');
     expect(cancelled).toBe('gone');
   });
 
-  it('is a string for string markup', () => {
-    expect(documentOf(template, page, { html: '<p>hi</p>' })).toContain('<div id="app"><p>hi</p></div>');
+  it('counter-check: has the head and the shell ready together — a server writes both at once, not a tick later', async () => {
+    // The rest never comes (an island still loading): only what is ready may be read.
+    const streaming = new ReadableStream<Uint8Array>({ start: (controller) => controller.enqueue(encoder.encode('<p>shell</p>')) });
+    const reader = ((await documentOf(template, page, { html: streaming })) as ReadableStream<Uint8Array>).getReader();
+    // What `@hono/node-server` does before it writes the headers: a read, without waiting longer than a microtask.
+    const ready = async () => (await Promise.race([reader.read(), Promise.resolve().then(() => undefined)]))?.value;
+    const decoder = new TextDecoder();
+    expect(decoder.decode(await ready())).toContain('<head>');
+    expect(decoder.decode(await ready())).toBe('<p>shell</p>');
+  });
+
+  it('is a string for string markup', async () => {
+    expect(await documentOf(template, page, { html: '<p>hi</p>' })).toContain('<div id="app"><p>hi</p></div>');
   });
 });

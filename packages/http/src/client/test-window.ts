@@ -25,10 +25,10 @@ export class FakeWindow implements NavigatorWindow {
   scrollRestoration: ScrollRestoration = 'auto';
   /** The page's `[scroll-region]` elements. */
   regions: ScrollRegion[] = [];
-  readonly document = {
-    querySelectorAll: (selector: string) => (selector === '[scroll-region]' ? this.regions : []),
-    getElementById: () => null,
-  };
+  /** `loading` while the document "still streams" (E49) — `finishLoading()` ends it. */
+  readyState = 'complete';
+  readonly #loaded = new Set<() => void>();
+  readonly document: NonNullable<NavigatorWindow['document']>;
   XMLHttpRequest?: new () => XMLHttpRequest;
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
   handler: Handler = () => new Response('not found', { status: 404 });
@@ -36,6 +36,22 @@ export class FakeWindow implements NavigatorWindow {
   constructor(url: string) {
     this.entries.push({ url, state: 'null' });
     this.index = 0;
+    const self = this;
+    this.document = {
+      querySelectorAll: (selector: string) => (selector === '[scroll-region]' ? this.regions : []),
+      getElementById: () => null,
+      get readyState(): string {
+        return self.readyState;
+      },
+      addEventListener: (_type: 'DOMContentLoaded', listener: () => void) => void this.#loaded.add(listener),
+    };
+  }
+
+  /** The document has arrived completely (`DOMContentLoaded`). */
+  finishLoading(): void {
+    this.readyState = 'interactive';
+    for (const listener of this.#loaded) listener();
+    this.#loaded.clear();
   }
 
   get history(): NavigatorWindow['history'] {

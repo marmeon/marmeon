@@ -1,4 +1,4 @@
-import { PAGE_SCRIPT_ID, type PageObject, type SsrResult } from '@bespokecore/http';
+import { PAGE_SCRIPT_ID, scriptJson, type PageObject, type SsrResult } from '@bespokecore/http';
 
 /** Placeholders an app's `index.html` provides. */
 export const HEAD_OUTLET = '<!--app-head-->';
@@ -13,7 +13,7 @@ export const FALLBACK_TEMPLATE = `<!doctype html>
 
 export function serializePage(page: PageObject): string {
   // `<` is escaped so props can never close the script tag early.
-  return JSON.stringify(page).replaceAll('<', '\\u003c');
+  return scriptJson(page);
 }
 
 /**
@@ -57,21 +57,31 @@ const encoder = new TextEncoder();
 
 /**
  * The document for server-rendered markup: a string when the markup is one, else a stream that sends the head
- * (and the shell's first bytes) at once and the rest of the markup as it is rendered. `onCancel`: the body was
- * cancelled (the client went away) — before the markup's stream is.
+ * and the shell at once and the rest of the markup as it is rendered. `onCancel`: the body was cancelled (the client
+ * went away) — before the markup's stream is.
+ *
+ * The shell is read before the stream is handed over (the SSR entry resolved with it ready), so the head and the shell
+ * are both there for the server's first write: a server that waits a tick for more when a body is not complete yet
+ * (`@hono/node-server` does) would otherwise send the headers only after it — while the islands' requests run (E49).
  */
-export function documentOf(
+export async function documentOf(
   template: string,
   page: PageObject,
   ssr: SsrResult,
   onCancel?: (reason: unknown) => void,
-): string | ReadableStream<Uint8Array> {
-  if (typeof ssr.html === 'string') return renderDocument(template, page, { html: ssr.html, head: ssr.head });
-  const { before, after } = documentAround(template, page, ssr.head);
+): Promise<string | ReadableStream<Uint8Array>> {
+  // The deferred groups the render streams: the browser waits for them instead of asking (E49).
+  const sent = ssr.streamedProps && ssr.streamedProps.length > 0 ? { ...page, streamedProps: ssr.streamedProps } : page;
+  if (typeof ssr.html === 'string') return renderDocument(template, sent, { html: ssr.html, head: ssr.head });
+  const { before, after } = documentAround(template, sent, ssr.head);
   const markup = ssr.html.getReader();
+  const shell = await markup.read();
   return new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(encoder.encode(before));
+      if (!shell.done) return controller.enqueue(shell.value);
+      controller.enqueue(encoder.encode(after));
+      controller.close();
     },
     async pull(controller) {
       const { done, value } = await markup.read();

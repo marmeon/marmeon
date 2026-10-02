@@ -91,6 +91,18 @@ export class Session {
     if (typeof this.#data[TOKEN] !== 'string') this.regenerateToken();
   }
 
+  /**
+   * @internal — `StartSession` of an island the server resolves in-process while the page renders (E49): a copy of the
+   * page request's session as it is now — whoever it signed in, its flash data — never shared with it. The island's
+   * session is read-only and never saved.
+   */
+  adopt(page: Session): void {
+    this.#id = page.id;
+    this.#data = structuredClone(page.#data);
+    this.#loaded = page.#loaded;
+    this.#started = true;
+  }
+
   // -- Data ------------------------------------------------------------------
 
   get<K extends string>(key: K): Value<K> | undefined {

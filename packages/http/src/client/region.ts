@@ -8,7 +8,7 @@
  * tab's memory only (E36), never in `history.state` or any storage. Back/Forward shows them from there without a request;
  * leaving the document (signing out, a new build) drops them with the pages.
  */
-import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject, type RegionObject } from '../page.ts';
+import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject, type RegionObject, type RegionResult } from '../page.ts';
 import { mergePage } from './merge.ts';
 import { pageQuery, queryUrl } from './query-state.ts';
 
@@ -64,8 +64,32 @@ export interface RegionTransport {
  */
 export type KeptRegion = RegionObject | { readonly status: 'unauthorized' | 'forbidden' };
 
-function isRegionObject(kept: KeptRegion | undefined): kept is RegionObject {
+/**
+ * What a region starts with besides nothing: what its owner kept — or what the server streamed with the page (E49),
+ * which may also be a failure (`exception`: shown, never kept — Back asks again).
+ */
+export type RegionInitial = KeptRegion | { readonly status: 'exception'; readonly failure: RegionFailure };
+
+function isRegionObject(kept: RegionInitial | undefined): kept is RegionObject {
   return kept !== undefined && 'component' in kept;
+}
+
+/**
+ * What a region starts with when the server resolved it while rendering the page (E49) — the {@link RegionResult} streamed
+ * into the document. `browser` (not resolved on the server): nothing, the region loads itself.
+ */
+export function regionInitial(result: RegionResult): RegionInitial | undefined {
+  switch (result.status) {
+    case 'ready':
+      return result.region;
+    case 'unauthorized':
+    case 'forbidden':
+      return { status: result.status };
+    case 'exception':
+      return { status: 'exception', failure: { status: result.failure.status, message: result.failure.message } };
+    default:
+      return undefined;
+  }
 }
 
 /** A region's identity: its URL with the query sorted (`?b=2&a=1` and `?a=1&b=2` are one island). */
@@ -103,15 +127,17 @@ export class RegionOwner {
   }
 
   /**
-   * The region of `url` — the same one for the same id. It starts `ready` with what this owner kept of it (Back/Forward)
-   * or with `initial` (a region object the server sent along, W5b step 4), else `loading` until `load()`.
+   * The region of `url` — the same one for the same id. It starts with what this owner kept of it (Back/Forward) or with
+   * `initial` (what the server streamed with the page, E49: its region object, `unauthorized`/`forbidden` — kept like a
+   * loaded one — or an `exception`, shown but not kept), else `loading` until `load()`.
    */
-  region(url: string, initial?: RegionObject): Region {
+  region(url: string, initial?: RegionInitial): Region {
     const id = regionId(url);
     const live = this.#live.get(id);
     if (live) return live;
-    if (initial && !this.regions.has(id)) this.regions.set(id, initial);
-    const region = new Region(this, this.#transport, id, url, this.regions.get(id));
+    const kept = this.regions.get(id);
+    if (initial && !('failure' in initial) && !kept) this.regions.set(id, initial);
+    const region = new Region(this, this.#transport, id, url, kept ?? initial);
     if (!this.closed) this.#live.set(id, region);
     return region;
   }
@@ -155,7 +181,7 @@ export class Region {
   readonly #listeners = new Set<() => void>();
   #snapshot: RegionSnapshot;
 
-  constructor(owner: RegionOwner, transport: RegionTransport, id: string, url: string, kept?: KeptRegion) {
+  constructor(owner: RegionOwner, transport: RegionTransport, id: string, url: string, kept?: RegionInitial) {
     this.#owner = owner;
     this.#transport = transport;
     this.id = id;
@@ -163,6 +189,7 @@ export class Region {
     this.#url = region?.url ?? url;
     this.#region = region;
     this.#status = region ? 'ready' : kept && !isRegionObject(kept) ? kept.status : 'loading';
+    if (kept && 'failure' in kept) this.#failure = kept.failure;
     this.#snapshot = this.#take();
   }
 

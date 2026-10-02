@@ -11,7 +11,9 @@ const grid = { display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, 
 
 /**
  * A page of islands (E48): the page renders at once, each panel loads by itself — in parallel, each through its own
- * route's middleware and authorization. Back/Forward shows them from memory, without a request.
+ * route's middleware and authorization. On a full load the server resolves them in-process and streams them into the
+ * same response (E49: no request from the browser); after a client-side visit the browser loads them. Back/Forward shows
+ * them from memory, without a request.
  */
 export default function Show(_props: Props) {
   const t = useTranslation('dashboard');

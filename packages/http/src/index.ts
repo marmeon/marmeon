@@ -21,6 +21,7 @@ export {
   isPrefetch,
   pageName,
   regionOf,
+  scriptJson,
 } from './page.ts';
 export { always, deepMerge, defer, merge, mergeOf, optional, propKind, resolveProp } from './props.ts';
 export type {
@@ -40,12 +41,14 @@ export type {
 export { partialReloadOf, resolvePageProps } from './page-props.ts';
 export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
-export type { CheckViewName, ErrorPageProps, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export type { CheckViewName, DeferredResult, ErrorPageProps, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
 export { AfterResponse } from './after-response.ts';
 export { ReadOnly, ReadOnlyViolation } from './read-only.ts';
+export { ParentRequest } from './parent-request.ts';
+export { ResponseLifecycle } from './response-lifecycle.ts';
 export type { ReadOnlyOptions, WritePermit } from './read-only.ts';
 export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';

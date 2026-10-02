@@ -1,4 +1,4 @@
-import type { RouteManifest, SsrRender } from '@bespokecore/http/page';
+import type { PageObject, RouteManifest, SsrRender } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';
 import { defaultTitle, isDevelopment, loadPageMessages, type TitleTemplate } from '@bespokecore/http/client';
@@ -6,6 +6,7 @@ import { BespokeApp } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
+import { ssrResolvers } from './streamed.tsx';
 
 export interface SsrOptions {
   /** The same title template as the client's (`createBespokeApp({ title })`). */
@@ -34,9 +35,15 @@ export interface SsrOptions {
 export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages }: SsrOptions = {}): SsrRender {
   const head = (collector: HeadCollector) => renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(tag)));
 
-  return async (page, { complete = false, onError, onWarning, signal } = {}) => {
+  return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred } = {}) => {
     const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages)]);
     if (Component.ssr === false) return { html: '', head: head(createHeadCollector()) };
+    const whole = complete || Component.ssr === 'complete';
+    // Deferred groups stream with the page (E49) — not when it is sent whole: they are computed once the headers are out.
+    const streamedProps = !whole && resolveDeferred ? Object.entries(page.deferredProps ?? {}).flatMap(([group, props]) => (props.length > 0 ? [group] : [])) : [];
+    const rendered: PageObject = streamedProps.length > 0 ? { ...page, streamedProps } : page;
+    // Per render: each island and group is asked once (two identical islands share one request), nothing outlives it.
+    const ssr = ssrResolvers(resolveIsland, resolveDeferred);
 
     const collector = createHeadCollector(
       isDevelopment() && onWarning ? (late) => onWarning(lateHead(page.component, late)) : undefined,
@@ -47,7 +54,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
     const recovered: unknown[] = [];
     const stream = await renderToReadableStream(
       <BespokeApp
-        initialPage={page}
+        initialPage={rendered}
         initialComponent={Component}
         resolve={resolve}
         title={title}
@@ -56,6 +63,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
         headCollector={collector}
         messages={messages}
         initialCatalog={catalog}
+        ssr={ssr}
       />,
       {
         signal,
@@ -69,12 +77,13 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
         },
       },
     );
-    if (complete || Component.ssr === 'complete') await stream.allReady;
+    // Islands included: bots and `ssr = 'complete'` pages get every island's markup in the HTML.
+    if (whole) await stream.allReady;
     shellReady = true;
     for (const error of recovered) onError?.(error);
     // What streams in from here on comes after the document head.
     collector.sealed = true;
-    return { html: stream, head: head(collector) };
+    return { html: stream, head: head(collector), ...(streamedProps.length > 0 ? { streamedProps } : {}) };
   };
 }
 

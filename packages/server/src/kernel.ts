@@ -4,7 +4,24 @@ import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { Logger, runWithRequest, Translator, type Application, type Container } from '@bespokecore/core';
-import { AfterResponse, AssetVersion, ExceptionHandler, HttpError, isViewResult, ReadOnly, regionOf } from '@bespokecore/http';
+import {
+  AfterResponse,
+  AssetVersion,
+  ExceptionHandler,
+  HttpError,
+  isViewResult,
+  LOCATION_HEADER,
+  PAGE_HEADER,
+  ParentRequest,
+  ReadOnly,
+  REGION_HEADER,
+  REGION_STATUS_HEADER,
+  regionOf,
+  ResponseLifecycle,
+  VERSION_HEADER,
+  type RegionObject,
+  type RegionResult,
+} from '@bespokecore/http';
 import {
   clientIp,
   CookieJar,
@@ -42,9 +59,25 @@ export interface KernelOptions {
    * mistake shows where it is made) or get dropped and logged (`false`, production — the island and its page stay whole).
    */
   strictReadOnly?: boolean;
+  /** How long an island resolved in-process may take before it shows its `exception` fallback (ms, default 10 s). */
+  islandTimeout?: number;
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
+
+/** The page request an island resolved in-process belongs to (E49) — what `handle` gives the island's request. */
+interface IslandParent {
+  readonly request: Request;
+  readonly scope: Container;
+  readonly requestId: string | undefined;
+}
+
+/**
+ * What an island's request takes over from its page's request (E49) — as the browser would send them with its own
+ * request: the cookies (the session's id, a remember-me token), the languages, the client and proxy headers. Nothing
+ * that is about the page's own request (its body, `Purpose`, partial reloads).
+ */
+const ISLAND_HEADERS = ['cookie', 'accept-language', 'user-agent', 'forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port'];
 
 type OnTerminable = NonNullable<DispatchOptions['onTerminable']>;
 
@@ -74,14 +107,63 @@ export function createHttpKernel(
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
     strictReadOnly = process.env.NODE_ENV !== 'production',
+    islandTimeout = 10_000,
   }: KernelOptions = {},
 ): HttpKernel {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
   container.instance(AssetVersion, { value: version });
   const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
-  const toResponse = createResponseFactory(renderer, router, version, { logger: container.make(Logger).child({ channel: 'ssr' }), ssr, debug });
   const app = new Hono();
+  /** The client address of each request in flight — what an island resolved for it is from, too. */
+  const addresses = new WeakMap<Request, string | undefined>();
+
+  /**
+   * An island, resolved in-process while its page renders (E49): a GET of its URL with the page request's cookies and
+   * headers plus `x-bespoke-region: island`, matched by Hono and run through the island route's own middleware and
+   * authorization — in a scope of its own, read-only (E52), its session a copy of the page's. What it answers becomes
+   * the island's outcome, as for the browser's request (`toRegionResponse`); a 409 — the document is out of date — is
+   * left to the browser, whose request reloads the page.
+   */
+  const dispatchIsland = async (url: string, parent: IslandParent): Promise<RegionResult> => {
+    const base = new URL(parent.request.url);
+    const target = new URL(url, base);
+    if (target.origin !== base.origin) {
+      logger.error(`An island comes from this site, not from ${target.origin} (${url})`);
+      return { status: 'exception', failure: {} };
+    }
+    const headers = new Headers();
+    for (const name of ISLAND_HEADERS) {
+      const value = parent.request.headers.get(name);
+      if (value !== null) headers.set(name, value);
+    }
+    headers.set(PAGE_HEADER, 'true');
+    headers.set(REGION_HEADER, 'island');
+    if (version) headers.set(VERSION_HEADER, version);
+    if (parent.requestId) headers.set('x-request-id', parent.requestId);
+    const timeout = AbortSignal.timeout(islandTimeout);
+    const signal = AbortSignal.any([parent.request.signal, timeout]);
+    const request = new Request(target, { method: 'GET', headers, signal });
+    const timedOut = new Promise<'timeout'>((resolve) => timeout.addEventListener('abort', () => resolve('timeout'), { once: true }));
+    try {
+      const response = await Promise.race([app.fetch(request, { parent }), timedOut]);
+      if (response === 'timeout') {
+        logger.error(`The island ${target.pathname}${target.search} took longer than ${islandTimeout} ms — it shows its error`);
+        return { status: 'exception', failure: { status: 504, ...(debug ? { message: `The island took longer than ${islandTimeout} ms.` } : {}) } };
+      }
+      return await regionResultOf(response);
+    } catch (error) {
+      logger.error(`Resolving the island ${target.pathname}${target.search} failed`, { exception: String(error) });
+      return { status: 'exception', failure: {} };
+    }
+  };
+
+  const toResponse = createResponseFactory(renderer, router, version, {
+    logger: container.make(Logger).child({ channel: 'ssr' }),
+    ssr,
+    debug,
+    islands: dispatchIsland,
+  });
 
   const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
     const handler = container.make(ExceptionHandler);
@@ -148,21 +230,26 @@ export function createHttpKernel(
     request: Request,
     remote: string | undefined,
     run: (scope: Container, state: RequestState, onTerminable: OnTerminable) => Promise<Response>,
+    parent?: IslandParent,
   ) => {
     const scope = container.createScope();
-    const ip = clientIp(remote, request.headers.get('x-forwarded-for'), trustedProxies);
+    // An island resolved in-process is from where its page's request is from.
+    const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), trustedProxies);
+    addresses.set(request, ip);
     const state = createRequestState(request, { maxBodySize, ip });
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
     // An island's request is read-only (E52): no session write, no cookie, no work after the response.
     const region = regionOf(request);
-    if (region && scope.has(ReadOnly)) {
-      const readOnly = scope.make(ReadOnly);
-      const { pathname } = new URL(request.url);
+    const { pathname } = new URL(request.url);
+    const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
+    if (region && readOnly) {
       readOnly.engage({ reason: `an island request (${request.method} ${pathname})`, strict: strictReadOnly, report: (message) => logger.error(message) });
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
     }
+    // Resolved while its page renders (E49): its session is a copy of the page request's (`StartSession`).
+    if (parent && scope.has(ParentRequest)) scope.make(ParentRequest).adopt(parent.request, parent.scope);
 
     let response: Response;
     try {
@@ -188,6 +275,18 @@ export function createHttpKernel(
     }
     // `afterResponse.defer(…)` work: also after the response, one task after the other.
     const deferred = scope.has(AfterResponse) ? scope.make(AfterResponse).take() : [];
+    // The headers are out (the session saved, its cookie set): what still runs in this request — a server-rendered page
+    // streams on, computing its deferred props (E49) — cannot change the session, cookies or work after the response.
+    if (!region && readOnly) {
+      readOnly.engage({
+        reason: `${request.method} ${pathname} after its response headers were sent (a deferred prop, streamed with the page)`,
+        strict: strictReadOnly,
+        report: (message) => logger.error(message),
+      });
+      state.cookies.lock((what) => readOnly.permit(what));
+      if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
+    }
+    if (scope.has(ResponseLifecycle)) scope.make(ResponseLifecycle).markHeadersSent();
     if (deferred.length > 0) {
       const task = new Promise<void>((resolve) => setImmediate(resolve)).then(async () => {
         for (const work of deferred) {
@@ -218,6 +317,7 @@ export function createHttpKernel(
             onError: (error) => renderError(error, c.req.raw, scope),
           },
         ),
+        islandParent(c.env),
       ),
     );
   }
@@ -231,6 +331,7 @@ export function createHttpKernel(
         onTerminable,
         onError: (error) => renderError(error, c.req.raw, scope),
       }),
+      islandParent(c.env),
     ),
   );
   app.onError((error, c) => renderError(error, c.req.raw));
@@ -242,6 +343,34 @@ export function createHttpKernel(
   });
 }
 
+
+/** The page request of an island resolved in-process (`app.fetch(request, { parent })`, E49) — never set from outside. */
+function islandParent(env: unknown): IslandParent | undefined {
+  return (env as { parent?: IslandParent } | undefined)?.parent;
+}
+
+/** What an island's request answered (after `toRegionResponse`), as the outcome streamed with the page (E49). */
+async function regionResultOf(response: Response): Promise<RegionResult> {
+  if (response.ok && response.headers.get(REGION_HEADER) === 'island') return { status: 'ready', region: (await response.json()) as RegionObject };
+  // A new build or a document change: the browser's request of the island reloads the page (as on a client-side visit).
+  if (response.status === 409 && response.headers.has(LOCATION_HEADER)) {
+    await response.body?.cancel();
+    return { status: 'browser' };
+  }
+  const outcome = response.headers.get(REGION_STATUS_HEADER);
+  if (outcome === 'unauthorized' || outcome === 'forbidden') {
+    await response.body?.cancel();
+    return { status: outcome };
+  }
+  let message: string | undefined;
+  try {
+    const body = (await response.json()) as { message?: unknown };
+    if (typeof body.message === 'string') message = body.message;
+  } catch {
+    // No JSON: the status says enough.
+  }
+  return { status: 'exception', failure: { status: response.status, ...(message === undefined ? {} : { message }) } };
+}
 
 /** The peer address from @hono/node-server's bindings; undefined for in-process requests (tests). */
 function remoteAddress(env: unknown): string | undefined {

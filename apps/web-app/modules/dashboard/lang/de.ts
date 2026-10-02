@@ -3,7 +3,7 @@ import type en from './en.ts';
 
 export default {
   title: 'Übersicht',
-  intro: 'Jedes Feld ist eine Island: eine eigene Route, nach der Seite geladen — mit eigenen Berechtigungen.',
+  intro: 'Jedes Feld ist eine Island: eine eigene Route mit eigenen Berechtigungen — mit der Seite gestreamt, das langsame zuletzt.',
   loading: 'Wird geladen …',
   sign_ins: {
     title: 'Letzte Anmeldungen',

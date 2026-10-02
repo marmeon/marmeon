@@ -1,4 +1,4 @@
-import { ConsoleLogger, Translator, type Container, type Logger } from '@bespokecore/core';
+import { ConsoleLogger, currentRequest, Translator, type Container, type Logger } from '@bespokecore/core';
 import {
   Flasher,
   HttpError,
@@ -17,11 +17,14 @@ import {
   REGION_STATUS_HEADER,
   regionOf,
   resolvePageProps,
+  ResponseLifecycle,
   SharedData,
+  type DeferredResult,
   type IslandResult,
   type PageObject,
   type RegionObject,
   type RegionOutcomeStatus,
+  type RegionResult,
   type SsrRender,
 } from '@bespokecore/http';
 import { defaultToResponse, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
@@ -36,6 +39,10 @@ export interface PageRenderOptions {
   onWarning(message: string): void;
   /** Stops rendering when the client went away. */
   signal?: AbortSignal;
+  /** Resolves an island of this page in-process (E49) — `SsrRenderOptions.resolveIsland`. */
+  resolveIsland?: (url: string) => Promise<RegionResult>;
+  /** Computes a deferred group of this page while it streams (E49) — `SsrRenderOptions.resolveDeferred`. */
+  resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
 }
 
 /** Turns a page object into a full HTML document. Implemented per environment (Vite in development, the build in production). */
@@ -68,7 +75,7 @@ export function createDocumentRenderer({ template, ssr, fixStack, version }: Doc
     return error;
   };
   return {
-    async render(page, request, { complete, onError, onWarning, signal }) {
+    async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred }) {
       const [document, render] = await Promise.all([template(request), ssr()]);
       // Rendering stops when the client goes away — the request aborts, or the server cancels the body. Not an error.
       const stopped = new AbortController();
@@ -78,8 +85,10 @@ export function createDocumentRenderer({ template, ssr, fixStack, version }: Doc
           signal: signal ? AbortSignal.any([signal, stopped.signal]) : stopped.signal,
           onWarning,
           onError: (error) => onError(fixed(error)),
+          ...(resolveIsland ? { resolveIsland } : {}),
+          ...(resolveDeferred ? { resolveDeferred } : {}),
         });
-        return documentOf(document, page, result, (reason) => stopped.abort(reason));
+        return await documentOf(document, page, result, (reason) => stopped.abort(reason));
       } catch (error) {
         throw fixed(error);
       }
@@ -125,6 +134,13 @@ export interface ResponseFactoryOptions {
   ssr?: boolean;
   /** Development: say why an island (or a page) is a 404 where it was asked for the other. */
   debug?: boolean;
+  /**
+   * Resolves an island of a page in-process while the page renders (E49) — the kernel's: through the island route's own
+   * middleware, read-only. Without it, islands load in the browser.
+   */
+  islands?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<RegionResult>;
+  /** How long a deferred group streamed with its page may take before the browser loads it instead (ms, default 10 s). */
+  deferredTimeout?: number;
 }
 
 /**
@@ -140,7 +156,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false }: ResponseFactoryOptions = {},
+  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000 }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   const noRouter: RouteLookup = {
     findByName: (name) => {
@@ -148,7 +164,61 @@ export function createResponseFactory(
     },
   };
 
-  const document = async (page: PageObject, request: Request): Promise<string | ReadableStream<Uint8Array>> => {
+  /**
+   * What the page's request resolves while the page streams (E49): its islands — in-process, through their own routes —
+   * and its deferred groups, computed in the page's scope once the headers are out (read-only then). Per request.
+   */
+  const streaming = (page: PageObject, request: Request, props: Readonly<Record<string, unknown>>, scope: Container | undefined): Pick<PageRenderOptions, 'resolveIsland' | 'resolveDeferred'> => {
+    if (!scope) return {};
+    const requestId = currentRequest()?.requestId;
+    // A prefetched document (`Sec-Purpose: prefetch`) leaves its islands to the browser: islands never load ahead (E52).
+    const resolveIsland = islands && !isPrefetch(request)
+      ? async (url: string): Promise<RegionResult> => {
+          const result = await islands(url, { request, scope, requestId });
+          if (result.status === 'exception') logger.error(`The island ${url} on [${page.component}] failed — it shows its error`, { component: page.component, island: url, status: result.failure.status });
+          return result;
+        }
+      : undefined;
+    const lifecycle = scope.has(ResponseLifecycle) ? scope.make(ResponseLifecycle) : undefined;
+    const shared = scope.has(SharedData) ? scope.make(SharedData) : undefined;
+    const resolveDeferred =
+      lifecycle && page.deferredProps
+        ? async (group: string): Promise<DeferredResult | null> => {
+            const names = page.deferredProps?.[group];
+            if (!names || names.length === 0) return null;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), deferredTimeout)));
+            try {
+              const computed = (async () => {
+                // After the headers: the session is saved, the request read-only — a write throws (development) or is dropped.
+                await lifecycle.whenHeadersSent();
+                // Only the group's props (the controller's or shared ones) — never `always()` props again: they were the page's.
+                const group: Record<string, unknown> = {};
+                for (const [name, value] of shared?.entries() ?? []) if (names.includes(name)) group[name] = value;
+                for (const name of names) if (Object.hasOwn(props, name)) group[name] = props[name];
+                const resolved = await resolvePageProps(group, undefined, { only: names, except: [] });
+                // Serialized as the browser gets it (a Date is its string) — the same value a partial reload would bring.
+                return JSON.parse(JSON.stringify(resolved)) as DeferredResult;
+              })();
+              const result = await Promise.race([computed, late]);
+              if (result === null) logger.error(`The deferred group [${group}] of [${page.component}] took longer than ${deferredTimeout} ms — the browser loads it`, { component: page.component });
+              return result;
+            } catch (error) {
+              logger.error(`The deferred group [${group}] of [${page.component}] failed while streaming — the browser loads it`, { component: page.component, ...describe(error) });
+              return null;
+            } finally {
+              clearTimeout(timer);
+            }
+          }
+        : undefined;
+    return { ...(resolveIsland ? { resolveIsland } : {}), ...(resolveDeferred ? { resolveDeferred } : {}) };
+  };
+
+  const document = async (
+    page: PageObject,
+    request: Request,
+    resolvers: Pick<PageRenderOptions, 'resolveIsland' | 'resolveDeferred'> = {},
+  ): Promise<string | ReadableStream<Uint8Array>> => {
     if (!ssr) return renderer.shell(page, request);
     const report = (message: string) => (error: unknown) => logger.error(message, { component: page.component, ...describe(error) });
     try {
@@ -157,6 +227,7 @@ export function createResponseFactory(
         signal: request.signal,
         onError: report(`Server rendering of [${page.component}] failed in a Suspense boundary — the browser renders that part`),
         onWarning: (message) => logger.warn(message, { component: page.component }),
+        ...resolvers,
       });
     } catch (error) {
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
@@ -195,7 +266,8 @@ export function createResponseFactory(
       return new Response(json, { status: result.status, headers: { ...headers, 'content-type': 'application/json', [PAGE_HEADER]: 'true' } });
     }
 
-    return new Response(await document(JSON.parse(json) as PageObject, ctx.request), {
+    const sent = JSON.parse(json) as PageObject;
+    return new Response(await document(sent, ctx.request, streaming(sent, ctx.request, result.props, scope)), {
       status: result.status,
       headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
     });

@@ -59,9 +59,11 @@ export interface TestAppOptions {
   /**
    * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `bespoke dev` does) — so the markup
    * and `<Head>` are testable (`assertSee`, `assertServerRendered`, `assertHydrates`). Off by default: responses carry
-   * the page object only (fast, no Vite). Every page renders completely, as for a bot.
+   * the page object only (fast, no Vite). Every page renders completely, as for a bot — islands included (E49).
+   * `'stream'`: as for a browser — the shell first, islands and deferred props streamed into the same response
+   * (`app.stream(path)` gives the raw response, to read it as it arrives).
    */
-  ssr?: boolean;
+  ssr?: boolean | 'stream';
 }
 
 type FormValue = string | readonly string[];
@@ -129,7 +131,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     if (options.ssr) {
       // The SSR entry imports `virtual:bespoke/routes`, which `bespoke route:types` writes — maybe never yet in this checkout.
       writeAppBrowserRoutes(application);
-      ssr = await TestSsr.start(definition.root);
+      ssr = await TestSsr.start(definition.root, { stream: options.ssr === 'stream' });
     }
   } catch (error) {
     await application.shutdown();
@@ -493,6 +495,14 @@ export class TestApp {
 
   get(path: string, options?: RequestOptions): PendingTestResponse {
     return this.request('GET', path, options);
+  }
+
+  /**
+   * A GET as the browser sends it, answered with the raw response — its body unread, to follow a server-rendered page as
+   * it streams (`createTestApp(app, { ssr: 'stream' })`): when the headers came, when an island arrived.
+   */
+  async stream(path: string, options: RequestOptions = {}): Promise<Response> {
+    return this.#shared.kernel.request(path, await this.#init('GET', options));
   }
   post(path: string, options?: RequestOptions): PendingTestResponse {
     return this.request('POST', path, options);

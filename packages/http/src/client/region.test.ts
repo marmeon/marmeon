@@ -1,6 +1,6 @@
 import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../page.ts';
 import { describe, expect, it } from 'vitest';
-import { regionId } from './region.ts';
+import { regionId, regionInitial } from './region.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
 const island = (url: string, props: Record<string, unknown> = {}, extra: Partial<RegionObject> = {}): RegionObject => ({
@@ -344,5 +344,33 @@ describe('Region — islands in the client core (E48, E50)', () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
     expect(() => navigator.region('https://evil.example/islands/x')).toThrow(/from this site/);
+  });
+});
+
+describe('Region — started with what the server streamed (E49)', () => {
+  it('shows a streamed island at once and loads nothing — kept in the entry like a loaded one', async () => {
+    const win = new FakeWindow(`${ORIGIN}/dashboard`);
+    const { navigator, owner } = boot(win, page('/dashboard'));
+    const result = { status: 'ready', region: island('/islands/sign-ins', { entries: ['ada'] }) } as const;
+    const region = navigator.region('/islands/sign-ins', { initial: regionInitial(result) });
+    expect(region.snapshot).toMatchObject({ status: 'ready', region: { props: { entries: ['ada'] } }, pending: false });
+    await region.load();
+    expect(islandRequests(win)).toEqual([]);
+    expect(owner().regions.get('/islands/sign-ins')).toEqual(result.region);
+  });
+
+  it('starts a refused island refused (no data), a failed one failed — shown, not kept: Back asks again', async () => {
+    const win = new FakeWindow(`${ORIGIN}/dashboard`);
+    const { navigator, owner } = boot(win, page('/dashboard'));
+    const refused = navigator.region('/islands/members', { initial: regionInitial({ status: 'forbidden' }) });
+    expect(refused.snapshot.status).toBe('forbidden');
+    const failed = navigator.region('/islands/broken', { initial: regionInitial({ status: 'exception', failure: { status: 500 } }) });
+    expect(failed.snapshot).toMatchObject({ status: 'exception', failure: { status: 500 } });
+    await Promise.all([refused.load(), failed.load()]);
+    expect(islandRequests(win)).toEqual([]);
+    expect(owner().regions.get('/islands/members')).toEqual({ status: 'forbidden' });
+    expect(owner().regions.has('/islands/broken')).toBe(false);
+    // Left to the browser by the server: it loads itself.
+    expect(regionInitial({ status: 'browser' })).toBeUndefined();
   });
 });

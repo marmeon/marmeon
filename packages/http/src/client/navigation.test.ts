@@ -430,6 +430,48 @@ describe('Navigator — scroll restoration', () => {
   });
 });
 
+describe('Navigator — deferred groups streamed with the document (E49)', () => {
+  const streamed = (): PageObject => ({ ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'], slow: ['audit'] }, streamedProps: ['default'] });
+
+  it('does not ask for a group the server streams — it lands what the adapter hands over, once the document has arrived', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.readyState = 'loading';
+    win.handler = () => pageResponse(page('/users/1', { audit: ['log'] }));
+    const { navigator, visible } = boot(win, streamed());
+    // Only the group that is not streamed is asked for.
+    expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual(['audit']);
+    const landing = navigator.receiveStreamed('default', { props: { activity: ['signed in'] } });
+    await settle();
+    // Still streaming: an update now would make the adapter render a part that is still on its way in the browser.
+    expect(visible().props).not.toHaveProperty('activity');
+    win.finishLoading();
+    await landing;
+    expect(visible().props).toMatchObject({ name: 'Ada', activity: ['signed in'], audit: ['log'] });
+    expect(visible().deferredProps).toBeUndefined();
+    expect(win.requests).toHaveLength(1);
+  });
+
+  it('counter-check: without streamedProps every group is asked for', () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => pageResponse(page('/users/1', {}));
+    const { streamedProps: _streamed, ...withoutStreaming } = streamed();
+    boot(win, withoutStreaming);
+    expect(win.requests.map((request) => request.headers['x-bespoke-partial-data']).sort()).toEqual(['activity', 'audit']);
+  });
+
+  it('asks for a streamed group that did not come (null) — and takes nothing for a group it never waited for', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => pageResponse(page('/users/1', { activity: ['fetched'], audit: ['log'] }));
+    const { navigator, visible } = boot(win, streamed());
+    await navigator.receiveStreamed('default', null);
+    await settle();
+    expect(win.requests.map((request) => request.headers['x-bespoke-partial-data']).sort()).toEqual(['activity', 'audit']);
+    expect(visible().props).toMatchObject({ activity: ['fetched'] });
+    await navigator.receiveStreamed('slow', { props: { audit: ['forged'] } });
+    expect(visible().props).toMatchObject({ audit: ['log'] });
+  });
+});
+
 describe('Navigator — partial reloads and deferred props (E7)', () => {
   /** A response the test lets through when it wants to — a slow server. */
   function gate() {

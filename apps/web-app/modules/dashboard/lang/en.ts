@@ -1,7 +1,7 @@
 /** The texts of the dashboard — the source language. */
 const en = {
   title: 'Dashboard',
-  intro: 'Each panel is an island: a route of its own, loaded after the page — with its own permissions.',
+  intro: 'Each panel is an island: a route of its own, with its own permissions — streamed with the page, the slow one last.',
   loading: 'Loading…',
   sign_ins: {
     title: 'Recent sign-ins',

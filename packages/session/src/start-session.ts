@@ -1,5 +1,5 @@
 import { Logger } from '@bespokecore/core';
-import { LOCATION_HEADER, ReadOnly } from '@bespokecore/http';
+import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@bespokecore/http';
 import type { HttpContext, Next } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -16,23 +16,30 @@ export class StartSession {
   readonly #store: SessionStore;
   readonly #logger: Logger;
   readonly #readOnly: ReadOnly;
+  readonly #parent: ParentRequest;
 
-  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly) {
+  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly, parent: ParentRequest) {
     this.#session = session;
     this.#config = config;
     this.#store = store;
     this.#logger = logger;
     this.#readOnly = readOnly;
+    this.#parent = parent;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
     const { cookie, lifetime, secure, sameSite } = this.#config;
-    await this.#session.start(ctx.cookies.get(cookie));
     if (this.#readOnly.active) {
+      // An island resolved while its page renders (E49) reads the page request's session as it is now — whoever the page
+      // signed in (a remember-me sign-in included, which the cookie does not know yet) — as a copy.
+      const page = this.#parent.resolve(Session);
+      if (page?.started) this.#session.adopt(page);
+      else await this.#session.start(ctx.cookies.get(cookie));
       // An island (E52): it reads the session, never writes it — no save, no cookie, flash data stays for the page.
       this.#session.lock((what) => this.#readOnly.permit(what));
       return next();
     }
+    await this.#session.start(ctx.cookies.get(cookie));
     try {
       const response = await next();
       // An asset-version reload (409): the page is requested again, so flash data must survive it.
@@ -42,6 +49,9 @@ export class StartSession {
       // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
       // keeps the one the sign-out sent.
       if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
+      // Saved: nothing that still runs in this request — a streamed page's deferred props (E49) — reaches the store any
+      // more. Once the headers are out, the kernel makes the request read-only, and a write throws (or is dropped).
+      this.#session.lock((what) => this.#readOnly.permit(what));
     }
   }
 

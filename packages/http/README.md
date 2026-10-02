@@ -28,6 +28,8 @@ component name and props in text) visits, goes back and forward, loads deferred 
 | `Navigator` | Visits (`visit`, `reload`, `prefetch`), their events (`on('start' \| 'progress' \| 'success' \| 'error' \| 'exception' \| 'cancel' \| 'finish')` and per-visit `onX` callbacks, E44), the `x-bespoke` request headers (asset version, XSRF from the `XSRF-TOKEN` cookie, partial reloads), JSON or multipart bodies (upload progress via XHR), 409 + `x-bespoke-location` → full page load and every kept page dropped, history entries **without props** plus an in-memory page cache (E36, refetch on a miss), Back/Forward, bfcache, scroll restoration (window and `[scroll-region]`), deferred props loaded per group after every show, `merge`/`deepMerge`/`matchOn`, `async` and `preserveUrl` visits, prefetching (GET only, `Purpose: prefetch`, `cacheFor`) |
 | `mergePage` | A partial reload's props merged into the page (what the navigator does) |
 | `navigator.region(url, { owner, initial })` → `Region` | A region (E50) — an island (E48): the view of another route with its own region object (`RegionObject`: component, props, URL, query), loaded with `x-bespoke-region: island` (never following a redirect), `load()`/`reload({ query, only, except, reset })`, its deferred props, a `snapshot` (`loading \| ready \| unauthorized \| forbidden \| exception`, `pending`, `failure`) and `subscribe`. One per URL and owner (identical islands share one request); a newer request of a region aborts its older one. Its failures are its own — a redirect/401/403 is `unauthorized`/`forbidden`, never a page navigation (E52) — except a 409: the whole page loads again. Never prefetched |
+| `regionInitial(result)` | What a region starts with when the server resolved it while rendering the page (E49): the `RegionResult` it streamed into the island's boundary (`<script type="application/json">`) → `navigator.region(url, { owner, initial })` — `ready` with its region object, `unauthorized`/`forbidden` (no data), `exception` (shown, not kept), or nothing (`browser`: the region loads itself). No request |
+| `navigator.receiveStreamed(group, result \| null)` | A deferred group of the first page that the server streamed with the document (`PageObject.streamedProps`, E49): the navigator does not ask for it, lands it once the document has finished streaming (`DOMContentLoaded` — an update earlier would make React render a still-streaming island in the browser), and asks for it after all when it gets `null` |
 | `RegionOwner` | Where regions keep what they loaded: the history entry of their page (`render` hands it over), in memory only — Back/Forward shows islands without a request, `history.state` never holds them (E36). Closed (requests aborted, nothing lands) when the entry leaves the screen or the document is left. Pluggable for layers |
 | `navigator.queryState(options)` → `QueryState` | Typed URL state (E55): `value(page)` is the page's query as the server parsed it (`PageObject.query` + `queryDefaults` — the browser never parses a URL) or what is being typed (`draft`); `set(patch \| fn)` changes it at once and visits the page's URL after `debounce` ms (partial with `only`, `reset` = `only` by default, `history: 'push' \| 'replace'`, state and scroll kept); the draft gives way when the page changes otherwise (Back/Forward, a link). `navigator.subscribe(listener)` follows the page on screen |
 | `queryUrl`, `pageQuery`, `withoutDefaults`, `linkQuery`, `assertQueryPage` | Query helpers: a URL without the defaults, the page's query with them, a link's query for the page on screen, the "only on its route's page" check |
@@ -58,11 +60,28 @@ component name and props in text) visits, goes back and forward, loads deferred 
 3. **Head management**: a head component that sets the title through a `TitleRegistry` and adds/removes its tags in the
    browser; on the server it records title and tags so the SSR entry returns them as `head`.
 4. **The SSR renderer**: the app's `bootstrap/ssr.tsx` exports `render: SsrRender` (from `@bespokecore/http/page`):
-   `(page, { complete, onError, onWarning, signal }) => Promise<{ html: string | ReadableStream<Uint8Array>; head?: string }>`.
+   `(page, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred }) => Promise<{ html: string | ReadableStream<Uint8Array>; head?: string; streamedProps?: string[] }>`.
    It gets the page as the browser does (JSON values only), resolves with the shell (or, with `complete`, the whole page —
    bots), returns `html: ''` for pages that do not render on the server (`Page.ssr = false`), and **rejects** when the
    shell cannot render — the server then sends the document without markup and the browser renders the page. The server
    puts `head` into `<!--app-head-->`, `html` into `<!--app-html-->` and the page object into `<script id="bespoke-page">`.
+   **Islands and deferred props in the stream (E49)** — both callbacks are per request, the server stays UI-agnostic:
+   - `resolveIsland(url)` → `RegionResult`: the server runs the island's route in-process (its own middleware and
+     authorization, read-only, the page request's session as a copy). Render each eager island behind a Suspense boundary
+     that waits for it (the shell never does), with its view and — in the same boundary — a data block
+     `<script type="application/json" id="…">` holding the result (`scriptJson`: `<` escaped; inert, so no CSP nonce),
+     ids stable across server and browser. `complete` waits for every island (bots get their markup). `load="visible"`
+     islands are not resolved on the server.
+   - `resolveDeferred(group)` → the group's props (or `null`: not streamed): computed in the page's scope once the
+     response headers are out (read-only then). Render one boundary per group with its data block — **inside a host
+     element**: a boundary at the top of the tree may still bring `<html>`/`<head>` (React's preamble), and React would
+     hold the whole shell back — and return the groups as `streamedProps` (the server writes them into the page object).
+     Not when rendering `complete` (the groups are computed after the headers).
+   - In the browser, hydrating: read each data block once and render it again unchanged; islands start from it
+     (`regionInitial`), groups go to `navigator.receiveStreamed`. A boundary the adapter ends up rendering in the browser
+     (an error, or an update of the page while it was still streaming) finds no data block: the island or group loads as
+     on a client-side visit. Keep an island's boundary element stable until it hydrated, so a re-render of the page does
+     not cause that.
 5. **The hydration entry**: the app's `bootstrap/client.tsx` (injected into `index.html` by `bespoke()`): `readInitialPage()`,
    resolve the component and the messages of the page's locale **before** hydrating (so the markup matches), then hydrate
    `rootElement('app')` when `hasServerMarkup(root)`, else render into it.

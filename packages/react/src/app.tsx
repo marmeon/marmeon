@@ -21,6 +21,7 @@ import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
+import { SsrContext, StreamedDeferred, type SsrResolvers } from './streamed.tsx';
 
 // The visit types of the client core, under the names React apps already import them by.
 export type {
@@ -138,6 +139,8 @@ export interface BespokeAppProps {
   messages?: MessageLoader;
   /** The first page's messages, loaded before hydrating (by `createBespokeApp` and the SSR entry). */
   initialCatalog?: Catalog;
+  /** Server rendering only (E49): islands and deferred groups, resolved in-process by the page's request (the SSR entry). */
+  ssr?: SsrResolvers;
 }
 
 interface Current {
@@ -171,6 +174,7 @@ export function BespokeApp({
   headCollector,
   messages,
   initialCatalog,
+  ssr,
 }: BespokeAppProps) {
   const [current, setCurrent] = useState<Current>({ page: initialPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
   const [failure, setFailure] = useState<VisitException | null>(null);
@@ -279,20 +283,24 @@ export function BespokeApp({
   const tree = layoutsOf(Component, page.component, layout).reduceRight<ReactNode>((children, Layout) => <Layout>{children}</Layout>, content);
 
   return (
-    <HeadContext.Provider value={head}>
-      <RoutesContext.Provider value={routes}>
-        <I18nContext.Provider value={i18n}>
-          <RouterContext.Provider value={router}>
-            <RegionOwnerContext.Provider value={owner}>
-              {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
-              <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
-                {tree}
-              </ErrorBoundary>
-            </RegionOwnerContext.Provider>
-            <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
-          </RouterContext.Provider>
-        </I18nContext.Provider>
-      </RoutesContext.Provider>
-    </HeadContext.Provider>
+    <SsrContext.Provider value={ssr ?? null}>
+      <HeadContext.Provider value={head}>
+        <RoutesContext.Provider value={routes}>
+          <I18nContext.Provider value={i18n}>
+            <RouterContext.Provider value={router}>
+              <RegionOwnerContext.Provider value={owner}>
+                {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
+                <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
+                  {tree}
+                </ErrorBoundary>
+              </RegionOwnerContext.Provider>
+              <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
+              {/* The first page's deferred groups the server streams with the document (E49): to the navigator as they arrive. */}
+              <StreamedDeferred groups={initialPage.streamedProps} navigator={getNavigator} />
+            </RouterContext.Provider>
+          </I18nContext.Provider>
+        </RoutesContext.Provider>
+      </HeadContext.Provider>
+    </SsrContext.Provider>
   );
 }
