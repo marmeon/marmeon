@@ -4,7 +4,7 @@ import { isHistoryState, mergePage, Navigator, type VisitException } from './nav
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
 describe('Navigator — the history without props (E36)', () => {
-  it('keeps only { component, url, scroll, key } in history.state — never the props', async () => {
+  it('keeps only { component, url, scroll, key, index } in history.state — never the props', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'bc_1|secret-token', email: 'ada@example.com' }, 'auth/AccessTokens'));
     const { navigator } = boot(win, page('/users/1', { email: 'ada@example.com' }));
@@ -14,7 +14,8 @@ describe('Navigator — the history without props (E36)', () => {
     for (const { state } of win.entries) {
       expect(state).not.toContain('secret-token');
       expect(state).not.toContain('ada@example.com');
-      expect(Object.keys(JSON.parse(state)).sort()).toEqual(['component', 'key', 'scroll', 'url']);
+      // `index`: the entry's position (E64, for the navigation guard) — a number, like the scroll.
+      expect(Object.keys(JSON.parse(state)).sort()).toEqual(['component', 'index', 'key', 'scroll', 'url']);
       expect(isHistoryState(JSON.parse(state))).toBe(true);
     }
     expect(JSON.parse(win.current.state)).toMatchObject({ component: 'auth/AccessTokens', url: '/settings/tokens', scroll: { x: 0, y: 0 } });

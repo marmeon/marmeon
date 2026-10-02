@@ -5,6 +5,7 @@ import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
 import { BespokeApp } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { LayerFrame } from './layer.tsx';
+import type { ConfirmComponent } from './confirm.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
 
@@ -34,6 +35,11 @@ export interface CreateBespokeAppOptions {
    */
   layer?: LayerFrame;
   /**
+   * The dialog that asks the user (E64) — a link's, an action's or a form's `confirm`, the navigation guard's question:
+   * `ConfirmDialog` (wrap it for the app's labels), or the app's own. Default: the browser's `confirm()` and `prompt()`.
+   */
+  confirm?: ConfirmComponent;
+  /**
    * Errors React recovered from while hydrating: the server's markup did not match (React rendered that part again in
    * the browser), or a part failed on the server (the browser rendered it). Default: reported to the console — in
    * development with the page's name and a notice on the page, so a mismatch is not missed.
@@ -45,7 +51,7 @@ export interface CreateBespokeAppOptions {
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
  */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
+export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
   const page = readInitialPage();
 
   // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
@@ -70,6 +76,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
       messages={messages}
       initialCatalog={catalog}
       layer={layer}
+      confirm={confirm}
     />
   );
 

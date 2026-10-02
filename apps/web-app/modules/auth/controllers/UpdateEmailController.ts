@@ -44,6 +44,6 @@ export class UpdateEmailController extends Controller {
     await this.#verification.send(updated);
     // To the old address, in the user's language (not necessarily this request's).
     await this.#mailer.send(new EmailChangedMail(ctx.user.name, ctx.user.email, email, this.#translator.forLocale(ctx.user.locale)));
-    return this.back('/settings/security').with('status', this.#translator.get('auth.security.email_changed'));
+    return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_changed') });
   }
 }

@@ -1,6 +1,7 @@
 import type { CheckViewName, SharedProps } from './page.ts';
 import type { ResolvedProps } from './props.ts';
 import { toLayer, type LayerMethod } from './layer.ts';
+import { addFlash, type FlashMethod } from './flash.ts';
 
 const VIEW_RESULT = Symbol.for('bespokecore.view-result');
 
@@ -31,6 +32,12 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
    * place (a failed form, a wizard's next step), another key stacks on top.
    */
   readonly layer: LayerMethod<TProps, TComponent>;
+  /**
+   * A flash message delivered with this page (E60) — typed by the app's `FlashData`: `this.view('auth/Tokens', { tokens })
+   * .flash('toast', { kind: 'info', message })`. It fires once in the browser, with this response (after a redirect, use
+   * `redirect().flash()`).
+   */
+  readonly flash: FlashMethod<PageResult<TProps, TComponent>>;
 }
 
 /**
@@ -50,9 +57,11 @@ export function view<const V extends string, const TProps extends ViewProps>(
     status,
     ...(headers ? { headers } : {}),
     layer: (options) => toLayer(result, options),
+    flash: ((key: string, data: unknown) => addFlash(result, key, data)) as PageResult<TProps, V>['flash'],
   };
-  // Not enumerable: a result is data (spread, compared in tests) — the method is no part of it.
+  // Not enumerable: a result is data (spread, compared in tests) — the methods are no part of it.
   Object.defineProperty(result, 'layer', { enumerable: false });
+  Object.defineProperty(result, 'flash', { enumerable: false });
   return result;
 }
 

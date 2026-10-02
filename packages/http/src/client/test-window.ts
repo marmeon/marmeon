@@ -33,6 +33,18 @@ export class FakeWindow implements NavigatorWindow {
   XMLHttpRequest?: new () => XMLHttpRequest;
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
   handler: Handler = () => new Response('not found', { status: 404 });
+  /** The browser's own dialogs (E64) — what they were asked, and what the "user" answers. */
+  readonly asked: string[] = [];
+  confirmAnswer = false;
+  promptAnswer: string | null = null;
+  confirm = (message?: string): boolean => {
+    this.asked.push(`confirm ${message ?? ''}`);
+    return this.confirmAnswer;
+  };
+  prompt = (message?: string): string | null => {
+    this.asked.push(`prompt ${message ?? ''}`);
+    return this.promptAnswer;
+  };
 
   constructor(url: string) {
     this.entries.push({ url, state: 'null' });
@@ -77,6 +89,9 @@ export class FakeWindow implements NavigatorWindow {
           win.index = index;
           win.dispatch('popstate', { state: win.history.state });
         }, 0);
+      },
+      get length() {
+        return win.entries.length;
       },
       get scrollRestoration() {
         return win.scrollRestoration;
@@ -129,6 +144,13 @@ export class FakeWindow implements NavigatorWindow {
     for (const listener of this.#listeners.get(type) ?? []) listener(event);
   }
 
+  /** The user closes the tab or reloads: `beforeunload` — returns whether the page asked to stay (the browser's question). */
+  unload(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    for (const listener of this.#listeners.get('beforeunload') ?? []) listener(event);
+    return event.defaultPrevented;
+  }
+
   /** Back within the same document: the browser fires popstate with the entry's (deserialized) state. */
   back() {
     this.index--;
@@ -152,7 +174,7 @@ export class FakeWindow implements NavigatorWindow {
   }
 }
 
-export function boot(win: FakeWindow, initial: PageObject, options: { cacheSize?: number } = {}) {
+export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm'> = {}) {
   const shown: PageObject[] = [];
   /** The region owner handed with each page rendered (islands live there). */
   const owners: RegionOwner[] = [];

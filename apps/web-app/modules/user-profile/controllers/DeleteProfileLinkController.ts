@@ -24,8 +24,8 @@ export class DeleteProfileLinkController extends Controller {
   async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number } } }) {
     await this.#links.delete(ctx.params.link.id);
     // Confirmed in its layer: it closes, and what is beneath (the profile, or the edit layer) loses the link.
-    return this.closeLayer({ reload: ['profile', 'flash'] })
+    return this.closeLayer({ reload: ['profile'] })
       .route('user-profile.show', { user: ctx.params.user.id })
-      .with('status', this.#translator.get('user-profile.status.link_removed'));
+      .flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.link_removed') });
   }
 }

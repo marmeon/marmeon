@@ -1,4 +1,4 @@
-import { resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type OptimisticUpdate, type Reloading, type Submission } from '@bespokecore/http/client';
+import { resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading, type Submission } from '@bespokecore/http/client';
 import type {
   ActionBodyOf,
   ActionDataOf,
@@ -6,6 +6,7 @@ import type {
   BrowserRouteNameInput,
   CheckActionRouteName,
   CheckBrowserRouteName,
+  FlashMessage,
   MethodOf,
   Param,
   ParamsOf,
@@ -26,6 +27,7 @@ export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? 
  * How an action of route `N` ended, typed by its controller (E59):
  * - `data`: it answered `this.json(…)` — `data` is what JSON made of it (`Serialize<T>`); only when the controller has such a branch;
  * - `redirect`: it redirected — reported, not followed (`onRedirect: 'visit'` follows it); only when the controller can;
+ * - `flash` (with both): the flash messages its controller flashed (E60) — they also fire for `useFlash`, once;
  * - `invalid`: 422 — the first message per field of its request schema;
  * - `exception`: offline, or a failure status (401/419 after signing out, 403, 404, 5xx) — shown, never retried by itself;
  * - `cancelled`: `cancel()`, a newer call with the same `key`, or the page was left.
@@ -36,8 +38,10 @@ export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? 
  * ```
  */
 export type ActionResultOf<N extends string> =
-  | ([ActionDataOf<N>] extends [never] ? never : { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: ActionDataOf<N> })
-  | (ActionRedirects<N> extends true ? { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string } : never)
+  | ([ActionDataOf<N>] extends [never]
+      ? never
+      : { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: ActionDataOf<N>; readonly flash: readonly FlashMessage[] })
+  | (ActionRedirects<N> extends true ? { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string; readonly flash: readonly FlashMessage[] } : never)
   | { readonly ok: false; readonly kind: 'invalid'; readonly errors: Partial<Record<ActionField<N>, string>>; readonly message: string | undefined }
   | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionException }
   | { readonly ok: false; readonly kind: 'cancelled' };
@@ -73,6 +77,11 @@ export type ActionSubmitOptions<N extends string, RequiresParams extends boolean
     key?: string;
     /** `'visit'`: follow the controller's redirect afterwards. Default: report it (`{ kind: 'redirect' }`). */
     onRedirect?: 'visit';
+    /**
+     * Ask first (E64): `confirm: t('links.confirm_remove')`, or `{ message, prompt: 'DELETE' }` to type a text. A no sends
+     * nothing — the call ends `cancelled`, nothing optimistic shows.
+     */
+    confirm?: Confirm;
   };
 
 type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends ActionSubmitOptions<N, RequiresParams>
@@ -177,6 +186,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
           ...(options.optimistic ? { optimistic: options.optimistic } : {}),
           reload: flatten<Reloading>(options.reload as ActionReload | readonly ActionReload[] | undefined),
           ...(options.onRedirect ? { onRedirect: options.onRedirect } : {}),
+          ...(options.confirm !== undefined ? { confirm: options.confirm } : {}),
         });
       } finally {
         setCalls((current) => current.filter((call) => call !== pending));

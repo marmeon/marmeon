@@ -50,7 +50,7 @@ describe('RedirectResult', () => {
 
   it('flashes with() data through the Flasher — and refuses to drop it silently without one', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined };
+    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
     new RedirectResult('/').with('status', 'Saved.').with({ count: 2 }).toResponse(request(), router, flasher);
     expect(flashed).toEqual({ status: 'Saved.', count: 2 });
 
@@ -59,9 +59,19 @@ describe('RedirectResult', () => {
     );
   });
 
+  it('queues flash() messages (E60) — each with an id of its own, the same message twice is two — and needs a session for them', () => {
+    const queued: { id: string; key: string; data: unknown }[] = [];
+    const flasher = { flash: () => {}, pull: () => undefined, queueFlash: (message: { id: string; key: string; data: unknown }) => void queued.push(message), takeFlash: () => [], hasFlash: () => false };
+    const saved = { kind: 'success', message: 'Saved.' };
+    new RedirectResult('/').flash('toast', saved).flash('toast', saved).toResponse(request('POST'), router, flasher);
+    expect(queued.map(({ key, data }) => ({ key, data }))).toEqual([{ key: 'toast', data: saved }, { key: 'toast', data: saved }]);
+    expect(new Set(queued.map((message) => message.id)).size).toBe(2);
+    expect(() => new RedirectResult('/').flash('toast', saved).toResponse(request(), router)).toThrow('redirect().flash() needs a session');
+  });
+
   it('goes to the intended page once (authenticate() stored it), else to the fallback target', () => {
     const stored: Record<string, unknown> = { [INTENDED_KEY]: '/users/7/edit?tab=links' };
-    const flasher = { flash: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; } };
+    const flasher = { flash: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
     const intended = () => new RedirectResult().intended().route('user-profile.show', { id: 1 }).toResponse(request('POST'), router, flasher);
     expect(intended().headers.get('location')).toBe('/users/7/edit?tab=links');
     expect(intended().headers.get('location')).toBe('/users/1'); // pulled: used once
@@ -71,7 +81,7 @@ describe('RedirectResult', () => {
   it('counter-check: an intended URL pointing elsewhere is never followed (open redirect)', () => {
     for (const evil of ['//evil.test/phish', '/\\evil.test', 'https://evil.test/', '/\tevil', 'javascript:alert(1)', '', 42]) {
       expect(isLocalPath(evil), String(evil)).toBe(false);
-      const flasher = { flash: () => {}, pull: () => evil };
+      const flasher = { flash: () => {}, pull: () => evil, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
       expect(new RedirectResult('/home').intended().toResponse(request(), router, flasher).headers.get('location')).toBe('/home');
     }
     expect(isLocalPath('/users/1?q=a//b')).toBe(true);
@@ -79,7 +89,7 @@ describe('RedirectResult', () => {
 
   it('never flashes a field with "password" in its name, files or the CSRF token', () => {
     const flashed: Record<string, unknown> = {};
-    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined };
+    const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
     const input = {
       email: 'ada@example.com',
       password: 'secret',

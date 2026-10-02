@@ -25,7 +25,7 @@ export abstract class Controller {
   /**
    * Closes the layer the request came from (E53, Inertia's `close()`) — after a form in it was saved, say — and reloads what
    * is beneath: `this.closeLayer({ reload: ['profile'] })`. Without a layer (no JavaScript) it is a redirect: back, or where
-   * `.route(…)` says. `.with(…)` flashes for the next request either way.
+   * `.route(…)` says. A flash message (`.flash('toast', …)`, E60) fires with the close — or, as a redirect, on the page it leads to.
    */
   protected closeLayer(options?: CloseLayerOptions): CloseLayerResult {
     return new CloseLayerResult(options);

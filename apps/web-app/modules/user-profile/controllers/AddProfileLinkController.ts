@@ -28,6 +28,6 @@ export class AddProfileLinkController extends Controller {
 
   async handle(ctx: ContextOf<typeof AddProfileLinkRequest>) {
     await this.#links.insert({ user_id: ctx.params.user.id, ...ctx.body });
-    return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).with('status', this.#translator.get('user-profile.status.link_added'));
+    return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.link_added') });
   }
 }

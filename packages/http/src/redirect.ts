@@ -1,5 +1,7 @@
 import { token } from '@bespokecore/core';
 import { urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@bespokecore/router';
+import { flashEntry, type FlashEntry } from './flash.ts';
+import type { CheckFlashKey, FlashValue } from './page.ts';
 
 const REDIRECT_RESULT = Symbol.for('bespokecore.redirect-result');
 
@@ -12,6 +14,18 @@ export interface Flasher {
   flash(key: string, value: unknown): void;
   /** Returns a stored value and removes it. */
   pull(key: string): unknown;
+  /**
+   * Keeps a flash message (E60) until a response the user is shown takes it ({@link takeFlash}) — not just for the next
+   * request: a prefetch or an island in between leaves it where it is.
+   */
+  queueFlash(message: FlashEntry): void;
+  /**
+   * The flash messages waiting, taken — by the response that delivers them (a page, a layer, an action's answer). Empty
+   * for a read-only request (an island) and without a session. A 409 that reloads the page puts them back (`reflash()`).
+   */
+  takeFlash(): FlashEntry[];
+  /** Whether flash messages wait — without taking them (a prefetch says so, E60). */
+  hasFlash(): boolean;
 }
 export const Flasher = token<Flasher>('Flasher');
 
@@ -39,6 +53,7 @@ export class RedirectResult {
   #status: RedirectStatus | undefined;
   readonly #headers = new Headers();
   readonly #flash = new Map<string, unknown>();
+  readonly #messages: FlashEntry[] = [];
 
   constructor(url?: string, status?: RedirectStatus) {
     if (url !== undefined) this.#target = { kind: 'url', url };
@@ -85,11 +100,25 @@ export class RedirectResult {
     return this;
   }
 
-  /** Flashes data to the session for the next request: `back().with('success', 'Saved.')`. */
+  /**
+   * Flashes data to the session for the next request — whatever it is: `back().with('email', email)`, read there with
+   * `session.get('email')`. Not shown by itself: a message for the user is a {@link flash} (E60).
+   */
   with(key: string, value: unknown): this;
   with(values: Record<string, unknown>): this;
   with(key: string | Record<string, unknown>, value?: unknown): this {
     for (const [name, data] of typeof key === 'string' ? [[key, value] as const] : Object.entries(key)) this.#flash.set(name, data);
+    return this;
+  }
+
+  /**
+   * A flash message for the page the user sees next (E60) — typed by the app's `FlashData`:
+   * `redirect().route('user-profile.show', { user }).flash('toast', { kind: 'success', message })`. It fires exactly once in
+   * the browser (`useFlash('toast', …)`): with the page the redirect leads to — or, for an action (`useAction`), with the
+   * action's answer itself. Unlike `with()`, it waits for a response that is shown: a prefetch or an island never takes it.
+   */
+  flash<const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>): this {
+    this.#messages.push(flashEntry(key, data));
     return this;
   }
 
@@ -110,6 +139,10 @@ export class RedirectResult {
     if (this.#flash.size > 0) {
       if (!flasher) throw new Error('redirect().with() needs a session: install @bespokecore/session and start it for this route.');
       for (const [key, value] of this.#flash) flasher.flash(key, value);
+    }
+    if (this.#messages.length > 0) {
+      if (!flasher) throw new Error('redirect().flash() needs a session: install @bespokecore/session and start it for this route.');
+      for (const message of this.#messages) flasher.queueFlash(message);
     }
     const intended = this.#intended ? flasher?.pull(INTENDED_KEY) : undefined;
     const headers = new Headers(this.#headers);

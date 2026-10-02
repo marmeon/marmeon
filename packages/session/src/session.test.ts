@@ -60,6 +60,31 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.get('status')).toBeUndefined());
   });
 
+  it('keeps flash messages (E60) until a response takes them — not aged by the requests in between; a 409 puts them back', async () => {
+    const store = new MemorySessionStore();
+    const message = (id: string) => ({ id, key: 'toast', data: { message: 'Saved.' } });
+    const { id } = await request(store, undefined, (session) => session.queueFlash(message('1')));
+    // A prefetch, an island, an API call: none takes them — they wait, however many there are.
+    for (let other = 0; other < 3; other++) await request(store, id, (session) => expect(session.hasFlash()).toBe(true));
+    await request(store, id, (session) => {
+      expect(session.takeFlash()).toEqual([message('1')]);
+      // The answer became a 409 (signed in or out, a new build): not shown — back for the page that loads instead.
+      session.reflash();
+    });
+    await request(store, id, (session) => {
+      expect(session.takeFlash().map((taken) => taken.id)).toEqual(['1']);
+      expect(session.takeFlash()).toEqual([]);
+    });
+    await request(store, id, (session) => expect(session.hasFlash()).toBe(false));
+    // A read-only request (an island) takes none.
+    const { id: second } = await request(store, undefined, (session) => session.queueFlash(message('2')));
+    const island = new Session(store, config);
+    await island.start(second);
+    island.lock(() => false);
+    expect(island.takeFlash()).toEqual([]);
+    expect(island.all()).toEqual({});
+  });
+
   it('can keep flash data longer (reflash, keep) and flash input for old()', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => {

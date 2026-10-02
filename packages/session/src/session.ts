@@ -1,4 +1,4 @@
-import { OLD_INPUT_KEY, type ValidationErrors } from '@bespokecore/http';
+import { OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@bespokecore/http';
 import { SessionConfig } from './config.ts';
 import { createSessionId, SESSION_ID, SessionStore, type SessionPayload } from './store.ts';
 
@@ -21,6 +21,10 @@ export interface SessionData {
 type Value<K extends string> = K extends keyof SessionData ? SessionData[K] : unknown;
 
 const FLASH = '_flash';
+/** Flash messages (E60) waiting for a response that is shown. */
+const MESSAGES = '_flash_messages';
+/** At most this many wait: an app that never shows them does not grow the session without end (the oldest go). */
+const MAX_MESSAGES = 20;
 const TOKEN = '_token';
 const OLD_INPUT = OLD_INPUT_KEY; // what `redirect().withInput()` flashes
 
@@ -47,6 +51,8 @@ export class Session {
   readonly #obsolete: string[] = [];
   /** Set for a read-only request (an island, E52): asked before every write. */
   #permit: ((what: string) => boolean) | undefined;
+  /** The flash messages this request took (E60) — put back by `reflash()` (a 409: the page is requested again). */
+  #taken: FlashEntry[] = [];
 
   constructor(store: SessionStore, config: SessionConfig) {
     this.#store = store;
@@ -156,13 +162,48 @@ export class Session {
     flash.old = flash.old.filter((old) => old !== key);
   }
 
-  /** Keeps all flash data for one more request. */
+  /**
+   * Keeps all flash data for one more request — and puts back the flash messages this request took (E60): its answer is
+   * not shown after all (a 409 that loads the page again).
+   */
   reflash(): void {
     this.#ensureStarted();
     if (!this.#may('session.reflash()')) return;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, ...flash.old])];
     flash.old = [];
+    if (this.#taken.length > 0) {
+      const waiting = (this.#ensureStarted()[MESSAGES] as FlashEntry[] | undefined) ?? [];
+      this.#ensureStarted()[MESSAGES] = [...this.#taken, ...waiting].slice(-MAX_MESSAGES);
+      this.#taken = [];
+    }
+  }
+
+  /**
+   * Keeps a flash message (E60, `redirect().flash()`) until a response the user is shown takes it — not aged by the
+   * requests in between (a prefetch, an island, an API call).
+   */
+  queueFlash(message: FlashEntry): void {
+    const data = this.#ensureStarted();
+    if (!this.#may(`session.queueFlash('${message.key}')`)) return;
+    data[MESSAGES] = [...((data[MESSAGES] as FlashEntry[] | undefined) ?? []), message].slice(-MAX_MESSAGES);
+  }
+
+  /**
+   * The flash messages waiting, taken — by the response that delivers them. Nothing for a read-only request (an island,
+   * a layer's base resolved in-process: they are not what the user is shown) or an unstarted session.
+   */
+  hasFlash(): boolean {
+    return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).length > 0;
+  }
+
+  takeFlash(): FlashEntry[] {
+    if (!this.#started || this.#permit) return [];
+    const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
+    if (waiting.length === 0) return [];
+    delete this.#data[MESSAGES];
+    this.#taken.push(...waiting);
+    return waiting;
   }
 
   /** Keeps some flash data for one more request. */

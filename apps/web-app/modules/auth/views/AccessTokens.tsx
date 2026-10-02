@@ -15,8 +15,13 @@ export default function AccessTokens({ tokens }: Props) {
   // Revoking is an action (E59): the token leaves the list at once — a snapshot patch of `tokens`, rolled back if the server
   // says no (someone else's id: 404; the password confirmation ran out: 423). It succeeded: the patch is the list now.
   const revoke = useAction('auth.tokens.destroy');
-  const revokeToken = (id: number) =>
-    void revoke.submit({ params: { token: id }, optimistic: router.optimistic((props) => ({ tokens: props.tokens.filter((token) => token.id !== id) })) });
+  // Type-to-confirm (E64): the token's name, typed exactly — a wrong text sends nothing. "Token revoked." comes as a toast (E60).
+  const revokeToken = (id: number, name: string) =>
+    void revoke.submit({
+      params: { token: id },
+      confirm: { title: t('tokens.revoke_title', { name }), message: t('tokens.revoke_confirm'), prompt: name, confirmLabel: t('tokens.revoke'), destructive: true },
+      optimistic: router.optimistic((props) => ({ tokens: props.tokens.filter((token) => token.id !== id) })),
+    });
   const failure = revoke.exception;
 
   return (
@@ -31,7 +36,6 @@ export default function AccessTokens({ tokens }: Props) {
       </p>
 
       <h2>{t('tokens.yours')}</h2>
-      {revoke.result?.kind === 'data' && <p role="status">{t('tokens.revoked')}</p>}
       {/* Sudo mode ran out (423): confirm the password again — nothing is retried by itself. */}
       {failure?.type === 'server' && failure.status === 423 ? (
         <p role="alert">
@@ -50,7 +54,7 @@ export default function AccessTokens({ tokens }: Props) {
               <strong>{token.name}</strong> — {token.abilities.join(', ')} ·{' '}
               {token.lastUsedAt ? t('tokens.last_used', { at: `${at(token.lastUsedAt)} UTC` }) : t('tokens.never_used')}
               {token.expiresAt && ` · ${t('tokens.expires', { at: t.format.date(token.expiresAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}`}{' '}
-              <button type="button" onClick={() => revokeToken(token.id)}>
+              <button type="button" onClick={() => revokeToken(token.id, token.name)}>
                 {t('tokens.revoke')}
               </button>
             </li>

@@ -88,12 +88,14 @@ describe('auth module', () => {
 
   it('signs out: a guest again, a new session, and a message on the login page', async () => {
     const ada = await app.factory(UserFactory).create();
-    const response = await app.actingAs(ada).post('/logout').assertRedirect('/login').assertGuest().assertSessionHas('status', 'You have been signed out.');
+    // The redirect delivers no message (E60): it waits in the new session for the page that is shown.
+    const response = await app.actingAs(ada).post('/logout').assertRedirect('/login').assertGuest().assertNoFlash();
     await app
       .withCookie('bespoke_session', response.cookie('bespoke_session')!)
       .navigating()
       .get('/login')
-      .assertPage<ShowLoginController>('auth/Login', { flash: { status: 'You have been signed out.' }, auth: { user: null } });
+      .assertPage<ShowLoginController>('auth/Login', { auth: { user: null } })
+      .assertFlash('toast', { kind: 'success', message: 'You have been signed out.' });
     await app.post('/logout').assertRedirect('/login'); // guests cannot sign out
   });
 
@@ -289,7 +291,7 @@ describe('security settings', () => {
       current_password: 'The password is incorrect.',
     });
     const changed = await here.put('/settings/password', { form: { current_password: 'password', password: 'a new password', password_confirmation: 'a new password' } });
-    changed.assertRedirect().assertSessionHas('status', 'Password changed. You were signed out everywhere else.').assertAuthenticated(ada);
+    changed.assertRedirect().assertFlashed('toast', { message: 'Password changed. You were signed out everywhere else.' }).assertAuthenticated(ada);
 
     await app.withCookie('bespoke_session', phone.cookie('bespoke_session')!).expectingJson().get('/users/me').assertUnauthorized();
     await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
@@ -303,7 +305,7 @@ describe('security settings', () => {
     const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
     const laptop = await app.post('/login', credentialsOf(ada));
     const done = await app.withCookie('bespoke_session', laptop.cookie('bespoke_session')!).post('/settings/devices/logout', { form: { password: 'password' } });
-    done.assertSessionHas('status', 'Signed out on all other devices.');
+    done.assertFlashed('toast', { message: 'Signed out on all other devices.' });
     await app.withCookie('bespoke_session', done.cookie('bespoke_session')!).get('/users/me').assertRedirect(`/users/${ada.id}`);
     await app.withCookie('bespoke_session', phone.cookie('bespoke_session')!).expectingJson().get('/users/me').assertUnauthorized();
     await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
@@ -334,7 +336,7 @@ describe('password reset', () => {
 
   it('mails a link, takes the token out of the URL, sets the new password — once', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', email: 'ada@example.com' });
-    await ask(' ADA@example.com ').assertRedirect('/forgot-password').assertSessionHas('status', SENT);
+    await ask(' ADA@example.com ').assertRedirect('/forgot-password').assertFlashed('toast', { message: SENT });
     app.mail.assertSentCount(ResetPasswordMail, 1).assertSent(ResetPasswordMail, (_mail, message) => message.to[0]!.address === 'ada@example.com');
     const [mail] = app.mail.sent(ResetPasswordMail);
     expect(mail!.message.html).toContain('<!--[if mso'); // MJML: built for mail clients
@@ -345,7 +347,7 @@ describe('password reset', () => {
     const page = await app.withCookie('password_reset', cookie).navigating().get('/reset-password').assertPage('auth/ResetPassword', { email: 'ada@example.com' });
     expect(page.body).not.toContain(linkInMail().token);
 
-    await resetWith(cookie).assertRedirect('/login').assertSessionHas('status', 'Your password has been reset. Sign in with the new one.').assertCookieExpired('password_reset');
+    await resetWith(cookie).assertRedirect('/login').assertFlashed('toast', { message: 'Your password has been reset. Sign in with the new one.' }).assertCookieExpired('password_reset');
     await app.post('/login', credentialsOf(ada)).assertGuest();
     await app.post('/login', { form: { email: ada.email, password: 'brand new password' } }).assertAuthenticated(ada);
     // Counter-check: the same link a second time
@@ -468,10 +470,15 @@ describe('e-mail verification', () => {
 
     await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect('/email/verify');
     await session.expectingJson().post(`/users/${kj.id}/links`, { json: { label: 'Blog', url: 'https://kj.example' } }).assertForbidden();
-    const verifiedResponse = await session.get(verificationLink()).assertRedirect('/users/me').assertSessionHas('status', 'Your e-mail address is verified.');
-    // The message survives the hop through /users/me (it reflashes) and shows on the profile.
-    const hop = await app.withCookie('bespoke_session', verifiedResponse.cookie('bespoke_session')!).get('/users/me').assertRedirect(`/users/${kj.id}`);
-    await app.withCookie('bespoke_session', hop.cookie('bespoke_session')!).navigating().get(`/users/${kj.id}`).assertPage('user-profile/Show', { flash: { status: 'Your e-mail address is verified.' } });
+    const verifiedResponse = await session.get(verificationLink()).assertRedirect('/users/me').assertFlashed('toast', { message: 'Your e-mail address is verified.' });
+    // The message waits through the hop via /users/me (a redirect takes none, E60) and shows on the profile.
+    const hop = await app.withCookie('bespoke_session', verifiedResponse.cookie('bespoke_session')!).get('/users/me').assertRedirect(`/users/${kj.id}`).assertNoFlash();
+    await app
+      .withCookie('bespoke_session', hop.cookie('bespoke_session')!)
+      .navigating()
+      .get(`/users/${kj.id}`)
+      .assertPage('user-profile/Show')
+      .assertFlash('toast', { message: 'Your e-mail address is verified.' });
     expect((await userBy('kj@example.com')).email_verified_at).toMatch(/Z$/);
     await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect(`/users/${kj.id}`);
   });
@@ -529,7 +536,7 @@ describe('e-mail verification', () => {
     await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
     const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
     const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
-    await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertSessionHas('status', 'E-mail address changed. Please confirm the new one — we sent you a link.');
+    await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'E-mail address changed. Please confirm the new one — we sent you a link.' });
     expect(await userBy('katherine@nasa.example')).toMatchObject({ id: kj.id, email_verified_at: null });
     app.mail.assertSent(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
     app.mail.assertSent(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');

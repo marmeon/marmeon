@@ -169,7 +169,10 @@ export class Layer {
   close({ reload }: LayerCloseOptions = {}): Promise<void> {
     if (this.#closed || this.#closing) return Promise.resolve();
     this.#closing = true;
-    return this.#host.closeLayer(this, { layers: 1, ...(reload === undefined ? {} : { reload }) });
+    // Still open afterwards (unsaved changes, and the user chose to stay — E64): it may be closed again.
+    return this.#host.closeLayer(this, { layers: 1, ...(reload === undefined ? {} : { reload }) }).finally(() => {
+      if (!this.#closed) this.#closing = false;
+    });
   }
 
   /** Runs `listener` once the layer leaves the screen (closed, Back, a page visit). Returns the function that stops it. */

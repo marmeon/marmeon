@@ -102,6 +102,8 @@ const en = {
     never_used: 'never used',
     expires: 'expires {at}',
     revoke: 'Revoke',
+    revoke_title: 'Revoke “{name}”?',
+    revoke_confirm: 'Programs using this token can no longer sign in. This cannot be undone.',
     revoked: 'Token revoked. Programs using it can no longer sign in.',
     confirm_again: 'Confirm your password again to manage tokens.',
     create: 'Create a token',

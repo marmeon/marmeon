@@ -11,11 +11,13 @@ type Props = PageProps<EditUserProfileController>;
  */
 export default function Edit({ profile, old }: Props) {
   const t = useTranslation('user-profile');
+  const app = useTranslation('app');
   const layer = useLayer<EditUserProfileController>();
   // Ids of its own: a layer shares the document with the page beneath (and maybe another layer).
   const id = useId();
   // E40: method, URL and fields from the route name — user-profile.update → UpdateUserProfileRequest's schema (its input type).
-  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio });
+  // `guard` (E64): with changes not saved, closing the layer, Back, a link elsewhere or closing the tab asks first.
+  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved') });
 
   // Under the page's own heading in a layer; the page's heading when the view is a page.
   const Heading = layer.isLayer ? 'h2' : 'h1';
@@ -25,6 +27,7 @@ export default function Edit({ profile, old }: Props) {
       <Heading>{t('edit.title')}</Heading>
       <form
         noValidate
+        data-dirty={form.isDirty() || undefined}
         onSubmit={(event) => {
           event.preventDefault();
           void form.submit();
@@ -33,7 +36,7 @@ export default function Edit({ profile, old }: Props) {
         <p>
           <label htmlFor={`${id}-name`}>{t('edit.name')}</label>
           <br />
-          <input id={`${id}-name`} autoFocus={layer.isLayer} value={form.data.name} onChange={(e) => form.set('name', e.target.value)} aria-invalid={!!form.errors.name} aria-describedby={form.errors.name ? `${id}-name-error` : undefined} />
+          <input id={`${id}-name`} autoFocus={layer.isLayer} data-dirty={form.isDirty('name') || undefined} value={form.data.name} onChange={(e) => form.set('name', e.target.value)} aria-invalid={!!form.errors.name} aria-describedby={form.errors.name ? `${id}-name-error` : undefined} />
           {form.errors.name && (
             <small id={`${id}-name-error`} role="alert">
               {' '}
@@ -44,7 +47,7 @@ export default function Edit({ profile, old }: Props) {
         <p>
           <label htmlFor={`${id}-bio`}>{t('edit.bio')}</label>
           <br />
-          <textarea id={`${id}-bio`} rows={3} value={form.data.bio} onChange={(e) => form.set('bio', e.target.value)} aria-invalid={!!form.errors.bio} aria-describedby={form.errors.bio ? `${id}-bio-error` : undefined} />
+          <textarea id={`${id}-bio`} rows={3} data-dirty={form.isDirty('bio') || undefined} value={form.data.bio} onChange={(e) => form.set('bio', e.target.value)} aria-invalid={!!form.errors.bio} aria-describedby={form.errors.bio ? `${id}-bio-error` : undefined} />
           {form.errors.bio && (
             <small id={`${id}-bio-error`} role="alert">
               {' '}
@@ -52,7 +55,7 @@ export default function Edit({ profile, old }: Props) {
             </small>
           )}
         </p>
-        <button type="submit" disabled={form.processing || !form.isDirty}>
+        <button type="submit" disabled={form.processing || !form.isDirty()} data-pending={form.processing || undefined}>
           {form.processing ? t('edit.saving') : t('edit.save')}
         </button>{' '}
         {/* In a layer, cancel closes it (Back); as a page, it goes to the profile. */}

@@ -1,12 +1,16 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import {
   ACTION_REDIRECT_HEADER,
+  FLASH_HEADER,
   isPageObject,
   LAYER_CLOSE_HEADER,
   PAGE_SCRIPT_ID,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  type CheckFlashKey,
   type CheckViewName,
+  type FlashMessage,
+  type FlashValue,
   type FormOf,
   type IslandOf,
   type IslandProps,
@@ -20,6 +24,9 @@ import {
 import type { AuthUser } from '@bespokecore/auth';
 import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
+
+/** Where @bespokecore/session keeps flash messages waiting for a response that is shown (E60). */
+const FLASH_MESSAGES = '_flash_messages';
 
 /** `AUTH_SESSION_KEYS.id` of @bespokecore/auth — an optional peer, so not imported at runtime. */
 const AUTH_ID = '_auth_id';
@@ -350,6 +357,74 @@ export class TestResponse {
     const outcome = this.headers.get(REGION_STATUS_HEADER);
     if (outcome !== status) this.#fail(`Expected the island's outcome "${status}", got ${outcome ? `"${outcome}"` : 'none'} (status ${this.status})`);
     return this;
+  }
+
+  // --- Flash messages (E60) ------------------------------------------------------------
+
+  /**
+   * The flash messages this response delivers — a page's or a layer's (`PageObject.flash`), an action's (`x-bespoke-flash`),
+   * a layer's close. Empty for one that delivers none: a redirect (its target's response will), a prefetch, an island.
+   */
+  flash(): FlashMessage[] {
+    const header = this.headers.get(FLASH_HEADER);
+    if (header) return JSON.parse(decodeURIComponent(header)) as FlashMessage[];
+    if (this.headers.get(LAYER_CLOSE_HEADER) === 'true') return (safeParse(this.body) as { flash?: FlashMessage[] } | undefined)?.flash ?? [];
+    return this.page()?.flash ?? [];
+  }
+
+  /**
+   * The response delivers a flash message of `key` (E60) — with data that contains `data`, when given (typed by the app's
+   * `FlashData`): `assertFlash('toast', { message: 'Profile saved.' })`.
+   */
+  assertFlash<const K extends string>(key: CheckFlashKey<K>, data?: DeepPartial<FlashValue<K>>): this {
+    const messages = this.flash().filter((message) => message.key === key);
+    if (messages.length === 0) this.#fail(`Expected a flash message "${key}", got ${this.#flashSummary()}`);
+    if (data === undefined) return this;
+    for (const message of messages) {
+      try {
+        partialDeepStrictEqual(message.data, data);
+        return this;
+      } catch {
+        // the next one
+      }
+    }
+    return this.#compare(() => partialDeepStrictEqual(messages[0]!.data, data), `The flash message "${key}" carries other data`);
+  }
+
+  /** The flash messages waiting in the session after this response (E60) — for the next answer that is shown to take. */
+  flashed(): FlashMessage[] {
+    return (this.#session?.[FLASH_MESSAGES] as FlashMessage[] | undefined) ?? [];
+  }
+
+  /**
+   * The response left a flash message of `key` waiting in the session (E60) — a redirect: the page it leads to delivers it.
+   * With data that contains `data`, when given: `assertFlashed('toast', { message: 'Saved.' })`.
+   */
+  assertFlashed<const K extends string>(key: CheckFlashKey<K>, data?: DeepPartial<FlashValue<K>>): this {
+    const waiting = this.flashed().filter((message) => message.key === key);
+    if (waiting.length === 0) this.#fail(`Expected a flash message "${key}" waiting in the session, got ${this.#session ? 'none' : 'no session'}`);
+    if (data === undefined) return this;
+    for (const message of waiting) {
+      try {
+        partialDeepStrictEqual(message.data, data);
+        return this;
+      } catch {
+        // the next one
+      }
+    }
+    return this.#compare(() => partialDeepStrictEqual(waiting[0]!.data, data), `The flash message "${key}" waiting in the session carries other data`);
+  }
+
+  /** The response delivers no flash message (of `key`, when given) — it leaves them waiting for one that is shown. */
+  assertNoFlash(key?: string): this {
+    const messages = this.flash().filter((message) => key === undefined || message.key === key);
+    if (messages.length > 0) this.#fail(`Expected no flash message${key ? ` "${key}"` : ''}, got ${this.#flashSummary()}`);
+    return this;
+  }
+
+  #flashSummary(): string {
+    const messages = this.flash();
+    return messages.length === 0 ? 'none' : messages.map((message) => `${message.key} ${JSON.stringify(message.data)}`).join(', ');
   }
 
   // --- Actions (E59) -----------------------------------------------------------------

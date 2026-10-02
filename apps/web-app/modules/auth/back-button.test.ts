@@ -53,6 +53,8 @@ class FakeTab {
   #pending: Promise<unknown>[] = [];
   /** What the server was asked, in order (`GET /x` for documents, `GET /x (visit)` for page JSON). */
   readonly requests: string[] = [];
+  /** The flash messages the tab's documents fired (E60), in order — `toast: <message>`: what the toasts would show. */
+  readonly toasts: string[] = [];
 
   /** Whether documents that may be stored enter the back/forward cache (Chromium: not with an open WebSocket, …). */
   readonly #bfcache: boolean;
@@ -81,6 +83,21 @@ class FakeTab {
     const outcome = await this.#current!.navigator.action(url, options);
     await this.idle();
     return outcome;
+  }
+
+  /**
+   * A form sent in another tab of the same browser, whose redirect that tab has not followed yet: what it flashed waits in the
+   * session (E60) for whichever answer the user is shown next.
+   */
+  async submitElsewhere(method: string, path: string, form: Record<string, string>): Promise<void> {
+    const cookie = [...this.#cookies].map(([name, value]) => `${name}=${value}`).join('; ');
+    const response = await this.#kernel.request(path, { method, headers: { cookie, 'content-type': 'application/x-www-form-urlencoded', 'x-xsrf-token': this.xsrf() }, body: new URLSearchParams(form) });
+    expect(response.status).toBe(303);
+  }
+
+  /** The XSRF cookie's token (what the browser's JavaScript reads). */
+  xsrf(): string {
+    return decodeURIComponent(this.#cookies.get('XSRF-TOKEN') ?? '');
   }
 
   /** Signing out in another tab of the same browser: the cookies change, this document knows nothing of it. */
@@ -206,6 +223,8 @@ class FakeTab {
     };
     this.#docs.set(docState, doc);
     this.#current = doc;
+    // The layout's toasts (`useFlash('toast', …)`): each message once.
+    doc.navigator.on('flash', (message) => this.toasts.push(`${message.key}: ${(message.data as { message?: string }).message}`));
     doc.navigator.start();
   }
 
@@ -402,7 +421,8 @@ describe('Back after signing out (E36)', () => {
       expect(state).not.toContain(plainText);
       expect(state).not.toContain('ada@example.com');
       // A layer's entry adds its depth and the keys beneath it — never what it shows.
-      if (state !== 'null') expect(Object.keys(JSON.parse(state)).filter((key) => key !== 'layer').sort()).toEqual(['component', 'key', 'scroll', 'url']);
+      // `index`: the entry's position (E64, the navigation guard) — a number.
+      if (state !== 'null') expect(Object.keys(JSON.parse(state)).filter((key) => key !== 'layer').sort()).toEqual(['component', 'index', 'key', 'scroll', 'url']);
     }
   });
 
@@ -531,7 +551,9 @@ describe('Layers in a tab (E53) — the real app, the real navigator', () => {
     await tab.layerVisit(`/users/${ada.id}`, { method: 'put', data: { name: 'Ada King', bio: '' } });
     expect(tab.layers).toEqual([]);
     expect(tab.index).toBe(entries - 1);
-    expect(tab.visible.props).toMatchObject({ profile: { name: 'Ada King' }, flash: { status: 'Profile saved.' } });
+    expect(tab.visible.props).toMatchObject({ profile: { name: 'Ada King' } });
+    // The close delivered it (E60): once, though the profile beneath reloaded after it.
+    expect(tab.toasts).toEqual(['toast: Profile saved.']);
   });
 
   it('counter-check: after signing out, Back shows no layer — neither the plain text of a token nor the profile form', async () => {
@@ -569,17 +591,17 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
     return { ada, notes: notes!, blog: blog! };
   }
 
-  it('removes a link without navigating: the patch at once, then the profile and the flash from the server — no history entry', async () => {
+  it('removes a link without navigating: the patch at once, then the profile from the server, its toast with the answer — no history entry', async () => {
     const { ada, notes } = await onProfileWithLinks();
     const entries = JSON.stringify(tab.entries);
     const outcome = await tab.action(`/users/${ada.id}/links/${notes.id}`, {
       method: 'delete',
       optimistic: tab.navigator.optimistic(without('Notes')),
-      reload: tab.navigator.reloading({ only: ['profile', 'flash'] }),
+      reload: tab.navigator.reloading({ only: ['profile'] }),
     });
-    expect(outcome).toEqual({ ok: true, kind: 'redirect', redirect: `/users/${ada.id}` });
+    expect(outcome).toMatchObject({ ok: true, kind: 'redirect', redirect: `/users/${ada.id}`, flash: [{ key: 'toast', data: { message: 'Link removed.' } }] });
     expect(linksOf(tab.visible)).toEqual(['Blog']);
-    expect(tab.visible.props).toMatchObject({ flash: { status: 'Link removed.' } });
+    expect(tab.toasts).toEqual(['toast: Link removed.']);
     expect(tab.requests.slice(-2)).toEqual([`DELETE /users/${ada.id}/links/${notes.id} (visit)`, `GET /users/${ada.id} (visit)`]);
     expect(JSON.stringify(tab.entries)).toBe(entries);
   });
@@ -617,3 +639,75 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
   });
 });
 
+
+describe('Flash in a tab (E60) — exactly once, from whichever answer is shown', () => {
+  async function onProfile() {
+    const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com', email_verified_at: new Date() });
+    await tab.open('/login');
+    await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
+    expect(tab.visible.component).toBe('user-profile/Show');
+    return ada;
+  }
+  const save = (ada: { id: number }, name: string) => tab.visit(`/users/${ada.id}`, { method: 'put', data: { name, bio: '' } });
+
+  it('a save’s toast fires once — not again for a partial reload, a full reload of the page, Back or Forward', async () => {
+    const ada = await onProfile();
+    await save(ada, 'Ada King');
+    expect(tab.toasts).toEqual(['toast: Profile saved.']);
+    await tab.navigator.reload({ only: ['activity'] });
+    await tab.idle();
+    await tab.navigator.reload();
+    await tab.idle();
+    await tab.visit('/people');
+    await tab.back();
+    await tab.forward();
+    expect(tab.toasts).toEqual(['toast: Profile saved.']);
+  });
+
+  it('counter-check: two saves with the same message are two toasts', async () => {
+    const ada = await onProfile();
+    await save(ada, 'Ada King');
+    await save(ada, 'Ada King');
+    expect(tab.toasts).toEqual(['toast: Profile saved.', 'toast: Profile saved.']);
+  });
+
+  it('counter-check: a hover-prefetch while a message waits takes none — the click asks the server, and the toast comes with that page', async () => {
+    const ada = await onProfile();
+    // Another tab saved; its redirect not followed yet: the message waits in the session.
+    await tab.submitElsewhere('PUT', `/users/${ada.id}`, { name: 'Ada King', bio: '' });
+    await tab.prefetch('/people');
+    expect(tab.toasts).toEqual([]);
+    const asked = tab.requests.length;
+    await tab.visit('/people');
+    expect(tab.requests.slice(asked)[0]).toBe('GET /people (visit)'); // not the prefetched page: it said a message waits
+    expect(tab.toasts).toEqual(['toast: Profile saved.']);
+  });
+
+  it('counter-check: a layer’s answer delivers a waiting message too — the toast shows over the layer, not lost in it', async () => {
+    const ada = await onProfile();
+    await tab.submitElsewhere('PUT', `/users/${ada.id}`, { name: 'Ada King', bio: '' });
+    await tab.visit(`/users/${ada.id}/edit`, { layer: true });
+    expect(tab.layers.map((layer) => layer.component)).toEqual(['user-profile/Edit']);
+    expect(tab.toasts).toEqual(['toast: Profile saved.']);
+    await tab.back();
+    expect(tab.toasts).toEqual(['toast: Profile saved.']);
+  });
+
+  it('counter-check: an action delivers its message with the answer — and no reload after it brings it again', async () => {
+    const ada = await onProfile();
+    const outcome = await tab.action(`/users/${ada.id}/links`, { data: { label: 'Blog', url: 'https://blog.example' }, reload: tab.navigator.reloading({ only: ['profile'] }) });
+    expect(outcome).toMatchObject({ ok: true, kind: 'redirect', flash: [{ key: 'toast', data: { kind: 'success', message: 'Link added.' } }] });
+    expect(tab.toasts).toEqual(['toast: Link added.']);
+    await tab.navigator.reload();
+    await tab.idle();
+    await tab.visit('/people');
+    expect(tab.toasts).toEqual(['toast: Link added.']);
+  });
+
+  it('signing out: the message survives the 409 and shows on the login page — once', async () => {
+    await onProfile();
+    await tab.visit('/logout', { method: 'post' });
+    expect(tab.visible.component).toBe('auth/Login');
+    expect(tab.toasts).toEqual(['toast: You have been signed out.']);
+  });
+});

@@ -6,6 +6,7 @@
  * (only `../page.ts`, the shared page contract). The adapter contract is in this package's README.
  */
 export {
+  DEFAULT_LEAVE_MESSAGE,
   DEFAULT_PAGE_CACHE_SIZE,
   DEFAULT_PREFETCH_CACHE_FOR,
   isHistoryState,
@@ -16,6 +17,7 @@ export {
 } from './navigation.ts';
 export type {
   HistoryState,
+  NavigationGuard,
   NavigatorOptions,
   NavigatorWindow,
   PrefetchOptions,
@@ -32,7 +34,11 @@ export type {
   VisitOptions,
   VisitProgress,
 } from './navigation.ts';
-export { DEFAULT_PROGRESS_DELAY, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
+export { DEFAULT_PROGRESS_DELAY, markBusy, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
+export { accepted, confirmRequest, nativeConfirm } from './confirm.ts';
+export type { Confirm, ConfirmAnswer, ConfirmHandler, ConfirmOptions, ConfirmRequest, NativeDialogs } from './confirm.ts';
+export { FlashChannel, flashOfResponse, takeFlash } from './flash.ts';
+export type { FlashListener } from './flash.ts';
 export type { ProgressOptions } from './progress.ts';
 export { createPoll } from './poll.ts';
 export type { Poll, PollDocument, PollOptions } from './poll.ts';
@@ -40,9 +46,9 @@ export { hasServerMarkup, isDevelopment, readInitialPage, rootElement } from './
 export { loadPageMessages, pageLocale } from './messages.ts';
 export type { PageMessages } from './messages.ts';
 export { resolveRoute } from './routes.ts';
-export { HOVER_PREFETCH_DELAY, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
+export { HOVER_PREFETCH_DELAY, isCurrentLink, matchesRouteName, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
 export type { LinkClick, PrefetchSetting, PrefetchTrigger } from './links.ts';
-export { firstErrors } from './forms.ts';
+export { dirtyPaths, firstErrors, isDirtyPath } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export type { TitleTemplate } from './title.ts';
 export { Region, regionId, regionInitial, RegionOwner } from './region.ts';

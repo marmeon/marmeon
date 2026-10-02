@@ -44,6 +44,6 @@ export class UpdateLocaleController extends Controller {
     // Every page the browser keeps — in memory, in its HTTP cache — is in the old language: a full load, and the
     // cache cleared (as after signing out).
     this.#history.clear({ siteCache: true });
-    return this.back('/').with('status', this.#translator.forLocale(locale).get('app.locale.changed'));
+    return this.back('/').flash('toast', { kind: 'success', message: this.#translator.forLocale(locale).get('app.locale.changed') });
   }
 }

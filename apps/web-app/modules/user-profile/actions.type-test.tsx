@@ -57,7 +57,7 @@ export function Actions() {
     await remove.submit({
       params: { user: 1, link: 2 },
       optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== 2) } })),
-      reload: router.reloading({ only: ['profile', 'flash'] }),
+      reload: router.reloading({ only: ['profile'] }),
     });
     // … Types of property 'profle' are incompatible. Type 'null' is not assignable to type '"'profle' is not a prop of this page"'.
     // @ts-expect-error

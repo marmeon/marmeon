@@ -127,6 +127,8 @@ const en = {
     sign_in: 'Sign in',
     sign_out: 'Sign out',
     register: 'Create an account',
+    notifications: 'Notifications',
+    dismiss: 'Dismiss',
   },
   dashboard: {
     title: 'Dashboard',

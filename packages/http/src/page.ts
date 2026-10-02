@@ -2,9 +2,9 @@
  * The page contract shared by the server and UI adapters — importable in the
  * browser as `@bespokecore/http/page`, so it must stay free of server code.
  */
-import type { ViewProps } from './view.ts';
+import type { Serialize, ViewProps } from './view.ts';
 
-import type { Suggest } from '@bespokecore/router';
+import type { JoinNames, Suggest } from '@bespokecore/router';
 
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
@@ -100,6 +100,53 @@ export function pageName(path: string): string | undefined {
  */
 export interface SharedProps {}
 
+/**
+ * The app's flash messages (E60) — what a controller hands the next page to show once: a toast, a notice. Declared by the
+ * app, checked where it flashes (`redirect().flash('toast', { kind: 'success', message })`) and where it shows them
+ * (`useFlash('toast', (toast) => …)`):
+ *
+ * ```ts
+ * declare module '@bespokecore/http/page' {
+ *   interface FlashData { toast: { kind: 'success' | 'error' | 'info'; message: string } }
+ * }
+ * ```
+ *
+ * Until the app declares any, every key is allowed and its data is `unknown`.
+ */
+export interface FlashData {}
+
+/** A flash key of the app (any string while `FlashData` declares none). */
+export type FlashKey = [keyof FlashData] extends [never] ? string : keyof FlashData & string;
+
+/** What flash key `K` carries — as the server flashes it. */
+export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
+
+/** `K` when it is a flash key of the app — otherwise a message naming the keys `FlashData` declares. */
+export type CheckFlashKey<K extends string> = string extends K
+  ? FlashKey
+  : K extends FlashKey
+    ? K
+    : `'${K}' is not a flash key — the app declares ${JoinNames<FlashKey>} (interface FlashData of @bespokecore/http/page)`;
+
+/**
+ * One flash message as the browser gets it (E60): its key, its data (as JSON made it, `Serialize`), and an id of its own —
+ * so it fires exactly once: never again for a partial reload, Back/Forward or a page shown from memory, and twice for the
+ * same message flashed twice (two saves, two toasts).
+ */
+export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? { readonly id: string; readonly key: K; readonly data: Serialize<FlashValue<K>> } : never;
+
+/**
+ * With an action's answer (E59, E60): the flash messages it delivers — JSON, URI-encoded (header values are ASCII). An action
+ * is shown to the user (`useAction`), so it takes the messages its controller flashed instead of leaving them for later.
+ */
+export const FLASH_HEADER = 'x-bespoke-flash';
+
+/**
+ * With a prefetch's answer (E60): flash messages wait for the page the user is shown — the prefetch took none. The client does
+ * not show that prefetched page then: the visit asks the server, whose answer delivers them (the toast is not lost).
+ */
+export const FLASH_WAITING_HEADER = 'x-bespoke-flash-waiting';
+
 /** The wire format of a page — shared by the server and every UI adapter. */
 export interface PageObject {
   component: string;
@@ -155,6 +202,18 @@ export interface PageObject {
    * when the base turned the user away (E54). Never in a client-side navigation's answer.
    */
   layers?: PageObject[];
+  /**
+   * The flash messages this response delivers (E60) — a protocol field, not a prop: sent once, only with an answer that is
+   * shown (a page, a layer, a partial reload — never a prefetch or an island), and no answer sends them again. The client
+   * core fires each once (`navigator.on('flash')`, `useFlash`) and keeps none of them: not in memory with the page, never in
+   * `history.state`. On the server, an adapter may render them for browsers without JavaScript (`<noscript>`).
+   */
+  flash?: FlashMessage[];
+  /**
+   * The name of the route that answered (E64) — what `<Link activeMatch="user-profile.*">` compares against. Only for a named
+   * route the browser may know (never an `.internal()` one), and only on its own answer (an error page names none).
+   */
+  route?: string;
 }
 
 /** What a layer's page object says about it (E53). */
@@ -290,7 +349,7 @@ export function regionOf(request: Request): RegionKind | undefined {
  * The wire format of a region (an island): the page object of the route it shows — its component, props, URL and query,
  * deferred and merged props — without the page's language (`locale`, `fallbackLocale`): it renders in the page's.
  */
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 
 /**
  * What the server resolved of an island while rendering the page (E49) — streamed into the document inside the island's

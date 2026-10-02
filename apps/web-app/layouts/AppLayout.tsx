@@ -1,4 +1,5 @@
 import { Link, usePage, useTranslation, type LayoutProps } from '@bespokecore/react';
+import { Toasts } from './Toasts.tsx';
 
 /** A language's name in itself — "Deutsch", "English" (the same in Node and the browser: both have ICU). */
 const nameOf = (locale: string) => new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale;
@@ -9,7 +10,7 @@ const nameOf = (locale: string) => new Intl.DisplayNames([locale], { type: 'lang
  */
 export function AppLayout({ children }: LayoutProps) {
   const { props, locale } = usePage();
-  const { auth, flash, locales } = props;
+  const { auth, locales } = props;
   const user = auth.user;
   const t = useTranslation('app');
 
@@ -19,7 +20,16 @@ export function AppLayout({ children }: LayoutProps) {
         <strong>
           {user ? <Link route="user-profile.me">{t('name')}</Link> : <Link route="auth.login">{t('name')}</Link>}
         </strong>
-        {user && <Link route="dashboard.show">{t('dashboard')}</Link>}
+        {/* The link to the page on screen gets aria-current="page" and data-current by itself (E64). */}
+        {user && (
+          <nav aria-label={t('main')} style={{ display: 'flex', gap: 12 }}>
+            <Link route="dashboard.show">{t('dashboard')}</Link>
+            {/* Current for the list however it is searched or sorted (its route), not only for /people itself. */}
+            <Link route="user-profile.people" activeMatch="user-profile.people">
+              {t('people')}
+            </Link>
+          </nav>
+        )}
         {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. */}
         <nav aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
           {locales.map((code) =>
@@ -43,7 +53,10 @@ export function AppLayout({ children }: LayoutProps) {
                   <Link route="user-profile.me">{t('profile')}</Link>
                 </li>
                 <li>
-                  <Link route="auth.security">{t('settings')}</Link>
+                  {/* Current on every settings page — the security page and the tokens (a section, `activeMatch`). */}
+                  <Link route="auth.security" activeMatch={['auth.security', 'auth.tokens', 'auth.tokens.create']}>
+                    {t('settings')}
+                  </Link>
                 </li>
                 <li>
                   <Link route="auth.logout">{t('sign_out')}</Link>
@@ -57,8 +70,9 @@ export function AppLayout({ children }: LayoutProps) {
           </nav>
         )}
       </header>
-      {flash.status && <p role="status">{flash.status}</p>}
       {children}
+      {/* Flash messages (E60): each once, as a toast. */}
+      <Toasts />
     </>
   );
 }

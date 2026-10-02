@@ -13,7 +13,7 @@ beforeEach(async () => {
 const verified = () => app.factory(UserFactory).create({ email_verified_at: new Date() });
 
 describe('profile links as actions (E59) — what useAction sends and gets back', () => {
-  it('adds a link: the redirect is reported, not followed — the flash waits for the reload that shows it', async () => {
+  it('adds a link: the redirect is reported, not followed — the action delivers its flash message itself (E60)', async () => {
     const ada = await verified();
     const session = app.actingAs(ada);
     await session
@@ -21,12 +21,14 @@ describe('profile links as actions (E59) — what useAction sends and gets back'
       .post(`/users/${ada.id}/links`, { json: { label: 'Blog', url: 'https://blog.example' } })
       .assertActionRedirect(`/users/${ada.id}`)
       .assertHeader('cache-control', 'no-store')
-      // Flashed for the next request: the reload of `flash` the view asks for shows it (see back-button.test.ts, in a tab).
-      .assertSessionHas('status', 'Link added.');
+      // With the answer (`x-bespoke-flash`): `useAction` fires it once — no reload of a `flash` prop needed (W5b.6 finding).
+      .assertFlash('toast', { kind: 'success', message: 'Link added.' });
     await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog' });
-    // The action's `reload: router.reloading({ only: ['profile', 'flash'] })` — the new link, nothing else computed.
-    const page = (await session.reloading<ShowUserProfileController>('user-profile/Show', { only: ['profile', 'flash'] }).get(`/users/${ada.id}`).assertOk()).page()!;
-    expect(Object.keys(page.props).sort()).toEqual(['errors', 'flash', 'profile']);
+    // The action's `reload: router.reloading({ only: ['profile'] })` — the new link, nothing else computed.
+    const page = (await session.reloading<ShowUserProfileController>('user-profile/Show', { only: ['profile'] }).get(`/users/${ada.id}`).assertOk()).page()!;
+    expect(Object.keys(page.props).sort()).toEqual(['errors', 'profile']);
+    // …and the reload does not deliver it again: the action took it.
+    expect(page.flash).toBeUndefined();
     expect((page.props.profile as { links: { label: string }[] }).links.map((link) => link.label)).toEqual(['Blog']);
   });
 

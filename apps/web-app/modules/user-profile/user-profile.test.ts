@@ -92,7 +92,7 @@ describe('user-profile module', () => {
         .put(profile(ada), { json: { name: '  Ada King ', bio: 'Countess.' } })
         .assertRedirect(profile(ada))
         .assertValid()
-        .assertSessionHas('status', 'Profile saved.');
+        .assertFlashed('toast', { message: 'Profile saved.' });
       await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King', bio: 'Countess.' });
     });
 
@@ -128,12 +128,13 @@ describe('user-profile module', () => {
   });
 
   describe('shared props', () => {
-    it('gives every page the signed-in user, flash messages and validation errors', async () => {
-      await as(alan).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', {
+    it('gives every page the signed-in user and validation errors — flash messages are no prop (E60)', async () => {
+      const page = await as(alan).get(profile(ada)).assertPage<ShowUserProfileController>('user-profile/Show', {
         auth: { user: { id: alan.id, name: 'Alan Turing' } },
-        flash: { status: null },
         errors: {},
       });
+      expect(page.page()!.props).not.toHaveProperty('flash');
+      page.assertNoFlash();
       await app.navigating().get('/login').assertPage('auth/Login', { auth: { user: null } });
     });
 
@@ -189,7 +190,8 @@ describe('user-profile module', () => {
         .withCookie('bespoke_session', response.cookie('bespoke_session')!)
         .navigating()
         .get(profile(ada))
-        .assertPage<ShowUserProfileController>('user-profile/Show', { flash: { status: 'Profile saved.' }, profile: { bio: 'Math.' } });
+        .assertPage<ShowUserProfileController>('user-profile/Show', { profile: { bio: 'Math.' } })
+        .assertFlash('toast', { kind: 'success', message: 'Profile saved.' });
     });
   });
 
@@ -299,7 +301,7 @@ describe('profile links (a route bound within its user)', () => {
     await as(ada)
       .post(`${profile(ada)}/links`, { json: { label: ' Blog ', url: 'https://ada.example' } })
       .assertRedirect(profile(ada))
-      .assertSessionHas('status', 'Link added.');
+      .assertFlashed('toast', { message: 'Link added.' });
     await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog', url: 'https://ada.example' });
 
     await app
@@ -312,7 +314,7 @@ describe('profile links (a route bound within its user)', () => {
 
   it('removes your own link', async () => {
     const link = await app.factory(ProfileLinkFactory).create({ user_id: alan.id });
-    await as(alan).delete(`${profile(alan)}/links/${link.id}`).assertRedirect(profile(alan)).assertSessionHas('status', 'Link removed.');
+    await as(alan).delete(`${profile(alan)}/links/${link.id}`).assertRedirect(profile(alan)).assertFlashed('toast', { message: 'Link removed.' });
     await app.assertDatabaseMissing('profile_links', { id: link.id });
   });
 

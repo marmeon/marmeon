@@ -2,7 +2,10 @@ import { ConsoleLogger, currentRequest, Translator, type Container, type Logger 
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
+  FLASH_HEADER,
+  FLASH_WAITING_HEADER,
   Flasher,
+  flashOf,
   HttpError,
   isActionRequest,
   isIslandResult,
@@ -21,12 +24,16 @@ import {
   PARTIAL_EXCEPT_HEADER,
   PURPOSE_HEADER,
   partialReloadOf,
+  ReadOnly,
   REGION_HEADER,
   REGION_STATUS_HEADER,
   regionOf,
   resolvePageProps,
   ResponseLifecycle,
+  serializedFlash,
   SharedData,
+  type FlashEntry,
+  type FlashMessage,
   type DeferredResult,
   type IslandResult,
   type LayerResult,
@@ -302,13 +309,31 @@ export function createResponseFactory(
     return JSON.parse(JSON.stringify({ ...surface, layers })) as PageObject;
   };
 
+  /**
+   * The flash messages a response the user is shown takes (E60): those waiting in the session, then the result's own. Never
+   * for a prefetch (the user has not asked for the page yet), an island or any other read-only request (a layer's base,
+   * resolved in-process for its deep link): they leave them for the page.
+   */
+  const deliver = (request: Request, scope: Container | undefined, own: readonly FlashEntry[] = []): FlashMessage[] => {
+    if (isPrefetch(request) || regionOf(request) === 'island') return [];
+    if (scope?.has(ReadOnly) && scope.make(ReadOnly).active) return [];
+    const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
+    return serializedFlash([...(flasher?.takeFlash() ?? []), ...own]);
+  };
+
   return async (result, ctx, scope) => {
     if (isRedirectResult(result)) {
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
-      return result.toResponse(ctx.request, routes ?? noRouter, flasher);
+      const response = result.toResponse(ctx.request, routes ?? noRouter, flasher);
+      // An action's redirect is not followed (E59): its answer is what the user is shown, so it takes the flash messages (E60).
+      return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
     if (isIslandResult(result)) return islandResponse(result, ctx, version, debug);
-    if (isJsonResult(result)) return jsonResponse(result);
+    if (isJsonResult(result)) {
+      const response = jsonResponse(result);
+      // An action's data (E60): with the messages its controller flashed — an API client's JSON leaves them for a page.
+      return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope, flashOf(result))) : response;
+    }
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
     if (isActionRequest(ctx.request)) {
       // An action (E59) gets data, never a page: the types refuse such a route for `useAction` — a page here is a mistake.
@@ -332,8 +357,22 @@ export function createResponseFactory(
     // The parsed query (E55), for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
     const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
     const layer = isLayerResult(result) ? layerInfo(result, ctx.request) : undefined;
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}) };
-    const headers = { ...result.headers, vary: PAGE_VARY };
+    // The route that answered (E64, `<Link activeMatch>`): its name — never an internal one's, and none for an error page.
+    const matched = (ctx as { route?: { routeName?: string | undefined; isInternal?: boolean } }).route;
+    const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route };
+    // Shown to the user: it takes the flash messages (E60) — and a response with them is never kept by a cache (a document
+    // from the HTTP cache would fire them again).
+    const flash = deliver(ctx.request, scope, flashOf(result));
+    if (flash.length > 0) page.flash = flash;
+    // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it (E60).
+    const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash()));
+    const headers = {
+      ...result.headers,
+      vary: PAGE_VARY,
+      ...(flash.length > 0 ? { 'cache-control': 'no-store' } : {}),
+      ...(waiting ? { [FLASH_WAITING_HEADER]: 'true' } : {}),
+    };
 
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both
     // sides (`Serialize<T>`), so the markup hydrates.
@@ -350,7 +389,10 @@ export function createResponseFactory(
     if (layer) {
       // A deep link or a reload of a layer's URL: its declared base under it, resolved in-process (E53) — or the neutral
       // surface, when the base turns the user away (E54). The base's deferred props load in the browser (its scope is gone).
-      const stacked = await deepLink(sent, ctx.request, scope);
+      // The flash messages go with the document (the outermost page object), not with the layer in it.
+      const { flash: _flash, ...top } = sent;
+      const stacked = await deepLink(top, ctx.request, scope);
+      if (sent.flash) stacked.flash = sent.flash;
       const { resolveIsland } = streaming(stacked, ctx.request, {}, scope);
       return new Response(await document(stacked, ctx.request, resolveIsland ? { resolveIsland } : {}), {
         status: result.status,
@@ -362,6 +404,15 @@ export function createResponseFactory(
       headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
     });
   };
+}
+
+/** `response` with the flash messages it delivers (E60) — in a header: an action's body is its controller's data. */
+function withFlash(response: Response, flash: readonly FlashMessage[]): Response {
+  if (flash.length === 0) return response;
+  const headers = new Headers(response.headers);
+  headers.set(FLASH_HEADER, encodeURIComponent(JSON.stringify(flash)));
+  headers.set('cache-control', 'no-store');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 /**

@@ -102,6 +102,8 @@ export default {
     never_used: 'nie benutzt',
     expires: 'läuft ab {at}',
     revoke: 'Widerrufen',
+    revoke_title: '„{name}“ widerrufen?',
+    revoke_confirm: 'Programme, die dieses Token nutzen, kommen nicht mehr hinein. Das lässt sich nicht rückgängig machen.',
     revoked: 'Token widerrufen. Programme, die es nutzen, kommen nicht mehr hinein.',
     confirm_again: 'Bestätige dein Passwort noch einmal, um Tokens zu verwalten.',
     create: 'Token erstellen',

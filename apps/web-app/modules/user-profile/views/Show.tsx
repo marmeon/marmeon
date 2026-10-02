@@ -35,12 +35,14 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
   const remove = useAction('user-profile.links.destroy');
   // Links being added, from any form: ghost rows until the real ones are there (model 2 — nothing to roll back).
   const adding = usePendingSubmissions('user-profile.links.store');
-  const removeLink = (id: number) =>
+  const removeLink = (id: number, label: string) =>
     void remove.submit({
       params: { user: profile.id, link: id },
+      // Asked first (E64) — a no sends nothing, and nothing disappears.
+      confirm: { message: t('show.remove_confirm', { label }), confirmLabel: t('show.remove'), destructive: true },
       optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== id) } })),
-      // The flash too: its "Link removed." shows in the layout.
-      reload: router.reloading({ only: ['profile', 'flash'] }),
+      // Its "Link removed." comes with the action's answer (E60) — a toast, once.
+      reload: router.reloading({ only: ['profile'] }),
     });
   return (
     <main>
@@ -127,7 +129,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
                 {can.update && (
                   <>
                     {' '}
-                    <button type="button" onClick={() => removeLink(link.id)} aria-label={t('show.remove_label', { label: link.label })}>
+                    <button type="button" onClick={() => removeLink(link.id, link.label)} aria-label={t('show.remove_label', { label: link.label })}>
                       {t('show.remove')}
                     </button>
                   </>
@@ -185,7 +187,7 @@ function AddLink({ userId }: { userId: number }) {
         const data = { label, url };
         setLabel('');
         setUrl('');
-        const result = await add.submit({ data, reload: router.reloading({ only: ['profile', 'flash'] }) });
+        const result = await add.submit({ data, reload: router.reloading({ only: ['profile'] }) });
         // Not added: what was typed comes back (unless something new was typed meanwhile).
         if (!result.ok) {
           setLabel((current) => current || data.label);

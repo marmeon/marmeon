@@ -1,10 +1,13 @@
 import {
   loadPageMessages,
+  markBusy,
   Navigator,
   pageLocale,
   RegionOwner,
   showProgress,
   TitleRegistry,
+  type ConfirmAnswer,
+  type ConfirmRequest,
   type Layer,
   type OptimisticUpdate,
   type PrefetchOptions,
@@ -21,6 +24,7 @@ import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, typ
 import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
+import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
 import { LayerStack, type LayerEntry, type LayerFrame } from './layer.tsx';
@@ -74,7 +78,7 @@ export type CheckedPatch<R, P> = (props: P) => { readonly [K in keyof R]: K exte
 
 /**
  * What an action reloads once it succeeded (E59) — some props of the page (`only`), all but some (`except`), its islands of a
- * route (`islands`): `router.reloading({ only: ['profile', 'flash'] })`. Neither props nor islands: the whole page.
+ * route (`islands`): `router.reloading({ only: ['profile'] })`. Neither props nor islands: the whole page.
  */
 export interface ReloadingOptions<T = unknown, I extends readonly string[] = readonly string[]> {
   only?: readonly PropName<T>[];
@@ -119,6 +123,8 @@ export interface RouterValue extends Router {
   navigator(): Navigator | null;
   /** Page components by name — `<Island>` renders its region's view with it. */
   resolve: ResolvePage;
+  /** The layer this router is a layer's (E53) — null for the page: what a navigation guard in it belongs to (E64). */
+  layer: Layer | null;
 }
 
 /**
@@ -218,6 +224,11 @@ export interface BespokeAppProps {
   ssr?: SsrResolvers;
   /** The frame around every layer's view (E53) — default `LayerDialog`, a native modal `<dialog>`. A view's own `layer` wins. */
   layer?: LayerFrame;
+  /**
+   * The dialog that asks the user (E64): a link's, an action's or a form's `confirm`, and the navigation guard's question —
+   * `ConfirmDialog`, or the app's own. Default: the browser's `confirm()` (and `prompt()` for a text to type).
+   */
+  confirm?: ConfirmComponent;
 }
 
 interface Current {
@@ -253,6 +264,7 @@ export function BespokeApp({
   initialCatalog,
   ssr,
   layer: frame,
+  confirm: Confirm,
 }: BespokeAppProps) {
   // A deep link's document brings the layers over its page (E53): rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
@@ -285,6 +297,25 @@ export function BespokeApp({
 
   // One navigator per app, in the browser only (the server renders a single page). Created during the first
   // render, so a page's own effects — which run before this component's — can already visit.
+  // Questions for the app's confirmation dialog (E64), one at a time.
+  const [questions, setQuestions] = useState<readonly PendingQuestion[]>([]);
+  const nextQuestion = useRef(0);
+  const ask = useCallback(
+    (request: ConfirmRequest) =>
+      new Promise<ConfirmAnswer>((resolve) => {
+        const id = ++nextQuestion.current;
+        const question: PendingQuestion = {
+          id,
+          request,
+          resolve: (answer) => {
+            setQuestions((current) => current.filter((pending) => pending.id !== id));
+            resolve(answer);
+          },
+        };
+        setQuestions((current) => [...current, question]);
+      }),
+    [],
+  );
   const navigator = useRef<Navigator | null>(null);
   if (navigator.current === null && typeof window !== 'undefined') {
     navigator.current = new Navigator({
@@ -292,6 +323,8 @@ export function BespokeApp({
       render: (page, options) => renderRef.current(page, options),
       // What a view declares to reload when Back/Forward shows it from memory (E58): `Show.revalidateOnBack = ['activity']`.
       revalidateOnBack: async (component) => (await resolve(component)).revalidateOnBack,
+      // The app's dialog asks (E64) — without one, the browser's own.
+      ...(Confirm ? { confirm: ask } : {}),
     });
   }
   // The layers on screen — the core's in the browser; on the server, the deep link's page objects.
@@ -314,6 +347,8 @@ export function BespokeApp({
     // A new visit takes the failure notice away — loading deferred props in the background does not.
     const stops = [nav.on('exception', setFailure), nav.on('start', (visit) => visit.async || setFailure(null))];
     if (progress !== false) stops.push(showProgress(nav, progress));
+    // `aria-busy` on the document while a visit runs (E64).
+    if (typeof document !== 'undefined') stops.push(markBusy(nav));
     return () => {
       for (const stop of stops) stop();
     };
@@ -354,7 +389,7 @@ export function BespokeApp({
 
   const getNavigator = useCallback(() => navigator.current, []);
   const router = useMemo(
-    () => ({ page: current.page, visit, reload, prefetch, on, optimistic, reloading, navigator: getNavigator, resolve }) as RouterValue,
+    () => ({ page: current.page, visit, reload, prefetch, on, optimistic, reloading, navigator: getNavigator, resolve, layer: null }) as RouterValue,
     [current.page, visit, reload, prefetch, on, optimistic, reloading, getNavigator, resolve],
   );
   const { Component, page, key, catalog } = current;
@@ -393,6 +428,8 @@ export function BespokeApp({
               {/* The layers over the page (E53) — apart from it: opening one changes nothing the page renders from. */}
               <LayerStack entries={layers} resolve={resolve} frame={frame} base={router} />
               <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
+              {/* The question a link, an action, a form or the navigation guard asks (E64) — over everything. */}
+              <ConfirmHost questions={questions} component={Confirm} />
               {/* The first page's deferred groups the server streams with the document (E49): to the navigator as they arrive. */}
               <StreamedDeferred groups={initialPage.streamedProps} navigator={getNavigator} />
             </RouterContext.Provider>

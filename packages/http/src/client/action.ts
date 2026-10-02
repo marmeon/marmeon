@@ -7,7 +7,9 @@
  * run as for a form. Its answer is never cached (the server sends `no-store`, the request asks for none) and never followed
  * when it redirects. An action after signing out (401, 419) ends as an `exception`: shown, never retried by itself.
  */
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type ValidationErrors } from '../page.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type FlashMessage, type ValidationErrors } from '../page.ts';
+import type { Confirm } from './confirm.ts';
+import { flashOfResponse } from './flash.ts';
 import type { OptimisticUpdate, PatchTarget, Reloading } from './optimistic.ts';
 
 /** The methods of an action — a GET reads (its `data` goes into the query), the others write. */
@@ -24,8 +26,8 @@ export type ActionException =
  * status; `cancelled`: aborted (`cancel()`, a newer call with the same `key`, the document left).
  */
 export type ActionOutcome =
-  | { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: unknown }
-  | { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string }
+  | { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: unknown; readonly flash: readonly FlashMessage[] }
+  | { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string; readonly flash: readonly FlashMessage[] }
   | { readonly ok: false; readonly kind: 'invalid'; readonly errors: ValidationErrors; readonly message: string | undefined }
   | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionException }
   | { readonly ok: false; readonly kind: 'cancelled' };
@@ -53,6 +55,8 @@ export interface ActionOptions {
   reload?: Reloading | readonly Reloading[];
   /** `'visit'`: when its controller redirected, go there (a visit) after it ended. Default: report it only. */
   onRedirect?: 'visit';
+  /** Ask first (E64) — a no sends nothing: the action ends `cancelled`, nothing optimistic shows. */
+  confirm?: Confirm;
 }
 
 /** An action (or a form's visit) under way, as `navigator.submissions` lists it — what ghost rows are made of (E59 model 2). */
@@ -79,6 +83,10 @@ export interface ActionHost {
   visit(url: string): Promise<unknown>;
   /** The request of an action: URL, headers (XSRF for a write) and body. */
   request(target: URL, method: ActionMethod, data: ActionOptions['data']): { url: string; headers: Record<string, string>; body?: BodyInit };
+  /** Asks the user (E64): whether to send it. */
+  confirm(confirm: Confirm): Promise<boolean>;
+  /** The flash messages its answer delivered (E60): they fire, once each. */
+  flash(messages: readonly FlashMessage[]): void;
 }
 
 /** The submissions under way — actions, and the visits of route forms — with listeners (for `useSyncExternalStore`). */
@@ -193,6 +201,9 @@ export class Actions {
     const target = new URL(url, this.#host.href);
     // The XSRF token goes with a write: never to another site.
     if (target.origin !== new URL(this.#host.href).origin) throw new Error(`An action goes to this site, not to ${target.origin} (${url}).`);
+    // Asked first (E64): a no sends nothing — no request, no patch, no listing.
+    if (options.confirm !== undefined && !(await this.#host.confirm(options.confirm))) return CANCELLED;
+    if (this.#host.left || signal?.aborted) return CANCELLED;
 
     const controller = new AbortController();
     if (key !== undefined) {
@@ -217,6 +228,8 @@ export class Actions {
       if (method !== 'get') this.#host.changed();
       // Its patches reconciled with the server's props — the submission stays listed until they are (no gap for a ghost row).
       await reconcile(applied, list(options.reload));
+      // Its flash messages (E60) — delivered with its answer, fired once what it reloads is on screen.
+      if (!this.#host.left) this.#host.flash(outcome.flash);
       if (outcome.kind === 'redirect' && onRedirect === 'visit' && !this.#host.left) await this.#host.visit(outcome.redirect);
       return outcome;
     } catch (error) {
@@ -259,10 +272,13 @@ export class Actions {
       this.#host.leaveFor(location);
       return CANCELLED;
     }
+    // The flash messages it took (E60): with the outcome — and, for a failure, fired as they are.
+    const flash = flashOfResponse(response);
+    if (!response.ok && response.status !== 204) this.#host.flash(flash);
     const redirect = response.headers.get(ACTION_REDIRECT_HEADER);
     if (redirect !== null) {
       await response.body?.cancel();
-      return { ok: true, kind: 'redirect', redirect };
+      return { ok: true, kind: 'redirect', redirect, flash };
     }
     if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
       // A redirect the server did not turn (a proxy in front of it): never followed, and where it points is unknown.
@@ -276,7 +292,7 @@ export class Actions {
       const message = typeof body === 'object' && body !== null && typeof (body as { message?: unknown }).message === 'string' ? (body as { message: string }).message : undefined;
       return { ok: false, kind: 'exception', exception: { type: 'server', status: response.status, message } };
     }
-    return { ok: true, kind: 'data', status: response.status, data: body };
+    return { ok: true, kind: 'data', status: response.status, data: body, flash };
   }
 }
 

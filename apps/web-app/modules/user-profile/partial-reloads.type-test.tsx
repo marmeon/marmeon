@@ -12,15 +12,15 @@ type Props = PageProps<ShowUserProfileController>;
 export function OnTheProfilePage({ activity, stats, profile }: Props) {
   const router = useRouter<ShowUserProfileController>();
   void router.reload({ only: ['stats'] });
-  void router.reload({ only: ['activity', 'stats'], except: ['flash'] });
+  void router.reload({ only: ['activity', 'stats'], except: ['now'] });
   void router.visit('/users/7?tab=links', { only: ['profile'], preserveState: true });
   // Typed with the props, too.
   void useRouter<Props>().reload({ only: ['stats'] });
   // Untyped without a page: any name.
   void useRouter().reload({ only: ['anything'] });
 
-  // Type '"stat"' is not assignable to type '"activity" | "auth" | "can" | "email" | "errors" | "flash" |
-  // "isOwnProfile" | "lastLoginAt" | "locales" | "now" | "profile" | "stats"'. Did you mean '"stats"'?
+  // Type '"stat"' is not assignable to type '"activity" | "auth" | "can" | "email" | "errors" | "isOwnProfile" |
+  // "lastLoginAt" | "locales" | "now" | "profile" | "stats"'. Did you mean '"stats"'?
   // @ts-expect-error
   void router.reload({ only: ['stat'] });
   // Type '"profil"' is not assignable to type '…'. Did you mean '"profile"'?

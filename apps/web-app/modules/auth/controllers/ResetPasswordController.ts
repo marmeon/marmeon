@@ -28,6 +28,6 @@ export class ResetPasswordController extends Controller {
     // Unknown e-mail, wrong, used or expired token: one answer.
     if (!reset || !(await this.#broker.reset(reset.email, reset.token, ctx.body.password))) throw new ValidationError({ password: [this.#translator.get('auth.reset.invalid')] });
     ctx.cookies.delete(RESET_COOKIE, { path: this.#router.url('auth.password.reset') });
-    return this.redirect().route('auth.login').with('status', this.#translator.get('auth.reset.done'));
+    return this.redirect().route('auth.login').flash('toast', { kind: 'success', message: this.#translator.get('auth.reset.done') });
   }
 }

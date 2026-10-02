@@ -187,6 +187,7 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
     () => ({
       ...base,
       page,
+      layer,
       // A visit or a form inside the layer is the layer's (E53): its answer replaces it, opens another or closes it.
       visit: (url, options) => (layer ? layer.visit(url, options) : Promise.resolve(undefined)),
       reload: (options) => (layer ? layer.reload(options) : Promise.resolve(undefined)),

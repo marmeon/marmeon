@@ -16,7 +16,7 @@ beforeEach(async () => {
 
 const profile = (user: User) => `/users/${user.id}`;
 /** The profile page reloading some of its props, as `router.reload({ only })` does. */
-const reload = (user: User, only: readonly ('activity' | 'stats' | 'email' | 'errors' | 'flash')[]) =>
+const reload = (user: User, only: readonly ('activity' | 'stats' | 'email' | 'errors')[]) =>
   app.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only });
 
 describe('profile page: deferred and optional props (E7)', () => {

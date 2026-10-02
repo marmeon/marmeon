@@ -34,6 +34,6 @@ export class UpdatePasswordController extends Controller {
   async handle(ctx: ContextOf<typeof UpdatePasswordRequest>) {
     await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
     await this.#auth.updatePassword(ctx.body.password);
-    return this.back('/settings/security').with('status', this.#translator.get('auth.security.password_changed'));
+    return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });
   }
 }

@@ -1,17 +1,19 @@
 import {
   HOVER_PREFETCH_DELAY,
+  isCurrentLink,
   linkQuery,
   prefetchTriggers,
   prefetchUrlOf,
   resolveRoute,
   visitUrlOf,
+  type Confirm,
   type PrefetchTrigger,
   type VisitMethod,
   type VisitOptions,
 } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
-import { useContext, useEffect, useRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
-import { usePage, useRouter, type PartialReloadOptions } from './app.tsx';
+import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
+import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
+import { usePage, useRouter, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 
 export type { PrefetchTrigger } from '@bespokecore/http/client';
@@ -24,6 +26,26 @@ interface LinkOptions {
   preserveUrl?: boolean;
   /** A visit in the background: no progress bar, it cancels no other visit (see `VisitOptions.async`). */
   async?: boolean;
+  /**
+   * Ask first (E64): `confirm="Remove this link?"`, or with a title, labels or a text to type —
+   * `confirm={{ message: 'Delete the project?', prompt: 'DELETE' }}`. A no sends nothing.
+   */
+  confirm?: Confirm;
+}
+
+/** `user-profile.*` for every name `user-profile.…` (and deeper prefixes) — the patterns of `activeMatch`. */
+type NamePrefixes<N extends string> = N extends `${infer Head}.${infer Tail}` ? `${Head}.*` | `${Head}.${NamePrefixes<Tail>}` : never;
+
+/** What `activeMatch` takes: a route name the browser knows, a prefix of names (`user-profile.*`), or `*`. */
+export type ActiveMatch = '*' | BrowserRouteName | NamePrefixes<BrowserRouteName>;
+
+/** Marking the link to the page on screen (E64). */
+interface CurrentProps {
+  /**
+   * The link is current (`aria-current="page"`, `data-current`) for its own URL — and, with this, for every page whose route
+   * matches: `activeMatch="user-profile.*"` (a section of the menu), a name, or several. Checked against the app's routes.
+   */
+  activeMatch?: ActiveMatch | readonly ActiveMatch[];
 }
 
 /** Prefetching — for links (GET) only. */
@@ -48,7 +70,7 @@ type ButtonAttributes = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'>;
 
 /** `<Link href="/somewhere">` — any URL, external ones included. Partial reloads (`only`) are not checked. */
 type HrefLinkProps =
-  | (LinkOptions & PartialReloadOptions & PrefetchProps & AnchorAttributes & { href: string; method?: 'get'; route?: never })
+  | (LinkOptions & PartialReloadOptions & PrefetchProps & CurrentProps & AnchorAttributes & { href: string; method?: 'get'; route?: never })
   | (LinkOptions &
       PartialReloadOptions &
       NoPrefetch &
@@ -65,7 +87,7 @@ type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf
 
 /** A GET route is a link; any other method is a `<button>` with that method — written out or left to the route. */
 type MethodProps<N extends string> = [MethodOf<N>] extends ['get']
-  ? AnchorAttributes & PrefetchProps & { method?: 'get' }
+  ? AnchorAttributes & PrefetchProps & CurrentProps & { method?: 'get' }
   : ButtonAttributes & NoPrefetch & { method?: MethodOf<N> & VisitMethod; data?: VisitOptions['data'] };
 
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
@@ -97,6 +119,7 @@ export type LinkProps<N extends string = never> = [N] extends [never] ? HrefLink
 type AnyLinkProps = LinkOptions &
   PartialReloadOptions &
   PrefetchProps &
+  CurrentProps &
   Omit<AnchorHTMLAttributes<HTMLAnchorElement> & ButtonAttributes, 'href' | 'onClick' | 'onMouseEnter' | 'onMouseLeave' | 'onMouseDown' | 'onTouchStart'> & {
     href?: string;
     route?: string;
@@ -129,6 +152,7 @@ type AnyLinkProps = LinkOptions &
  */
 export function Link<const N extends BrowserRouteNameInput = never>(props: LinkProps<N>) {
   const { visit, prefetch: prefetchPage } = useRouter();
+  const navigator = useRouterContext().navigator();
   const manifest = useContext(RoutesContext);
   const {
     route,
@@ -148,6 +172,8 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     prefetch,
     cacheFor,
     layer,
+    confirm,
+    activeMatch,
     onClick,
     onMouseEnter,
     onMouseLeave,
@@ -155,7 +181,20 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     onTouchStart,
     ...rest
   } = props as AnyLinkProps;
-  const options = { replace, preserveScroll, preserveState, preserveUrl, async, only, except, reset, ...(layer ? { layer: true } : {}) };
+  const options = {
+    replace,
+    preserveScroll,
+    preserveState,
+    preserveUrl,
+    async,
+    only,
+    except,
+    reset,
+    ...(layer ? { layer: true } : {}),
+    ...(confirm !== undefined ? { confirm } : {}),
+    // The route's name goes with the visit: `usePending(name)` (E64).
+    ...(route !== undefined ? { name: route } : {}),
+  };
 
   const page = usePage();
   const target =
@@ -164,6 +203,9 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       : resolveRoute(manifest, route, params, query && linkQuery(page, resolveRoute(manifest, route, params).url, query));
   const href = target?.url ?? givenHref ?? '';
   const method = (givenMethod ?? target?.method ?? 'get') as VisitMethod;
+  // Its visit is under way (E64): `data-pending` — whichever component started a visit of the same URL and method.
+  const visiting = useSyncExternalStore(navigator ? (listener) => navigator.subscribeVisiting(listener) : noSubscription, () => navigator?.visiting, () => undefined);
+  const pending = visiting !== undefined && !visiting.async && visiting.method === method && visiting.url === withoutHash(href) ? { 'data-pending': '' } : {};
 
   // Prefetching: GET links to pages of this site only — and not partial reloads (they are about the page on screen).
   const triggers = method === 'get' && only === undefined && except === undefined ? prefetchTriggers(prefetch) : prefetchTriggers(false);
@@ -189,7 +231,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     };
     // Never prefetched — whatever `prefetch` says (an action is no page to fetch ahead).
     const handlers = { onMouseEnter, onMouseLeave, onMouseDown, onTouchStart } as Pick<ButtonAttributes, 'onMouseEnter' | 'onMouseLeave' | 'onMouseDown' | 'onTouchStart'>;
-    return <button type="button" onClick={handleClick} {...handlers} {...(rest as ButtonAttributes)} />;
+    return <button type="button" onClick={handleClick} {...pending} {...handlers} {...(rest as ButtonAttributes)} />;
   }
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -203,9 +245,13 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
 
   const onHover = triggers.has('hover');
   const as = (event: MouseEvent<HTMLAnchorElement>) => event as MouseEvent<HTMLAnchorElement & HTMLButtonElement>;
+  // The page on screen (E64): `aria-current="page"` for assistive technology, `data-current` for styles — the app's own wins.
+  const current = isCurrentLink(page, href, activeMatch) ? { 'aria-current': 'page' as const, 'data-current': '' } : {};
   return (
     <a
       href={href}
+      {...current}
+      {...pending}
       onClick={handleClick}
       onMouseEnter={(event) => {
         onMouseEnter?.(as(event));
@@ -226,4 +272,12 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       {...(rest as AnchorAttributes)}
     />
   );
+}
+
+const noSubscription = () => () => {};
+
+/** Path and query — what a visit's URL is. */
+function withoutHash(href: string): string {
+  const index = href.indexOf('#');
+  return index < 0 ? href : href.slice(0, index);
 }

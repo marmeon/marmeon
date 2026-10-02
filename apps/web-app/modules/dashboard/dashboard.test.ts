@@ -27,7 +27,7 @@ class WritesSessionIsland extends Controller {
 /** An island that flashes (a redirect with data) — a write too. */
 class FlashesIsland extends Controller {
   handle() {
-    return this.redirect('/dashboard').with('status', 'from an island');
+    return this.redirect('/dashboard').flash('toast', { kind: 'info', message: 'from an island' });
   }
 }
 
@@ -47,7 +47,7 @@ class DefersIsland extends Controller {
 /** A page action that flashes a message for the page it redirects to. */
 class SaveController extends Controller {
   handle() {
-    return this.redirect('/dashboard').with('status', 'Saved.');
+    return this.redirect('/dashboard').flash('toast', { kind: 'success', message: 'Saved.' });
   }
 }
 
@@ -137,7 +137,7 @@ describe('the dashboard: a page of islands (E48)', () => {
     await browser.islanding().get('/fixtures/islands/flashes').assertStatus(500).assertIslandStatus('exception');
     await browser.islanding().get('/fixtures/islands/defers').assertStatus(500).assertIslandStatus('exception');
     // Nothing of it reached the session.
-    (await browser.navigating().get('/dashboard').assertOk()).assertSessionMissing('island_wrote').assertSessionMissing('status');
+    (await browser.navigating().get('/dashboard').assertOk()).assertSessionMissing('island_wrote').assertNoFlash();
     // (The message, with debug on: "session.put('island_wrote') in an island request (GET …): an island is read-only (E52) …" —
     // see packages/server/src/islands.test.ts.)
   });
@@ -152,13 +152,13 @@ describe('the dashboard: a page of islands (E48)', () => {
     await remembered.navigating().get('/dashboard').assertOk().assertAuthenticated(kj);
   });
 
-  it('counter-check: islands consume no flash data — two polls between a redirect and its page leave the message for the page', async () => {
+  it('counter-check: islands consume no flash message — two polls between a redirect and its page leave the message for the page', async () => {
     const login = await app.actingAs(ada).navigating().get('/dashboard').assertOk();
     const browser = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
     await browser.post('/fixtures/save').assertRedirect('/dashboard');
     // Islands of the page before (a poll) answer while the redirect is followed.
-    await browser.island('dashboard.activity').assertOk();
-    await browser.island('dashboard.activity').assertOk();
-    await browser.navigating().get('/dashboard').assertPage('dashboard/Show', { flash: { status: 'Saved.' } });
+    await browser.island('dashboard.activity').assertOk().assertNoFlash();
+    await browser.island('dashboard.activity').assertOk().assertNoFlash();
+    await browser.navigating().get('/dashboard').assertPage('dashboard/Show').assertFlash('toast', { message: 'Saved.' });
   });
 });

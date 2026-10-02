@@ -46,6 +46,6 @@ export class SendPasswordResetLinkController extends Controller {
       // In the account's language (whoever asked for the link, and in whatever language): the recipient's.
       await this.#mailer.send(new ResetPasswordMail(reset.user, url.href, this.#auth.resetExpire, this.#translator.forLocale(reset.user.locale)));
     });
-    return this.back('/forgot-password').with('status', this.#translator.get('auth.forgot.sent'));
+    return this.back('/forgot-password').flash('toast', { kind: 'success', message: this.#translator.get('auth.forgot.sent') });
   }
 }

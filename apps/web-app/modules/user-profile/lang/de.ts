@@ -20,6 +20,7 @@ export default {
     links: 'Links',
     remove: 'Entfernen',
     remove_label: '{label} entfernen',
+    remove_confirm: 'Den Link „{label}“ aus deinem Profil entfernen?',
     add_label: 'Bezeichnung',
     add_url: 'URL',
     add: 'Link hinzufügen',

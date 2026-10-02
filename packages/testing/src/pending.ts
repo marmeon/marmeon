@@ -1,5 +1,5 @@
 import type { DeepPartial, FieldOf, IslandNameOf, IslandPropsOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
-import type { LayerClose, RegionOutcomeStatus } from '@bespokecore/http/page';
+import type { CheckFlashKey, FlashValue, LayerClose, RegionOutcomeStatus } from '@bespokecore/http/page';
 
 type Assertions = {
   [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];
@@ -76,6 +76,17 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   }
   assertActionRedirect(...args: Parameters<Assertions['assertActionRedirect']>): this {
     return this.#queue((r) => r.assertActionRedirect(...args));
+  }
+  /** See {@link TestResponse.assertFlash} — typed by the app's `FlashData`. */
+  assertFlash<const K extends string>(key: CheckFlashKey<K>, data?: DeepPartial<FlashValue<K>>): this {
+    return this.#queue((r) => r.assertFlash<K>(key, data));
+  }
+  /** See {@link TestResponse.assertFlashed}. */
+  assertFlashed<const K extends string>(key: CheckFlashKey<K>, data?: DeepPartial<FlashValue<K>>): this {
+    return this.#queue((r) => r.assertFlashed<K>(key, data));
+  }
+  assertNoFlash(...args: Parameters<Assertions['assertNoFlash']>): this {
+    return this.#queue((r) => r.assertNoFlash(...args));
   }
   assertCookie(...args: Parameters<Assertions['assertCookie']>): this {
     return this.#queue((r) => r.assertCookie(...args));

@@ -1,13 +1,38 @@
-import { firstErrors, resolveRoute, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
+import { dirtyPaths, firstErrors, isDirtyPath, resolveRoute, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, FormOf, ParamsOf, Routes } from '@bespokecore/http/page';
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from './app.tsx';
 import { RoutesContext } from './routes.ts';
+import { useGuard } from './state.ts';
 
 /** The data of a form: the controller's schema input (`useForm<UpdateUserProfileController>`), or given directly. */
 type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
 
 type Field<F> = keyof F & string;
+
+type Primitive = string | number | boolean | bigint | symbol | null | undefined | Date | Blob;
+
+/**
+ * The paths into a form's data (E64) — `name`, `address.city`, `links.${number}.url` — what `isDirty(path)` takes. Five levels
+ * deep at most.
+ */
+export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends 5
+  ? never
+  : F extends Primitive
+    ? never
+    : F extends readonly (infer Item)[]
+      ? `${number}` | `${number}.${FieldPath<Item, [...Depth, 0]>}`
+      : { [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, 0]> extends infer Deeper extends string ? `${K}.${Deeper}` : never) }[keyof F & string];
+
+/** How a form behaves beyond its data (E64). */
+export interface FormOptions {
+  /**
+   * The navigation guard: while the form is dirty, leaving asks first — a visit elsewhere, Back/Forward, closing its layer —
+   * and closing the tab gets the browser's question. `true`, or the question to ask. Its own submit passes; after it
+   * succeeded, what was sent is where the form starts over (not dirty any more).
+   */
+  guard?: boolean | string;
+}
 
 /**
  * How a form is sent — the visit's callbacks with Inertia's meanings (E44): `onError` gets the *validation* errors
@@ -39,8 +64,13 @@ export interface FormState<F> {
   readonly wasSuccessful: boolean;
   /** The last submit succeeded less than two seconds ago — for a short "Saved." */
   readonly recentlySuccessful: boolean;
-  /** Something differs from the initial data. */
-  readonly isDirty: boolean;
+  /**
+   * Whether something differs from where the form started — anything, or the field at `path` (`isDirty('bio')`,
+   * `isDirty('links.0.url')`, typed). Where it started: the initial data, or what the last successful submit sent.
+   */
+  isDirty(path?: FieldPath<F>): boolean;
+  /** The paths that differ, leaves first: `['bio', 'links.0.url']` — for `data-dirty` on the fields. */
+  readonly dirty: readonly string[];
   /** Back to the initial data — all fields or some. */
   reset(...fields: Field<F>[]): void;
 }
@@ -102,19 +132,31 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
  * back from the server — a failed submit redirects back with `errors` in the page
  * props, without a reload and without losing what was typed.
  */
+export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions): Form<T>;
+export function useForm<const N extends BrowserRouteNameInput>(
+  name: CheckFormRoute<N>,
+  params: ParamsOf<N>,
+  initial: RouteFormFields<N>,
+  options: FormOptions,
+): RouteForm<RouteFormFields<N>>;
+// Last: a mistake is reported against this one (TS names the last overload's error) — the route's message.
 export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
-export function useForm<T>(initial: FormFields<T>): Form<T>;
 export function useForm(...args: unknown[]): unknown {
   const named = typeof args[0] === 'string';
   const name = named ? (args[0] as string) : undefined;
+  // (name, initial) · (name, params, initial) · (name, params, initial, options) · (initial) · (initial, options)
+  const options = ((named ? args.length === 4 && args[3] : args.length === 2 && args[1]) || {}) as FormOptions;
   const params = named && args.length >= 3 ? (args[1] as Record<string, string | number>) : undefined;
-  const initial = (named ? args.at(-1) : args[0]) as Record<string, unknown>;
+  const initial = (named ? args[args.length === 4 ? 2 : args.length - 1] : args[0]) as Record<string, unknown>;
 
   const { visit } = useRouter();
   const manifest = useContext(RoutesContext);
   const target = name === undefined ? undefined : resolveRoute(manifest, name, params);
-  const [defaults] = useState(initial);
+  const [defaults, setDefaults] = useState(initial);
   const [data, setData] = useState(initial);
+  const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
+  // The navigation guard (E64), while dirty — its own submit passes it.
+  const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<VisitProgress | null>(null);
@@ -131,6 +173,8 @@ export function useForm(...args: unknown[]): unknown {
         const page = await visit(url, {
           preserveScroll: true,
           ...options,
+          // Its own guard does not stop it — the others (another form's unsaved changes) still ask.
+          ignoreGuards: options.ignoreGuards === true ? true : [...(options.ignoreGuards ?? []), guard],
           method,
           data,
           onProgress: (next, current) => {
@@ -144,6 +188,8 @@ export function useForm(...args: unknown[]): unknown {
         if (Object.keys(failed).length > 0) {
           onError?.(failed);
         } else {
+          // Saved: what was sent is where the form starts over — not dirty any more (the guard lets go).
+          setDefaults(data);
           setWasSuccessful(true);
           setRecentlySuccessful(true);
           clearTimeout(timer.current);
@@ -156,7 +202,7 @@ export function useForm(...args: unknown[]): unknown {
         onFinish?.();
       }
     },
-    [visit, data],
+    [visit, data, guard],
   );
 
   const submit = (...submitArgs: unknown[]): Promise<void> => {
@@ -177,7 +223,8 @@ export function useForm(...args: unknown[]): unknown {
     progress,
     wasSuccessful,
     recentlySuccessful,
-    isDirty: JSON.stringify(data) !== JSON.stringify(defaults),
+    isDirty: (path?: string) => isDirtyPath(dirty, path),
+    dirty,
     reset: (...fields) => {
       if (fields.length === 0) setData(defaults);
       else setData((current) => ({ ...current, ...Object.fromEntries(fields.map((field) => [field, defaults[field]])) }));

@@ -1,23 +1,21 @@
 import { Auth } from '@bespokecore/auth';
 import { SharedData, type HttpContext, type Next } from '@bespokecore/http';
 import { Locales } from '@bespokecore/i18n';
-import { Session } from '@bespokecore/session';
 
 declare module '@bespokecore/http/page' {
   interface SharedProps {
     /** The signed-in user, on every page — or null. */
     auth: { user: { id: number; name: string; verified: boolean } | null };
-    /** Messages flashed by the previous request. */
-    flash: { status: string | null };
     /** The languages of the switcher (the page's own is `usePage().locale`). */
     locales: readonly string[];
   }
-}
 
-declare module '@bespokecore/session' {
-  interface SessionData {
-    /** Flash message for the next page (signed out, profile saved). */
-    status: string;
+  /**
+   * The app's flash messages (E60): `redirect().flash('toast', { kind: 'success', message })` in a controller, a toast in the
+   * layout (`useFlash('toast', …)`) — exactly once per message. No shared prop: the protocol carries them.
+   */
+  interface FlashData {
+    toast: { kind: 'success' | 'error' | 'info'; message: string };
   }
 }
 
@@ -27,13 +25,11 @@ declare module '@bespokecore/session' {
  */
 export class ShareAppProps {
   readonly #shared: SharedData;
-  readonly #session: Session;
   readonly #auth: Auth;
   readonly #locales: Locales;
 
-  constructor(shared: SharedData, session: Session, auth: Auth, locales: Locales) {
+  constructor(shared: SharedData, auth: Auth, locales: Locales) {
     this.#shared = shared;
-    this.#session = session;
     this.#auth = auth;
     this.#locales = locales;
   }
@@ -45,7 +41,6 @@ export class ShareAppProps {
         const user = await this.#auth.user();
         return { user: user ? { id: user.id, name: user.name, verified: user.email_verified_at !== null } : null };
       })
-      .share('flash', () => ({ status: this.#session.get('status') ?? null }))
       .share('locales', this.#locales.supported);
     return next();
   }

@@ -77,7 +77,7 @@ describe('the language switcher (POST /locale)', () => {
     const session = app.withCookie('bespoke_session', switched.cookie('bespoke_session')!);
     const login = await session.navigating().get('/login', { headers: { 'accept-language': 'en' } });
     expect(login.page()!.locale).toBe('de');
-    expect(login.page()!.props).toMatchObject({ flash: { status: 'Sprache geändert.' } });
+    login.assertFlash('toast', { message: 'Sprache geändert.' });
   });
 
   it('answers a client-side visit with a full page load (409): the pages kept in memory are in the old language', async () => {
@@ -103,7 +103,7 @@ describe('the language switcher (POST /locale)', () => {
 
     const session = app.withCookie('bespoke_session', switched.cookie('bespoke_session')!);
     const out = await session.post('/logout').assertRedirect('/login').assertGuest().assertSessionHas('locale', 'de');
-    expect((await app.withCookie('bespoke_session', out.cookie('bespoke_session')!).navigating().get('/login')).page()!.props).toMatchObject({ flash: { status: 'Du wurdest abgemeldet.' } });
+    (await app.withCookie('bespoke_session', out.cookie('bespoke_session')!).navigating().get('/login')).assertFlash('toast', { message: 'Du wurdest abgemeldet.' });
   });
 });
 
@@ -114,7 +114,7 @@ describe('mails in the recipient’s language', () => {
 
   it('a reset link asked for in German, for an account in English, is in English — the account’s language wins', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', locale: 'en' });
-    await ask(ada.email, german).assertSessionHas('status', 'Falls es zu dieser Adresse ein Konto gibt, haben wir einen Link zum Zurücksetzen des Passworts geschickt.');
+    await ask(ada.email, german).assertFlashed('toast', { message: 'Falls es zu dieser Adresse ein Konto gibt, haben wir einen Link zum Zurücksetzen des Passworts geschickt.' });
     expect(lastMail().subject).toBe('Reset your password');
     expect(lastMail().text).toContain('Hello Ada,');
     expect(lastMail().html).toContain('<html lang="en"');
@@ -122,7 +122,7 @@ describe('mails in the recipient’s language', () => {
 
   it('…and the other way round; without a stored language, the request’s', async () => {
     const grace = await app.factory(UserFactory).create({ name: 'Grace', locale: 'de' });
-    await ask(grace.email).assertSessionHas('status', 'If an account exists for that address, we sent a link to reset its password.');
+    await ask(grace.email).assertFlashed('toast', { message: 'If an account exists for that address, we sent a link to reset its password.' });
     expect(lastMail().subject).toBe('Passwort zurücksetzen');
     expect(lastMail().text).toContain('Hallo Grace,');
     expect(lastMail().text).toContain('Der Link funktioniert einmal, 60 Minuten lang.');

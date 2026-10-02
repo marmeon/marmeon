@@ -36,7 +36,7 @@ describe('navigator.action — requests that do not navigate (E59)', () => {
 
     const outcome = await navigator.action('/users/1/links/2', { method: 'delete' });
 
-    expect(outcome).toEqual({ ok: true, kind: 'data', status: 200, data: { deleted: 2 } });
+    expect(outcome).toEqual({ ok: true, kind: 'data', status: 200, data: { deleted: 2 }, flash: [] });
     expect(win.requests).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1/links/2`, method: 'DELETE', headers: expect.objectContaining({ [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' }) })]);
     expect(win.requests[0]!.headers[PAGE_HEADER]).toBeUndefined();
     expect(init).toMatchObject({ redirect: 'manual', cache: 'no-store', credentials: 'same-origin' });
@@ -51,7 +51,7 @@ describe('navigator.action — requests that do not navigate (E59)', () => {
     win.handler = (url) => (url.endsWith('/links') ? new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/1' } }) : pageResponse(profile('/users/1', 1, 3)));
     const { navigator } = boot(win, profile('/users/1', 1));
 
-    expect(await navigator.action('/users/1/links', { data: { label: 'x', url: 'https://x.test' } })).toEqual({ ok: true, kind: 'redirect', redirect: '/users/1' });
+    expect(await navigator.action('/users/1/links', { data: { label: 'x', url: 'https://x.test' } })).toEqual({ ok: true, kind: 'redirect', redirect: '/users/1', flash: [] });
     expect(win.requests).toHaveLength(1);
 
     await navigator.action('/users/1/links', { data: {}, onRedirect: 'visit' });

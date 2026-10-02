@@ -51,7 +51,7 @@ describe('Layers in the client core (E53) — opening over the page on screen', 
       expect(isHistoryState(JSON.parse(state))).toBe(true);
     }
     const top = JSON.parse(win.current.state);
-    expect(Object.keys(top).sort()).toEqual(['component', 'key', 'layer', 'scroll', 'url']);
+    expect(Object.keys(top).sort()).toEqual(['component', 'index', 'key', 'layer', 'scroll', 'url']);
     expect(top.layer).toEqual({ depth: 1, below: [JSON.parse(win.entries[0]!.state).key] });
   });
 

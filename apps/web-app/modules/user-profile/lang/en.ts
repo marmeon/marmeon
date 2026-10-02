@@ -18,6 +18,7 @@ const en = {
     links: 'Links',
     remove: 'Remove',
     remove_label: 'Remove {label}',
+    remove_confirm: 'Remove the link “{label}” from your profile?',
     add_label: 'Label',
     add_url: 'URL',
     add: 'Add link',

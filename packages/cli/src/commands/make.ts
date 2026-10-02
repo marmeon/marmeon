@@ -266,7 +266,8 @@ export class ${name} extends Controller {
   static request = ${subject}Request;
 
   handle(ctx: ContextOf<typeof ${subject}Request>) {
-    return this.back().with('status', \`Saved \${ctx.body.name}.\`);
+    // A flash message (E60): shown once by the page the user sees next — \`useFlash('toast', …)\` in the layout.
+    return this.back().flash('toast', { kind: 'success', message: \`Saved \${ctx.body.name}.\` });
   }
 }
 `;

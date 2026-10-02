@@ -47,8 +47,9 @@ describe('editing a profile is a layer (E53)', () => {
       .actingAs(ada)
       .layering()
       .put(profile(ada), { json: { name: 'Ada King', bio: 'Countess' } })
-      .assertLayerClosed({ reload: ['profile', 'flash'] })
-      .assertSessionHas('status', 'Profile saved.');
+      .assertLayerClosed({ reload: ['profile'] })
+      // The close is shown: it delivers the message itself (E60) — nothing waits in the session for the reload.
+      .assertFlash('toast', { kind: 'success', message: 'Profile saved.' });
     await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King' });
     await app.actingAs(ada).put(profile(ada), { form: { name: 'Ada', bio: '' } }).assertRedirect(profile(ada));
   });
@@ -69,7 +70,7 @@ describe('editing a profile is a layer (E53)', () => {
 
   it('removing a link from its confirmation closes it — what is beneath (the profile, or the edit layer) reloads its `profile`', async () => {
     const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
-    await app.actingAs(ada).layering().delete(`${profile(ada)}/links/${link.id}`).assertLayerClosed({ reload: ['profile', 'flash'] });
+    await app.actingAs(ada).layering().delete(`${profile(ada)}/links/${link.id}`).assertLayerClosed({ reload: ['profile'] });
     await app.assertDatabaseMissing('profile_links', { id: link.id });
     await app.actingAs(alan).layer('user-profile.links.remove', { user: ada.id, link: link.id }).assertNotFound();
   });

@@ -1,3 +1,5 @@
+import { withFlashMethod, type FlashMethod } from './flash.ts';
+
 const JSON_RESULT = Symbol.for('bespokecore.json-result');
 
 /**
@@ -12,11 +14,16 @@ export interface JsonResult<T = unknown> {
   readonly data: T;
   readonly status: number;
   readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * A flash message delivered with the answer of an action (E60): `this.json({ revoked: id }).flash('toast', { … })` — it
+   * fires once, when `useAction` gets the answer. An API client (no action) never gets it: it waits for a page.
+   */
+  readonly flash: FlashMethod<JsonResult<T>>;
 }
 
 /** `data` as JSON, with `status` (default 200). */
 export function json<T>(data: T, status = 200, headers?: Readonly<Record<string, string>>): JsonResult<T> {
-  return { [JSON_RESULT]: true, kind: 'json', data, status, ...(headers ? { headers } : {}) };
+  return withFlashMethod({ [JSON_RESULT]: true, kind: 'json', data, status, ...(headers ? { headers } : {}) } as JsonResult<T>);
 }
 
 export function isJsonResult(value: unknown): value is JsonResult {

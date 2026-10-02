@@ -78,7 +78,7 @@ describe('registration and verification', () => {
     const link = linkIn(VerifyEmailMail, '/email/verify/');
     const tampered = link.replace(/\/email\/verify\/\d+\//, '/email/verify/999999/');
     await continuing(registered).expectingJson().get(tampered).assertForbidden();
-    await continuing(registered).get(link).assertRedirect('/dashboard').assertSessionHas('status', 'Your e-mail address is verified.');
+    await continuing(registered).get(link).assertRedirect('/dashboard').assertFlashed('toast', { message: 'Your e-mail address is verified.' });
   });
 
   it('refuses an address that exists, in any case', async () => {
@@ -92,7 +92,9 @@ describe('password reset', () => {
     const ada = await app.factory(UserFactory).create();
     const known = await app.post('/forgot-password', { form: { email: ada.email } });
     const unknown = await app.post('/forgot-password', { form: { email: 'nobody@example.com' } });
-    expect(unknown.session().status).toBe(known.session().status);
+    // The same toast either way — waiting for the page the redirect leads to (E60).
+    expect(unknown.flashed().map((message) => message.data)).toEqual(known.flashed().map((message) => message.data));
+    expect(known.flashed()).toHaveLength(1);
     app.mail.assertSentCount(ResetPasswordMail, 1);
 
     const opened = await app.get(linkIn(ResetPasswordMail, '/reset-password')).assertRedirect('/reset-password');

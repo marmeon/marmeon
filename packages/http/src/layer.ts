@@ -1,6 +1,7 @@
 import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteLookup, RouteNameInput } from '@bespokecore/router';
 import { LAYER_CLOSE_HEADER, regionOf, type LayerClose } from './page.ts';
 import { RedirectResult, type Flasher } from './redirect.ts';
+import { carryFlash, serializedFlash, withFlashMethod, type FlashMethod } from './flash.ts';
 import type { ViewProps, ViewResult } from './view.ts';
 
 const LAYER_RESULT = Symbol.for('bespokecore.layer-result');
@@ -42,6 +43,8 @@ export interface LayerResult<TProps extends ViewProps = ViewProps, TComponent ex
   /** The marker the router's types read (`LayerResultMarker`): `<Link layer>` takes only routes that answer a layer. */
   readonly region: 'layer';
   readonly layer: { readonly base: LayerBaseRoute; readonly key: string | undefined };
+  /** A flash message delivered with the layer (E60) — see `PageResult.flash`. */
+  readonly flash: FlashMethod<LayerResult<TProps, TComponent>>;
 }
 
 export function isLayerResult(value: unknown): value is LayerResult {
@@ -55,7 +58,10 @@ export function toLayer<TProps extends ViewProps, V extends string>(
 ): LayerResult<TProps, V> {
   if (typeof base !== 'string') throw new Error(`A layer's base is a route name: got ${JSON.stringify(base)} for [${view.component}].`);
   const { layer: _layer, ...data } = view as ViewResult<TProps, V> & { layer?: unknown };
-  return { ...data, [LAYER_RESULT]: true, region: 'layer', layer: { base: { name: base, params, query: query as Query | undefined }, key } } as LayerResult<TProps, V>;
+  const result = { ...data, [LAYER_RESULT]: true, region: 'layer', layer: { base: { name: base, params, query: query as Query | undefined }, key } } as LayerResult<TProps, V>;
+  // What the view was flashed with goes with the layer.
+  carryFlash(view, result);
+  return withFlashMethod(result);
 }
 
 /** The view's `.layer()` — on every result of `view()` (see `PageResult`). */
@@ -76,8 +82,8 @@ export interface CloseLayerOptions {
  * What `closeLayer()` returns (E53, Inertia's `close()`): to a layer's request, "close" — the client closes the layer (and
  * `layers - 1` beneath it), then reloads what is under them (`reload`). To any other request — a form without JavaScript, a
  * layer's view opened as a page — it is the redirect it also is: `closeLayer().route('user-profile.show', { user })`,
- * by default back (to the `Referer`). Flash data (`.with()`) is kept for the next request either way: the reload, or the
- * redirect's target.
+ * by default back (to the `Referer`). A flash message (`.flash()`, E60) goes with the close to the layer's client — it fires
+ * at once; as a redirect, with the page it leads to. Flash data (`.with()`) is kept for the next request either way.
  */
 export class CloseLayerResult extends RedirectResult {
   readonly close: LayerClose;
@@ -91,10 +97,12 @@ export class CloseLayerResult extends RedirectResult {
   }
 
   override toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response {
-    // Flash data and the target as for the redirect — the flash goes with the request that follows (the reload).
+    // Flash data and the target as for the redirect — `with()` data goes with the request that follows (the reload).
     const redirect = super.toResponse(request, routes, flasher);
     if (regionOf(request) !== 'layer') return redirect;
-    return new Response(JSON.stringify({ close: this.close }), {
+    // The client is shown the close: it takes the flash messages (E60) — they fire with it, not with whatever loads next.
+    const flash = serializedFlash(flasher?.takeFlash() ?? []);
+    return new Response(JSON.stringify({ close: this.close, ...(flash.length > 0 ? { flash } : {}) }), {
       status: 200,
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store', [LAYER_CLOSE_HEADER]: 'true', vary: 'x-bespoke, x-bespoke-region' },
     });

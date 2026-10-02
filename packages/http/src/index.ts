@@ -14,6 +14,8 @@ export {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
   ERROR_PAGE,
+  FLASH_HEADER,
+  FLASH_WAITING_HEADER,
   LAYER_BACKDROP,
   LAYER_CLOSE_HEADER,
   LOCATION_HEADER,
@@ -52,6 +54,9 @@ export type {
 export { partialReloadOf, resolvePageProps } from './page-props.ts';
 export type { PartialReload, ResolvedPage } from './page-props.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
+export { addFlash, flashEntry, flashOf, serializedFlash } from './flash.ts';
+export type { FlashEntry, FlashMethod } from './flash.ts';
+export type { CheckFlashKey, FlashData, FlashKey, FlashMessage, FlashValue } from './page.ts';
 export type { CheckViewName, DeferredResult, ErrorPageProps, LayerClose, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';

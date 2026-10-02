@@ -20,6 +20,6 @@ export class VerifyEmailController extends Controller {
     // A valid signature proves the app made the link — not that it is yours.
     if (!this.#verification.matches(ctx.user, ctx.params)) abort(403, this.#translator.get('auth.verify.wrong_account'));
     if (ctx.user.email_verified_at === null) await this.#users.markEmailVerified(ctx.user.id);
-    return this.redirect().route('user-profile.me').with('status', this.#translator.get('auth.verify.verified'));
+    return this.redirect().route('user-profile.me').flash('toast', { kind: 'success', message: this.#translator.get('auth.verify.verified') });
   }
 }

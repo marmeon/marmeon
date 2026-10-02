@@ -49,3 +49,35 @@ export function prefetchUrlOf(href: string, location: Pick<Location, 'href' | 'o
   const url = new URL(href, location.href);
   return url.origin === location.origin ? url.pathname + url.search : undefined;
 }
+
+/**
+ * Whether a link to `href` points at the page on screen (E64) — `aria-current="page"` and `data-current`: the same URL, path and
+ * query (in any order; the fragment aside) — a sort link is current for its own order only. With `activeMatch`, also when the
+ * route that answered the page (`PageObject.route`) matches one of the patterns: a name (`user-profile.people` — the list,
+ * whatever it is filtered by), or a prefix of names (`user-profile.*` — every route whose name starts with `user-profile.`).
+ */
+export function isCurrentLink(page: { readonly url: string; readonly route?: string | undefined }, href: string, activeMatch?: string | readonly string[]): boolean {
+  if (activeMatch !== undefined && page.route !== undefined) {
+    const patterns = typeof activeMatch === 'string' ? [activeMatch] : activeMatch;
+    if (patterns.some((pattern) => matchesRouteName(pattern, page.route!))) return true;
+  }
+  const base = 'http://bespoke.invalid';
+  let link: URL;
+  let current: URL;
+  try {
+    link = new URL(href, new URL(page.url, base));
+    current = new URL(page.url, base);
+  } catch {
+    return false;
+  }
+  if (link.origin !== current.origin || link.pathname !== current.pathname) return false;
+  const query = (url: URL) => [...url.searchParams].map(([key, value]) => `${key}=${value}`).sort().join('&');
+  return query(link) === query(current);
+}
+
+/** `user-profile.*` matches `user-profile.show` (and deeper), a plain name only itself, `*` every name. */
+export function matchesRouteName(pattern: string, name: string): boolean {
+  if (pattern === '*') return true;
+  if (pattern.endsWith('.*')) return name.startsWith(pattern.slice(0, -1));
+  return pattern === name;
+}

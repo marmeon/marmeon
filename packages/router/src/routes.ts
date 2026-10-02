@@ -244,6 +244,9 @@ type Join<U extends string, Count extends unknown[] = [], Done extends string = 
       ? Join<Exclude<U, L>, [...Count, L], Done extends '' ? L : `${L}, ${Done}`>
       : Done;
 
+/** A union of names as one string, `a, b, c` (at most five, then `…`) — for messages in types. */
+export type JoinNames<U extends string> = Join<U>;
+
 /** ` — did you mean a, b?` for names next to `N`, or nothing. */
 export type Suggest<N extends string, Names extends string, Sep extends string = '.'> = [Siblings<N, Names, Sep>] extends [never]
   ? ''

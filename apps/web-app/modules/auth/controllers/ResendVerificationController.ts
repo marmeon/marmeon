@@ -16,6 +16,6 @@ export class ResendVerificationController extends Controller {
   async handle(ctx: HttpContext<Authenticated>) {
     if (ctx.user.email_verified_at !== null) return this.redirect().route('user-profile.me');
     await this.#mailer.send(ctx.user);
-    return this.back('/email/verify').with('status', this.#translator.get('auth.verify.sent'));
+    return this.back('/email/verify').flash('toast', { kind: 'success', message: this.#translator.get('auth.verify.sent') });
   }
 }

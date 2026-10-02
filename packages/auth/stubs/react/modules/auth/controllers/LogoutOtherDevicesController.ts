@@ -26,6 +26,6 @@ export class LogoutOtherDevicesController extends Controller {
 
   async handle(ctx: ContextOf<typeof LogoutOtherDevicesRequest>) {
     await throttlePasswordChecks(this.#limiter, this.#translator, ctx.user.id, 'password', () => this.#auth.logoutOtherDevices(ctx.body.password));
-    return this.back('/settings/security').with('status', this.#translator.get('auth.security.devices_done'));
+    return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.devices_done') });
   }
 }
