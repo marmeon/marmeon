@@ -1,9 +1,12 @@
+import { Registered } from '@bespokecore/auth';
+import { EventRegistry } from '@bespokecore/core';
 import { Connections, sql } from '@bespokecore/database';
 import { QueueConnections } from '@bespokecore/queue';
 import { createTestApp } from '@bespokecore/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
+import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import { WelcomeMail } from './mail/WelcomeMail.ts';
 import { UserRepository } from './UserRepository.ts';
 
@@ -52,5 +55,25 @@ describe('the welcome mail', () => {
     expect(result).toMatchObject({ processed: 1, failed: 0 });
     app.mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'Welcome to BespokeCore');
     await app.assertDatabaseCount('jobs', 0);
+  });
+
+  it('is part of the registration transaction (E107): a failing listener leaves no account, no job, no mail', async () => {
+    const app = await createTestApp(application, { database: 'refresh', queue: 'real' });
+    // A third listener on Registered, after the two of the auth module, fails.
+    app.make(EventRegistry).listen(Registered, () => {
+      throw new Error('a listener failed');
+    });
+    await register(app).assertStatus(500);
+    await app.assertDatabaseMissing('users', { email: 'kj@example.com' });
+    await app.assertDatabaseCount('jobs', 0);
+    app.mail.assertNotSent(VerifyEmailMail);
+
+    // Without the failing listener: the account, its welcome job and — after the commit — the verification mail.
+    await app.close();
+    const ok = await createTestApp(application, { database: 'refresh', queue: 'real' });
+    await register(ok).assertRedirect('/users/me');
+    await ok.assertDatabaseHas('users', { email: 'kj@example.com' });
+    await ok.assertDatabaseCount('jobs', 1);
+    ok.mail.assertSent(VerifyEmailMail);
   });
 });

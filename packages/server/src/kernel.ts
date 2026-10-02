@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
-import { Logger, runWithRequest, Translator, type Application, type Container } from '@bespokecore/core';
+import { Logger, outsideTransaction, runWithRequest, Translator, type Application, type Container } from '@bespokecore/core';
 import {
   AfterResponse,
   AssetVersion,
@@ -339,7 +339,8 @@ export function createHttpKernel(
     if (terminable.length > 0) {
       // After the response is handed to the server — the client does not wait for this work.
       const task = new Promise<void>((resolve) => setImmediate(resolve))
-        .then(() => Promise.all(terminable.map(([handler, ctx]) => handler.terminate!(ctx, final))))
+        // Outside of any transaction (E107): work after the response never joins one that was open during the request.
+        .then(() => outsideTransaction(() => Promise.all(terminable.map(([handler, ctx]) => handler.terminate!(ctx, final)))))
         .then(
           () => undefined,
           (error: unknown) => logger.error('A terminate hook failed', { exception: String(error) }),
@@ -365,7 +366,8 @@ export function createHttpKernel(
       const task = new Promise<void>((resolve) => setImmediate(resolve)).then(async () => {
         for (const work of deferred) {
           try {
-            await work();
+            // A boundary (E107): deferred work runs outside of any transaction, also one still open around this request.
+            await outsideTransaction(work);
           } catch (error) {
             logger.error('Deferred work failed', { exception: error instanceof Error ? (error.stack ?? error.message) : String(error) });
           }

@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { describeError, redactText, type Clock, type Logger } from '@bespokecore/core';
+import { describeError, outsideTransaction, redactText, type Clock, type Logger } from '@bespokecore/core';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { timeoutOf } from './registry.ts';
 import type { JobRunner, Prepared, Requested } from './runner.ts';
@@ -80,7 +80,12 @@ export class Worker {
     this.#deps = dependencies;
   }
 
-  async run(options: WorkOptions): Promise<WorkResult> {
+  run(options: WorkOptions): Promise<WorkResult> {
+    // A boundary (E107): claims, acks and jobs never run inside a transaction of whoever started the worker.
+    return outsideTransaction(() => this.#loop(options));
+  }
+
+  async #loop(options: WorkOptions): Promise<WorkResult> {
     const started = performance.now();
     const counts = { processed: 0, failed: 0, released: 0 };
     const result = (reason: WorkResult['reason']): WorkResult => ({ ...counts, reason });

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { token, type Logger } from '@bespokecore/core';
-import { Kysely, type Dialect, type LogEvent } from 'kysely';
+import { runTransaction, TransactionError, transactionOf, token, type Logger } from '@bespokecore/core';
+import { Kysely, type Dialect, type IsolationLevel, type LogEvent, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { describeConnection, type ConnectionOptions } from './config.ts';
 import { DatabaseConnectionError, withBespokeDriver, type BespokeDriver } from './driver.ts';
@@ -22,6 +22,14 @@ export type Database<M extends keyof Modules & string = never> = [M] extends [ne
   ? Kysely<Tables>
   : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
 export const Database = token<Kysely<Tables>>('Database');
+
+/** How `connections.transaction()` runs. */
+export interface TransactionOptions {
+  /** The connection (default: `default`). */
+  readonly connection?: string;
+  /** For the outermost transaction only (a nested one is a savepoint). */
+  readonly isolationLevel?: IsolationLevel;
+}
 
 /** One executed (or failed) query — for the query log, tests counting queries, and devtools. */
 export interface QueryEvent {
@@ -59,6 +67,55 @@ export class Connections {
   /** The connection by name (default: `default`, from `DB_CONNECTION`). Typed by `Tables` unless given its own. */
   get<DB = Tables>(name = 'default'): Kysely<DB> {
     return this.#instance(name).db as Kysely<DB>;
+  }
+
+  /**
+   * Runs `callback` in a transaction — and everything it awaits with it (E107): repositories, the database queue,
+   * in-process event listeners and any `db` of this connection join the transaction on their own, no `using(trx)`
+   * needed. It commits when the callback resolves and rolls back when it throws (rethrowing the error).
+   *
+   * ```ts
+   * const user = await this.#connections.transaction(async () => {
+   *   const user = await this.#users.insert({ … });
+   *   await this.#profiles.insert({ user_id: user.id });
+   *   await this.#queue.dispatch(SendWelcomeMailJob, { userId: user.id });   // a row in the same transaction
+   *   return user;
+   * });
+   * ```
+   *
+   * - **Nested** `transaction()` calls (here, in a repository, in Kysely's own `db.transaction()`) become savepoints:
+   *   an inner rollback keeps the outer writes. One at a time — not several at once in a `Promise.all`.
+   * - **After the commit:** work for the outside world (a job on a non-database queue, a mail) waits for the outermost
+   *   commit with `afterCommit(fn)` and is dropped on a rollback. **Outside:** `outsideTransaction(fn)` for writes that
+   *   must survive a rollback.
+   * - **Await everything.** Work started inside that runs after the transaction finished (an un-awaited promise, a timer)
+   *   throws `TransactionFinishedError` — it never runs outside the transaction by accident.
+   * - The context follows this call chain only (AsyncLocalStorage): other requests and jobs running meanwhile never see
+   *   it. Framework boundaries (work after the response, jobs, the worker) start outside of it.
+   *
+   * `callback` also receives the transaction as a Kysely `Transaction` — for code outside this call chain, or a
+   * repository's `using(trx)`. `isolationLevel` applies to an outermost transaction only.
+   */
+  async transaction<R>(callback: (trx: Transaction<Tables>) => R | PromiseLike<R>, options: TransactionOptions = {}): Promise<R> {
+    const name = options.connection ?? 'default';
+    const { db, driver } = this.#instance(name);
+    if (options.isolationLevel && transactionOf(driver)) {
+      throw new TransactionError(
+        `transaction({ isolationLevel: '${options.isolationLevel}' }) inside another transaction of "${name}" becomes a savepoint, which has no isolation level of its own — set it on the outermost transaction.`,
+      );
+    }
+    return driver.exclusive(() =>
+      runTransaction(driver, name, () => {
+        const builder = options.isolationLevel ? db.transaction().setIsolationLevel(options.isolationLevel) : db.transaction();
+        return builder.execute(async (trx) => callback(trx as Transaction<Tables>));
+      }),
+    );
+  }
+
+  /** Whether the current call chain runs inside a `transaction()` of this connection (E107). */
+  inTransaction(name = 'default'): boolean {
+    const instance = this.#instances.get(name);
+    return instance !== undefined && transactionOf(instance.driver) !== undefined;
   }
 
   /**

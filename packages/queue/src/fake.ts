@@ -1,6 +1,6 @@
 import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
-import { Clock, Logger, type Container } from '@bespokecore/core';
+import { afterCommit, Clock, inTransaction, Logger, type Container } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob } from './driver.ts';
@@ -21,7 +21,7 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
   readonly connection: string | undefined;
   /** Seconds. */
   readonly delay: number;
-  /** Dispatched through `queue.using(trx)`. */
+  /** Dispatched inside a transaction — `connections.transaction()` (recorded with its commit) or `queue.using(trx)`. */
   readonly inTransaction: boolean;
 }
 
@@ -153,14 +153,18 @@ export class QueueFake implements Queue {
     const delay = delaySeconds(options.delay);
     // Checked like a real dispatch — registered, JSON, the schema — before any is recorded.
     const records = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload)));
-    const ids: string[] = [];
-    for (const [index, { record, serialized }] of records.entries()) {
-      const [job, payload] = jobs[index]!;
-      owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delay, inTransaction: this.#inTransaction });
-      await owner.#memory().push(options.queue ?? 'default', serialized, delay);
-      ids.push(record.uuid);
-    }
-    return ids;
+    const ambient = !this.#inTransaction && inTransaction();
+    const record = async () => {
+      for (const [index, { record, serialized }] of records.entries()) {
+        const [job, payload] = jobs[index]!;
+        owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delay, inTransaction: this.#inTransaction || ambient });
+        await owner.#memory().push(options.queue ?? 'default', serialized, delay);
+      }
+    };
+    // Like the database queue (E85, E107): a job dispatched inside a transaction exists once it commits, never after a rollback.
+    if (ambient) await afterCommit(record);
+    else await record();
+    return records.map(({ record }) => record.uuid);
   }
 
   #summary(): string {

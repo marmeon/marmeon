@@ -41,6 +41,12 @@ export interface QueueDriver {
   size(queue: string): Promise<number>;
   /** Drivers that keep jobs in the database: the same driver writing through a transaction (E85). */
   using?(transaction: Kysely<any>): QueueDriver;
+  /**
+   * Drivers that keep jobs in the database: whether a push now writes into the ambient transaction of the current call
+   * chain (E107) — then the job commits or rolls back with it. When this is missing or false, a dispatch inside a
+   * transaction waits for its commit (`afterCommit`) and is dropped on a rollback.
+   */
+  joinsTransaction?(): Promise<boolean>;
 }
 
 /**

@@ -1,4 +1,5 @@
-import { CompiledQuery, type DatabaseConnection, type Dialect, type Driver, type TransactionSettings } from 'kysely';
+import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@bespokecore/core';
+import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type TransactionSettings } from 'kysely';
 import type { SchemaMetadata } from './metadata.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
@@ -22,16 +23,25 @@ export interface DriverContext {
  *   beginning another one starts a savepoint instead (commit → release, rollback → rollback to it) —
  *   Laravel's transaction level. That is what lets a test wrap everything in one transaction
  *   ({@link BespokeDriver.isolate}) while the code under test opens its own.
+ * - **The ambient transaction (E107).** Inside `connections.transaction(callback)` every query of this
+ *   connection — from a repository, the queue, any `db` — gets the transaction's connection; a transaction
+ *   opened inside it becomes a savepoint on it. After the transaction finished, work of its call chain is
+ *   refused ({@link TransactionFinishedError}) instead of running outside it.
+ * - **One connection at a time on SQLite** — Kysely's lock, moved here so a query inside the transaction
+ *   does not wait for the transaction that holds the lock (the hang W3 warned about).
  * - **Connection failures say which connection** failed and where it points.
  * - **Schema metadata is loaded on the connection being handed out** — never through the pool,
  *   which a transaction may be holding.
  */
 export function withBespokeDriver(dialect: Dialect, context: DriverContext): { dialect: Dialect; driver: BespokeDriver } {
-  const driver = new BespokeDriver(dialect.createDriver(), context);
+  const adapter = dialect.createAdapter();
+  const driver = new BespokeDriver(dialect.createDriver(), context, { single: adapter.supportsMultipleConnections === false });
   return {
     driver,
     dialect: {
-      createAdapter: () => dialect.createAdapter(),
+      // Kysely would lock single-connection dialects (SQLite) around every connection it hands out — before asking the
+      // driver, so a query inside a transaction would wait for the transaction itself. The driver locks instead.
+      createAdapter: () => multipleConnections(adapter),
       createQueryCompiler: () => dialect.createQueryCompiler(),
       createIntrospector: (db) => dialect.createIntrospector(db),
       createDriver: () => driver,
@@ -47,10 +57,21 @@ export class BespokeDriver implements Driver {
   #init: Promise<void> | undefined;
   /** While isolated: the one connection every query uses, inside a transaction that is rolled back later. */
   #pinned: DatabaseConnection | undefined;
+  /** The dialect has one physical connection (SQLite): one user at a time, by {@link #lock}. */
+  readonly #single: boolean;
+  readonly #lock = new ConnectionLock();
+  /** While isolated on a dialect with several connections: ambient transactions take turns on the pinned connection. */
+  readonly #turns = new ConnectionLock();
+  /**
+   * Connections bound to an ambient transaction, with how many hold them: the transaction itself and each query
+   * running inside it. The last release really releases (and unlocks) it.
+   */
+  readonly #holders = new Map<DatabaseConnection, number>();
 
-  constructor(driver: Driver, context: DriverContext) {
+  constructor(driver: Driver, context: DriverContext, options: { single?: boolean } = {}) {
     this.#driver = driver;
     this.#context = context;
+    this.#single = options.single ?? false;
   }
 
   init(options?: Parameters<Driver['init']>[0]): Promise<void> {
@@ -63,19 +84,95 @@ export class BespokeDriver implements Driver {
   }
 
   async acquireConnection(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
-    const connection = this.#pinned ?? (await this.#connecting(() => this.#driver.acquireConnection(options)));
+    // Throws when this call chain's transaction has finished: never a silent fallback to a fresh connection.
+    const frame = transactionOf(this);
+    if (frame) return frame.resource === undefined ? this.#begin(frame, options) : this.#join(frame.resource as DatabaseConnection);
+    const left = leftTransactionOf(this);
+    if (left && (this.#single || this.#pinned)) {
+      throw new TransactionError(
+        `outsideTransaction() cannot reach the database connection "${this.#context.name}" while the transaction it stepped out of is open: ` +
+          `the connection has a single physical connection (${this.#pinned ? "a test's isolated connection" : 'SQLite'}), which that transaction holds — ` +
+          'the work would wait for it forever. Do it after the transaction instead (catch the error, record, rethrow).',
+      );
+    }
+    return this.#acquire(options);
+  }
+
+  async releaseConnection(connection: DatabaseConnection, options?: Parameters<Driver['releaseConnection']>[1]): Promise<void> {
+    const holders = this.#holders.get(connection);
+    if (holders !== undefined) {
+      if (holders > 1) {
+        this.#holders.set(connection, holders - 1);
+        return;
+      }
+      this.#holders.delete(connection);
+    }
+    try {
+      if (connection !== this.#pinned) await this.#driver.releaseConnection(connection, options);
+    } finally {
+      if (this.#single) this.#lock.release();
+    }
+  }
+
+  /**
+   * @internal — runs an outermost ambient transaction. While isolated on a dialect with several connections (a test on
+   * Postgres), concurrent transactions would share the pinned connection and interleave their savepoints — they take
+   * turns instead. (On SQLite the connection lock already makes them.)
+   */
+  async exclusive<R>(transaction: () => Promise<R>): Promise<R> {
+    if (!this.#pinned || this.#single || transactionOf(this)) return transaction();
+    await this.#turns.obtain();
+    try {
+      return await transaction();
+    } finally {
+      this.#turns.release();
+    }
+  }
+
+  /** A connection of its own (locked on SQLite; the pinned one while isolated), with fresh schema metadata. */
+  async #acquire(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+    if (this.#single) await this.#lock.obtain();
+    let connection: DatabaseConnection;
+    try {
+      connection = this.#pinned ?? (await this.#connecting(() => this.#driver.acquireConnection(options)));
+    } catch (error) {
+      if (this.#single) this.#lock.release();
+      throw error;
+    }
     try {
       await this.#context.metadata?.refresh(connection);
     } catch (error) {
-      if (connection !== this.#pinned) await this.#driver.releaseConnection(connection);
+      await this.releaseConnection(connection);
       throw error;
     }
     return connection;
   }
 
-  releaseConnection(connection: DatabaseConnection, options?: Parameters<Driver['releaseConnection']>[1]): Promise<void> {
-    if (connection === this.#pinned) return Promise.resolve();
-    return this.#driver.releaseConnection(connection, options);
+  /**
+   * The connection a new ambient transaction begins on: inside another transaction of this connection, that one's
+   * (the transaction becomes a savepoint); otherwise a connection of its own, held until the transaction releases it.
+   */
+  async #begin(frame: TransactionFrame, options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+    let outer = frame.parent;
+    while (outer && outer.owner !== this) outer = outer.parent;
+    if (outer) {
+      frame.resource = outer.resource;
+      return this.#join(outer.resource as DatabaseConnection);
+    }
+    const connection = await this.#acquire(options);
+    frame.resource = connection;
+    // Isolated on a dialect with several connections, everyone shares the pinned one without a lock: nothing to count.
+    if (this.#single || connection !== this.#pinned) this.#holders.set(connection, 1);
+    return connection;
+  }
+
+  /** The transaction's connection, for a query (or a savepoint) inside it. */
+  async #join(connection: DatabaseConnection): Promise<DatabaseConnection> {
+    await this.#context.metadata?.refresh(connection);
+    // Counted once it is handed out (a failed refresh is never released).
+    const holders = this.#holders.get(connection);
+    if (holders !== undefined) this.#holders.set(connection, holders + 1);
+    return connection;
   }
 
   /**
@@ -165,3 +262,32 @@ export class BespokeDriver implements Driver {
 }
 
 const savepoint = (depth: number) => `bespoke_savepoint_${depth}`;
+
+/** The adapter as it is, but claiming several connections — so Kysely leaves the locking to {@link BespokeDriver}. */
+function multipleConnections(adapter: DialectAdapter): DialectAdapter {
+  return new Proxy(adapter, {
+    get(target, property) {
+      if (property === 'supportsMultipleConnections') return true;
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+/** One user of a single-connection dialect at a time (Kysely's `ConnectionMutex`). */
+class ConnectionLock {
+  #held: Promise<void> | undefined;
+  #release: (() => void) | undefined;
+
+  async obtain(): Promise<void> {
+    while (this.#held) await this.#held;
+    this.#held = new Promise((resolve) => (this.#release = resolve));
+  }
+
+  release(): void {
+    const release = this.#release;
+    this.#held = undefined;
+    this.#release = undefined;
+    release?.();
+  }
+}

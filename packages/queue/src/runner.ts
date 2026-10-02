@@ -1,4 +1,4 @@
-import { durationToMilliseconds, runWithJob, type Container, type Duration, type StandardIssue } from '@bespokecore/core';
+import { durationToMilliseconds, outsideTransaction, runWithJob, type Container, type Duration, type StandardIssue } from '@bespokecore/core';
 import type { JobRecord } from './driver.ts';
 import type { JobClass, JobContext } from './job.ts';
 import { QueueError, type JobRegistry } from './registry.ts';
@@ -146,12 +146,13 @@ export class JobRunner {
         requested ??= { kind: 'fail', reason };
       },
     };
-    await runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt }, async () => {
+    // A job is a boundary (E107): it never runs inside a transaction that was open where it was dispatched or worked on.
+    await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt }, async () => {
       // One scope per attempt, like a request: scoped services (a Translator, a unit of work) start fresh each time.
       const scope = this.#container.createScope();
       const instance = scope.make(job as never) as { handle(payload: unknown, job: JobContext): unknown };
       await instance.handle(payload, context);
-    });
+    }));
     return requested;
   }
 }

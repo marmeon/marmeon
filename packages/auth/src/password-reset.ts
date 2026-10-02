@@ -55,9 +55,10 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
     const existing = await db.selectFrom(PASSWORD_RESET_TABLE).select('created_at').where('email', '=', email).executeTakeFirst();
     if (existing && Date.now() - new Date(existing.created_at).getTime() < throttleSeconds * 1000) return undefined;
     const value = randomBytes(32).toString('base64url');
-    await db.transaction().execute(async (trx) => {
-      await trx.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
-      await trx.insertInto(PASSWORD_RESET_TABLE).values({ email, token_hash: sha256(value), created_at: new Date() }).execute();
+    // The ambient transaction (E107): `db` joins it — and inside a caller's transaction this becomes a savepoint.
+    await this.#connections.transaction(async () => {
+      await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
+      await db.insertInto(PASSWORD_RESET_TABLE).values({ email, token_hash: sha256(value), created_at: new Date() }).execute();
     });
     return value;
   }

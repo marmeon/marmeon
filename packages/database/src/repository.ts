@@ -67,6 +67,8 @@ export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never 
  */
 export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<Selectable<DB[T]>> {
   readonly #db: Kysely<DB>;
+  /** The app's connections, for `transaction()`. */
+  readonly #connections: Connections | undefined;
 
   constructor(connections: Connections) {
     const statics = this.#statics();
@@ -74,6 +76,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       throw new TypeError(`${new.target.name} needs its table as a runtime value: static table = '…' as const;`);
     }
     this.#db = connections.get<DB>(statics.connection);
+    // Absent for a repository bound with `using(…)` (its stand-in only hands out the transaction).
+    this.#connections = typeof (connections as Partial<Connections>).transaction === 'function' ? connections : undefined;
   }
 
   /** The table name (from `static table`). */
@@ -96,13 +100,14 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * The same repository, working inside `trx` — for transactions over several repositories:
+   * The same repository, working inside `trx` — explicitly. Inside `connections.transaction(…)` a repository joins the
+   * transaction by itself (E107); `using(trx)` is for transactions you control yourself (Kysely's
+   * `db.startTransaction()`, a second connection at the same time, code outside the transaction's call chain):
    *
    * ```ts
-   * await db.transaction().execute(async (trx) => {
-   *   const user = await this.#users.using(trx).insert({ … });
-   *   await this.#activity.using(trx).record(user.id);
-   * });
+   * const trx = await db.startTransaction().execute();
+   * await this.#users.using(trx).insert({ … });
+   * await trx.commit().execute();
    * ```
    */
   using(trx: Transaction<DB> | Kysely<DB>): this {
@@ -119,12 +124,16 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * Runs `callback` in a transaction, with this repository bound to it. Inside another transaction
-   * (`using(trx)`) it becomes a savepoint — Kysely itself refuses a transaction in a transaction.
+   * Runs `callback` in a transaction of the repository's connection — `connections.transaction()` (E107): everything
+   * awaited inside joins it, other repositories too. Inside another transaction it becomes a savepoint (also for a
+   * repository bound with `using(trx)` — Kysely itself refuses a transaction in a transaction).
    */
   async transaction<R>(callback: (repository: this) => Promise<R>): Promise<R> {
     const db = this.db;
-    if (!db.isTransaction) return db.transaction().execute((trx) => callback(this.using(trx)));
+    if (!db.isTransaction) {
+      if (this.#connections) return this.#connections.transaction(() => callback(this), this.#statics().connection ? { connection: this.#statics().connection! } : {});
+      return db.transaction().execute((trx) => callback(this.using(trx)));
+    }
     const name = sql.raw(`repository_savepoint_${++savepoints}`);
     await sql`savepoint ${name}`.execute(db);
     try {

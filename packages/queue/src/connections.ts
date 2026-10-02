@@ -1,7 +1,7 @@
 import { Clock, Logger, type Container } from '@bespokecore/core';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, QueueDriver } from './driver.ts';
-import { DatabaseFailedJobStore, DatabaseQueueDriver } from './drivers/database.ts';
+import { DatabaseFailedJobStore, DatabaseQueueDriver, type DatabaseQueueConnection } from './drivers/database.ts';
 import { NullFailedJobStore } from './drivers/memory.ts';
 import type { QueueConnectionOptions } from './queue.ts';
 import { JobRegistry, QueueSetupError, timeoutOf } from './registry.ts';
@@ -109,10 +109,10 @@ export class QueueConnections {
     });
   }
 
-  async #database(connection: string, what?: string): Promise<{ db: import('@bespokecore/database').Kysely<any>; driver: 'sqlite' | 'pgsql' }> {
+  async #database(connection: string, what?: string): Promise<DatabaseQueueConnection> {
     const { Connections } = await importDatabase(what);
     const connections = this.#container.make(Connections);
-    return { db: connections.get(connection), driver: connections.options(connection).driver };
+    return { db: connections.get(connection), driver: connections.options(connection).driver, inTransaction: () => connections.inTransaction(connection) };
   }
 }
 

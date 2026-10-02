@@ -10,6 +10,8 @@ export const FAILED_JOBS_TABLE = 'failed_jobs';
 export interface DatabaseQueueConnection {
   readonly db: Kysely<any>;
   readonly driver: 'sqlite' | 'pgsql';
+  /** Whether the current call chain runs inside a `transaction()` of this connection (E107) — `db` then writes into it. */
+  readonly inTransaction?: () => boolean;
 }
 
 type Sql = (typeof import('@bespokecore/database'))['sql'];
@@ -33,8 +35,8 @@ async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { 
  * both only while the claim is still this worker's (`attempts` unchanged), so a worker whose claim expired cannot
  * touch the job another worker holds now.
  *
- * Writing through a transaction (`queue.using(trx)`) makes a dispatch part of it (E85): visible to workers with the
- * commit, gone with a rollback.
+ * A dispatch inside `connections.transaction()` on the same connection is part of that transaction (E85, E107): visible
+ * to workers with the commit, gone with a rollback — as is one through `queue.using(trx)`.
  */
 export class DatabaseQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<DatabaseQueueConnection>;
@@ -55,7 +57,11 @@ export class DatabaseQueueDriver implements QueueDriver {
   /** The same driver, writing through `db` — a transaction: its dispatches commit or roll back with it. */
   using(db: Kysely<any>): DatabaseQueueDriver {
     const outer = this.#connection;
-    return new DatabaseQueueDriver(async () => ({ db, driver: (await outer()).driver }), { retryAfter: this.#retryAfter, clock: this.#clock });
+    return new DatabaseQueueDriver(async () => ({ db, driver: (await outer()).driver, inTransaction: () => true }), { retryAfter: this.#retryAfter, clock: this.#clock });
+  }
+
+  async joinsTransaction(): Promise<boolean> {
+    return (await this.#connection()).inTransaction?.() ?? false;
   }
 
   async push(queue: string, payload: string, delay: number): Promise<string> {

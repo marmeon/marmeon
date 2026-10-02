@@ -21,6 +21,18 @@ export type { EventClass, Listener, ListenerBinding, ListenerLike } from './even
 export type { LogContext } from './logger.ts';
 export { currentJob, currentLogContext, currentRequest, runWithJob, runWithRequest } from './request-context.ts';
 export type { JobInfo, RequestInfo } from './request-context.ts';
+export {
+  afterCommit,
+  currentTransaction,
+  inTransaction,
+  leftTransactionOf,
+  outsideTransaction,
+  runTransaction,
+  TransactionError,
+  TransactionFinishedError,
+  TransactionFrame,
+  transactionOf,
+} from './transaction-context.ts';
 export { describeError, redact, REDACTED_KEYS, redactText } from './redact.ts';
 export { ConfigError, defineConfig, loadEnv, resolveConfig } from './config/config.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';

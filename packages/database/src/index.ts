@@ -4,7 +4,10 @@
 export { sql } from 'kysely';
 export type { Insertable, Kysely, Selectable, Transaction, Updateable } from 'kysely';
 export { Connections, Database } from './connections.ts';
-export type { QueryEvent } from './connections.ts';
+export type { QueryEvent, TransactionOptions } from './connections.ts';
+// The ambient transaction context (E107) lives in core — the queue, events and the HTTP kernel use it without depending
+// on the database; apps import it from here, next to `connections.transaction()`.
+export { afterCommit, inTransaction, outsideTransaction, TransactionError, TransactionFinishedError } from '@bespokecore/core';
 export type {
   Decimal,
   ExposedTables,

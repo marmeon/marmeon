@@ -1,4 +1,4 @@
-import { token, type Clock, type Logger } from '@bespokecore/core';
+import { afterCommit, inTransaction, token, type Clock, type Logger } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
 import type { JobRecord, QueueDriver } from './driver.ts';
 import type { CheckJob, DispatchOptions, JobClass, JobInput, PendingJob } from './job.ts';
@@ -18,6 +18,11 @@ export type PendingJobs<J extends readonly JobClass[]> = { readonly [K in keyof 
  *
  * The payload is checked against the job's `static schema` here (a mismatch is a type error, and at runtime a
  * {@link JobPayloadError}) and again before the job runs. Delivery is at-least-once (E85).
+ *
+ * **Inside a transaction** (`connections.transaction()`, E107) a job is queued only if the transaction commits: the
+ * `database` driver writes it into the same transaction; every other connection (`sync`, later `redis`) holds it until
+ * the outermost commit — and drops it on a rollback. A `sync` job then runs after the commit, outside the transaction;
+ * its error is thrown by the `transaction()` call.
  */
 export interface Queue {
   /** Queues one job. Returns its id (stable over retries). */
@@ -25,14 +30,13 @@ export interface Queue {
   /** Queues several jobs at once: `bulk([[SendWelcomeMailJob, { userId: 1 }], [SendWelcomeMailJob, { userId: 2 }]])`. Returns their ids. */
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: DispatchOptions): Promise<string[]>;
   /**
-   * The queue, writing through a database transaction (E85): jobs dispatched through it are part of the transaction —
-   * visible to workers with the commit, gone with a rollback. Like `repository.using(trx)`:
+   * The queue, writing through a database transaction you control yourself (E85) — like `repository.using(trx)`. Inside
+   * `connections.transaction()` no `using()` is needed: a dispatch joins the transaction by itself (E107).
    *
    * ```ts
-   * await db.transaction().execute(async (trx) => {
-   *   const user = await this.#users.using(trx).insert({ … });
-   *   await this.#queue.using(trx).dispatch(SendWelcomeMailJob, { userId: user.id });
-   * });
+   * const trx = await db.startTransaction().execute();
+   * await this.#queue.using(trx).dispatch(SendWelcomeMailJob, { userId: user.id });
+   * await trx.commit().execute();
    * ```
    */
   using(transaction: Kysely<any>): Queue;
@@ -106,14 +110,21 @@ export class QueueManager implements Queue {
     // Every payload is checked before the first is queued: a bad one queues none.
     const records = await Promise.all(jobs.map(([job, payload]) => prepareRecord(this.#deps, job, payload)));
 
-    if (connection.driver === 'sync') return this.#runNow(records, queue, name);
+    const ids = records.map(({ record }) => record.uuid);
+    if (connection.driver === 'sync') {
+      // Held until the commit inside a transaction (E107): a sync job must never act on data that is rolled back.
+      await afterCommit(() => this.#runNow(records, queue, name));
+      return ids;
+    }
 
     const driver = this.#driver(name);
-    const ids: string[] = [];
-    for (const { record, serialized } of records) {
-      await driver.push(queue, serialized, delay);
-      ids.push(record.uuid);
-    }
+    const push = async () => {
+      for (const { serialized } of records) await driver.push(queue, serialized, delay);
+    };
+    // Explicitly through a transaction (`using(trx)`), or joining the ambient one: part of it. Inside a transaction the
+    // driver cannot join (another database connection, redis): after the commit.
+    if (this.#transaction === undefined && inTransaction() && !(await driver.joinsTransaction?.())) await afterCommit(push);
+    else await push();
     return ids;
   }
 
