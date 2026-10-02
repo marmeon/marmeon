@@ -18,10 +18,13 @@ export const loadPrefetch = (): Promise<Feature<Prefetches>> => import('./featur
 
 /**
  * Fetches the page of `url` ahead (a hovered link, `router.prefetch`), loading the prefetch code first the first time (E74):
- * it is there while the pointer rests on the link, before the click. A chunk that cannot load fetches nothing — the visit
- * asks the server, as for any prefetch that fails.
+ * it is there while the pointer rests on the link, before the click. Once loaded, it prefetches at once — a press on the link
+ * finds the page fetched while hovering before its click takes it. A chunk that cannot load fetches nothing: the visit asks
+ * the server, as for any prefetch that fails.
  */
-export function prefetchWith(navigator: Pick<Navigator, 'load'>, url: string, options?: PrefetchOptions): Promise<void> {
+export function prefetchWith(navigator: Pick<Navigator, 'load' | 'loaded'>, url: string, options?: PrefetchOptions): Promise<void> {
+  const loaded = navigator.loaded(loadPrefetch);
+  if (loaded) return loaded.prefetch(url, options);
   return navigator.load(loadPrefetch).then((feature) => feature.prefetch(url, options), () => undefined);
 }
 

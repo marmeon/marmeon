@@ -252,6 +252,8 @@ export class Navigator implements LayerHost {
   readonly #orders = new WeakMap<object, number>();
   /** The order of the feature whose setup runs (`use`) — a hook registered outside a setup comes last. */
   #order = Infinity;
+  /** The features loaded on first use (`load`), by their loader — attached from then on without waiting. */
+  readonly #loaded = new Map<() => Promise<Feature>, Feature>();
   /** What the history entries keep in slots, by key — emptied when memory lets go of an entry, and when the document is left. */
   readonly #entries = new Map<string, Map<Slot<unknown>, unknown>>();
   /** What the document keeps in slots — emptied when it is left. */
@@ -385,7 +387,18 @@ export class Navigator implements LayerHost {
    * then it is attached like `use` (idempotent). Rejects when the chunk cannot load (offline, gone after a deployment).
    */
   async load<API>(loader: () => Promise<Feature<API>>): Promise<API> {
-    return this.use(await loader());
+    const feature = await loader();
+    this.#loaded.set(loader, feature);
+    return this.use(feature);
+  }
+
+  /**
+   * A feature `load` loaded already — attached, its API at once (no waiting for a promise: what a hovered link does next must
+   * happen before the click it leads to); undefined before.
+   */
+  loaded<API>(loader: () => Promise<Feature<API>>): API | undefined {
+    const feature = this.#loaded.get(loader);
+    return feature && this.use(feature as Feature<API>);
   }
 
   /** The page on screen — under the layers, when some are open. */

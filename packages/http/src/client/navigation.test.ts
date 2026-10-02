@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
+import { prefetchWith } from './lazy.ts';
 
 describe('Navigator — the history without props (E36)', () => {
   it('keeps only { component, url, scroll, key, index } in history.state — never the props', async () => {
@@ -685,6 +686,26 @@ describe('Navigator — prefetching', () => {
     await visiting;
     expect(visible().props).toEqual({ name: 'Grace' });
     expect(win.requests).toHaveLength(1);
+  });
+
+  it('counter-check: a press on a link fetched ahead asks nothing again — once loaded, the prefetch code prefetches at once', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = (url) => pageResponse(page(new URL(url).pathname, { name: 'Grace' }));
+    // The page takes a moment to render (React commits later): the visit is under way a while after it took the page.
+    const rendered = gate();
+    const navigator = new Navigator({ initialPage: page('/users/1'), window: win, render: () => rendered.opened, features: [] });
+    navigator.start();
+    await prefetchWith(navigator, '/users/2'); // hovered: the code loads, the page comes
+    // Pressed (the link prefetches on mousedown, for touch screens), then clicked: the press must find the page fetched ahead
+    // before the click's visit takes it — else it fetches it once more, for nobody.
+    const pressed = prefetchWith(navigator, '/users/2');
+    const visiting = navigator.visit('/users/2');
+    await pressed;
+    rendered.open();
+    await visiting;
+    expect(navigator.page.url).toBe('/users/2');
+    expect(win.requests.map(purpose)).toEqual(['prefetch']);
+    expect(navigator.use(prefetch).size).toBe(0);
   });
 
   it('counter-check: never prefetches anything but a GET — nor another site', async () => {
