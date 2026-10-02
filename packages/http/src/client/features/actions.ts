@@ -1,81 +1,42 @@
 /**
- * Actions (E59), live validations (E62) and route forms under way, as a feature: what actions need of the navigator (its
- * window, the document's state, the request of a write, the confirmation, the flash messages), a form's optimistic patches
- * and its listing while it is sent. What is under way lives in slots of the document — aborted and gone when it is left.
+ * Actions (E59) and route forms under way, as a feature: actions with what they need of the navigator (`actionHost`), and
+ * the listing of what is under way — actions, and the visits of route forms (`visit({ name })`) — for ghost rows (E59 model
+ * 2) and `isPending(name)`. What is under way lives in slots of the document: aborted and gone when it is left. Attached
+ * where it is used (`useAction`, `usePendingSubmissions`, E70); a form's optimistic patches are the `optimistic` feature's.
  */
-import { Actions, applyPatches, rollBack, Submissions, type ActionHost } from '../action.ts';
-import type { FeatureHost } from '../core.ts';
-import { defineFeature, slot, type PendingVisit, type VisitPart } from '../feature.ts';
-import { sendLiveValidation, type LiveValidationOutcome, type LiveValidationRequest } from '../live-validation.ts';
-import { listOf } from '../optimistic.ts';
-import { buildRequest } from '../request.ts';
+import { Actions, Submissions } from '../action.ts';
+import { actionHost } from '../action-host.ts';
+import { defineFeature, slot } from '../feature.ts';
 
-/** The actions and route forms under way — what ghost rows are made of — a slot of the document. */
-export const SUBMISSIONS = slot('submissions', () => new Submissions());
-
-type ActionsCore = Pick<FeatureHost, 'navigator' | 'window' | 'left' | 'leave' | 'flash' | 'fire'>;
-
-/** The host of one navigator's actions. */
-export function actionHost(core: ActionsCore): ActionHost {
-  return {
-    get left() {
-      return core.left;
-    },
-    get href() {
-      return core.window.location.href;
-    },
-    fetch: (url, init) => core.window.fetch(url, init),
-    leaveFor: (location) => {
-      core.leave();
-      core.window.location.assign(location);
-    },
-    // A write changed what the server shows: pages fetched ahead are out of date.
-    changed: () => core.fire('write'),
-    visit: (url) => core.navigator.visit(url),
-    request: (target, method, data) => buildRequest(target, method, data),
-    confirm: (confirm) => core.navigator.confirm(confirm),
-    flash: (messages) => core.flash.deliver(messages),
-  };
-}
-
-/** What adapters use of actions: run one, validate a form, follow what is under way. */
+/** What adapters use of actions: run one, follow what is under way. */
 export interface ActionsFeature {
   run: Actions['run'];
-  validate(url: string, request: LiveValidationRequest): Promise<LiveValidationOutcome>;
   /** The submissions under way (the document's — a new one after it was left). */
   submissions(): Submissions;
 }
 
-/** A form's optimistic patches (E59) and its listing as a submission while it is under way — gone when it ends. */
-function formPart({ options, method, url }: PendingVisit, submissions: Submissions): VisitPart {
-  const applied = applyPatches(listOf(options.optimistic));
-  const untrack = options.name !== undefined && method !== 'get' ? submissions.add({ name: options.name, method, url, input: options.data }) : undefined;
-  return {
-    // The answer replaces what the patches showed — in the same render (the server's props then, or its errors).
-    landed: () => {
-      for (const [target, ids] of applied) target.settle(ids, false, { quiet: true });
-    },
-    // Failed, cancelled, or the browser took over: nothing of the patches stays.
-    end: () => {
-      rollBack(applied);
-      untrack?.();
-    },
-  };
-}
-
 export const actions = defineFeature('actions', (host): ActionsFeature => {
   const actionsHost = actionHost(host);
-  const submissions = () => host.document(SUBMISSIONS);
+  // The actions and route forms under way — a slot of the document. Whether one of a route is under way is `isPending`'s too.
+  const listed = slot('submissions', () => {
+    const list = new Submissions();
+    list.subscribe(() => host.pendingChanged());
+    return list;
+  });
+  const submissions = () => host.document(listed);
   // Under way: aborted when the document is left (signed out — their answers are not for whoever comes next).
   const running = slot(
     'actions',
     () => new Actions(actionsHost, submissions()),
     (under) => under.abortAll(),
   );
-  host.on('start', (visit) => formPart(visit, submissions()));
+  // A route form is listed while its visit is under way, by its name (`usePendingSubmissions(name)`: ghost rows).
+  host.on('start', ({ options, method, url }) =>
+    options.name !== undefined && method !== 'get' ? { end: submissions().add({ name: options.name, method, url, input: options.data }) } : undefined,
+  );
+  host.on('pending', (name) => submissions().list.some((submission) => submission.name === name) || undefined);
   return {
     run: (url, options) => host.document(running).run(url, options),
-    validate: (url, request) => sendLiveValidation(actionsHost, url, request),
     submissions,
   };
 });

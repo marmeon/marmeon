@@ -139,6 +139,8 @@ export interface FeatureHost {
   fetchPage(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<PageObject | undefined>;
   /** Fires the flash messages that arrived (each once). */
   flushFlash(): void;
+  /** What a feature has under way changed (`pending` hook): who follows `navigator.visiting` and `isPending` reads again. */
+  pendingChanged(): void;
   /** A visit — of the page (`from` undefined) or of a layer. */
   visit(from: LayerControl | undefined, url: string, options: VisitOptions): Promise<PageObject | undefined>;
   /** Shows `page` as the page: a new history entry, or the one on screen. */

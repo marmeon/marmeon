@@ -153,6 +153,8 @@ export interface FeatureHooks {
   restore(state: HistoryState): Promise<void> | void;
   /** What a view declares to reload when Back/Forward shows it from memory (E58). */
   declared(component: string): Promise<ReloadSpec | undefined> | void;
+  /** Whether a request of route `name` a feature has under way (an action) is pending — `true`, or nothing (E64). */
+  pending(name: string): true | void;
 
   // Events.
   /** A write (a non-GET visit or action) changed what the server shows. */

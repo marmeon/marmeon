@@ -37,6 +37,10 @@ export type {
   VisitProgress,
   VersionChange,
 } from './navigation.ts';
+export { optimistic, PagePatches } from './features/optimistic.ts';
+export { Actions, Submissions } from './action.ts';
+export { actions } from './features/actions.ts';
+export type { ActionsFeature } from './features/actions.ts';
 export { defineFeature, slot } from './feature.ts';
 export type { EntryStack, Feature, FeatureHook, FeatureHooks, FeatureHost, PendingVisit, Slot, VisitPart } from './feature.ts';
 export type { PositionCheck } from './history.ts';
@@ -70,9 +74,8 @@ export { assertQueryPage, linkQuery, pageQuery, QueryState, queryUrl, withoutDef
 export { queryState } from './features/query-state.ts';
 export type { QueryStateFeature } from './features/query-state.ts';
 export type { QueryStateOptions, QueryUpdate } from './query-state.ts';
-export { Actions, Submissions } from './action.ts';
 export type { ActionException, ActionHost, ActionMethod, ActionOptions, ActionOutcome, Submission } from './action.ts';
-export { PatchQueue, Revalidations } from './optimistic.ts';
+export { applyPatches, PatchQueue, Revalidations, rollBack } from './optimistic.ts';
 export { DEFAULT_LIVE_VALIDATION_DEBOUNCE, isSensitiveField, LiveValidation, liveValidationData, SENSITIVE_FIELD, sendLiveValidation } from './live-validation.ts';
 export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';
 export type { OptimisticUpdate, PatchTarget, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';

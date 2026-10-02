@@ -3,7 +3,7 @@ import { ACTION_HEADER, ACTION_REDIRECT_HEADER, FLASH_HEADER, FLASH_WAITING_HEAD
 import type { ConfirmRequest } from './confirm.ts';
 import { dirtyPaths, isDirtyPath } from './forms.ts';
 import { isCurrentLink } from './links.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
 
 /** Flash, state attributes, the navigation guard and confirm in the client core (W5b step 7, E60/E64). */
 
@@ -69,7 +69,7 @@ describe('flash messages in the core (E60)', () => {
       if (headers[REGION_HEADER] === 'layer') return pageResponse({ ...page('/users/1/edit', {}, 'user-profile/Edit'), layer: { key: 'edit', base: '/users/1' } });
       return pageResponse(withFlash(page('/users/1'), toast(`reload-${url.length}`, 'Reloaded.')));
     };
-    const outcome = await navigator.action('/users/1/links/2', { method: 'delete' });
+    const outcome = await withActions(navigator).action('/users/1/links/2', { method: 'delete' });
     expect(outcome).toMatchObject({ kind: 'redirect', flash: [{ id: 'action' }] });
     await navigator.visit('/users/1/edit', { layer: true });
     await navigator.layers[0]!.visit('/users/1', { method: 'put', data: {} });
@@ -121,6 +121,24 @@ describe('state attributes in the core (E64)', () => {
     expect(seen).toEqual(['/people', undefined]);
     void navigator.reload({ async: true, only: ['x'] });
     expect(navigator.visiting).toBeUndefined();
+  });
+
+  it('an action of a route is pending too — what the actions feature has under way — and who follows `visiting` hears it', async () => {
+    const { win, navigator } = tab(page('/users/1'));
+    let open!: (response: Response) => void;
+    win.handler = () => new Promise((resolve) => (open = resolve));
+    expect(navigator.isPending('links.destroy')).toBe(false); // no feature has anything under way
+    const { action } = withActions(navigator);
+    let heard = 0;
+    navigator.subscribeVisiting(() => heard++);
+    const removing = action('/users/1/links/1', { method: 'delete', name: 'links.destroy' });
+    expect(navigator.isPending('links.destroy')).toBe(true);
+    expect(navigator.visiting).toBeUndefined(); // an action is no visit
+    expect(heard).toBe(1);
+    open(new Response(null, { status: 204 }));
+    await removing;
+    expect(navigator.isPending('links.destroy')).toBe(false);
+    expect(heard).toBe(2);
   });
 
   it('a link is current for the same URL — or for the routes `activeMatch` names', () => {
@@ -242,11 +260,11 @@ describe('confirm (E64)', () => {
     win.handler = () => pageResponse(page('/users/1'));
     win.confirmAnswer = false;
     expect(await navigator.visit('/users/1/links/1', { method: 'delete', confirm: 'Remove this link?' })).toBeUndefined();
-    expect(await navigator.action('/users/1/links/1', { method: 'delete', confirm: { message: 'Remove?' } })).toEqual({ ok: false, kind: 'cancelled' });
+    expect(await withActions(navigator).action('/users/1/links/1', { method: 'delete', confirm: { message: 'Remove?' } })).toEqual({ ok: false, kind: 'cancelled' });
     expect(win.requests).toEqual([]);
     expect(win.asked).toEqual(['confirm Remove this link?', 'confirm Remove?']);
     win.confirmAnswer = true;
-    await navigator.action('/users/1/links/1', { method: 'delete', confirm: 'Remove?' });
+    await withActions(navigator).action('/users/1/links/1', { method: 'delete', confirm: 'Remove?' });
     expect(win.requests).toHaveLength(1);
   });
 
@@ -254,7 +272,7 @@ describe('confirm (E64)', () => {
     const answers: (string | boolean)[] = ['DELET', true, 'delete', 'DELETE'];
     const { win, navigator } = tab(page('/projects/1'), undefined, { confirm: () => answers.shift()! });
     win.handler = () => pageResponse(page('/projects'));
-    const remove = () => navigator.action('/projects/1', { method: 'delete', confirm: { message: 'Delete the project?', prompt: 'DELETE' } });
+    const remove = () => withActions(navigator).action('/projects/1', { method: 'delete', confirm: { message: 'Delete the project?', prompt: 'DELETE' } });
     for (let attempt = 0; attempt < 3; attempt++) expect(await remove()).toEqual({ ok: false, kind: 'cancelled' });
     expect(win.requests).toEqual([]);
     await remove();

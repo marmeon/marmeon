@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../page.ts';
 import { Navigator } from './navigation.ts';
 import type { RegionOwner } from './region.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
 
 /** A response the test lets through when it says so — to keep requests under way side by side. */
 function gate<T>(): { promise: Promise<T>; open: (value: T) => void } {
@@ -23,7 +23,7 @@ const without = (id: number) => (props: Readonly<Record<string, unknown>>) => {
   return { profile: { ...current, links: current.links.filter((link) => link.id !== id) } };
 };
 
-describe('navigator.action — requests that do not navigate (E59)', () => {
+describe('withActions(navigator).action — requests that do not navigate (E59)', () => {
   it('sends an action: its method, JSON body, the action header, never cached — and changes neither URL nor history', async () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     let init: RequestInit | undefined;
@@ -34,7 +34,7 @@ describe('navigator.action — requests that do not navigate (E59)', () => {
     const { navigator, shown } = boot(win, profile('/users/1', 1, 2));
     const entries = JSON.stringify(win.entries);
 
-    const outcome = await navigator.action('/users/1/links/2', { method: 'delete' });
+    const outcome = await withActions(navigator).action('/users/1/links/2', { method: 'delete' });
 
     expect(outcome).toEqual({ ok: true, kind: 'data', status: 200, data: { deleted: 2 }, flash: [] });
     expect(win.requests).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1/links/2`, method: 'DELETE', headers: expect.objectContaining({ [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' }) })]);
@@ -51,10 +51,10 @@ describe('navigator.action — requests that do not navigate (E59)', () => {
     win.handler = (url) => (url.endsWith('/links') ? new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/1' } }) : pageResponse(profile('/users/1', 1, 3)));
     const { navigator } = boot(win, profile('/users/1', 1));
 
-    expect(await navigator.action('/users/1/links', { data: { label: 'x', url: 'https://x.test' } })).toEqual({ ok: true, kind: 'redirect', redirect: '/users/1', flash: [] });
+    expect(await withActions(navigator).action('/users/1/links', { data: { label: 'x', url: 'https://x.test' } })).toEqual({ ok: true, kind: 'redirect', redirect: '/users/1', flash: [] });
     expect(win.requests).toHaveLength(1);
 
-    await navigator.action('/users/1/links', { data: {}, onRedirect: 'visit' });
+    await withActions(navigator).action('/users/1/links', { data: {}, onRedirect: 'visit' });
     expect(win.requests.map((request) => request.headers[PAGE_HEADER])).toEqual([undefined, undefined, 'true']);
   });
 
@@ -62,18 +62,18 @@ describe('navigator.action — requests that do not navigate (E59)', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     const { navigator } = boot(win, profile('/users/1', 1));
     win.handler = () => invalid({ label: ['The label is required.'] });
-    expect(await navigator.action('/users/1/links', { data: {} })).toEqual({ ok: false, kind: 'invalid', errors: { label: ['The label is required.'] }, message: 'The given data was invalid.' });
+    expect(await withActions(navigator).action('/users/1/links', { data: {} })).toEqual({ ok: false, kind: 'invalid', errors: { label: ['The label is required.'] }, message: 'The given data was invalid.' });
     win.handler = () => json({ message: 'CSRF token mismatch.' }, 419);
-    expect(await navigator.action('/users/1/links', { data: {} })).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 419, message: 'CSRF token mismatch.' } });
+    expect(await withActions(navigator).action('/users/1/links', { data: {} })).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 419, message: 'CSRF token mismatch.' } });
     win.handler = () => new Response('<h1>Bad Gateway</h1>', { status: 502, headers: { 'content-type': 'text/html' } });
-    expect(await navigator.action('/users/1/links', { data: {} })).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 502, message: undefined } });
+    expect(await withActions(navigator).action('/users/1/links', { data: {} })).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 502, message: undefined } });
     win.handler = () => Promise.reject(new TypeError('Failed to fetch'));
-    expect(await navigator.action('/users/1/links', { data: {} })).toMatchObject({ ok: false, kind: 'exception', exception: { type: 'network' } });
+    expect(await withActions(navigator).action('/users/1/links', { data: {} })).toMatchObject({ ok: false, kind: 'exception', exception: { type: 'network' } });
   });
 
   it('refuses another site: the XSRF token never leaves this one', async () => {
     const { navigator } = boot(new FakeWindow(`${ORIGIN}/users/1`), profile());
-    await expect(navigator.action('https://evil.test/steal', { data: {} })).rejects.toThrow(/this site/);
+    await expect(withActions(navigator).action('https://evil.test/steal', { data: {} })).rejects.toThrow(/this site/);
   });
 });
 
@@ -85,7 +85,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const { navigator, visible } = boot(win, profile('/users/1', 1, 2));
     const before = navigator.page;
 
-    const running = navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)) });
+    const running = withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)) });
     await settle();
     expect(linksOf(visible())).toEqual([1]);
     // The props in memory are still the server's: the patch is only over them.
@@ -104,8 +104,8 @@ describe('optimistic patches (E59 model 1)', () => {
     win.handler = (url) => (url.endsWith('/1') && !url.includes('/users/1/links/2') ? first.promise : second.promise);
     const { navigator, visible } = boot(win, profile('/users/1', 1, 2, 3));
 
-    const removeOne = navigator.action('/users/1/links/1', { method: 'delete', optimistic: navigator.optimistic(without(1)) });
-    const removeTwo = navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)) });
+    const removeOne = withActions(navigator).action('/users/1/links/1', { method: 'delete', optimistic: withActions(navigator).optimistic(without(1)) });
+    const removeTwo = withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)) });
     await settle();
     expect(linksOf(visible())).toEqual([3]);
 
@@ -132,8 +132,8 @@ describe('optimistic patches (E59 model 1)', () => {
     };
     const { navigator, visible } = boot(win, profile('/users/1', 1, 2, 3));
 
-    const removeOne = navigator.action('/users/1/links/1', { method: 'delete', optimistic: navigator.optimistic(without(1)), reload: navigator.reloading({ only: ['profile'] }) });
-    const removeTwo = navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)), reload: navigator.reloading({ only: ['profile'] }) });
+    const removeOne = withActions(navigator).action('/users/1/links/1', { method: 'delete', optimistic: withActions(navigator).optimistic(without(1)), reload: withActions(navigator).reloading({ only: ['profile'] }) });
+    const removeTwo = withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)), reload: withActions(navigator).reloading({ only: ['profile'] }) });
     await settle();
     deletes[0]!.open(json({ deleted: 1 }));
     await settle();
@@ -163,7 +163,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => Promise.reject(new TypeError('Failed to fetch'));
     const { navigator, visible } = boot(win, profile('/users/1', 1, 2));
-    const outcome = await navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)) });
+    const outcome = await withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)) });
     expect(outcome).toMatchObject({ kind: 'exception', exception: { type: 'network' } });
     expect(linksOf(visible())).toEqual([1, 2]);
   });
@@ -174,7 +174,7 @@ describe('optimistic patches (E59 model 1)', () => {
     win.handler = (url, init) => (init.method === 'DELETE' ? answer.promise : pageResponse(page('/people', {}, 'user-profile/People')));
     const { navigator, visible } = boot(win, profile('/users/1', 1, 2));
 
-    const running = navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)) });
+    const running = withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)) });
     await settle();
     expect(linksOf(visible())).toEqual([1]);
     // Away while it is under way — then it fails.
@@ -199,7 +199,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => json({ message: 'Unauthenticated.' }, 401);
     const { navigator, visible } = boot(win, profile('/users/1', 1, 2));
-    const outcome = await navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)), reload: navigator.reloading({ only: ['profile'] }) });
+    const outcome = await withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)), reload: withActions(navigator).reloading({ only: ['profile'] }) });
     expect(outcome).toEqual({ ok: false, kind: 'exception', exception: { type: 'server', status: 401, message: 'Unauthenticated.' } });
     expect(linksOf(visible())).toEqual([1, 2]);
     await settle();
@@ -211,7 +211,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const answer = gate<Response>();
     win.handler = (url, init) => (init.method === 'DELETE' ? answer.promise : new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } }));
     const { navigator, shown } = boot(win, profile('/users/1', 1, 2));
-    const running = navigator.action('/users/1/links/2', { method: 'delete', optimistic: navigator.optimistic(without(2)), reload: navigator.reloading({ only: ['profile'] }) });
+    const running = withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: withActions(navigator).optimistic(without(2)), reload: withActions(navigator).reloading({ only: ['profile'] }) });
     await settle();
     // Signing out: the document is left for /login.
     await navigator.visit('/logout', { method: 'post' });
@@ -223,7 +223,7 @@ describe('optimistic patches (E59 model 1)', () => {
     // Nothing lands: no render, no reload, no state in memory (it went with the document).
     expect(shown.length).toBe(renders);
     expect(win.requests.filter((request) => request.method === 'GET')).toEqual([]);
-    expect(navigator.submissions).toEqual([]);
+    expect(withActions(navigator).submissions).toEqual([]);
     expect(navigator.cachedPages).toBe(0);
     expect(linksOf(navigator.page)).toEqual([1, 2]);
   });
@@ -232,7 +232,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const win = new FakeWindow(`${ORIGIN}/users/1`);
     win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
     const { navigator } = boot(win, profile('/users/1', 1));
-    expect(await navigator.action('/logout')).toEqual({ ok: false, kind: 'cancelled' });
+    expect(await withActions(navigator).action('/logout')).toEqual({ ok: false, kind: 'cancelled' });
     expect(win.loads).toEqual(['assign /login']);
     expect(navigator.cachedPages).toBe(0);
   });
@@ -248,7 +248,7 @@ describe('optimistic patches (E59 model 1)', () => {
         void answer.promise.then(resolve);
       });
     const { navigator, visible } = boot(win, page('/posts/1', { liked: false, likes: 1 }, 'posts/Show'));
-    const like = (liked: boolean) => navigator.action('/posts/1/like', { data: { liked }, key: 'like', optimistic: navigator.optimistic((props) => ({ liked, likes: (props.likes as number) + (liked ? 1 : -1) })) });
+    const like = (liked: boolean) => withActions(navigator).action('/posts/1/like', { data: { liked }, key: 'like', optimistic: withActions(navigator).optimistic((props) => ({ liked, likes: (props.likes as number) + (liked ? 1 : -1) })) });
 
     const first = like(true);
     await settle();
@@ -267,7 +267,7 @@ describe('optimistic patches (E59 model 1)', () => {
     await navigator.visit('/users/1/edit', { layer: true });
     const layer = navigator.layers[0]!;
 
-    const running = navigator.action('/users/1/links/2', { method: 'delete', optimistic: layer.optimistic(without(2)) });
+    const running = withActions(navigator).action('/users/1/links/2', { method: 'delete', optimistic: layer.optimistic(without(2)) });
     await settle();
     expect(linksOf(layer.view)).toEqual([1]);
     expect(linksOf(layer.page)).toEqual([1, 2]);
@@ -294,7 +294,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const region = navigator.region('/dashboard/links');
     await region.load();
 
-    const running = navigator.action('/links/2', { method: 'delete', optimistic: region.optimistic(without2Links), reload: region.reloading({ only: ['links'] }) });
+    const running = withActions(navigator).action('/links/2', { method: 'delete', optimistic: region.optimistic(without2Links), reload: region.reloading({ only: ['links'] }) });
     await settle();
     expect(idsOf(region.snapshot.region!.props)).toEqual([1]);
     answer.open(json({ deleted: 2 }));
@@ -309,7 +309,7 @@ describe('optimistic patches (E59 model 1)', () => {
     const answer = gate<Response>();
     win.handler = () => answer.promise;
     const { navigator, visible, shown } = boot(win, profile('/users/1', 1));
-    const visiting = navigator.visit('/users/1/links', { method: 'post', data: { label: 'new' }, optimistic: navigator.optimistic((props) => ({ profile: { ...(props.profile as object), links: [...links(1), { id: -1, label: 'new' }] } })) });
+    const visiting = navigator.visit('/users/1/links', { method: 'post', data: { label: 'new' }, optimistic: withActions(navigator).optimistic((props) => ({ profile: { ...(props.profile as object), links: [...links(1), { id: -1, label: 'new' }] } })) });
     await settle();
     expect(linksOf(visible())).toEqual([1, -1]);
     answer.open(pageResponse(profile('/users/1', 1, 7)));
@@ -336,16 +336,16 @@ describe('submissions — ghost rows (E59 model 2)', () => {
     win.handler = (_url, init) => (init.method === 'POST' ? post.promise : reload.promise);
     const { navigator, visible } = boot(win, profile('/users/1', 1));
     const changes: number[] = [];
-    navigator.subscribeSubmissions(() => changes.push(navigator.submissions.length));
+    withActions(navigator).subscribeSubmissions(() => changes.push(withActions(navigator).submissions.length));
 
-    const running = navigator.action('/users/1/links', { data: { label: 'Blog', url: 'https://blog.test' }, name: 'user-profile.links.store', reload: navigator.reloading({ only: ['profile'] }) });
-    expect(navigator.submissions).toEqual([{ id: expect.any(Number), name: 'user-profile.links.store', method: 'post', url: '/users/1/links', input: { label: 'Blog', url: 'https://blog.test' } }]);
+    const running = withActions(navigator).action('/users/1/links', { data: { label: 'Blog', url: 'https://blog.test' }, name: 'user-profile.links.store', reload: withActions(navigator).reloading({ only: ['profile'] }) });
+    expect(withActions(navigator).submissions).toEqual([{ id: expect.any(Number), name: 'user-profile.links.store', method: 'post', url: '/users/1/links', input: { label: 'Blog', url: 'https://blog.test' } }]);
     post.open(new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/1' } }));
     await settle();
-    expect(navigator.submissions).toHaveLength(1); // still: the real row is not there yet
+    expect(withActions(navigator).submissions).toHaveLength(1); // still: the real row is not there yet
     reload.open(pageResponse(profile('/users/1', 1, 2)));
     await running;
-    expect(navigator.submissions).toEqual([]);
+    expect(withActions(navigator).submissions).toEqual([]);
     expect(linksOf(visible())).toEqual([1, 2]);
     expect(changes).toEqual([1, 0]);
   });
@@ -355,11 +355,14 @@ describe('submissions — ghost rows (E59 model 2)', () => {
     const answer = gate<Response>();
     win.handler = () => answer.promise;
     const { navigator } = boot(win, profile('/users/1', 1));
+    // Attached where the ghost rows are shown (`usePendingSubmissions`) — rendered before the form is sent.
+    const listed = withActions(navigator);
     const visiting = navigator.visit('/users/1/links', { method: 'post', data: { label: 'x' }, name: 'user-profile.links.store' });
-    expect(navigator.submissions.map((submission) => submission.name)).toEqual(['user-profile.links.store']);
+    expect(listed.submissions.map((submission) => submission.name)).toEqual(['user-profile.links.store']);
+    expect(navigator.isPending('user-profile.links.store')).toBe(true);
     answer.open(pageResponse(profile('/users/1', 1)));
     await visiting;
-    expect(navigator.submissions).toEqual([]);
+    expect(listed.submissions).toEqual([]);
   });
 });
 

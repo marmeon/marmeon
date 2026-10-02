@@ -30,7 +30,8 @@ function Profile({ name }: { name: string }) {
 function Edit({ name, errors = {} }: { name: string; errors?: Record<string, string> }) {
   const layer = useLayer();
   const page = usePage<{ name: string }>();
-  const { visit } = useRouter();
+  const router = useRouter();
+  const { visit } = router;
   return (
     <section>
       <Head title="Edit profile" />
@@ -40,6 +41,13 @@ function Edit({ name, errors = {} }: { name: string; errors?: Record<string, str
       <span data-testid="depth">{layer.depth}</span>
       <button type="button" data-testid="save" onClick={() => void visit('/users/1', { method: 'put', data: { name: 'A' } })}>
         Save
+      </button>
+      <button
+        type="button"
+        data-testid="save-optimistic"
+        onClick={() => void visit('/users/1', { method: 'put', data: { name: 'B' }, optimistic: router.optimistic(() => ({ name: 'Saving…' })) })}
+      >
+        Save at once
       </button>
       <button type="button" data-testid="close" onClick={() => void layer.close()}>
         Cancel
@@ -213,6 +221,23 @@ describe('Layers in React (E53)', () => {
     expect($('[data-testid="field"]')).toBe(field);
     expect(field.value).toBe('A');
     expect(dialogs()).toHaveLength(1);
+  });
+
+  it('a form inside the layer shows its optimistic patch while it is sent — the layer’s, gone when the answer lands (E59)', async () => {
+    let answer!: (response: Response) => void;
+    const saving = server;
+    server = (url, init) => (init.method === 'PUT' ? new Promise((resolve) => (answer = resolve)) : saving(url, init));
+    await mount(page('Profile', '/users/1', { name: 'Ada' }));
+    await wait();
+    await click('[data-testid="edit"]');
+    await wait();
+    await click('[data-testid="save-optimistic"]');
+    await wait();
+    // The app attaches optimistic patches with the navigator: a layer's patch on a visit shows, though nothing on the page asked.
+    expect(dialogs()[0]!.querySelector('h2')!.textContent).toBe('Edit Saving…');
+    await act(async () => answer(respond(layer('Edit', '/users/1/edit', { name: 'Ada', errors: { name: 'Too short.' } }))));
+    await wait();
+    expect(dialogs()[0]!.querySelector('h2')!.textContent).toBe('Edit Ada');
   });
 
   it('closeLayer() from the server closes it — and reloads what is beneath', async () => {

@@ -1,6 +1,6 @@
 import { NO_STORE } from '@bespokecore/auth';
 import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { Navigator, type NavigatorWindow } from '@bespokecore/http/client';
+import { actions, Navigator, optimistic, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -73,16 +73,26 @@ class FakeTab {
     return this.#current!.layers;
   }
 
-  /** The current document's navigator — for an action's patches and reloads (`navigator.optimistic(…)`). */
+  /** The current document's navigator. */
   get navigator(): Navigator {
     return this.#current!.navigator;
   }
 
   /** An action of the current document (E59): no navigation — then everything it started has finished. */
-  async action(url: string, options?: Parameters<Navigator['action']>[1]) {
-    const outcome = await this.#current!.navigator.action(url, options);
+  async action(url: string, options?: ActionOptions) {
+    const outcome = await this.navigator.use(actions).run(url, options);
     await this.idle();
     return outcome;
+  }
+
+  /** A patch of the page on screen for an action (E59) — the patches of its history entry, as the adapter makes them. */
+  optimistic(patch: PropsPatch): OptimisticUpdate {
+    return { target: this.navigator.use(optimistic).target(this.navigator.regionOwner.entry!), patch };
+  }
+
+  /** A reload of the page on screen once an action succeeded. */
+  reloading(spec: ReloadSpec = {}): Reloading {
+    return { target: this.navigator.use(optimistic).target(this.navigator.regionOwner.entry!), spec };
   }
 
   /**
@@ -596,8 +606,8 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
     const entries = JSON.stringify(tab.entries);
     const outcome = await tab.action(`/users/${ada.id}/links/${notes.id}`, {
       method: 'delete',
-      optimistic: tab.navigator.optimistic(without('Notes')),
-      reload: tab.navigator.reloading({ only: ['profile'] }),
+      optimistic: tab.optimistic(without('Notes')),
+      reload: tab.reloading({ only: ['profile'] }),
     });
     expect(outcome).toMatchObject({ ok: true, kind: 'redirect', redirect: `/users/${ada.id}`, flash: [{ key: 'toast', data: { message: 'Link removed.' } }] });
     expect(linksOf(tab.visible)).toEqual(['Blog']);
@@ -612,7 +622,7 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
     const { ProfileLinkFactory } = await import('../user-profile/factories/ProfileLinkFactory.ts');
     const theirs = (await app.factory(ProfileLinkFactory).create({ user_id: alan.id, label: 'Theirs' }))!;
     // Ada's user id with Alan's link: the scoped binding answers 404 (no IDOR).
-    const outcome = await tab.action(`/users/${ada.id}/links/${theirs.id}`, { method: 'delete', optimistic: tab.navigator.optimistic(without('Notes')) });
+    const outcome = await tab.action(`/users/${ada.id}/links/${theirs.id}`, { method: 'delete', optimistic: tab.optimistic(without('Notes')) });
     expect(outcome).toMatchObject({ ok: false, kind: 'exception', exception: { type: 'server', status: 404 } });
     expect(linksOf(tab.visible).sort()).toEqual(['Blog', 'Notes']);
     expect(notes).toBeDefined();
@@ -626,8 +636,8 @@ describe('Actions in a tab (E59) — the real app, the real navigator', () => {
     const asked = tab.requests.length;
     const outcome = await tab.action(`/users/${ada.id}/links/${notes.id}`, {
       method: 'delete',
-      optimistic: tab.navigator.optimistic(without('Notes')),
-      reload: tab.navigator.reloading({ only: ['profile'] }),
+      optimistic: tab.optimistic(without('Notes')),
+      reload: tab.reloading({ only: ['profile'] }),
     });
     expect(outcome).toMatchObject({ ok: false, kind: 'exception', exception: { type: 'server', status: 401 } });
     expect(tab.requests.slice(asked)).toEqual([`DELETE /users/${ada.id}/links/${notes.id} (visit)`]);
@@ -695,7 +705,7 @@ describe('Flash in a tab (E60) — exactly once, from whichever answer is shown'
 
   it('counter-check: an action delivers its message with the answer — and no reload after it brings it again', async () => {
     const ada = await onProfile();
-    const outcome = await tab.action(`/users/${ada.id}/links`, { data: { label: 'Blog', url: 'https://blog.example' }, reload: tab.navigator.reloading({ only: ['profile'] }) });
+    const outcome = await tab.action(`/users/${ada.id}/links`, { data: { label: 'Blog', url: 'https://blog.example' }, reload: tab.reloading({ only: ['profile'] }) });
     expect(outcome).toMatchObject({ ok: true, kind: 'redirect', flash: [{ key: 'toast', data: { kind: 'success', message: 'Link added.' } }] });
     expect(tab.toasts).toEqual(['toast: Link added.']);
     await tab.navigator.reload();

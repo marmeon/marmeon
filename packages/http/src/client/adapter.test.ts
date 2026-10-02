@@ -28,11 +28,13 @@ import {
   type RegionResult,
 } from '../page.ts';
 import {
+  actions,
   firstErrors,
   hasServerMarkup,
   isHistoryState,
   loadPageMessages,
   Navigator,
+  optimistic,
   PROGRESS_ATTRIBUTE,
   queryState,
   readInitialPage,
@@ -343,9 +345,12 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const { navigator, root, stop } = await createTextApp();
     const toasts: string[] = [];
     navigator.on('flash', (message) => toasts.push((message.data as { message: string }).message));
-    const withoutCode = navigator.optimistic((props) => ({ links: (props.links as string[]).filter((link) => link !== 'code') }));
+    // The adapter attaches the features where it uses them (E70): actions, and the patches of the page's entry.
+    const run = navigator.use(actions).run;
+    const pageTarget = () => navigator.use(optimistic).target(navigator.regionOwner.entry!);
+    const withoutCode = { target: pageTarget(), patch: (props: Readonly<Record<string, unknown>>) => ({ links: (props.links as string[]).filter((link) => link !== 'code') }) };
 
-    const failing = navigator.action('/users/1/links/code', { method: 'delete', optimistic: withoutCode });
+    const failing = run('/users/1/links/code', { method: 'delete', optimistic: withoutCode });
     await vi.waitFor(() => expect(root.textContent).toBe('users/Show {"links":["blog"]}')); // at once, before the answer
     release();
     expect(await failing).toMatchObject({ ok: false, kind: 'invalid', errors: { link: ['Not yours.'] } });
@@ -353,7 +358,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(requests.at(-1)!.headers).toMatchObject({ [ACTION_HEADER]: 'true', accept: 'application/json' });
 
     answer = 'ok';
-    const succeeding = navigator.action('/users/1/links/code', { method: 'delete', optimistic: navigator.optimistic((props) => ({ links: (props.links as string[]).filter((link) => link !== 'code') })) });
+    const succeeding = run('/users/1/links/code', { method: 'delete', optimistic: { ...withoutCode, target: pageTarget() } });
     await vi.waitFor(() => expect(root.textContent).toBe('users/Show {"links":["blog"]}'));
     release();
     expect(await succeeding).toMatchObject({ ok: true, kind: 'redirect', redirect: '/users/1' });

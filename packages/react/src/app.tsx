@@ -2,6 +2,7 @@ import {
   loadPageMessages,
   markBusy,
   Navigator,
+  optimistic as optimisticFeature,
   pageLocale,
   RegionOwner,
   showProgress,
@@ -361,6 +362,8 @@ export function BespokeApp({
       // The app's dialog asks (E64) — without one, the browser's own.
       ...(Confirm ? { confirm: ask } : {}),
     });
+    // Optimistic patches (E59): every router offers them (`router.optimistic`, a form's `submit({ optimistic })`).
+    navigator.current.use(optimisticFeature);
   }
   // The layers on screen — the core's in the browser; on the server, the deep link's page objects.
   const [layers, setLayers] = useState<readonly LayerEntry[]>(() =>
@@ -399,9 +402,10 @@ export function BespokeApp({
   // A prefetch while rendering on the server (an effect never runs there) has nothing to do.
   const prefetch = useCallback((url: string, options?: PrefetchOptions) => navigator.current?.prefetch(url, options) ?? Promise.resolve(), []);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
-  const optimistic = useCallback((patch: (props: Readonly<Record<string, unknown>>) => object) => browser().optimistic(patch as never), [browser]);
+  // The page's patches and reloads are those of its history entry (E59) — never in its props in memory.
+  const optimistic = useCallback((patch: (props: Readonly<Record<string, unknown>>) => object) => ({ target: browser().use(optimisticFeature).page, patch: patch as never }), [browser]);
   const reloading = useCallback(
-    (options?: ReloadingOptions) => reloadsOf((spec) => browser().reloading(spec), browser().regionOwner, routes, options as { islands?: readonly string[] }),
+    (options?: ReloadingOptions) => reloadsOf((spec) => ({ target: browser().use(optimisticFeature).page, spec }), browser().regionOwner, routes, options as { islands?: readonly string[] }),
     [browser, routes],
   );
 

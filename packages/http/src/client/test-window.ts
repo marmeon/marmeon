@@ -1,6 +1,10 @@
 /** The browser of the client core's tests: one tab's history, location, fetch and events — in memory. */
 import { PAGE_HEADER, type PageObject } from '../page.ts';
+import type { ActionOptions } from './action.ts';
+import { actions } from './features/actions.ts';
+import { optimistic } from './features/optimistic.ts';
 import { Navigator, type NavigatorWindow, type ScrollRegion } from './navigation.ts';
+import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
 import type { Layer } from './layer.ts';
 import type { RegionOwner } from './region.ts';
 
@@ -212,3 +216,23 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
 
 /** Lets the async work of a popstate (a refetch, a render) finish. */
 export const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Actions and optimistic patches of the page on screen (E59), as an adapter uses them since Wave 5c step 4: the features
+ * attached to the navigator (`use`), the page's patch target by its entry.
+ */
+export function withActions(navigator: Navigator) {
+  // Attached at once — as `useAction`/`usePendingSubmissions` do when they render, before anything is sent.
+  const run = navigator.use(actions);
+  const patches = navigator.use(optimistic);
+  const page = () => patches.target(navigator.regionOwner.entry!);
+  return {
+    action: (url: string, options?: ActionOptions) => run.run(url, options),
+    optimistic: (patch: PropsPatch): OptimisticUpdate => ({ target: page(), patch }),
+    reloading: (spec: ReloadSpec = {}): Reloading => ({ target: page(), spec }),
+    get submissions() {
+      return run.submissions().list;
+    },
+    subscribeSubmissions: (listener: () => void) => run.submissions().subscribe(listener),
+  };
+}

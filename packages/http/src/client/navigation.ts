@@ -2,12 +2,13 @@
  * The heart of the UI-free client core (`@bespokecore/http/client`): the Navigator — visits and their pipeline, the browser
  * history and Back/Forward, the request primitives and leaving the document. What it builds on lives next to it (history,
  * cache, scroll, request, events, document-change, deferred); the features (`features/`: layers, guard, prefetch, instant,
- * optimistic patches, actions, islands' requests, revalidateOnBack) attach through the feature host (`feature.ts`): hooks
- * into the pipeline, and slots the core empties itself. Until Wave 5c step 4, every feature is attached by default.
+ * optimistic patches, actions, islands' requests, revalidateOnBack, …) attach through the feature host (`feature.ts`): hooks
+ * into the pipeline, and slots the core empties itself. Wave 5c step 4 takes them out of the default list one by one: the
+ * adapter attaches each where it is used.
  * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
  */
 import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type LayerClose, type PageObject, type ValidationErrors } from '../page.ts';
-import type { ActionOptions, ActionOutcome, Submission } from './action.ts';
+import { actionHost } from './action-host.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
 import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';
@@ -15,22 +16,20 @@ import { PropLoader } from './deferred.ts';
 import { DocumentChange } from './document-change.ts';
 import { VisitEmitter, type Visit, type VisitCallbacks, type VisitEvent, type VisitEvents, type VisitProgress } from './events.ts';
 import { emptySlot, emptySlots, type EntryStack, type Feature, type FeatureHook, type FeatureHooks, type PendingVisit, type Slot, type VisitPart } from './feature.ts';
-import { actions } from './features/actions.ts';
 import { DEFAULT_FEATURES } from './features/defaults.ts';
 import { guard as guardFeature, type NavigationGuard } from './features/guard.ts';
 import type { InstantVisit } from './features/instant.ts';
 import { layers } from './features/layers.ts';
-import { optimistic as optimisticFeature } from './features/optimistic.ts';
 import { prefetch as prefetchFeature, type PrefetchOptions } from './features/prefetch.ts';
 import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
 import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
 import { entry, HistoryWriter, isHistoryState, newKey, withPosition, type HistoryState } from './history.ts';
 import type { Layer, LayerControl, LayerHost } from './layer.ts';
-import { LiveValidation, type LiveValidationOptions, type LiveValidationOutcome, type LiveValidationRequest } from './live-validation.ts';
+import { LiveValidation, sendLiveValidation, type LiveValidationOptions, type LiveValidationOutcome, type LiveValidationRequest } from './live-validation.ts';
 import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
-import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
+import type { OptimisticUpdate, ReloadSpec } from './optimistic.ts';
 import { REGIONS, RegionOwner, type Region, type RegionInitial } from './region.ts';
 import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
@@ -341,6 +340,7 @@ export class Navigator implements LayerHost {
       read: (response, readOptions, visit, callbacks) => this.#read(response, readOptions, visit, callbacks),
       fetchPage: (url, headers, signal) => this.#fetchPage(url, headers, signal),
       flushFlash: () => this.#flushFlash(),
+      pendingChanged: () => notify(this.#visitingListeners),
       visit: (from, url, visitOptions) => this.#visit(from, url, visitOptions),
       show: (page, history, showOptions) => this.#show(page, history, showOptions),
       restorePage: (page, key, position) => this.#restorePage(page, key, position),
@@ -475,15 +475,18 @@ export class Navigator implements LayerHost {
     return this.#visiting;
   }
 
-  /** Follows {@link visiting}. Returns the function that stops it. */
+  /** Follows {@link visiting} — and {@link isPending}. Returns the function that stops it. */
   subscribeVisiting(listener: () => void): () => void {
     this.#visitingListeners.add(listener);
     return () => void this.#visitingListeners.delete(listener);
   }
 
-  /** Whether a request of route `name` is under way — a visit (`<Link route>`, a route form) or an action (E64, `usePending`). */
+  /**
+   * Whether a request of route `name` is under way — a visit (`<Link route>`, a route form) or what a feature has under way
+   * (an action, when the actions feature is attached) — E64, `usePending`.
+   */
   isPending(name: string): boolean {
-    return this.#visiting?.name === name || this.submissions.some((submission) => submission.name === name);
+    return this.#visiting?.name === name || this.#first('pending', name) === true;
   }
 
   /**
@@ -512,53 +515,17 @@ export class Navigator implements LayerHost {
   }
 
   /**
-   * An action (E59): a request that does not navigate — no history entry, nothing in the page cache, no progress bar. Its
-   * optimistic patches show at once and are rolled back unless it succeeds; when it does, `reload` reloads what it names in
-   * the background and its patches go once the server's props landed. Resolves with how it ended — never rejects for a
-   * failed request (an `exception`: shown by the app, never retried by itself).
-   */
-  action(url: string, options: ActionOptions = {}): Promise<ActionOutcome> {
-    this.#adopt();
-    return this.use(actions).run(url, options);
-  }
-
-  /**
    * A live validation (E62): checks `fields` of a form's data against the request schema of the route at `url` — sent as the form
    * would be (method, body, XSRF) with `x-bespoke-validate`, minus password fields and files. Never navigates, never listed as a
    * submission, never changes what was fetched ahead. Resolves with how it ended — never rejects for a failed request.
    */
   validate(url: string, request: LiveValidationRequest): Promise<LiveValidationOutcome> {
-    return this.use(actions).validate(url, request);
+    return sendLiveValidation(actionHost(this.#core), url, request);
   }
 
   /** The live validation of one form at `url` (E62): touched fields, debounce, the check under way — see {@link LiveValidation}. */
   liveValidation(url: string, options: Omit<LiveValidationOptions, 'send'>): LiveValidation {
     return new LiveValidation({ ...options, send: (request) => this.validate(url, request) });
-  }
-
-  /** Actions and route forms under way, oldest first — what ghost rows are made of (E59 model 2). A new array on each change. */
-  get submissions(): readonly Submission[] {
-    return this.use(actions).submissions().list;
-  }
-
-  /** Follows {@link submissions}. Returns the function that stops it. */
-  subscribeSubmissions(listener: () => void): () => void {
-    return this.use(actions).submissions().subscribe(listener);
-  }
-
-  /**
-   * A patch of the props of the page on screen (E59), for an action or a form: `optimistic((props) => ({ likes: props.likes + 1 }))`
-   * — shown over the props in memory while the action is under way, never written into them before it succeeded.
-   */
-  optimistic(patch: PropsPatch): OptimisticUpdate {
-    this.#adopt();
-    return { target: this.use(optimisticFeature).target(this.#core.key!), patch };
-  }
-
-  /** A reload of the page on screen for an action to run once it succeeded — some props (`only`), or all of them. */
-  reloading(spec: ReloadSpec = {}): Reloading {
-    this.#adopt();
-    return { target: this.use(optimisticFeature).target(this.#core.key!), spec };
   }
 
   /** A visit from inside a layer (E53) — `layer.visit()`: sent as the layer's, its answer placed for it. */

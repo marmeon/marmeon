@@ -39,8 +39,8 @@ describe('navigator.use — a feature attaches once per navigator (E70)', () => 
     expect(writes).toHaveBeenCalledTimes(1);
   });
 
-  it('attaches every feature by default until Wave 5c step 4 — and none when told so', () => {
-    expect(DEFAULT_FEATURES.map((feature) => feature.name)).toEqual(['guard', 'prefetch', 'instant', 'layers', 'optimistic', 'actions', 'islands', 'revalidateOnBack']);
+  it('attaches the features still in the default list (Wave 5c step 4 takes them out one by one) — and none when told so', () => {
+    expect(DEFAULT_FEATURES.map((feature) => feature.name)).toEqual(['guard', 'prefetch', 'instant', 'layers', 'islands', 'revalidateOnBack']);
     const { navigator } = tab('/a', { features: [] });
     const setup = vi.fn(() => 'api');
     expect(navigator.use(defineFeature('late', setup))).toBe('api');

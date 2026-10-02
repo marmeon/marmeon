@@ -27,10 +27,8 @@ export function usePending<const N extends BrowserRouteNameInput>(name: CheckBro
   const subscribe = useCallback(
     (listener: () => void) => {
       if (!navigator) return () => {};
-      const stops = [navigator.subscribeVisiting(listener), navigator.subscribeSubmissions(listener)];
-      return () => {
-        for (const stop of stops) stop();
-      };
+      // Visits, and what features have under way (actions): `isPending` reads both.
+      return navigator.subscribeVisiting(listener);
     },
     [navigator],
   );

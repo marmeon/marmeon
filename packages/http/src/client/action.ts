@@ -11,7 +11,7 @@ import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type FlashMessa
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
 import { notify } from './notify.ts';
-import { listOf, type OptimisticUpdate, type PatchTarget, type Reloading } from './optimistic.ts';
+import { applyPatches, listOf, rollBack, type OptimisticUpdate, type PatchTarget, type Reloading } from './optimistic.ts';
 
 /** The methods of an action — a GET reads (its `data` goes into the query), the others write. */
 export type ActionMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -126,22 +126,6 @@ export class Submissions {
   #emit(): void {
     notify(this.#listeners);
   }
-}
-
-/** Applies the patches of an action — their ids by target. */
-export function applyPatches(updates: readonly OptimisticUpdate[]): Map<PatchTarget, number[]> {
-  const applied = new Map<PatchTarget, number[]>();
-  for (const { target, patch } of updates) {
-    const ids = applied.get(target) ?? [];
-    ids.push(target.add(patch));
-    applied.set(target, ids);
-  }
-  return applied;
-}
-
-/** Rolls the patches of an action back. */
-export function rollBack(applied: ReadonlyMap<PatchTarget, readonly number[]>): void {
-  for (const [target, ids] of applied) target.settle(ids, false);
 }
 
 /**

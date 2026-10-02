@@ -7,21 +7,21 @@
     "Raised once, in Wave 5c step 2 (E78, Max, 02.10.): core 18.7 → 19.7, emptyApp 23.0 → 24.0, minimalApp 26.6 → 27.6, blank-app 27.4 → 30.4, web-app 34.1 → 35.1 — the cost of splitting the navigator into modules (≈ +1.0 KB gzip: one more hop per access, less gzip sharing across modules). Step 4 takes the feature modules out of apps that do not use them. Otherwise E75 holds: limits only go down.",
     "appsGzipKB is the marginal cost of core + adapter in the app's initial load (what the download loses without their bytes), since Wave 5c step 3 — not the attributed share, which grows with the number of modules (step 2: +2.96 KB attributed for +1.05 KB real). Set from the marginal sizes at a0057db: blank-app 24.44, web-app 33.79.",
     "Raised once more, in Wave 5c step 3 (E79, Max, 02.10.): to the measured sizes + 0.1 — core 19.7 → 21.1, emptyApp 24.0 → 25.4, minimalApp 27.6 → 29.0, everything (ceiling) 35.9 → 36.4, blank-app 24.6 → 25.9, web-app 33.9 → 35.3 (marginal). The feature host (hooks, slots, history writer) while every feature is still attached by default. Cumulative temporary cost of E78 + E79: +2.4 KB gzip on core (18.58 after step 1 → 21.00) — to be recovered in step 4: EVERY step-4 commit must lower these limits, and there is no further raise without Max.",
-    "Wave 5c step 4 (one commit per feature): 4b queryState — core 21.1 → 20.8, emptyApp 25.4 → 25.1, minimalApp 29.0 → 28.6, blank-app 25.9 → 25.6. 4d remember — core 20.8 → 20.4, emptyApp 25.1 → 24.7, blank-app 25.6 → 25.2, web-app 35.3 → 35.1 (minimalApp keeps it: useForm remembers, statically)."
+    "Wave 5c step 4 (one commit per feature): 4b queryState — core 21.1 → 20.8, emptyApp 25.4 → 25.1, minimalApp 29.0 → 28.6, blank-app 25.9 → 25.6. 4d remember — core 20.8 → 20.4, emptyApp 25.1 → 24.7, blank-app 25.6 → 25.2, web-app 35.3 → 35.1 (minimalApp keeps it: useForm remembers, statically). 4f actions (+ the pages' optimistic patches out of the core; in every app's router) — core 20.4 → 19.0, emptyApp 24.7 → 23.8, minimalApp 28.6 → 27.7, blank-app 25.2 → 24.3, web-app 35.1 → 34.2. everything stays at its ceiling (36.40): its gzip moves ±0.15 with the order of the modules in its one chunk, while its min shrank (109.4 → 109.2 KB)."
   ],
   "gzipKB": {
-    "core": { "limit": 20.4, "target": 8.5 },
-    "emptyApp": { "limit": 24.7, "target": 12.5 },
-    "minimalApp": { "limit": 28.6, "target": 14 },
+    "core": { "limit": 19.0, "target": 8.5 },
+    "emptyApp": { "limit": 23.8, "target": 12.5 },
+    "minimalApp": { "limit": 27.7, "target": 14 },
     "everything": { "limit": 36.4, "ceiling": true }
   },
   "appsGzipKB": {
-    "blank-app": { "limit": 25.2 },
-    "web-app": { "limit": 35.1, "target": 27 }
+    "blank-app": { "limit": 24.3 },
+    "web-app": { "limit": 34.2, "target": 27 }
   },
   "stillLeaking": {
-    "core": ["actions", "guard", "instant", "islands", "layers", "liveValidation", "prefetch", "revalidateOnBack"],
-    "emptyApp": ["actions", "guard", "instant", "islands", "layers", "liveValidation", "prefetch", "revalidateOnBack"],
-    "minimalApp": ["actions", "guard", "instant", "islands", "layers", "liveValidation", "prefetch", "revalidateOnBack"]
+    "core": ["guard", "instant", "islands", "layers", "liveValidation", "prefetch", "revalidateOnBack"],
+    "emptyApp": ["guard", "instant", "islands", "layers", "liveValidation", "prefetch", "revalidateOnBack"],
+    "minimalApp": ["guard", "instant", "islands", "layers", "liveValidation", "prefetch", "revalidateOnBack"]
   }
 }

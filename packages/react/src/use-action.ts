@@ -1,4 +1,4 @@
-import { resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading, type Submission } from '@bespokecore/http/client';
+import { actions, resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading, type Submission } from '@bespokecore/http/client';
 import type {
   ActionBodyOf,
   ActionDataOf,
@@ -177,7 +177,8 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       setErrors({});
       let outcome: ActionOutcome;
       try {
-        outcome = await navigator.action(target.url, {
+        // The feature attaches on first use (E70): an app without actions carries none of it.
+        outcome = await navigator.use(actions).run(target.url, {
           method,
           ...(method === 'get' ? {} : { data: body ?? {} }),
           name,
@@ -240,12 +241,9 @@ const noSubscription = () => () => {};
  * ```
  */
 export function usePendingSubmissions<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>): readonly PendingSubmission<N>[] {
-  const navigator = useRouterContext().navigator();
-  const all = useSyncExternalStore(
-    navigator ? (listener) => navigator.subscribeSubmissions(listener) : noSubscription,
-    () => navigator?.submissions ?? NO_SUBMISSIONS,
-    () => NO_SUBMISSIONS,
-  );
+  // Attached while rendering (E70): a route form's visit is listed from then on — the component showing its ghost rows is there first.
+  const submissions = useRouterContext().navigator()?.use(actions).submissions();
+  const all = useSyncExternalStore(submissions?.subscribe ?? noSubscription, () => submissions?.list ?? NO_SUBMISSIONS, () => NO_SUBMISSIONS);
   return useMemo(
     () =>
       all
