@@ -38,23 +38,23 @@ const inApp = (...names: string[]) => ({ base: 'emptyApp' as const, entry: appEn
 
 /**
  * The optional features and how to recognise them in a bundle: by module (`<package>/<path>` without src/dist and
- * extension), or — while a feature still lives inside `navigation.ts` — by a name only its code has (a public member
- * or option survives minification). When a feature moves into its own module (Wave 5c step 4), its marker becomes
- * that module. `use` is the import an app uses it through, on top of a scenario; `brings`, the features it builds on.
+ * extension) — the navigator's part of each lives in `http/client/features/` since Wave 5c step 2. Until step 4 makes
+ * them pluggable, the navigator imports every one of them (hence `stillLeaking`). `use` is the import an app uses it
+ * through, on top of a scenario; `brings`, the features it builds on.
  */
 const FEATURES = {
-  layers: { markers: ['http/client/layer', 'react/layer'], use: inApp('LayerDialog') },
-  islands: { markers: ['http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
-  actions: { markers: ['http/client/action', 'http/client/optimistic', 'react/use-action'], use: inApp('useAction') },
+  layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer'], use: inApp('LayerDialog') },
+  islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
+  actions: { markers: ['http/client/features/actions', 'http/client/features/optimistic', 'http/client/action', 'http/client/optimistic', 'react/use-action'], use: inApp('useAction') },
   liveValidation: { markers: ['http/client/live-validation'], use: inApp('useForm') },
   queryState: { markers: ['http/client/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
   progress: { markers: ['http/client/progress'], use: inCore('showProgress') },
-  prefetch: { markers: [/\bprefetchedPages\b/], use: inApp('Link') },
-  revalidateOnBack: { markers: [/\brevalidateOnBack\b/], use: inApp('resolveModulePages') },
-  guard: { markers: ['http/client/confirm', 'react/confirm', /\bisGuarded\b/], use: inApp('useBlocker') },
-  instant: { markers: [/\.instant\b/], use: inApp('Link') },
+  prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link') },
+  revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
+  guard: { markers: ['http/client/features/guard', 'http/client/confirm', 'react/confirm'], use: inApp('useBlocker') },
+  instant: { markers: ['http/client/features/instant'], use: inApp('Link') },
   form: { markers: ['react/form'], use: inApp('Form') },
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[] }>;

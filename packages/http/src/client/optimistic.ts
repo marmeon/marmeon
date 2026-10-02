@@ -8,6 +8,7 @@
  * only them (the page cache never holds a patch, nor does `history.state` — it holds no props at all, E36), so Back/Forward
  * after a rollback shows nothing of it.
  */
+import { rethrowLater } from './notify.ts';
 
 /**
  * A patch of props: the props it changes, from the props shown beneath it (the server's with the patches before it). It
@@ -123,9 +124,7 @@ function run<T extends Props>(base: T, patches: readonly { readonly patch: Props
       props = { ...props, ...patch(props) };
     } catch (error) {
       // A patch's bug shows nothing of it — and breaks neither the page nor the other patches.
-      queueMicrotask(() => {
-        throw error;
-      });
+      rethrowLater(error);
     }
   }
   return props === base.props ? base : { ...base, props };
@@ -186,4 +185,10 @@ export class Revalidations {
   abort(): void {
     this.#controller?.abort();
   }
+}
+
+/** One or several (`optimistic`, `reload` of a visit or an action) as a list. */
+export function listOf<T>(value: T | readonly T[] | undefined): readonly T[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? (value as readonly T[]) : [value as T];
 }

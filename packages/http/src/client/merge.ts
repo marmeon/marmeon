@@ -1,4 +1,7 @@
-/** Merging partial reloads into what a page (or a region) has — `merge()`, `deepMerge()`, `matchOn()` and deferred props. */
+/**
+ * Merging partial reloads into what a page (or a region) has — `merge()`, `deepMerge()`, `matchOn()` and deferred props —
+ * and the other ways a loaded page is shaped before it lands: only some props (`pick`), deferred ones kept, the query kept.
+ */
 import type { PageObject } from '../page.ts';
 
 /**
@@ -89,3 +92,28 @@ function union(a: readonly string[] | undefined, b: readonly string[] | undefine
   return [...new Set([...(a ?? []), ...(b ?? [])])];
 }
 
+
+/** Only these props (those `props` has). */
+export function pick(props: Readonly<Record<string, unknown>>, names: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(names.filter((name) => Object.hasOwn(props, name)).map((name) => [name, props[name]]));
+}
+
+/**
+ * A full reload's page in place of `current`: its deferred props (sent without, to load next) keep their values until they
+ * load again — the page shows them instead of their fallback in between.
+ */
+export function keepDeferred(current: PageObject, loaded: PageObject): PageObject {
+  const deferred = Object.values(loaded.deferredProps ?? {}).flat();
+  const kept = pick(current.props, deferred.filter((name) => !Object.hasOwn(loaded.props, name)));
+  return Object.keys(kept).length === 0 ? loaded : { ...loaded, props: { ...kept, ...loaded.props } };
+}
+
+/** `page` with the query of `from` (or without one, when `from` has none) — `preserveUrl`: the URL stays the one on screen. */
+export function withQueryOf(page: PageObject, from: PageObject): PageObject {
+  const { query: _query, queryDefaults: _defaults, ...rest } = page;
+  return {
+    ...rest,
+    ...(from.query ? { query: from.query } : {}),
+    ...(from.queryDefaults ? { queryDefaults: from.queryDefaults } : {}),
+  };
+}

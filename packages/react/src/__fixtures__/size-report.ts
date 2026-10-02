@@ -1,6 +1,7 @@
 /**
  * `pnpm size` — where the bytes of the client core and the React adapter go (Wave 5c, E75): the scenarios of
- * `bundle-size.test.ts` and the real apps' client builds, every byte attributed to its module by source map.
+ * `bundle-size.test.ts` and the real apps' client builds, every byte attributed to its module by source map — and the
+ * marginal cost of core + adapter (gzip with and without their bytes), which module granularity does not distort.
  * Checks the apps against `appsGzipKB` in `packages/react/size-budget.json` (the scenarios are `pnpm test`'s job).
  * Measures `dist/` — run `pnpm build` first. Nothing is written.
  *
@@ -67,6 +68,9 @@ function print(key: string, title: string, bundle: AppBundle, { top }: { top: nu
   const framework = [...initial].filter(([module]) => FRAMEWORK.has(groupOf(module))).sort((a, b) => b[1].gzip - a[1].gzip);
   const sum = framework.reduce((total, [, share]) => ({ min: total.min + share.min, gzip: total.gzip + share.gzip }), { min: 0, gzip: 0 });
   console.log(`  ${'core + adapter'.padEnd(16)} ${format(sum)}`);
+  // The shares above are scaled stand-alone gzips: more, smaller modules inflate them. The marginal cost does not.
+  const marginal = bundle.attribution!.marginalGzip((module) => FRAMEWORK.has(groupOf(module)));
+  console.log(`  ${'  marginal'.padEnd(16)} ${(marginal / 1024).toFixed(2).padStart(17)} gzip  (what the download loses without core + adapter)`);
   for (const [module, share] of framework.slice(0, top)) console.log(`    ${module.padEnd(44)} ${format(share)}`);
   if (framework.length > top) console.log(`    … ${framework.length - top} more (pnpm size ${key})`);
   return sum;

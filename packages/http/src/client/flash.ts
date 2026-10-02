@@ -5,6 +5,7 @@
  * twice (another id). A message nobody listens to yet waits for the first listener of its key — the page that mounts with it.
  */
 import { FLASH_HEADER, type FlashKey, type FlashMessage, type PageObject } from '../page.ts';
+import { call } from './notify.ts';
 
 /** How many ids the core remembers (a message delivered twice by a race of two requests fires once). */
 const SEEN_LIMIT = 200;
@@ -78,15 +79,4 @@ export function flashOfResponse(response: Pick<Response, 'headers'>): readonly F
 
 function isMessage(value: unknown): value is FlashMessage {
   return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string' && typeof (value as { key?: unknown }).key === 'string';
-}
-
-function call(listener: FlashListener, message: FlashMessage): void {
-  try {
-    listener(message);
-  } catch (error) {
-    // A listener's bug must not cost the others their message.
-    queueMicrotask(() => {
-      throw error;
-    });
-  }
 }

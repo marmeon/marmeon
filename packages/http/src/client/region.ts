@@ -9,10 +9,12 @@
  * leaving the document (signing out, a new build) drops them with the pages.
  */
 import { Remembered } from './remember.ts';
-import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject, type RegionObject, type RegionResult } from '../page.ts';
-import { mergePage } from './merge.ts';
+import type { PageObject, RegionObject, RegionResult } from '../page.ts';
+import { mergePage, pick } from './merge.ts';
+import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { pageQuery, queryUrl } from './query-state.ts';
+import { partialReloadHeaders } from './request.ts';
 
 /** Where a region stands: loading (nothing to show yet), ready, or what kept it from showing anything. */
 export type RegionStatus = 'loading' | 'ready' | 'unauthorized' | 'forbidden' | 'exception';
@@ -173,15 +175,6 @@ export interface RegionOwnerOptions {
   remembered?: Remembered;
 }
 
-/** The headers of a partial reload of `component`. */
-function partialHeaders(component: string, only: readonly string[] | undefined, except: readonly string[] | undefined): Record<string, string> {
-  return {
-    [PARTIAL_COMPONENT_HEADER]: component,
-    ...(only === undefined ? {} : { [PARTIAL_DATA_HEADER]: only.join(',') }),
-    ...(except && except.length > 0 ? { [PARTIAL_EXCEPT_HEADER]: except.join(',') } : {}),
-  };
-}
-
 /**
  * One region of a page: loads its route's region object, reloads it (another query, some props), loads its deferred props
  * and keeps what it has in its owner. Failures never reach the page: a redirect, a 401 or a 403 of its route is
@@ -328,7 +321,7 @@ export class Region {
     this.#request = controller;
     const signal = AbortSignal.any([controller.signal, this.#owner.signal]);
     const current = this.#region;
-    const headers = current && (only !== undefined || (except?.length ?? 0) > 0) ? partialHeaders(current.component, only, except) : {};
+    const headers = current && (only !== undefined || (except?.length ?? 0) > 0) ? partialReloadHeaders(current.component, only, except) : {};
     this.#pending++;
     this.#emit();
     try {
@@ -387,7 +380,7 @@ export class Region {
 
   async #loadGroup(region: RegionObject, props: readonly string[]): Promise<void> {
     const signal = this.#owner.signal;
-    const response = await this.#transport.request(region.url, partialHeaders(region.component, props, undefined), signal);
+    const response = await this.#transport.request(region.url, partialReloadHeaders(region.component, props, undefined), signal);
     // Moved on meanwhile (another query, another component): these props are not for what the region shows.
     if (signal.aborted || response.kind !== 'region' || this.#region?.url !== region.url || this.#region.component !== region.component) {
       if (response.kind === 'unauthorized' || response.kind === 'forbidden') this.#fail(response);
@@ -395,7 +388,7 @@ export class Region {
       return;
     }
     const loaded = response.region;
-    const only = { ...loaded, props: Object.fromEntries(props.filter((prop) => Object.hasOwn(loaded.props, prop)).map((prop) => [prop, loaded.props[prop]])) };
+    const only = { ...loaded, props: pick(loaded.props, props) };
     const merged = mergePage(this.#region as PageObject, only) as RegionObject;
     this.#region = merged;
     this.#owner.regions.set(this.id, merged);
@@ -426,14 +419,6 @@ export class Region {
     const previous = this.#snapshot;
     if (next.status === previous.status && next.region === previous.region && next.pending === previous.pending && next.failure === previous.failure) return;
     this.#snapshot = next;
-    for (const listener of this.#listeners) {
-      try {
-        listener();
-      } catch (error) {
-        queueMicrotask(() => {
-          throw error;
-        });
-      }
-    }
+    notify(this.#listeners);
   }
 }

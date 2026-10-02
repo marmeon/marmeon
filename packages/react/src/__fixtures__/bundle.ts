@@ -46,7 +46,15 @@ export interface AppBundle {
   /** Chunks loaded on demand (`import()`): listed, not counted. */
   readonly lazy: readonly BundleChunk[];
   /** With `sourcemap: true`: every byte of the initial and the lazy chunks attributed to its module, by source map. */
-  readonly attribution?: { readonly initial: ReadonlyMap<string, ModuleShare>; readonly lazy: ReadonlyMap<string, ModuleShare> };
+  readonly attribution?: {
+    readonly initial: ReadonlyMap<string, ModuleShare>;
+    readonly lazy: ReadonlyMap<string, ModuleShare>;
+    /**
+     * The marginal gzip of some modules in the initial chunks: what the download loses without their bytes (each chunk
+     * compressed with and without them). Unlike the scaled shares, it does not grow when code is split into more modules.
+     */
+    marginalGzip(modules: (module: string) => boolean): number;
+  };
 }
 
 let workspace: string | undefined;
@@ -171,7 +179,19 @@ async function measure(config: InlineConfig, { sourcemap, entry }: { sourcemap: 
     code: [...initial].map((chunk) => chunk.code).join('\n'),
     initial: initialSizes,
     lazy: lazy.map(sizes),
-    ...(sourcemap ? { attribution: { initial: attributed(initial), lazy: attributed(lazy) } } : {}),
+    ...(sourcemap
+      ? {
+          attribution: {
+            initial: attributed(initial),
+            lazy: attributed(lazy),
+            marginalGzip: (modules: (module: string) => boolean) =>
+              [...initial].reduce((sum, chunk) => {
+                const kept = segmentsOf(chunk, join(outDir, dirname(chunk.fileName)), entry).filter(([module]) => !modules(module));
+                return sum + gzipSync(chunk.code, { level: 9 }).length - gzipSync(kept.map(([, text]) => text).join(''), { level: 9 }).length;
+              }, 0),
+          },
+        }
+      : {}),
   };
 }
 
@@ -225,22 +245,18 @@ function decodeMappings(mappings: string): [number, number][][] {
   return lines;
 }
 
-/**
- * Every byte of a chunk, attributed to its source module by the chunk's source map: a module's bytes are the
- * segments mapped to it; its gzip is its share of the chunk's real gzip (each module's text compressed on its own,
- * then scaled so the shares add up to the chunk) — a share, not a stand-alone size.
- */
-function attribute(chunk: Rolldown.OutputChunk, dir: string, entry: string | undefined): Map<string, ModuleShare> {
-  const texts = new Map<string, string[]>();
-  const add = (module: string, text: string) => {
-    if (text) (texts.get(module) ?? texts.set(module, []).get(module)!).push(text);
-  };
+/** A chunk's code in order, as `[module, text]` pieces by its source map — joined, they are the code again. */
+function segmentsOf(chunk: Rolldown.OutputChunk, dir: string, entry: string | undefined): [string, string][] {
   const map = chunk.map;
   if (!map) throw new Error(`${chunk.fileName} has no source map.`);
   const sources = map.sources.map((source) => {
     const absolute = resolve(dir, source);
     return absolute === entry ? '(entry)' : moduleName(absolute);
   });
+  const pieces: [string, string][] = [];
+  const add = (module: string, text: string) => {
+    if (text) pieces.push([module, text]);
+  };
   const codeLines = chunk.code.split('\n');
   const mapped = decodeMappings(map.mappings);
   codeLines.forEach((text, index) => {
@@ -249,7 +265,20 @@ function attribute(chunk: Rolldown.OutputChunk, dir: string, entry: string | und
     segments.forEach(([column, source], at) => {
       add(source === -1 ? '(unmapped)' : sources[source]!, text.slice(column, segments[at + 1]?.[0] ?? text.length));
     });
+    if (index < codeLines.length - 1) add('(unmapped)', '\n');
   });
+  return pieces;
+}
+
+/**
+ * Every byte of a chunk, attributed to its source module by the chunk's source map: a module's bytes are the
+ * segments mapped to it; its gzip is its share of the chunk's real gzip (each module's text compressed on its own,
+ * then scaled so the shares add up to the chunk) — a share, not a stand-alone size.
+ */
+function attribute(chunk: Rolldown.OutputChunk, dir: string, entry: string | undefined): Map<string, ModuleShare> {
+  const texts = new Map<string, string[]>();
+  // Line breaks are left out of the shares (they always were): only the marginal measure needs them, to rebuild the code.
+  for (const [module, text] of segmentsOf(chunk, dir, entry)) if (text !== '\n') (texts.get(module) ?? texts.set(module, []).get(module)!).push(text);
 
   const raw = [...texts].map(([module, parts]) => {
     const text = parts.join('');

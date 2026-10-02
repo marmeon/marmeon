@@ -8,6 +8,7 @@
 import { MAX_LAYER_DEPTH, type LayerClose, type PageObject } from '../page.ts';
 import type { RegionOwner } from './region.ts';
 import type { VisitOptions } from './navigation.ts';
+import { call } from './notify.ts';
 import { PatchQueue, Revalidations, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 
 export { MAX_LAYER_DEPTH } from '../page.ts';
@@ -201,15 +202,5 @@ export class Layer {
     this.owner.close();
     for (const listener of this.#closeListeners) call(listener);
     this.#closeListeners.clear();
-  }
-}
-
-function call(listener: () => void): void {
-  try {
-    listener();
-  } catch (error) {
-    queueMicrotask(() => {
-      throw error;
-    });
   }
 }

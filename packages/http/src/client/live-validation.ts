@@ -10,6 +10,7 @@
  */
 import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, VALIDATE_HEADER, VALIDATED_HEADER, type ValidationErrors } from '../page.ts';
 import type { ActionException, ActionHost, ActionMethod } from './action.ts';
+import { notify } from './notify.ts';
 
 /** Field names live validation never sends: passwords, their confirmations, current passwords (`/password/i`). */
 export const SENSITIVE_FIELD = /password/i;
@@ -268,14 +269,6 @@ export class LiveValidation {
   #setPending(fields: readonly string[]): void {
     if (fields.length === 0 && this.#pending.length === 0) return;
     this.#pending = fields;
-    for (const listener of this.#listeners) {
-      try {
-        listener();
-      } catch (error) {
-        queueMicrotask(() => {
-          throw error;
-        });
-      }
-    }
+    notify(this.#listeners);
   }
 }

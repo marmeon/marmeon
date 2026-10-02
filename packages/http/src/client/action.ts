@@ -10,7 +10,8 @@
 import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type FlashMessage, type ValidationErrors } from '../page.ts';
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
-import type { OptimisticUpdate, PatchTarget, Reloading } from './optimistic.ts';
+import { notify } from './notify.ts';
+import { listOf, type OptimisticUpdate, type PatchTarget, type Reloading } from './optimistic.ts';
 
 /** The methods of an action — a GET reads (its `data` goes into the query), the others write. */
 export type ActionMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -123,21 +124,8 @@ export class Submissions {
   };
 
   #emit(): void {
-    for (const listener of this.#listeners) {
-      try {
-        listener();
-      } catch (error) {
-        queueMicrotask(() => {
-          throw error;
-        });
-      }
-    }
+    notify(this.#listeners);
   }
-}
-
-function list<T>(value: T | readonly T[] | undefined): readonly T[] {
-  if (value === undefined) return [];
-  return Array.isArray(value) ? (value as readonly T[]) : [value as T];
 }
 
 /** Applies the patches of an action — their ids by target. */
@@ -216,7 +204,7 @@ export class Actions {
     const request = this.#host.request(target, method, data);
     const untrack = this.#submissions.add({ name, method, url: request.url, input: options.input ?? data });
     // Model 1: shown at once.
-    const applied = applyPatches(list(options.optimistic));
+    const applied = applyPatches(listOf(options.optimistic));
     let outcome: ActionOutcome = CANCELLED;
     try {
       outcome = await this.#send(request, method, headers, controller.signal);
@@ -227,7 +215,7 @@ export class Actions {
       }
       if (method !== 'get') this.#host.changed();
       // Its patches reconciled with the server's props — the submission stays listed until they are (no gap for a ghost row).
-      await reconcile(applied, list(options.reload));
+      await reconcile(applied, listOf(options.reload));
       // Its flash messages (E60) — delivered with its answer, fired once what it reloads is on screen.
       if (!this.#host.left) this.#host.flash(outcome.flash);
       if (outcome.kind === 'redirect' && onRedirect === 'visit' && !this.#host.left) await this.#host.visit(outcome.redirect);

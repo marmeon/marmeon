@@ -1,0 +1,140 @@
+/**
+ * Prefetching (W5.6): a page fetched ahead of its visit (a hovered link) — GET only, `Purpose: prefetch`, in memory only (E36).
+ * Used once, by the visit it was fetched for, within its `cacheFor`; dropped when the document is left (signing out) and
+ * when a non-GET visit changes what it shows.
+ */
+import { FLASH_WAITING_HEADER, PAGE_HEADER, PURPOSE_HEADER, REGION_HEADER, type PageObject } from '../../page.ts';
+import { LruMap } from '../cache.ts';
+import type { NavigatorCore } from '../core.ts';
+import { takeFlash } from '../flash.ts';
+import { buildRequest } from '../request.ts';
+
+/** A prefetch: always a GET (`data` goes into the query string). */
+export interface PrefetchOptions {
+  /** How long the prefetched page may be shown instead of asking the server, in ms (default 30 000). */
+  cacheFor?: number;
+  data?: Record<string, unknown>;
+  /** Fetched as a layer's request — for `<Link layer prefetch>` (the visit that opens it takes it). */
+  layer?: boolean;
+}
+
+/** How long a prefetched page is used by default: 30 s, like Inertia. */
+export const DEFAULT_PREFETCH_CACHE_FOR = 30_000;
+
+/** Prefetched pages kept at most (the oldest goes first). */
+const PREFETCH_LIMIT = 30;
+
+/** A prefetched page: its request (under way or done), and until when it may be shown. */
+interface Prefetched {
+  readonly controller: AbortController;
+  readonly page: Promise<PageObject | undefined>;
+  expiresAt: number;
+  expired(): boolean;
+  /** Its request is done (with a page or without). */
+  settled: boolean;
+}
+
+type PrefetchCore = Pick<NavigatorCore, 'window' | 'page' | 'left' | 'once' | 'send'>;
+
+/** The prefetched pages of one navigator, by URL. */
+export class Prefetches {
+  readonly #core: PrefetchCore;
+  readonly #pages = new LruMap<string, Prefetched>(PREFETCH_LIMIT);
+
+  constructor(core: PrefetchCore) {
+    this.#core = core;
+  }
+
+  /** How many prefetched pages are kept (tests). */
+  get size(): number {
+    return this.#pages.size;
+  }
+
+  /** Fetches the page of `url` ahead — see `Navigator.prefetch` (which turned away anything but a GET already). */
+  prefetch(url: string, options: PrefetchOptions): Promise<void> {
+    const { window, page } = this.#core;
+    const target = new URL(url, window.location.href);
+    if (target.origin !== window.location.origin) return Promise.resolve();
+    const { url: path } = buildRequest(target, 'get', options.data);
+    if (path === page.url && !options.layer) return Promise.resolve();
+    const key = prefetchKey(path, options.layer === true);
+    const existing = this.#pages.peek(key);
+    if (existing && !existing.expired()) return existing.page.then(() => undefined);
+
+    const cacheFor = options.cacheFor ?? DEFAULT_PREFETCH_CACHE_FOR;
+    const controller = new AbortController();
+    const entry: Prefetched = {
+      controller,
+      page: this.#fetchAhead(path, controller.signal, options.layer === true).then((page) => {
+        entry.settled = true;
+        // Kept from when it arrived; nothing to keep → the visit asks the server.
+        if (page && this.#pages.peek(key) === entry) entry.expiresAt = Date.now() + cacheFor;
+        else if (this.#pages.peek(key) === entry) this.#pages.delete(key);
+        return page;
+      }),
+      expiresAt: Infinity,
+      expired: () => Date.now() >= entry.expiresAt,
+      settled: false,
+    };
+    this.#pages.set(key, entry);
+    return entry.page.then(() => undefined);
+  }
+
+  /** Whether a prefetch of `url` has its page already (and may still be used) — an instant visit then needs no placeholder. */
+  ready(url: string, layer: boolean): boolean {
+    const entry = this.#pages.peek(prefetchKey(url, layer));
+    return entry !== undefined && entry.settled && !entry.expired() && Number.isFinite(entry.expiresAt);
+  }
+
+  /** The prefetched page of `url`, if it may still be used — taken: a later visit asks the server again. */
+  take(url: string, layer: boolean): Promise<PageObject | undefined> | undefined {
+    const key = prefetchKey(url, layer);
+    const entry = this.#pages.peek(key);
+    if (!entry) return undefined;
+    this.#pages.delete(key);
+    return entry.expired() ? undefined : entry.page;
+  }
+
+  /** Every prefetched page goes — a write changed what they show, or the document is left. */
+  flush(): void {
+    for (const entry of this.#pages.values()) entry.controller.abort();
+    this.#pages.clear();
+  }
+
+  /** The page of a prefetch — undefined for anything that is not a page to show as it is. */
+  async #fetchAhead(url: string, signal: AbortSignal, layer: boolean): Promise<PageObject | undefined> {
+    try {
+      const headers: Record<string, string> = layer ? { [PURPOSE_HEADER]: 'prefetch', [REGION_HEADER]: 'layer' } : { [PURPOSE_HEADER]: 'prefetch' };
+      const response = await this.#core.send(url, { method: 'get', headers, signal });
+      // 409 (a new build, signing in or out), 5xx, a 4xx page, not a page: the visit asks again and handles it. Flash
+      // messages wait for the page (E60): the prefetch took none — the visit asks, and its answer brings them.
+      if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true' || response.headers.get(FLASH_WAITING_HEADER) === 'true') {
+        await response.body?.cancel();
+        return undefined;
+      }
+      // A prefetch takes no flash message (the server sends none): nothing of the kind is kept with it either.
+      const { page } = takeFlash((await response.json()) as PageObject);
+      return this.#core.left || signal.aborted ? undefined : this.#core.once.receive(page);
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+/** The prefetch of `url` — kept apart for a layer's request (another answer: the layer's, not a page). */
+function prefetchKey(url: string, layer: boolean): string {
+  return layer ? `layer ${url}` : url;
+}
+
+/** `promise`, or undefined as soon as `signal` aborts — a newer visit does not wait for a prefetch it does not need. */
+export function untilAborted<T>(promise: Promise<T | undefined>, signal: AbortSignal): Promise<T | undefined> {
+  if (signal.aborted) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const abort = () => resolve(undefined);
+    signal.addEventListener('abort', abort, { once: true });
+    void promise.then((value) => {
+      signal.removeEventListener('abort', abort);
+      resolve(value);
+    });
+  });
+}
