@@ -31,10 +31,10 @@ type LeakScenario = Exclude<Scenario, 'everything'>;
 
 /**
  * What each scenario uses on purpose: `createBespokeApp` turns the progress bar on and gives every router optimistic patches
- * (`router.optimistic`/`reloading`, E59); `useForm` remembers a form's input (`remember`, static in it — E74 loads only
- * `validate` on first use).
+ * (`router.optimistic`/`reloading`, E59); `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
+ * static in it — a guard loaded later could not stop a navigation that came first; E74 loads only `validate` on first use).
  */
-const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['optimistic', 'progress'], minimalApp: ['optimistic', 'progress', 'remember'], everything: [] };
+const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['optimistic', 'progress'], minimalApp: ['guard', 'optimistic', 'progress', 'remember'], everything: [] };
 
 /** A feature's entry: the scenario it adds to, plus its import. */
 const inCore = (...names: string[]) => ({ base: 'core' as const, entry: coreEntry(...names) });
@@ -54,7 +54,7 @@ const FEATURES = {
   // patch queue) is no marker: layers and islands keep their own patches with it.
   optimistic: { markers: ['http/client/features/optimistic'], use: inCore('optimistic') },
   // useForm(…, { validate }): on a form's first use (E74), in a chunk of its own. useForm remembers (static).
-  liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['remember'], lazy: true },
+  liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['guard', 'remember'], lazy: true },
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
@@ -63,17 +63,19 @@ const FEATURES = {
   prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link'), lazy: true },
   // Any view of resolveModulePages may declare it (E58): the resolver brings it, <BespokeApp> attaches it.
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
-  guard: { markers: ['http/client/features/guard', 'http/client/confirm', 'react/confirm'], use: inApp('useBlocker') },
+  // useBlocker, useForm({ guard }), <Form guard>: static (a guard loaded later could not stop what came first). Asking — a
+  // visit's, an action's `confirm`, the guard's question — is the core's (`http/client/confirm`).
+  guard: { markers: ['http/client/features/guard'], use: inApp('useBlocker') },
   // <Link instant>: loaded where one renders (E74), in a chunk of its own.
   instant: { markers: ['http/client/features/instant'], use: inApp('Link'), lazy: true },
-  form: { markers: ['react/form'], use: inApp('Form'), brings: ['remember'] }, // <Form remember>, static like useForm's
+  form: { markers: ['react/form'], use: inApp('Form'), brings: ['guard', 'remember'] }, // <Form remember guard>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');

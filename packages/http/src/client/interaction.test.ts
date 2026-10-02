@@ -5,6 +5,7 @@ import { dirtyPaths, isDirtyPath } from './forms.ts';
 import { isCurrentLink } from './links.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
+import { guard } from './features/guard.ts';
 
 /** Flash, state attributes, the navigation guard and confirm in the client core (W5b step 7, E60/E64). */
 
@@ -174,7 +175,7 @@ describe('the navigation guard (E64)', () => {
     const { win, navigator, visible } = tab(page('/users/1/edit'), undefined, { confirm });
     win.handler = (url) => pageResponse(page(new URL(url).pathname));
     let dirty = true;
-    navigator.guard({ message: 'Unsaved changes.', active: () => dirty });
+    navigator.use(guard).add({ message: 'Unsaved changes.', active: () => dirty });
     expect(await navigator.visit('/people')).toBeUndefined();
     expect(win.requests).toEqual([]);
     expect(asked).toEqual([{ kind: 'leave', message: 'Unsaved changes.' }]);
@@ -192,7 +193,7 @@ describe('the navigation guard (E64)', () => {
     const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
     win.handler = () => pageResponse(page('/users/1/edit'));
     const own = { message: 'Unsaved.' };
-    navigator.guard(own);
+    navigator.use(guard).add(own);
     await navigator.visit('/users/1/edit', { method: 'put', data: {}, ignoreGuards: [own] });
     await navigator.reload({ only: ['profile'] });
     await navigator.reload();
@@ -206,7 +207,7 @@ describe('the navigation guard (E64)', () => {
     const { win, navigator, visible } = tab(page('/users/1'), undefined, { confirm });
     win.handler = () => pageResponse(page('/users/1/edit', {}, 'user-profile/Edit'));
     await navigator.visit('/users/1/edit');
-    const stop = navigator.guard({ message: 'Unsaved.' });
+    const stop = navigator.use(guard).add({ message: 'Unsaved.' });
     win.back();
     await settle();
     await settle();
@@ -230,7 +231,7 @@ describe('the navigation guard (E64)', () => {
     win.handler = (url) => pageResponse({ ...page(new URL(url).pathname, {}, 'user-profile/Edit'), layer: { key: new URL(url).pathname, base: '/users/1' } });
     await navigator.visit('/users/1/edit', { layer: true });
     const layer = navigator.layers[0]!;
-    navigator.guard({ message: 'Unsaved.', layer });
+    navigator.use(guard).add({ message: 'Unsaved.', layer });
     await layer.close();
     expect(asked).toHaveLength(1);
     expect(navigator.layers).toHaveLength(1);
@@ -244,7 +245,7 @@ describe('the navigation guard (E64)', () => {
     const { asked, confirm } = asking([]);
     const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
     expect(win.unload()).toBe(false);
-    navigator.guard({ message: 'Unsaved.' });
+    navigator.use(guard).add({ message: 'Unsaved.' });
     expect(win.unload()).toBe(true);
     // Signed out in another tab: the next request is a 409 — the document goes, unasked, and leaving is not stopped.
     win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });

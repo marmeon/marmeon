@@ -16,7 +16,7 @@ import { DocumentChange } from './document-change.ts';
 import { VisitEmitter, type Visit, type VisitCallbacks, type VisitEvent, type VisitEvents, type VisitProgress } from './events.ts';
 import { emptySlot, emptySlots, type EntryStack, type Feature, type FeatureHook, type FeatureHooks, type PendingVisit, type Slot, type VisitPart } from './feature.ts';
 import { DEFAULT_FEATURES } from './features/defaults.ts';
-import { guard as guardFeature, type NavigationGuard } from './features/guard.ts';
+import type { NavigationGuard } from './features/guard.ts';
 import type { InstantVisit } from './features/instant.ts';
 import { layers } from './features/layers.ts';
 import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
@@ -534,17 +534,7 @@ export class Navigator implements LayerHost {
 
   // -- What adapters use of the features — moving to the features themselves in Wave 5c step 4 (E73) ---------------------
 
-  /**
-   * Guards unsaved changes (E64): from now on — while `guard.active()` says so — a visit, Back/Forward or closing its layer asks
-   * first (`guard.message`), and closing the tab or reloading asks with the browser's own question. Returns the function that
-   * lifts it. A form passes its own guard when it is sent (`ignoreGuards`); a full page load the server asks for (a 409:
-   * signed out, a new build) is never stopped.
-   */
-  guard(guard: NavigationGuard): () => void {
-    return this.use(guardFeature).add(guard);
-  }
-
-  /** Whether a guard would ask before leaving now (unsaved changes anywhere on screen). */
+  /** Whether a guard would ask before leaving now (unsaved changes anywhere on screen — `navigator.use(guard).add(…)`). */
   isGuarded(): boolean {
     return this.#core.blocking(() => true).length > 0;
   }
@@ -665,8 +655,10 @@ export class Navigator implements LayerHost {
       partial: partial !== undefined,
       takes: false,
     };
-    // A feature may stop it (E64: its confirmation, unsaved changes) — asking only when one is concerned: otherwise it starts
-    // at once (in the same task).
+    // Its own confirmation first (E64) — the core asks, whatever features are attached: a no sends nothing.
+    if (options.confirm !== undefined && !(await core.ask(confirmRequest(options.confirm)))) return undefined;
+    // A feature may stop it (E64: unsaved changes) — asking only when one is concerned: otherwise it starts at once (in the
+    // same task).
     for (const hook of this.#hooks.visit ?? []) {
       let go = hook(pending);
       if (go instanceof Promise) go = await go;

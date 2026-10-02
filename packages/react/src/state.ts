@@ -1,4 +1,4 @@
-import type { NavigationGuard } from '@bespokecore/http/client';
+import { guard as guardFeature, type NavigationGuard } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName } from '@bespokecore/http/page';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
@@ -66,7 +66,9 @@ export function useGuard(when: boolean, message: string | undefined): Navigation
     };
   }
   const handle = guard.current;
-  useEffect(() => (when && navigator ? navigator.guard(handle) : undefined), [when, navigator, handle]);
+  // The guard feature attaches with the first guard that holds (E70) — static here: a guard loaded later could not stop a
+  // navigation that came first.
+  useEffect(() => (when && navigator ? navigator.use(guardFeature).add(handle) : undefined), [when, navigator, handle]);
   return handle;
 }
 

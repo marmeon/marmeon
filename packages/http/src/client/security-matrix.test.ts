@@ -5,6 +5,7 @@ import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit,
 import { actions, type ActionsFeature } from './features/actions.ts';
 import { DEFAULT_FEATURES } from './features/defaults.ts';
 import { instant } from './features/instant.ts';
+import { guard, type Guards } from './features/guard.ts';
 import { optimistic, type PagePatches } from './features/optimistic.ts';
 import { prefetch, type Prefetches } from './features/prefetch.ts';
 import { queryState } from './features/query-state.ts';
@@ -158,7 +159,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach: those attached by default and those an adapter attaches where they are used (Wave 5c
  * step 4, E70) — the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [...DEFAULT_FEATURES, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant];
+const ALL_FEATURES: readonly Feature[] = [...DEFAULT_FEATURES, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard];
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
 async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; cacheSize?: number } = {}) {
@@ -192,7 +193,7 @@ async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; 
   const action = api<ActionsFeature>('actions').run('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: { target: api<PagePatches>('optimistic').target(pageKey), patch: (props) => ({ ...props, liked: CANARY }) } });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   await navigator.visit('/users/1/edit', { layer: true });
-  navigator.guard({ message: 'Unsaved', active: () => false });
+  api<Guards>('guard').add({ message: 'Unsaved', active: () => false });
   const layerKey = navigator.layers[0]!.entry;
   // What the core itself keeps — once props, flash messages, the islands of the page's entry — and the remembered input of it.
   const core = { once: host.once, flash: host.flash, regions: host.entry(REGIONS, pageKey), remembered: host.entry(REMEMBERED, pageKey) };
@@ -376,6 +377,16 @@ describe('the security matrix — the core alone, no feature attached', () => {
     await navigator.visit('/users/3', { method: 'put', data: {} });
     await navigator.reload({ only: ['secret'] });
     expect(fired).toEqual(['unheard', 'saved']);
+  });
+
+  it('a visit’s own confirmation is asked by the core — a no sends nothing, with no guard attached (4i)', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => pageResponse(page('/logout-done'));
+    const asked: string[] = [];
+    const { navigator } = boot(win, page('/users/1'), { features: [], confirm: (request) => (asked.push(request.message), false) });
+    expect(await navigator.visit('/users/1/delete', { method: 'delete', confirm: 'Delete your account?' })).toBeUndefined();
+    expect(asked).toEqual(['Delete your account?']);
+    expect(win.requests).toEqual([]);
   });
 
   it('history.state holds where an entry is, never what it showed — Back and Forward included', async () => {

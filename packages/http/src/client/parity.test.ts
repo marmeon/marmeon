@@ -8,6 +8,7 @@ import { isSensitiveRememberField, rememberable } from './remember.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
 import { instant } from './features/instant.ts';
+import { guard } from './features/guard.ts';
 
 /** Remember state, once props, instant visits and the cancelable asset-version reload in the client core (W5b step 10, E63/E64). */
 
@@ -311,7 +312,7 @@ describe('the asset-version reload (E64) — cancelable; signing in or out is no
     for (const answer of [false, true]) {
       const asked: ConfirmRequest[] = [];
       const { win, navigator } = tab(page('/users/1'), { confirm: async (request) => (asked.push(request), answer) });
-      navigator.guard({ message: 'Unsaved changes — leave?' });
+      navigator.use(guard).add({ message: 'Unsaved changes — leave?' });
       // A poll (in the background) finds the new build: nobody agreed to leave.
       win.handler = () => versionConflict('/users/1');
       await navigator.reload({ only: ['activity'], async: true });
@@ -324,7 +325,7 @@ describe('the asset-version reload (E64) — cancelable; signing in or out is no
   it('a visit that was allowed to leave the unsaved changes already asks nothing more — the new build loads', async () => {
     const asked: ConfirmRequest[] = [];
     const { win, navigator } = tab(page('/users/1'), { confirm: async (request) => (asked.push(request), true) });
-    navigator.guard({ message: 'Unsaved changes — leave?' });
+    navigator.use(guard).add({ message: 'Unsaved changes — leave?' });
     win.handler = () => versionConflict('/people');
     await navigator.visit('/people');
     expect(asked.length).toBe(1);
@@ -334,7 +335,7 @@ describe('the asset-version reload (E64) — cancelable; signing in or out is no
   it('counter-check: signing out with unsaved changes never asks — the full load wins over the guard', async () => {
     const asked: ConfirmRequest[] = [];
     const { win, navigator } = tab(page('/users/1'), { confirm: async (request) => (asked.push(request), false) });
-    navigator.guard({ message: 'Unsaved changes — leave?' });
+    navigator.use(guard).add({ message: 'Unsaved changes — leave?' });
     // Signed out in another tab: the next poll gets the 409 of the session change.
     win.handler = () => historyConflict('/login');
     await navigator.reload({ only: ['activity'], async: true });

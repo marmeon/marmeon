@@ -1,16 +1,17 @@
 /**
  * The navigation guard and confirmations (E64): unsaved changes a visit, Back/Forward or closing a layer would lose ask
  * first; closing the tab or reloading gets the browser's own question (`beforeunload`). A full load the server asks for (a
- * 409) is never stopped. Also a visit's own confirmation (`confirm`) — asked by the core (`host.ask`).
+ * 409) is never stopped. Attached where a component guards (React: `useBlocker`, a form's `guard`) — a visit's own
+ * confirmation (`confirm`) is the core's, asked with or without it.
  */
-import { confirmRequest, DEFAULT_LEAVE_MESSAGE } from '../confirm.ts';
+import { DEFAULT_LEAVE_MESSAGE } from '../confirm.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, type PendingVisit } from '../feature.ts';
 import { isHistoryState, type HistoryState } from '../history.ts';
 import type { Layer } from '../layer.ts';
 
 /**
- * Unsaved changes that a navigation would lose (E64) — `navigator.guard({ message })`: while it is registered (and `active()`
+ * Unsaved changes that a navigation would lose (E64) — `navigator.use(guard).add({ message })`: while it is registered (and `active()`
  * says so), a visit, Back/Forward or closing its layer asks first, and closing the tab or reloading gets the browser's own
  * question (`beforeunload`). `layer`: the layer it is in — only what takes that layer (or the page beneath) off the screen
  * asks; without one, it is the page's.
@@ -43,16 +44,19 @@ export class Guards {
   }
 
   /**
-   * Whether a visit may start (the `visit` hook): its own confirmation first (E64), then the unsaved changes it would take off
-   * the screen — a promise only when something is asked, so a visit nobody guards starts at once.
+   * Whether a visit may start (the `visit` hook — after the core asked its own confirmation): the unsaved changes it would take
+   * off the screen — a promise only when something is asked, so a visit nobody guards starts at once.
    */
-  check({ options, keeps, leaving }: PendingVisit): boolean | Promise<boolean> {
-    const { confirm, ignoreGuards } = options;
-    const pass = () => keeps || ignoreGuards === true || this.blocking(leaving, ignoreGuards).length === 0 || this.#core.mayLeave(leaving, ignoreGuards);
-    return confirm === undefined ? pass() : this.#core.ask(confirmRequest(confirm)).then((yes) => yes && pass());
+  check({ options: { ignoreGuards }, keeps, leaving }: PendingVisit): boolean | Promise<boolean> {
+    return keeps || ignoreGuards === true || this.blocking(leaving, ignoreGuards).length === 0 || this.#core.mayLeave(leaving, ignoreGuards);
   }
 
-  /** Guards `guard` until the returned function lifts it — see `Navigator.guard`. */
+  /**
+   * Guards unsaved changes (E64) until the returned function lifts it: from now on — while `guard.active()` says so — a visit,
+   * Back/Forward or closing its layer asks first (`guard.message`), and closing the tab or reloading asks with the browser's own
+   * question. A form passes its own guard when it is sent (`ignoreGuards`); a full page load the server asks for (a 409: signed
+   * out, a new build) is never stopped.
+   */
   add(guard: NavigationGuard): () => void {
     const { window } = this.#core;
     this.#guards.add(guard);

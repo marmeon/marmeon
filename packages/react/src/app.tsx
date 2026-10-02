@@ -496,7 +496,7 @@ export function BespokeApp({
               {/* The layers over the page (E53) — apart from it: opening one changes nothing the page renders from. */}
               <LayerStack entries={layers} resolve={resolve} frame={frame} base={router} />
               <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
-              {/* The question a link, an action, a form or the navigation guard asks (E64) — over everything. */}
+              {/* The question a link, an action, a form or the navigation guard asks (E64) — over everything, one at a time. */}
               <ConfirmHost questions={questions} component={Confirm} />
               {/* The first page's deferred groups the server streams with the document (E49): to the navigator as they arrive. */}
               <StreamedDeferred groups={initialPage.streamedProps} navigator={getNavigator} />

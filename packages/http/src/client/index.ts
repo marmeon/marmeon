@@ -81,6 +81,7 @@ export type { LiveValidationFeature } from './features/live-validation.ts';
 export { prefetch, Prefetches } from './features/prefetch.ts';
 export { BackRevalidation, revalidateOnBack } from './features/revalidate-on-back.ts';
 export { instant, InstantVisits } from './features/instant.ts';
+export { guard, Guards } from './features/guard.ts';
 export { liveValidationOnFirstUse, loadInstant, loadLiveValidation, loadPrefetch, prefetchWith } from './lazy.ts';
 export type { FormLiveValidation } from './lazy.ts';
 export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';

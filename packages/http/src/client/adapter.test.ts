@@ -31,6 +31,7 @@ import {
 import {
   actions,
   firstErrors,
+  guard,
   hasServerMarkup,
   instant,
   isHistoryState,
@@ -421,7 +422,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     await navigator.visit('/users/2');
     await vi.waitFor(() => expect(root.textContent).toContain('activity')); // its deferred props are in
     let dirty = true;
-    const lift = navigator.guard({ message: 'Unsaved changes.', active: () => dirty });
+    const lift = navigator.use(guard).add({ message: 'Unsaved changes.', active: () => dirty });
     const sent = requests.length;
     expect(await navigator.visit('/users/1')).toBeUndefined();
     expect(requests.length).toBe(sent); // Stay: nothing sent
