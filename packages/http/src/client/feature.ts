@@ -18,6 +18,7 @@ import type { HistoryState } from './history.ts';
 import type { RenderOptions, VisitMethod, VisitOptions } from './navigation.ts';
 import type { FeatureHost, PlaceOptions } from './core.ts';
 import type { Layer, LayerControl } from './layer.ts';
+import type { RegionOwner } from './owner.ts';
 import type { ReloadSpec } from './optimistic.ts';
 import type { Scroll } from './scroll.ts';
 
@@ -166,6 +167,8 @@ export interface FeatureHooks {
   // Events.
   /** A write (a non-GET visit or action) changed what the server shows. */
   write(): void;
+  /** A page keeping its state takes the place of the one on screen in another entry: what `from`'s entry kept goes along (islands). */
+  carry(from: RegionOwner, to: RegionOwner): void;
   /** The user chose to leave the document (another site, a full load): the browser's own question must not ask again. */
   unload(): void;
   /** The navigator took over the history (`start()`) / gave it back. */

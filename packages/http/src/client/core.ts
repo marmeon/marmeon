@@ -17,7 +17,8 @@ import type { HistoryWriter } from './history.ts';
 import type { Layer, LayerControl } from './layer.ts';
 import type { Navigator, NavigatorOptions, NavigatorWindow, RenderOptions, VisitMethod, VisitOptions } from './navigation.ts';
 import type { OnceStore } from './once.ts';
-import type { RegionOwner, RegionTransport } from './region.ts';
+import type { RegionOwner } from './owner.ts';
+import type { ReloadSpec } from './optimistic.ts';
 import type { Scroll, ScrollMemory } from './scroll.ts';
 
 /** What a request sends (the page headers come on top). */
@@ -71,8 +72,6 @@ export interface FeatureHost {
   readonly flash: FlashChannel;
   /** Flash messages of answers on their way to the screen — fired once what they came with is rendered (a slot of the document). */
   readonly inbox: FlashMessage[];
-  /** How the islands' regions send their requests (the islands feature sets it). */
-  transport: RegionTransport;
   /** The asset version this tab runs. */
   readonly version: string | null;
 
@@ -110,8 +109,10 @@ export interface FeatureHost {
 
   /** The current history entry: the top layer's, or the page's. */
   top(): string;
-  /** A region owner for the islands of entry `key` — `back`: brought back by Back/Forward (what views declare reloads, E58). */
+  /** The owner of entry `key` on screen — `back`: brought back by Back/Forward (what views declare reloads, E58). */
   ownerOf(key: string, back?: boolean): RegionOwner;
+  /** What the view `component` declares to reload when Back/Forward shows it from memory (E58) — the `declared` hook's. */
+  declared(component: string): Promise<ReloadSpec | undefined>;
   /** The unsaved changes on the levels `leaving` takes off the screen — but `ignore` (E64). */
   blocking(leaving: (level: number) => boolean, ignore?: readonly NavigationGuard[]): NavigationGuard[];
   /** Whether a navigation that takes the levels `leaving` off the screen may go — asking, when unsaved changes are on one. */

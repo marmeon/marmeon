@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../page.ts';
 import { Navigator } from './navigation.ts';
-import type { RegionOwner } from './region.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
+import type { RegionOwner } from './owner.ts';
+import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
 import { revalidateOnBack } from './features/revalidate-on-back.ts';
+import { islands } from './features/islands.ts';
 
 /** A response the test lets through when it says so — to keep requests under way side by side. */
 function gate<T>(): { promise: Promise<T>; open: (value: T) => void } {
@@ -292,7 +293,7 @@ describe('optimistic patches (E59 model 1)', () => {
       return islandRequests === 1 ? islandAnswer([1, 2]) : islandAnswer([1]);
     };
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/dashboard/links');
+    const region = navigator.use(islands).region('/dashboard/links');
     await region.load();
 
     const running = withActions(navigator).action('/links/2', { method: 'delete', optimistic: region.optimistic(without2Links), reload: region.reloading({ only: ['links'] }) });
@@ -302,7 +303,7 @@ describe('optimistic patches (E59 model 1)', () => {
     await running;
     expect(islandRequests).toBe(2);
     expect(idsOf(region.snapshot.region!.props)).toEqual([1]);
-    expect(navigator.regionOwner.regions.get(region.id)).toMatchObject({ props: { links: links(1) } });
+    expect(keptRegions(navigator, navigator.regionOwner).get(region.id)).toMatchObject({ props: { links: links(1) } });
   });
 
   it('a form visit with a patch (useForm({ optimistic })): shown while under way, then the answer — or rolled back', async () => {
@@ -477,13 +478,13 @@ describe('revalidateOnBack for layers and islands (E58)', () => {
     });
     navigator.use(revalidateOnBack); // attached where views declare it (React: resolveModulePages)
     navigator.start();
-    await navigator.region('/dashboard/activity').load();
+    await navigator.use(islands).region('/dashboard/activity').load();
     await navigator.visit('/people');
     win.back();
     await settle();
     const requests = win.requests.length;
     // The adapter renders the island again: from memory, then the declared props.
-    const region = navigator.region('/dashboard/activity', { owner: owners.at(-1)! });
+    const region = navigator.use(islands).region('/dashboard/activity', { owner: owners.at(-1)! });
     expect(region.snapshot.region?.props).toEqual({ entries: 1, since: 'today' });
     await region.load();
     await settle();

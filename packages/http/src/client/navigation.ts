@@ -27,7 +27,7 @@ import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
 import type { OptimisticUpdate, ReloadSpec } from './optimistic.ts';
-import { REGIONS, RegionOwner, type Region, type RegionInitial } from './region.ts';
+import { RegionOwner } from './owner.ts';
 import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
@@ -181,7 +181,7 @@ export interface NavigatorOptions {
   /**
    * Shows a page: resolve its component and render it. Resolves once it is on screen (scroll restores after that).
    * `owner` is where the page's regions (islands) live — its history entry's memory: the adapter hands it to
-   * `navigator.region(url, { owner })`, so an island loads into the entry it is rendered for.
+   * `navigator.use(islands).region(url, { owner })`, so an island loads into the entry it is rendered for.
    */
   render: (page: PageObject, options: RenderOptions) => Promise<void>;
   /** Default: the browser's `window`. */
@@ -322,8 +322,8 @@ export class Navigator implements LayerHost {
       },
       document: (slot) => held(this.#document, slot),
       top: () => this.#first('top') ?? core.key!,
-      ownerOf: (key, back) =>
-        new RegionOwner(core.transport, core.entry(REGIONS, key), key, back ? (component) => this.#first('declared', component) ?? Promise.resolve(undefined) : undefined),
+      ownerOf: (key, back) => new RegionOwner(key, back),
+      declared: (component) => this.#first('declared', component) ?? Promise.resolve(undefined),
       blocking: (leaving, ignore = []) => this.#all('unsaved', leaving, ignore).flat(),
       mayLeave: async (leaving, ignore) => {
         if (ignore === true) return true;
@@ -421,19 +421,6 @@ export class Navigator implements LayerHost {
   get regionOwner(): RegionOwner {
     this.#adopt();
     return this.#core.owner;
-  }
-
-  /**
-   * A region of the page — an island (E48, E50): `url` is its route's (same origin), `owner` the entry it belongs to (what
-   * `render` handed the adapter; default: the page on screen). The same URL gives the same region (one request for two
-   * identical islands); what it loaded stays in the entry's memory, so Back/Forward shows it without a request. `initial`
-   * is a region object the server already sent (streamed with the page). Islands never load ahead (no prefetch, E52).
-   */
-  region(url: string, { owner, initial }: { owner?: RegionOwner; initial?: RegionInitial } = {}): Region {
-    this.#adopt();
-    const target = new URL(url, this.#core.window.location.href);
-    if (target.origin !== this.#core.window.location.origin) throw new Error(`A region comes from this site, not from ${target.origin} (${url}).`);
-    return (owner ?? this.#core.owner).region(target.pathname + target.search, initial);
   }
 
   /**
@@ -792,7 +779,7 @@ export class Navigator implements LayerHost {
     if (history === 'push' || !keep || top !== core.key) {
       if (history === 'replace') core.forget(key);
       owner = core.ownerOf(key);
-      if (keep) for (const [id, region] of core.owner.regions) owner.regions.set(id, region);
+      if (keep) this.#all('carry', core.owner, owner);
     }
     try {
       try {

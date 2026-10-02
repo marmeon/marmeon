@@ -152,7 +152,7 @@ export function reloadsOf(
           : `[bespoke:R8] ${name}`,
       );
     }
-    for (const region of owner?.live ?? []) if (matchesPath(route.path, new URL(region.url, 'http://bespoke.invalid').pathname)) reloads.push(region.reloading());
+    for (const region of owner?.live.values() ?? []) if (matchesPath(route.path, new URL(region.url, 'http://bespoke.invalid').pathname)) reloads.push(region.reloading());
   }
   return reloads;
 }

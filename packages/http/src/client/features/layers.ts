@@ -15,7 +15,7 @@ import { Layer, type LayerControl } from '../layer.ts';
 import { keepDeferred, mergePage, pick } from '../merge.ts';
 import type { VisitOptions } from '../navigation.ts';
 import type { ReloadSpec } from '../optimistic.ts';
-import { REGIONS } from '../region.ts';
+import { REGIONS } from '../owner.ts';
 import { partialReloadHeaders } from '../request.ts';
 import type { Scroll } from '../scroll.ts';
 

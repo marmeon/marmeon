@@ -6,7 +6,9 @@ import { optimistic } from './features/optimistic.ts';
 import { Navigator, type NavigatorWindow, type ScrollRegion } from './navigation.ts';
 import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
 import type { Layer } from './layer.ts';
-import type { RegionOwner } from './region.ts';
+import { REGIONS, type RegionOwner } from './owner.ts';
+import { defineFeature } from './feature.ts';
+import type { KeptRegion } from './region.ts';
 
 export const ORIGIN = 'https://app.test';
 
@@ -236,3 +238,11 @@ export function withActions(navigator: Navigator) {
     subscribeSubmissions: (listener: () => void) => run.submissions().subscribe(listener),
   };
 }
+
+const PEEK = defineFeature('test-peek', (host) => host);
+
+/** What `owner`'s history entry keeps of its islands (the slot `REGIONS`) — empty when the core let go of it. */
+export function keptRegions(navigator: Navigator, owner: RegionOwner): ReadonlyMap<string, KeptRegion> {
+  return navigator.use(PEEK).peek(REGIONS, owner.entry!) ?? new Map();
+}
+

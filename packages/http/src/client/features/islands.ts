@@ -6,7 +6,8 @@
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../../page.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
-import type { RegionResponse, RegionTransport } from '../region.ts';
+import { REGIONS, type RegionOwner } from '../owner.ts';
+import { ownedRegion, type Region, type RegionInitial, type RegionResponse, type RegionTransport } from '../region.ts';
 
 type IslandsCore = Pick<FeatureHost, 'window' | 'left' | 'version' | 'documentChange'>;
 
@@ -58,11 +59,35 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
   return { kind: 'exception', failure: { status: response.status || undefined, message } };
 }
 
+/** What adapters use of islands (E48–E52): the regions of the entries on screen. */
+export interface IslandsFeature {
+  /**
+   * A region of the page — an island (E48, E50): `url` is its route's (same origin), `owner` the entry it belongs to (what
+   * `render` handed the adapter; default: the page on screen). The same URL gives the same region (one request for two
+   * identical islands); what it loaded stays in the entry's memory, so Back/Forward shows it without a request. `initial`
+   * is a region object the server already sent (streamed with the page). Islands never load ahead (no prefetch, E52).
+   */
+  region(url: string, options?: { owner?: RegionOwner; initial?: RegionInitial }): Region;
+}
+
 /**
- * Islands (E48–E52) as a feature: how their regions send requests. The region owners of the history entries are still made
- * by the core (Wave 5c step 4 moves them in here); what they load lives in the entries' slots (`REGIONS`).
+ * Islands (E48–E52) as a feature, attached where an island renders (React: `<Island>`): their regions and how they send their
+ * requests. The owners of the entries on screen are the core's; the regions live on them (`owner.live`, closed with them), and
+ * what they loaded in the entries' slots (`REGIONS`, emptied by the core).
  */
-export const islands = defineFeature('islands', (host) => {
-  host.transport = regionTransport(host);
-  return host.transport;
+export const islands = defineFeature('islands', (host): IslandsFeature => {
+  const transport = regionTransport(host);
+  // A page that keeps its state takes the place of the one on screen (a partial reload, a sort link): its islands come along.
+  host.on('carry', (from, to) => {
+    const kept = from.entry === undefined ? undefined : host.peek(REGIONS, from.entry);
+    if (kept && to.entry !== undefined) for (const [id, region] of kept) host.entry(REGIONS, to.entry).set(id, region);
+  });
+  return {
+    region(url, { owner = host.navigator.regionOwner, initial } = {}) {
+      const target = new URL(url, host.window.location.href);
+      if (target.origin !== host.window.location.origin) throw new Error(`A region comes from this site, not from ${target.origin} (${url}).`);
+      const kept = owner.entry === undefined ? new Map() : host.entry(REGIONS, owner.entry);
+      return ownedRegion(owner, kept, transport, target.pathname + target.search, initial, owner.back ? host.declared : undefined);
+    },
+  };
 }, 7);

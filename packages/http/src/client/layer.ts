@@ -6,7 +6,7 @@
  * The navigator creates them; an adapter renders `navigator.layers` (handed with every `render`) and calls their methods.
  */
 import { MAX_LAYER_DEPTH, type LayerClose, type PageObject } from '../page.ts';
-import type { RegionOwner } from './region.ts';
+import type { RegionOwner } from './owner.ts';
 import type { VisitOptions } from './navigation.ts';
 import { call } from './notify.ts';
 import { PatchQueue, Revalidations, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';

@@ -1,7 +1,7 @@
 import { isSensitiveRememberField, remember, type Remembered } from '@bespokecore/http/client';
 import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
-import { useIslandScope } from './island.tsx';
+import { useIslandScope } from './island-scope.ts';
 
 /** Names that look like something never to keep (E63): a password, a token, a secret, a card. */
 type LooksSensitive<K extends string> = Lowercase<K> extends `${string}${'password' | 'secret' | 'token' | 'card' | 'cvc'}${string}` ? true : false;

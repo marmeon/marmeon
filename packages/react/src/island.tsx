@@ -1,5 +1,6 @@
 import {
   createPoll,
+  islands,
   pageQuery,
   regionInitial,
   resolveRoute,
@@ -47,6 +48,7 @@ import { DataScript, SsrContext, streamedText, type SsrResolvers } from './strea
 import type { ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
 import { viewOf } from './views.ts';
+import { IslandScopeContext } from './island-scope.ts';
 
 /** The path parameters of the island's route: required when its path has required ones. */
 type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
@@ -94,11 +96,6 @@ interface IslandValue {
 
 const IslandContext = createContext<IslandValue | null>(null);
 
-/** @internal The island a component renders in — its region's id (remembered state of an island is kept apart, E63), or undefined. */
-export function useIslandScope(): string | undefined {
-  const value = useContext(IslandContext);
-  return value ? (value.region?.id ?? 'ssr') : undefined;
-}
 
 const LOADING: RegionSnapshot = { status: 'loading', region: undefined, pending: false, failure: undefined };
 const NOT_RESOLVED: RegionResult = { status: 'browser' };
@@ -205,7 +202,8 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
   const region = useMemo(() => {
     if (!navigator || !owner) return null;
     const result = text === undefined ? undefined : parseResult(text);
-    return navigator.region(url, { owner, initial: result && regionInitial(result) });
+    // The islands feature attaches with the first island (E70) — in the browser only (BrowserIsland never renders on the server).
+    return navigator.use(islands).region(url, { owner, initial: result && regionInitial(result) });
   }, [navigator, owner, url, text]);
   // Hydrating, the markup is the server's: what it streamed (or loading, for an island it left to the browser).
   const snapshot = useSyncExternalStore(
@@ -282,11 +280,13 @@ function IslandContent({ route, fallback = null, unauthorized = null, error, as 
     content = (
       <ErrorBoundary resetKey={snapshot.region} fallback={() => failed}>
         <IslandContext.Provider value={value}>
-          <IslandHeadContext.Provider value={snapshot.region.component}>
-            <Suspense fallback={fallback}>
-              <IslandView resolve={resolve} region={snapshot.region} />
-            </Suspense>
-          </IslandHeadContext.Provider>
+          <IslandScopeContext.Provider value={value.region?.id ?? 'ssr'}>
+            <IslandHeadContext.Provider value={snapshot.region.component}>
+              <Suspense fallback={fallback}>
+                <IslandView resolve={resolve} region={snapshot.region} />
+              </Suspense>
+            </IslandHeadContext.Provider>
+          </IslandScopeContext.Provider>
         </IslandContext.Provider>
       </ErrorBoundary>
     );

@@ -65,7 +65,11 @@ export { defaultFormEntries, dirtyPaths, fieldPath, firstErrors, FORM_METHOD_FIE
 export type { FormEntries } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export type { TitleTemplate } from './title.ts';
-export { Region, regionId, regionInitial, RegionOwner, REGIONS } from './region.ts';
+export { ownedRegion, Region, regionId, regionInitial } from './region.ts';
+export { RegionOwner, REGIONS } from './owner.ts';
+export type { LiveRegion } from './owner.ts';
+export { islands } from './features/islands.ts';
+export type { IslandsFeature } from './features/islands.ts';
 export { Layer, MAX_LAYER_DEPTH } from './layer.ts';
 export type { LayerCloseOptions, LayerControl, LayerHost } from './layer.ts';
 export type { KeptRegion, RegionInitial, RegionFailure, RegionReloadOptions, RegionResponse, RegionSnapshot, RegionStatus, RegionTransport } from './region.ts';
@@ -86,4 +90,4 @@ export { liveValidationOnFirstUse, loadInstant, loadLiveValidation, loadPrefetch
 export type { FormLiveValidation } from './lazy.ts';
 export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';
 export type { OptimisticUpdate, PatchTarget, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
-export type { RegionOwnerOptions } from './region.ts';
+export type { DeclaredOnBack } from './region.ts';

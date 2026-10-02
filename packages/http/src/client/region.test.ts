@@ -1,8 +1,9 @@
 import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../page.ts';
 import { describe, expect, it } from 'vitest';
 import { regionId, regionInitial } from './region.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
+import { islands } from './features/islands.ts';
 
 const island = (url: string, props: Record<string, unknown> = {}, extra: Partial<RegionObject> = {}): RegionObject => ({
   component: 'dashboard/RecentSignIns',
@@ -35,7 +36,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
       return islandResponse(island(new URL(url).pathname + new URL(url).search, { entries: ['ada'] }));
     };
     const { navigator } = boot(win, { ...page('/dashboard', {}, 'dashboard/Show'), version: 'v1' });
-    const region = navigator.region('/dashboard/islands/sign-ins?limit=5');
+    const region = navigator.use(islands).region('/dashboard/islands/sign-ins?limit=5');
     expect(region.snapshot.status).toBe('loading');
     await region.load();
 
@@ -50,8 +51,8 @@ describe('Region — islands in the client core (E48, E50)', () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     win.handler = (url) => islandResponse(island(new URL(url).pathname + new URL(url).search));
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const one = navigator.region('/dashboard/islands/sign-ins?limit=5&range=7d');
-    const two = navigator.region('/dashboard/islands/sign-ins?range=7d&limit=5'); // the same island, the query in another order
+    const one = navigator.use(islands).region('/dashboard/islands/sign-ins?limit=5&range=7d');
+    const two = navigator.use(islands).region('/dashboard/islands/sign-ins?range=7d&limit=5'); // the same island, the query in another order
     await Promise.all([one.load(), two.load()]);
     expect(two).toBe(one);
     expect(islandRequests(win)).toHaveLength(1);
@@ -63,8 +64,8 @@ describe('Region — islands in the client core (E48, E50)', () => {
     const slow = held();
     win.handler = (url) => (url.includes('members') ? slow.response : islandResponse(island(new URL(url).pathname)));
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const members = navigator.region('/dashboard/islands/members');
-    const signIns = navigator.region('/dashboard/islands/sign-ins');
+    const members = navigator.use(islands).region('/dashboard/islands/members');
+    const signIns = navigator.use(islands).region('/dashboard/islands/sign-ins');
     void members.load();
     await signIns.load();
     expect(islandRequests(win)).toHaveLength(2);
@@ -79,14 +80,14 @@ describe('Region — islands in the client core (E48, E50)', () => {
     win.handler = (url) =>
       url.includes('/islands/') ? islandResponse(island(new URL(url).pathname, { secret: 'only-in-memory' })) : pageResponse(page('/people', {}, 'user-profile/People'));
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    await navigator.region('/dashboard/islands/sign-ins').load();
+    await navigator.use(islands).region('/dashboard/islands/sign-ins').load();
     await navigator.visit('/people');
     const requests = win.requests.length;
 
     win.back();
     await settle();
     // What the adapter does for the page it renders again: the island of its entry — ready, from memory.
-    const again = navigator.region('/dashboard/islands/sign-ins', { owner: owner() });
+    const again = navigator.use(islands).region('/dashboard/islands/sign-ins', { owner: owner() });
     expect(again.snapshot).toMatchObject({ status: 'ready', region: { props: { secret: 'only-in-memory' } } });
     await again.load();
     expect(win.requests.length).toBe(requests);
@@ -104,7 +105,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
     };
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
     const first = owner();
-    const region = navigator.region('/dashboard/islands/sign-ins');
+    const region = navigator.use(islands).region('/dashboard/islands/sign-ins');
     void region.load();
     await navigator.visit('/people');
     expect(aborted).toBe(true);
@@ -113,8 +114,8 @@ describe('Region — islands in the client core (E48, E50)', () => {
     expect(region.snapshot.region).toBeUndefined();
     expect(first.closed).toBe(true);
     // The next page's entry has no island of the one before.
-    expect(owner().regions.size).toBe(0);
-    expect(navigator.region('/dashboard/islands/sign-ins').snapshot.status).toBe('loading');
+    expect(keptRegions(navigator, owner()).size).toBe(0);
+    expect(navigator.use(islands).region('/dashboard/islands/sign-ins').snapshot.status).toBe('loading');
   });
 
   it('counter-check: a redirect, 401 or 403 of an island is its outcome — the page never navigates', async () => {
@@ -132,7 +133,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
     const statuses: Record<string, string> = {};
     for (const path of Object.keys(answers)) {
-      const region = navigator.region(path);
+      const region = navigator.use(islands).region(path);
       await region.load();
       statuses[path] = region.snapshot.status;
     }
@@ -156,8 +157,8 @@ describe('Region — islands in the client core (E48, E50)', () => {
     const { navigator } = boot(win, page('/dashboard', { stays: true }, 'dashboard/Show'));
     const exceptions: unknown[] = [];
     navigator.on('exception', (exception) => exceptions.push(exception));
-    const broken = navigator.region('/islands/broken');
-    const fine = navigator.region('/islands/fine');
+    const broken = navigator.use(islands).region('/islands/broken');
+    const fine = navigator.use(islands).region('/islands/fine');
     await Promise.all([broken.load(), fine.load()]);
     expect(broken.snapshot).toMatchObject({ status: 'exception', failure: { status: 500, message: 'Database down' } });
     expect(fine.snapshot.status).toBe('ready');
@@ -175,7 +176,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
       return islandResponse(island(new URL(url).pathname, { n: 1 }));
     };
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/activity');
+    const region = navigator.use(islands).region('/islands/activity');
     await region.load();
     offline = true;
     await region.reload();
@@ -187,12 +188,12 @@ describe('Region — islands in the client core (E48, E50)', () => {
     let signedOut = false;
     win.handler = (url) => (signedOut ? outcome('unauthorized') : islandResponse(island(new URL(url).pathname, { private: true })));
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/activity');
+    const region = navigator.use(islands).region('/islands/activity');
     await region.load();
     signedOut = true;
     await region.reload();
     expect(region.snapshot).toMatchObject({ status: 'unauthorized', region: undefined });
-    expect([...owner().regions.values()]).toEqual([{ status: 'unauthorized' }]);
+    expect([...keptRegions(navigator, owner()).values()]).toEqual([{ status: 'unauthorized' }]);
   });
 
   it('counter-check: a 409 (a new build) loads the whole page again — and drops every island kept in memory', async () => {
@@ -201,9 +202,9 @@ describe('Region — islands in the client core (E48, E50)', () => {
     win.handler = (url) =>
       deployed ? new Response(null, { status: 409, headers: { [LOCATION_HEADER]: url } }) : islandResponse(island(new URL(url).pathname));
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    await navigator.region('/islands/one').load();
+    await navigator.use(islands).region('/islands/one').load();
     deployed = true;
-    const two = navigator.region('/islands/two');
+    const two = navigator.use(islands).region('/islands/two');
     await two.load();
     // The page reloads — not the island's URL (the location header): an island has no page of its own.
     expect(win.loads).toEqual(['reload']);
@@ -222,14 +223,14 @@ describe('Region — islands in the client core (E48, E50)', () => {
       return slow.response;
     };
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/activity');
+    const region = navigator.use(islands).region('/islands/activity');
     void region.load();
     await navigator.visit('/logout', { method: 'post' });
     expect(aborted).toBe(true);
     slow.release(islandResponse(island('/islands/activity', { private: true })));
     await settle();
     expect(region.snapshot.region).toBeUndefined();
-    expect(owner().regions.size).toBe(0);
+    expect(keptRegions(navigator, owner()).size).toBe(0);
     expect(navigator.cachedPages).toBe(0);
     expect(win.loads).toEqual(['assign /login']);
   });
@@ -244,7 +245,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
       );
     };
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/sign-ins');
+    const region = navigator.use(islands).region('/islands/sign-ins');
     await region.load();
     expect(region.query).toEqual({ range: '30d', limit: 5 });
 
@@ -274,13 +275,13 @@ describe('Region — islands in the client core (E48, E50)', () => {
       return islandResponse(island(pathname + search, {}, { query: Object.fromEntries(searchParams), queryDefaults: { range: '30d' } }));
     };
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/sign-ins?limit=5');
+    const region = navigator.use(islands).region('/islands/sign-ins?limit=5');
     await region.load();
     await region.reload({ query: { range: 'all' } });
     await navigator.visit('/people');
     win.back();
     await settle();
-    const again = navigator.region('/islands/sign-ins?limit=5', { owner: owner() });
+    const again = navigator.use(islands).region('/islands/sign-ins?limit=5', { owner: owner() });
     expect(again.query).toMatchObject({ range: 'all', limit: '5' });
     expect(regionId(again.url)).toBe('/islands/sign-ins?limit=5&range=all');
   });
@@ -291,18 +292,18 @@ describe('Region — islands in the client core (E48, E50)', () => {
       url.includes('/islands/') ? islandResponse(island(new URL(url).pathname)) : pageResponse(page(new URL(url).pathname + new URL(url).search, { people: [] }, 'user-profile/People'));
     const { navigator, owners, owner } = boot(win, page('/people', { people: [] }, 'user-profile/People'));
     const first = owner();
-    await navigator.region('/islands/sign-ins').load();
+    await navigator.use(islands).region('/islands/sign-ins').load();
     // Typing a filter: a partial reload replacing the entry, state kept → the same owner.
     await navigator.visit('/people?q=a', { only: ['people'], replace: true, preserveState: true });
     expect(owners.at(-1)).toBe(first);
     // A sort link: a new entry of the same page, state kept → its own owner, with a copy of the islands.
     await navigator.visit('/people?sort=-name', { only: ['people'], preserveState: true });
     expect(owner()).not.toBe(first);
-    expect(navigator.region('/islands/sign-ins', { owner: owner() }).snapshot.status).toBe('ready');
+    expect(navigator.use(islands).region('/islands/sign-ins', { owner: owner() }).snapshot.status).toBe('ready');
     expect(islandRequests(win)).toHaveLength(1);
     // Another page (state not kept) starts without islands.
     await navigator.visit('/people?sort=name');
-    expect(owner().regions.size).toBe(0);
+    expect(keptRegions(navigator, owner()).size).toBe(0);
   });
 
   it('loads the deferred props of an island and merges them in', async () => {
@@ -314,7 +315,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
         : islandResponse(island('/islands/activity', { now: 'now' }, { deferredProps: { default: ['history'] } }));
     };
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/activity');
+    const region = navigator.use(islands).region('/islands/activity');
     await region.load();
     await settle();
     expect(region.snapshot.region).toMatchObject({ props: { now: 'now', history: ['joined'] } });
@@ -325,10 +326,10 @@ describe('Region — islands in the client core (E48, E50)', () => {
   it('starts ready with a region object the server already sent (streamed with the page) — no request', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const { navigator, owner } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    const region = navigator.region('/islands/sign-ins', { initial: island('/islands/sign-ins', { streamed: true }) });
+    const region = navigator.use(islands).region('/islands/sign-ins', { initial: island('/islands/sign-ins', { streamed: true }) });
     await region.load();
     expect(region.snapshot).toMatchObject({ status: 'ready', region: { props: { streamed: true } } });
-    expect(owner().regions.has('/islands/sign-ins')).toBe(true);
+    expect(keptRegions(navigator, owner()).has('/islands/sign-ins')).toBe(true);
     expect(win.requests).toEqual([]);
   });
 
@@ -344,7 +345,7 @@ describe('Region — islands in the client core (E48, E50)', () => {
   it('refuses a region of another site', () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
-    expect(() => navigator.region('https://evil.example/islands/x')).toThrow(/from this site/);
+    expect(() => navigator.use(islands).region('https://evil.example/islands/x')).toThrow(/from this site/);
   });
 });
 
@@ -353,24 +354,24 @@ describe('Region — started with what the server streamed (E49)', () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const { navigator, owner } = boot(win, page('/dashboard'));
     const result = { status: 'ready', region: island('/islands/sign-ins', { entries: ['ada'] }) } as const;
-    const region = navigator.region('/islands/sign-ins', { initial: regionInitial(result) });
+    const region = navigator.use(islands).region('/islands/sign-ins', { initial: regionInitial(result) });
     expect(region.snapshot).toMatchObject({ status: 'ready', region: { props: { entries: ['ada'] } }, pending: false });
     await region.load();
     expect(islandRequests(win)).toEqual([]);
-    expect(owner().regions.get('/islands/sign-ins')).toEqual(result.region);
+    expect(keptRegions(navigator, owner()).get('/islands/sign-ins')).toEqual(result.region);
   });
 
   it('starts a refused island refused (no data), a failed one failed — shown, not kept: Back asks again', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const { navigator, owner } = boot(win, page('/dashboard'));
-    const refused = navigator.region('/islands/members', { initial: regionInitial({ status: 'forbidden' }) });
+    const refused = navigator.use(islands).region('/islands/members', { initial: regionInitial({ status: 'forbidden' }) });
     expect(refused.snapshot.status).toBe('forbidden');
-    const failed = navigator.region('/islands/broken', { initial: regionInitial({ status: 'exception', failure: { status: 500 } }) });
+    const failed = navigator.use(islands).region('/islands/broken', { initial: regionInitial({ status: 'exception', failure: { status: 500 } }) });
     expect(failed.snapshot).toMatchObject({ status: 'exception', failure: { status: 500 } });
     await Promise.all([refused.load(), failed.load()]);
     expect(islandRequests(win)).toEqual([]);
-    expect(owner().regions.get('/islands/members')).toEqual({ status: 'forbidden' });
-    expect(owner().regions.has('/islands/broken')).toBe(false);
+    expect(keptRegions(navigator, owner()).get('/islands/members')).toEqual({ status: 'forbidden' });
+    expect(keptRegions(navigator, owner()).has('/islands/broken')).toBe(false);
     // Left to the browser by the server: it loads itself.
     expect(regionInitial({ status: 'browser' })).toBeUndefined();
   });

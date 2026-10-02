@@ -4,16 +4,16 @@
  * in memory. An island (`<Island route>`, E48) is a region embedded in a page, without a URL of its own; a layer (W5b step
  * 5) will be a region with a history entry over the page. Adapters render a region's snapshot and call `load`/`reload`.
  *
- * Where a region keeps what it loaded is its {@link RegionOwner}: for islands, the history entry of the page — in this
+ * Where a region keeps what it loaded is its owner's history entry ({@link RegionOwner}, the slot {@link REGIONS}) — in this
  * tab's memory only (E36), never in `history.state` or any storage. Back/Forward shows them from there without a request;
- * leaving the document (signing out, a new build) drops them with the pages.
+ * leaving the document (signing out, a new build) drops them with the pages. The islands feature makes them (`islands.region`).
  */
 import type { PageObject, RegionObject, RegionResult } from '../page.ts';
-import { slot } from './feature.ts';
 import { mergePage, pick } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { pageQuery, queryUrl } from './query-state.ts';
+import { REGIONS, type RegionOwner } from './owner.ts';
 import { partialReloadHeaders } from './request.ts';
 
 /** Where a region stands: loading (nothing to show yet), ready, or what kept it from showing anything. */
@@ -96,9 +96,6 @@ export function regionInitial(result: RegionResult): RegionInitial | undefined {
   }
 }
 
-/** What a history entry keeps of its islands (E48): their region objects by id — what Back/Forward shows without a request. */
-export const REGIONS = slot('regions', () => new Map<string, KeptRegion>());
-
 /** A region's identity: its URL with the query sorted (`?b=2&a=1` and `?a=1&b=2` are one island). */
 export function regionId(url: string): string {
   const parsed = new URL(url, 'http://bespoke.invalid');
@@ -106,75 +103,26 @@ export function regionId(url: string): string {
   return parsed.pathname + parsed.search;
 }
 
+/** What a region shown from memory by Back/Forward declares to reload then (E58) — asked for when it is loaded (rendered) again. */
+export type DeclaredOnBack = (component: string) => Promise<ReloadSpec | undefined>;
+
 /**
- * Where regions live — for islands, one history entry of the page (the navigator makes one per entry it shows). It holds
- * their live {@link Region}s — one per id, so two identical islands share one request and one state — and writes what they
- * loaded into `regions`, the entry's slot ({@link REGIONS}; the core empties it with the entry). Closed when its entry leaves
- * the screen or the document is left: every request still under way is aborted, and nothing lands any more.
+ * The region of `url` in `owner`'s entry — the same one for the same id while the owner is on screen (two identical islands
+ * share one request and one state). It starts with what the entry kept of it (`kept`, its slot {@link REGIONS} — Back/Forward)
+ * or with `initial` (what the server streamed with the page, E49: its region object, `unauthorized`/`forbidden` — kept like a
+ * loaded one — or an `exception`, shown but not kept), else `loading` until `load()`. Closed with its owner: requests under
+ * way are aborted, nothing lands any more.
  */
-export class RegionOwner {
-  /** What its entry keeps of its regions, by {@link regionId} — what Back/Forward shows without a request (the entry's slot). */
-  readonly regions: Map<string, KeptRegion>;
-  /** The key of its history entry — where what the entry's components keep lives (remembered state, E63: `host.entry`). */
-  readonly entry: string | undefined;
-  readonly #transport: RegionTransport;
-  readonly #controller = new AbortController();
-  readonly #live = new Map<string, Region>();
-  readonly #onBack: RegionOwnerOptions['onBack'];
-
-  /** `entry`: its history entry's key; `onBack`: see {@link RegionOwnerOptions}. */
-  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map(), entry?: string, onBack?: RegionOwnerOptions['onBack']) {
-    this.#transport = transport;
-    this.regions = regions;
-    this.entry = entry;
-    this.#onBack = onBack;
-  }
-
-  /** The regions on screen (rendered and not closed) — an action reloads some of them by route (`reloading({ islands })`). */
-  get live(): readonly Region[] {
-    return [...this.#live.values()];
-  }
-
-  /** Aborted once the owner is closed. */
-  get signal(): AbortSignal {
-    return this.#controller.signal;
-  }
-
-  get closed(): boolean {
-    return this.#controller.signal.aborted;
-  }
-
-  /**
-   * The region of `url` — the same one for the same id. It starts with what this owner kept of it (Back/Forward) or with
-   * `initial` (what the server streamed with the page, E49: its region object, `unauthorized`/`forbidden` — kept like a
-   * loaded one — or an `exception`, shown but not kept), else `loading` until `load()`.
-   */
-  region(url: string, initial?: RegionInitial): Region {
-    const id = regionId(url);
-    const live = this.#live.get(id);
-    if (live) return live;
-    const kept = this.regions.get(id);
-    if (initial && !('failure' in initial) && !kept) this.regions.set(id, initial);
-    // Back/Forward brought what it kept: its view may declare props to reload then (E58).
-    const onBack = kept && isRegionObject(kept) ? this.#onBack : undefined;
-    const region = new Region(this, this.#transport, id, url, kept ?? initial, onBack);
-    if (!this.closed) this.#live.set(id, region);
-    return region;
-  }
-
-  /** The owner's entry left the screen (or the document is left): requests under way are aborted, nothing lands any more. */
-  close(): void {
-    this.#controller.abort();
-    this.#live.clear();
-  }
-}
-
-export interface RegionOwnerOptions {
-  /**
-   * The owner's entry came back by Back/Forward (E58): what a region's view declares to reload then — asked for when a
-   * region it kept is loaded (rendered) again.
-   */
-  onBack?: (component: string) => Promise<ReloadSpec | undefined>;
+export function ownedRegion(owner: RegionOwner, kept: Map<string, KeptRegion>, transport: RegionTransport, url: string, initial?: RegionInitial, onBack?: DeclaredOnBack): Region {
+  const id = regionId(url);
+  const live = owner.live.get(id);
+  if (live) return live as Region;
+  const known = kept.get(id);
+  if (initial && !('failure' in initial) && !known) kept.set(id, initial);
+  // Back/Forward brought what it kept: its view may declare props to reload then (E58).
+  const region = new Region(owner, kept, transport, id, url, known ?? initial, known && isRegionObject(known) ? onBack : undefined);
+  if (!owner.closed) owner.live.set(id, region);
+  return region;
 }
 
 /**
@@ -186,6 +134,8 @@ export interface RegionOwnerOptions {
 export class Region {
   readonly id: string;
   readonly #owner: RegionOwner;
+  /** What its owner's entry keeps of its regions (the slot {@link REGIONS}). */
+  readonly #kept: Map<string, KeptRegion>;
   readonly #transport: RegionTransport;
   #url: string;
   #region: RegionObject | undefined;
@@ -204,7 +154,7 @@ export class Region {
   /** Patches of succeeded actions that go when the region's next answer lands — carried over to a newer request. */
   #drops: { readonly ids: readonly number[]; readonly done: () => void }[] = [];
   /** What its view declares to reload, once, when it was shown from memory by Back/Forward (E58). */
-  #onBack: RegionOwnerOptions['onBack'];
+  #onBack: DeclaredOnBack | undefined;
   readonly #target: PatchTarget = {
     add: (patch) => {
       const id = this.#patches.add(patch);
@@ -215,7 +165,7 @@ export class Region {
       if (!ids.some((id) => this.#patches.has(id))) return;
       if (commit && this.#region) {
         this.#region = this.#patches.fold(this.#region, ids);
-        this.#owner.regions.set(this.id, this.#region);
+        this.#kept.set(this.id, this.#region);
       }
       this.#patches.remove(ids);
       if (!quiet) this.#emit();
@@ -227,8 +177,9 @@ export class Region {
     },
   };
 
-  constructor(owner: RegionOwner, transport: RegionTransport, id: string, url: string, kept?: RegionInitial, onBack?: RegionOwnerOptions['onBack']) {
+  constructor(owner: RegionOwner, regions: Map<string, KeptRegion>, transport: RegionTransport, id: string, url: string, kept?: RegionInitial, onBack?: DeclaredOnBack) {
     this.#owner = owner;
+    this.#kept = regions;
     this.#transport = transport;
     this.#onBack = onBack;
     this.id = id;
@@ -351,7 +302,7 @@ export class Region {
     this.#url = region.url;
     this.#status = 'ready';
     this.#failure = undefined;
-    this.#owner.regions.set(this.id, region);
+    this.#kept.set(this.id, region);
     this.#loadDeferred();
   }
 
@@ -364,7 +315,7 @@ export class Region {
     }
     // Not (or no longer) allowed: what it showed goes — from the screen and from memory (which keeps only that).
     this.#region = undefined;
-    this.#owner.regions.set(this.id, { status: response.kind });
+    this.#kept.set(this.id, { status: response.kind });
     this.#status = response.kind;
     this.#failure = undefined;
   }
@@ -393,7 +344,7 @@ export class Region {
     const only = { ...loaded, props: pick(loaded.props, props) };
     const merged = mergePage(this.#region as PageObject, only) as RegionObject;
     this.#region = merged;
-    this.#owner.regions.set(this.id, merged);
+    this.#kept.set(this.id, merged);
     this.#emit();
   }
 

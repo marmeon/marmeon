@@ -35,6 +35,7 @@ import {
   hasServerMarkup,
   instant,
   isHistoryState,
+  islands,
   liveValidationOnFirstUse,
   loadPageMessages,
   Navigator,
@@ -179,7 +180,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const root = await rootElement('app');
     let navigator!: Navigator;
     const renderIsland = (element: Element, url: string, owner = navigator.regionOwner) => {
-      const region = navigator.region(url, { owner });
+      const region = navigator.use(islands).region(url, { owner });
       const draw = () => {
         const { status, region: shown } = region.snapshot;
         element.textContent = shown ? `${shown.component} ${JSON.stringify(shown.props)}` : status;
@@ -272,7 +273,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       const block = document.getElementById('bespoke-island-0');
       const initial = block ? regionInitial(JSON.parse(block.textContent!) as RegionResult) : undefined;
       block?.remove();
-      const region = navigator.region('/islands/sign-ins', { owner, initial });
+      const region = navigator.use(islands).region('/islands/sign-ins', { owner, initial });
       const draw = () => {
         const shown = region.snapshot.region;
         element.textContent = shown ? `${shown.component} ${JSON.stringify(shown.props)}` : region.snapshot.status;
