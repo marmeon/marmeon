@@ -28,7 +28,8 @@ async function bundled(entry: string): Promise<{ modules: string[]; externals: s
   })) as Rolldown.RolldownOutput[];
   const modules = new Set<string>();
   for (const { output: chunks } of output) {
-    for (const chunk of chunks) if (chunk.type === 'chunk') for (const id of chunk.moduleIds) modules.add(relative(packages, id).replaceAll('\\', '/'));
+    // The bundler's own helpers (`\0rolldown/runtime.js`, which loads the layer stack's chunk) are no module of ours.
+    for (const chunk of chunks) if (chunk.type === 'chunk') for (const id of chunk.moduleIds) if (!id.startsWith('\0')) modules.add(relative(packages, id).replaceAll('\\', '/'));
   }
   return { modules: [...modules].sort(), externals: [...externals].sort() };
 }

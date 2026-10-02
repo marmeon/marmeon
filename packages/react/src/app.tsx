@@ -13,6 +13,7 @@ import {
   type ConfirmRequest,
   type Feature,
   type Layer,
+  type LayerStack as LayersFeature,
   type OptimisticUpdate,
   type PrefetchOptions,
   type Reloading,
@@ -26,12 +27,12 @@ import {
 } from '@bespokecore/http/client';
 import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@bespokecore/http/page';
 import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { createContext, Suspense, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
-import { LayerStack, type LayerEntry, type LayerFrame } from './layer.tsx';
+import type { LayerEntry, LayerFrame } from './layer.tsx';
 import { loadView } from './views.ts';
 import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
@@ -155,6 +156,35 @@ export function reloadsOf(
     for (const region of owner?.live.values() ?? []) if (matchesPath(route.path, new URL(region.url, 'http://bespoke.invalid').pathname)) reloads.push(region.reloading());
   }
   return reloads;
+}
+
+/** The layer stack's module, loading or loaded — marked the way React reads a settled promise (`use()` returns at once). */
+type StackModule = Promise<typeof import('./layer-stack.tsx')> & { status?: 'fulfilled'; value?: typeof import('./layer-stack.tsx') };
+let stackModule: StackModule | undefined;
+
+/**
+ * @internal The layer stack (E53, E71) — a chunk of its own, with the core's layers: loaded once per app, asked for again when
+ * it failed. Loaded before a render with layers (and before hydrating a deep link), so the stack renders at once.
+ */
+export function loadLayerStack(): Promise<typeof import('./layer-stack.tsx')> {
+  if (!stackModule) {
+    const loading: StackModule = import('./layer-stack.tsx');
+    loading.then(
+      (module) => void Object.assign(loading, { status: 'fulfilled', value: module }),
+      () => void (stackModule = undefined),
+    );
+    stackModule = loading;
+  }
+  return stackModule;
+}
+
+/** @internal How the app's navigator loads the layers (E71): with the stack that renders them — one round trip. */
+export const loadLayers = (): Promise<Feature<LayersFeature>> => loadLayerStack().then((module) => module.layers);
+
+/** The layers over the page, rendered by the stack — loaded already: never suspends (but would, inside its boundary). */
+function Layers(props: { entries: readonly LayerEntry[]; resolve: ResolvePage; frame: LayerFrame | undefined; base: RouterValue }) {
+  const { LayerStack } = use(loadLayerStack());
+  return <LayerStack {...props} />;
 }
 
 /** One id per layer object — a layer replaced by a fresh one (another state) mounts anew, even in the same entry. */
@@ -324,7 +354,11 @@ export function BespokeApp({
       }
       // The page's component and its locale's messages, both before it renders: a page in another language (another
       // tab switched it) loads that language's files first. The layers' views too — they show at once.
-      const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), ...layers.map((layer) => loadView(resolve, layer.page.component))]);
+      const [Component, catalog] = await Promise.all([
+        resolve(page.component),
+        loadPageMessages(page, messages),
+        ...(layers.length > 0 ? [loadLayerStack(), ...layers.map((layer) => loadView(resolve, layer.page.component))] : []),
+      ]);
       await new Promise<void>((done) => {
         committed.current.push(done);
         // Only the layers changed: the page stays exactly as it is (no render of it, nothing above it changes).
@@ -371,7 +405,11 @@ export function BespokeApp({
       revalidateOnBack: async (component) => (await resolve(component)).revalidateOnBack,
       // The app's dialog asks (E64) — without one, the browser's own.
       ...(Confirm ? { confirm: ask } : {}),
+      // The layers load with the stack that renders them (E71).
+      loadLayers,
     });
+    // A deep link's layers: their code was loaded before hydrating (createBespokeApp) — attached before the navigator stacks them.
+    if (stackModule?.value) navigator.current.use(stackModule.value.layers);
     // Optimistic patches (E59): every router offers them (`router.optimistic`, a form's `submit({ optimistic })`).
     navigator.current.use(optimisticFeature);
     // What the views use (E70): `revalidateOnBack` with the pages of `resolveModulePages`.
@@ -494,7 +532,11 @@ export function BespokeApp({
                 </ErrorBoundary>
               </RegionOwnerContext.Provider>
               {/* The layers over the page (E53) — apart from it: opening one changes nothing the page renders from. */}
-              <LayerStack entries={layers} resolve={resolve} frame={frame} base={router} />
+              {layers.length > 0 && (
+                <Suspense fallback={null}>
+                  <Layers entries={layers} resolve={resolve} frame={frame} base={router} />
+                </Suspense>
+              )}
               <VisitFailure failure={failure} resolve={resolve} onDismiss={() => setFailure(null)} />
               {/* The question a link, an action, a form or the navigation guard asks (E64) — over everything, one at a time. */}
               <ConfirmHost questions={questions} component={Confirm} />

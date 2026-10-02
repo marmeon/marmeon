@@ -216,7 +216,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
-  it('renders layers (E53): each over the page in an element of its own — Back closes the top one, the page untouched', async () => {
+  it('renders layers (E53): each over the page in an element of its own — Back closes the top one, the page untouched; the core loads their code (E71)', async () => {
     window.fetch = (async (input: string, init: RequestInit = {}) => {
       const url = new URL(input, 'https://app.test');
       const headers = { ...(init.headers as Record<string, string>) };
@@ -245,7 +245,8 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     });
     const stop = navigator.start();
     const dialogs = () => [...root.querySelectorAll('dialog')].map((dialog) => dialog.textContent);
-    await navigator.visit('/users/1/edit', { layer: true });
+    // A plain visit, and the adapter attached no layers: the server answers with one, the core loads the layers' chunk first.
+    await navigator.visit('/users/1/edit');
     expect(dialogs()).toEqual(['users/Edit']);
     expect(window.location.pathname).toBe('/users/1/edit');
     const renders = pageRenders;

@@ -13,21 +13,22 @@
     "4h revalidateOnBack (resolveModulePages brings it, <BespokeApp> attaches it: every real app resolves its pages that way, so the apps keep it — blank-app 22.08, web-app 32.16) — core 17.2 → 17.0, emptyApp 22.0 → 21.9, minimalApp 26.4 → 26.3 (everything 34.95 → 34.99).",
     "4j instant visits (loaded where an instant link renders, E74 — a chunk of its own; a visit before then goes without its placeholder) — core 17.0 → 16.6, emptyApp 21.9 → 21.6, minimalApp 26.3 → 26.1, blank-app 22.2 → 22.0, web-app 32.3 → 32.1 (everything 34.99 → 34.72). Done before 4i: the guard, taken out first, moved into another chunk of the web-app and made it +0.18 heavier (min −0.1 KB) — over its limit.",
     "4i guard (static where a component guards: useBlocker, useForm/Form guard; a visit's own confirm is now the core's) — core 16.6 → 16.1, emptyApp 21.6 → 21.1, blank-app 22.0 → 21.5 (minimalApp keeps it: useForm guards). Raised (E81, Max, 02.10., until step 6 sets the chunk strategy): web-app 32.1 → 32.2 — the guard lands with state.ts in the web app's entry chunk beside react-dom instead of the shared framework chunk: +0.18 gzip at the same min (32.02 → 32.20). everything 34.76 → 34.79.",
-    "4k islands (attached where an island renders; the core keeps a small RegionOwner per entry on screen — entry, Back flag, signal, live regions — and the islands feature makes the regions on it) — core 16.1 → 14.4, emptyApp 21.1 → 19.4, minimalApp 26.1 → 24.4, blank-app 21.5 → 19.7, web-app 32.2 → 28.9 (its islands now come with the pages that show them, in their chunks). everything 34.79 → 34.87."
+    "4k islands (attached where an island renders; the core keeps a small RegionOwner per entry on screen — entry, Back flag, signal, live regions — and the islands feature makes the regions on it) — core 16.1 → 14.4, emptyApp 21.1 → 19.4, minimalApp 26.1 → 24.4, blank-app 21.5 → 19.7, web-app 32.2 → 28.9 (its islands now come with the pages that show them, in their chunks). everything 34.79 → 34.87.",
+    "Step 5 layers (E71: a chunk the core loads when the server answers with a layer, a layer's request is sent or Back/Forward goes to a layer's entry; the React layer stack loads with it in the same round trip, <Link layer> loads it where it renders, createBespokeApp and the SSR entry before a deep link's document; the navigator lost its layer methods — the stack is each layer's host) — core 14.4 → 11.9, emptyApp 19.4 → 16.4, minimalApp 24.4 → 20.7, blank-app 19.7 → 16.5, web-app 28.9 → 26.2 (everything 34.87 → 31.83). No default feature is left: stillLeaking is [] in every scenario."
   ],
   "gzipKB": {
-    "core": { "limit": 14.4, "target": 8.5 },
-    "emptyApp": { "limit": 19.4, "target": 12.5 },
-    "minimalApp": { "limit": 24.4, "target": 14 },
+    "core": { "limit": 11.9, "target": 8.5 },
+    "emptyApp": { "limit": 16.4, "target": 12.5 },
+    "minimalApp": { "limit": 20.7, "target": 14 },
     "everything": { "limit": 36.4, "ceiling": true }
   },
   "appsGzipKB": {
-    "blank-app": { "limit": 19.7 },
-    "web-app": { "limit": 28.9, "target": 27 }
+    "blank-app": { "limit": 16.5 },
+    "web-app": { "limit": 26.2, "target": 27 }
   },
   "stillLeaking": {
-    "core": ["layers"],
-    "emptyApp": ["layers"],
-    "minimalApp": ["layers"]
+    "core": [],
+    "emptyApp": [],
+    "minimalApp": []
   }
 }

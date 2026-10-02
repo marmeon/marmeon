@@ -3,7 +3,7 @@ import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
 import { actions, type ActionsFeature } from './features/actions.ts';
-import { DEFAULT_FEATURES } from './features/defaults.ts';
+import { layers, type LayerStack } from './features/layers.ts';
 import { instant } from './features/instant.ts';
 import { guard, type Guards } from './features/guard.ts';
 import { optimistic, type PagePatches } from './features/optimistic.ts';
@@ -157,17 +157,19 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
 }
 
 /**
- * Every feature a navigator can attach: those attached by default and those an adapter attaches where they are used (Wave 5c
- * step 4, E70) — the matrix holds them all to the same rules.
+ * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
+ * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [...DEFAULT_FEATURES, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands];
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
-async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; cacheSize?: number } = {}) {
+async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly Feature[]; cacheSize?: number; lazyLayers?: Promise<void> } = {}) {
   const win = new FakeWindow(`${ORIGIN}/users/1`);
   win.confirmAnswer = true;
   const records: Recorded[] = [];
-  const features = [...ALL_FEATURES, ...extra].map((feature) => recorded(feature, records));
+  // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves (E71).
+  const features = [...ALL_FEATURES.filter((feature) => !lazyLayers || feature !== layers), ...extra].map((feature) => recorded(feature, records));
+  const loadLayers = lazyLayers && (async () => (await lazyLayers, recorded(layers, records) as Feature<LayerStack>));
   win.handler = (url, init) => {
     const { pathname } = new URL(url);
     if (pathname === '/islands/activity') return islandResponse({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: pathname, version: null });
@@ -177,7 +179,7 @@ async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; 
   };
   const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada' };
   initial.props.locales = [CANARY];
-  const tab = boot(win, initial, { features, ...(cacheSize ? { cacheSize } : {}) });
+  const tab = boot(win, initial, { features, ...(cacheSize ? { cacheSize } : {}), ...(loadLayers ? { loadLayers } : {}) });
   const { navigator } = tab;
   const host = navigator.use(defineFeature('probe', (given: FeatureHost) => given));
   const pageKey = host.key!;
@@ -193,9 +195,9 @@ async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; 
   const liking = new AbortController();
   const action = api<ActionsFeature>('actions').run('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: { target: api<PagePatches>('optimistic').target(pageKey), patch: (props) => ({ ...props, liked: CANARY }) } });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
-  await navigator.visit('/users/1/edit', { layer: true });
+  if (!lazyLayers) await navigator.visit('/users/1/edit', { layer: true });
   api<Guards>('guard').add({ message: 'Unsaved', active: () => false });
-  const layerKey = navigator.layers[0]!.entry;
+  const layerKey = navigator.layers[0]?.entry ?? 'no-layer';
   // What the core itself keeps — once props, flash messages, the islands of the page's entry — and the remembered input of it.
   const core = { once: host.once, flash: host.flash, regions: host.entry(REGIONS, pageKey), remembered: host.entry(REMEMBERED, pageKey) };
   const prefetched = () => api<Prefetches>('prefetch').size;
@@ -325,6 +327,63 @@ describe('the security matrix — every feature × every event that must forget 
     tab.win.handler = () => conflict('history');
     await tab.navigator.visit('/users/3');
     expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['forgetful: its slot "forgetful" still holds data']);
+  });
+});
+
+/**
+ * Layers loaded on demand (Wave 5c step 5, E71): the server answers with a layer and the layers' code is not here yet. While it
+ * loads, the answer is held by the visit alone — no slot, no memory, no history entry — so whatever happens meanwhile (a 409:
+ * signing out) leaves nothing of it once the code arrives; a code that cannot load is a full load, never a half state.
+ */
+describe('the security matrix — a layer answer while the layers’ code loads (E71)', () => {
+  /** A stocked tab without the layers attached — and the server answering the edit link with a layer full of the canary. */
+  async function waiting() {
+    let release!: () => void;
+    let fail!: () => void;
+    const arrival = new Promise<void>((resolve, reject) => {
+      release = resolve;
+      fail = () => reject(new Error('Failed to fetch dynamically imported module'));
+    });
+    const tab = await stocked({ lazyLayers: arrival });
+    expect(tab.navigator.layers).toEqual([]);
+    const answer = { ...secretPage('/users/1/edit', 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada' };
+    answer.props.roles = [CANARY];
+    answer.flash = [{ id: 'saved', key: 'toast', data: CANARY } as unknown as FlashMessage];
+    tab.win.handler = (url) => (new URL(url).pathname === '/users/1/edit' ? pageResponse(answer) : conflict('history'));
+    const opening = tab.navigator.visit('/users/1/edit');
+    // The answer is here; the code is not.
+    await settle();
+    await settle();
+    expect(tab.records.some((record) => record.feature === 'layers')).toBe(false);
+    return { ...tab, opening, release, fail };
+  }
+
+  it('a 409 (signed out) while the code loads: once it arrives, nothing of the layer is shown or kept — in no feature, not in the core, not in history.state', async () => {
+    const tab = await waiting();
+    await tab.navigator.reload({ async: true });
+    expect(tab.win.loads).toEqual(['replace /login']);
+    tab.release();
+    expect(await tab.opening).toBeUndefined();
+    await settle();
+    // The layers attached once their code came — and hold nothing.
+    expect(tab.records.some((record) => record.feature === 'layers')).toBe(true);
+    expect(tab.navigator.layers).toEqual([]);
+    expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
+    expect(coreLeftovers(tab)).toEqual([]);
+    expect(historyWithCanary(tab.win)).toEqual([]);
+    expect(tab.win.entries).toHaveLength(1);
+    expect(tab.win.loads).toEqual(['replace /login']);
+  });
+
+  it('the code cannot load: the browser loads the layer’s URL — and nothing of the signed-in tab survives here', async () => {
+    const tab = await waiting();
+    tab.fail();
+    expect(await tab.opening).toBeUndefined();
+    expect(tab.win.loads).toEqual(['assign /users/1/edit']);
+    expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
+    expect(coreLeftovers(tab)).toEqual([]);
+    expect(historyWithCanary(tab.win)).toEqual([]);
+    expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
   });
 });
 

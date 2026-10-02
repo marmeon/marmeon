@@ -14,7 +14,7 @@ export type RevalidateOnBack = boolean | readonly string[];
 /** What the adapter reads from a view (`Show.revalidateOnBack`) — see `NavigatorOptions.revalidateOnBack`. */
 export type DeclaredRevalidation = (component: string) => RevalidateOnBack | undefined | Promise<RevalidateOnBack | undefined>;
 
-type BackCore = Pick<FeatureHost, 'navigator' | 'key' | 'left' | 'props'>;
+type BackCore = Pick<FeatureHost, 'key' | 'left' | 'props'>;
 
 /** The reloads of one navigator when Back/Forward shows a page, a layer or an island from memory. */
 export class BackRevalidation {
@@ -37,7 +37,7 @@ export class BackRevalidation {
   async layer(layer: Layer): Promise<void> {
     const spec = await this.#declared(layer.page.component);
     if (!spec || layer.closed || this.#core.left) return;
-    await this.#core.navigator.reloadLayer(layer, spec, new Set(), new AbortController().signal);
+    await layer.revalidate(spec);
   }
 
   /** What an island shown from memory by Back/Forward declares to reload (E58) — for the regions of entries brought back. */

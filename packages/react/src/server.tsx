@@ -2,7 +2,7 @@ import type { PageObject, RouteManifest, SsrRender } from '@bespokecore/http/pag
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';
 import { defaultTitle, isDevelopment, loadPageMessages, type TitleTemplate } from '@bespokecore/http/client';
-import { BespokeApp } from './app.tsx';
+import { BespokeApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
 import type { LayerFrame } from './layer.tsx';
@@ -40,8 +40,12 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
   const head = (collector: HeadCollector) => renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(tag)));
 
   return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred } = {}) => {
-    // A deep link's layers (E53) render with the page, in the shell: their views are loaded first.
-    const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), ...(page.layers ?? []).map((layered) => loadView(resolve, layered.component))]);
+    // A deep link's layers (E53) render with the page, in the shell: the layer stack (E71) and their views are loaded first.
+    const [Component, catalog] = await Promise.all([
+      resolve(page.component),
+      loadPageMessages(page, messages),
+      ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
+    ]);
     if (Component.ssr === false) return { html: '', head: head(createHeadCollector()) };
     const whole = complete || Component.ssr === 'complete';
     // Deferred groups stream with the page (E49) — not when it is sent whole: they are computed once the headers are out.

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LOCATION_HEADER, RELOAD_HEADER } from '../page.ts';
 import { defineFeature, slot, type FeatureHost } from './feature.ts';
-import { DEFAULT_FEATURES } from './features/defaults.ts';
 import { HistoryWriter, type HistoryState } from './history.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
@@ -39,9 +38,9 @@ describe('navigator.use — a feature attaches once per navigator (E70)', () => 
     expect(writes).toHaveBeenCalledTimes(1);
   });
 
-  it('attaches the features still in the default list (Wave 5c step 4 takes them out one by one) — and none when told so', () => {
-    expect(DEFAULT_FEATURES.map((feature) => feature.name)).toEqual(['layers']);
-    const { navigator } = tab('/a', { features: [] });
+  it('attaches no feature by default (Wave 5c) — each where it is used', () => {
+    const { navigator } = tab('/a');
+    expect(navigator.use(defineFeature('probe', (host) => host.layers))).toEqual([]);
     const setup = vi.fn(() => 'api');
     expect(navigator.use(defineFeature('late', setup))).toBe('api');
     expect(setup).toHaveBeenCalledOnce();

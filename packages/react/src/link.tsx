@@ -14,7 +14,7 @@ import {
 } from '@bespokecore/http/client';
 import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
-import { usePage, useRouter, useRouterContext, type PartialReloadOptions } from './app.tsx';
+import { loadLayers, usePage, useRouter, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 
 export type { PrefetchTrigger } from '@bespokecore/http/client';
@@ -237,11 +237,12 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     const url = prefetchUrlOf(href);
     if (url !== undefined) void prefetchPage(url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) });
   };
-  // An instant link (E64): the instant code loads when it renders (E74) — it is there before anyone clicks.
+  // An instant link (E64) and a layer's link (E53): their code loads when it renders (E74) — it is there before anyone clicks.
   const instantly = options.instant !== undefined;
   useEffect(() => {
     if (instantly && navigator) navigator.load(loadInstant).catch(() => undefined);
-  }, [instantly, navigator]);
+    if (layer && navigator) navigator.load(loadLayers).catch(() => undefined);
+  }, [instantly, layer, navigator]);
   const onMount = triggers.has('mount');
   useEffect(() => {
     if (onMount) fetchAhead();

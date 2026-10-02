@@ -5,7 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, usePage, useRouter } from './app.tsx';
+import { BespokeApp, loadLayerStack, usePage, useRouter } from './app.tsx';
 import { Head } from './head.tsx';
 import { Island } from './island.tsx';
 import { useLayer } from './layer.tsx';
@@ -338,7 +338,8 @@ describe('Layers in React (E53)', () => {
   it('a deep link’s document renders its layers over the page — on the server as in the browser', async () => {
     const document = { ...page('Profile', '/users/1', { name: 'Ada' }), layers: [layer('Edit', '/users/1/edit', { name: 'Ada' })] };
     const Profile = await resolve('app/Profile');
-    await loadView(resolve, 'app/Edit');
+    // What createBespokeApp and the SSR entry load before rendering a deep link (E71): the layer stack, the layer's view.
+    await Promise.all([loadLayerStack(), loadView(resolve, 'app/Edit')]);
     const html = renderToString(<BespokeApp initialPage={document} initialComponent={Profile} resolve={resolve} routes={routes} progress={false} />);
     expect(html).toContain('data-bespoke-layer="app/Edit"');
     expect(html).toContain('<dialog open=""');

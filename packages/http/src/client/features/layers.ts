@@ -11,7 +11,7 @@ import type { Visit, VisitCallbacks } from '../events.ts';
 import { defineFeature, slot, type EntryStack } from '../feature.ts';
 import { takeFlash } from '../flash.ts';
 import { entry, isHistoryState, newKey, type HistoryState, type PositionCheck } from '../history.ts';
-import { Layer, type LayerControl } from '../layer.ts';
+import { Layer, type LayerControl, type LayerHost } from '../layer.ts';
 import { keepDeferred, mergePage, pick } from '../merge.ts';
 import type { VisitOptions } from '../navigation.ts';
 import type { ReloadSpec } from '../optimistic.ts';
@@ -82,8 +82,11 @@ function layerEntry(page: PageObject, key: string, position: Scroll, below: read
 /** A layer's request header. */
 const LAYER_HEADERS = { [REGION_HEADER]: 'layer' };
 
-/** The layers of one navigator. */
-export class LayerStack {
+/**
+ * The layers of one navigator — what `navigator.use(layers)` returns, and the host of each layer (its visits, closing, its
+ * reloads for actions).
+ */
+export class LayerStack implements LayerHost {
   readonly #core: FeatureHost;
   /** The layers the document came with (a deep link of a layer's URL) — stacked once the history is taken over. */
   #initial: readonly PageObject[];
@@ -136,7 +139,7 @@ export class LayerStack {
       const own = index === initial.length - 1 ? key : newKey();
       // Not pushed over an entry of their own: closing one replaces the entry with what is beneath.
       this.#keep(own, page, [...below], false);
-      this.controls.push(Layer.create(this.#core.navigator, own, index + 1, page, this.#core.ownerOf(own)));
+      this.controls.push(Layer.create(this, own, index + 1, page, this.#core.ownerOf(own)));
       below.push(own);
     });
     const top = this.controls.at(-1)!.layer;
@@ -189,7 +192,20 @@ export class LayerStack {
     return shown;
   }
 
-  /** Closes `layer` and the ones it names — asking first when one that closes holds unsaved changes. See `Navigator.closeLayer`. */
+  /** A visit from inside a layer (E53) — `layer.visit()`: sent as the layer's, its answer placed for it. */
+  layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined> {
+    const from = this.find(layer);
+    // A layer that left the screen visits nothing any more.
+    return from ? this.#core.visit(from, url, options) : Promise.resolve(undefined);
+  }
+
+  /**
+   * Closes `layer` and `close.layers - 1` beneath it — and every layer over it (E53) — asking first when one that closes holds
+   * unsaved changes (E64). When their entries were pushed one over the other right over what stays, that is Back in the history
+   * (Forward then asks the server again: what closed is forgotten); otherwise the current entry becomes what stays. Then
+   * `close.reload` reloads what is beneath — the page and the layers that stay — and a layer shown once (an action's answer)
+   * reloads them fully.
+   */
   async closeLayer(layer: Layer, close: LayerClose): Promise<void> {
     const index = this.controls.findIndex((control) => control.layer === layer);
     if (index < 0 || this.#core.left) return;
@@ -206,7 +222,7 @@ export class LayerStack {
   }
 
   /** Memory keeps what a layer's props became (an action's patches committed). */
-  changed(layer: Layer): void {
+  layerChanged(layer: Layer): void {
     updatePage(this.#core.cache, layer.entry, layer.page);
   }
 
@@ -241,7 +257,7 @@ export class LayerStack {
     while (same < levels.length && same < controls.length && controls[same]!.layer.entry === levels[same]!.key) same++;
     const removed = this.dismissFrom(same);
     for (const level of levels.slice(same)) {
-      const control = Layer.create(this.#core.navigator, level.key, level.depth, level.page, this.#core.ownerOf(level.key, true));
+      const control = Layer.create(this, level.key, level.depth, level.page, this.#core.ownerOf(level.key, true));
       controls.push(control);
       this.loadDeferred(control);
     }
@@ -343,7 +359,7 @@ export class LayerStack {
       this.set(beneath.layers);
       const keys = [beneath.page, ...beneath.layers.map((level) => level.key)];
       this.#keep(state.key, page, keys, false);
-      const control = Layer.create(this.#core.navigator, state.key, beneath.layers.length + 1, page, this.#core.ownerOf(state.key));
+      const control = Layer.create(this, state.key, beneath.layers.length + 1, page, this.#core.ownerOf(state.key));
       this.#core.history.replace(layerEntry(page, state.key, position, keys), page.url);
       this.controls.push(control);
       await this.render();
@@ -433,7 +449,7 @@ export class LayerStack {
     const key = newKey();
     // Pushed right over the entry beneath: closing it is Back.
     this.#keep(key, page, below, wasTop);
-    const control = Layer.create(this.#core.navigator, key, below.length, page, this.#core.ownerOf(key));
+    const control = Layer.create(this, key, below.length, page, this.#core.ownerOf(key));
     this.#core.history.push(layerEntry(page, key, leaving, below), page.url);
     this.#core.scroll.set(key, leaving);
     this.controls.push(control);
@@ -465,7 +481,7 @@ export class LayerStack {
       // Replaced in place (a new state, the same entry): its islands start over, what it remembered stays with the entry (E63).
       if (!push) this.#core.forget(key, REGIONS);
       this.#keep(key, page, below, pushed);
-      const control = Layer.create(this.#core.navigator, key, below.length, page, this.#core.ownerOf(key));
+      const control = Layer.create(this, key, below.length, page, this.#core.ownerOf(key));
       if (push) {
         this.#core.scroll.set(current.layer.entry, position);
         this.#core.history.replace(layerEntry(current.layer.page, current.layer.entry, position, below), this.#core.window.location.href);
@@ -538,12 +554,12 @@ export class LayerStack {
 
 /**
  * Layers (E53, E54) as a feature: an answer that is a layer opens over the screen, Back closes it, Forward opens it from memory,
- * a deep link stacks them over their base. Writes its own position into history entries (`layer`: a depth and keys).
+ * a deep link stacks them over their base. Writes its own position into history entries (`layer`: a depth and keys). Loaded
+ * on demand (E71, `loadLayers`): by the core when the server answers with a layer, by an adapter where one opens.
  */
 export const layers = defineFeature('layers', (host) => {
   const stack = new LayerStack(host);
   host.history.field('layer', isLayerPosition);
-  host.on('start', (visit) => (visit.layer ? { headers: LAYER_HEADERS } : undefined));
   host.on('response', (response, visit, event) => (response.headers.get(LAYER_CLOSE_HEADER) === 'true' ? stack.closed(visit.from, response, event, visit.options) : undefined));
   host.on('place', (from, page, options) => stack.place(from, page, options));
   host.on('extras', () => ({ layers: stack.list }));

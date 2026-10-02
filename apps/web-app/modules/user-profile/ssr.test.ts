@@ -2,6 +2,7 @@ import { UserRepository, type User } from '#modules/auth';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 
 // Server rendering in tests (W5 step 7): through the app's Vite setup, so markup and <Head> are testable.
 let app: TestApp;
@@ -55,5 +56,20 @@ describe('the people list, rendered on the server — its query state included (
     const response = await app.actingAs(ada).get('/people?sort=DROP%20TABLE&q=' + 'x'.repeat(61), page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('value=""');
     expect(response.body.indexOf('>Ada Lovelace</a>')).toBeLessThan(response.body.indexOf('>Grace Hopper</a>'));
+  });
+});
+
+describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
+  it('renders the edit layer over the profile in one document — and it hydrates', async () => {
+    const response = await app.actingAs(ada).get(`/users/${ada.id}/edit`, page).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('<dialog open="" data-bespoke-layer="user-profile/Edit"');
+    expect(response.body).toContain('<h1>Ada Lovelace</h1>');
+  });
+
+  it('stacks the profile, the edit layer and the confirmation in one document — and it hydrates', async () => {
+    const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Blog' });
+    const response = await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('<h1>Ada Lovelace</h1>');
+    expect(response.body.match(/<dialog open="" data-bespoke-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
   });
 });

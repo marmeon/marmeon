@@ -54,7 +54,7 @@ export type FeatureEvent = 'write' | 'unload' | 'started' | 'stopped' | 'draw' |
 export type DrawOptions = Pick<RenderOptions, 'preserveState'> & Partial<RenderOptions>;
 
 export interface FeatureHost {
-  /** The navigator itself — its public API (and the host of its layers). */
+  /** The navigator itself — its public API. */
   readonly navigator: Navigator;
   readonly window: NavigatorWindow;
   /** What the app passed to the navigator (`revalidateOnBack`, `confirm`, …). */

@@ -1,6 +1,6 @@
 import { NO_STORE } from '@bespokecore/auth';
 import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { actions, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
+import { actions, layers, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -225,6 +225,9 @@ class FakeTab {
       layers: page.layers ?? [],
       navigator: new Navigator({
         initialPage: page,
+        // A deep link's document: the layers attached before it is shown, as an adapter does (createBespokeApp loads them first,
+        // E71). Any other document loads them when an answer is a layer.
+        features: page.layers ? [layers] : [],
         window: this.#window(listeners),
         render: async (next, { layers }) => {
           doc.visible = next;

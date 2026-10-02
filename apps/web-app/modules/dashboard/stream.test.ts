@@ -117,3 +117,16 @@ describe('deferred props in the first response (E49 bonus)', () => {
     }
   });
 });
+
+describe('a deep link of a layer, streamed (E53, E71)', () => {
+  it('the layer renders in the shell over its base — with the page, not a boundary streamed later', async () => {
+    const started = performance.now();
+    const streamed = await app.actingAs(ada).stream(`/users/${ada.id}/edit`);
+    const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-bespoke-layer="user-profile\/Edit"/ });
+    // Before the profile's deferred activity (150 ms): in the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first.
+    expect(at.layer!).toBeLessThan(150);
+    expect(html.indexOf('data-bespoke-layer')).toBeGreaterThan(html.indexOf('<h1>Ada Lovelace</h1>'));
+    // Rendered at once, not suspended: the layer stack's code was loaded before rendering (a boundary already resolved, `<!--$-->`).
+    expect(html).toContain('<!--$--><div data-bespoke-layers="">');
+  });
+});

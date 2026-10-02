@@ -3,6 +3,7 @@ import { join, matchesGlob } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   appBundle,
+  appClientBuild,
   appEntry,
   BUDGET_WHERE,
   budgetProblem,
@@ -47,7 +48,10 @@ const inApp = (...names: string[]) => ({ base: 'emptyApp' as const, entry: appEn
  * attaches it. `use` is the import an app uses it through, on top of a scenario; `brings`, the features it builds on.
  */
 const FEATURES = {
-  layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer'], use: inApp('LayerDialog') },
+  // The core loads them when the server answers with a layer (E71), <Link layer> where it renders (E74): the core's layers and
+  // the React layer stack in chunks of their own. `react/layer` (useLayer) and `react/layer-dialog` (the default frame) are no
+  // markers: views and an app's frame import them, small and static.
+  layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer-stack'], use: inApp('Link'), lazy: true },
   islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
   actions: { markers: ['http/client/features/actions', 'http/client/action', 'react/use-action'], use: inApp('useAction') },
   // The page's patches (E59): every app's router offers them (`router.optimistic`, `submit({ optimistic })`). `optimistic.ts` (the
@@ -74,8 +78,8 @@ const FEATURES = {
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
-/** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands'];
+/** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers). */
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -150,6 +154,31 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
       expect(featuresIn(bundle(name)), `${feature} in "${name}"`).not.toContain(feature);
     }
   });
+
+  // E71: whatever an app imports, the layers are a chunk the core loads when the server answers with one — never in the first
+  // download, and always there to load (a layer may answer any visit, E53).
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the layers are a chunk of their own in %s — loaded on demand', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built)).not.toContain('layers');
+    expect(featuresIn(built, true)).toContain('layers');
+  });
+
+  it('a view that asks useLayer() and an app frame of LayerDialog bring no layer code into the first download', async () => {
+    const built = await appBundle(appEntry('useLayer', 'LayerDialog'));
+    expect(featuresIn(built)).toEqual(sorted(USES.emptyApp));
+    expect(built.modules).toEqual(expect.arrayContaining(['react/dist/layer.js', 'react/dist/layer-dialog.js']));
+  });
+
+  it('the web app opens its layers from a chunk of their own: the core’s layers and the React layer stack', async () => {
+    const node = process.env.NODE_ENV;
+    try {
+      const built = await appClientBuild(join(PACKAGES, '../apps/web-app'));
+      expect(featuresIn(built)).not.toContain('layers');
+      expect(built.lazyModules).toEqual(expect.arrayContaining(['http/dist/client/features/layers.js', 'http/dist/client/layer.js', 'react/dist/layer-stack.js']));
+    } finally {
+      process.env.NODE_ENV = node;
+    }
+  }, 60_000);
 
   it.each(FEATURE_NAMES)('%s comes with its own import — and recognisably so', (feature) => {
     const { use, brings = [], lazy = false }: { use: { base: LeakScenario }; brings?: readonly string[]; lazy?: boolean } = FEATURES[feature];

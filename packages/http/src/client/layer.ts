@@ -3,7 +3,7 @@
  * object is the answer of its route (`this.view(…).layer({ base })`), with its own visits, partial reloads, deferred props,
  * failures and islands (`owner`). Layers stack (up to {@link MAX_LAYER_DEPTH}); Back closes the top one, Forward opens it
  * again from memory. What a layer showed lives only in this tab's memory (E36) — never in `history.state` or any storage.
- * The navigator creates them; an adapter renders `navigator.layers` (handed with every `render`) and calls their methods.
+ * The layers feature creates them; an adapter renders `navigator.layers` (handed with every `render`) and calls their methods.
  */
 import { MAX_LAYER_DEPTH, type LayerClose, type PageObject } from '../page.ts';
 import type { RegionOwner } from './owner.ts';
@@ -18,7 +18,7 @@ export interface LayerCloseOptions {
   reload?: LayerClose['reload'];
 }
 
-/** What a layer asks of the navigator (its visits, closing) — the navigator implements it. */
+/** What a layer asks of the stack it is in (its visits, closing) — the layers feature implements it. */
 export interface LayerHost {
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined>;
   closeLayer(layer: Layer, close: LayerClose): Promise<void>;
@@ -176,6 +176,11 @@ export class Layer {
     return this.#host.closeLayer(this, { layers: 1, ...(reload === undefined ? {} : { reload }) }).finally(() => {
       if (!this.#closed) this.#closing = false;
     });
+  }
+
+  /** @internal Its props again in the background (what its view declares to reload on Back/Forward, E58) — whether they landed. */
+  revalidate(spec: ReloadSpec): Promise<boolean> {
+    return this.#host.reloadLayer(this, spec, new Set(), new AbortController().signal);
   }
 
   /** Runs `listener` once the layer leaves the screen (closed, Back, a page visit). Returns the function that stops it. */

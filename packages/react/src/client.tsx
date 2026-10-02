@@ -2,7 +2,7 @@ import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type P
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
-import { BespokeApp } from './app.tsx';
+import { BespokeApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { LayerFrame } from './layer.tsx';
 import type { ConfirmComponent } from './confirm.tsx';
@@ -57,12 +57,12 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
   // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
   // the page's locale. The history entry is the navigator's (<BespokeApp> starts it): its key and URL — never the
   // page's props (E36).
-  // A deep link's layers (E53) too: their views render in the server's markup.
+  // A deep link's layers (E53) too: the layer stack with the core's layers (E71) and their views render in the server's markup.
   const [Component, catalog, root] = await Promise.all([
     resolve(page.component),
     loadPageMessages(page, messages),
     rootElement(rootId),
-    ...(page.layers ?? []).map((layered) => loadView(resolve, layered.component)),
+    ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
   ]);
   const app = (
     <BespokeApp
