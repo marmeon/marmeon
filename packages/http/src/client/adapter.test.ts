@@ -43,6 +43,7 @@ import {
   readInitialPage,
   regionInitial,
   remember,
+  revalidateOnBack,
   rootElement,
   showProgress,
   visitUrlOf,
@@ -532,6 +533,33 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     await prefetchWith(navigator, '/logout', { method: 'post' } as never);
     expect(pages()).toHaveLength(4);
     stop();
+  });
+
+  it('reloads what a view declares when Back shows it from memory — with the revalidateOnBack feature attached (E58, E70)', async () => {
+    window.fetch = server as typeof fetch;
+    const revalidations = () => requests.filter((request) => request.headers[PARTIAL_DATA_HEADER] === 'stats').map((request) => request.url);
+    for (const attached of [false, true]) {
+      window.history.replaceState(null, '', '/users/1');
+      serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+      const root = await rootElement('app');
+      const navigator = new Navigator({
+        initialPage: readInitialPage(),
+        render: async (next) => void (root.textContent = `${next.component} ${JSON.stringify(next.props)}`),
+        // The view says so (React: `Show.revalidateOnBack = ['stats']`) — read by the feature, when it is attached.
+        revalidateOnBack: (component) => (component === 'users/Show' ? ['stats'] : undefined),
+      });
+      if (attached) navigator.use(revalidateOnBack);
+      const stop = navigator.start();
+      await navigator.visit('/users/2');
+      requests.length = 0;
+      window.history.back();
+      await vi.waitFor(() => expect(window.location.pathname).toBe('/users/1'));
+      await vi.waitFor(() => expect(root.textContent).toContain('"user":"Ada"')); // from memory, at once
+      if (attached) await vi.waitFor(() => expect(root.textContent).toContain('"stats":{"links":3}'));
+      else await new Promise((done) => setTimeout(done, 20));
+      expect(revalidations()).toEqual(attached ? ['/users/1'] : []);
+      stop();
+    }
   });
 
   it('keeps URL state with the query-state feature, attached where it is used (E55, E70)', async () => {

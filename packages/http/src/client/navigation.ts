@@ -190,7 +190,8 @@ export interface NavigatorOptions {
   cacheSize?: number;
   /**
    * What a view declares to reload when Back/Forward shows it from memory (E58) — the adapter reads it from the view
-   * (`Show.revalidateOnBack = ['notifications']`): `true` all its props, a list some of them, nothing (the default) none.
+   * (`Show.revalidateOnBack = ['notifications']`): `true` all its props, a list some of them, nothing (the default) none. Read by
+   * the `revalidateOnBack` feature — attach it (`navigator.use(revalidateOnBack)`).
    * The page (or layer, or island) shows from memory at once; then those props load in the background, without a progress bar.
    */
   revalidateOnBack?: DeclaredRevalidation;

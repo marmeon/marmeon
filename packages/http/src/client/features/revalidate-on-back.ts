@@ -60,7 +60,8 @@ export class BackRevalidation {
 
 /**
  * `revalidateOnBack` (E58) as a feature: what a view declares (`NavigatorOptions.revalidateOnBack`) reloads when Back/Forward
- * shows its page, layer or island from memory. Keeps nothing.
+ * shows its page, layer or island from memory. Keeps nothing. Attached by the adapter where views can declare it (React: the
+ * pages of `resolveModulePages`).
  */
 export const revalidateOnBack = defineFeature('revalidateOnBack', (host) => {
   const back = new BackRevalidation(host, host.options.revalidateOnBack);

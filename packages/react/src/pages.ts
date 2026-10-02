@@ -1,3 +1,4 @@
+import { revalidateOnBack, type Feature } from '@bespokecore/http/client';
 import { ERROR_PAGE, LAYER_BACKDROP, pageName, type InstantProps, type IslandProps, type PageProps } from '@bespokecore/http/page';
 import type { ComponentType, ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
@@ -97,7 +98,13 @@ function checkLayout(name: string, layout: unknown): void {
   }
 }
 
-export type ResolvePage = (name: string) => Promise<PageComponent>;
+export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
+  /**
+   * The client features its views use (E70) — `<BespokeApp>` attaches them to its navigator. `resolveModulePages` brings
+   * `revalidateOnBack` (E58): any of its views may declare it, and an app without the resolver carries none of its code.
+   */
+  readonly features?: readonly Feature[];
+};
 
 type PageModules = Record<string, () => Promise<unknown>>;
 
@@ -117,7 +124,7 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     if (name) pages.set(name, load);
   }
 
-  return async (name) => {
+  const resolve = async (name: string): Promise<PageComponent> => {
     const load = pages.get(name);
     if (!load && name === ERROR_PAGE) return ErrorPage; // built-in until the app brings its own
     if (!load && name === LAYER_BACKDROP) return Backdrop; // the neutral surface under a layer whose base is not shown (E54)
@@ -153,4 +160,5 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     }
     return page;
   };
+  return Object.assign(resolve, { features: [revalidateOnBack] });
 }

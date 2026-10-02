@@ -373,6 +373,8 @@ export function BespokeApp({
     });
     // Optimistic patches (E59): every router offers them (`router.optimistic`, a form's `submit({ optimistic })`).
     navigator.current.use(optimisticFeature);
+    // What the views use (E70): `revalidateOnBack` with the pages of `resolveModulePages`.
+    for (const feature of resolve.features ?? []) navigator.current.use(feature);
   }
   // The layers on screen — the core's in the browser; on the server, the deep link's page objects.
   const [layers, setLayers] = useState<readonly LayerEntry[]>(() =>

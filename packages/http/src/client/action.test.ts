@@ -3,6 +3,7 @@ import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PA
 import { Navigator } from './navigation.ts';
 import type { RegionOwner } from './region.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
+import { revalidateOnBack } from './features/revalidate-on-back.ts';
 
 /** A response the test lets through when it says so — to keep requests under way side by side. */
 function gate<T>(): { promise: Promise<T>; open: (value: T) => void } {
@@ -382,6 +383,7 @@ describe('revalidateOnBack (E58)', () => {
       render: async (next) => void shown.push(next),
       revalidateOnBack: (component) => declared[component],
     });
+    navigator.use(revalidateOnBack); // attached where views declare it (React: resolveModulePages)
     navigator.start();
     return { win, navigator, visible: () => shown.at(-1)! };
   }
@@ -439,6 +441,7 @@ describe('revalidateOnBack for layers and islands (E58)', () => {
       render: async (next) => void shown.push(next),
       revalidateOnBack: (component) => (component === 'user-profile/Edit' ? ['profile'] : undefined),
     });
+    navigator.use(revalidateOnBack); // attached where views declare it (React: resolveModulePages)
     navigator.start();
     await navigator.visit('/users/1/edit', { layer: true });
     win.back();
@@ -472,6 +475,7 @@ describe('revalidateOnBack for layers and islands (E58)', () => {
       render: async (_next, { owner }) => void owners.push(owner),
       revalidateOnBack: (component) => (component === 'dashboard/MyActivity' ? ['entries'] : undefined),
     });
+    navigator.use(revalidateOnBack); // attached where views declare it (React: resolveModulePages)
     navigator.start();
     await navigator.region('/dashboard/activity').load();
     await navigator.visit('/people');
