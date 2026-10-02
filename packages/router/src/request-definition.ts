@@ -1,4 +1,5 @@
 import { HttpError, type TextKey } from './errors.ts';
+import { issueOfFields } from './live-validation.ts';
 import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
 
 /**
@@ -36,6 +37,20 @@ export interface StandardIssue {
 export type InferInput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['input'];
 export type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
 
+/**
+ * A body schema built per request, with the request's `resolve` — for rules that need the app, say the database:
+ *
+ * ```ts
+ * schema: (resolve) => v.objectAsync({
+ *   email: v.pipeAsync(v.string(), v.email(), v.checkAsync(async (email) => !(await resolve(UserRepository).emailTaken(email)), trans('…'))),
+ * }),
+ * ```
+ *
+ * Such a rule is part of the schema, so it runs wherever the schema does — on submit and in a live validation of its field
+ * (E62), with the same message. (A live validation reveals what a submit reveals, never more.)
+ */
+export type SchemaFactory<TSchema extends StandardSchemaV1> = (resolve: ClassResolver) => TSchema;
+
 /** What an invalid query field does — never a 422: links outlive their pages, and people type URLs (E56). */
 export interface QueryOptions {
   /**
@@ -52,7 +67,8 @@ export interface QueryOptions {
  * `schema` validates the body only — a GET has none, so a GET route takes `query` instead.
  */
 export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx = any, TQuery extends StandardSchemaV1 = any> {
-  readonly schema?: TSchema | undefined;
+  /** The body's schema — or a function that builds it per request, for rules that need the app (see {@link SchemaFactory}). */
+  readonly schema?: TSchema | SchemaFactory<TSchema> | undefined;
   /** The query string, parsed (`ctx.query`): every field optional or with a default — an invalid one falls back to it. */
   readonly query?: TQuery | undefined;
   readonly queryOptions?: QueryOptions | undefined;
@@ -121,7 +137,7 @@ export type CheckQuery<TQuery extends StandardSchemaV1> =
  * ```
  */
 export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TCtx = HttpContext>(definition: {
-  schema?: TSchema;
+  schema?: TSchema | SchemaFactory<TSchema>;
   query?: CheckQuery<TQuery>;
   queryOptions?: QueryOptions;
   authorize?: (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
@@ -132,8 +148,16 @@ export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery e
 /** Type-only marker: carries the request in a handler's context, so `FormOf<Controller>` can find it. */
 declare const REQUEST: unique symbol;
 
-/** The body schema of a request — `never` without one. */
-export type SchemaOf<R> = R extends { readonly schema?: infer S } ? (S extends StandardSchemaV1 ? S : never) : never;
+/** The body schema of a request — what its {@link SchemaFactory} builds, when it has one — `never` without one. */
+export type SchemaOf<R> = R extends { readonly schema?: infer S }
+  ? S extends StandardSchemaV1
+    ? S
+    : S extends (resolve: never) => infer Built
+      ? Built extends StandardSchemaV1
+        ? Built
+        : never
+      : never
+  : never;
 
 /** The query schema of a request — `never` without one. */
 export type QuerySchemaOf<R> = R extends { readonly query?: infer Q } ? (Q extends StandardSchemaV1 ? Q : never) : never;
@@ -281,26 +305,55 @@ export class ValidationError extends HttpError {
 
 /** What {@link validateRequest} hands the controller. */
 export interface ValidatedRequest {
-  /** The validated body — only when the request has a `schema`. */
+  /** The validated body — only when the request has a `schema` (and this is no live validation: see `only`). */
   readonly body?: unknown;
   /** The parsed query — only when the request has a `query` schema. */
   readonly query?: ParsedQuery;
+}
+
+/** How {@link validateRequest} runs. */
+export interface ValidateOptions {
+  /**
+   * A live validation (E62): check these fields only — the body's issues outside them are dropped, and a valid result has no
+   * body (the controller does not run). A request without a body schema has nothing to check: 400.
+   */
+  readonly only?: readonly string[] | undefined;
 }
 
 /**
  * Runs a request definition: authorize (403), then parse the query (never fails — invalid fields fall back), then
  * validate the body (422). Body and query never mix (E65): `schema` sees `ctx.input()`, which is the body alone.
  */
-export async function validateRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<ValidatedRequest> {
+export async function validateRequest(
+  definition: RequestDefinition,
+  ctx: HttpContext,
+  resolve: ClassResolver = (Class) => new Class(),
+  { only }: ValidateOptions = {},
+): Promise<ValidatedRequest> {
   if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
     throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'bespoke.errors.unauthorized' });
   }
   const query = definition.query ? await parseQuery(definition.query, ctx.query) : undefined;
-  if (!definition.schema) return query ? { query } : {};
+  if (!definition.schema) {
+    if (only) throw nothingToValidate();
+    return query ? { query } : {};
+  }
+  const schema: StandardSchemaV1 = typeof definition.schema === 'function' ? definition.schema(resolve) : definition.schema;
   const input = await ctx.input();
-  const result = await definition.schema['~standard'].validate(input);
+  const result = await schema['~standard'].validate(input);
+  if (only) {
+    // The named fields' issues only — the others are not filled in yet (or never sent: passwords). No input goes back.
+    const issues = (result.issues ?? []).filter((issue) => issueOfFields(issue, only));
+    if (issues.length > 0) throw ValidationError.fromIssues(issues, {});
+    return query ? { query } : {};
+  }
   if (result.issues) throw ValidationError.fromIssues(result.issues, input);
   return query ? { body: result.value, query } : { body: result.value };
+}
+
+/** A live validation of a route that validates no body (no `schema`, a GET, a closure): a mistake of the client. */
+export function nothingToValidate(): HttpError {
+  return new HttpError(400, 'A live validation needs a route with a request schema: this route validates no body.');
 }
 
 /** A query, parsed against its schema (E56). */

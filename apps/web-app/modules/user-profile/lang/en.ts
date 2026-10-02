@@ -48,6 +48,7 @@ const en = {
     bio: 'Bio',
     save: 'Save',
     saving: 'Saving…',
+    checking: 'Checking …',
     cancel: 'Cancel',
   },
   remove: {

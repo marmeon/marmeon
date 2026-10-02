@@ -15,7 +15,8 @@ export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './c
 export type { CookieCodec, CookieOptions } from './cookies.ts';
 export { clientIp, createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
-export { defineRequest, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
+export { defineRequest, nothingToValidate, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
+export { isLiveValidation, issueOfFields, liveValidationFields, VALIDATE_HEADER, VALIDATED_HEADER } from './live-validation.ts';
 export { GET_HAS_NO_BODY, ISLAND_IS_GET_ONLY } from './route.ts';
 export type {
   BodyOf,
@@ -31,11 +32,13 @@ export type {
   QuerySchemaOf,
   RequestDefinition,
   RequestOf,
+  SchemaFactory,
   SchemaOf,
   StandardIssue,
   StandardOptions,
   StandardResult,
   StandardSchemaV1,
+  ValidateOptions,
   Validated,
   ValidatedRequest,
   ValidationErrors,

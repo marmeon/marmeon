@@ -60,5 +60,7 @@ export type { QueryStateOptions, QueryUpdate } from './query-state.ts';
 export { Actions, Submissions } from './action.ts';
 export type { ActionException, ActionHost, ActionMethod, ActionOptions, ActionOutcome, Submission } from './action.ts';
 export { PatchQueue, Revalidations } from './optimistic.ts';
+export { DEFAULT_LIVE_VALIDATION_DEBOUNCE, isSensitiveField, LiveValidation, liveValidationData, SENSITIVE_FIELD, sendLiveValidation } from './live-validation.ts';
+export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';
 export type { OptimisticUpdate, PatchTarget, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
 export type { RegionOwnerOptions } from './region.ts';

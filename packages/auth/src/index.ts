@@ -29,6 +29,7 @@ export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyRespo
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
 export { confirmed, password } from './rules.ts';
+export type { ConfirmedOptions } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
 export type { PasswordRuleOptions } from './rules.ts';

@@ -26,6 +26,7 @@ const en = {
     password_confirmation: 'Repeat the password',
     submit: 'Create account',
     submitting: 'Creating…',
+    checking: 'Checking …',
     registered: 'Already registered?',
     login: 'Sign in',
   },

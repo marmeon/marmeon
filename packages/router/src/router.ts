@@ -2,7 +2,8 @@ import { HttpError } from './errors.ts';
 import { runPipeline } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
-import { validateRequest } from './request-definition.ts';
+import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
+import { nothingToValidate, validateRequest } from './request-definition.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
@@ -161,6 +162,14 @@ export class Router {
         // before `authorize` (which may look at the bound record) — Laravel's middleware priority.
         const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
         const { action } = route;
+        // A live validation (E62): as far as the validation — the controller is never built, `handle` never runs.
+        const live = liveValidationFields(finalCtx.request);
+        if (live) {
+          const method = finalCtx.request.method;
+          if (!isControllerClass(action) || !action.request || method === 'GET' || method === 'HEAD' || live.length === 0) throw nothingToValidate();
+          await validateRequest(action.request, finalCtx, resolve, { only: live });
+          return new Response(null, { status: 204, headers: { [VALIDATED_HEADER]: live.join(','), 'cache-control': 'no-store' } });
+        }
         let result: unknown;
         let pageQuery: PageQuery | undefined;
         if (isControllerClass(action)) {

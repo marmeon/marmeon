@@ -7,8 +7,15 @@ type Props = PageProps<ShowRegisterController>;
 export default function Register({ old, csrfToken }: Props) {
   const route = useRoute();
   const t = useTranslation('auth');
-  const form = useForm('auth.register.store', { name: old.name ?? '', email: old.email ?? '', password: '', password_confirmation: '' });
-  const field = (name: 'name' | 'email' | 'password' | 'password_confirmation', label: string, type: string, autoComplete: string) => (
+  // Live validation (E62): name and e-mail are checked against the server's schema when you leave them — a taken address
+  // shows before you send. Password fields never are (never sent for a check): their rules are checked on submit.
+  const form = useForm(
+    'auth.register.store',
+    {},
+    { name: old.name ?? '', email: old.email ?? '', password: '', password_confirmation: '' },
+    { validate: { on: 'blur', fields: ['name', 'email'] } },
+  );
+  const field = (name: 'name' | 'email' | 'password' | 'password_confirmation', label: string, type: string, autoComplete: string, live?: 'name' | 'email') => (
     <p>
       <label htmlFor={name}>{label}</label>
       <br />
@@ -19,9 +26,18 @@ export default function Register({ old, csrfToken }: Props) {
         autoComplete={autoComplete}
         value={form.data[name]}
         onChange={(e) => form.set(name, e.target.value)}
+        onBlur={live ? () => form.validate(live) : undefined}
         aria-invalid={!!form.errors[name]}
+        aria-busy={(live && form.validating(live)) || undefined}
+        aria-describedby={form.errors[name] ? `${name}-error` : undefined}
       />
-      {form.errors[name] && <small role="alert"> {form.errors[name]}</small>}
+      {live && form.validating(live) && <small> {t('register.checking')}</small>}
+      {form.errors[name] && (
+        <small id={`${name}-error`} role="alert">
+          {' '}
+          {form.errors[name]}
+        </small>
+      )}
     </p>
   );
 
@@ -39,8 +55,8 @@ export default function Register({ old, csrfToken }: Props) {
         }}
       >
         <input type="hidden" name="_token" value={csrfToken} />
-        {field('name', t('register.name'), 'text', 'name')}
-        {field('email', t('register.email'), 'email', 'email')}
+        {field('name', t('register.name'), 'text', 'name', 'name')}
+        {field('email', t('register.email'), 'email', 'email', 'email')}
         {field('password', t('register.password', { min: 8 }), 'password', 'new-password')}
         {field('password_confirmation', t('register.password_confirmation'), 'password', 'new-password')}
         <button type="submit" disabled={form.processing}>

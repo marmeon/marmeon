@@ -28,6 +28,8 @@ export {
   PURPOSE_HEADER,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  VALIDATE_HEADER,
+  VALIDATED_HEADER,
   VERSION_HEADER,
   isActionRequest,
   isPageObject,
@@ -71,7 +73,7 @@ export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { defineMiddleware, defineRequest, defineRoutes, Router, translatable, ValidationError } from '@bespokecore/router';
+export { defineMiddleware, defineRequest, defineRoutes, isLiveValidation, liveValidationFields, Router, translatable, ValidationError } from '@bespokecore/router';
 export type {
   ContextOf,
   CookieJar,

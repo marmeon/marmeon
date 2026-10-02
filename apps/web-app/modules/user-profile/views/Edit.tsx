@@ -17,7 +17,8 @@ export default function Edit({ profile, old }: Props) {
   const id = useId();
   // E40: method, URL and fields from the route name — user-profile.update → UpdateUserProfileRequest's schema (its input type).
   // `guard` (E64): with changes not saved, closing the layer, Back, a link elsewhere or closing the tab asks first.
-  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved') });
+  // `validate` (E62): a field is checked against the server's schema when you leave it — "too short" before you save.
+  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved'), validate: true });
 
   // Under the page's own heading in a layer; the page's heading when the view is a page.
   const Heading = layer.isLayer ? 'h2' : 'h1';
@@ -36,7 +37,8 @@ export default function Edit({ profile, old }: Props) {
         <p>
           <label htmlFor={`${id}-name`}>{t('edit.name')}</label>
           <br />
-          <input id={`${id}-name`} autoFocus={layer.isLayer} data-dirty={form.isDirty('name') || undefined} value={form.data.name} onChange={(e) => form.set('name', e.target.value)} aria-invalid={!!form.errors.name} aria-describedby={form.errors.name ? `${id}-name-error` : undefined} />
+          <input id={`${id}-name`} autoFocus={layer.isLayer} data-dirty={form.isDirty('name') || undefined} value={form.data.name} onChange={(e) => form.set('name', e.target.value)} onBlur={() => form.validate('name')} aria-busy={form.validating('name') || undefined} aria-invalid={!!form.errors.name} aria-describedby={form.errors.name ? `${id}-name-error` : undefined} />
+          {form.validating('name') && <small> {t('edit.checking')}</small>}
           {form.errors.name && (
             <small id={`${id}-name-error`} role="alert">
               {' '}
@@ -47,7 +49,7 @@ export default function Edit({ profile, old }: Props) {
         <p>
           <label htmlFor={`${id}-bio`}>{t('edit.bio')}</label>
           <br />
-          <textarea id={`${id}-bio`} rows={3} data-dirty={form.isDirty('bio') || undefined} value={form.data.bio} onChange={(e) => form.set('bio', e.target.value)} aria-invalid={!!form.errors.bio} aria-describedby={form.errors.bio ? `${id}-bio-error` : undefined} />
+          <textarea id={`${id}-bio`} rows={3} data-dirty={form.isDirty('bio') || undefined} value={form.data.bio} onChange={(e) => form.set('bio', e.target.value)} onBlur={() => form.validate('bio')} aria-busy={form.validating('bio') || undefined} aria-invalid={!!form.errors.bio} aria-describedby={form.errors.bio ? `${id}-bio-error` : undefined} />
           {form.errors.bio && (
             <small id={`${id}-bio-error`} role="alert">
               {' '}

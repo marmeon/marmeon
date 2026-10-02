@@ -38,7 +38,7 @@ export { ConfirmDialog } from './confirm.tsx';
 export type { Confirm, ConfirmAnswer, ConfirmComponent, ConfirmDialogProps, ConfirmOptions, ConfirmProps, ConfirmRequest } from './confirm.tsx';
 export { useAction, usePendingSubmissions } from './use-action.ts';
 export type { Action, ActionException, ActionField, ActionReload, ActionResultOf, ActionSubmitOptions, PendingSubmission } from './use-action.ts';
-export type { FieldPath, Form, FormOptions, FormState, FormSubmitOptions, RouteForm, RouteFormFields } from './use-form.ts';
+export type { FieldPath, Form, FormOptions, FormState, FormSubmitOptions, LiveValidationSetting, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
 export { useRoute } from './routes.ts';
 export type { RouteFunction } from './routes.ts';
 export { createBespokeApp } from './client.tsx';

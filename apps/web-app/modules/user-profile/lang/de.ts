@@ -50,6 +50,7 @@ export default {
     bio: 'Über mich',
     save: 'Speichern',
     saving: 'Wird gespeichert …',
+    checking: 'Wird geprüft …',
     cancel: 'Abbrechen',
   },
   remove: {

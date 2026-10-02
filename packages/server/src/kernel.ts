@@ -29,6 +29,9 @@ import {
   clientIp,
   CookieJar,
   createRequestState,
+  isLiveValidation,
+  liveValidationFields,
+  VALIDATED_HEADER,
   Router,
   withQueuedCookies,
   type DispatchOptions,
@@ -39,7 +42,7 @@ import {
 } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
-import { createResponseFactory, toActionResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
+import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { ServerConfig } from './provider.ts';
 import { createViteDevRenderer } from './vite.ts';
 
@@ -206,6 +209,7 @@ export function createHttpKernel(
 
   const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
     const handler = container.make(ExceptionHandler);
+    if (isLiveValidation(request)) return renderLiveValidationError(handler, error, request, scope);
     handler.report(error);
     if (regionOf(request) === 'island') return renderRegionError(handler, error, request, scope);
     try {
@@ -240,6 +244,20 @@ export function createHttpKernel(
       logger.error('Rendering the error of an island failed', { exception: String(failure) });
     }
     return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError ? error.status : 500 });
+  };
+
+  /**
+   * What a live validation (E62) answers when it does not pass: `422` with the named fields' errors in the request's language —
+   * JSON, never a page and never back to the form (that would write the session) — or the failure (403, 419, 429, …) as JSON.
+   */
+  const renderLiveValidationError = (handler: ExceptionHandler, error: unknown, request: Request, scope?: Container): Response => {
+    const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+    if (error instanceof ValidationError) {
+      const { message, errors } = translator ? error.translate(translator) : error;
+      return Response.json({ message, errors }, { status: 422, headers: { [VALIDATED_HEADER]: (liveValidationFields(request) ?? []).join(',') } });
+    }
+    handler.report(error);
+    return renderRegionError(handler, error, request, scope);
   };
 
   app.use(async (c, next) => {
@@ -281,11 +299,21 @@ export function createHttpKernel(
     // An island's request is read-only (E52): no session write, no cookie, no work after the response — and so is every
     // request resolved in-process for another (an island while its page renders, a layer's base for its deep link).
     const island = regionOf(request) === 'island';
+    // A live validation (E62) checks input and changes nothing: read-only like an island — no session write (its flash data
+    // stays), no cookie, no work after the response; its controller never runs.
+    const live = isLiveValidation(request);
     const { pathname } = new URL(request.url);
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
-    if ((island || parent) && readOnly) {
-      const reason = island ? `an island request (${request.method} ${pathname})` : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
-      readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message) });
+    if ((island || parent || live) && readOnly) {
+      const reason = live
+        ? `a live validation (${request.method} ${pathname})`
+        : island
+          ? `an island request (${request.method} ${pathname})`
+          : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
+      const rule = live
+        ? 'a live validation is read-only (E62) — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
+        : undefined;
+      readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message), ...(rule ? { rule } : {}) });
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
     }
@@ -300,6 +328,8 @@ export function createHttpKernel(
     }
     // Redirects, 401 and 403 of an island become its fallback — never a navigation of the page.
     if (island) response = await toRegionResponse(response);
+    // A live validation's answer is never cached, and a redirect of its route (a guest-only page) is reported, not followed.
+    else if (live) response = await toLiveValidationResponse(response);
     // An action's redirect is reported, not followed — and its answer is never cached (E59).
     else if (isActionRequest(request)) response = await toActionResponse(response);
     // Cookies queued during the request reach the client whatever the outcome (like Laravel).

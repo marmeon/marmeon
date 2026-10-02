@@ -1,12 +1,13 @@
 import { isAbsolute, join } from 'node:path';
 import { Application, defineConfig, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { GLOBAL, MiddlewarePriority, Router } from '@bespokecore/router';
 import * as v from 'valibot';
 import { Cache, FileStore, MemoryStore, StoreCache } from './cache.ts';
-import { RateLimiter } from './rate-limiter.ts';
+import { LimitLiveValidation, RateLimiter } from './rate-limiter.ts';
 
 export { Cache, FileStore, MemoryStore, StoreCache } from './cache.ts';
 export type { CacheStore } from './cache.ts';
-export { Limit, RateLimiter, throttle } from './rate-limiter.ts';
+export { DEFAULT_LIVE_VALIDATION_LIMIT, Limit, LimitLiveValidation, LIVE_VALIDATION_LIMITER, RateLimiter, throttle } from './rate-limiter.ts';
 export type { LimiterCallback } from './rate-limiter.ts';
 
 export const CacheConfig = defineConfig('cache', {
@@ -34,5 +35,10 @@ export class CacheServiceProvider implements ServiceProvider {
       return new StoreCache(new FileStore(isAbsolute(config.path) ? config.path : join(root, config.path)), config.prefix);
     });
     container.singleton(RateLimiter);
+  }
+
+  /** Live validations (E62) are limited on every route — in the global stack, before anything else runs for them. */
+  boot(app: Application): void {
+    if (app.container.has(Router)) app.container.make(Router).middleware.append(GLOBAL, LimitLiveValidation, MiddlewarePriority.limitLiveValidation);
   }
 }

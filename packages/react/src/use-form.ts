@@ -1,7 +1,7 @@
-import { dirtyPaths, firstErrors, isDirtyPath, resolveRoute, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, FormOf, ParamsOf, Routes } from '@bespokecore/http/page';
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from './app.tsx';
+import { dirtyPaths, firstErrors, isDirtyPath, resolveRoute, type LiveValidation, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@bespokecore/http/page';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useRouter, useRouterContext } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
 
@@ -32,6 +32,29 @@ export interface FormOptions {
    * succeeded, what was sent is where the form starts over (not dirty any more).
    */
   guard?: boolean | string;
+}
+
+/**
+ * Live validation of a route form (E62): its fields checked against the server's request schema while they are filled in — the
+ * route's middleware, `authorize` and schema run, its controller never does. Only touched fields are checked; password fields
+ * are never sent (they are checked when the form is sent); errors land in `errors`, `validating(field)` tells a check is under way.
+ */
+export interface LiveValidationSetting<F> {
+  /**
+   * When: `blur` (the default) — call `form.validate('email')` in `onBlur`; a field that shows an error is checked again while
+   * it is typed into, so fixing it clears the message. `change` — while typing, after a pause (`debounce`).
+   */
+  on?: 'blur' | 'change';
+  /** The pause after typing before a check (ms, default 300). */
+  debounce?: number;
+  /** Which fields — default all of them (but passwords). (`LiveField<F>`, spelled out: a message lists the names, not the alias.) */
+  fields?: readonly (PasswordNeverLive | (keyof { [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true } & string))[];
+}
+
+/** How a route form behaves beyond its data: the guard (E64) — and live validation (E62), which needs its route's URL. */
+export interface RouteFormOptions<F> extends FormOptions {
+  /** Check fields against the server while they are filled in: `true`, or when and which (see {@link LiveValidationSetting}). */
+  validate?: true | LiveValidationSetting<F>;
 }
 
 /**
@@ -91,6 +114,13 @@ export interface RouteForm<F> extends FormState<F> {
   submit(options?: FormSubmitOptions): Promise<void>;
   readonly method: VisitMethod;
   readonly url: string;
+  /**
+   * Live validation (E62, `validate` option): checks the touched fields now — when `field` was changed (so in `onBlur`:
+   * tabbing through an untouched field asks nothing). Without `field`: every touched one. Without the option: nothing.
+   */
+  validate<const K extends string>(field?: CheckLiveField<F, K>): void;
+  /** Whether a live check of `field` (or of any field) is under way — for a spinner, `aria-busy`. */
+  validating<const K extends string>(field?: CheckLiveField<F, K>): boolean;
 }
 
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
@@ -133,19 +163,20 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
  * props, without a reload and without losing what was typed.
  */
 export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions): Form<T>;
+export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
+// Last: TS reports a mistake against the last overload whose arity fits — this one for four arguments (a wrong option, a
+// password field in `validate.fields`), the one above for two or three (the route's message).
 export function useForm<const N extends BrowserRouteNameInput>(
   name: CheckFormRoute<N>,
   params: ParamsOf<N>,
   initial: RouteFormFields<N>,
-  options: FormOptions,
+  options: RouteFormOptions<RouteFormFields<N>>,
 ): RouteForm<RouteFormFields<N>>;
-// Last: a mistake is reported against this one (TS names the last overload's error) — the route's message.
-export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
 export function useForm(...args: unknown[]): unknown {
   const named = typeof args[0] === 'string';
   const name = named ? (args[0] as string) : undefined;
   // (name, initial) · (name, params, initial) · (name, params, initial, options) · (initial) · (initial, options)
-  const options = ((named ? args.length === 4 && args[3] : args.length === 2 && args[1]) || {}) as FormOptions;
+  const options = ((named ? args.length === 4 && args[3] : args.length === 2 && args[1]) || {}) as RouteFormOptions<Record<string, unknown>>;
   const params = named && args.length >= 3 ? (args[1] as Record<string, string | number>) : undefined;
   const initial = (named ? args[args.length === 4 ? 2 : args.length - 1] : args[0]) as Record<string, unknown>;
 
@@ -164,9 +195,12 @@ export function useForm(...args: unknown[]): unknown {
   const [recentlySuccessful, setRecentlySuccessful] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
+  const live = useLiveValidation(target, options.validate, data, errors, setErrors);
 
   const send = useCallback(
     async (method: VisitMethod, url: string, { onSuccess, onError, onFinish, onProgress, ...options }: FormSubmitOptions = {}) => {
+      // Sent: its answer decides the errors — a live check under way would only land on top of it.
+      live?.cancel();
       setProcessing(true);
       setWasSuccessful(false);
       try {
@@ -190,6 +224,7 @@ export function useForm(...args: unknown[]): unknown {
         } else {
           // Saved: what was sent is where the form starts over — not dirty any more (the guard lets go).
           setDefaults(data);
+          live?.reset();
           setWasSuccessful(true);
           setRecentlySuccessful(true);
           clearTimeout(timer.current);
@@ -202,7 +237,7 @@ export function useForm(...args: unknown[]): unknown {
         onFinish?.();
       }
     },
-    [visit, data, guard],
+    [visit, data, guard, live],
   );
 
   const submit = (...submitArgs: unknown[]): Promise<void> => {
@@ -213,8 +248,14 @@ export function useForm(...args: unknown[]): unknown {
 
   const form: Form<Record<string, unknown>> & { method?: VisitMethod; url?: string } = {
     data,
-    set: (field, value) => setData((current) => ({ ...current, [field]: value })),
-    setData,
+    set: (field, value) => {
+      setData((current) => ({ ...current, [field]: value }));
+      live?.changed(field);
+    },
+    setData: (next) => {
+      for (const field of new Set([...Object.keys(data), ...Object.keys(next)])) if (!Object.is(data[field], next[field])) live?.changed(field);
+      setData(next);
+    },
     errors,
     hasErrors: Object.keys(errors).length > 0,
     clearErrors: (...fields) =>
@@ -236,6 +277,68 @@ export function useForm(...args: unknown[]): unknown {
     patch: (url, options) => send('patch', url, options),
     delete: (url, options) => send('delete', url, options),
     ...(target ? { method: target.method as VisitMethod, url: target.url } : {}),
+    ...(target
+      ? {
+          validate: (field?: string) => {
+            if (!live) return;
+            if (field === undefined) void live.validate();
+            else live.blurred(field);
+          },
+          validating: (field?: string) => (live ? isPending(live.pending, field) : false),
+        }
+      : {}),
   };
   return form;
+}
+
+const noSubscription = () => () => {};
+const NOTHING_PENDING: readonly string[] = [];
+
+function isPending(pending: readonly string[], field?: string): boolean {
+  if (field === undefined) return pending.length > 0;
+  return pending.some((name) => name === field || name.startsWith(`${field}.`));
+}
+
+/**
+ * The live validation of a route form (E62) — the core's `LiveValidation`, with its results merged into the form's errors:
+ * a checked field's message is replaced by what the server said now (or removed); fields not checked keep theirs.
+ */
+function useLiveValidation(
+  target: { method: string; url: string } | undefined,
+  setting: RouteFormOptions<Record<string, unknown>>['validate'],
+  data: Record<string, unknown>,
+  errors: Partial<Record<string, string>>,
+  setErrors: (update: (current: Partial<Record<string, string>>) => Partial<Record<string, string>>) => void,
+): LiveValidation | undefined {
+  const navigator = useRouterContext().navigator();
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const errorsRef = useRef(errors);
+  errorsRef.current = errors;
+  const config = setting === true ? {} : setting || undefined;
+  const method = target?.method.toLowerCase();
+  const fieldsKey = config?.fields?.join(',');
+  const live = useMemo(() => {
+    if (!navigator || !target || !config || method === undefined || method === 'get') return undefined;
+    return navigator.liveValidation(target.url, {
+      method: method as 'post' | 'put' | 'patch' | 'delete',
+      data: () => dataRef.current,
+      hasError: (field) => errorsRef.current[field] !== undefined,
+      on: config.on ?? 'blur',
+      ...(config.debounce === undefined ? {} : { debounce: config.debounce }),
+      ...(config.fields ? { fields: config.fields as readonly string[] } : {}),
+      onResult: (outcome) =>
+        setErrors((current) => {
+          const next = Object.fromEntries(Object.entries(current).filter(([field]) => !outcome.fields.some((name) => field === name || field.startsWith(`${name}.`))));
+          if (outcome.kind === 'invalid') for (const [field, messages] of Object.entries(outcome.errors)) if (typeof messages[0] === 'string') next[field] = messages[0];
+          return next;
+        }),
+    });
+    // The setting is read once per URL, method, trigger and field list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigator, target?.url, method, config === undefined, config?.on, config?.debounce, fieldsKey]);
+  // Nothing scheduled or under way outlives the form (a remount gets the same instance back: cancel, never close).
+  useEffect(() => () => live?.cancel(), [live]);
+  useSyncExternalStore(live?.subscribe ?? noSubscription, () => live?.pending ?? NOTHING_PENDING, () => NOTHING_PENDING);
+  return live;
 }

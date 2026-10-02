@@ -274,6 +274,36 @@ export function isActionRequest(request: Request): boolean {
   return request.headers.get(ACTION_HEADER) === 'true';
 }
 
+/**
+ * A live validation (E62, `useForm(…, { validate })`): the route's own request — same method, URL and body — naming the fields
+ * to check (`name,email`). The server runs the route's middleware, `authorize` and request schema, never its controller, and
+ * answers `204` (valid) or `422` with the errors of those fields only. Read-only and never cached. (The same name as the
+ * router's `VALIDATE_HEADER` — this module may not import it.)
+ */
+export const VALIDATE_HEADER = 'x-bespoke-validate';
+
+/** On a live validation's `204` and `422`: the fields it checked — so a client tells its answer from a proxy's. */
+export const VALIDATED_HEADER = 'x-bespoke-validated';
+
+/** What a password field's name looks like to live validation (`/password/i`): it is never sent for a check (E62). */
+type PasswordLike<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
+
+/** The fields of form data `F` that live validation may check (E62): every top-level field but passwords. */
+export type LiveField<F> = keyof { [K in keyof F & string as PasswordLike<K> extends true ? never : K]: true } & string;
+
+/** The explanation when a password field is named for a live validation — shown by the compiler as the expected type. */
+export type PasswordNeverLive = 'password fields are never validated live — they are checked when the form is sent';
+
+/**
+ * `K` when live validation may check it in form data `F`; otherwise the message the compiler shows: a password field, or a
+ * field the form does not have (with the ones it has).
+ */
+export type CheckLiveField<F, K extends string> = K extends LiveField<F>
+  ? K
+  : K extends keyof F
+    ? `'${K}' — ${PasswordNeverLive}`
+    : `'${K}' is not a field of this form — it has ${JoinNames<LiveField<F>>}`;
+
 /** The asset version the client was built with; a mismatch answers 409 (Inertia's `X-Inertia-Version`). */
 export const VERSION_HEADER = 'x-bespoke-version';
 

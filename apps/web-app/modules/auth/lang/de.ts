@@ -26,6 +26,7 @@ export default {
     password_confirmation: 'Passwort wiederholen',
     submit: 'Konto anlegen',
     submitting: 'Wird angelegt …',
+    checking: 'Wird geprüft …',
     registered: 'Schon registriert?',
     login: 'Anmelden',
   },

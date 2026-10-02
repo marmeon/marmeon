@@ -43,7 +43,7 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@bespokecore/http';
-import { defaultToResponse, urlFor, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
+import { defaultToResponse, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
 import { documentOf, FALLBACK_TEMPLATE, renderDocument } from './html.ts';
 
 export interface PageRenderOptions {
@@ -493,6 +493,26 @@ export async function toActionResponse(response: Response): Promise<Response> {
   if (location !== null) {
     await response.body?.cancel();
     for (const name of ['location', 'content-type', 'content-length']) headers.delete(name);
+    headers.set(ACTION_REDIRECT_HEADER, location);
+    return new Response(null, { status: 204, headers });
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/**
+ * The answer of a live validation (E62): never cached (`no-store`, `Vary`), and a redirect of its route — middleware that sends
+ * a guest away, say — becomes `204` with `x-bespoke-redirect`, like an action's: reported, not followed. Only its own `204` and
+ * `422` carry `x-bespoke-validated` (the router's and the kernel's) — what the client takes for a result.
+ */
+export async function toLiveValidationResponse(response: Response): Promise<Response> {
+  const headers = new Headers(response.headers);
+  headers.set('cache-control', 'no-store');
+  const vary = headers.get('vary');
+  if (!vary?.toLowerCase().split(/\s*,\s*/).includes(VALIDATE_HEADER)) headers.set('vary', vary ? `${vary}, ${VALIDATE_HEADER}` : VALIDATE_HEADER);
+  const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+  if (location !== null) {
+    await response.body?.cancel();
+    for (const name of ['location', 'content-type', 'content-length', VALIDATED_HEADER]) headers.delete(name);
     headers.set(ACTION_REDIRECT_HEADER, location);
     return new Response(null, { status: 204, headers });
   }

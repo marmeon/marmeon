@@ -14,6 +14,8 @@ import {
   PARTIAL_DATA_HEADER,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  VALIDATE_HEADER,
+  VALIDATED_HEADER,
   type PageObject,
 } from '../page.ts';
 import {
@@ -251,6 +253,47 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(visitUrlOf(click, 'https://example.com/', undefined, location)).toBeUndefined();
     expect(visitUrlOf({ ...click, defaultPrevented: true }, '/users/2', undefined, location)).toBeUndefined();
     expect(firstErrors(page('users/Edit', '/users/1/edit', { errors: { name: ['Too short.', 'Taken.'], bio: 'Too long.' } }))).toEqual({ name: 'Too short.', bio: 'Too long.' });
+  });
+
+  it('validates a plain form live (E62): an input left shows the server’s message in the DOM, the password never leaves', async () => {
+    const sent: { fields: string | null; body: string }[] = [];
+    window.fetch = (async (_input: string, init: RequestInit = {}) => {
+      const headers = init.headers as Record<string, string>;
+      sent.push({ fields: headers[VALIDATE_HEADER] ?? null, body: String(init.body) });
+      const email = (JSON.parse(String(init.body)) as { email?: string }).email;
+      return email === 'ada@example.com'
+        ? new Response(JSON.stringify({ errors: { email: ['Taken.'] } }), { status: 422, headers: { 'content-type': 'application/json', [VALIDATED_HEADER]: 'email' } })
+        : new Response(null, { status: 204, headers: { [VALIDATED_HEADER]: 'email' } });
+    }) as typeof fetch;
+    serverRenderedDocument(page('auth/Register', '/register', {}));
+    const { navigator, stop } = await createTextApp();
+    // The adapter's form: plain inputs, an element per error — the core decides when to ask and what lands.
+    document.body.insertAdjacentHTML('beforeend', '<form><input name="email"><input name="password" type="password"><small id="email-error"></small></form>');
+    const form = document.querySelector('form')!;
+    const data = () => Object.fromEntries(new FormData(form)) as Record<string, unknown>;
+    const live = navigator.liveValidation('/register', {
+      method: 'post',
+      data,
+      onResult: (outcome) => {
+        document.getElementById('email-error')!.textContent = outcome.kind === 'invalid' ? (outcome.errors.email?.[0] ?? '') : '';
+      },
+    });
+    form.addEventListener('input', (event) => live.changed((event.target as HTMLInputElement).name));
+    form.addEventListener('focusout', (event) => live.blurred((event.target as HTMLInputElement).name));
+    const fill = (name: string, value: string) => {
+      const input = form.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    };
+    fill('password', 'hunter2-secret');
+    fill('email', 'ada@example.com');
+    await vi.waitFor(() => expect(document.getElementById('email-error')!.textContent).toBe('Taken.'));
+    fill('email', 'grace@example.com');
+    await vi.waitFor(() => expect(document.getElementById('email-error')!.textContent).toBe(''));
+    expect(sent.map((request) => request.fields)).toEqual(['email', 'email']);
+    expect(sent.some((request) => request.body.includes('hunter2'))).toBe(false);
+    stop();
   });
 
   it("loads a page's messages in its locale, falling back where the server says (fallbackLocale)", async () => {

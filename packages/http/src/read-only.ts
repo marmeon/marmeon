@@ -11,7 +11,12 @@ export interface ReadOnlyOptions {
   readonly strict: boolean;
   /** Where a dropped write is reported (the log). */
   readonly report: (message: string) => void;
+  /** Why it may not write, and where to do it instead — default: an island's rule (E52). */
+  readonly rule?: string;
 }
+
+const ISLAND_RULE =
+  'an island is read-only (E52) — it cannot change the session, cookies or flash data, nor defer work after the response. Do that in the page or an action, not in an island.';
 
 /**
  * Whether the current request may leave anything behind — per request (scoped). An island's request is read-only (E52):
@@ -43,9 +48,7 @@ export class ReadOnly {
   permit(what: string): boolean {
     const options = this.#options;
     if (!options) return true;
-    const message =
-      `${what} in ${options.reason}: an island is read-only (E52) — it cannot change the session, cookies or flash data, ` +
-      'nor defer work after the response. Do that in the page or an action, not in an island.';
+    const message = `${what} in ${options.reason}: ${options.rule ?? ISLAND_RULE}`;
     if (options.strict) throw new ReadOnlyViolation(message);
     options.report(`${message} (dropped)`);
     return false;

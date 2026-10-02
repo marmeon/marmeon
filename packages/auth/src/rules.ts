@@ -35,24 +35,44 @@ export function password({ min = 8, messages = {} }: PasswordRuleOptions = {}) {
   );
 }
 
+/** What {@link confirmed} takes besides the schema. */
+export interface ConfirmedOptions {
+  readonly field?: string;
+  readonly confirmation?: string;
+  readonly message?: Message;
+}
+
 /**
  * `schema`, plus a check that `confirmation` repeats `field` (after the same normalization the hasher
  * applies), reported on the confirmation field:
  *
  * ```ts
  * schema: confirmed(v.object({ password: password(), password_confirmation: v.string() }))
+ * schema: (resolve) => confirmed(v.objectAsync({ email: v.pipeAsync(…, v.checkAsync(…)), password: password(), … }))   // async rules too
  * ```
+ *
+ * It runs once the whole body is valid (a check over the object) — a live validation (E62) never sees it: password fields are
+ * not sent for one, and the check is reported only on submit.
  */
 export function confirmed<S extends v.GenericSchema<unknown, Record<string, unknown>>>(
   schema: S,
+  options?: ConfirmedOptions,
+): v.SchemaWithPipe<readonly [S, v.BaseValidation<v.InferOutput<S>, v.InferOutput<S>, v.BaseIssue<unknown>>]>;
+export function confirmed<S extends v.GenericSchemaAsync<unknown, Record<string, unknown>>>(
+  schema: S,
+  options?: ConfirmedOptions,
+): v.SchemaWithPipeAsync<readonly [S, v.BaseValidation<v.InferOutput<S>, v.InferOutput<S>, v.BaseIssue<unknown>>]>;
+export function confirmed(
+  schema: v.GenericSchema<unknown, Record<string, unknown>> | v.GenericSchemaAsync<unknown, Record<string, unknown>>,
   {
     field = 'password',
     confirmation = `${field}_confirmation`,
     message = translatable('bespoke.validation.confirmed', {}, 'The passwords do not match.'),
-  }: { field?: string; confirmation?: string; message?: Message } = {},
-): v.SchemaWithPipe<readonly [S, v.BaseValidation<v.InferOutput<S>, v.InferOutput<S>, v.BaseIssue<unknown>>]> {
+  }: ConfirmedOptions = {},
+): unknown {
   const same = (input: Record<string, unknown>) =>
     typeof input[field] === 'string' && typeof input[confirmation] === 'string' && input[field].normalize('NFKC') === input[confirmation].normalize('NFKC');
   // Typed by hand: Valibot's inference through forward() loses the object type (the body would become unknown).
-  return v.pipe(schema, v.forward(v.check((input: Record<string, unknown>) => same(input), message), [confirmation] as never)) as never;
+  const check = v.forward(v.check((input: Record<string, unknown>) => same(input), message), [confirmation] as never);
+  return schema.async ? v.pipeAsync(schema, check) : v.pipe(schema as v.GenericSchema<unknown, Record<string, unknown>>, check);
 }

@@ -18,6 +18,7 @@ import {
   PURPOSE_HEADER,
   REGION_HEADER,
   urlFor,
+  VALIDATE_HEADER,
   type CheckIslandRouteName,
   type CheckLayerRouteName,
   type Param,
@@ -510,6 +511,15 @@ export class TestApp {
    */
   acting(): TestApp {
     return this.withHeaders({ [ACTION_HEADER]: 'true', accept: 'application/json' });
+  }
+
+  /**
+   * Requests as a live validation does (E62, `useForm(…, { validate })`): the form's own request naming the fields to check
+   * (`x-bespoke-validate`) — answered `204` (`assertLiveValid()`), `422` with those fields' errors (`assertInvalid`), or a
+   * failure (403, 419, 429). The controller never runs. `app.validating('name', 'email').post('/register', { json })`.
+   */
+  validating(...fields: string[]): TestApp {
+    return this.withHeaders({ [VALIDATE_HEADER]: fields.join(','), accept: 'application/json' });
   }
 
   /** Requests as an API client. */

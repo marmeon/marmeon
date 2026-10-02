@@ -29,7 +29,8 @@ import {
 import { mergePage } from './merge.ts';
 import { accepted, confirmRequest, nativeConfirm, type Confirm, type ConfirmHandler, type ConfirmRequest, type NativeDialogs } from './confirm.ts';
 import { FlashChannel, takeFlash, type FlashListener } from './flash.ts';
-import { Actions, applyPatches, rollBack, Submissions, type ActionOptions, type ActionOutcome, type Submission } from './action.ts';
+import { Actions, applyPatches, rollBack, Submissions, type ActionHost, type ActionOptions, type ActionOutcome, type Submission } from './action.ts';
+import { LiveValidation, sendLiveValidation, type LiveValidationOptions, type LiveValidationOutcome, type LiveValidationRequest } from './live-validation.ts';
 import { Layer, type LayerControl, type LayerHost } from './layer.ts';
 import { PatchQueue, Revalidations, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { QueryState, type QueryStateOptions } from './query-state.ts';
@@ -416,6 +417,7 @@ export class Navigator implements LayerHost {
   /** Actions and route forms under way — what ghost rows are made of (E59). */
   readonly #submissions = new Submissions();
   readonly #actions: Actions;
+  readonly #actionHost: ActionHost;
   readonly #revalidateOnBack: NavigatorOptions['revalidateOnBack'];
   /** Flash messages (E60): fired once each, by id. */
   readonly #flash = new FlashChannel();
@@ -444,27 +446,25 @@ export class Navigator implements LayerHost {
     this.#revalidateOnBack = revalidateOnBack;
     this.#ask = confirm ?? nativeConfirm(win);
     const navigator = this;
-    this.#actions = new Actions(
-      {
-        get left() {
-          return navigator.#left;
-        },
-        get href() {
-          return navigator.#window.location.href;
-        },
-        fetch: (url, init) => this.#window.fetch(url, init),
-        leaveFor: (location) => {
-          this.#leave();
-          this.#window.location.assign(location);
-        },
-        changed: () => this.#flushPrefetched(),
-        visit: (url) => this.visit(url),
-        request: (target, method, data) => buildRequest(target, method, data),
-        confirm: (confirm) => this.confirm(confirm),
-        flash: (messages) => this.#flash.deliver(messages),
+    this.#actionHost = {
+      get left() {
+        return navigator.#left;
       },
-      this.#submissions,
-    );
+      get href() {
+        return navigator.#window.location.href;
+      },
+      fetch: (url, init) => this.#window.fetch(url, init),
+      leaveFor: (location) => {
+        this.#leave();
+        this.#window.location.assign(location);
+      },
+      changed: () => this.#flushPrefetched(),
+      visit: (url) => this.visit(url),
+      request: (target, method, data) => buildRequest(target, method, data),
+      confirm: (confirm) => this.confirm(confirm),
+      flash: (messages) => this.#flash.deliver(messages),
+    };
+    this.#actions = new Actions(this.#actionHost, this.#submissions);
     this.#cache = new PageCache(cacheSize, () => this.#onScreen());
     // A deep link of a layer's URL: the page under it (its base, or the neutral surface), the layers apart.
     const { layers: initialLayers, ...withFlash } = initialPage;
@@ -656,6 +656,20 @@ export class Navigator implements LayerHost {
   action(url: string, options: ActionOptions = {}): Promise<ActionOutcome> {
     this.#adopt();
     return this.#actions.run(url, options);
+  }
+
+  /**
+   * A live validation (E62): checks `fields` of a form's data against the request schema of the route at `url` — sent as the form
+   * would be (method, body, XSRF) with `x-bespoke-validate`, minus password fields and files. Never navigates, never listed as a
+   * submission, never changes what was fetched ahead. Resolves with how it ended — never rejects for a failed request.
+   */
+  validate(url: string, request: LiveValidationRequest): Promise<LiveValidationOutcome> {
+    return sendLiveValidation(this.#actionHost, url, request);
+  }
+
+  /** The live validation of one form at `url` (E62): touched fields, debounce, the check under way — see {@link LiveValidation}. */
+  liveValidation(url: string, options: Omit<LiveValidationOptions, 'send'>): LiveValidation {
+    return new LiveValidation({ ...options, send: (request) => this.validate(url, request) });
   }
 
   /** Actions and route forms under way, oldest first — what ghost rows are made of (E59 model 2). A new array on each change. */

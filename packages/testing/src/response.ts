@@ -7,6 +7,7 @@ import {
   PAGE_SCRIPT_ID,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  VALIDATED_HEADER,
   type CheckFlashKey,
   type CheckViewName,
   type FlashMessage,
@@ -272,6 +273,18 @@ export class TestResponse {
   assertValid(): this {
     const errors = this.#validationErrors();
     if (errors) this.#fail(`Expected no validation errors, got: ${JSON.stringify(errors)}`);
+    return this;
+  }
+
+  /** A live validation (`app.validating(…)`, E62) passed: `204` with `x-bespoke-validated` — naming `fields`, when given. */
+  assertLiveValid(...fields: string[]): this {
+    const validated = this.headers.get(VALIDATED_HEADER);
+    if (this.status !== 204 || validated === null) {
+      const errors = this.#validationErrors();
+      this.#fail(`Expected the live validation to pass (204 with ${VALIDATED_HEADER}), got status ${this.status}${errors ? `: ${JSON.stringify(errors)}` : ''}`);
+    }
+    const checked = validated.split(',');
+    for (const field of fields) if (!checked.includes(field)) this.#fail(`Expected the live validation to check "${field}", it checked: ${validated}`);
     return this;
   }
 

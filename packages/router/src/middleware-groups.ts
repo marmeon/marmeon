@@ -18,6 +18,11 @@ export const MiddlewarePriority = {
   verifyCsrfToken: 300,
   shareProps: 400,
   app: 1000,
+  /**
+   * The global stack's last (cache's `LimitLiveValidation`, E62): after the app's own global middleware — its security headers
+   * go on a `429` too — and before any group's.
+   */
+  limitLiveValidation: 1100,
 } as const;
 
 /** The group every request passes, found or not. */

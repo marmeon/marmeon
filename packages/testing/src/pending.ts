@@ -74,6 +74,9 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   assertRedirect(...args: Parameters<Assertions['assertRedirect']>): this {
     return this.#queue((r) => r.assertRedirect(...args));
   }
+  assertLiveValid(...args: Parameters<Assertions['assertLiveValid']>): this {
+    return this.#queue((r) => r.assertLiveValid(...args));
+  }
   assertActionRedirect(...args: Parameters<Assertions['assertActionRedirect']>): this {
     return this.#queue((r) => r.assertActionRedirect(...args));
   }

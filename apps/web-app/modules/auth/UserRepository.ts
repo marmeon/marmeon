@@ -20,6 +20,11 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('email', '=', email));
   }
 
+  /** Whether an account has this e-mail (normalized: trimmed, lower case) — the registration's uniqueness rule. */
+  async emailTaken(email: string): Promise<boolean> {
+    return (await this.query().select('id').where('email', '=', email).executeTakeFirst()) !== undefined;
+  }
+
   /** A new user — `undefined` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
   register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
     return this.tryInsert(values);

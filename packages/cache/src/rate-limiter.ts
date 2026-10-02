@@ -1,4 +1,4 @@
-import { HttpError, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
+import { HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@bespokecore/router';
 import { Cache } from './cache.ts';
 
 /** How many attempts per window, and whose attempts count together (`by`). */
@@ -100,6 +100,7 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
       const callback = this.#limiter.limiter(name);
       if (!callback) throw new Error(`Rate limiter [${name}] is not defined. Define it with RateLimiter.for('${name}', …).`);
       const limits = [await callback(ctx)].flat().filter((limit) => Number.isFinite(limit.maxAttempts));
+      const live = isLiveValidation(ctx.request);
 
       let headers: Record<string, string> = {};
       for (const limit of limits) {
@@ -120,12 +121,15 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
             { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } },
           );
         }
+        // A live validation (E62) of the route is no attempt: it is held to the route's limit, but does not count against it — a
+        // form checked field by field must not use up the tries of sending it (it has its own limit: `LimitLiveValidation`).
+        if (live) continue;
         const attempts = await this.#limiter.hit(key, limit.decaySeconds);
         headers = { 'x-ratelimit-limit': String(limit.maxAttempts), 'x-ratelimit-remaining': String(Math.max(0, limit.maxAttempts - attempts)) };
       }
 
       const response = await next();
-      if (limits.length === 0) return response;
+      if (limits.length === 0 || live) return response;
       const withHeaders = new Response(response.body, response);
       for (const [header, value] of Object.entries(headers)) withHeaders.headers.set(header, value);
       return withHeaders;
@@ -134,4 +138,47 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
   // Readable in `route:list` and stack traces.
   Object.defineProperty(Throttle, 'name', { value: `throttle:${name}` });
   return Throttle;
+}
+
+/** The name of the limiter for live validations — `limiter.for('live-validation', (ctx) => …)` replaces the default. */
+export const LIVE_VALIDATION_LIMITER = 'live-validation';
+
+/** The default limit of live validations: 30 a minute per client address and route. */
+export const DEFAULT_LIVE_VALIDATION_LIMIT = 30;
+
+/**
+ * The limit of live validations (E62), in the global stack: every request naming fields to check (`x-bespoke-validate`) counts
+ * once against its own counter per route — `live-validation:<route>` — by the client's address: 30 a minute (a form checked on
+ * blur needs a few), then `429` until the window passes. Never the route's own counters (`throttle(name)` holds a live
+ * validation to them without counting it), never the session's. An app sets its own with
+ * `limiter.for('live-validation', (ctx) => Limit.perMinute(60).by(ctx.ip ?? ''))` — `Limit.none()` turns it off.
+ *
+ * A live validation answers what the form's submit would (a uniqueness rule's "taken", say) — this limit is what keeps it
+ * from being a faster way to ask than submitting.
+ */
+export class LimitLiveValidation {
+  readonly #limiter: RateLimiter;
+
+  constructor(limiter: RateLimiter) {
+    this.#limiter = limiter;
+  }
+
+  async handle(ctx: HttpContext, next: Next<{}>): Promise<Response> {
+    // No route (an unknown path — the global stack runs for it too): nothing to validate, the 404 follows.
+    const route: RouteDefinition | undefined = ctx.route;
+    if (!route || !isLiveValidation(ctx.request)) return next();
+    const callback = this.#limiter.limiter(LIVE_VALIDATION_LIMITER);
+    const chosen = callback ? await callback(ctx) : Limit.perMinute(DEFAULT_LIVE_VALIDATION_LIMIT).by(ctx.ip ?? 'unknown');
+    const limits = [chosen].flat().filter((limit) => Number.isFinite(limit.maxAttempts));
+    const name = route.routeName ?? `${ctx.request.method} ${route.path}`;
+    for (const limit of limits) {
+      const key = `${LIVE_VALIDATION_LIMITER}:${name}:${limit.decaySeconds}:${limit.key}`;
+      if (await this.#limiter.tooManyAttempts(key, limit.maxAttempts)) {
+        const retryAfter = await this.#limiter.availableIn(key);
+        throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfter) }, { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } });
+      }
+      await this.#limiter.hit(key, limit.decaySeconds);
+    }
+    return next();
+  }
 }
