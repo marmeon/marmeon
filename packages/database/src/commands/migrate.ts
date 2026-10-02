@@ -111,8 +111,8 @@ export class MigrateFreshCommand {
 
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'drop every table')) return 1;
-    await this.#migrator.dropAllTables();
-    input.output.info('Dropped all tables.');
+    const connections = await this.#migrator.dropAllTables();
+    input.output.info(connections.length === 1 ? 'Dropped all tables.' : `Dropped all tables of the connections ${connections.join(', ')}.`);
     const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
     await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
     return input.options.seed === true ? seed(this.#seeding, input) : 0;

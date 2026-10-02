@@ -46,9 +46,9 @@ export interface StoreUnderTest {
 }
 
 /** Runs the sessions migration (the file `make:session-table` copies) on a connection. */
-export async function migrate(connections: Connections): Promise<void> {
+export async function migrate(connections: Connections, name = 'default'): Promise<void> {
   const migration = ((await import(SESSIONS_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-  await migration.up(new Schema(connections.get(), connections.options().driver));
+  await migration.up(new Schema(connections.get(name), connections.options(name).driver));
 }
 
 export function databaseConnections(options: ConnectionOptions): Connections {

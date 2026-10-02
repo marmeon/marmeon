@@ -68,10 +68,35 @@ export class BespokeDriver implements Driver {
    */
   readonly #holders = new Map<DatabaseConnection, number>();
 
-  constructor(driver: Driver, context: DriverContext, options: { single?: boolean } = {}) {
+  /** A pool that never joins an ambient transaction: an infrastructure connection's own pool (E108). */
+  readonly #detached: boolean;
+
+  constructor(driver: Driver, context: DriverContext, options: { single?: boolean; detached?: boolean } = {}) {
     this.#driver = driver;
     this.#context = context;
     this.#single = options.single ?? false;
+    this.#detached = options.detached ?? false;
+  }
+
+  /** The connection's name, e.g. `default`. */
+  get name(): string {
+    return this.#context.name;
+  }
+
+  /**
+   * Whether everyone shares one physical connection: SQLite, or a connection isolated for a test. Work that must not
+   * join an open transaction cannot get a connection of its own here while that transaction holds it.
+   */
+  get sharesOneConnection(): boolean {
+    return this.#single || this.#pinned !== undefined;
+  }
+
+  /**
+   * @internal — for infrastructure connections (E108): a connection of its own, never the ambient transaction's (on a
+   * shared physical connection, the caller has made sure no transaction of its call chain holds it).
+   */
+  acquireDetached(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+    return this.#acquire(options);
   }
 
   init(options?: Parameters<Driver['init']>[0]): Promise<void> {
@@ -84,6 +109,7 @@ export class BespokeDriver implements Driver {
   }
 
   async acquireConnection(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+    if (this.#detached) return this.#acquire(options);
     // Throws when this call chain's transaction has finished: never a silent fallback to a fresh connection.
     const frame = transactionOf(this);
     if (frame) return frame.resource === undefined ? this.#begin(frame, options) : this.#join(frame.resource as DatabaseConnection);
@@ -264,7 +290,7 @@ export class BespokeDriver implements Driver {
 const savepoint = (depth: number) => `bespoke_savepoint_${depth}`;
 
 /** The adapter as it is, but claiming several connections — so Kysely leaves the locking to {@link BespokeDriver}. */
-function multipleConnections(adapter: DialectAdapter): DialectAdapter {
+export function multipleConnections(adapter: DialectAdapter): DialectAdapter {
   return new Proxy(adapter, {
     get(target, property) {
       if (property === 'supportsMultipleConnections') return true;

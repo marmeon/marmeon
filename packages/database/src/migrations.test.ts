@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@bespokecore/core';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { Migrator, type Connections } from './index.ts';
+import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { Connections, Migrator } from './index.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
@@ -110,6 +110,92 @@ describe.each(drivers)('migrations on %s', (driver) => {
     expect(runs.map((run) => run.name)).toHaveLength(3);
     expect(await tables()).toEqual(['articles', 'migrations', 'secret_columns', 'table_owners', 'users']);
     expect((await migrator(connections, auth, blog).status()).every((m) => m.batch === 1)).toBe(true);
+  });
+});
+
+describe.each(drivers)('migrations on another connection (%s, E108)', (driver) => {
+  const system: ModuleDefinition = { name: 'system', migrations: fixtures('system') };
+  let connections: Connections;
+  let drops: (() => Promise<void>)[];
+  /** The app: its modules, and a container that tells the migration its connection — like `c.make(CacheConfig).connection`. */
+  const on = (...modules: ModuleDefinition[]) =>
+    new Migrator({ modules, root: '/', container: { make: () => 'system' } } as unknown as Application, connections);
+  const tablesOf = async (name: string) => (await connections.get<any>(name).introspection.getTables()).map((t) => t.name).sort();
+
+  beforeAll(async () => {
+    const [app, other] = [await freshDatabase(driver), await freshDatabase(driver)];
+    drops = [app.drop, other.drop];
+    connections = new Connections({ connections: { default: app.options, system: other.options }, root: '/', logger: silent });
+  });
+  afterAll(async () => {
+    await connections.destroy();
+    for (const drop of drops) await drop();
+  });
+
+  it('creates the tables on their connection, keeps the record on default, and owners and secrets with the tables', async () => {
+    const ran = await on(auth, system).migrate();
+    expect(ran.map((run) => run.name)).toEqual(['2026_01_01_000000_create_users_table', '2026_01_07_000000_create_counters_table', '2026_01_08_000000_create_audit_table']);
+    expect(await tablesOf('default')).toEqual(['migrations', 'secret_columns', 'table_owners', 'users']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'secret_columns', 'table_owners']);
+    expect((await on(auth, system).status()).map((m) => [m.name, m.batch])).toEqual([
+      ['2026_01_01_000000_create_users_table', 1],
+      ['2026_01_07_000000_create_counters_table', 1],
+      ['2026_01_08_000000_create_audit_table', 1],
+    ]);
+    const owners = await connections.get<any>('system').selectFrom('table_owners').selectAll().orderBy('table_name').execute();
+    expect(owners).toEqual([
+      { table_name: 'audit', module: 'system' },
+      { table_name: 'counters', module: 'system' },
+    ]);
+    // The secret column is known where the table is: a selectAll() there never returns it.
+    await connections.get<any>('system').insertInto('counters').values({ key: 'k', n: 1, owner_token: 'secret' }).execute();
+    expect(await connections.get<any>('system').selectFrom('counters').selectAll().execute()).toEqual([{ key: 'k', n: 1 }]);
+    expect(await on(auth, system).migrate()).toEqual([]);
+  });
+
+  it('rolls back on the connection the migration ran on', async () => {
+    const rolledBack = await on(auth, system).rollback({ steps: 1 });
+    expect(rolledBack.map((run) => run.name)).toEqual(['2026_01_08_000000_create_audit_table']);
+    expect(await tablesOf('system')).toEqual(['counters', 'secret_columns', 'table_owners']);
+    expect((await on(auth, system).status()).at(-1)?.batch).toBeUndefined();
+    await on(auth, system).migrate();
+    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'secret_columns', 'table_owners']);
+  });
+
+  it('drops the tables of every connection a migration runs on for a fresh start', async () => {
+    await on(auth, system).migrate();
+    await connections.get<any>('system').insertInto('audit').values({ what: 'before' }).execute();
+    expect(await on(auth, system).connections()).toEqual(['default', 'system']);
+    const ran = await on(auth, system).fresh();
+    expect(ran).toHaveLength(3);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'secret_columns', 'table_owners']);
+    expect(await connections.get<any>('system').selectFrom('counters').selectAll().execute()).toEqual([]);
+    expect(await connections.get<any>('system').selectFrom('audit').selectAll().execute()).toEqual([]);
+  });
+
+  it('refuses a connection that is not configured — with the migration', async () => {
+    await expect(on({ name: 'elsewhere', migrations: fixtures('elsewhere') }).migrate()).rejects.toThrow(
+      'Migration 2026_01_09_000000_create_reports_table (module "elsewhere") runs on the database connection "reporting", which is not configured. Known: default, system.',
+    );
+  });
+
+  it('runs everything on default for one database of all tables (db:types)', async () => {
+    const scratch = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: '/', logger: silent });
+    try {
+      const migrator = new Migrator({ modules: [auth, system], root: '/' } as unknown as Application, scratch).onOneConnection();
+      await migrator.migrate();
+      expect((await scratch.get<any>().introspection.getTables()).map((t) => t.name).sort()).toEqual([
+        'audit',
+        'counters',
+        'migrations',
+        'secret_columns',
+        'table_owners',
+        'users',
+      ]);
+      expect(Object.fromEntries(await migrator.secrets())).toEqual({ counters: new Set(['owner_token']) });
+    } finally {
+      await scratch.destroy();
+    }
   });
 });
 

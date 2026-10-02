@@ -3,8 +3,9 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { runTransaction, TransactionError, transactionOf, token, type Logger } from '@bespokecore/core';
 import { Kysely, type Dialect, type IsolationLevel, type LogEvent, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
-import { describeConnection, type ConnectionOptions } from './config.ts';
-import { DatabaseConnectionError, withBespokeDriver, type BespokeDriver } from './driver.ts';
+import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
+import { BespokeDriver, DatabaseConnectionError, multipleConnections, withBespokeDriver } from './driver.ts';
+import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
@@ -54,7 +55,11 @@ export class Connections {
   readonly #options: ReadonlyMap<string, ConnectionOptions>;
   readonly #root: string;
   readonly #logger: Logger;
-  readonly #instances = new Map<string, { db: Kysely<any>; driver: BespokeDriver }>();
+  readonly #instances = new Map<string, { db: Kysely<any>; driver: BespokeDriver; file?: string }>();
+  /** Infrastructure handles (E108), per connection and user. */
+  readonly #infrastructure = new Map<string, Kysely<any>>();
+  /** Postgres: the infrastructure's own pool, per connection. */
+  readonly #pools = new Map<string, BespokeDriver>();
   readonly #listeners = new Set<(query: QueryEvent) => void>();
   #destroyed = false;
 
@@ -110,6 +115,51 @@ export class Connections {
         return builder.execute(async (trx) => callback(trx as Transaction<Tables>));
       }),
     );
+  }
+
+  /**
+   * The connection for infrastructure — the cache with its rate limits and locks, sessions (E108): it NEVER joins the
+   * app's transactions. A rate-limit hit or a lock inside a transaction that rolls back stays, and a lock is visible to
+   * every other process at once — as it must be.
+   *
+   * - **Postgres:** a pool of its own to the same database (`infrastructurePoolMax`, `DB_INFRA_POOL_MAX`, default 4),
+   *   opened on first use. Nothing to configure.
+   * - **SQLite:** a second connection to the same file would wait for an open transaction's write lock — forever, if
+   *   that transaction waits for it. So the handle shares the file's one connection: outside of transactions (the normal
+   *   case) that is all it takes; inside an open transaction of that file every statement throws an
+   *   `InfrastructureTransactionError` that says what to do (`usage.remedy`) — never a silent join. Full separation on
+   *   SQLite means a connection with a file of its own (e.g. `defineConnection('system', …)` and `CACHE_CONNECTION=system`).
+   * - In a test's isolated connection (`database: 'refresh'`) there is one physical connection, as on SQLite.
+   *
+   * Runs single statements — no transactions of its own.
+   */
+  infrastructure<DB = any>(name = 'default', usage?: InfrastructureUsage): Kysely<DB> {
+    const key = `${name}\0${usage?.system ?? ''}`;
+    let db = this.#infrastructure.get(key);
+    if (!db) {
+      const main = this.#instance(name);
+      const options = this.options(name);
+      const dialect = this.#dialect(options); // for its compiler and adapter only — the driver is below
+      const driver = new InfrastructureDriver({
+        main: main.driver,
+        // Every connection of this app on the same SQLite file: a transaction of any of them holds the file.
+        peers: () => [...this.#instances.values()].filter((other) => other === main || (main.file !== undefined && other.file === main.file)).map((other) => other.driver),
+        ...(options.driver === 'pgsql' ? { pool: () => this.#pool(name, options) } : {}),
+        ...(usage ? { usage } : {}),
+      });
+      const adapter = dialect.createAdapter();
+      db = new Kysely<any>({
+        dialect: {
+          createAdapter: () => multipleConnections(adapter),
+          createQueryCompiler: () => dialect.createQueryCompiler(),
+          createIntrospector: (kysely) => dialect.createIntrospector(kysely),
+          createDriver: () => driver,
+        },
+        log: (event) => this.#log(name, event),
+      });
+      this.#infrastructure.set(key, db);
+    }
+    return db as Kysely<DB>;
   }
 
   /** Whether the current call chain runs inside a `transaction()` of this connection (E107). */
@@ -168,23 +218,38 @@ export class Connections {
   async destroy(): Promise<void> {
     this.#destroyed = true;
     const instances = [...this.#instances.values()];
+    const pools = [...this.#pools.values()];
     this.#instances.clear();
-    await Promise.all(instances.map(({ db }) => db.destroy()));
+    this.#infrastructure.clear();
+    this.#pools.clear();
+    await Promise.all([...instances.map(({ db }) => db.destroy()), ...pools.map((pool) => pool.destroy())]);
   }
 
-  #instance(name: string): { db: Kysely<any>; driver: BespokeDriver } {
+  #instance(name: string): { db: Kysely<any>; driver: BespokeDriver; file?: string } {
     if (this.#destroyed) throw new Error(`The database connections are closed (the application shut down); cannot use "${name}".`);
-    let instance = this.#instances.get(name);
+    let instance: { db: Kysely<any>; driver: BespokeDriver; file?: string } | undefined = this.#instances.get(name);
     if (!instance) {
       const options = this.options(name);
       const metadata = new SchemaMetadata(options.driver);
       const { dialect, driver } = withBespokeDriver(this.#dialect(options), { name, target: describeConnection(options), metadata });
       const plugins = [metadata.plugin(), new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
-      instance = { db, driver };
+      instance = { db, driver, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);
     }
     return instance;
+  }
+
+  /** Postgres: the infrastructure's own pool of a connection, created on first use (it connects on its first query). */
+  #pool(name: string, options: Extract<ConnectionOptions, { driver: 'pgsql' }>): BespokeDriver {
+    if (this.#destroyed) throw new Error(`The database connections are closed (the application shut down); cannot use "${name}".`);
+    let pool = this.#pools.get(name);
+    if (!pool) {
+      const dialect = this.#dialect({ ...options, poolMax: options.infrastructurePoolMax ?? DEFAULT_INFRASTRUCTURE_POOL_MAX });
+      pool = new BespokeDriver(dialect.createDriver(), { name, target: `${describeConnection(options)} (infrastructure pool)` }, { detached: true });
+      this.#pools.set(name, pool);
+    }
+    return pool;
   }
 
   #dialect(options: ConnectionOptions): Dialect {

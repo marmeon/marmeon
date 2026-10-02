@@ -1,8 +1,11 @@
+import { cacheTablesConnection } from '@bespokecore/cache';
 import { defineMigration } from '@bespokecore/database';
 
 // The tables of CACHE_DRIVER=database (written by `bespoke make:cache-table`): a row per key — the value as JSON, the
-// expiry in epoch milliseconds (null: never) — and a row per lock with its owner's token.
+// expiry in epoch milliseconds (null: never) — and a row per lock with its owner's token. They live on the cache's
+// connection (CACHE_CONNECTION) — with SQLite best a file of its own, so rate limits and locks work inside transactions.
 export default defineMigration({
+  connection: cacheTablesConnection,
   up: async (schema) => {
     await schema.create('cache', (table) => {
       table.text('key').primary();

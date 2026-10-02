@@ -94,6 +94,23 @@ async function importOptional<T>(load: () => Promise<T>, name: string, driver: s
   }
 }
 
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file (E108). */
+const SESSION_INFRASTRUCTURE = {
+  system: 'The session store (SESSION_DRIVER=database)',
+  remedy:
+    "Give the sessions their own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, SESSION_CONNECTION=system, " +
+    'and `bespoke migrate` (the migration of `bespoke make:session-table` follows SESSION_CONNECTION) — or use Redis (SESSION_DRIVER=redis).',
+};
+
+/**
+ * The connection the `sessions` table belongs on — for the migration `bespoke make:session-table` writes (`connection` in
+ * `defineMigration`): `SESSION_CONNECTION` with the database driver, else `default`.
+ */
+export function sessionTableConnection(container: Resolver): string {
+  const config = container.make(SessionConfig);
+  return config.driver === 'database' ? config.connection : 'default';
+}
+
 const importDatabase = () => importOptional(() => import('@bespokecore/database'), '@bespokecore/database', 'database', 'pnpm add @bespokecore/database');
 const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis', 'redis', 'pnpm add @bespokecore/redis redis');
 
@@ -105,7 +122,12 @@ function storeFor(config: SessionConfig, container: Resolver): SessionStore {
     case 'memory':
       return new MemorySessionStore(clock);
     case 'database':
-      return new DatabaseSessionStore(async () => ({ db: container.make((await importDatabase()).Connections).get(config.connection) }), lifetime, clock);
+      // Its own connection, never the app's transaction (E108): a session written inside one survives its rollback.
+      return new DatabaseSessionStore(
+        async () => ({ db: container.make((await importDatabase()).Connections).infrastructure(config.connection, SESSION_INFRASTRUCTURE) }),
+        lifetime,
+        clock,
+      );
     case 'redis':
       return new RedisSessionStore(async () => container.make((await importRedis()).RedisConnections).get(config.connection));
     case 'cookie':

@@ -23,9 +23,11 @@ export { currentJob, currentLogContext, currentRequest, runWithJob, runWithReque
 export type { JobInfo, RequestInfo } from './request-context.ts';
 export {
   afterCommit,
+  afterRollback,
   currentTransaction,
   inTransaction,
   leftTransactionOf,
+  openTransactionOf,
   outsideTransaction,
   runTransaction,
   TransactionError,

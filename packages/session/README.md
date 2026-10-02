@@ -29,6 +29,19 @@ and `last_activity` (epoch milliseconds of the last write, indexed). A session e
 its last activity. Expired rows are deleted by the lottery (`SESSION_LOTTERY`, default 2 in 100 requests, after the
 response) or by `bespoke session:prune` — from a scheduler or cron, then set `SESSION_LOTTERY=0/1`.
 
+**Its own connection, never the app's transactions (E108).** The store writes through `connections.infrastructure()`
+(see `packages/database/README.md`): a session written while a transaction is open — an in-process request inside
+`connections.transaction()`, a test — is not rolled back with it.
+
+| Database | What the store gets | Inside an open app transaction |
+| -------- | ------------------- | ------------------------------ |
+| Postgres | a small pool of its own to the same database (`DB_INFRA_POOL_MAX`, default 4) — nothing to configure | works; survives the rollback |
+| SQLite with a file of its own (`SESSION_CONNECTION=system`, a `defineConnection('system', …)` for e.g. `storage/system.sqlite`) | that file | works; survives the rollback |
+| SQLite, the app's own file (`SESSION_CONNECTION=default`) | the file's one connection, shared | throws `InfrastructureTransactionError` (configure a file of its own, or use Redis) — never a silent join. Outside transactions (the normal case: a request saves its session after the controller) it works as before |
+
+The migration `make:session-table` writes follows the connection: `connection: sessionTableConnection` puts the table on
+`SESSION_CONNECTION` (with the database driver; otherwise on `default`), and `bespoke migrate` creates it there.
+
 ### What `writeIfExists` guarantees
 
 Every store implements `SessionStore.writeIfExists(id, data, lifetime) → boolean`: it writes a session back **only while

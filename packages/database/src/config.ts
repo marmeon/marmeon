@@ -1,10 +1,17 @@
 import { defineConfig, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@bespokecore/core';
 import * as v from 'valibot';
 
-/** Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. */
+/**
+ * Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. `pgsql`: a URL, the size of its
+ * pool, and the size of the small pool its infrastructure (the cache, sessions — `connections.infrastructure()`, E108)
+ * opens on first use.
+ */
 export type ConnectionOptions =
   | { readonly driver: 'sqlite'; readonly database: string }
-  | { readonly driver: 'pgsql'; readonly url: string; readonly poolMax?: number };
+  | { readonly driver: 'pgsql'; readonly url: string; readonly poolMax?: number; readonly infrastructurePoolMax?: number };
+
+/** Connections of the infrastructure pool of a Postgres connection, unless it says otherwise. */
+export const DEFAULT_INFRASTRUCTURE_POOL_MAX = 4;
 
 const port = v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(65535));
 const postgresUrl = v.pipe(v.string(), v.regex(/^postgres(ql)?:\/\//, 'Expected a postgres:// URL'), v.url());
@@ -16,6 +23,8 @@ const postgresUrl = v.pipe(v.string(), v.regex(/^postgres(ql)?:\/\//, 'Expected 
  * DB_CONNECTION=sqlite                   # sqlite (default) | pgsql
  * DB_DATABASE=storage/database.sqlite    # SQLite file, or the Postgres database name
  * DB_URL=postgres://user:secret@localhost:5432/app   # pgsql: a URL, or DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD
+ * DB_POOL_MAX=10                         # pgsql: the pool
+ * DB_INFRA_POOL_MAX=4                    # pgsql: the infrastructure's own pool (cache, sessions — E108)
  * ```
  */
 export const DatabaseConfig = defineConfig('database', {
@@ -29,6 +38,8 @@ export const DatabaseConfig = defineConfig('database', {
     DB_PASSWORD: v.optional(v.string(), ''),
     /** Largest number of pooled Postgres connections. */
     DB_POOL_MAX: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), '10'),
+    /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions — E108). */
+    DB_INFRA_POOL_MAX: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), String(DEFAULT_INFRASTRUCTURE_POOL_MAX)),
   }),
   resolve: (env): { default: ConnectionOptions } => {
     if (env.DB_CONNECTION === 'sqlite') return { default: { driver: 'sqlite', database: env.DB_DATABASE ?? 'storage/database.sqlite' } };
@@ -38,7 +49,7 @@ export const DatabaseConfig = defineConfig('database', {
       url.password = env.DB_PASSWORD;
       url.pathname = `/${env.DB_DATABASE ?? 'bespoke'}`;
     }
-    return { default: { driver: 'pgsql', url: url.href, poolMax: env.DB_POOL_MAX } };
+    return { default: { driver: 'pgsql', url: url.href, poolMax: env.DB_POOL_MAX, infrastructurePoolMax: env.DB_INFRA_POOL_MAX } };
   },
 });
 export type DatabaseConfig = ConfigOf<typeof DatabaseConfig>;

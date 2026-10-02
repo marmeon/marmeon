@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { Generated, Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { afterCommit, inTransaction, outsideTransaction, Repository, TransactionError, TransactionFinishedError, type Connections } from './index.ts';
+import { afterCommit, afterRollback, inTransaction, outsideTransaction, Repository, TransactionError, TransactionFinishedError, type Connections } from './index.ts';
 
 // The ambient transaction context (E107): `connections.transaction(callback)` and everything awaited inside it.
 
@@ -145,16 +145,16 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
     );
     await expect(timer).rejects.toBeInstanceOf(TransactionFinishedError);
 
-    let afterRollback!: Promise<unknown>;
+    let lateAfterRollback!: Promise<unknown>;
     await expect(
       within(
         connections.transaction(async () => {
-          afterRollback = sleep(20).then(() => notes.insert({ title: 'after rollback' }));
+          lateAfterRollback = sleep(20).then(() => notes.insert({ title: 'after rollback' }));
           throw new Rollback();
         }),
       ),
     ).rejects.toBeInstanceOf(Rollback);
-    await expect(afterRollback).rejects.toThrow('ran after that transaction was rolled back');
+    await expect(lateAfterRollback).rejects.toThrow('ran after that transaction was rolled back');
     expect(await notes.titles()).toEqual([]);
   });
 
@@ -186,6 +186,67 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
       ),
     ).rejects.toBeInstanceOf(Rollback);
     expect(seen).toEqual(['no transaction: at once', 'callback done', 'outer: in transaction false, sees kept', 'savepoint, committed with the outer']);
+  });
+
+  it('runs afterRollback work right after a rollback, outside the transaction — and never after a commit (E108)', async () => {
+    const seen: string[] = [];
+    await afterRollback(() => seen.push('no transaction: never'));
+    await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'kept' });
+        await afterRollback(() => seen.push('outer committed — never'));
+        // A savepoint that commits hands its work to the transaction around it — which commits: never.
+        await connections.transaction(() => afterRollback(() => seen.push('savepoint committed, outer committed — never')));
+        // A savepoint that rolls back: what the work cleans up after is gone for good — it runs now, outside of any transaction.
+        await expect(
+          connections.transaction(async () => {
+            await notes.insert({ title: 'savepoint' });
+            await afterRollback(async () => {
+              seen.push(`savepoint rolled back: in transaction ${inTransaction()}`);
+            });
+            throw new Rollback();
+          }),
+        ).rejects.toBeInstanceOf(Rollback);
+        seen.push('callback done');
+      }),
+    );
+    await expect(
+      within(
+        connections.transaction(async () => {
+          await notes.insert({ title: 'rolled back' });
+          await afterRollback(() => seen.push('outermost rolled back'));
+          // Committed into the outer one, which then rolls back: runs with it.
+          await connections.transaction(() => afterRollback(() => seen.push('savepoint committed, outer rolled back')));
+          seen.push('about to throw');
+          throw new Rollback();
+        }),
+      ),
+    ).rejects.toBeInstanceOf(Rollback);
+    expect(seen).toEqual([
+      'savepoint rolled back: in transaction false',
+      'callback done',
+      'about to throw',
+      'outermost rolled back',
+      'savepoint committed, outer rolled back',
+    ]);
+    expect(await notes.titles()).toEqual(['kept']);
+  });
+
+  it('keeps the error that rolled back when afterRollback work fails — as a SuppressedError', async () => {
+    const original = new Rollback('the reason it rolled back');
+    const error = await within(
+      connections.transaction(async () => {
+        await afterRollback(() => {
+          throw new Error('the lock server is down');
+        });
+        await afterRollback(() => undefined); // still runs
+        throw original;
+      }),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SuppressedError);
+    expect((error as SuppressedError).suppressed).toBe(original);
+    expect((error as SuppressedError).error).toEqual(new Error('the lock server is down'));
+    expect((error as Error).message).toContain('After-rollback work failed (the transaction on "default" is rolled back): the lock server is down');
   });
 
   it('throws an error of afterCommit work from transaction() — after the commit', async () => {

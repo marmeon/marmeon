@@ -68,8 +68,24 @@ is the same thing on the repository's connection. `{ connection: 'reporting' }` 
   holds it: `outsideTransaction()` database work fails at once with a `TransactionError` there instead of waiting forever.
   Record such things after the transaction instead — catch, record, rethrow.
 
-  Note that a rate limiter or lock on the **database** cache store joins a transaction like every other write on the
-  connection (as in Laravel): a counter written inside a transaction that rolls back is rolled back with it.
+  The framework's own infrastructure never needs this: the database cache store (rate limits, locks) and the database
+  session store always write on [their own connection](#infrastructure-connections-e108) — never in your transaction.
+- **After a rollback:** `afterRollback(fn)` is the counterpart of `afterCommit` — for work done *outside* the transaction
+  on its behalf that must be undone with it, like a lock on the cache's own connection for a job whose row is in the
+  transaction:
+
+  ```ts
+  await this.#connections.transaction(async () => {
+    if (!(await lock.get())) return;                     // the cache's connection: every process sees it at once
+    await afterRollback(() => lock.release());           // the job below never existed — free the lock again
+    await this.#queue.dispatch(RebuildStatsJob, { userId });
+  });
+  ```
+
+  It runs right after the rollback, outside of any transaction, and never after a commit. It belongs to the innermost
+  transaction: a savepoint that rolls back runs it at once — what it cleans up after is gone, even if the transaction
+  around it commits — and one that commits hands it to the transaction around it. Outside a transaction it never runs.
+  If it fails, `transaction()` throws a `SuppressedError` (`error`: the failure, `suppressed`: the error that rolled back).
 - **Explicit transactions stay possible.** `repository.using(trx)` and `queue.using(trx)` bind to a transaction you
   control yourself — Kysely's `db.startTransaction()`, a second connection at the same time, code outside the call chain.
   The callback of `connections.transaction()` receives the Kysely transaction for exactly that. Kysely's own
@@ -80,9 +96,10 @@ is the same thing on the repository's connection. `{ connection: 'reporting' }` 
 | Inside `transaction()`                                  | Behaviour                                                        |
 | ------------------------------------------------------- | ---------------------------------------------------------------- |
 | repositories, `connections.get()`, `Database`           | join the transaction of their connection                         |
-| `queue.dispatch()` on the `database` queue (same connection) | a row in the transaction: visible with the commit, gone with a rollback |
+| `queue.dispatch()` on the `database` queue (same connection) | a row in the transaction: visible with the commit, gone with a rollback — deliberately (E85) |
 | `queue.dispatch()` on `sync` or any other queue         | held until the outermost commit, dropped on a rollback; a `sync` job then runs outside the transaction |
 | in-process event listeners                              | run inside the transaction                                       |
+| the database cache store — rate limits, locks — and the database session store | **never join** (E108): their own connection, see below |
 | `afterResponse.defer()`, terminate hooks                | run after the response, outside of any transaction               |
 | a job (worker, `sync`, `app.queue.work()`)              | runs outside of any transaction                                  |
 | another request, job or test running at the same time  | never sees it                                                    |
@@ -99,3 +116,46 @@ The database driver hands the transaction's connection to every query of the cal
 (Kysely's, moved into the driver) is held by the transaction, so queries inside it do not wait for themselves. In a test
 with `database: 'refresh'`, transactions are savepoints in the test's transaction; concurrent ones take turns on the one
 connection.
+
+## Infrastructure connections (E108)
+
+Some writes must never be part of the app's transaction: a rate-limit counter (a failed login counted inside a
+transaction that rolls back would be uncounted — a throttle bypass), a lock (invisible to other processes until the
+commit), a session. `connections.infrastructure(name, usage)` is the handle the cache's and the session's database stores
+use — a connection that never joins an ambient transaction:
+
+| Connection | `connections.infrastructure()` gives | Inside an open transaction of the app |
+| ---------- | ------------------------------------ | -------------------------------------- |
+| Postgres | a small pool of its own to the same database, opened on first use (`DB_INFRA_POOL_MAX`, default 4; `infrastructurePoolMax` for a `defineConnection`) | works — its writes are committed at once and survive the rollback |
+| SQLite, a file of its own (a `defineConnection` the store names: `CACHE_CONNECTION=system`) | that file | works — nobody else's transaction holds it |
+| SQLite, the app's file | the file's one connection, shared (Kysely's lock) | every statement throws `InfrastructureTransactionError`, which says what to do — never a silent join, never a hang |
+| a test's isolated connection (`database: 'refresh'`) | the one isolated connection | throws like on SQLite; outside transactions it works and is rolled back with the test |
+
+Why the pool of its own on Postgres: transactions that wait for a rate limit hold their connections — with one shared
+pool, enough of them at once would leave none for the rate limit, and wait forever. Why not a second connection on
+SQLite: it would wait for the open transaction's write lock — forever, if that transaction waits for it (node:sqlite
+blocks the process while it waits). Never point two connection names at one SQLite file (the handle refuses inside a
+transaction of either).
+
+The handle runs single statements — no transactions of its own. The queue is deliberately **not** on it: a dispatch is a
+row in the transaction (E85, E107), visible with the commit, gone with a rollback. (Laravel's database cache and session
+drivers use the app's connection by default and join its transactions.)
+
+## Migrations on another connection
+
+A migration runs on another connection with `connection` — a name, or a function that reads it from the configuration
+when the migration runs, so a table lands where the code that uses it looks:
+
+```ts
+export default defineMigration({
+  connection: cacheTablesConnection,          // (c) => CACHE_CONNECTION with the database driver, else 'default'
+  up: async (schema) => { await schema.create('cache', …); },
+  down: async (schema) => { await schema.drop('cache'); },
+});
+```
+
+The record of the migration stays on `default` (one order, one batch number for all); the table's owner and its secret
+columns are kept on the connection the table is on, so `selectAll()` there never returns a secret column. A migration on
+another connection runs in a transaction of that connection, then is recorded — two databases, two transactions.
+`migrate:fresh` drops the tables of every connection a migration runs on. `bespoke db:types` runs every migration on one
+scratch database: the generated `Tables` know every table, wherever it lives.

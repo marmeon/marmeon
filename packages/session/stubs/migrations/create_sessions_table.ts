@@ -1,9 +1,12 @@
 import { defineMigration } from '@bespokecore/database';
+import { sessionTableConnection } from '@bespokecore/session';
 
 // The table of SESSION_DRIVER=database (written by `bespoke make:session-table`): a row per session — the data as JSON
 // (secret: never part of a `selectAll()`, it holds the CSRF token), the signed-in user's id (null for guests) and the
-// time of the last write in epoch milliseconds. Expired rows go with `bespoke session:prune` (or the lottery).
+// time of the last write in epoch milliseconds. Expired rows go with `bespoke session:prune` (or the lottery). It lives on
+// the sessions' connection (SESSION_CONNECTION) — with SQLite best a file of its own (E108).
 export default defineMigration({
+  connection: sessionTableConnection,
   up: async (schema) => {
     await schema.create('sessions', (table) => {
       table.string('id', 64).primary();

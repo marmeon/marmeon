@@ -30,7 +30,11 @@ export const CacheConfig = defineConfig('cache', {
      * (tests, one process).
      */
     CACHE_DRIVER: v.optional(v.picklist(['file', 'memory', 'database', 'redis']), 'file'),
-    /** Which database or Redis connection the `database`/`redis` driver uses. */
+    /**
+     * Which database or Redis connection the `database`/`redis` driver uses. The database driver never joins the app's
+     * transactions (E108): on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
+     * own here, or rate limits and locks cannot be used inside a transaction.
+     */
     CACHE_CONNECTION: v.optional(v.string(), 'default'),
     /** Where the `file` driver keeps entries, relative to the app root. */
     CACHE_PATH: v.optional(v.string(), 'storage/framework/cache'),
@@ -56,6 +60,23 @@ async function importOptional<T>(load: () => Promise<T>, name: string, driver: s
     }
     throw error;
   }
+}
+
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file (E108). */
+const CACHE_INFRASTRUCTURE = {
+  system: 'The cache (CACHE_DRIVER=database — also rate limits and locks)',
+  remedy:
+    "Give the cache its own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, CACHE_CONNECTION=system, " +
+    'and `bespoke migrate` (the migration of `bespoke make:cache-table` follows CACHE_CONNECTION) — or use Redis (CACHE_DRIVER=redis).',
+};
+
+/**
+ * The connection the cache's tables belong on — for the migration `bespoke make:cache-table` writes (`connection` in
+ * `defineMigration`): `CACHE_CONNECTION` with the database driver, else `default`.
+ */
+export function cacheTablesConnection(container: Resolver): string {
+  const config = container.make(CacheConfig);
+  return config.driver === 'database' ? config.connection : 'default';
 }
 
 const importDatabase = () => importOptional(() => import('@bespokecore/database'), '@bespokecore/database', 'database', 'pnpm add @bespokecore/database');
@@ -108,7 +129,8 @@ function storeFor(config: CacheConfig, container: Resolver): CacheStore {
       return new DatabaseStore(async () => {
         const { Connections } = await importDatabase();
         const connections = container.make(Connections);
-        return { db: connections.get(config.connection), driver: connections.options(config.connection).driver };
+        // Its own connection, never the app's transaction (E108): a rate-limit hit or a lock survives a rollback.
+        return { db: connections.infrastructure(config.connection, CACHE_INFRASTRUCTURE), driver: connections.options(config.connection).driver };
       }, clock);
     case 'redis':
       return new RedisStore(async () => container.make((await importRedis()).RedisConnections).get(config.connection), clock);

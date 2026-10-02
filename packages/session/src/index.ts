@@ -2,7 +2,7 @@ export { SessionConfig } from './config.ts';
 export { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 export { MakeSessionTableCommand } from './commands/make-session-table.ts';
 export { PruneSessionsCommand } from './commands/prune-sessions.ts';
-export { SessionServiceProvider, SessionSetupError } from './provider.ts';
+export { SessionServiceProvider, SessionSetupError, sessionTableConnection } from './provider.ts';
 export { Session } from './session.ts';
 export type { SessionData } from './session.ts';
 export { ShareErrorsFromSession } from './share-errors.ts';

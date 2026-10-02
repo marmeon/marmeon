@@ -1,22 +1,23 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApplication, defineModule, type ServiceProviderClass } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
+import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@bespokecore/core';
+import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@bespokecore/database';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
 import { RedisConnections, RedisServiceProvider } from '@bespokecore/redis';
 import { createHttpKernel } from '@bespokecore/server';
-import { afterAll, describe, expect, it } from 'vitest';
+import * as v from 'valibot';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionConfig } from './config.ts';
-import { SessionServiceProvider } from './provider.ts';
+import { SessionServiceProvider, sessionTableConnection } from './provider.ts';
 import { Session } from './session.ts';
 import { SessionStore } from './store.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
 import { RedisSessionStore } from './stores/redis.ts';
-import { migrate, REDIS_URL } from './__fixtures__/stores.ts';
+import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
 
 const temporary: string[] = [];
 afterAll(() => {
@@ -57,10 +58,11 @@ const routes = defineRoutes((Route) => {
   Route.post('/save', () => ({ saved: true }));
 });
 
-function boot(env: Record<string, string>, providers: ServiceProviderClass[]) {
+function boot(env: Record<string, string>, providers: ServiceProviderClass[], config: ConfigDefinition<unknown>[] = []) {
   return createApplication({
     root: import.meta.dirname,
     discover: false,
+    config,
     env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ...providers, SessionServiceProvider],
     modules: [defineModule({ name: 'shop', routes })],
@@ -137,6 +139,73 @@ describe('SESSION_DRIVER', () => {
     expect(ttl).toBeLessThanOrEqual(1800);
     await redis.command(['DEL', key!]);
     await app.shutdown();
+  });
+});
+
+describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', () => {
+  class Rollback extends Error {}
+  const System = (file: string) => defineConnection('system', { env: v.object({}), resolve: () => ({ driver: 'sqlite', database: file }) });
+  const DATA = { _token: 'x'.repeat(40), visits: 1 };
+  const ids = async (connections: Connections, name = 'default') =>
+    (await sql<{ id: string }>`select id from sessions`.execute(connections.get(name))).rows.map((row) => row.id);
+
+  it('SQLite without a file of its own: a session write inside a transaction refuses loudly', async () => {
+    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const connections = app.container.make(Connections);
+    await migrate(connections);
+    const store = app.container.make(SessionStore);
+    await connections.transaction(async () => {
+      await expect(store.write('a'.repeat(40), DATA, 60)).rejects.toThrow(InfrastructureTransactionError);
+      await expect(store.writeIfExists('a'.repeat(40), DATA, 60)).rejects.toThrow(
+        'The session store (SESSION_DRIVER=database) cannot work inside the open transaction on the database connection "default" (E108)',
+      );
+    });
+    await store.write('a'.repeat(40), DATA, 60); // outside: the shared file works
+    expect(await ids(connections)).toEqual(['a'.repeat(40)]);
+    await app.shutdown();
+  });
+
+  it('SQLite with a file of its own (SESSION_CONNECTION): a session written inside a transaction survives its rollback', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'bespoke-session-system-'));
+    temporary.push(directory);
+    const app = await boot(
+      { SESSION_DRIVER: 'database', SESSION_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
+      [DatabaseServiceProvider],
+      [System(join(directory, 'system.sqlite'))],
+    );
+    const connections = app.container.make(Connections);
+    await migrate(connections, 'system');
+    expect(sessionTableConnection(app.container)).toBe('system');
+    const store = app.container.make(SessionStore);
+    await expect(
+      connections.transaction(async () => {
+        await store.write('b'.repeat(40), DATA, 60);
+        throw new Rollback();
+      }),
+    ).rejects.toBeInstanceOf(Rollback);
+    expect(await ids(connections, 'system')).toEqual(['b'.repeat(40)]);
+    await app.shutdown();
+  });
+
+  it.runIf(PGSQL_URL)('Postgres: a session written inside a transaction survives its rollback — a pool of its own', async () => {
+    const fresh = await freshTarget('pgsql');
+    try {
+      const app = await boot({ SESSION_DRIVER: 'database', DB_CONNECTION: 'pgsql', DB_URL: (fresh.target as { url: string }).url }, [DatabaseServiceProvider]);
+      const connections = app.container.make(Connections);
+      const store = app.container.make(SessionStore);
+      await expect(
+        connections.transaction(async () => {
+          await store.write('c'.repeat(40), DATA, 60);
+          expect(await store.writeIfExists('c'.repeat(40), { ...DATA, visits: 2 }, 60)).toBe(true);
+          throw new Rollback();
+        }),
+      ).rejects.toBeInstanceOf(Rollback);
+      expect(await ids(connections)).toEqual(['c'.repeat(40)]);
+      expect(await store.read('c'.repeat(40))).toEqual({ ...DATA, visits: 2 });
+      await app.shutdown();
+    } finally {
+      await fresh.drop();
+    }
   });
 });
 

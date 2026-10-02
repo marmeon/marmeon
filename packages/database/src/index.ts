@@ -7,7 +7,7 @@ export { Connections, Database } from './connections.ts';
 export type { QueryEvent, TransactionOptions } from './connections.ts';
 // The ambient transaction context (E107) lives in core — the queue, events and the HTTP kernel use it without depending
 // on the database; apps import it from here, next to `connections.transaction()`.
-export { afterCommit, inTransaction, outsideTransaction, TransactionError, TransactionFinishedError } from '@bespokecore/core';
+export { afterCommit, afterRollback, inTransaction, outsideTransaction, TransactionError, TransactionFinishedError } from '@bespokecore/core';
 export type {
   Decimal,
   ExposedTables,
@@ -24,9 +24,11 @@ export type {
   Tables,
   Timestamp,
 } from './types.ts';
-export { DatabaseConfig, defineConnection, describeConnection } from './config.ts';
+export { DatabaseConfig, DEFAULT_INFRASTRUCTURE_POOL_MAX, defineConnection, describeConnection } from './config.ts';
 export type { ConnectionDefinition, ConnectionOptions } from './config.ts';
 export { DatabaseConnectionError } from './driver.ts';
+export { InfrastructureTransactionError } from './infrastructure.ts';
+export type { InfrastructureUsage } from './infrastructure.ts';
 export { isUniqueViolation } from './errors.ts';
 export { DatabaseServiceProvider } from './provider.ts';
 export { DbShowCommand } from './commands/db-show.ts';

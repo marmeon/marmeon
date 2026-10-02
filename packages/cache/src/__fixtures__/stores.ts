@@ -41,9 +41,9 @@ export interface StoreUnderTest {
 }
 
 /** Runs the cache migration (the file `make:cache-table` copies) on a connection. */
-export async function migrate(connections: Connections): Promise<void> {
+export async function migrate(connections: Connections, name = 'default'): Promise<void> {
   const migration = ((await import(CACHE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-  await migration.up(new Schema(connections.get(), connections.options().driver));
+  await migration.up(new Schema(connections.get(name), connections.options(name).driver));
 }
 
 /** A fresh, empty target for `kind` (a new directory, database file, Postgres database or Redis prefix). */

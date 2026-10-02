@@ -60,7 +60,8 @@ export class TypeGenerator {
   }
 
   async #snapshot(scratch: Connections): Promise<SchemaSnapshot> {
-    const migrator = new Migrator(this.#app, scratch);
+    // One scratch database for every table, also those of migrations on another connection (E108): one `Tables`.
+    const migrator = new Migrator(this.#app, scratch).onOneConnection();
     await migrator.migrate();
     const db = scratch.get<any>();
     const driver = scratch.options().driver;

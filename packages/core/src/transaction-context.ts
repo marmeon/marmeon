@@ -30,6 +30,7 @@ export class TransactionFrame {
   resource: unknown;
   #state: 'open' | 'committed' | 'rolled back' = 'open';
   #afterCommit: (() => unknown)[] = [];
+  #afterRollback: (() => unknown)[] = [];
   /** A transaction opened inside this one on the same connection (a savepoint), while it has not finished. */
   #child: TransactionFrame | undefined;
 
@@ -63,11 +64,20 @@ export class TransactionFrame {
     this.#afterCommit.push(...work);
   }
 
-  /** @internal — marks the transaction finished and hands over its after-commit work (the caller drops it after a rollback). */
-  finish(state: 'committed' | 'rolled back'): (() => unknown)[] {
+  /** @internal */
+  addAfterRollback(work: (() => unknown)[]): void {
+    this.#afterRollback.push(...work);
+  }
+
+  /**
+   * @internal — marks the transaction finished and hands over its after-commit and after-rollback work (the caller runs
+   * one list, hands both to the transaction around it, or drops them — see {@link runTransaction}).
+   */
+  finish(state: 'committed' | 'rolled back'): { readonly commit: (() => unknown)[]; readonly rollback: (() => unknown)[] } {
     this.#state = state;
-    const work = this.#afterCommit;
+    const work = { commit: this.#afterCommit, rollback: this.#afterRollback };
     this.#afterCommit = [];
+    this.#afterRollback = [];
     return work;
   }
 }
@@ -133,9 +143,29 @@ export function leftTransactionOf(owner: object): TransactionFrame | undefined {
 }
 
 /**
+ * An open transaction of `owner` that the current call chain is in, or stepped out of with {@link outsideTransaction} —
+ * one that holds the owner's connection while this call chain runs. Unlike {@link transactionOf} it never throws: a
+ * finished transaction holds nothing. For connections that must never join a transaction (E108).
+ */
+export function openTransactionOf(owner: object): TransactionFrame | undefined {
+  const context = storage.getStore();
+  if (!context) return undefined;
+  for (const start of context.frame ? [context.frame, ...context.left] : context.left) {
+    for (let frame: TransactionFrame | undefined = start; frame; frame = frame.parent) if (frame.owner === owner && frame.open) return frame;
+  }
+  return undefined;
+}
+
+/**
  * @internal — for database drivers: runs `body` as a new transaction of `owner` (nested in the current one, if any),
- * and finishes it with `body`'s outcome. After the outermost commit its after-commit work runs, outside of any
- * transaction; a nested commit hands it to the transaction around it.
+ * and finishes it with `body`'s outcome:
+ *
+ * - **Committed:** nested, its after-commit and after-rollback work go to the transaction around it (both still depend
+ *   on that one); outermost, the after-commit work runs — outside of any transaction — and the after-rollback work is
+ *   dropped.
+ * - **Rolled back** (outermost or a savepoint): the after-commit work is dropped, and the after-rollback work runs at
+ *   once — outside of any transaction — because what it was for is undone for good, whatever the transactions around it
+ *   do. Its errors do not hide the error that rolled the transaction back (see {@link afterRollback}).
  */
 export async function runTransaction<R>(owner: object, label: string, body: (frame: TransactionFrame) => Promise<R>): Promise<R> {
   const parent = currentTransaction();
@@ -147,23 +177,29 @@ export async function runTransaction<R>(owner: object, label: string, body: (fra
   try {
     result = await storage.run({ frame, left: context?.left ?? [] }, () => body(frame));
   } catch (error) {
-    // Rolled back: its after-commit work is dropped — it was for data that never existed.
-    frame.finish('rolled back');
-    throw error;
+    // Rolled back: its after-commit work is dropped — it was for data that never existed — and its after-rollback work
+    // runs now: what it cleans up after is gone, even if a transaction around this one still commits.
+    const { rollback } = frame.finish('rolled back');
+    const failures = await runOutside(rollback);
+    if (failures.length === 0) throw error;
+    const cause = failures.length === 1 ? failures[0] : new AggregateError(failures, `${failures.length} pieces of after-rollback work failed.`);
+    throw new SuppressedError(cause, error, `After-rollback work failed (the transaction on "${label}" is rolled back): ${messageOf(cause)}`);
   }
-  const work = frame.finish('committed');
-  if (work.length === 0) return result;
-  // Committed into the transaction around it: the work waits for that one (and is dropped if it rolls back).
+  const { commit, rollback } = frame.finish('committed');
+  // Committed into the transaction around it: both kinds of work wait for that one.
   if (parent?.open) {
-    parent.addAfterCommit(work);
+    if (commit.length > 0) parent.addAfterCommit(commit);
+    if (rollback.length > 0) parent.addAfterRollback(rollback);
     return result;
   }
-  await runAfterCommit(work);
+  const failures = await runOutside(commit);
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, `${failures.length} pieces of after-commit work failed (the transaction is committed).`);
   return result;
 }
 
-/** Runs after-commit work one after the other, outside of any transaction; all of it runs, then the first error is thrown. */
-async function runAfterCommit(work: readonly (() => unknown)[]): Promise<void> {
+/** Runs work one after the other, outside of any transaction; all of it runs. Returns the errors. */
+async function runOutside(work: readonly (() => unknown)[]): Promise<unknown[]> {
   const errors: unknown[] = [];
   for (const fn of work) {
     try {
@@ -172,8 +208,11 @@ async function runAfterCommit(work: readonly (() => unknown)[]): Promise<void> {
       errors.push(error);
     }
   }
-  if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, `${errors.length} pieces of after-commit work failed (the transaction is committed).`);
+  return errors;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -199,6 +238,30 @@ export async function afterCommit(fn: () => unknown): Promise<void> {
     return;
   }
   frame.addAfterCommit([fn]);
+}
+
+/**
+ * Runs `fn` if the current transaction rolls back — right after that rollback, outside of any transaction; never, if it
+ * commits. The counterpart of {@link afterCommit}, for work done OUTSIDE the transaction on its behalf that must be
+ * undone with it: a lock taken on the cache's own connection for a job whose row is part of the transaction (a unique
+ * job, E108), a file written for a record that is gone.
+ *
+ * ```ts
+ * await connections.transaction(async () => {
+ *   if (!(await lock.get())) return;                       // on the cache's connection: visible to everyone at once
+ *   await afterRollback(() => lock.release());             // the job below never existed — free the lock again
+ *   await queue.dispatch(RebuildStatsJob, { userId });     // a row in the transaction
+ * });
+ * ```
+ *
+ * It belongs to the innermost transaction: a savepoint that rolls back runs it at once (what it undoes is gone, even if
+ * the transaction around it commits); one that commits hands it to the transaction around it. Outside a transaction
+ * nothing can roll back, and `fn` never runs. An error of `fn` does not replace the error that rolled the transaction
+ * back: `transaction()` throws a `SuppressedError` whose `error` is the failure of `fn` and whose `suppressed` is the
+ * original error.
+ */
+export async function afterRollback(fn: () => unknown): Promise<void> {
+  currentTransaction()?.addAfterRollback([fn]);
 }
 
 /**

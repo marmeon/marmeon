@@ -230,7 +230,7 @@ describe('DatabaseServiceProvider', () => {
       env: { DB_CONNECTION: 'pgsql', DB_HOST: 'db.internal', DB_PORT: '6543', DB_DATABASE: 'shop', DB_USERNAME: 'shop', DB_PASSWORD: 's3cr€t' },
       providers: [DatabaseServiceProvider],
     });
-    expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://shop:s3cr%E2%82%ACt@db.internal:6543/shop', poolMax: 10 });
+    expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://shop:s3cr%E2%82%ACt@db.internal:6543/shop', poolMax: 10, infrastructurePoolMax: 4 });
     await pgsql.shutdown();
     await expect(
       createApplication({ root, discover: false, env: { DB_CONNECTION: 'pgsql', DB_URL: 'mysql://x' }, providers: [DatabaseServiceProvider] }),

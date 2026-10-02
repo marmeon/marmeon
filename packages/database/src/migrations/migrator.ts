@@ -44,14 +44,26 @@ interface Bookkeeping {
  * Runs the migrations of every module, ordered by their timestamp — Laravel's migrator, with
  * batches, plus a record of which module's migration created which table (E20) and which
  * columns are secret.
+ *
+ * A migration may run on another connection (`connection` in `defineMigration`, E108 — e.g. the cache's own SQLite
+ * file): its record stays on `default` (one order, one batch number for all), the table's owner and secret columns go
+ * to the bookkeeping of the connection the table is on.
  */
 export class Migrator {
   readonly #app: Application;
   readonly #connections: Connections;
+  /** Every migration on `default`, whatever it names (the scratch database of `db:types`). */
+  #oneConnection = false;
 
   constructor(app: Application, connections: Connections) {
     this.#app = app;
     this.#connections = connections;
+  }
+
+  /** Runs every migration on `default`, whatever connection it names — for one scratch database of all tables (`db:types`). */
+  onOneConnection(): this {
+    this.#oneConnection = true;
+    return this;
   }
 
   /** Every migration file of every module, in the order they run. */
@@ -98,12 +110,25 @@ export class Migrator {
     const runs: MigrationRun[] = [];
     for (const file of pending) {
       const migration = await load(file);
+      const connection = this.#connectionOf(migration, file);
       const started = performance.now();
       // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL).
-      await db.transaction().execute(async (trx) => {
-        await migration.up(this.#schema(trx, file.module));
-        await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
-      });
+      if (connection === 'default') {
+        await db.transaction().execute(async (trx) => {
+          await migration.up(this.#schema(trx, file.module, connection));
+          await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
+        });
+      } else {
+        // On its own connection, then recorded on default — two databases, so two transactions (the record comes last:
+        // a migration that failed is not recorded).
+        await this.#prepare(connection);
+        await this.#db(connection)
+          .transaction()
+          .execute(async (trx) => {
+            await migration.up(this.#schema(trx, file.module, connection));
+          });
+        await db.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
+      }
       const run = { name: file.name, module: file.module, ms: performance.now() - started };
       runs.push(run);
       onRun?.(run);
@@ -132,9 +157,21 @@ export class Migrator {
     return this.migrate(onRun);
   }
 
-  /** Drops every table of the default connection, the bookkeeping included. */
-  async dropAllTables(): Promise<void> {
-    await new Schema(this.#db(), this.#driver()).dropAllTables();
+  /**
+   * Drops every table of the default connection, the bookkeeping included — and of every other connection a migration
+   * runs on (its tables would be in the way of the fresh run). Returns the connections.
+   */
+  async dropAllTables(): Promise<string[]> {
+    const connections = await this.connections();
+    for (const connection of connections) await new Schema(this.#db(connection), this.#driver(connection)).dropAllTables();
+    return connections;
+  }
+
+  /** `default`, and every other connection a migration runs on. */
+  async connections(): Promise<string[]> {
+    const names = new Set(['default']);
+    for (const file of this.files()) names.add(this.#connectionOf(await load(file), file));
+    return [...names];
   }
 
   /** Table name → owning module, from the migrations that created them. */
@@ -165,11 +202,22 @@ export class Migrator {
       if (!file) throw new Error(`Cannot roll back "${row.name}" (module "${row.module}"): its file is gone.`);
       const migration = await load(file);
       if (!migration.down) throw new Error(`Cannot roll back "${row.name}" (module "${row.module}"): it has no down().`);
+      const connection = this.#connectionOf(migration, file);
       const started = performance.now();
-      await db.transaction().execute(async (trx) => {
-        await migration.down!(this.#schema(trx, file.module));
-        await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
-      });
+      if (connection === 'default') {
+        await db.transaction().execute(async (trx) => {
+          await migration.down!(this.#schema(trx, file.module, connection));
+          await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
+        });
+      } else {
+        await this.#prepare(connection);
+        await this.#db(connection)
+          .transaction()
+          .execute(async (trx) => {
+            await migration.down!(this.#schema(trx, file.module, connection));
+          });
+        await db.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
+      }
       const run = { name: row.name, module: row.module, ms: performance.now() - started };
       runs.push(run);
       onRun?.(run);
@@ -177,7 +225,20 @@ export class Migrator {
     return runs;
   }
 
-  #schema(trx: Kysely<Bookkeeping>, module: string): Schema {
+  /** The connection a migration runs on (checked: a configured one). */
+  #connectionOf(migration: Migration, file: MigrationFile): string {
+    if (this.#oneConnection || migration.connection === undefined) return 'default';
+    const name = typeof migration.connection === 'function' ? migration.connection(this.#app.container) : migration.connection;
+    if (typeof name !== 'string' || !this.#connections.names().includes(name)) {
+      throw new Error(
+        `Migration ${file.name} (module "${file.module}") runs on the database connection ${JSON.stringify(name)}, which is not configured. ` +
+          `Known: ${this.#connections.names().join(', ')}. Add it with defineConnection(…) in the app's config.`,
+      );
+    }
+    return name;
+  }
+
+  #schema(trx: Kysely<Bookkeeping>, module: string, connection: string): Schema {
     const owners: SchemaRecorder = {
       created: async (table) => {
         await trx.deleteFrom(OWNERS_TABLE).where('table_name', '=', table).execute();
@@ -202,21 +263,24 @@ export class Migrator {
         await trx.updateTable(SECRETS_TABLE).set({ column_name: to }).where('table_name', '=', table).where('column_name', '=', from).execute();
       },
     };
-    return new Schema(trx, this.#driver(), owners);
+    return new Schema(trx, this.#driver(connection), owners);
   }
 
-  async #prepare(): Promise<void> {
-    const db = this.#db();
-    await db.schema
-      .createTable(MIGRATIONS_TABLE)
-      .ifNotExists()
-      .addColumn('id', this.#driver() === 'sqlite' ? 'integer' : 'bigint', (c) =>
-        this.#driver() === 'sqlite' ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity(),
-      )
-      .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
-      .addColumn('module', 'varchar(255)', (c) => c.notNull())
-      .addColumn('batch', 'integer', (c) => c.notNull())
-      .execute();
+  /** The bookkeeping tables: the record of migrations on `default`; table owners and secret columns on every connection with tables. */
+  async #prepare(connection = 'default'): Promise<void> {
+    const db = this.#db(connection);
+    if (connection === 'default') {
+      await db.schema
+        .createTable(MIGRATIONS_TABLE)
+        .ifNotExists()
+        .addColumn('id', this.#driver() === 'sqlite' ? 'integer' : 'bigint', (c) =>
+          this.#driver() === 'sqlite' ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity(),
+        )
+        .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
+        .addColumn('module', 'varchar(255)', (c) => c.notNull())
+        .addColumn('batch', 'integer', (c) => c.notNull())
+        .execute();
+    }
     await db.schema
       .createTable(OWNERS_TABLE)
       .ifNotExists()
@@ -246,12 +310,12 @@ export class Migrator {
     return (await this.#db().introspection.getTables()).some((t) => t.name === table);
   }
 
-  #db(): Kysely<Bookkeeping> {
-    return this.#connections.get<Bookkeeping>();
+  #db(connection = 'default'): Kysely<Bookkeeping> {
+    return this.#connections.get<Bookkeeping>(connection);
   }
 
-  #driver() {
-    return this.#connections.options().driver;
+  #driver(connection = 'default') {
+    return this.#connections.options(connection).driver;
   }
 }
 

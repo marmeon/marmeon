@@ -14,7 +14,11 @@ export const SessionConfig = defineConfig('session', {
      * encrypted cookie — not for apps with sign-in, E46).
      */
     SESSION_DRIVER: v.optional(v.picklist(['file', 'database', 'redis', 'memory', 'cookie']), 'file'),
-    /** Which database or Redis connection the `database`/`redis` driver uses. */
+    /**
+     * Which database or Redis connection the `database`/`redis` driver uses. The database driver never joins the app's
+     * transactions (E108): on Postgres it opens a small pool of its own; on SQLite name a connection with a file of its
+     * own here, or sessions cannot be written inside a transaction.
+     */
     SESSION_CONNECTION: v.optional(v.string(), 'default'),
     /** Minutes of inactivity until the session expires. */
     SESSION_LIFETIME: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), '120'),
