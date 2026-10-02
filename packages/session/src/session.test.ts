@@ -5,7 +5,10 @@ import { CookieJar } from '@bespokecore/router';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import type { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
-import { CookieSessionStore, FileSessionStore, MemorySessionStore, type SessionStore } from './store.ts';
+import type { SessionStore } from './store.ts';
+import { CookieSessionStore } from './stores/cookie.ts';
+import { FileSessionStore } from './stores/file.ts';
+import { MemorySessionStore } from './stores/memory.ts';
 
 declare module './session.ts' {
   interface SessionData {
@@ -145,9 +148,63 @@ describe('Session', () => {
 
   it('keeps the CSRF token stable across requests', async () => {
     const store = new MemorySessionStore();
-    const first = await request(store, undefined);
-    expect(first.token()).toMatch(/^[A-Za-z0-9_-]{40}$/);
-    expect((await request(store, first.id)).token()).toBe(first.token());
+    let token = '';
+    const first = await request(store, undefined, (session) => (token = session.token())); // handed out, like a page does
+    expect(token).toMatch(/^[A-Za-z0-9_-]{40}$/);
+    expect((await request(store, first.id)).token()).toBe(token);
+  });
+
+  it('does not write a new session that holds nothing — data, flash or a handed-out token keep it', async () => {
+    const store = new MemorySessionStore();
+    const writes: string[] = [];
+    const counting: SessionStore = {
+      read: (id) => store.read(id),
+      write: async (id, data, lifetime) => (writes.push(id), store.write(id, data, lifetime)),
+      writeIfExists: (id, data, lifetime) => store.writeIfExists(id, data, lifetime),
+      destroy: (id) => store.destroy(id),
+      gc: () => store.gc(),
+    };
+    const save = async (use: (session: Session) => void = () => {}) => {
+      const session = new Session(counting, config);
+      await session.start(undefined);
+      use(session);
+      return { saved: await session.save(), persists: session.persists };
+    };
+    // A health check, a bot, an API call: nothing used — nothing written (and StartSession sends no cookie).
+    expect(await save()).toEqual({ saved: false, persists: false });
+    expect(await save((session) => (session.get('user_id'), session.id, session.regenerateToken()))).toEqual({ saved: false, persists: false });
+    // A sign-out without a session: a new id, still nothing in it.
+    expect(await save((session) => session.invalidate())).toEqual({ saved: false, persists: false });
+    expect(writes).toEqual([]);
+    // Worth keeping: data, flash data, a flash message, a token in the response (every page, a form).
+    expect(await save((session) => session.put('visits', 1))).toEqual({ saved: true, persists: true });
+    expect(await save((session) => session.flash('status', 'Saved.'))).toEqual({ saved: true, persists: true });
+    expect(await save((session) => session.queueFlash({ id: '1', key: 'toast', data: {} }))).toEqual({ saved: true, persists: true });
+    expect(await save((session) => session.token())).toEqual({ saved: true, persists: true });
+    expect(writes).toHaveLength(4);
+  });
+
+  it('writes a loaded session back in one atomic step (writeIfExists) — no read before it', async () => {
+    const store = new MemorySessionStore();
+    const { id } = await request(store, undefined, (session) => session.put('visits', 1));
+    const calls: string[] = [];
+    const watched: SessionStore = {
+      read: (key) => (calls.push('read'), store.read(key)),
+      write: (key, data, lifetime) => (calls.push('write'), store.write(key, data, lifetime)),
+      writeIfExists: (key, data, lifetime) => (calls.push('writeIfExists'), store.writeIfExists(key, data, lifetime)),
+      destroy: (key) => (calls.push('destroy'), store.destroy(key)),
+      gc: () => store.gc(),
+    };
+    await request(watched, id, (session) => session.put('visits', 2));
+    expect(calls).toEqual(['read', 'writeIfExists']); // the load, then the write-back
+    calls.length = 0;
+    // A sign-in: the old id goes, the NEW id is written with write — writeIfExists would find nothing under it.
+    const signedIn = await request(watched, id, (session) => {
+      session.regenerate();
+      session.put('user_id', '1');
+    });
+    expect(calls).toEqual(['read', 'destroy', 'write']);
+    expect(await store.read(signedIn.id)).toMatchObject({ visits: 2, user_id: '1' });
   });
 
   it('explains a missing StartSession', () => {
@@ -199,6 +256,21 @@ describe('session stores', () => {
     expect(existsSync(join(dir, 'b'.repeat(40)))).toBe(false);
   });
 
+  it('file: writes back in place without ever losing the session — racing writes and reads of long and short records', async () => {
+    const store = new FileSessionStore(tempDir());
+    const id = 'd'.repeat(40);
+    await store.write(id, { note: '' }, 60);
+    const records = Array.from({ length: 60 }, (_, i) => ({ round: i, note: (i % 2 === 0 ? 'long ' : 's').repeat(i % 2 === 0 ? 100_000 : 1) }));
+    const [written, read] = await Promise.all([
+      Promise.all(records.map((record) => store.writeIfExists(id, record, 60))),
+      Promise.all(records.map(() => store.read(id))),
+    ]);
+    expect(written.every(Boolean)).toBe(true);
+    // A reader that meets a write in progress reads again; whatever order the writes landed in, one whole record is left.
+    expect(read.filter((data) => data === undefined)).toEqual([]);
+    expect(records).toContainEqual(await store.read(id));
+  });
+
   it('file: refuses ids that are not session ids', async () => {
     await expect(new FileSessionStore(tempDir()).destroy('../escape')).rejects.toThrow('Invalid session id');
   });
@@ -220,6 +292,8 @@ describe('session stores', () => {
     const next = new CookieSessionStore(new CookieJar(cookie!.split(';')[0]!), 'app_session');
     expect(await next.read()).toEqual({ user_id: '1' });
     await expect(store.write('x', { big: 'x'.repeat(3000) }, 60)).rejects.toThrow('too large for the cookie driver');
+    // It cannot know what another request destroyed (E46): a write-back always writes.
+    expect(await new CookieSessionStore(new CookieJar(null), 'app_session').writeIfExists('gone', { user_id: '1' }, 60)).toBe(true);
   });
 });
 
@@ -256,3 +330,14 @@ describe('Session — read-only (an island, E52)', () => {
     expect(() => session.put('visits', 1)).toThrow("no: session.put('visits')");
   });
 });
+
+// Type guarantees (never called — checked by the build): a store says whether it wrote a session back.
+function storeContract() {
+  // @ts-expect-error -- a store without writeIfExists is not a SessionStore (E45)
+  const legacy: SessionStore = { read: async () => undefined, write: async () => {}, destroy: async () => {}, gc: async () => 0 };
+  const store: SessionStore = new MemorySessionStore();
+  // @ts-expect-error -- writeIfExists answers whether it wrote: a boolean, not void
+  const written: Promise<void> = store.writeIfExists('id', {}, 60);
+  return [legacy, written];
+}
+void storeContract;

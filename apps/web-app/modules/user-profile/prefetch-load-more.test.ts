@@ -22,10 +22,9 @@ describe('prefetching (W5 step 6)', () => {
     const ada = await app.factory(UserFactory).create();
     // A guest hovers a link to a protected page: the login page, but no intended URL.
     const prefetch = await app.prefetching().get(`/users/${ada.id}`).assertRedirect('/login').assertSessionMissing(INTENDED_KEY);
-    await app
-      .withCookie('bespoke_session', prefetch.cookie('bespoke_session')!)
-      .post('/login', { form: { email: ada.email, password: 'password' } })
-      .assertRedirect('/users/me'); // not to the hovered page
+    // Nothing remembered — so no session is kept at all (W6.2: new, empty sessions are not written).
+    expect(prefetch.cookie('bespoke_session')).toBeUndefined();
+    await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me'); // not to the hovered page
     // The visit itself is remembered.
     await app.navigating().get(`/users/${ada.id}`).assertRedirect('/login').assertSessionHas(INTENDED_KEY, `/users/${ada.id}`);
   });

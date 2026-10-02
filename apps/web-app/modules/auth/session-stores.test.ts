@@ -1,0 +1,81 @@
+import { Connections, sql } from '@bespokecore/database';
+import { RedisConnections } from '@bespokecore/redis';
+import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { afterEach, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from './factories/UserFactory.ts';
+
+/** Redis runs when `BESPOKE_TEST_REDIS_URL` is set (`pnpm test:redis`). */
+const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+
+// This app keeps its sessions in its database (SESSION_DRIVER=database, .env.example; the `sessions` table of
+// modules/system); the other tests use `memory` (.env.test). Here: the real stores.
+describe('sessions in the database (SESSION_DRIVER=database)', () => {
+  let app: TestApp;
+  const open = async () => (app = await createTestApp(application, { database: 'refresh', csrf: true, env: { SESSION_DRIVER: 'database' } }));
+  const rows = async () =>
+    (await sql<{ user_id: string | null }>`select user_id from sessions order by last_activity`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
+
+  it('100 requests of bots without a cookie leave no session behind — a page does', async () => {
+    await open();
+    const ada = await app.factory(UserFactory).create();
+    // Hovering a protected page (a prefetch: no intended URL), a post without a CSRF token (419), signing out without a
+    // session — none of them leaves anything in a session, so none keeps one.
+    const responses = await Promise.all(
+      Array.from({ length: 100 }, (_, i) =>
+        i % 3 === 0 ? app.prefetching().get(`/users/${ada.id}`) : i % 3 === 1 ? app.post('/login', { form: { email: 'bot@example.com', password: 'x' } }) : app.post('/logout'),
+      ),
+    );
+    expect(new Set(responses.map((response) => response.status))).toEqual(new Set([302, 419]));
+    expect(responses.filter((response) => response.cookie('bespoke_session') !== undefined || response.cookie('XSRF-TOKEN') !== undefined)).toEqual([]);
+    expect(await rows()).toEqual([]);
+
+    // The login page hands out a CSRF token for its form: that session is kept.
+    (await app.get('/login')).assertOk();
+    expect(await rows()).toEqual([null]);
+  });
+
+  it('a sign-in fills user_id, a sign-out leaves a fresh guest session', async () => {
+    await open();
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const page = await app.get('/login');
+    const login = await app
+      .withCookie('bespoke_session', page.cookie('bespoke_session')!)
+      .post('/login', { form: { email: ada.email, password: 'password', _token: page.cookie('XSRF-TOKEN')! } })
+      .assertRedirect('/users/me')
+      .assertAuthenticated(ada);
+    expect(await rows()).toEqual([String(ada.id)]); // the guest session was regenerated: one row, now signed in
+    await app
+      .withCookie('bespoke_session', login.cookie('bespoke_session')!)
+      .post('/logout', { form: { _token: login.cookie('XSRF-TOKEN')! } })
+      .assertRedirect('/login')
+      .assertGuest();
+    expect(await rows()).toEqual([null]);
+  });
+});
+
+describe.runIf(REDIS_URL)('sessions in Redis (SESSION_DRIVER=redis)', () => {
+  let app: TestApp | undefined;
+  afterEach(async () => {
+    if (!app) return;
+    const redis = app.make(RedisConnections).get();
+    const keys = await redis.command<string[]>(['KEYS', `${redis.prefix}*`]);
+    if (keys.length > 0) await redis.command(['DEL', ...keys]);
+  });
+
+  it('signs in and out — and bots leave no keys', async () => {
+    app = await createTestApp(application, {
+      database: 'refresh',
+      env: { SESSION_DRIVER: 'redis', REDIS_URL: REDIS_URL!, REDIS_PREFIX: `web-app-test-${crypto.randomUUID().slice(0, 8)}:` },
+    });
+    const redis = app.make(RedisConnections).get();
+    const sessions = () => redis.command<string[]>(['KEYS', `${redis.prefix}session:*`]);
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    await Promise.all(Array.from({ length: 20 }, () => app!.prefetching().get(`/users/${ada.id}`).then((response) => response.assertRedirect('/login'))));
+    expect(await sessions()).toEqual([]);
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertAuthenticated(ada);
+    expect(await sessions()).toHaveLength(1);
+    await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).post('/logout').assertGuest();
+    expect(await sessions()).toHaveLength(1); // the signed-out guest's new session; the signed-in one is gone
+  });
+});

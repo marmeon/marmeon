@@ -53,6 +53,8 @@ export class Session {
   #permit: ((what: string) => boolean) | undefined;
   /** The flash messages this request took (E60) — put back by `reflash()` (a 409: the page is requested again). */
   #taken: FlashEntry[] = [];
+  /** The CSRF token was handed out (a page, a form): the browser will send it back, so a new session is kept. */
+  #issued = false;
 
   constructor(store: SessionStore, config: SessionConfig) {
     this.#store = store;
@@ -230,9 +232,31 @@ export class Session {
 
   // -- Security --------------------------------------------------------------
 
-  /** The CSRF token of this session. */
+  /**
+   * The CSRF token of this session — handed out: a new session whose token went into a response (every page, a form)
+   * is saved, so the token is still valid when the browser sends it back.
+   */
   token(): string {
+    const token = this.#ensureStarted()[TOKEN] as string;
+    this.#issued = true;
+    return token;
+  }
+
+  /** @internal — the token without handing it out: what `VerifyCsrfToken` compares a request's token against. */
+  currentToken(): string {
     return this.#ensureStarted()[TOKEN] as string;
+  }
+
+  /**
+   * Whether `save()` writes this session (and `StartSession` sends its cookie). Always for a session that came from the
+   * store. A NEW session only once it is worth keeping: it holds data or flash messages, or its CSRF token was handed
+   * out — every page does. A request that leaves nothing — a health check, an API call, a bot's redirect, a JSON
+   * endpoint that never touches the session — leaves no session behind either (no row, no file, no cookie).
+   */
+  get persists(): boolean {
+    const data = this.#ensureStarted();
+    if (this.#permit) return false;
+    return this.#loaded || this.#issued || Object.keys(data).some((key) => key !== TOKEN && key !== FLASH);
   }
 
   regenerateToken(): void {
@@ -262,13 +286,15 @@ export class Session {
   // -- Persistence -----------------------------------------------------------
 
   /**
-   * Ages flash data and writes the session. `StartSession` calls this after the route. Returns false when there
-   * was nothing to write back: another request destroyed this session meanwhile.
+   * Ages flash data and writes the session. `StartSession` calls this after the route. Returns whether it wrote — false
+   * for a read-only request, for a new session with nothing worth keeping (`persists`), and for a session another
+   * request destroyed meanwhile.
    *
    * That other request was a sign-out (`invalidate()`) or a sign-in (`regenerate()`) of the same browser, which
    * overtook this one — say, while a page's deferred props were still loading. Writing the old session back would
-   * undo the sign-out (its data still has the user). So it stays destroyed, and the browser keeps the cookie it got
-   * from the faster request. (The cookie driver cannot know: its data travels with each response.)
+   * undo the sign-out (its data still has the user). So a loaded session is written back with the store's atomic
+   * `writeIfExists` (E45): a destroyed one stays destroyed, and the browser keeps the cookie it got from the faster
+   * request. (The cookie driver cannot know: its data travels with each response.)
    */
   async save(): Promise<boolean> {
     this.#ensureStarted();
@@ -278,10 +304,14 @@ export class Session {
     for (const key of flash.old) delete this.#data[key];
     flash.old = flash.new;
     flash.new = [];
+    if (flash.old.length === 0) delete this.#data[FLASH]; // nothing to age: no bookkeeping stored
 
-    if (this.#loaded && this.#obsolete.length === 0 && (await this.#store.read(this.#id)) === undefined) return false;
     const lifetime = this.#config.lifetime * 60;
+    // The session this request loaded, under its id: written back only while it still exists — one atomic step.
+    if (this.#loaded && this.#obsolete.length === 0) return this.#store.writeIfExists(this.#id, this.#data, lifetime);
+    // New, or regenerated (a new id): the old id goes, the new one is written — unless a new session holds nothing.
     for (const id of this.#obsolete.splice(0)) await this.#store.destroy(id);
+    if (!this.persists) return false;
     await this.#store.write(this.#id, this.#data, lifetime);
     return true;
   }

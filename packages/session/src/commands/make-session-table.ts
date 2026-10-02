@@ -1,0 +1,21 @@
+import { readFileSync } from 'node:fs';
+import type { CommandInput } from '@bespokecore/cli';
+
+/** The migration the command copies — a real file, so the store tests run exactly what apps get. */
+export const SESSIONS_MIGRATION = new URL('../../stubs/migrations/create_sessions_table.ts', import.meta.url);
+
+/**
+ * `bespoke make:session-table [--module=system]`: writes the migration of the `database` session driver's table into an
+ * app module (E96 — the table is the app's, `db:types` sees it like any other). Then `bespoke migrate`.
+ */
+export class MakeSessionTableCommand {
+  static command = 'make:session-table';
+  static description = 'Create the migration for the database session driver (sessions)';
+  static usage = '[--module=system]';
+  static options = { module: { type: 'string', short: 'm' } } as const;
+
+  async handle(input: CommandInput): Promise<number> {
+    const { publishMigration } = await import('@bespokecore/database');
+    return publishMigration(input, { name: 'create_sessions_table', table: 'sessions', contents: readFileSync(SESSIONS_MIGRATION, 'utf8') });
+  }
+}

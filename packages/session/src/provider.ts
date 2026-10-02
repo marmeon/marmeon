@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, join } from 'node:path';
-import { Application, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
 import { CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
 import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
@@ -8,7 +8,14 @@ import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf
 import { Session } from './session.ts';
 import { ShareErrorsFromSession } from './share-errors.ts';
 import { StartSession } from './start-session.ts';
-import { CookieSessionStore, FileSessionStore, MemorySessionStore, SessionStore } from './store.ts';
+import { MakeSessionTableCommand } from './commands/make-session-table.ts';
+import { PruneSessionsCommand } from './commands/prune-sessions.ts';
+import { SessionStore } from './store.ts';
+import { CookieSessionStore } from './stores/cookie.ts';
+import { DatabaseSessionStore } from './stores/database.ts';
+import { FileSessionStore } from './stores/file.ts';
+import { MemorySessionStore } from './stores/memory.ts';
+import { RedisSessionStore } from './stores/redis.ts';
 
 declare module '@bespokecore/core' {
   interface ModuleDefinition {
@@ -33,23 +40,12 @@ export class SessionServiceProvider implements ServiceProvider {
     container.scoped(PageSession, (c) => pageSessionOf(c.make(Session)));
 
     const config = container.make(SessionConfig);
-    switch (config.driver) {
-      case 'memory':
-        container.singleton(SessionStore, () => new MemorySessionStore());
-        break;
-      case 'file':
-        container.singleton(SessionStore, (c) => {
-          const { root } = c.make(Application);
-          return new FileSessionStore(isAbsolute(config.files) ? config.files : join(root, config.files));
-        });
-        break;
-      case 'cookie':
-        container.scoped(SessionStore, (c) => new CookieSessionStore(c.make(CookieJar), config.cookie));
-        break;
-    }
+    // The cookie store works on the request's cookie jar: one per request. The others are shared.
+    if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
+    else container.singleton(SessionStore, (c) => storeFor(config, c));
   }
 
-  boot(app: Application): void {
+  async boot(app: Application): Promise<void> {
     app.container
       .make(Router)
       .middleware.append('web', StartSession, MiddlewarePriority.startSession)
@@ -57,6 +53,67 @@ export class SessionServiceProvider implements ServiceProvider {
       .append('web', ShareErrorsFromSession, MiddlewarePriority.shareProps);
     app.container.make(CookieEncryption).except(XSRF_COOKIE); // the browser's JavaScript reads it
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
+
+    // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.
+    const { driver, connection } = app.container.make(SessionConfig);
+    if (driver === 'redis') {
+      const redis = await importRedis();
+      if (!app.container.has(redis.RedisConnections)) {
+        throw new SessionSetupError('SESSION_DRIVER=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).');
+      }
+      const connections = app.container.make(redis.RedisConnections);
+      connections.options(connection);
+      await connections.verify();
+    } else if (driver === 'database') {
+      const database = await importDatabase();
+      if (!app.container.has(database.Connections)) {
+        throw new SessionSetupError('SESSION_DRIVER=database needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).');
+      }
+      app.container.make(database.Connections).options(connection);
+    }
+
+    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeSessionTableCommand, PruneSessionsCommand]);
+  }
+}
+
+/** A driver's package is missing: what to install, said at startup (the CLI prints it without a stack trace). */
+export class SessionSetupError extends Error {
+  override name = 'SessionSetupError';
+}
+
+async function importOptional<T>(load: () => Promise<T>, name: string, driver: string, install: string): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+    if (code === 'ERR_MODULE_NOT_FOUND' && typeof message === 'string' && message.includes(name)) {
+      throw new SessionSetupError(`SESSION_DRIVER=${driver} needs ${name}, which is not installed in this app: ${install}`);
+    }
+    throw error;
+  }
+}
+
+const importDatabase = () => importOptional(() => import('@bespokecore/database'), '@bespokecore/database', 'database', 'pnpm add @bespokecore/database');
+const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis', 'redis', 'pnpm add @bespokecore/redis redis');
+
+/** The store of `SESSION_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
+function storeFor(config: SessionConfig, container: Resolver): SessionStore {
+  const clock = container.make(Clock);
+  const lifetime = config.lifetime * 60;
+  switch (config.driver) {
+    case 'memory':
+      return new MemorySessionStore(clock);
+    case 'database':
+      return new DatabaseSessionStore(async () => ({ db: container.make((await importDatabase()).Connections).get(config.connection) }), lifetime, clock);
+    case 'redis':
+      return new RedisSessionStore(async () => container.make((await importRedis()).RedisConnections).get(config.connection));
+    case 'cookie':
+      return new CookieSessionStore(container.make(CookieJar), config.cookie, clock);
+    case 'file': {
+      const { root } = container.make(Application);
+      return new FileSessionStore(isAbsolute(config.files) ? config.files : join(root, config.files), clock);
+    }
   }
 }
 

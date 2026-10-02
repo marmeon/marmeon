@@ -18,8 +18,21 @@ class LoginController extends Controller {
   }
 }
 
+/** A form: it hands out the token (a page does, for its forms) — the session is kept. */
+class FormController extends Controller {
+  readonly #session: Session;
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+  handle() {
+    return { _token: this.#session.token() };
+  }
+}
+
 const routes = defineRoutes((Route) => {
-  Route.get('/form', () => ({ ok: true }));
+  Route.get('/form', FormController);
+  Route.get('/status', () => ({ ok: true }));
   Route.post('/save', () => ({ saved: true }));
   Route.post('/login', LoginController);
   Route.post('/webhooks/stripe', () => ({ received: true }));
@@ -59,6 +72,16 @@ describe('VerifyCsrfToken', () => {
     const cookie = response.headers.getSetCookie().find((header) => header.startsWith('XSRF-TOKEN='))!;
     expect(cookie).toMatch(/^XSRF-TOKEN=[\w-]{40}; Path=\/; Max-Age=7200; SameSite=Lax$/);
     expect(token()).toMatch(/^[\w-]{40}$/);
+  });
+
+  it('hands out no token — and keeps no session — for a response that never uses it (a health check, a bot)', async () => {
+    const { send } = await boot();
+    const response = await send('/status');
+    expect(response.headers.getSetCookie()).toEqual([]);
+    // A post without any session is refused — and leaves none behind either.
+    const refused = await send('/save', form({ _token: 'x'.repeat(40) }));
+    expect(refused.status).toBe(419);
+    expect(refused.headers.getSetCookie()).toEqual([]);
   });
 
   it('refuses a post without token with 419', async () => {

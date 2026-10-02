@@ -273,7 +273,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
   if (!session || !container.has(session.SessionConfig)) return undefined;
   const config = container.make(session.SessionConfig);
   const store = () => {
-    if (config.driver === 'cookie') throw new Error('Session helpers in tests need the memory or file driver (set SESSION_DRIVER=memory in .env.test).');
+    if (config.driver === 'cookie') throw new Error('Session helpers in tests need a server-side session driver — memory, file, database or redis (set SESSION_DRIVER=memory in .env.test).');
     return container.make(session.SessionStore);
   };
   return {

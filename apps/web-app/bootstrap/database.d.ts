@@ -62,6 +62,13 @@ declare module '@bespokecore/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
+    /** Owned by `system`. */
+    sessions: {
+      id: string;
+      user_id: string | null;
+      payload: Secret<string>;
+      last_activity: number;
+    };
     /** Owned by `auth`. */
     users: {
       id: Generated<number>;
@@ -83,6 +90,7 @@ declare module '@bespokecore/database' {
     personal_access_tokens: 'auth';
     profile_links: 'user-profile';
     remember_tokens: 'auth';
+    sessions: 'system';
     users: 'auth';
   }
   interface ExposedTables {

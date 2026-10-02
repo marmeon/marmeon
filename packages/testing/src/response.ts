@@ -224,8 +224,9 @@ export class TestResponse {
     return this;
   }
 
+  /** The session after the request lacks `key` — or the request kept no session at all (a new one with nothing in it). */
   assertSessionMissing(key: string): this {
-    if (this.session()[key] !== undefined) this.#fail(`Expected the session not to have "${key}"`);
+    if (this.#session?.[key] !== undefined) this.#fail(`Expected the session not to have "${key}"`);
     return this;
   }
 

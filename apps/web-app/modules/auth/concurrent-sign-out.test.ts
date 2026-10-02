@@ -1,14 +1,24 @@
+import { RedisConnections } from '@bespokecore/redis';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
 /**
  * Signing out while another request of the same browser is still running — since W5 step 5 the normal case: every
  * profile page loads its deferred activity right after it is shown, so a quick "Sign out" overtakes that request.
- * The request that started before the sign-out must not bring the session back.
+ * The request that started before the sign-out must not bring the session back — on every server-side session store
+ * (E45: the store's atomic `writeIfExists`): `memory` (.env.test), `database` (this app's, .env.example) and `redis`.
  */
+
+/** Redis runs when `BESPOKE_TEST_REDIS_URL` is set (`pnpm test:redis`). */
+const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+const drivers: [string, () => Record<string, string>][] = [
+  ['memory', () => ({})],
+  ['database', () => ({ SESSION_DRIVER: 'database' })],
+];
+if (REDIS_URL) drivers.push(['redis', () => ({ SESSION_DRIVER: 'redis', REDIS_URL, REDIS_PREFIX: `web-app-test-${crypto.randomUUID().slice(0, 8)}:` })]);
 
 type Kernel = ReturnType<typeof createHttpKernel>;
 
@@ -35,14 +45,18 @@ class Browser {
   }
 }
 
-let app: TestApp;
-beforeEach(async () => {
-  // The activity takes a while — long enough for the sign-out to overtake it.
-  app = await createTestApp(application, { database: 'refresh', env: { PROFILE_ACTIVITY_DELAY: '150' } });
-});
+describe.each(drivers)('signing out while a deferred prop is still loading (%s sessions)', (driver, env) => {
+  let app: TestApp | undefined;
+  afterEach(async () => {
+    if (driver !== 'redis' || !app) return;
+    const redis = app.make(RedisConnections).get();
+    const keys = await redis.command<string[]>(['KEYS', `${redis.prefix}*`]);
+    if (keys.length > 0) await redis.command(['DEL', ...keys]);
+  });
 
-describe('signing out while a deferred prop is still loading', () => {
   it('the slower request does not sign the browser back in', async () => {
+    // The activity takes a while — long enough for the sign-out to overtake it.
+    app = await createTestApp(application, { database: 'refresh', env: { PROFILE_ACTIVITY_DELAY: '150', ...env() } });
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = new Browser(createHttpKernel(app.application));
     const form = { 'content-type': 'application/x-www-form-urlencoded' };

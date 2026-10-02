@@ -8,8 +8,14 @@ const BOOLEAN = v.pipe(
 
 export const SessionConfig = defineConfig('session', {
   env: v.object({
-    /** `file` survives restarts (default), `memory` is for tests, `cookie` keeps the data in the (encrypted) cookie. */
-    SESSION_DRIVER: v.optional(v.picklist(['file', 'memory', 'cookie']), 'file'),
+    /**
+     * `file` (default: one machine, survives restarts), `database` (the app's database — `bespoke make:session-table`
+     * writes the migration), `redis` (needs @bespokecore/redis and redis), `memory` (tests) or `cookie` (the data in the
+     * encrypted cookie — not for apps with sign-in, E46).
+     */
+    SESSION_DRIVER: v.optional(v.picklist(['file', 'database', 'redis', 'memory', 'cookie']), 'file'),
+    /** Which database or Redis connection the `database`/`redis` driver uses. */
+    SESSION_CONNECTION: v.optional(v.string(), 'default'),
     /** Minutes of inactivity until the session expires. */
     SESSION_LIFETIME: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), '120'),
     SESSION_COOKIE: v.optional(v.pipe(v.string(), v.regex(/^[\w-]+$/)), 'bespoke_session'),
@@ -18,7 +24,10 @@ export const SessionConfig = defineConfig('session', {
     /** Send the cookie over HTTPS only. Turn on in production. */
     SESSION_SECURE_COOKIE: v.optional(BOOLEAN, 'false'),
     SESSION_SAME_SITE: v.optional(v.picklist(['lax', 'strict', 'none']), 'lax'),
-    /** Chance that a request also cleans up expired sessions, after the response (Laravel's lottery). */
+    /**
+     * Chance that a request also cleans up expired sessions, after the response (Laravel's lottery). `0/1` turns it off —
+     * for apps that run `bespoke session:prune` from a scheduler or cron instead.
+     */
     SESSION_LOTTERY: v.optional(
       v.pipe(
         v.string(),
@@ -33,6 +42,7 @@ export const SessionConfig = defineConfig('session', {
   }),
   resolve: (env) => ({
     driver: env.SESSION_DRIVER,
+    connection: env.SESSION_CONNECTION,
     lifetime: env.SESSION_LIFETIME,
     cookie: env.SESSION_COOKIE,
     files: env.SESSION_FILES,

@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { EventDispatcher, Logger } from '@bespokecore/core';
 import { ClientHistory } from '@bespokecore/http';
 import { CookieJar } from '@bespokecore/router';
-import { Session, SessionConfig } from '@bespokecore/session';
+import { Session, SESSION_USER_KEY, SessionConfig } from '@bespokecore/session';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged } from './events.ts';
 import { Hasher, type PasswordHash } from './hashing.ts';
@@ -11,8 +11,8 @@ import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } 
 
 /** Session keys of the signed-in user — `_`-prefixed: framework bookkeeping, left out of `session.all()`. */
 export const AUTH_SESSION_KEYS = {
-  /** The user's id. */
-  id: '_auth_id',
+  /** The user's id (the session package's key: the `database` session driver copies it into `user_id`). */
+  id: SESSION_USER_KEY,
   /** A fingerprint of the user's password hash when the session signed in (E26). */
   password: '_auth_password',
   /** When the password was last typed (sign-in, confirmation), in Unix seconds — for `confirmedPassword()`. */

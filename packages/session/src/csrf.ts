@@ -70,8 +70,9 @@ export class CsrfProtection {
  * 2. Every non-reading request must carry the session's token — as `_token` field,
  *    `X-CSRF-TOKEN` header or `X-XSRF-TOKEN` header (copied from the `XSRF-TOKEN` cookie).
  *
- * Failures answer 419 "Page Expired". Every response of the `web` group refreshes
- * the readable `XSRF-TOKEN` cookie.
+ * Failures answer 419 "Page Expired". Every response of the `web` group that keeps its
+ * session (`session.persists`) refreshes the readable `XSRF-TOKEN` cookie — a new session
+ * that is not kept hands out no token.
  */
 export class VerifyCsrfToken {
   readonly #session: Session;
@@ -95,8 +96,9 @@ export class VerifyCsrfToken {
     }
     // After the route: the token may have been rotated (login, logout).
     const response = await next();
-    // A read-only request (an island, E52) sets no cookie: the page's own requests keep the browser's token current.
-    if (this.#session.readOnly) return response;
+    // A read-only request (an island, E52) sets no cookie: the page's own requests keep the browser's token current. A new
+    // session that is not kept (nothing in it, no page) has no token worth sending: it would not be valid next time.
+    if (this.#session.readOnly || !this.#session.persists) return response;
     const { lifetime, secure, sameSite } = this.#sessionConfig; // lives as long as the session, like Laravel's
     ctx.cookies.set(XSRF_COOKIE, this.#session.token(), { httpOnly: false, maxAge: lifetime * 60, secure, sameSite });
     return response;
@@ -118,7 +120,8 @@ export class VerifyCsrfToken {
   async #tokenMatches(ctx: HttpContext): Promise<boolean> {
     const header = ctx.request.headers.get('x-csrf-token') ?? ctx.request.headers.get('x-xsrf-token');
     const field = header ?? (await ctx.input())._token;
-    return typeof field === 'string' && constantTimeEquals(field, this.#session.token());
+    // Compared, not handed out: a refused request does not make a new session worth keeping.
+    return typeof field === 'string' && constantTimeEquals(field, this.#session.currentToken());
   }
 }
 

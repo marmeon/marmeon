@@ -8,13 +8,55 @@ middleware before the route and saved after it, flash data, CSRF protection (`Ve
 
 Chosen with `SESSION_DRIVER` (see `SessionConfig`):
 
-| Driver   | Where the data lives                              | Use it for                                          |
-| -------- | ------------------------------------------------- | --------------------------------------------------- |
-| `file`   | one JSON file per session (`SESSION_FILES`), default | apps with login — survives restarts, single server |
-| `memory` | the process                                       | tests (gone with the process)                       |
-| `cookie` | an encrypted cookie next to the session id        | apps **without** login (≈ 2.8 KB of JSON at most)   |
+| Driver     | Where the data lives                                                     | Expiry                                   | Use it for                                          |
+| ---------- | ------------------------------------------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
+| `file`     | one file per session (`SESSION_FILES`) — the default                     | lottery / `session:prune` (by mtime)     | apps with login on one server                       |
+| `database` | a row in `sessions` (`bespoke make:session-table`, `SESSION_CONNECTION`) | lottery / `session:prune` (`last_activity`) | apps with login, several processes or servers    |
+| `redis`    | `<REDIS_PREFIX>session:<id>` (`@bespokecore/redis` + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway                    |
+| `memory`   | the process                                                              | on read                                  | tests (gone with the process)                       |
+| `cookie`   | an encrypted cookie next to the session id                               | the cookie's `Max-Age`                   | apps **without** login (≈ 2.8 KB of JSON at most)   |
 
-`database` and `redis` drivers are planned (Waves 3/6), as further implementations of the `SessionStore` contract.
+### `database`
+
+```sh
+bespoke make:session-table   # writes modules/system/migrations/…_create_sessions_table.ts (E96: the table is the app's)
+bespoke migrate
+```
+
+The table: `id` (primary key), `user_id` (nullable, indexed — the signed-in user's id, copied from the session's
+`_auth_id`; `null` for guests), `payload` (the session as JSON — a `.secret()` column, so `selectAll()` never returns it)
+and `last_activity` (epoch milliseconds of the last write, indexed). A session expires `SESSION_LIFETIME` minutes after
+its last activity. Expired rows are deleted by the lottery (`SESSION_LOTTERY`, default 2 in 100 requests, after the
+response) or by `bespoke session:prune` — from a scheduler or cron, then set `SESSION_LOTTERY=0/1`.
+
+### What `writeIfExists` guarantees
+
+Every store implements `SessionStore.writeIfExists(id, data, lifetime) → boolean`: it writes a session back **only while
+it still exists, in one atomic step of the store** — there is no moment between "it is there" and "write it" in which
+another request's `destroy()` could slip:
+
+| Store      | How                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| `memory`   | synchronous: no `await` between the lookup and the write                                                |
+| `file`     | `open(path, 'r+')` and an in-place write — a deleted file fails the open (ENOENT) or takes the write with it |
+| `database` | `UPDATE sessions … WHERE id = ? AND last_activity > ?` — the row count says whether it wrote            |
+| `redis`    | `SET <key> <payload> XX EX <ttl>` — `XX` only replaces a key that exists                                |
+| `cookie`   | **cannot**: always writes (see below)                                                                   |
+
+It returns `false` — and writes nothing — for an id that was destroyed, has expired or was never written. A new session,
+and a session regenerated at sign-in/sign-out (a new id), go through `write`.
+
+What it does **not** guarantee: two requests of the same session that both write it back — the later one wins with its
+copy (*last write wins*). A flash message one request took can come back when a slower request that loaded it, but did not
+take it (a prefetch), saves afterwards. That needs versions (compare-and-set), not existence.
+
+### New sessions are only kept when used
+
+A request without a session cookie starts a new session — but it is written (and its cookie sent) only when it is worth
+keeping: it holds data or flash messages, or its CSRF token was handed out (every page does, for its forms;
+`session.token()`). Health checks, bots, prefetches of protected pages, a post refused for its CSRF token, a JSON
+endpoint that never touches the session: no row, no file, no cookie (`session.persists`). Sessions that came from the
+store are always written back.
 
 ### Concurrent requests and signing out
 
@@ -22,10 +64,10 @@ A browser often has more than one request of the same session in flight — sinc
 page load is followed by one that loads them. If the user signs out meanwhile, the slower request finishes *after*
 the sign-out, with the session as it was when it started: still signed in.
 
-- **Server-side drivers (`file`, `memory`):** `Session.save()` does not write back a session that another request
-  destroyed meanwhile (a sign-out's `invalidate()`, a sign-in's `regenerate()`), and `StartSession` then sends no
-  session cookie — the browser keeps the one the sign-out sent. The check reads the store once more before writing;
-  it is not atomic (an atomic `writeIfExists` comes with the `database`/`redis` drivers).
+- **Server-side drivers (`file`, `database`, `redis`, `memory`):** `Session.save()` writes a loaded session back with
+  `writeIfExists` (E45): a session another request destroyed meanwhile (a sign-out's `invalidate()`, a sign-in's
+  `regenerate()`) stays destroyed, and `StartSession` then sends no session cookie — the browser keeps the one the
+  sign-out sent.
 - **`cookie` driver:** cannot be protected. The whole session travels in the cookie, so the slower response brings
   the signed-in cookie back and the sign-out is undone. With `@bespokecore/auth` registered, the app logs a warning
-  at boot. **Use `file` (or, later, `database`/`redis`) for apps with login.**
+  at boot (E46). **Use `file`, `database` or `redis` for apps with login.**
