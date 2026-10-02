@@ -423,6 +423,42 @@ describe('the security matrix — the core alone, no feature attached', () => {
     });
   }
 
+  /**
+   * Signed out by a request in the background (a poll, an island, a deferred prop) while the user's own visit is still under
+   * way (W5c.6): the document is left — and that visit, started before, never lands. Its answer is what the signed-in user was
+   * about to see: not rendered, not in memory, not in history.state, its once props and flash messages not taken.
+   */
+  for (const kind of ['a visit', 'Back to an entry not in memory'] as const) {
+    it(`a 409 (signed out) of a background request while ${kind} is under way: it never lands — nothing of it shown, kept or in history.state`, async () => {
+      const { win, navigator, shown } = await bare();
+      const host = navigator.use(defineFeature('probe', (given: FeatureHost) => given));
+      let answer!: (response: Response) => void;
+      win.handler = (url) => (new URL(url).pathname === '/users/9' ? new Promise<Response>((resolve) => (answer = resolve)) : conflict('history'));
+      const rendered = shown.length;
+      const under = kind === 'a visit' ? navigator.visit('/users/9') : (win.dispatch('popstate', { state: { component: 'users/Show', url: '/users/9', key: 'gone' } }), undefined);
+      await settle();
+      expect(win.requests.at(-1)!.url).toBe(`${ORIGIN}/users/9`);
+      await navigator.reload({ async: true });
+      expect(win.loads).toEqual(['replace /login']);
+      // The protected page still arrives — after the document was left.
+      answer(pageResponse({ ...secretPage('/users/9'), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada', flash: [toast('late')] }));
+      expect(await under).toBeUndefined();
+      await settle();
+      await settle();
+      expect(shown).toHaveLength(rendered);
+      expect(navigator.page.url).not.toBe('/users/9');
+      expect(navigator.cachedPages).toBe(0);
+      expect(host.once.size).toBe(0);
+      expect(host.inbox).toEqual([]);
+      expect(historyWithCanary(win)).toEqual([]);
+      expect(win.entries.some((entry) => entry.url.endsWith('/users/9'))).toBe(false);
+      const heard: unknown[] = [];
+      navigator.on('flash', (message) => heard.push(message));
+      expect(heard).toEqual([]);
+      expect(win.loads).toEqual(['replace /login']);
+    });
+  }
+
   it('a page of another scope drops the once props kept — never put back into it, and the next request names none', async () => {
     const { win, navigator } = await bare();
     win.handler = () => pageResponse({ ...page('/users/9', {}, 'pages/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'grace' });

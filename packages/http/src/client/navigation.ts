@@ -676,6 +676,8 @@ export class Navigator {
             { method, headers: { ...request.headers, ...Object.assign({}, ...parts.map((part) => part.headers)), ...(partial === undefined ? {} : partialReloadHeaders(partial, options.only, options.except)), ...headers }, body: request.body, signal },
             onProgress,
           );
+          // Left meanwhile (a 409 of a request in the background: signed out): the answer is not read — nothing of it is taken.
+          if (signal.aborted) return undefined;
           // What answers a layer's request — a layer, its close — needs the layers' code (E71).
           if (pending.layer && !(await this.#needLayers(signal, request.url))) return undefined;
           const answered = this.#first('response', response, pending, visit);
@@ -907,6 +909,7 @@ export class Navigator {
         this.#away();
         return undefined;
       }
+      if (signal.aborted) return undefined;
       // An error page is what this URL shows now — like a full load would.
       const page = await this.#read(response, { replace: true, failed: false }, visit, {});
       if (!page || signal.aborted) return undefined;
@@ -1177,8 +1180,10 @@ export class Navigator {
     // The islands of the page on screen: none of them lands any more (signing out).
     core.owner?.close();
     core.cache.clear();
-    // A deferred prop still loading must not come back into a page of someone who has left (signed out).
+    // Nothing under way comes back into a page of someone who has left (signed out): not a deferred prop still loading, not
+    // the visit the user started before — its answer is what the signed-in user was about to see.
     for (const request of this.#background) request.abort();
+    this.#inFlight?.abort();
   }
 }
 
