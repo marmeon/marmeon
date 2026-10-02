@@ -183,7 +183,7 @@ describe('bespoke make:* (generated code compiles)', () => {
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
-  });
+  }, 30_000); // eleven CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
 
   it('refuses to overwrite and explains missing modules', () => {
     bespoke(app, ['make:module', 'shop']);

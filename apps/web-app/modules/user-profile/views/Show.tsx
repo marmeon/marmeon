@@ -8,10 +8,11 @@ import {
   usePoll,
   useRouter,
   useTranslation,
+  useRemember,
   WhenVisible,
+  type Placeholder,
   type RevalidateOnBack,
 } from '@bespokecore/react';
-import { useState } from 'react';
 import { ActionFailure } from '../../../layouts/ActionFailure.tsx';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
@@ -171,6 +172,22 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
 Show.revalidateOnBack = ['activity'] as const satisfies RevalidateOnBack<ShowUserProfileController>;
 
 /**
+ * The profile before its answer (E64, an instant visit from `<Link instant={{ name }}>`): the name the link knew at once, the
+ * rest as a skeleton — typed by the controller's `instant`, never the page's props (they are on their way).
+ */
+function ShowPlaceholder({ name }: { name: string }) {
+  const t = useTranslation('user-profile');
+  return (
+    <main aria-busy="true" data-placeholder="">
+      <Head title={name} />
+      <h1>{name}</h1>
+      <p style={{ opacity: 0.5 }}>{t('show.loading')}</p>
+    </main>
+  );
+}
+Show.placeholder = ShowPlaceholder satisfies Placeholder<ShowUserProfileController>;
+
+/**
  * Adding a link — an action (E59): the input moves into the list as a ghost row while it is sent (`usePendingSubmissions`);
  * invalid input comes back into the fields, with the errors by field.
  */
@@ -178,8 +195,9 @@ function AddLink({ userId }: { userId: number }) {
   const t = useTranslation('user-profile');
   const router = useRouter<ShowUserProfileController>();
   const add = useAction('user-profile.links.store', { user: userId });
-  const [label, setLabel] = useState('');
-  const [url, setUrl] = useState('');
+  // Remembered (E63): a link half typed is still there after Back/Forward — in memory only, gone with a reload.
+  const [label, setLabel] = useRemember('add-link.label', '');
+  const [url, setUrl] = useRemember('add-link.url', '');
   return (
     <form
       noValidate

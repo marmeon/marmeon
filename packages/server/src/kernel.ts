@@ -41,6 +41,7 @@ import {
   ValidationError,
 } from '@bespokecore/router';
 import { Hono } from 'hono';
+import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { ServerConfig } from './provider.ts';
@@ -408,6 +409,10 @@ export function createHttpKernel(
     ),
   );
   app.onError((error, c) => renderError(error, c.req.raw));
+
+  // A plain HTML form's PUT, PATCH or DELETE (`_method` in its POST body, E64) is routed as that method.
+  const dispatch = app.fetch;
+  app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(request, maxBodySize), env, executionContext);
 
   return Object.assign(app, {
     settle: async () => {

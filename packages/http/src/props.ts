@@ -19,7 +19,7 @@ const PROP = Symbol.for('bespokecore.page-prop');
 /** Carries a prop's type (never set at runtime). */
 declare const TYPE: unique symbol;
 
-export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge';
+export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge' | 'once';
 
 interface PageProp<K extends PropKind, T> {
   readonly [PROP]: K;
@@ -86,8 +86,20 @@ type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4
         ? { [K in keyof T & string]: `${K}.${DeepItemKey<T[K], [...Depth, unknown]>}` }[keyof T & string]
         : never;
 
+/**
+ * Computed once per browser tab (E64): sent with the first page that has it, then kept by the browser — the server skips it
+ * while the browser says it holds it (under the same session). In the view: `T`.
+ */
+export interface OnceProp<T> extends PageProp<'once', T> {
+  readonly resolve: () => unknown;
+  /** Where the browser keeps it — undefined: the prop's name (a shared prop) or `<view>:<prop>` (a page's own). */
+  readonly key: string | undefined;
+  /** How long the browser may keep it, in ms — undefined: for the life of the document (until a full load). */
+  readonly ttl: number | undefined;
+}
+
 /** Any wrapped prop. */
-export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T>;
+export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
 
 /**
  * A prop the page gets only when it asks: `reload({ only: ['stats'] })`. Never computed for a full response —
@@ -122,6 +134,56 @@ export function defer<R>(resolve: () => R, group = 'default'): DeferredProp<Awai
     merge: () => merging('merge', []),
     deepMerge: () => merging('deepMerge', []),
   } as unknown as DeferredProp<Awaited<R>>;
+}
+
+/** Where and how long the browser keeps a once prop. */
+export interface OnceOptions {
+  /**
+   * The key the browser keeps it under — the same key on several views shares one value: `once(fn, { key: 'countries' })`.
+   * Default: the prop's name for a shared prop (the app's: every page), `<view>:<prop>` for a page's own.
+   */
+  readonly key?: string;
+  /** How long it may be kept, in ms (by the server's clock) — then sent again. Default: as long as the document lives. */
+  readonly ttl?: number;
+}
+
+/** Values JSON keeps as they are — what a once prop may hold (the browser keeps it as it arrived, and uses it for every page). */
+type Unstorable = undefined | symbol | bigint | ((...args: never[]) => unknown) | ReadonlyMap<unknown, unknown> | ReadonlySet<unknown> | WeakMap<object, unknown> | WeakSet<object> | Promise<unknown>;
+
+/** The first part of `T` that JSON cannot carry, or `never` when it all can. */
+type UnstorablePart<T, Depth extends unknown[] = []> = Depth['length'] extends 6
+  ? never
+  : T extends Unstorable
+    ? T
+    : T extends string | number | boolean | null | Date
+      ? never
+      : T extends readonly (infer E)[]
+        ? UnstorablePart<E, [...Depth, 0]>
+        : T extends object
+          ? { [K in keyof T]-?: UnstorablePart<T[K], [...Depth, 0]> }[keyof T]
+          : never;
+
+/** `unknown` for a value a once prop may hold — else the message (the return of `once(() => …)` is checked against it). */
+export type CheckOnceValue<T> = [UnstorablePart<T>] extends [never]
+  ? unknown
+  : 'a once prop is kept by the browser as JSON — its value must be plain data (no functions, Map, Set, bigint, undefined or promises inside)';
+
+/**
+ * A prop the browser keeps (E64, Inertia's `once()`): computed for the first page that has it, then — while the browser holds
+ * it, in memory, for this tab — never again: the client says what it holds (`x-bespoke-once`), the server skips it. For data
+ * that is the same on every page and expensive or large: a country list, the supported locales, translations.
+ *
+ * ```ts
+ * share('locales', once(() => this.#locales.supported));                 // the app's: one value for every page
+ * countries: once(() => this.#countries.all(), { key: 'countries' }),    // shared by every view that names the key
+ * ```
+ *
+ * Held only by the document: a full load (sign-in or sign-out — the session changes —, a new build, a language switch, a
+ * reload) starts over. And only for the session it was sent to (`PageObject.onceScope`): another tab signing someone else in
+ * makes the server send it again. Never for something per user that changes while the page is open — that is a normal prop.
+ */
+export function once<R>(resolve: () => R & CheckOnceValue<Awaited<R>>, options: OnceOptions = {}): OnceProp<Awaited<R>> {
+  return { [PROP]: 'once', resolve, key: options.key, ttl: options.ttl } as unknown as OnceProp<Awaited<R>>;
 }
 
 /** A prop sent with every response, partial reloads included (the shared `errors` are one). */
@@ -168,6 +230,7 @@ export async function resolveProp(value: unknown): Promise<unknown> {
   switch (propKind(value)) {
     case 'optional':
     case 'defer':
+    case 'once':
       return (value as OptionalProp<unknown>).resolve();
     case 'always':
     case 'merge':
@@ -194,6 +257,7 @@ export type SharedValue<T> =
   | Lazy<T>
   | AlwaysProp<T>
   | MergeProp<T>
+  | OnceProp<T>
   | (undefined extends T
       ? OptionalProp<Exclude<T, undefined>> | DeferredProp<Exclude<T, undefined>> | MergingDeferredProp<Exclude<T, undefined>>
       : NotOptional);

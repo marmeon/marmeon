@@ -94,6 +94,12 @@ interface IslandValue {
 
 const IslandContext = createContext<IslandValue | null>(null);
 
+/** @internal The island a component renders in — its region's id (remembered state of an island is kept apart, E63), or undefined. */
+export function useIslandScope(): string | undefined {
+  const value = useContext(IslandContext);
+  return value ? (value.region?.id ?? 'ssr') : undefined;
+}
+
 const LOADING: RegionSnapshot = { status: 'loading', region: undefined, pending: false, failure: undefined };
 const NOT_RESOLVED: RegionResult = { status: 'browser' };
 const noSubscription = () => () => {};

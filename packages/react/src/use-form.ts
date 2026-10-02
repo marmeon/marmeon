@@ -2,6 +2,7 @@ import { dirtyPaths, firstErrors, isDirtyPath, resolveRoute, type LiveValidation
 import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter, useRouterContext } from './app.tsx';
+import { useRememberStore } from './remember.ts';
 import { RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
 
@@ -24,14 +25,45 @@ export type FieldPath<F, Depth extends unknown[] = []> = Depth['length'] extends
       ? `${number}` | `${number}.${FieldPath<Item, [...Depth, 0]>}`
       : { [K in keyof F & string]: K | (FieldPath<F[K], [...Depth, 0]> extends infer Deeper extends string ? `${K}.${Deeper}` : never) }[keyof F & string];
 
+/** What a remembered form may not keep (E63) — in `remember.include`, the message for a password field. */
+export type PasswordNeverRemembered = 'password fields are never remembered — they stay in the field until the page is left';
+
+/** The fields of a form whose names look sensitive (a token, a secret, a card) — what `remember.include` may name. Never passwords. */
+type SensitiveFormField<F> = keyof {
+  [K in keyof F & string as Lowercase<K> extends `${string}password${string}`
+    ? never
+    : Lowercase<K> extends `${string}${'secret' | 'token' | 'card' | 'cvc'}${string}`
+      ? K
+      : never]: true;
+} &
+  string;
+
+/** How a form remembers its input across Back/Forward (E63). */
+export interface RememberFormOptions<F> {
+  /** The key it is kept under in its history entry — default `form:<route name>` (a route form). */
+  key?: string;
+  /**
+   * Fields kept although their names look sensitive (`card_holder`, `token_name`) — left out by default, like files. Passwords
+   * never. (Spelled out, so a message lists the names.)
+   */
+  include?: readonly (PasswordNeverRemembered | SensitiveFormField<F>)[];
+}
+
 /** How a form behaves beyond its data (E64). */
-export interface FormOptions {
+export interface FormOptions<F = Record<string, unknown>> {
   /**
    * The navigation guard: while the form is dirty, leaving asks first — a visit elsewhere, Back/Forward, closing its layer —
    * and closing the tab gets the browser's question. `true`, or the question to ask. Its own submit passes; after it
    * succeeded, what was sent is where the form starts over (not dirty any more).
    */
   guard?: boolean | string;
+  /**
+   * Remember the input across Back/Forward (E63): leave the page (or close its layer by Back), come back, and what was typed —
+   * and the errors shown — is still there; the form is still dirty (its guard still asks). In memory only, per history entry:
+   * a reload, signing in or out, a new build start over. Password-, token-, secret- and card-like fields and files are never
+   * kept (`include` lets the non-password ones in). The key the input is kept under (a form by controller needs one), or the options.
+   */
+  remember?: string | RememberFormOptions<F>;
 }
 
 /**
@@ -52,9 +84,11 @@ export interface LiveValidationSetting<F> {
 }
 
 /** How a route form behaves beyond its data: the guard (E64) — and live validation (E62), which needs its route's URL. */
-export interface RouteFormOptions<F> extends FormOptions {
+export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
   /** Check fields against the server while they are filled in: `true`, or when and which (see {@link LiveValidationSetting}). */
   validate?: true | LiveValidationSetting<F>;
+  /** Remember the input across Back/Forward (E63) — `true` (kept as `form:<route name>`), a key, or the options. See {@link FormOptions.remember}. */
+  remember?: true | string | RememberFormOptions<F>;
 }
 
 /**
@@ -140,10 +174,16 @@ type CheckFormRoute<N extends string> =
       : N
     : CheckBrowserRouteName<N>;
 
-/** `(params, initial)`, or just `(initial)` when the route takes no required parameters. */
+/** What a route form with required parameters says when they are left out — `useForm(name, initial)` (step 9's finding). */
+type ParamsFirst<N extends string> = `'${N}' takes route parameters — pass them before the initial data: useForm('${N}', params, initial)`;
+
+/**
+ * `(params, initial)`, or just `(initial)` when the route takes no required parameters. Without the parameters a route needs,
+ * the one argument is the message (else TypeScript would report the controller overload: "'string' is not assignable to 'object'").
+ */
 type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
   ? [initial: RouteFormFields<N>] | [params: ParamsOf<N>, initial: RouteFormFields<N>]
-  : [params: ParamsOf<N>, initial: RouteFormFields<N>];
+  : [params: ParamsOf<N>, initial: RouteFormFields<N>] | [initial: ParamsFirst<N>];
 
 /**
  * Form state and submission, typed from the endpoint's request schema. By route name (E40), the form knows
@@ -162,7 +202,7 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
  * back from the server — a failed submit redirects back with `errors` in the page
  * props, without a reload and without losing what was typed.
  */
-export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions): Form<T>;
+export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
 export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
 // Last: TS reports a mistake against the last overload whose arity fits — this one for four arguments (a wrong option, a
 // password field in `validate.fields`), the one above for two or three (the route's message).
@@ -183,12 +223,28 @@ export function useForm(...args: unknown[]): unknown {
   const { visit } = useRouter();
   const manifest = useContext(RoutesContext);
   const target = name === undefined ? undefined : resolveRoute(manifest, name, params);
+  // Remembered input (E63): what this history entry kept of the form, back where it was typed — sensitive fields never were.
+  const remember = rememberSetting(options.remember, name);
+  const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');
+  const kept = remember && store?.has(rememberKey) ? (store.get(rememberKey) as KeptForm | undefined) : undefined;
   const [defaults, setDefaults] = useState(initial);
-  const [data, setData] = useState(initial);
+  const [data, setData] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
-  // The navigation guard (E64), while dirty — its own submit passes it.
+  // The navigation guard (E64), while dirty — its own submit passes it. A remembered input that differs is dirty, too.
   const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
-  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>(() => kept?.errors ?? {});
+  const include = remember?.include.join(',');
+  useEffect(() => {
+    if (!remember || !store) return;
+    // Nothing typed and nothing to show: nothing to keep (an entry that comes back shows the initial data anyway).
+    if (dirty.length === 0 && Object.keys(errors).length === 0) {
+      store.delete(rememberKey);
+      return;
+    }
+    store.set(rememberKey, { data, errors }, remember.include.map((field) => `data.${field}`));
+    // `remember` is read by its key and fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, rememberKey, include, data, errors, dirty.length]);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<VisitProgress | null>(null);
   const [wasSuccessful, setWasSuccessful] = useState(false);
@@ -293,6 +349,20 @@ export function useForm(...args: unknown[]): unknown {
 
 const noSubscription = () => () => {};
 const NOTHING_PENDING: readonly string[] = [];
+
+/** What a remembered form keeps (E63). */
+interface KeptForm {
+  readonly data: Record<string, unknown>;
+  readonly errors: Partial<Record<string, string>>;
+}
+
+/** The `remember` option as key and fields — undefined when the form remembers nothing. */
+function rememberSetting(setting: RouteFormOptions<Record<string, unknown>>['remember'], name: string | undefined): { key: string; include: readonly string[] } | undefined {
+  if (setting === undefined || (setting as unknown) === false) return undefined;
+  const options = typeof setting === 'object' ? setting : {};
+  const key = typeof setting === 'string' ? setting : (options.key ?? (name !== undefined ? `form:${name}` : 'form'));
+  return { key, include: (options.include ?? []) as readonly string[] };
+}
 
 function isPending(pending: readonly string[], field?: string): boolean {
   if (field === undefined) return pending.length > 0;

@@ -1,5 +1,5 @@
 import type { HttpContext, MiddlewareClass, Next } from '@bespokecore/router';
-import { isActionRequest, LOCATION_HEADER, PAGE_HEADER } from './page.ts';
+import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './page.ts';
 
 /**
  * Ends the browser's page session of this app with the current response — what signing in and out need
@@ -68,6 +68,9 @@ export class ClearClientHistory {
     await response.body?.cancel();
     for (const name of DROPPED) headers.delete(name);
     headers.set(LOCATION_HEADER, location);
+    // A document change (E64), never a new build: whatever the response it replaces said (a version check's 409 that ran after a
+    // sign-in of this request, say), the client may not postpone this one — `version` is the only cancelable reason.
+    headers.set(RELOAD_HEADER, 'history');
     return new Response(null, { status: 409, headers });
   }
 }

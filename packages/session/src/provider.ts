@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { isAbsolute, join } from 'node:path';
 import { Application, type Container, type ServiceProvider } from '@bespokecore/core';
-import { CookieEncryption, Flasher } from '@bespokecore/http';
+import { CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
 import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
@@ -28,6 +29,8 @@ export class SessionServiceProvider implements ServiceProvider {
     container.scoped(Session);
     // `redirect().with(…)` flashes into the request's session.
     container.scoped(Flasher, (c) => c.make(Session));
+    // What a page knows of the session (E64): the CSRF token for forms without JavaScript, and a scope for once props.
+    container.scoped(PageSession, (c) => pageSessionOf(c.make(Session)));
 
     const config = container.make(SessionConfig);
     switch (config.driver) {
@@ -55,4 +58,25 @@ export class SessionServiceProvider implements ServiceProvider {
     app.container.make(CookieEncryption).except(XSRF_COOKIE); // the browser's JavaScript reads it
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
   }
+}
+
+/**
+ * The session as a page sees it (E64). The scope is a hash of the session id — never the id, which is a secret — so it changes
+ * with every sign-in and sign-out (the id is regenerated) and tells nothing about the session it came from.
+ */
+export function pageSessionOf(session: Session): PageSession {
+  const started = <T>(read: () => T): T | undefined => {
+    try {
+      return read();
+    } catch {
+      return undefined; // not started (no session on this request)
+    }
+  };
+  return {
+    csrfToken: () => started(() => session.token()),
+    scope: () => {
+      const id = started(() => session.id);
+      return id ? createHash('sha256').update(`bespoke-once-scope:${id}`).digest('base64url').slice(0, 22) : undefined;
+    },
+  };
 }

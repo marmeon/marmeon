@@ -1,5 +1,5 @@
-import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject } from './page.ts';
-import { mergeOf, propKind, resolveProp } from './props.ts';
+import { ONCE_HEADER, ONCE_SCOPE_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type OnceInfo, type PageObject } from './page.ts';
+import { mergeOf, propKind, resolveProp, type OnceProp } from './props.ts';
 import type { SharedData } from './shared-data.ts';
 
 /** What a partial reload asks for: the props named in `only` (if given), minus those in `except`. */
@@ -28,7 +28,34 @@ function list(header: string | null): string[] {
 }
 
 /** The part of the page object the props make up. */
-export type ResolvedPage = Pick<PageObject, 'props' | 'deferredProps' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
+export type ResolvedPage = Pick<PageObject, 'props' | 'deferredProps' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn' | 'onceProps'>;
+
+/** How a page's once props (E64) are resolved: for which view, and which of them the browser holds. */
+export interface OnceContext {
+  /** The view — the default key of a page's own once prop is `<view>:<prop>`. */
+  readonly component: string;
+  /** The keys the browser holds under the current scope (see {@link heldOnceProps}) — not computed again. */
+  readonly held: ReadonlySet<string>;
+  /** Now, by the server's clock (for `ttl`). Default `Date.now()`. */
+  readonly now?: number;
+}
+
+/**
+ * The once props (E64) the browser of `request` holds — only when it names the scope they were sent under and that is the
+ * request's scope now (`current`: the session's, see `PageSession.scope`). A browser that kept them for someone else — another
+ * tab signed in as another user, the cookie changed under this tab — holds nothing as far as the server is concerned.
+ */
+export function heldOnceProps(request: Request, current: string | undefined): ReadonlySet<string> {
+  const { headers } = request;
+  if (headers.get(PAGE_HEADER) !== 'true') return new Set();
+  if ((headers.get(ONCE_SCOPE_HEADER) ?? undefined) !== current) return new Set();
+  return new Set(list(headers.get(ONCE_HEADER)));
+}
+
+/** The key the browser keeps a once prop under: its own, the shared prop's name, or `<view>:<prop>`. */
+function onceKey(prop: OnceProp<unknown>, name: string, shared: boolean, component: string): string {
+  return prop.key ?? (shared ? name : `${component}:${name}`);
+}
 
 /**
  * Resolves what a response sends of a page's props — the controller's and the shared ones (the controller's win).
@@ -43,6 +70,7 @@ export async function resolvePageProps(
   props: Readonly<Record<string, unknown>>,
   shared: SharedData | undefined,
   partial: PartialReload | undefined,
+  once?: OnceContext,
 ): Promise<ResolvedPage> {
   const all = new Map<string, unknown>(shared?.entries() ?? []);
   for (const [key, value] of Object.entries(props)) all.set(key, value);
@@ -52,12 +80,20 @@ export async function resolvePageProps(
   const mergeProps: string[] = [];
   const deepMergeProps: string[] = [];
   const matchPropsOn: string[] = [];
+  const onceProps: Record<string, OnceInfo> = {};
   for (const [key, value] of all) {
     const kind = propKind(value);
     if (!included(key, kind, partial)) {
       // Deferred props are announced on full responses — a partial reload is the browser loading them.
       if (kind === 'defer' && partial === undefined) (deferredProps[(value as { group: string }).group] ??= []).push(key);
       continue;
+    }
+    if (kind === 'once' && once) {
+      // A once prop (E64): announced with its key — and not computed while the browser holds it, unless asked for by name.
+      const prop = value as OnceProp<unknown>;
+      const info: OnceInfo = { key: onceKey(prop, key, !Object.hasOwn(props, key), once.component), ...(prop.ttl !== undefined ? { expiresAt: (once.now ?? Date.now()) + prop.ttl } : {}) };
+      onceProps[key] = info;
+      if (once.held.has(info.key) && !partial?.only?.includes(key)) continue;
     }
     send.push(key);
     // `merge()`/`deepMerge()` — and `defer(…).merge()`, once it is sent.
@@ -84,6 +120,7 @@ export async function resolvePageProps(
     ...(mergeProps.length > 0 ? { mergeProps } : {}),
     ...(deepMergeProps.length > 0 ? { deepMergeProps } : {}),
     ...(matchPropsOn.length > 0 ? { matchPropsOn } : {}),
+    ...(Object.keys(onceProps).length > 0 ? { onceProps } : {}),
   };
 }
 

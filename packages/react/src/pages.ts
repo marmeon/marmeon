@@ -1,4 +1,4 @@
-import { ERROR_PAGE, LAYER_BACKDROP, pageName, type IslandProps, type PageProps } from '@bespokecore/http/page';
+import { ERROR_PAGE, LAYER_BACKDROP, pageName, type InstantProps, type IslandProps, type PageProps } from '@bespokecore/http/page';
 import type { ComponentType, ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
 import { Backdrop } from './backdrop.tsx';
@@ -49,7 +49,21 @@ export type PageComponent = ComponentType<any> & {
    * then reloaded in the background without a progress bar. See {@link RevalidateOnBack}.
    */
   revalidateOnBack?: boolean | readonly string[];
+  /**
+   * What an instant visit shows before the view's answer lands (E64): `Show.placeholder = ShowPlaceholder` — a skeleton, with
+   * what the link hands it (`<Link instant={{ name }}>`), typed by the controller: `satisfies Placeholder<ShowUserProfileController>`.
+   */
+  placeholder?: ComponentType<any>;
 };
+
+/**
+ * The placeholder of controller `C`'s view (E64): a component taking what `C` declares a link may hand it —
+ * `declare readonly instant: { name: string }` — never the page's props (it renders before they arrive).
+ * `Show.placeholder = ShowPlaceholder satisfies Placeholder<ShowUserProfileController>`.
+ */
+export type Placeholder<C> = [InstantProps<C>] extends [never]
+  ? 'this controller declares no placeholder props — add `declare readonly instant: { … }` to it (`{}` for none)'
+  : ComponentType<InstantProps<C>>;
 
 /** The app's default layout per page name — for pages without their own `layout`: `createBespokeApp({ layout: () => AppLayout })`. */
 export type DefaultLayout = (name: string) => PageLayout | undefined;
@@ -115,6 +129,9 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     checkLayout(name, page.layout);
     if (page.ssr !== undefined && page.ssr !== true && page.ssr !== false && page.ssr !== 'complete') {
       throw new Error(`Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.`);
+    }
+    if (page.placeholder !== undefined && !isComponent(page.placeholder)) {
+      throw new Error(`Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.`);
     }
     const revalidate: unknown = page.revalidateOnBack;
     if (revalidate !== undefined && typeof revalidate !== 'boolean' && !(Array.isArray(revalidate) && revalidate.every((prop) => typeof prop === 'string' && prop !== ''))) {

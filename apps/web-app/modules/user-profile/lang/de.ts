@@ -13,6 +13,7 @@ export default {
     edit: 'Profil bearbeiten',
     activity: 'Letzte Aktivität',
     activity_loading: 'Aktivität wird geladen …',
+    loading: 'Profil wird geladen …',
     activity_entry: '{kind, select, link {Link „{label}“ hinzugefügt} signed-in {Angemeldet} other {Beigetreten}}',
     stats: 'Statistik',
     stats_loading: 'Statistik wird geladen …',
@@ -30,6 +31,7 @@ export default {
   },
   people: {
     title: 'Leute',
+    loading: 'Leute werden geladen …',
     search: 'Nach Namen suchen',
     sort: 'Sortierung',
     sort_name: 'Name A–Z',

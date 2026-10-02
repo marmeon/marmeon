@@ -468,7 +468,7 @@ describe('Cache headers', () => {
     const html = await app.get('/login').assertOk();
     const json = await app.navigating().get('/login').assertOk();
     for (const response of [html, json]) {
-      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-region', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose', 'accept-language']);
+      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-region', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose', 'x-bespoke-once', 'x-bespoke-once-scope', 'accept-language']);
     }
   });
 

@@ -92,3 +92,26 @@ export interface UseBlockerOptions {
 export function useBlocker({ when, message }: UseBlockerOptions): void {
   useGuard(when, message);
 }
+
+/** A new build waiting to load (E64) — from `useNewVersion()`. */
+export interface NewVersion {
+  /** Where the postponed full load goes. */
+  readonly location: string;
+  /** Loads it now (a full load). */
+  reload(): void;
+}
+
+/**
+ * A new build of the app that waits to load (E64) — set once its full load was postponed: the app's `version` listener
+ * prevented it (`router.on('version', (event) => event.preventDefault())`), or unsaved changes kept it (the guard's question
+ * answered "stay"). For a "a new version is available — reload" banner; undefined while none waits. The next visit loads it anyway.
+ */
+export function useNewVersion(): NewVersion | undefined {
+  const navigator = useRouterContext().navigator();
+  const location = useSyncExternalStore(
+    navigator ? (listener) => navigator.subscribeNewVersion(listener) : noSubscription,
+    () => navigator?.newVersion,
+    () => undefined,
+  );
+  return location === undefined || !navigator ? undefined : { location, reload: () => navigator.reloadForNewVersion() };
+}

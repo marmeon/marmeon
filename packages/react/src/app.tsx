@@ -22,7 +22,7 @@ import {
 } from '@bespokecore/http/client';
 import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@bespokecore/http/page';
 import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
@@ -240,6 +240,11 @@ interface Current {
   key: number;
   /** Where the page's islands live — from the navigator with each page (undefined for the first: the navigator's current). */
   owner?: RegionOwner;
+  /**
+   * An instant visit's placeholder (E64) in the page's place — the target view's `placeholder`, with what the link gave it,
+   * inside that view's layouts. The page (the context `usePage()` reads) is still the one before.
+   */
+  placeholder?: { readonly Component: ComponentType<any>; readonly View: PageComponent; readonly name: string; readonly props: Readonly<Record<string, unknown>> };
 }
 
 /**
@@ -274,8 +279,22 @@ export function BespokeApp({
   // The navigator waits until a page is on screen before it restores the scroll position.
   const committed = useRef<(() => void)[]>([]);
 
+  // Renders in order of the calls: a placeholder that resolves after a later render started is dropped (E64).
+  const renders = useRef(0);
   const render = useCallback(
-    async (page: PageObject, { preserveState, owner, layers }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[] }) => {
+    async (page: PageObject, { preserveState, owner, layers, placeholder }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[]; placeholder?: boolean }) => {
+      const turn = ++renders.current;
+      if (placeholder) {
+        // An instant visit (E64): the target view's placeholder — never the view itself, with props it does not have yet.
+        const View = await resolve(page.component);
+        const Placeholder = View.placeholder;
+        if (!Placeholder || renders.current !== turn) return;
+        await new Promise<void>((done) => {
+          committed.current.push(done);
+          setCurrent((previous) => ({ ...previous, placeholder: { Component: Placeholder, View, name: page.component, props: page.props } }));
+        });
+        return;
+      }
       // The page's component and its locale's messages, both before it renders: a page in another language (another
       // tab switched it) loads that language's files first. The layers' views too — they show at once.
       const [Component, catalog] = await Promise.all([resolve(page.component), loadPageMessages(page, messages), ...layers.map((layer) => loadView(resolve, layer.page.component))]);
@@ -283,9 +302,9 @@ export function BespokeApp({
         committed.current.push(done);
         // Only the layers changed: the page stays exactly as it is (no render of it, nothing above it changes).
         setCurrent((previous) =>
-          previous.page === page && previous.owner === owner && preserveState
+          previous.page === page && previous.owner === owner && preserveState && !previous.placeholder
             ? previous
-            : { page, Component, catalog, key: preserveState && previous.Component === Component ? previous.key : previous.key + 1, owner },
+            : { page, Component, catalog, key: preserveState && previous.Component === Component && !previous.placeholder ? previous.key : previous.key + 1, owner },
         );
         setLayers(layers.map(entryOf));
       });
@@ -392,7 +411,7 @@ export function BespokeApp({
     () => ({ page: current.page, visit, reload, prefetch, on, optimistic, reloading, navigator: getNavigator, resolve, layer: null }) as RouterValue,
     [current.page, visit, reload, prefetch, on, optimistic, reloading, getNavigator, resolve],
   );
-  const { Component, page, key, catalog } = current;
+  const { Component, page, key, catalog, placeholder } = current;
   const owner = current.owner ?? navigator.current?.regionOwner ?? null;
 
   const locale = messages ? pageLocale(page, messages) : page.locale;
@@ -405,13 +424,21 @@ export function BespokeApp({
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
   const head = useMemo(() => ({ template: title, collector: headCollector, titles }), [title, headCollector, titles]);
 
-  const content = (
+  const content = placeholder ? (
+    // An instant visit's placeholder (E64): what the link gave it — the real view renders only with its page.
+    <ErrorBoundary resetKey={placeholder} fallback={() => null}>
+      <placeholder.Component {...placeholder.props} />
+    </ErrorBoundary>
+  ) : (
     <ErrorBoundary resetKey={page} onError={() => onPageError(page)} onRendered={() => onPageRendered(page)} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
       <Component key={key} {...page.props} />
     </ErrorBoundary>
   );
-  // Same layout at the same depth → the same element type in the same place: React keeps it mounted.
-  const tree = layoutsOf(Component, page.component, layout).reduceRight<ReactNode>((children, Layout) => <Layout>{children}</Layout>, content);
+  // Same layout at the same depth → the same element type in the same place: React keeps it mounted (the placeholder's too).
+  const tree = (placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, page.component, layout)).reduceRight<ReactNode>(
+    (children, Layout) => <Layout>{children}</Layout>,
+    content,
+  );
 
   return (
     <SsrContext.Provider value={ssr ?? null}>

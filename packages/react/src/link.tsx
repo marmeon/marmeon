@@ -11,7 +11,7 @@ import {
   type VisitMethod,
   type VisitOptions,
 } from '@bespokecore/http/client';
-import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
+import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { usePage, useRouter, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
@@ -92,6 +92,16 @@ type MethodProps<N extends string> = [MethodOf<N>] extends ['get']
 
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
 
+/** What the placeholder of route `N`'s view gets (E64): its controller's `declare readonly instant: {…}`. */
+type InstantOf<N extends string> = InstantProps<Instance<ControllerOf<N>>>;
+
+/** The `instant` prop: what the target's placeholder gets — `true` when it takes nothing. */
+type InstantProp<N extends string> = [InstantOf<N>] extends [never]
+  ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)`
+  : {} extends InstantOf<N>
+    ? true | InstantOf<N>
+    : InstantOf<N>;
+
 /**
  * `<Link route="user-profile.show" params={{ user: 7 }} query={{ tab: 'links' }}>` — checked against `bootstrap/routes.ts`;
  * `only`/`except` against the props of the route's page (a partial reload applies when it is the page on screen).
@@ -110,6 +120,11 @@ type RouteLinkProps<N extends string> = LinkOptions &
    * it). Only for routes whose controller answers `this.view(…).layer({ base })`; anything else is a compile error.
    */
   layer?: CheckLayerRouteName<N> extends N ? boolean : CheckLayerRouteName<N>;
+  /**
+   * An instant visit (E64): the target view's placeholder shows at once (inside the layout), then the page — `instant` is what the
+   * placeholder gets, typed by the target's controller (`declare readonly instant: { name: string }`): `instant={{ name }}`.
+   */
+  instant?: InstantProp<N>;
   href?: never;
 } & ParamsProp<N> &
   MethodProps<N>;
@@ -128,6 +143,7 @@ type AnyLinkProps = LinkOptions &
     method?: VisitMethod;
     data?: VisitOptions['data'];
     layer?: boolean;
+    instant?: true | Record<string, unknown>;
     onClick?: (event: MouseEvent<HTMLAnchorElement & HTMLButtonElement>) => void;
     onMouseEnter?: (event: MouseEvent<HTMLAnchorElement & HTMLButtonElement>) => void;
     onMouseLeave?: (event: MouseEvent<HTMLAnchorElement & HTMLButtonElement>) => void;
@@ -172,6 +188,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     prefetch,
     cacheFor,
     layer,
+    instant,
     confirm,
     activeMatch,
     onClick,
@@ -194,6 +211,10 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     ...(confirm !== undefined ? { confirm } : {}),
     // The route's name goes with the visit: `usePending(name)` (E64).
     ...(route !== undefined ? { name: route } : {}),
+    // An instant visit (E64): the view the route renders (the manifest knows it when it is written out) shows its placeholder.
+    ...(instant !== undefined && route !== undefined && manifest?.[route]?.view !== undefined
+      ? { instant: { component: manifest[route]!.view!, props: instant === true ? {} : instant } }
+      : {}),
   };
 
   const page = usePage();

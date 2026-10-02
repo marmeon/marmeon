@@ -8,6 +8,7 @@
  * tab's memory only (E36), never in `history.state` or any storage. Back/Forward shows them from there without a request;
  * leaving the document (signing out, a new build) drops them with the pages.
  */
+import { Remembered } from './remember.ts';
 import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject, type RegionObject, type RegionResult } from '../page.ts';
 import { mergePage } from './merge.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
@@ -109,14 +110,17 @@ export function regionId(url: string): string {
 export class RegionOwner {
   /** What this owner keeps of its regions, by {@link regionId} — what Back/Forward shows without a request. */
   readonly regions: Map<string, KeptRegion>;
+  /** What the entry's components remembered (E63) — kept with its regions, in memory only. */
+  readonly remembered: Remembered;
   readonly #transport: RegionTransport;
   readonly #controller = new AbortController();
   readonly #live = new Map<string, Region>();
   readonly #onBack: RegionOwnerOptions['onBack'];
 
-  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map(), { onBack }: RegionOwnerOptions = {}) {
+  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map(), { onBack, remembered = new Remembered() }: RegionOwnerOptions = {}) {
     this.#transport = transport;
     this.regions = regions;
+    this.remembered = remembered;
     this.#onBack = onBack;
   }
 
@@ -165,6 +169,8 @@ export interface RegionOwnerOptions {
    * region it kept is loaded (rendered) again.
    */
   onBack?: (component: string) => Promise<ReloadSpec | undefined>;
+  /** What the entry remembered (E63) — kept with it in memory; a new entry starts with nothing. */
+  remembered?: Remembered;
 }
 
 /** The headers of a partial reload of `component`. */

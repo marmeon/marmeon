@@ -18,7 +18,9 @@ export default function Edit({ profile, old }: Props) {
   // E40: method, URL and fields from the route name — user-profile.update → UpdateUserProfileRequest's schema (its input type).
   // `guard` (E64): with changes not saved, closing the layer, Back, a link elsewhere or closing the tab asks first.
   // `validate` (E62): a field is checked against the server's schema when you leave it — "too short" before you save.
-  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved'), validate: true });
+  // `remember` (E63): typed, closed by Back, opened again by Forward — the input (and its errors) is still there, still dirty.
+  // In memory only, with the layer's history entry: a reload, signing out or a new build start over.
+  const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved'), validate: true, remember: true });
 
   // Under the page's own heading in a layer; the page's heading when the view is a page.
   const Heading = layer.isLayer ? 'h2' : 'h1';

@@ -20,6 +20,8 @@ export {
   LAYER_CLOSE_HEADER,
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
+  ONCE_HEADER,
+  ONCE_SCOPE_HEADER,
   PAGE_HEADER,
   PAGE_SCRIPT_ID,
   PARTIAL_COMPONENT_HEADER,
@@ -28,6 +30,7 @@ export {
   PURPOSE_HEADER,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  RELOAD_HEADER,
   VALIDATE_HEADER,
   VALIDATED_HEADER,
   VERSION_HEADER,
@@ -38,7 +41,7 @@ export {
   regionOf,
   scriptJson,
 } from './page.ts';
-export { always, deepMerge, defer, merge, mergeOf, optional, propKind, resolveProp } from './props.ts';
+export { always, deepMerge, defer, merge, mergeOf, once, optional, propKind, resolveProp } from './props.ts';
 export type {
   AlwaysProp,
   DeferredProp,
@@ -46,6 +49,9 @@ export type {
   MergeProp,
   MergeStrategy,
   MergingDeferredProp,
+  CheckOnceValue,
+  OnceOptions,
+  OnceProp,
   OptionalProp,
   PropKind,
   ResolvedProp,
@@ -53,15 +59,16 @@ export type {
   SharedValue,
   WrappedProp,
 } from './props.ts';
-export { partialReloadOf, resolvePageProps } from './page-props.ts';
-export type { PartialReload, ResolvedPage } from './page-props.ts';
+export { heldOnceProps, partialReloadOf, resolvePageProps } from './page-props.ts';
+export type { OnceContext, PartialReload, ResolvedPage } from './page-props.ts';
+export { PageSession } from './page-session.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export { addFlash, flashEntry, flashOf, serializedFlash } from './flash.ts';
 export type { FlashEntry, FlashMethod } from './flash.ts';
 export type { CheckFlashKey, FlashData, FlashKey, FlashMessage, FlashValue } from './page.ts';
-export type { CheckViewName, DeferredResult, ErrorPageProps, LayerClose, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
-export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
-export type { BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
+export type { CheckViewName, DeferredResult, ErrorPageProps, InstantProps, LayerClose, OnceInfo, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
+export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, staticView, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
+export type { BrowserRoute, BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
 export { AfterResponse } from './after-response.ts';
 export { ReadOnly, ReadOnlyViolation } from './read-only.ts';

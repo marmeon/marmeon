@@ -18,6 +18,7 @@ export type {
   MergeProp,
   MergeStrategy,
   MergingDeferredProp,
+  OnceProp,
   OptionalProp,
   PropKind,
   ResolvedProp,
@@ -78,7 +79,7 @@ export type CheckViewName<V extends string> = string extends V
       : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
 
 /** The routes the browser knows — `routes` of `virtual:bespoke/routes` (the `bespoke()` Vite plugin). */
-export type RouteManifest = Readonly<Record<string, { readonly method: string; readonly path: string }>>;
+export type RouteManifest = Readonly<Record<string, { readonly method: string; readonly path: string; readonly view?: string }>>;
 
 /** `modules/user-profile/views/Show.tsx` → `user-profile/Show` (the page naming convention), or undefined. */
 export function pageName(path: string): string | undefined {
@@ -214,7 +215,52 @@ export interface PageObject {
    * route the browser may know (never an `.internal()` one), and only on its own answer (an error page names none).
    */
   route?: string;
+  /**
+   * The page's once props (E64, `once()`), by prop name: under which `key` the browser keeps the value, and until when
+   * (`expiresAt`, ms since the epoch, by the server's clock). A prop listed here but missing from `props` is one the browser
+   * said it holds ({@link ONCE_HEADER}) — the client core puts its value back in before anything renders.
+   */
+  onceProps?: Record<string, OnceInfo>;
+  /**
+   * Who the once props are for (E64) — opaque, changing whenever who signs in changes (a new session: sign-in, sign-out). The
+   * browser keeps once props of one scope only and names it when it says what it holds; a value kept under another scope is
+   * never skipped by the server (another tab signed someone else in: the cookie changed, the memory did not).
+   */
+  onceScope?: string;
+  /**
+   * The CSRF token of the page's session — for forms that must work without JavaScript (`<Form>` renders it as `_token`).
+   * Client-side requests send the `XSRF-TOKEN` cookie's copy instead. Absent without a session.
+   */
+  csrf?: string;
 }
+
+/** Where the browser keeps a once prop (E64). */
+export interface OnceInfo {
+  /** The key it is kept under — the prop's name for a shared prop, `<view>:<prop>` for a page's own, or `once(fn, { key })`. */
+  readonly key: string;
+  /** Kept until then (ms since the epoch) — sent again after it; absent: for the life of the document. */
+  readonly expiresAt?: number;
+}
+
+/**
+ * The once props the browser holds (E64): their keys, comma-separated — the server does not compute them again (they stay in
+ * `onceProps`, without a value). Sent with every page request of the client core, with {@link ONCE_SCOPE_HEADER}.
+ */
+export const ONCE_HEADER = 'x-bespoke-once';
+
+/** The scope the held once props were sent under (`PageObject.onceScope`) — the server skips them only for the same scope. */
+export const ONCE_SCOPE_HEADER = 'x-bespoke-once-scope';
+
+/**
+ * Why a `409` with {@link LOCATION_HEADER} reloads the page (E64): `version` — a new build (asset versioning), which the
+ * client may postpone (`navigator.on('version', (event) => event.preventDefault())`) and which respects unsaved changes;
+ * anything else — `history`, signing in or out (`ClientHistory.clear()`), or no header at all — is a document change that
+ * nothing can stop. Only the exact value `version` is cancelable; `ClearClientHistory` overwrites it on every 409 it makes.
+ */
+export const RELOAD_HEADER = 'x-bespoke-reload';
+
+/** What a view's placeholder gets (E64, instant visits): what its controller declares (`declare readonly instant: { name: string }`). */
+export type InstantProps<C> = C extends { readonly instant: infer P } ? (P extends object ? P : never) : never;
 
 /** What a layer's page object says about it (E53). */
 export interface LayerInfo {

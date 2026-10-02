@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Island, Link, useQueryState, useTranslation } from '@bespokecore/react';
+import { Head, Island, Link, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
 import type { ListPeopleController } from '../controllers/ListPeopleController.ts';
 
 type Props = PageProps<ListPeopleController>;
@@ -61,8 +61,9 @@ export default function People({ people, now }: Props) {
         <ul>
           {people.data.map((person) => (
             <li key={person.id}>
-              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once. */}
-              <Link route="user-profile.show" params={{ user: person.id }} prefetch>
+              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once. If it is not here yet, an instant
+                  visit (E64) shows the profile's placeholder with the name the list knows — then the profile. */}
+              <Link route="user-profile.show" params={{ user: person.id }} prefetch instant={{ name: person.name }}>
                 {person.name}
               </Link>
               {person.isMe && ` ${t('people.you')}`}{' '}
@@ -97,3 +98,16 @@ export default function People({ people, now }: Props) {
     </main>
   );
 }
+
+/** The list before its answer (E64, an instant visit from the main navigation). */
+function PeoplePlaceholder() {
+  const t = useTranslation('user-profile');
+  return (
+    <main aria-busy="true" data-placeholder="">
+      <Head title={t('people.title')} />
+      <h1>{t('people.title')}</h1>
+      <p style={{ opacity: 0.5 }}>{t('people.loading')}</p>
+    </main>
+  );
+}
+People.placeholder = PeoplePlaceholder satisfies Placeholder<ListPeopleController>;

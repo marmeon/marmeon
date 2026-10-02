@@ -18,7 +18,11 @@ import {
   LAYER_BACKDROP,
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
+  heldOnceProps,
+  ONCE_HEADER,
+  ONCE_SCOPE_HEADER,
   PAGE_HEADER,
+  PageSession,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
@@ -138,7 +142,7 @@ const BOTS =
  * (a partial reload), a prefetch or the visit (`Purpose` — a page may skip side effects for a prefetch). A cache
  * (`Cache-Control: private, max-age=…`) must never answer one with the other.
  */
-const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER].join(', ');
+const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER].join(', ');
 
 /** A response factory that may use the request's container scope (the kernel passes it). */
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
@@ -304,7 +308,8 @@ export function createResponseFactory(
     // The neutral surface: the shared props only (the layout's), under the declared base's URL — never the base's data.
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     const resolved = await resolvePageProps({}, shared, undefined);
-    const surface: PageObject = { component: LAYER_BACKDROP, ...resolved, url: layers[0]!.layer?.base ?? layer.url, version };
+    const csrf = scope?.has(PageSession) ? scope.make(PageSession).csrfToken() : undefined;
+    const surface: PageObject = { component: LAYER_BACKDROP, ...resolved, url: layers[0]!.layer?.base ?? layer.url, version, ...(csrf !== undefined ? { csrf } : {}) };
     for (const key of ['locale', 'fallbackLocale'] as const) if (layer[key] !== undefined) surface[key] = layer[key];
     return JSON.parse(JSON.stringify({ ...surface, layers })) as PageObject;
   };
@@ -349,8 +354,15 @@ export function createResponseFactory(
 
     const url = new URL(ctx.request.url);
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
+    // Who the page is for (E64): the session's scope for once props, its CSRF token for forms without JavaScript.
+    const session = scope?.has(PageSession) ? scope.make(PageSession) : undefined;
+    const onceScope = session?.scope();
+    // Once props the browser holds — under this session's scope only (another tab may have signed someone else in).
+    const once = { component: result.component, held: heldOnceProps(ctx.request, onceScope) };
     // Shared props and the controller's (which win), resolved as far as this response sends them.
-    const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component));
+    const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component), once);
+    const csrf = session?.csrfToken();
+    const pageSession = { ...(resolved.onceProps && onceScope !== undefined ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}) };
     // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
     const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
@@ -360,7 +372,7 @@ export function createResponseFactory(
     // The route that answered (E64, `<Link activeMatch>`): its name — never an internal one's, and none for an error page.
     const matched = (ctx as { route?: { routeName?: string | undefined; isInternal?: boolean } }).route;
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route };
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route, ...pageSession };
     // Shown to the user: it takes the flash messages (E60) — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));

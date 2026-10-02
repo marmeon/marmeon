@@ -7,6 +7,7 @@
  */
 export {
   DEFAULT_LEAVE_MESSAGE,
+  DEFAULT_NEW_VERSION_MESSAGE,
   DEFAULT_PAGE_CACHE_SIZE,
   DEFAULT_PREFETCH_CACHE_FOR,
   isHistoryState,
@@ -17,6 +18,7 @@ export {
 } from './navigation.ts';
 export type {
   HistoryState,
+  InstantVisit,
   NavigationGuard,
   NavigatorOptions,
   NavigatorWindow,
@@ -33,7 +35,10 @@ export type {
   VisitMethod,
   VisitOptions,
   VisitProgress,
+  VersionChange,
 } from './navigation.ts';
+export { OnceStore } from './once.ts';
+export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, Remembered, rememberable, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
 export { DEFAULT_PROGRESS_DELAY, markBusy, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export { accepted, confirmRequest, nativeConfirm } from './confirm.ts';
 export type { Confirm, ConfirmAnswer, ConfirmHandler, ConfirmOptions, ConfirmRequest, NativeDialogs } from './confirm.ts';
@@ -48,7 +53,8 @@ export type { PageMessages } from './messages.ts';
 export { resolveRoute } from './routes.ts';
 export { HOVER_PREFETCH_DELAY, isCurrentLink, matchesRouteName, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
 export type { LinkClick, PrefetchSetting, PrefetchTrigger } from './links.ts';
-export { dirtyPaths, firstErrors, isDirtyPath } from './forms.ts';
+export { defaultFormEntries, dirtyPaths, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, isDirtyPath, restoreFormEntries, sameEntries } from './forms.ts';
+export type { FormEntries } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export type { TitleTemplate } from './title.ts';
 export { Region, regionId, regionInitial, RegionOwner } from './region.ts';

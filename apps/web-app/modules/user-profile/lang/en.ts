@@ -11,6 +11,8 @@ const en = {
     edit: 'Edit profile',
     activity: 'Recent activity',
     activity_loading: 'Loading activity…',
+    // The profile's placeholder (E64, an instant visit): its name at once, the rest when it arrives.
+    loading: 'Loading the profile…',
     activity_entry: '{kind, select, link {Added the link “{label}”} signed-in {Signed in} other {Joined}}',
     stats: 'Statistics',
     stats_loading: 'Loading statistics…',
@@ -28,6 +30,7 @@ const en = {
   },
   people: {
     title: 'People',
+    loading: 'Loading people…',
     search: 'Search by name',
     sort: 'Sort',
     sort_name: 'Name A–Z',

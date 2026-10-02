@@ -180,10 +180,14 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
   const owners: RegionOwner[] = [];
   /** The layers handed with each render (E53). */
   const stacks: (readonly Layer[])[] = [];
+  /** Every render in order — an instant visit's placeholder too (E64), which `shown` leaves out (it is no page). */
+  const renders: { page: PageObject; placeholder: boolean }[] = [];
   const navigator = new Navigator({
     initialPage: initial,
     window: win,
-    render: async (next, { owner, layers }) => {
+    render: async (next, { owner, layers, placeholder = false }) => {
+      renders.push({ page: next, placeholder });
+      if (placeholder) return;
       shown.push(next);
       owners.push(owner);
       stacks.push(layers);
@@ -197,6 +201,7 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
     shown,
     owners,
     stacks,
+    renders,
     stop,
     visible: () => shown.at(-1) ?? base,
     owner: () => owners.at(-1) ?? navigator.regionOwner,

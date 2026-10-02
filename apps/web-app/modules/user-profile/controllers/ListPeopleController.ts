@@ -19,6 +19,8 @@ export const ListPeopleRequest = defineRequest({
 /** `/people`: everyone, filtered and sorted by the URL — ten at a time, "Load more" appends the next ten. */
 export class ListPeopleController extends Controller {
   static request = ListPeopleRequest;
+  /** An instant visit (E64): the list's placeholder needs nothing — `<Link route="user-profile.people" instant>`. */
+  declare readonly instant: {};
 
   readonly #directory: ProfileDirectory;
 

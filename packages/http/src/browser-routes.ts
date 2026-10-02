@@ -19,9 +19,20 @@ export interface BrowserRoutes {
    * The routes the browser may learn — the named `web` routes and `clientRoutes.include`, without `.internal()` routes
    * and `clientRoutes.except`. A client build ships only those its code names (E57); the SSR renderer gets all of them.
    */
-  readonly routes: Readonly<Record<string, { readonly method: string; readonly path: string }>>;
+  readonly routes: Readonly<Record<string, BrowserRoute>>;
   /** The other named routes and why they stay on the server — for the build's error messages only, never bundled. */
   readonly hidden: Readonly<Record<string, HiddenReason>>;
+}
+
+/** One route the browser may learn. */
+export interface BrowserRoute {
+  readonly method: string;
+  readonly path: string;
+  /**
+   * The page its controller renders, when that is written out once in it (`this.view('user-profile/Show', …)` — not a layer, an
+   * island or a computed name): an instant visit (E64, `<Link instant>`) shows that view's placeholder before the answer.
+   */
+  readonly view?: string;
 }
 
 /** Which named routes the browser may learn (`clientRoutes` of `defineApplication`). */
@@ -38,14 +49,34 @@ export function browserRoutes(routes: readonly RouteDefinition[], { include = []
   const named = routes
     .filter((route): route is RouteDefinition & { routeName: string } => route.routeName !== undefined)
     .sort((a, b) => (a.routeName < b.routeName ? -1 : 1));
-  const allowed: Record<string, { method: string; path: string }> = {};
+  const allowed: Record<string, BrowserRoute> = {};
   const hidden: Record<string, HiddenReason> = {};
   for (const route of named) {
     const reason = hiddenReason(route, include, except);
     if (reason) hidden[route.routeName] = reason;
-    else allowed[route.routeName] = { method: route.methods[0]!.toLowerCase(), path: route.path };
+    else {
+      const view = route.methods.includes('GET') ? staticView(route.action) : undefined;
+      allowed[route.routeName] = { method: route.methods[0]!.toLowerCase(), path: route.path, ...(view ? { view } : {}) };
+    }
   }
   return { version: 1, routes: allowed, hidden };
+}
+
+/** `this.view('a/B'` with a literal name — what a controller's `handle` renders. */
+const VIEW_CALL = /\bthis\.view\(\s*(['"`])([\w./-]+)\1/g;
+
+/**
+ * The page a controller renders, read from its `handle` (E64, instant visits): exactly one view name written out, and the
+ * result is a page — no layer (`.layer(`), no island. Anything else (a closure, two views, a name built at runtime): none, and
+ * an instant visit of the route simply waits for its answer.
+ */
+export function staticView(action: unknown): string | undefined {
+  const handle = typeof action === 'function' ? (action as { prototype?: { handle?: unknown } }).prototype?.handle : undefined;
+  if (typeof handle !== 'function') return undefined;
+  const source = Function.prototype.toString.call(handle);
+  if (/\.layer\(|\bthis\.island\(/.test(source)) return undefined;
+  const views = new Set([...source.matchAll(VIEW_CALL)].map((match) => match[2]!));
+  return views.size === 1 ? [...views][0] : undefined;
 }
 
 function hiddenReason(route: RouteDefinition & { routeName: string }, include: readonly string[], except: readonly string[]): HiddenReason | undefined {

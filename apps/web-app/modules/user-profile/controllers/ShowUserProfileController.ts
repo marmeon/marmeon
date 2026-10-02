@@ -6,6 +6,12 @@ import { ProfileActivity } from '../ProfileActivity.ts';
 import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
 
 export class ShowUserProfileController extends Controller {
+  /**
+   * What a link may show of the profile at once (E64, an instant visit) — the name it already lists: `<Link instant={{ name }}>`.
+   * The view's placeholder gets exactly this; the profile itself renders only with the server's answer.
+   */
+  declare readonly instant: { name: string };
+
   readonly #directory: ProfileDirectory;
   readonly #activity: ProfileActivity;
   readonly #gate: Gate;

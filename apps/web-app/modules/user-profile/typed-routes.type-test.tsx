@@ -49,8 +49,9 @@ export function InTheBrowser() {
   // Did you mean to write 'bio'?
   // @ts-expect-error
   useForm('user-profile.update', { user: 7 }, { name: '', bioo: '' });
-  // Argument of type 'string' is not assignable to parameter of type 'object'. (Since W5b.7 — two arguments fit only the
-  // controller form's overload; it was "Expected 3 arguments, but got 2." before. Merkposten.)
+  // … Type '{ name: string; bio: string; }' is not assignable to type '"'user-profile.update' takes route parameters — pass them
+  // before the initial data: useForm('user-profile.update', params, initial)"'. (W5b.10; W5b.7–9 said "Argument of type 'string'
+  // is not assignable to parameter of type 'object'" — two arguments fit only the controller form's overload then.)
   // @ts-expect-error — the route needs { user }
   useForm('user-profile.update', { name: '', bio: '' });
   // ... '"'auth.logout' has no request schema to type a form with — give its controller `static request = defineRequest(…)`"'.

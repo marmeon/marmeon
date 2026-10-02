@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Island, Link, useTranslation } from '@bespokecore/react';
+import { Head, Island, Link, useTranslation, type Placeholder } from '@bespokecore/react';
 import type { ShowDashboardController } from '../controllers/ShowDashboardController.ts';
 
 type Props = PageProps<ShowDashboardController>;
@@ -46,3 +46,16 @@ export default function Show(_props: Props) {
     </main>
   );
 }
+
+/** The dashboard before its answer (E64, an instant visit from the main navigation): its title, the panels as they load. */
+function DashboardPlaceholder() {
+  const t = useTranslation('dashboard');
+  return (
+    <main aria-busy="true" data-placeholder="">
+      <Head title={t('title')} />
+      <h1>{t('title')}</h1>
+      <p style={{ opacity: 0.5 }}>{t('loading')}</p>
+    </main>
+  );
+}
+Show.placeholder = DashboardPlaceholder satisfies Placeholder<ShowDashboardController>;

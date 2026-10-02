@@ -1,5 +1,5 @@
 import { Auth } from '@bespokecore/auth';
-import { SharedData, type HttpContext, type Next } from '@bespokecore/http';
+import { once, SharedData, type HttpContext, type Next } from '@bespokecore/http';
 import { Locales } from '@bespokecore/i18n';
 
 declare module '@bespokecore/http/page' {
@@ -41,7 +41,9 @@ export class ShareAppProps {
         const user = await this.#auth.user();
         return { user: user ? { id: user.id, name: user.name, verified: user.email_verified_at !== null } : null };
       })
-      .share('locales', this.#locales.supported);
+      // The same list on every page (E64): sent with the first page, then kept by the browser — the server skips it while the
+      // tab holds it. A language switch or signing in or out is a full load: it comes again then.
+      .share('locales', once(() => this.#locales.supported));
     return next();
   }
 }

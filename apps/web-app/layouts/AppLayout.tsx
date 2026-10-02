@@ -1,4 +1,5 @@
-import { Link, usePage, useTranslation, type LayoutProps } from '@bespokecore/react';
+import { Form, Link, useNewVersion, usePage, useRouter, useTranslation, type LayoutProps } from '@bespokecore/react';
+import { useEffect } from 'react';
 import { Toasts } from './Toasts.tsx';
 
 /** A language's name in itself — "Deutsch", "English" (the same in Node and the browser: both have ICU). */
@@ -23,27 +24,33 @@ export function AppLayout({ children }: LayoutProps) {
         {/* The link to the page on screen gets aria-current="page" and data-current by itself (E64). */}
         {user && (
           <nav aria-label={t('main')} style={{ display: 'flex', gap: 12 }}>
-            <Link route="dashboard.show">{t('dashboard')}</Link>
+            {/* Instant visits (E64): the page's placeholder shows at once, inside this layout — then the page. */}
+            <Link route="dashboard.show" instant>
+              {t('dashboard')}
+            </Link>
             {/* Current for the list however it is searched or sorted (its route), not only for /people itself. */}
-            <Link route="user-profile.people" activeMatch="user-profile.people">
+            <Link route="user-profile.people" activeMatch="user-profile.people" instant>
               {t('people')}
             </Link>
           </nav>
         )}
-        {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. */}
-        <nav aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
-          {locales.map((code) =>
-            code === locale ? (
-              <strong key={code} lang={code} aria-current="true">
-                {nameOf(code)}
-              </strong>
-            ) : (
-              <Link key={code} route="locale.update" data={{ locale: code }} lang={code}>
-                {nameOf(code)}
-              </Link>
-            ),
-          )}
-        </nav>
+        {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. An uncontrolled
+            `<Form>` (E64): the pressed button's `locale` is the field — without JavaScript a real form (`_token` included). */}
+        <Form route="locale.update" aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
+          {(form) =>
+            locales.map((code) =>
+              code === locale ? (
+                <strong key={code} lang={code} aria-current="true">
+                  {nameOf(code)}
+                </strong>
+              ) : (
+                <button key={code} type="submit" {...form.field('locale')} value={code} lang={code} disabled={form.processing}>
+                  {nameOf(code)}
+                </button>
+              ),
+            )
+          }
+        </Form>
         {user ? (
           <details data-account-menu>
             <summary>{user.name}</summary>
@@ -70,9 +77,30 @@ export function AppLayout({ children }: LayoutProps) {
           </nav>
         )}
       </header>
+      <NewVersionBanner />
       {children}
       {/* Flash messages (E60): each once, as a toast. */}
       <Toasts />
     </>
+  );
+}
+
+/**
+ * A new build is out (E64). Nothing typed is lost: with unsaved changes (a guarded form), the page does not reload — this says
+ * so instead, and the next visit loads the new version anyway. Without unsaved changes it reloads at once, as before.
+ */
+function NewVersionBanner() {
+  const t = useTranslation('app');
+  const router = useRouter();
+  useEffect(() => router.on('version', (event) => event.unsaved && event.preventDefault()), [router]);
+  const waiting = useNewVersion();
+  if (!waiting) return null;
+  return (
+    <p role="status" data-new-version="" style={{ background: '#fff4ce', padding: '8px 12px', borderRadius: 4 }}>
+      {t('new_version')}{' '}
+      <button type="button" onClick={() => waiting.reload()}>
+        {t('new_version_reload')}
+      </button>
+    </p>
   );
 }
