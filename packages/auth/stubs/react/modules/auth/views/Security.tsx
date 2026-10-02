@@ -8,8 +8,10 @@ type Props = PageProps<ShowSecurityController>;
 
 export default function Security({ viaRemember, email, auth }: Props) {
   const t = useTranslation('auth');
-  const emailForm = useForm('auth.email.update', { email });
-  const passwordForm = useForm('auth.password.update', { current_password: '', password: '', password_confirmation: '' });
+  // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
+  // is still there after Back/Forward (remembered in memory, E63).
+  const emailForm = useForm('auth.email.update', {}, { email }, { guard: t('security.unsaved'), remember: true });
+  const passwordForm = useForm('auth.password.update', {}, { current_password: '', password: '', password_confirmation: '' }, { guard: t('security.unsaved') });
   const devicesForm = useForm('auth.devices.logout', { password: '' });
 
   return (

@@ -78,6 +78,7 @@ const en = {
   },
   security: {
     title: 'Security',
+    unsaved: 'You have changes on this page that are not saved. Leave anyway?',
     remembered: '{name}, you were signed in by “Keep me signed in” on this device.',
     email_heading: 'E-mail address',
     email: 'E-mail',
@@ -108,6 +109,8 @@ const en = {
     never_used: 'never used',
     expires: 'expires {at}',
     revoke: 'Revoke',
+    revoke_title: 'Revoke “{name}”?',
+    revoke_confirm: 'Programs using this token can no longer sign in. This cannot be undone.',
     revoked: 'Token revoked. Programs using it can no longer sign in.',
     create: 'Create a token',
     name: 'Name',

@@ -41,7 +41,11 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
               <strong>{token.name}</strong> — {token.abilities.join(', ')} ·{' '}
               {token.lastUsedAt ? t('tokens.last_used', { at: `${at(token.lastUsedAt)} UTC` }) : t('tokens.never_used')}
               {token.expiresAt && ` · ${t('tokens.expires', { at: t.format.date(token.expiresAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}`}{' '}
-              <Link route="auth.tokens.destroy" params={{ token: token.id }}>
+              <Link
+                route="auth.tokens.destroy"
+                params={{ token: token.id }}
+                confirm={{ title: t('tokens.revoke_title', { name: token.name }), message: t('tokens.revoke_confirm'), confirmLabel: t('tokens.revoke'), destructive: true }}
+              >
                 {t('tokens.revoke')}
               </Link>
             </li>

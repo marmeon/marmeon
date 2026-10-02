@@ -3,10 +3,16 @@
 /**
  * The adapter contract is real: a complete "UI adapter" in a dozen lines of plain DOM — it renders a page as its
  * component name and props in text — drives the client core through a visit, Back/Forward, deferred props, a partial
- * reload and a 409, with no UI framework anywhere. A Vue (or Svelte, or Solid) adapter is this plus components.
+ * reload and a 409, and through what W5b added: islands (loaded, and hydrated from the SSR stream's data block), layers
+ * (Back closes, Forward opens from memory), an action with an optimistic patch and its rollback, a flash message fired
+ * once, the navigation guard, an instant visit's placeholder, remembered state and a postponed new build — with no UI
+ * framework anywhere. A Vue (or Svelte, or Solid) adapter is this plus components.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ACTION_HEADER,
+  ACTION_REDIRECT_HEADER,
+  FLASH_HEADER,
   LOCATION_HEADER,
   PAGE_HEADER,
   PAGE_SCRIPT_ID,
@@ -14,9 +20,12 @@ import {
   PARTIAL_DATA_HEADER,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  RELOAD_HEADER,
+  scriptJson,
   VALIDATE_HEADER,
   VALIDATED_HEADER,
   type PageObject,
+  type RegionResult,
 } from '../page.ts';
 import {
   firstErrors,
@@ -26,10 +35,12 @@ import {
   Navigator,
   PROGRESS_ATTRIBUTE,
   readInitialPage,
+  regionInitial,
   rootElement,
   showProgress,
   visitUrlOf,
   type PageMessages,
+  type RegionOwner,
 } from './index.ts';
 
 /** The whole adapter: the hydration entry, rendering a page object, the progress bar. */
@@ -233,6 +244,244 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(window.location.pathname).toBe('/users/1');
     expect(pageRenders).toBe(renders); // the page was not rendered again
     expect(JSON.stringify(window.history.state)).not.toContain('Ada');
+    stop();
+  });
+
+  it('hydrates a streamed island from its data block (E49): no request — and Back shows it from the entry’s memory', async () => {
+    window.fetch = server as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    // What the SSR stream left in the document: the island's markup and, in its boundary, the `RegionResult` the kernel resolved.
+    const streamed: RegionResult = { status: 'ready', region: { component: 'dashboard/SignIns', props: { who: ['Ada'] }, url: '/islands/sign-ins', version: 'v1' } };
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    document.getElementById('app')!.innerHTML = `<p>users/Show</p><div id="island">dashboard/SignIns {"who":["Ada"]}</div><script type="application/json" id="bespoke-island-0">${scriptJson(streamed)}</script>`;
+    const initialPage = readInitialPage();
+    const root = await rootElement('app');
+    let navigator!: Navigator;
+    const renderIsland = (element: Element, owner: RegionOwner) => {
+      // The adapter reads the data block once, while hydrating — a later render (Back) finds the region in the entry's memory.
+      const block = document.getElementById('bespoke-island-0');
+      const initial = block ? regionInitial(JSON.parse(block.textContent!) as RegionResult) : undefined;
+      block?.remove();
+      const region = navigator.region('/islands/sign-ins', { owner, initial });
+      const draw = () => {
+        const shown = region.snapshot.region;
+        element.textContent = shown ? `${shown.component} ${JSON.stringify(shown.props)}` : region.snapshot.status;
+      };
+      region.subscribe(draw);
+      draw();
+      void region.load();
+    };
+    navigator = new Navigator({
+      initialPage,
+      render: async (next, { owner }) => {
+        root.innerHTML = `<p>${next.component}</p><div id="island"></div>`;
+        if (next.component === 'users/Show' && next.url === '/users/1') renderIsland(root.querySelector('#island')!, owner);
+      },
+    });
+    const stop = navigator.start();
+    renderIsland(root.querySelector('#island')!, navigator.regionOwner);
+    const island = () => root.querySelector('#island')!.textContent;
+    expect(island()).toBe('dashboard/SignIns {"who":["Ada"]}');
+    await navigator.visit('/users/2');
+    window.history.back();
+    await vi.waitFor(() => expect(window.location.pathname).toBe('/users/1'));
+    await vi.waitFor(() => expect(island()).toBe('dashboard/SignIns {"who":["Ada"]}'));
+    expect(requests.filter((request) => request.headers[REGION_HEADER] === 'island')).toEqual([]);
+    stop();
+  });
+
+  it('opens a layer, Back closes it, Forward opens it again from memory — no request either way', async () => {
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      const headers = { ...(init.headers as Record<string, string>) };
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers });
+      if (url.pathname !== '/users/1/edit') return server(input, init);
+      return respond(page('users/Edit', '/users/1/edit', { name: 'Ada' }, { layer: { key: 'users/Edit', base: '/users/1' } }));
+    }) as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    const root = await rootElement('app');
+    const navigator = new Navigator({
+      initialPage: readInitialPage(),
+      render: async (next, { layers }) => {
+        root.innerHTML = `<p>${next.component}</p>${layers.map((layer) => `<dialog open>${layer.page.component} ${JSON.stringify(layer.view.props)}</dialog>`).join('')}`;
+      },
+    });
+    const stop = navigator.start();
+    const dialogs = () => [...root.querySelectorAll('dialog')].map((dialog) => dialog.textContent);
+    await navigator.visit('/users/1/edit', { layer: true });
+    expect(requests.at(-1)!.headers).toMatchObject({ [REGION_HEADER]: 'layer' });
+    expect(window.history.state).toMatchObject({ layer: { depth: 1 } });
+    const asked = requests.length;
+    window.history.back();
+    await vi.waitFor(() => expect(dialogs()).toEqual([]));
+    window.history.forward();
+    await vi.waitFor(() => expect(dialogs()).toEqual(['users/Edit {"name":"Ada"}']));
+    expect(window.location.pathname).toBe('/users/1/edit');
+    expect(requests.length).toBe(asked);
+    stop();
+  });
+
+  it('runs an action with an optimistic patch (E59): shown at once, rolled back on a 422 — kept, with its flash, on success', async () => {
+    let answer: 'invalid' | 'ok' = 'invalid';
+    let release!: () => void;
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      const headers = { ...(init.headers as Record<string, string>) };
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers });
+      if (headers[ACTION_HEADER] !== 'true') return server(input, init);
+      await new Promise<void>((done) => (release = done));
+      if (answer === 'invalid') return new Response(JSON.stringify({ message: 'Invalid.', errors: { link: ['Not yours.'] } }), { status: 422, headers: { 'content-type': 'application/json' } });
+      // The kernel's answer to an action that redirected: 204 + where to, and the flash messages it took (E60).
+      const flash = [{ id: 'f1', key: 'toast', data: { message: 'Removed.' } }];
+      return new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/1', [FLASH_HEADER]: encodeURIComponent(JSON.stringify(flash)) } });
+    }) as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { links: ['blog', 'code'] }));
+    const { navigator, root, stop } = await createTextApp();
+    const toasts: string[] = [];
+    navigator.on('flash', (message) => toasts.push((message.data as { message: string }).message));
+    const withoutCode = navigator.optimistic((props) => ({ links: (props.links as string[]).filter((link) => link !== 'code') }));
+
+    const failing = navigator.action('/users/1/links/code', { method: 'delete', optimistic: withoutCode });
+    await vi.waitFor(() => expect(root.textContent).toBe('users/Show {"links":["blog"]}')); // at once, before the answer
+    release();
+    expect(await failing).toMatchObject({ ok: false, kind: 'invalid', errors: { link: ['Not yours.'] } });
+    expect(root.textContent).toBe('users/Show {"links":["blog","code"]}'); // rolled back
+    expect(requests.at(-1)!.headers).toMatchObject({ [ACTION_HEADER]: 'true', accept: 'application/json' });
+
+    answer = 'ok';
+    const succeeding = navigator.action('/users/1/links/code', { method: 'delete', optimistic: navigator.optimistic((props) => ({ links: (props.links as string[]).filter((link) => link !== 'code') })) });
+    await vi.waitFor(() => expect(root.textContent).toBe('users/Show {"links":["blog"]}'));
+    release();
+    expect(await succeeding).toMatchObject({ ok: true, kind: 'redirect', redirect: '/users/1' });
+    expect(root.textContent).toBe('users/Show {"links":["blog"]}'); // no reload asked: the patch is the state now
+    expect(toasts).toEqual(['Removed.']);
+    expect(window.location.pathname).toBe('/users/1'); // an action never navigates
+    expect(JSON.stringify(window.history.state)).not.toContain('blog');
+    stop();
+  });
+
+  it('fires a flash message once (E60): not again for a partial reload that brings it again, nor for Back/Forward', async () => {
+    const toast = { id: 'saved-1', key: 'toast', data: { message: 'Saved.' } };
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      const headers = { ...(init.headers as Record<string, string>) };
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers });
+      if (url.pathname === '/users/1' && init.method === 'PUT') return respond(page('users/Show', '/users/1', { user: 'Ada L.' }, { flash: [toast] }));
+      // A race of two requests delivered the same message twice: by its id, it fires once.
+      if (headers[PARTIAL_DATA_HEADER]) return respond(page('users/Show', '/users/1', { stats: { links: 3 } }, { flash: [toast] }));
+      return server(input, init);
+    }) as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    const { navigator, stop } = await createTextApp();
+    const toasts: string[] = [];
+    navigator.onFlash('toast', (message) => toasts.push((message.data as { message: string }).message));
+    await navigator.visit('/users/1', { method: 'put', data: { name: 'Ada L.' } });
+    expect(toasts).toEqual(['Saved.']);
+    await navigator.reload({ only: ['stats'] });
+    await navigator.visit('/users/2');
+    window.history.back();
+    await vi.waitFor(() => expect(window.location.pathname).toBe('/users/1'));
+    window.history.forward();
+    await vi.waitFor(() => expect(window.location.pathname).toBe('/users/2'));
+    expect(toasts).toEqual(['Saved.']);
+    // The core keeps no message with a page: the history entry and the page in memory hold none.
+    expect(JSON.stringify(window.history.state)).not.toContain('Saved');
+    stop();
+  });
+
+  it('guards unsaved changes (E64): the adapter’s dialog says Stay — no request, Back undone; Leave — the visit goes', async () => {
+    window.fetch = server as typeof fetch;
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    const root = await rootElement('app');
+    // The adapter's confirm: its own dialog (here: an answer queue) — the core decides what the answer means.
+    const asked: string[] = [];
+    let answer = false;
+    const navigator = new Navigator({
+      initialPage: readInitialPage(),
+      render: async (next) => void (root.textContent = `${next.component} ${JSON.stringify(next.props)}`),
+      confirm: (request) => (asked.push(`${request.kind}: ${request.message}`), answer),
+    });
+    const stop = navigator.start();
+    await navigator.visit('/users/2');
+    await vi.waitFor(() => expect(root.textContent).toContain('activity')); // its deferred props are in
+    let dirty = true;
+    const lift = navigator.guard({ message: 'Unsaved changes.', active: () => dirty });
+    const sent = requests.length;
+    expect(await navigator.visit('/users/1')).toBeUndefined();
+    expect(requests.length).toBe(sent); // Stay: nothing sent
+    expect(asked).toEqual(['leave: Unsaved changes.']);
+
+    // Back: the browser went already — the core goes forward again and asks; Stay keeps the page and its URL.
+    window.history.back();
+    await vi.waitFor(() => expect(asked.length).toBe(2));
+    await vi.waitFor(() => expect(window.location.pathname).toBe('/users/2'));
+    expect(root.textContent).toContain('"user":"Grace"');
+
+    answer = true;
+    await navigator.visit('/users/1');
+    expect(window.location.pathname).toBe('/users/1');
+    expect(asked.length).toBe(3);
+    dirty = false;
+    await navigator.visit('/users/2');
+    expect(asked.length).toBe(3); // nothing unsaved: nothing asked
+    lift();
+    stop();
+  });
+
+  it('shows an instant visit’s placeholder, remembers state per entry and postpones a new build — all from the core', async () => {
+    let release!: () => void;
+    let newBuild = false;
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers: { ...(init.headers as Record<string, string>) } });
+      if (newBuild) return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: url.pathname, [RELOAD_HEADER]: 'version' } });
+      if (url.pathname === '/users/2') await new Promise<void>((done) => (release = done));
+      return server(input, init);
+    }) as typeof fetch;
+    const loads: string[] = [];
+    window.location.assign = (url: string | URL) => void loads.push(String(url));
+    window.history.replaceState(null, '', '/users/1');
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    const root = await rootElement('app');
+    let owner!: RegionOwner;
+    const navigator = new Navigator({
+      initialPage: readInitialPage(),
+      // The adapter: a placeholder is the view's own (`users/Show` → "Loading <name> …"), never the view with partial props.
+      render: async (next, options) => {
+        if (options.placeholder) return void (root.textContent = `Loading ${String(next.props.name)} …`);
+        owner = options.owner;
+        root.textContent = `${next.component} ${JSON.stringify(next.props)}`;
+      },
+    });
+    owner = navigator.regionOwner;
+    const stop = navigator.start();
+    owner.remembered.set('tab', 'links'); // remembered state of /users/1's entry (E63)
+
+    const visiting = navigator.visit('/users/2', { instant: { component: 'users/Show', props: { name: 'Grace' } } });
+    await vi.waitFor(() => expect(root.textContent).toBe('Loading Grace …'));
+    expect(window.location.pathname).toBe('/users/1'); // the entry comes with the page
+    release();
+    await visiting;
+    expect(root.textContent).toContain('"user":"Grace"');
+    expect(window.location.pathname).toBe('/users/2');
+    expect(owner.remembered.has('tab')).toBe(false);
+    window.history.back();
+    await vi.waitFor(() => expect(window.location.pathname).toBe('/users/1'));
+    await vi.waitFor(() => expect(owner.remembered.get('tab')).toBe('links'));
+
+    // A new build (409 + `x-bespoke-reload: version`): the adapter keeps the page — "a new version is available".
+    newBuild = true;
+    navigator.on('version', (event) => event.preventDefault());
+    expect(await navigator.visit('/users/2')).toBeUndefined();
+    expect(loads).toEqual([]);
+    expect(navigator.newVersion).toBe('/users/2');
+    expect(root.textContent).toContain('"user":"Ada"');
+    navigator.reloadForNewVersion();
+    expect(loads).toEqual(['/users/2']);
     stop();
   });
 

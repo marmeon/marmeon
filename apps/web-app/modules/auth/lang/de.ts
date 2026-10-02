@@ -73,6 +73,7 @@ export default {
   },
   security: {
     title: 'Sicherheit',
+    unsaved: 'Auf dieser Seite gibt es ungespeicherte Änderungen. Trotzdem verlassen?',
     remembered: '{name}, du wurdest auf diesem Gerät über „Angemeldet bleiben“ angemeldet.',
     email_heading: 'E-Mail-Adresse',
     email: 'E-Mail',

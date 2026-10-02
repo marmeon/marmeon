@@ -73,6 +73,7 @@ const en = {
   },
   security: {
     title: 'Security',
+    unsaved: 'You have changes on this page that are not saved. Leave anyway?',
     remembered: '{name}, you were signed in by “Keep me signed in” on this device.',
     email_heading: 'E-mail address',
     email: 'E-mail',
