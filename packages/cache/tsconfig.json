@@ -23,6 +23,15 @@
     },
     {
       "path": "../server"
+    },
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../redis"
+    },
+    {
+      "path": "../cli"
     }
   ]
 }

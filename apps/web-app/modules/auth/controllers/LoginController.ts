@@ -47,15 +47,16 @@ export class LoginController extends Controller {
     const { email, password, remember } = ctx.body;
     // Keyed on the *validated* e-mail, after validation — never on raw input (Breeze's ensureIsNotRateLimited).
     const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
-    if (await this.#limiter.tooManyAttempts(key, MAX_ATTEMPTS)) {
+    // Counted BEFORE the password is checked, in one atomic step: guesses sent at once can never all get past the limit
+    // (checking first and counting after a failure lets every request that checks before the others through).
+    if (!(await this.#limiter.attempt(key, MAX_ATTEMPTS, DECAY_SECONDS))) {
       await this.#events.dispatch(new Lockout(email, ctx.ip));
       const seconds = await this.#limiter.availableIn(key);
       throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds })] }, { email });
     }
 
-    // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify).
+    // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify). The attempt stays counted.
     if (!(await this.#auth.attempt(email, password, { remember }))) {
-      await this.#limiter.hit(key, DECAY_SECONDS);
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
 

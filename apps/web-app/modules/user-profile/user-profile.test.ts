@@ -241,8 +241,8 @@ describe('user-profile module', () => {
   });
 
   it('boots modules and discovered packages through their providers', () => {
-    expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile', 'dashboard', 'locale', 'lab']);
-    expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log', '@bespokecore/session']));
+    expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile', 'dashboard', 'locale', 'lab', 'system']);
+    expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log', '@bespokecore/session', '@bespokecore/redis']));
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });
 

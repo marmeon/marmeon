@@ -13,6 +13,8 @@ export { Application, createApplication, defineApplication } from './application
 export type { ApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, Logger } from './logger.ts';
+export { Clock, durationToMilliseconds, SystemClock, TestClock } from './clock.ts';
+export type { Duration } from './clock.ts';
 export { fillPlaceholders, Translator } from './translator.ts';
 export { EventDispatcher, EventRegistry, listen } from './events.ts';
 export type { EventClass, Listener, ListenerBinding, ListenerLike } from './events.ts';

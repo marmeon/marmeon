@@ -5,6 +5,18 @@ import type { Generated, JsonColumn, Secret, Timestamp } from '@bespokecore/data
 
 declare module '@bespokecore/database' {
   interface Tables {
+    /** Owned by `system`. */
+    cache: {
+      key: string;
+      value: string;
+      expiration: number | null;
+    };
+    /** Owned by `system`. */
+    cache_locks: {
+      key: string;
+      owner: string;
+      expiration: number;
+    };
     /** Owned by `user-profile`. */
     login_activity: {
       user_id: number;
@@ -64,6 +76,8 @@ declare module '@bespokecore/database' {
     };
   }
   interface TableOwners {
+    cache: 'system';
+    cache_locks: 'system';
     login_activity: 'user-profile';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
@@ -79,6 +93,7 @@ declare module '@bespokecore/database' {
     dashboard: true;
     lab: true;
     locale: true;
+    system: true;
     'user-profile': true;
   }
 }

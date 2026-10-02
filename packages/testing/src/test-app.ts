@@ -1,9 +1,12 @@
 import {
+  Clock,
   createApplication,
   loadEnv,
+  TestClock,
   type Application,
   type ApplicationOptions,
   type Container,
+  type Duration,
   type Key,
   type Resolve,
 } from '@bespokecore/core';
@@ -97,6 +100,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   const mail = options.mail === 'real' ? undefined : await importMail();
   let mailFake: MailFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
+  const clock = new TestClock();
 
   let worker: WorkerDatabase | undefined;
   if (options.database === 'refresh') {
@@ -119,6 +123,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     ...definition,
     env,
     override: (container) => {
+      // The time, movable from the test (E97): app.travel({ minutes: 5 }), app.freeze().
+      container.instance(Clock, clock);
       if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
       if (mail && container.has(mail.Mailer)) {
         mailFake = new mail.MailFake(container.make(mail.MailConfig).from);
@@ -144,6 +150,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     kernel: createHttpKernel(application, ssr ? { renderer: ssr.renderer } : {}),
     database,
     mail: mailFake,
+    clock,
     ssr,
     cleanups: ssr ? [() => ssr.close()] : [],
     closing: undefined,
@@ -189,6 +196,8 @@ interface Shared {
   readonly database: DatabaseModule | undefined;
   /** The recording mailer, unless the app has no mail or the test chose `mail: 'real'`. */
   readonly mail: MailFake | undefined;
+  /** The app's `Clock`. */
+  readonly clock: TestClock;
   /** Server rendering, with `ssr: true`. */
   readonly ssr: TestSsr | undefined;
   /** Run before the app shuts down, e.g. rolling back the test's transaction. */
@@ -328,6 +337,29 @@ export class TestApp {
   get mail(): MailFake {
     if (!this.#shared.mail) throw new Error("app.mail needs @bespokecore/mail in the app (and not createTestApp(…, { mail: 'real' })).");
     return this.#shared.mail;
+  }
+
+  /**
+   * The app's clock (E97) — every service that reads the time through `Clock` (cache expiry, locks, rate limits, …) sees
+   * it move. Redis keeps its own time: a key's `PX` expiry does not follow.
+   */
+  get clock(): TestClock {
+    return this.#shared.clock;
+  }
+
+  /** Moves the app's time forward (negative parts: back): `app.travel({ minutes: 1, seconds: 1 })`. Returns the new time. */
+  travel(duration: Duration): number {
+    return this.#shared.clock.travel(duration);
+  }
+
+  /** Jumps to a point in time: `app.travelTo(new Date('2026-12-24T18:00:00Z'))`. */
+  travelTo(time: Date | number): number {
+    return this.#shared.clock.travelTo(time);
+  }
+
+  /** Stops the app's time (now, or at `time`) until the next travel — `app.freeze()` returns the frozen time. */
+  freeze(time?: Date | number): number {
+    return this.#shared.clock.freeze(time);
   }
 
   /**

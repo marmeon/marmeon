@@ -1,4 +1,5 @@
 import { HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@bespokecore/router';
+import { Clock } from '@bespokecore/core';
 import { Cache } from './cache.ts';
 
 /** How many attempts per window, and whose attempts count together (`by`). */
@@ -41,6 +42,11 @@ export type LimiterCallback = (ctx: HttpContext) => Limit | readonly Limit[] | P
 /**
  * Counts attempts in the cache (Laravel's `RateLimiter`). Named limiters are
  * defined once — in a provider's boot — and applied with `throttle(name)`.
+ *
+ * Counting and deciding are ONE atomic step of the cache store (`hit` returns the new count, `attempt` decides on
+ * it): 100 requests at once against a limit of 10 let exactly 10 through, across processes with a shared store
+ * (`database`, `redis`; `file` on one machine). Checking first and counting afterwards would let every request
+ * that checks before the others count through.
  */
 export class RateLimiter {
   readonly #cache: Cache;
@@ -60,15 +66,30 @@ export class RateLimiter {
     return this.#limiters.get(name);
   }
 
-  /** Counts one attempt against `key`; returns the attempts in the current window. */
+  /**
+   * Counts one attempt against `key` and returns the attempts in the current window, this one included — atomically.
+   * The first attempt opens a window of `decaySeconds`; later ones do not extend it.
+   */
   hit(key: string, decaySeconds: number): Promise<number> {
     return this.#cache.increment(`limiter:${key}`, 1, decaySeconds);
+  }
+
+  /**
+   * Counts one attempt and says whether it is within `maxAttempts` — one atomic step, so concurrent attempts can never
+   * all slip through. A refused attempt counts too (the window does not restart).
+   */
+  async attempt(key: string, maxAttempts: number, decaySeconds: number): Promise<boolean> {
+    return (await this.hit(key, decaySeconds)) <= maxAttempts;
   }
 
   async attempts(key: string): Promise<number> {
     return (await this.#cache.get<number>(`limiter:${key}`)) ?? 0;
   }
 
+  /**
+   * Whether `key` used up `maxAttempts` — a read, for showing a state. To let an attempt through, use `attempt()`:
+   * checking here and counting afterwards is a race.
+   */
   async tooManyAttempts(key: string, maxAttempts: number): Promise<boolean> {
     return (await this.attempts(key)) >= maxAttempts;
   }
@@ -91,9 +112,11 @@ export class RateLimiter {
 export function throttle(name: string): MiddlewareClass<{}, {}> {
   const Throttle = class {
     readonly #limiter: RateLimiter;
+    readonly #clock: Clock;
 
-    constructor(limiter: RateLimiter) {
+    constructor(limiter: RateLimiter, clock: Clock) {
       this.#limiter = limiter;
+      this.#clock = clock;
     }
 
     async handle(ctx: HttpContext, next: Next<{}>): Promise<Response> {
@@ -107,7 +130,11 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
         // The window is part of the counter's key: two limits with the same `by` (per minute and per
         // second) must not share one counter — Laravel leaves that to unique `by` values.
         const key = `${name}:${limit.decaySeconds}:${limit.key}`;
-        if (await this.#limiter.tooManyAttempts(key, limit.maxAttempts)) {
+        // A live validation (E62) of the route is no attempt: it is held to the route's limit, but does not count against it — a
+        // form checked field by field must not use up the tries of sending it (it has its own limit: `LimitLiveValidation`).
+        // Every other request counts and is decided on its own count, in one atomic step (`hit`).
+        const attempts = live ? await this.#limiter.attempts(key) : await this.#limiter.hit(key, limit.decaySeconds);
+        if (live ? attempts >= limit.maxAttempts : attempts > limit.maxAttempts) {
           const retryAfter = await this.#limiter.availableIn(key);
           throw new HttpError(
             429,
@@ -116,15 +143,12 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
               'retry-after': String(retryAfter),
               'x-ratelimit-limit': String(limit.maxAttempts),
               'x-ratelimit-remaining': '0',
-              'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000) + retryAfter),
+              'x-ratelimit-reset': String(Math.ceil(this.#clock.now() / 1000) + retryAfter),
             },
             { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } },
           );
         }
-        // A live validation (E62) of the route is no attempt: it is held to the route's limit, but does not count against it — a
-        // form checked field by field must not use up the tries of sending it (it has its own limit: `LimitLiveValidation`).
         if (live) continue;
-        const attempts = await this.#limiter.hit(key, limit.decaySeconds);
         headers = { 'x-ratelimit-limit': String(limit.maxAttempts), 'x-ratelimit-remaining': String(Math.max(0, limit.maxAttempts - attempts)) };
       }
 
@@ -173,11 +197,10 @@ export class LimitLiveValidation {
     const name = route.routeName ?? `${ctx.request.method} ${route.path}`;
     for (const limit of limits) {
       const key = `${LIVE_VALIDATION_LIMITER}:${name}:${limit.decaySeconds}:${limit.key}`;
-      if (await this.#limiter.tooManyAttempts(key, limit.maxAttempts)) {
+      if (!(await this.#limiter.attempt(key, limit.maxAttempts, limit.decaySeconds))) {
         const retryAfter = await this.#limiter.availableIn(key);
         throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfter) }, { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } });
       }
-      await this.#limiter.hit(key, limit.decaySeconds);
     }
     return next();
   }

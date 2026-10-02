@@ -30,6 +30,7 @@ export { DbShowCommand } from './commands/db-show.ts';
 export { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 export { DbTypesCommand } from './commands/db-types.ts';
 export { DbSeedCommand } from './commands/db-seed.ts';
+export { publishMigration, SYSTEM_MODULE } from './commands/publish-migration.ts';
 export { defineFactory, Factories, PendingFactory } from './factories.ts';
 export type { FactoryContext, FactoryDefinition } from './factories.ts';
 export { Seeding } from './seeders.ts';

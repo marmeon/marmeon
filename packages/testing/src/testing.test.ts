@@ -1,6 +1,6 @@
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { tmpdir } from 'node:os';
-import { defineModule, type ApplicationOptions } from '@bespokecore/core';
+import { Clock, defineModule, type ApplicationOptions } from '@bespokecore/core';
 import { Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
@@ -59,6 +59,20 @@ async function failure(check: PromiseLike<unknown>): Promise<string> {
 }
 
 describe('@bespokecore/testing', () => {
+  it("moves the app's time: every service reading the Clock sees app.travel() and app.freeze() (E97)", async () => {
+    const app = await createTestApp(definition);
+    const clock = app.container.make(Clock);
+    expect(clock).toBe(app.clock);
+    const frozen = app.freeze(new Date('2026-12-24T18:00:00Z'));
+    expect(clock.now()).toBe(frozen);
+    expect(app.travel({ minutes: 5 })).toBe(frozen + 300_000);
+    app.travelTo(Date.UTC(2027, 0, 1));
+    expect(new Date(clock.now()).toISOString()).toBe('2027-01-01T00:00:00.000Z');
+    // Every test app has its own clock.
+    const other = await createTestApp(definition);
+    expect(Math.abs(other.container.make(Clock).now() - Date.now())).toBeLessThan(1_000);
+  });
+
   it('chains assertions on the pending request (page loads and navigations)', async () => {
     const app = await createTestApp(definition);
     await app.get('/greeting').assertOk().assertSee('Hello Ada').assertPage('greetings/Show', { meta: { lang: 'en' } });

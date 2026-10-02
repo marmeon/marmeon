@@ -2,6 +2,7 @@ import { loadEnv, resolveConfig, type ConfigDefinition } from './config/config.t
 import { Container } from './container.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
 import { EventDispatcher, EventRegistry, type ListenerBinding } from './events.ts';
+import { Clock, SystemClock } from './clock.ts';
 import { ConsoleLogger, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
@@ -153,6 +154,8 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.instance(Container, container);
   // Fallback until a logging package (e.g. @bespokecore/log) binds its own.
   container.singleton(Logger, () => new ConsoleLogger());
+  // The time (E97); tests bind a `TestClock` they can move.
+  container.singleton(Clock, () => new SystemClock());
 
   // One registry; a dispatcher per resolution, bound to the asking container (e.g. the request scope).
   const events = new EventRegistry()

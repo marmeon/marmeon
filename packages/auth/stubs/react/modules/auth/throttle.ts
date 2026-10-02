@@ -8,11 +8,11 @@ import type { Translator } from '@bespokecore/i18n';
  */
 export async function throttlePasswordChecks(limiter: RateLimiter, translator: Translator, userId: number, field: string, check: () => Promise<boolean>): Promise<void> {
   const key = `password-check:${userId}`;
-  if (await limiter.tooManyAttempts(key, 5)) {
+  // Counted before the check, atomically — parallel guesses cannot all slip under the limit; a right password clears it.
+  if (!(await limiter.attempt(key, 5, 60))) {
     throw new ValidationError({ [field]: [translator.get('auth.validation.throttled', { seconds: await limiter.availableIn(key) })] });
   }
   if (!(await check())) {
-    await limiter.hit(key, 60);
     throw new ValidationError({ [field]: [translator.get('auth.validation.password_incorrect')] });
   }
   await limiter.clear(key);

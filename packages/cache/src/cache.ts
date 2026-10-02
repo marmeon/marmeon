@@ -1,84 +1,194 @@
-import { createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { token } from '@bespokecore/core';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { SystemClock, token, type Clock } from '@bespokecore/core';
 
 /**
- * A key-value store with expiry (Laravel's `Cache` repository). Values must
- * survive `JSON.stringify`. Redis, tags and locks follow in Wave 6 — as further
- * implementations of this contract.
+ * A key-value store with expiry (Laravel's `Cache` repository). Values must survive `JSON.stringify`. `add`, `increment`
+ * and locks are atomic in every store (E103) — across processes for `file`, `database` and `redis`.
  */
 export interface Cache {
   get<T = unknown>(key: string): Promise<T | undefined>;
   /** Stores a value; without `ttlSeconds` it never expires. */
   put(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
-  /** Stores the value only if the key is absent; returns whether it did. */
+  /** Stores the value only if the key is absent (or expired); returns whether it did. Atomic: of two at once, one wins. */
   add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean>;
   has(key: string): Promise<boolean>;
   forget(key: string): Promise<void>;
   /**
-   * Adds `by` to a number (a missing key counts as 0) and returns the result. A new
-   * key gets `ttlSeconds`; an existing one keeps its expiry — a rate limit window
-   * does not restart with every hit.
+   * Adds `by` (an integer, negative to count down) to the integer at `key` and returns the result — atomically, in one
+   * step of the store: two processes counting at once never lose a count. A missing key (or one holding no integer)
+   * starts at 0 and gets `ttlSeconds`; an existing one keeps its expiry — a rate limit window does not restart with
+   * every hit.
    */
   increment(key: string, by?: number, ttlSeconds?: number): Promise<number>;
-  /** The cached value, or `compute()` stored for `ttlSeconds`. */
+  /** The cached value, or `compute()` stored for `ttlSeconds`. Not a lock: two misses at once both compute. */
   remember<T>(key: string, ttlSeconds: number | undefined, compute: () => T | Promise<T>): Promise<T>;
   /** Seconds until the key expires, undefined if absent or without expiry. */
   ttl(key: string): Promise<number | undefined>;
+  /** Empties the cache. Locks stay — they belong to whoever holds them. */
   flush(): Promise<void>;
+  /**
+   * An atomic lock, held for at most `seconds` (it expires, so a crashed holder cannot block forever):
+   *
+   * ```ts
+   * const lock = cache.lock(`avatar:${user.id}`, 10);
+   * if (!(await lock.get())) abort(423);
+   * try { … } finally { await lock.release(); }         // frees it only if this lock still holds it
+   * await cache.lock('report', 60).block(5, () => …);    // waits up to 5 s, then LockTimeoutError
+   * ```
+   *
+   * `owner` restores a lock taken elsewhere (another request, a job) to release it: `cache.lock(name, seconds, owner)`.
+   */
+  lock(name: string, seconds: number, owner?: string): Lock;
 }
 export const Cache = token<Cache>('Cache');
 
-interface Entry {
+/** A cached value and when it expires: epoch milliseconds (by the store's {@link Clock}), null = never. */
+export interface Entry {
   value: unknown;
-  /** Epoch milliseconds; null = forever. */
   expires: number | null;
 }
 
-/** The storage behind a cache: the rest (increment, remember, …) is built on these three. */
+/**
+ * The storage behind a cache (memory, file, database, redis). Every operation that decides on what is stored — `add`,
+ * `increment`, `lock`, `unlock` — is one atomic step of the store, never read-then-write in the cache above it
+ * (E103). Expiry is the store's: it reads the time from its {@link Clock} (Redis from its own clock, `PX`).
+ */
 export interface CacheStore {
+  /** The entry, if present and not expired. */
   read(key: string): Promise<Entry | undefined>;
   write(key: string, entry: Entry): Promise<void>;
+  /** Writes `entry` only if the key is absent or expired — atomically. Whether it wrote. */
+  add(key: string, entry: Entry): Promise<boolean>;
+  /**
+   * Adds `by` to the integer at `key` — atomically — and returns the new value. Absent, expired or not an integer: the
+   * key starts over at `by` and expires at `expires`. An existing integer keeps its expiry.
+   */
+  increment(key: string, by: number, expires: number | null): Promise<number>;
   delete(key: string): Promise<void>;
+  /** Removes every entry of this store — never its locks. */
   clear(): Promise<void>;
+  /** Takes the lock `name` for `owner` until `expires` if it is free, expired, or already `owner`'s — atomically. Whether it did. */
+  lock(name: string, owner: string, expires: number): Promise<boolean>;
+  /** Frees the lock only while `owner` holds it — atomically (an expired lock taken over by another stays). Whether it did. */
+  unlock(name: string, owner: string): Promise<boolean>;
+  /** Frees the lock whoever holds it. */
+  forceUnlock(name: string): Promise<void>;
+  /** Who holds the lock now; undefined when it is free or expired. */
+  lockOwner(name: string): Promise<string | undefined>;
 }
 
-const expiresAt = (ttlSeconds: number | undefined) => (ttlSeconds === undefined ? null : Date.now() + ttlSeconds * 1000);
-const alive = (entry: Entry | undefined): entry is Entry => entry !== undefined && (entry.expires === null || entry.expires > Date.now());
+/** The lock was not free within the time `block()` waited. */
+export class LockTimeoutError extends Error {
+  override name = 'LockTimeoutError';
+}
 
 /**
- * The cache on top of a store. `increment` is read-modify-write: atomic within one
- * process (the memory store), not across processes on the file store — a cluster
- * needs Redis (Wave 6) for exact rate limits.
+ * One atomic lock (Laravel's `Lock`), made by `cache.lock(name, seconds)`. Its owner token is random per lock object:
+ * only the object that took the lock (or one restored with the same `owner`) can release it.
  */
+export class Lock {
+  readonly name: string;
+  readonly seconds: number;
+  readonly owner: string;
+  readonly #store: CacheStore;
+  readonly #key: string;
+  readonly #clock: Clock;
+
+  constructor(store: CacheStore, options: { name: string; key: string; seconds: number; owner?: string; clock: Clock }) {
+    if (!(options.seconds > 0) || !Number.isFinite(options.seconds)) {
+      throw new TypeError(`A lock needs a positive number of seconds after which it expires (got ${options.seconds} for "${options.name}").`);
+    }
+    this.#store = store;
+    this.name = options.name;
+    this.#key = options.key;
+    this.seconds = options.seconds;
+    this.owner = options.owner ?? crypto.randomUUID();
+    this.#clock = options.clock;
+  }
+
+  /**
+   * Tries once to take the lock. With `callback`: runs it while holding the lock and releases it afterwards — the
+   * callback's result, or `false` when the lock was taken.
+   */
+  get(): Promise<boolean>;
+  get<T>(callback: () => T | Promise<T>): Promise<T | false>;
+  async get<T>(callback?: () => T | Promise<T>): Promise<T | boolean> {
+    const acquired = await this.#store.lock(this.#key, this.owner, this.#clock.now() + this.seconds * 1000);
+    if (!acquired || !callback) return acquired;
+    try {
+      return await callback();
+    } finally {
+      await this.release();
+    }
+  }
+
+  /**
+   * Waits up to `seconds` (real time, polled every 250 ms) for the lock, then throws {@link LockTimeoutError}. With
+   * `callback`: runs it while holding the lock and releases it afterwards; returns its result.
+   */
+  block(seconds: number): Promise<true>;
+  block<T>(seconds: number, callback: () => T | Promise<T>): Promise<T>;
+  async block<T>(seconds: number, callback?: () => T | Promise<T>): Promise<T | true> {
+    const deadline = performance.now() + seconds * 1000;
+    while (!(await this.get())) {
+      if (performance.now() + 250 > deadline) throw new LockTimeoutError(`Could not take the lock "${this.name}" within ${seconds} s.`);
+      await sleep(250);
+    }
+    if (!callback) return true;
+    try {
+      return await callback();
+    } finally {
+      await this.release();
+    }
+  }
+
+  /** Frees the lock if this owner still holds it — after it expired and another took it, never. Whether it did. */
+  release(): Promise<boolean> {
+    return this.#store.unlock(this.#key, this.owner);
+  }
+
+  /** Frees the lock, whoever holds it. */
+  forceRelease(): Promise<void> {
+    return this.#store.forceUnlock(this.#key);
+  }
+
+  /** Whether this owner holds the lock right now. */
+  async owned(): Promise<boolean> {
+    return (await this.#store.lockOwner(this.#key)) === this.owner;
+  }
+}
+
+/** Seconds → an expiry by `clock`; undefined = never. */
+function expiresAt(clock: Clock, ttlSeconds: number | undefined): number | null {
+  return ttlSeconds === undefined ? null : clock.now() + ttlSeconds * 1000;
+}
+
+/** The cache on top of a store: keys get the prefix, TTLs become expiry times, everything atomic is the store's. */
 export class StoreCache implements Cache {
   readonly #store: CacheStore;
   readonly #prefix: string;
+  readonly #clock: Clock;
 
-  constructor(store: CacheStore, prefix = '') {
+  constructor(store: CacheStore, prefix = '', clock: Clock = new SystemClock()) {
     this.#store = store;
     this.#prefix = prefix;
+    this.#clock = clock;
   }
 
   async get<T>(key: string): Promise<T | undefined> {
-    const entry = await this.#read(key);
-    return entry?.value as T | undefined;
+    return (await this.#store.read(this.#prefix + key))?.value as T | undefined;
   }
 
   async put(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
-    await this.#store.write(this.#prefix + key, { value, expires: expiresAt(ttlSeconds) });
+    await this.#store.write(this.#prefix + key, { value, expires: expiresAt(this.#clock, ttlSeconds) });
   }
 
-  async add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean> {
-    if (await this.#read(key)) return false;
-    await this.put(key, value, ttlSeconds);
-    return true;
+  add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean> {
+    return this.#store.add(this.#prefix + key, { value, expires: expiresAt(this.#clock, ttlSeconds) });
   }
 
   async has(key: string): Promise<boolean> {
-    return (await this.#read(key)) !== undefined;
+    return (await this.#store.read(this.#prefix + key)) !== undefined;
   }
 
   async forget(key: string): Promise<void> {
@@ -86,14 +196,12 @@ export class StoreCache implements Cache {
   }
 
   async increment(key: string, by = 1, ttlSeconds?: number): Promise<number> {
-    const entry = await this.#read(key);
-    const value = (typeof entry?.value === 'number' ? entry.value : 0) + by;
-    await this.#store.write(this.#prefix + key, { value, expires: entry ? entry.expires : expiresAt(ttlSeconds) });
-    return value;
+    if (!Number.isSafeInteger(by)) throw new TypeError(`cache.increment() counts in integers (got ${by} for "${key}").`);
+    return this.#store.increment(this.#prefix + key, by, expiresAt(this.#clock, ttlSeconds));
   }
 
   async remember<T>(key: string, ttlSeconds: number | undefined, compute: () => T | Promise<T>): Promise<T> {
-    const entry = await this.#read(key);
+    const entry = await this.#store.read(this.#prefix + key);
     if (entry) return entry.value as T;
     const value = await compute();
     await this.put(key, value, ttlSeconds);
@@ -101,77 +209,15 @@ export class StoreCache implements Cache {
   }
 
   async ttl(key: string): Promise<number | undefined> {
-    const entry = await this.#read(key);
-    return entry?.expires ? Math.max(0, Math.ceil((entry.expires - Date.now()) / 1000)) : undefined;
+    const entry = await this.#store.read(this.#prefix + key);
+    return entry?.expires ? Math.max(0, Math.ceil((entry.expires - this.#clock.now()) / 1000)) : undefined;
   }
 
   async flush(): Promise<void> {
     await this.#store.clear();
   }
 
-  async #read(key: string): Promise<Entry | undefined> {
-    const entry = await this.#store.read(this.#prefix + key);
-    if (alive(entry)) return entry;
-    if (entry) await this.#store.delete(this.#prefix + key); // expired: clean up on the way
-    return undefined;
-  }
-}
-
-/** In-process: fast, lost on restart, not shared between processes. Tests and single-process apps. */
-export class MemoryStore implements CacheStore {
-  readonly #entries = new Map<string, string>();
-
-  async read(key: string): Promise<Entry | undefined> {
-    const raw = this.#entries.get(key);
-    return raw === undefined ? undefined : (JSON.parse(raw) as Entry);
-  }
-
-  async write(key: string, entry: Entry): Promise<void> {
-    this.#entries.set(key, JSON.stringify(entry)); // serialized, like every real store
-  }
-
-  async delete(key: string): Promise<void> {
-    this.#entries.delete(key);
-  }
-
-  async clear(): Promise<void> {
-    this.#entries.clear();
-  }
-}
-
-/** One JSON file per key (named by its hash), written atomically. Survives restarts. */
-export class FileStore implements CacheStore {
-  readonly #directory: string;
-
-  constructor(directory: string) {
-    this.#directory = directory;
-    mkdirSync(directory, { recursive: true });
-  }
-
-  async read(key: string): Promise<Entry | undefined> {
-    try {
-      return JSON.parse(await readFile(this.#path(key), 'utf8')) as Entry;
-    } catch {
-      return undefined;
-    }
-  }
-
-  async write(key: string, entry: Entry): Promise<void> {
-    const file = this.#path(key);
-    const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(entry), { mode: 0o600 });
-    await rename(temporary, file);
-  }
-
-  async delete(key: string): Promise<void> {
-    await rm(this.#path(key), { force: true });
-  }
-
-  async clear(): Promise<void> {
-    for (const name of await readdir(this.#directory)) await rm(join(this.#directory, name), { force: true });
-  }
-
-  #path(key: string): string {
-    return join(this.#directory, createHash('sha256').update(key).digest('hex'));
+  lock(name: string, seconds: number, owner?: string): Lock {
+    return new Lock(this.#store, { name, key: this.#prefix + name, seconds, clock: this.#clock, ...(owner === undefined ? {} : { owner }) });
   }
 }

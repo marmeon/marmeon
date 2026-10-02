@@ -462,9 +462,18 @@ export interface ServeOptions {
   /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
   mode?: 'development' | 'production';
+  /**
+   * How long `close()` waits for work after the responses — `afterResponse.defer(…)` tasks, `terminate` hooks — before
+   * it gives up on them (default 8 s; `bespoke serve` exits after 10 s at the latest).
+   */
+  drainTimeoutMs?: number;
 }
 
-/** A listening server. `close()` stops it gracefully: no new connections, requests in flight finish. */
+/**
+ * A listening server. `close()` stops it gracefully: no new connections, requests in flight finish, and then the work
+ * they deferred until after their response (a reset mail sent by `afterResponse.defer`) finishes too — before the app
+ * shuts down and closes its pools (E102).
+ */
 export interface RunningServer {
   readonly server: Server;
   readonly port: number;
@@ -476,20 +485,23 @@ export async function startServer({
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
   mode = process.env.NODE_ENV === 'production' ? 'production' : 'development',
+  drainTimeoutMs = 8_000,
 }: ServeOptions): Promise<RunningServer> {
   const server = createServer();
   const { root } = app;
   let closeVite: (() => Promise<void>) | undefined;
+  let kernel: HttpKernel;
 
   if (mode === 'development') {
     const { vite, renderer } = await createViteDevRenderer({ root, ssrEntry, httpServer: server });
-    const handle = getRequestListener(createHttpKernel(app, { renderer, debug: true }).fetch);
+    kernel = createHttpKernel(app, { renderer, debug: true });
+    const handle = getRequestListener(kernel.fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));
     closeVite = () => vite.close();
   } else {
     const renderer = await createProductionRenderer({ root });
-    const kernel = createHttpKernel(app, { renderer, clientDir: join(root, 'dist/client') });
+    kernel = createHttpKernel(app, { renderer, clientDir: join(root, 'dist/client') });
     server.on('request', getRequestListener(kernel.fetch));
   }
 
@@ -500,6 +512,15 @@ export async function startServer({
     // so the server would wait forever for an open browser tab. Closing Vite closes its clients.
     await closeVite?.();
     await closed;
+    // The requests are answered; what they deferred until after their response (a mail, a terminate hook) still runs —
+    // and needs the app's pools, which the caller closes next (E102). Bounded: a hanging task must not block the exit.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settled = await Promise.race([
+      kernel.settle().then(() => true),
+      new Promise<false>((resolve) => (timer = setTimeout(() => resolve(false), drainTimeoutMs))),
+    ]);
+    clearTimeout(timer);
+    if (!settled) app.container.make(Logger).warn(`Work after responses still ran ${drainTimeoutMs} ms after the server closed; shutting down anyway`);
   };
 
   return new Promise((resolve) => {
