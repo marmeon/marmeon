@@ -1,8 +1,8 @@
-import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type ProgressOptions, type TitleTemplate } from '@bespokecore/http/client';
+import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type TitleTemplate } from '@bespokecore/http/client';
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
-import { BespokeApp, loadLayerStack } from './app.tsx';
+import { BespokeApp, loadLayerStack, type BespokeAppProps } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { LayerFrame } from './layer.tsx';
 import type { ConfirmComponent } from './confirm.tsx';
@@ -27,8 +27,11 @@ export interface CreateBespokeAppOptions {
    * entry's. Only the page's locale is loaded (one chunk per file), before hydrating; `useTranslation` reads them.
    */
   messages?: MessageLoader;
-  /** The progress bar of visits: `{ delay: 250 }` (the default — fast visits show none), or `false`. */
-  progress?: ProgressOptions | false;
+  /**
+   * An indicator of visits under way (E82, opt-in): `progress: progressBar({ delay: 250 })` shows the core's bar for visits
+   * slower than `delay`; none without it.
+   */
+  progress?: BespokeAppProps['progress'];
   /**
    * The frame around every layer's view (E53) — the same as the SSR entry's. Default `LayerDialog` (a native modal
    * `<dialog>`); wrap it for the app's labels: `layer: (props) => <LayerDialog {...props} closeLabel="Schließen" />`.

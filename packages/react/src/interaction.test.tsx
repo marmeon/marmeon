@@ -107,7 +107,7 @@ afterEach(async () => {
 async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} progress={false} confirm={ConfirmDialog} />));
+  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} confirm={ConfirmDialog} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector.startsWith('[') || selector.includes(' ') ? selector : `[data-testid="${selector}"]`)! as HTMLElement;

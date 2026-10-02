@@ -94,7 +94,7 @@ async function mount(initial: PageObject) {
   const { createRoot } = await import('react-dom/client');
   const Component = await resolve(initial.component);
   root = createRoot($('#app')!);
-  await act(async () => root!.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} progress={false} />));
+  await act(async () => root!.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 describe('layers loaded on demand in React (E71)', () => {
@@ -142,7 +142,7 @@ describe('layers loaded on demand in React (E71)', () => {
     const browser = await freshApp();
     const dialog = $('dialog');
     await act(async () => {
-      await browser.createBespokeApp({ resolve: browser.resolve, routes, progress: false });
+      await browser.createBespokeApp({ resolve: browser.resolve, routes });
       await new Promise((done) => setTimeout(done, 20));
     });
     expect(errors.mock.calls.filter(([message]) => !String(message).includes('multiple renderers'))).toEqual([]);

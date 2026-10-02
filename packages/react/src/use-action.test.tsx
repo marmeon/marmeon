@@ -99,7 +99,7 @@ afterEach(async () => {
 async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} progress={false} />));
+  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 const $ = (testId: string) => container.querySelector(`[data-testid="${testId}"]`)!;

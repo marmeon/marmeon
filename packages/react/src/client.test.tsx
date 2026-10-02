@@ -52,7 +52,7 @@ async function ssr(page: PageObject): Promise<string> {
 
 async function start() {
   await act(async () => {
-    await createBespokeApp({ resolve, progress: false });
+    await createBespokeApp({ resolve });
     await new Promise((done) => setTimeout(done, 20));
   });
 }

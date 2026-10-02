@@ -142,7 +142,7 @@ const $ = (selector: string) => document.querySelector(selector);
 
 async function start() {
   await act(async () => {
-    await createBespokeApp({ resolve, routes, progress: false });
+    await createBespokeApp({ resolve, routes });
     await new Promise((done) => setTimeout(done, 30));
   });
 }

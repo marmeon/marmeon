@@ -54,7 +54,7 @@ components and composables; the mechanics are here.
 | `on('version', event)`, `newVersion` + `subscribeNewVersion`, `reloadForNewVersion()` | The asset-version 409 (E64, `x-bespoke-reload: version` — exactly that value): `event.preventDefault()` keeps the page (`newVersion` says where the full load waits; the user's next GET visit makes it); without it, unsaved changes nobody agreed to leave ask first (`event.unsaved`). Every other 409 (`history`: signing in or out, or no reason) is never cancelable and never asks |
 | `formObject(entries)`, `defaultFormEntries(form)`, `formEntries(form)`, `restoreFormEntries(form, entries, names)`, `fieldPath(name)` | Uncontrolled forms (E64, `<Form>`): the data the server builds from a form's entries (bracket notation), where a form starts (its controls' defaults — "dirty"), its entries now, remembered entries put back, `links[0][url]` → `links.0.url` |
 | `queryUrl`, `pageQuery`, `withoutDefaults`, `linkQuery`, `assertQueryPage` | Query helpers: a URL without the defaults, the page's query with them, a link's query for the page on screen, the "only on its route's page" check |
-| `showProgress(navigator, options)` | The progress bar: plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests |
+| `progressBar(options)` → `ProgressIndicator`, `showProgress(navigator, options)` | The progress bar (E82, opt-in): plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests, only for visits slower than `delay` (250 ms). `progressBar` is what an adapter takes (React: `createBespokeApp({ progress: progressBar({ delay: 250 }) })`); an app without it carries none of its code |
 | `createPoll(run, interval, options)` | Polling, paused while the tab is hidden |
 | `readInitialPage()`, `rootElement(id)`, `hasServerMarkup(root)` | The hydration entry's first steps: the page from `#bespoke-page`, the root (also while streaming), hydrate or render |
 | `loadPageMessages(page, messages)`, `pageLocale(page, messages)` | The page's messages in its `locale`, falling back to the server's `fallbackLocale` (`APP_FALLBACK_LOCALE`, sent with every page) — any loader with `fallback` and `load(locale, { fallback })`, e.g. `createMessageLoader` of `@bespokecore/i18n/messages`. Load them before a page renders, in the browser and the SSR entry |
@@ -71,8 +71,8 @@ components and composables; the mechanics are here.
    page's component (and its messages), shows it with `page.props`, and **resolves once it is on screen** — the navigator
    restores the scroll position after that. `preserveState: true` keeps component state when the same component comes
    back (a form that failed validation); otherwise the page mounts fresh. A rejection makes the browser load the URL
-   itself (a chunk gone after a deployment). Then `navigator.start()` (returns the stop function) and, if wanted,
-   `showProgress(navigator)`. Failures (`exception`: offline, 5xx with the server's error page) are the adapter's to show;
+   itself (a chunk gone after a deployment). Then `navigator.start()` (returns the stop function), `markBusy(navigator)` and,
+   when the app passed one, its progress indicator (`progressBar(options)` or its own: `(navigator) => stop`, E82). Failures (`exception`: offline, 5xx with the server's error page) are the adapter's to show;
    the page stays. `owner` is where the page's islands live: render them with `navigator.use(islands).region(url, { owner })` (the
    first page: `navigator.regionOwner`), each into an element of its own, from its `snapshot` — its fallback while
    `loading`, an `unauthorized` UI, an error UI with a retry (`reload()`), and its view otherwise, inside an error boundary
@@ -157,14 +157,31 @@ Nothing is attached by default (`NavigatorOptions.features` is empty). A feature
 
 | How | Features | Attached by (React) |
 | --- | --- | --- |
-| **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack` | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`) |
+| **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack`, the progress bar (E82) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })` |
 | **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders |
 | **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers | an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry) |
 
 The core itself loads uploads with progress (`FormData` with a progress listener, over XHR) with the first such upload — a
-chunk that cannot load sends it with `fetch`, without progress. The progress bar (`showProgress`), `markBusy`, polling
-(`createPoll`), `<Form>` and pagination are plain modules: in an app when it imports them (`createBespokeApp` turns the progress
-bar on by default).
+chunk that cannot load sends it with `fetch`, without progress. Polling (`createPoll`), `<Form>` and pagination are plain
+modules, in an app when it imports them.
+
+**The progress bar is opt-in (E82):** `createBespokeApp({ progress: progressBar({ delay: 250 }) })` — the starters (blank-app,
+web-app, and so `make:auth`) pass it; an app that leaves it out carries none of its code. Without it, what every app has says
+that a visit runs: `aria-busy="true"` on `<html>` (`markBusy`, always on), `data-pending` on the link being visited, `usePending()`,
+the visit events (`router.on('start' | 'progress' | 'finish')`) and instant placeholders. An indicator of your own is a function of
+the navigator that returns its stop — a few lines, or none at all with CSS on `aria-busy`:
+
+```ts
+// CSS only: html[aria-busy='true'] main { opacity: .6; transition: opacity .2s .25s }
+const spinner: ProgressIndicator = (navigator) => {
+  const offs = [
+    navigator.on('start', (visit) => visit.async || document.body.classList.add('loading')),
+    navigator.on('finish', (visit) => visit.async || document.body.classList.remove('loading')),
+  ];
+  return () => offs.forEach((off) => off());
+};
+createBespokeApp({ resolve, progress: spinner });
+```
 
 **Always in the core, and why.** What the server can send to any request is handled whatever the client imported, and every
 security invariant is structural — no feature can forget it (E72, E36):
@@ -265,6 +282,7 @@ questions, the error pages).
 | R13 | `<Head>` | `<Head>` inside an island (development only: production renders nothing). |
 | R14 | layers, islands | An optimistic patch or reload while rendering on the server. |
 | R15 | `useIsland` | `useIsland()` outside the view of an island. |
+| R16 | `createBespokeApp`, `<BespokeApp>` | `progress` is not an indicator — since E82 it takes `progressBar({ delay })` (or the app's own); `{ delay }` and `false` are gone. |
 
 ## The protocol
 

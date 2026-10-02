@@ -1,5 +1,7 @@
 /**
- * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one (`showProgress(navigator)`).
+ * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one. An opt-in feature (E82): an app
+ * that wants it passes `progressBar(options)` to its adapter (React: `createBespokeApp({ progress: progressBar({ delay: 250 }) })`)
+ * — one that does not carries none of it, and builds its own indicator from the visit events and `aria-busy` if it likes.
  * Styled through CSS variables, set as inline style properties (no `<style>` element, so a strict
  * Content-Security-Policy does not block it):
  *
@@ -20,6 +22,17 @@ export const DEFAULT_PROGRESS_DELAY = 250;
 
 /** The attribute on the bar's element (for styles and tests). */
 export const PROGRESS_ATTRIBUTE = 'data-bespoke-progress';
+
+/**
+ * A progress indicator an adapter starts with its navigator (E82): attached to the navigator's visit events, it returns the
+ * function that removes it. `progressBar(options)` is the core's; an app may pass its own.
+ */
+export type ProgressIndicator = (navigator: Pick<Navigator, 'on'>) => () => void;
+
+/** The progress bar as an adapter's indicator (E82): `createBespokeApp({ progress: progressBar({ delay: 250 }) })`. */
+export function progressBar(options: ProgressOptions = {}): ProgressIndicator {
+  return (navigator) => showProgress(navigator, options);
+}
 
 /** Shows a progress bar while the navigator's requests run. Returns the function that removes it. */
 export function showProgress(navigator: Pick<Navigator, 'on'>, { delay = DEFAULT_PROGRESS_DELAY, color = '#4f46e5' }: ProgressOptions = {}, doc: Document = document): () => void {
@@ -100,29 +113,5 @@ export function showProgress(navigator: Pick<Navigator, 'on'>, { delay = DEFAULT
     clearInterval(trickleTimer);
     element?.remove();
     fading?.remove();
-  };
-}
-
-/**
- * `aria-busy="true"` on `element` (the document's root) while a visit runs in the foreground (E64) — assistive technology
- * knows the page is about to change; CSS can dim it (`html[aria-busy] main { opacity: .6 }`). Background requests (deferred
- * props, polls) leave it. Returns the function that stops it.
- */
-export function markBusy(navigator: Pick<Navigator, 'on'>, element: Pick<Element, 'setAttribute' | 'removeAttribute'> = document.documentElement): () => void {
-  let running = 0;
-  const stops = [
-    navigator.on('start', (visit) => {
-      if (visit.async) return;
-      if (++running === 1) element.setAttribute('aria-busy', 'true');
-    }),
-    navigator.on('finish', (visit) => {
-      if (visit.async) return;
-      running = Math.max(0, running - 1);
-      if (running === 0) element.removeAttribute('aria-busy');
-    }),
-  ];
-  return () => {
-    for (const stop of stops) stop();
-    element.removeAttribute('aria-busy');
   };
 }

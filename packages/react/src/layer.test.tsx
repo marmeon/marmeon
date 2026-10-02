@@ -138,7 +138,7 @@ async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   await Promise.all((initial.layers ?? []).map((layered) => loadView(resolve, layered.component)));
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} progress={false} />));
+  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector);
@@ -341,7 +341,7 @@ describe('Layers in React (E53)', () => {
     const Profile = await resolve('app/Profile');
     // What createBespokeApp and the SSR entry load before rendering a deep link (E71): the layer stack, the layer's view.
     await Promise.all([loadLayerStack(), loadView(resolve, 'app/Edit')]);
-    const html = renderToString(<BespokeApp initialPage={document} initialComponent={Profile} resolve={resolve} routes={routes} progress={false} />);
+    const html = renderToString(<BespokeApp initialPage={document} initialComponent={Profile} resolve={resolve} routes={routes} />);
     expect(html).toContain('data-bespoke-layer="app/Edit"');
     expect(html).toContain('<dialog open=""');
 

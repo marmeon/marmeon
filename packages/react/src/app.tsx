@@ -7,7 +7,6 @@ import {
   pageLocale,
   prefetchWith,
   RegionOwner,
-  showProgress,
   TitleRegistry,
   type ConfirmAnswer,
   type ConfirmRequest,
@@ -19,7 +18,7 @@ import {
   type PrefetchOptions,
   type Reloading,
   type RegionOwner as RegionOwnerType,
-  type ProgressOptions,
+  type ProgressIndicator,
   type TitleTemplate,
   type VisitException,
   type VisitEvent,
@@ -278,6 +277,24 @@ function pagePatches(navigator: Navigator | null): PatchTarget {
   return navigator.use(optimisticFeature).page;
 }
 
+/** What `progress` took before E82 (`{ delay }`, `false`), as a type error that says what to write now. */
+type ProgressHint = "progress takes an indicator since E82 — progress: progressBar({ delay: 250 }), import { progressBar } from '@bespokecore/react'; leave it out for none";
+type ProgressBefore = { readonly delay?: ProgressHint; readonly color?: ProgressHint };
+
+/**
+ * @internal The app's progress indicator (E82) — none by default. What `progress` took before (`{ delay }`, `false`) says what to
+ * import now.
+ */
+export function progressIndicator(progress: BespokeAppProps['progress'] | unknown): ProgressIndicator | undefined {
+  if (progress === undefined) return undefined;
+  if (typeof progress === 'function') return progress as ProgressIndicator;
+  throw new TypeError(
+    process.env.NODE_ENV !== 'production'
+      ? `[bespoke:R16] progress takes an indicator since E82: createBespokeApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@bespokecore/react'. Leave it out for no progress bar.`
+      : '[bespoke:R16]',
+  );
+}
+
 export interface BespokeAppProps {
   initialPage: PageObject;
   initialComponent: PageComponent;
@@ -288,8 +305,12 @@ export interface BespokeAppProps {
   routes?: RouteManifest;
   /** The layout of pages without their own `layout` (E35) — the same on the server and in the browser. */
   layout?: DefaultLayout;
-  /** The progress bar of visits (shown after `delay` ms, default 250), or `false` for none. */
-  progress?: ProgressOptions | false;
+  /**
+   * An indicator of visits under way (E82, opt-in): `progressBar({ delay: 250 })` — the core's bar, shown only for visits slower
+   * than `delay` — or the app's own (`(navigator) => stop`). None by default: `aria-busy` on `<html>`, `data-pending` on links and
+   * `usePending()` are there either way.
+   */
+  progress?: ProgressIndicator | ProgressBefore | ProgressHint;
   /** Server rendering only: where `<Head>` records itself. */
   headCollector?: HeadCollector;
   /**
@@ -454,13 +475,14 @@ export function BespokeApp({
     if (!nav) return undefined;
     // A new visit takes the failure notice away — loading deferred props in the background does not.
     const stops = [nav.on('exception', setFailure), nav.on('start', (visit) => visit.async || setFailure(null))];
-    if (progress !== false) stops.push(showProgress(nav, progress));
+    const indicator = progressIndicator(progress);
+    if (indicator) stops.push(indicator(nav));
     // `aria-busy` on the document while a visit runs (E64).
     if (typeof document !== 'undefined') stops.push(markBusy(nav));
     return () => {
       for (const stop of stops) stop();
     };
-    // The progress options are read once — like the navigator itself.
+    // The progress indicator is read once — like the navigator itself.
   }, []);
 
   const browser = useCallback(() => {

@@ -87,7 +87,7 @@ afterEach(async () => {
 async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} progress={false} />));
+  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector);

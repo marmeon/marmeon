@@ -138,7 +138,7 @@ async function mount(initial: PageObject, options: { layout?: DefaultLayout; tit
   const Component = await resolve(initial.component);
   root = createRoot(container);
   await act(async () => {
-    root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} progress={false} {...options} />);
+    root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} {...options} />);
   });
 }
 
@@ -205,7 +205,7 @@ describe('persistent layouts (E35)', () => {
     const inline = resolveModulePages({ '../modules/app/views/Inline.tsx': async () => ({ default: Inline }) });
     server = () => respond({ component: 'app/Inline', props: { name: 'b' }, url: '/b', version: null });
     root = createRoot(container);
-    await act(async () => root.render(<BespokeApp initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} progress={false} />));
+    await act(async () => root.render(<BespokeApp initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));
     await click('count');
     await click('to-b');
     await settle();

@@ -57,7 +57,7 @@ describe('useTranslation', () => {
     const first = page('/a', 'en');
     const catalog = await loadPageMessages(first, messages);
     root = createRoot(container);
-    await act(async () => root.render(<BespokeApp initialPage={first} initialComponent={pages.Greeting!} resolve={resolve} progress={false} messages={messages} initialCatalog={catalog} />));
+    await act(async () => root.render(<BespokeApp initialPage={first} initialComponent={pages.Greeting!} resolve={resolve} messages={messages} initialCatalog={catalog} />));
     expect(container.textContent).toBe('Hello Ada · 1,234.5');
     expect(loads).toEqual(['/modules/shop/lang/en.ts']);
 

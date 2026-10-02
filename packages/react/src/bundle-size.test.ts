@@ -31,10 +31,10 @@ const budget = readBudget();
 type LeakScenario = Exclude<Scenario, 'everything'>;
 
 /**
- * What each scenario uses on purpose: `createBespokeApp` turns the progress bar on; `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
+ * What each scenario uses on purpose: `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
  * static in it — a guard loaded later could not stop a navigation that came first; E74 loads only `validate` on first use).
  */
-const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['progress'], minimalApp: ['guard', 'progress', 'remember'], everything: [] };
+const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: [], minimalApp: ['guard', 'remember'], everything: [] };
 
 /** A feature's entry: the scenario it adds to, plus its import. */
 const inCore = (...names: string[]) => ({ base: 'core' as const, entry: coreEntry(...names) });
@@ -61,7 +61,8 @@ const FEATURES = {
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
-  progress: { markers: ['http/client/progress'], use: inCore('showProgress') },
+  // The progress bar (E82): opt-in, `createBespokeApp({ progress: progressBar() })` — `aria-busy` (`http/client/busy`) is every app's.
+  progress: { markers: ['http/client/progress'], use: inApp('progressBar') },
   // <Link prefetch>, router.prefetch: on the first prefetch (E74), in a chunk of its own.
   prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link'), lazy: true },
   // Any view of resolveModulePages may declare it (E58): the resolver brings it, <BespokeApp> attaches it.
@@ -79,8 +80,8 @@ const FEATURES = {
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
-/** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads'];
+/** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
