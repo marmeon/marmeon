@@ -146,8 +146,10 @@ language files from `virtual:bespoke/lang` and the route manifest from `virtual:
 
 ## The protocol
 
-What goes over the wire, in one place (constants in `@bespokecore/http/page`). Every request of the core carries
-`x-bespoke-version` (the build) and, for writes, `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie — never a token from the URL.
+What goes over the wire, in one place (constants in `@bespokecore/http/page`). Every page and island request of the core
+carries `x-bespoke-version` (the build — a new one answers 409); actions and live validations do not (they are no pages: a new
+build shows with the next page request, a poll or a visit). Every write carries `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie —
+never a token from the URL.
 
 | Request header | Sent by | Meaning |
 | --- | --- | --- |
