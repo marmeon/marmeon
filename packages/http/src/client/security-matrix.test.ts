@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
+import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
 import { actions, type ActionsFeature } from './features/actions.ts';
@@ -322,3 +322,74 @@ describe('the security matrix — every feature × every event that must forget 
     expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['forgetful: its slot "forgetful" still holds data']);
   });
 });
+
+/**
+ * The same rows with the core alone (Wave 5c step 4): no feature attached — what an app is before it uses any. The security
+ * invariants are the core's (E72), not a feature's: the hard switch of a 409, memory and once props dropped with the document,
+ * a flash message fired once by its id, no page in `history.state`.
+ */
+describe('the security matrix — the core alone, no feature attached', () => {
+  const toast = (id: string): FlashMessage => ({ id, key: 'toast', data: `${CANARY} ${id}` }) as unknown as FlashMessage;
+
+  /** A signed-in tab with the core alone: pages in memory, once props, a flash message nobody listens to yet. */
+  async function bare() {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = (url) => pageResponse(secretPage(new URL(url).pathname));
+    const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada', flash: [toast('unheard')] };
+    initial.props.locales = [CANARY];
+    const tab = boot(win, initial, { features: [] });
+    for (const url of ['/users/2', '/users/3']) await tab.navigator.visit(url);
+    return { win, ...tab };
+  }
+
+  for (const reason of ['history', 'version'] as const) {
+    it(`a 409 (${reason === 'history' ? 'signed out' : 'a new build'}) loads the page fully and leaves nothing — not in memory, not in history.state`, async () => {
+      const { win, navigator } = await bare();
+      expect(navigator.cachedPages).toBeGreaterThan(0);
+      expect(win.requests.at(-1)!.headers).toMatchObject({ [ONCE_HEADER]: 'locales' });
+      win.handler = () => conflict(reason);
+      await navigator.visit('/users/4');
+      expect(win.loads).toEqual(['assign /login']);
+      expect(navigator.cachedPages).toBe(0);
+      expect(historyWithCanary(win)).toEqual([]);
+      // Nobody listened before the document was left: the message is gone, not waiting for the first listener.
+      const heard: unknown[] = [];
+      navigator.on('flash', (message) => heard.push(message));
+      expect(heard).toEqual([]);
+    });
+  }
+
+  it('a page of another scope drops the once props kept — never put back into it, and the next request names none', async () => {
+    const { win, navigator } = await bare();
+    win.handler = () => pageResponse({ ...page('/users/9', {}, 'pages/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'grace' });
+    const shown = await navigator.visit('/users/9');
+    expect(shown?.props).toEqual({});
+    await navigator.visit('/users/1');
+    expect(win.requests.at(-1)!.headers[ONCE_HEADER]).toBeUndefined();
+  });
+
+  it('a flash message fires once, by its id — the same one delivered again (a race, a partial reload) does not fire again', async () => {
+    const { win, navigator } = await bare();
+    const fired: string[] = [];
+    navigator.on('flash', (message) => fired.push(message.id));
+    win.handler = () => pageResponse({ ...secretPage('/users/3'), flash: [toast('saved')] });
+    await navigator.visit('/users/3', { method: 'put', data: {} });
+    await navigator.reload({ only: ['secret'] });
+    expect(fired).toEqual(['unheard', 'saved']);
+  });
+
+  it('history.state holds where an entry is, never what it showed — Back and Forward included', async () => {
+    const { win, navigator } = await bare();
+    win.back();
+    await settle();
+    win.forward();
+    await settle();
+    expect(navigator.page.url).toBe('/users/3');
+    expect(historyWithCanary(win)).toEqual([]);
+    for (const { state } of win.entries.filter((entry) => entry.state !== 'null')) {
+      expect(Object.keys(JSON.parse(state) as object).sort()).toEqual(expect.arrayContaining(['component', 'key', 'url']));
+      expect(Object.keys(JSON.parse(state) as object).every((field) => ['component', 'url', 'key', 'index', 'scroll', 'scrollRegions'].includes(field))).toBe(true);
+    }
+  });
+});
+
