@@ -1,4 +1,4 @@
-import { currentRequest } from './request-context.ts';
+import { currentLogContext } from './request-context.ts';
 import { token } from './token.ts';
 
 export type LogContext = Readonly<Record<string, unknown>>;
@@ -18,7 +18,7 @@ export interface Logger {
 }
 export const Logger = token<Logger>('Logger');
 
-/** Minimal fallback: one line per entry on stderr/stdout, request id included. */
+/** Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included. */
 export class ConsoleLogger implements Logger {
   readonly #bindings: LogContext;
 
@@ -43,8 +43,7 @@ export class ConsoleLogger implements Logger {
   }
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
-    const requestId = currentRequest()?.requestId;
-    const data = { ...this.#bindings, ...(requestId ? { requestId } : {}), ...context };
+    const data = { ...this.#bindings, ...currentLogContext(), ...context };
     const line = `[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`;
     (level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }

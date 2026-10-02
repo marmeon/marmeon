@@ -33,6 +33,7 @@ import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
 import type { MailFake } from '@bespokecore/mail';
+import type { QueueFake } from '@bespokecore/queue';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
@@ -62,6 +63,12 @@ export interface TestAppOptions {
    * (Laravel's `Mail::fake()`, on by default). `'real'` keeps the configured transport.
    */
   mail?: 'fake' | 'real';
+  /**
+   * Jobs are recorded, not queued (default `'fake'`, E101): the `Queue` is a `QueueFake`, available as `app.queue` —
+   * `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`, and `await app.queue.work()` runs them for real in the
+   * test. `'real'` keeps the configured connection (`QUEUE_CONNECTION`). Needs @bespokecore/queue.
+   */
+  queue?: 'fake' | 'real';
   /**
    * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `bespoke dev` does) — so the markup
    * and `<Head>` are testable (`assertSee`, `assertServerRendered`, `assertHydrates`). Off by default: responses carry
@@ -99,6 +106,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   const database = await importDatabase();
   const mail = options.mail === 'real' ? undefined : await importMail();
   let mailFake: MailFake | undefined;
+  const queue = options.queue === 'real' ? undefined : await importQueue();
+  let queueFake: QueueFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
   const clock = new TestClock();
 
@@ -130,6 +139,10 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
         mailFake = new mail.MailFake(container.make(mail.MailConfig).from);
         container.instance(mail.Mailer, mailFake);
       }
+      if (queue && container.has(queue.Queue)) {
+        queueFake = new queue.QueueFake(container);
+        container.instance(queue.Queue, queueFake);
+      }
       definition.override?.(container);
       options.override?.(container);
     },
@@ -150,6 +163,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     kernel: createHttpKernel(application, ssr ? { renderer: ssr.renderer } : {}),
     database,
     mail: mailFake,
+    queue: queueFake,
     clock,
     ssr,
     cleanups: ssr ? [() => ssr.close()] : [],
@@ -196,6 +210,8 @@ interface Shared {
   readonly database: DatabaseModule | undefined;
   /** The recording mailer, unless the app has no mail or the test chose `mail: 'real'`. */
   readonly mail: MailFake | undefined;
+  /** The recording queue, unless the app has no queue or the test chose `queue: 'real'`. */
+  readonly queue: QueueFake | undefined;
   /** The app's `Clock`. */
   readonly clock: TestClock;
   /** Server rendering, with `ssr: true`. */
@@ -245,6 +261,15 @@ async function importDatabase(): Promise<DatabaseModule | undefined> {
 async function importMail(): Promise<typeof import('@bespokecore/mail') | undefined> {
   try {
     return await import('@bespokecore/mail');
+  } catch {
+    return undefined;
+  }
+}
+
+/** @bespokecore/queue is an optional peer, like the session. */
+async function importQueue(): Promise<typeof import('@bespokecore/queue') | undefined> {
+  try {
+    return await import('@bespokecore/queue');
   } catch {
     return undefined;
   }
@@ -337,6 +362,15 @@ export class TestApp {
   get mail(): MailFake {
     if (!this.#shared.mail) throw new Error("app.mail needs @bespokecore/mail in the app (and not createTestApp(…, { mail: 'real' })).");
     return this.#shared.mail;
+  }
+
+  /**
+   * The jobs the app dispatched — recorded, not queued: `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`;
+   * `await app.queue.work()` runs them for real (injection, a scope per attempt, retries). Needs @bespokecore/queue.
+   */
+  get queue(): QueueFake {
+    if (!this.#shared.queue) throw new Error("app.queue needs @bespokecore/queue in the app (and not createTestApp(…, { queue: 'real' })).");
+    return this.#shared.queue;
   }
 
   /**

@@ -1,0 +1,189 @@
+import { readFileSync } from 'node:fs';
+import { Clock } from '@bespokecore/core';
+import type { CommandInput } from '@bespokecore/cli';
+import { QueueConnections } from '../connections.ts';
+import type { FailedJob } from '../driver.ts';
+
+/** The migration `make:queue-table` copies — a real file, so the driver tests run exactly what apps get. */
+export const QUEUE_MIGRATION = new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url);
+
+/** `bespoke make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module (E96). */
+export class MakeQueueTableCommand {
+  static command = 'make:queue-table';
+  static description = 'Create the migration for the database queue (jobs, failed_jobs)';
+  static usage = '[--module=system]';
+  static options = { module: { type: 'string', short: 'm' } } as const;
+
+  async handle(input: CommandInput): Promise<number> {
+    const { publishMigration } = await import('@bespokecore/database');
+    return publishMigration(input, { name: 'create_jobs_table', table: 'jobs', contents: readFileSync(QUEUE_MIGRATION, 'utf8') });
+  }
+}
+
+/** The first line of a stored error, for listings. */
+function headline(job: FailedJob): string {
+  const line = job.exception.split('\n')[0] ?? '';
+  return line.length > 120 ? `${line.slice(0, 117)}…` : line;
+}
+
+/** `bespoke queue:failed`: the failed jobs, newest first. */
+export class QueueFailedCommand {
+  static command = 'queue:failed';
+  static description = 'List the failed jobs';
+
+  readonly #connections: QueueConnections;
+
+  constructor(connections: QueueConnections) {
+    this.#connections = connections;
+  }
+
+  async handle({ output }: CommandInput): Promise<number> {
+    const jobs = await this.#connections.failed().all();
+    if (jobs.length === 0) {
+      output.line('No failed jobs.');
+      return 0;
+    }
+    for (const job of jobs) {
+      output.line(`${new Date(job.failedAt).toISOString()}  ${job.uuid}  ${job.job}  (${job.connection}/${job.queue})`);
+      output.line(`    ${headline(job)}`);
+    }
+    output.line(`${jobs.length} failed ${jobs.length === 1 ? 'job' : 'jobs'} — bespoke queue:retry <id|all>, queue:forget <id>`);
+    return 0;
+  }
+}
+
+/** `bespoke queue:retry <id…|all>`: puts failed jobs back on their queue — same job id, attempts from zero. */
+export class QueueRetryCommand {
+  static command = 'queue:retry';
+  static description = 'Put failed jobs back on their queue';
+  static usage = '<id…|all>';
+
+  readonly #connections: QueueConnections;
+
+  constructor(connections: QueueConnections) {
+    this.#connections = connections;
+  }
+
+  async handle({ args, output }: CommandInput): Promise<number> {
+    if (args.length === 0) {
+      output.error('Pass the ids of the failed jobs (bespoke queue:failed lists them), or all.');
+      return 1;
+    }
+    const store = this.#connections.failed();
+    // `all`: oldest first, so the queue keeps their order.
+    const jobs = args.includes('all') ? (await store.all()).toReversed() : await Promise.all(args.map(async (id) => (await store.find(id)) ?? id));
+    let code = 0;
+    for (const job of jobs) {
+      if (typeof job === 'string') {
+        output.error(`No failed job with the id ${job}.`);
+        code = 1;
+        continue;
+      }
+      // Its connection, if it still keeps jobs — else the default one.
+      const known = this.#connections.names().includes(job.connection) && this.#connections.options(job.connection).driver !== 'sync';
+      const connection = known ? job.connection : this.#connections.default;
+      await this.#connections.driver(connection).push(job.queue, job.payload, 0);
+      await store.forget(job.uuid);
+      output.success(`Queued ${job.job} (${job.uuid}) again on ${connection}/${job.queue}`);
+    }
+    return code;
+  }
+}
+
+/** `bespoke queue:forget <id>`: deletes a failed job. */
+export class QueueForgetCommand {
+  static command = 'queue:forget';
+  static description = 'Delete a failed job';
+  static usage = '<id>';
+
+  readonly #connections: QueueConnections;
+
+  constructor(connections: QueueConnections) {
+    this.#connections = connections;
+  }
+
+  async handle({ args, output }: CommandInput): Promise<number> {
+    const [id] = args;
+    if (!id) {
+      output.error('Pass the id of the failed job (bespoke queue:failed lists them).');
+      return 1;
+    }
+    if (!(await this.#connections.failed().forget(id))) {
+      output.error(`No failed job with the id ${id}.`);
+      return 1;
+    }
+    output.success(`Deleted the failed job ${id}.`);
+    return 0;
+  }
+}
+
+/** `bespoke queue:flush`: deletes every failed job. */
+export class QueueFlushCommand {
+  static command = 'queue:flush';
+  static description = 'Delete all failed jobs';
+
+  readonly #connections: QueueConnections;
+
+  constructor(connections: QueueConnections) {
+    this.#connections = connections;
+  }
+
+  async handle({ output }: CommandInput): Promise<number> {
+    const removed = await this.#connections.failed().flush();
+    output.success(`Deleted ${removed} failed ${removed === 1 ? 'job' : 'jobs'}.`);
+    return 0;
+  }
+}
+
+/** `bespoke queue:prune-failed [--hours=168]`: deletes failed jobs older than the given hours — for the scheduler (W6 step 6). */
+export class QueuePruneFailedCommand {
+  static command = 'queue:prune-failed';
+  static description = 'Delete failed jobs older than --hours (default 168)';
+  static usage = '[--hours=168]';
+  static options = { hours: { type: 'string' } } as const;
+
+  readonly #connections: QueueConnections;
+  readonly #clock: Clock;
+
+  constructor(connections: QueueConnections, clock: Clock) {
+    this.#connections = connections;
+    this.#clock = clock;
+  }
+
+  async handle({ options, output }: CommandInput): Promise<number> {
+    const hours = options.hours === undefined ? 168 : Number(options.hours);
+    if (!Number.isFinite(hours) || hours < 0) {
+      output.error('--hours must be a number ≥ 0.');
+      return 1;
+    }
+    const removed = await this.#connections.failed().prune(this.#clock.now() - hours * 3_600_000);
+    output.success(`Pruned ${removed} failed ${removed === 1 ? 'job' : 'jobs'} older than ${hours} hours.`);
+    return 0;
+  }
+}
+
+/** `bespoke queue:size [queue…] [--connection=…]`: how many jobs wait (or run) per queue. */
+export class QueueSizeCommand {
+  static command = 'queue:size';
+  static description = 'Show how many jobs each queue holds';
+  static usage = '[queue…] [--connection=database]';
+  static options = { connection: { type: 'string' } } as const;
+
+  readonly #connections: QueueConnections;
+
+  constructor(connections: QueueConnections) {
+    this.#connections = connections;
+  }
+
+  async handle({ args, options, output }: CommandInput): Promise<number> {
+    const connection = typeof options.connection === 'string' ? options.connection : this.#connections.default;
+    const settings = this.#connections.options(connection);
+    if (settings.driver === 'sync') {
+      output.line('The sync connection keeps no jobs: each runs when it is dispatched.');
+      return 0;
+    }
+    const driver = this.#connections.driver(connection);
+    for (const queue of args.length > 0 ? args : [settings.queue]) output.line(`${connection}/${queue}: ${await driver.size(queue)}`);
+    return 0;
+  }
+}

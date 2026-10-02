@@ -1,4 +1,4 @@
-import { currentRequest, defineConfig, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
+import { currentLogContext, defineConfig, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
 import { pino, type Logger as Pino } from 'pino';
 import pretty from 'pino-pretty';
 import * as v from 'valibot';
@@ -42,23 +42,8 @@ export class PinoLogger implements Logger {
   }
 }
 
-/** Context keys whose values never reach the log: passwords, tokens, secrets, credentials and cookies. */
-export const REDACTED_KEYS = /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature/i;
-
-/**
- * A copy of `context` with sensitive values replaced by `[redacted]` — by key, at any depth (`password`,
- * `new_password`, `headers.authorization`, `remember_web` …). Messages themselves are not scanned:
- * never put secrets into a log message. Query parameters stay out of the query log anyway.
- */
-export function redact(context: Record<string, unknown>, depth = 0): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) {
-    if (REDACTED_KEYS.test(key)) out[key] = '[redacted]';
-    else if (depth < 6 && value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Error)) out[key] = redact(value as Record<string, unknown>, depth + 1);
-    else out[key] = value;
-  }
-  return out;
-}
+// The redaction lives in core: the queue redacts a failed job's error the same way (E105).
+export { redact, REDACTED_KEYS } from '@bespokecore/core';
 
 export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream): Logger {
   const stream =
@@ -68,11 +53,8 @@ export function createPinoLogger(config: LogConfig, destination?: NodeJS.Writabl
       level: config.level,
       base: undefined,
       formatters: { log: (object) => redact(object) },
-      // Every entry written while a request is handled carries its id.
-      mixin: () => {
-        const requestId = currentRequest()?.requestId;
-        return requestId ? { requestId } : {};
-      },
+      // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt.
+      mixin: () => currentLogContext(),
     },
     stream as never,
   );

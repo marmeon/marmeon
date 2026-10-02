@@ -1,0 +1,144 @@
+import { SystemClock, type Clock } from '@bespokecore/core';
+import type { FailedJob, FailedJobStore, QueueDriver, ReservedJob } from '../driver.ts';
+
+interface Entry {
+  readonly id: string;
+  readonly queue: string;
+  readonly payload: string;
+  attempts: number;
+  reservedAt: number | undefined;
+  availableAt: number;
+}
+
+/**
+ * Jobs in this process's memory — what the `QueueFake` runs `app.queue.work()` on, and a driver for unit tests. Every
+ * operation is synchronous, so it is atomic within the process; it is never shared between processes.
+ */
+export class MemoryQueueDriver implements QueueDriver {
+  readonly #clock: Clock;
+  readonly #retryAfter: number;
+  readonly #entries: Entry[] = [];
+  #next = 1;
+
+  constructor(options: { clock?: Clock; retryAfter?: number } = {}) {
+    this.#clock = options.clock ?? new SystemClock();
+    this.#retryAfter = options.retryAfter ?? 90;
+  }
+
+  async push(queue: string, payload: string, delay: number): Promise<string> {
+    const id = String(this.#next++);
+    this.#entries.push({ id, queue, payload, attempts: 0, reservedAt: undefined, availableAt: this.#clock.now() + delay * 1000 });
+    return id;
+  }
+
+  async reserve(queues: readonly string[]): Promise<ReservedJob | undefined> {
+    const now = this.#clock.now();
+    for (const queue of queues) {
+      const entry = this.#entries.find(
+        (candidate) =>
+          candidate.queue === queue &&
+          (candidate.reservedAt === undefined ? candidate.availableAt <= now : candidate.reservedAt <= now - this.#retryAfter * 1000),
+      );
+      if (!entry) continue;
+      entry.attempts += 1;
+      entry.reservedAt = now;
+      return { id: entry.id, queue: entry.queue, payload: entry.payload, attempts: entry.attempts, reservedAt: now };
+    }
+    return undefined;
+  }
+
+  async ack(job: ReservedJob): Promise<boolean> {
+    return this.#remove(job);
+  }
+
+  async release(job: ReservedJob, delay: number): Promise<boolean> {
+    const entry = this.#claimed(job);
+    if (!entry) return false;
+    entry.reservedAt = undefined;
+    entry.availableAt = this.#clock.now() + delay * 1000;
+    return true;
+  }
+
+  async fail(job: ReservedJob): Promise<boolean> {
+    return this.#remove(job);
+  }
+
+  async size(queue: string): Promise<number> {
+    return this.#entries.filter((entry) => entry.queue === queue).length;
+  }
+
+  /** Every job waiting or running, oldest first (for the fake's inspection). */
+  entries(): readonly { readonly id: string; readonly queue: string; readonly payload: string; readonly attempts: number; readonly reserved: boolean; readonly availableAt: number }[] {
+    return this.#entries.map((entry) => ({ id: entry.id, queue: entry.queue, payload: entry.payload, attempts: entry.attempts, reserved: entry.reservedAt !== undefined, availableAt: entry.availableAt }));
+  }
+
+  #claimed(job: ReservedJob): Entry | undefined {
+    return this.#entries.find((entry) => entry.id === job.id && entry.attempts === job.attempts && entry.reservedAt !== undefined);
+  }
+
+  #remove(job: ReservedJob): boolean {
+    const entry = this.#claimed(job);
+    if (!entry) return false;
+    this.#entries.splice(this.#entries.indexOf(entry), 1);
+    return true;
+  }
+}
+
+/** Failed jobs in memory — the fake's, and a driver for tests. */
+export class MemoryFailedJobStore implements FailedJobStore {
+  readonly #jobs = new Map<string, FailedJob>();
+
+  async record(job: FailedJob): Promise<void> {
+    this.#jobs.delete(job.uuid);
+    this.#jobs.set(job.uuid, job);
+  }
+
+  async all(): Promise<FailedJob[]> {
+    return [...this.#jobs.values()].reverse();
+  }
+
+  async find(uuid: string): Promise<FailedJob | undefined> {
+    return this.#jobs.get(uuid);
+  }
+
+  async forget(uuid: string): Promise<boolean> {
+    return this.#jobs.delete(uuid);
+  }
+
+  async flush(): Promise<number> {
+    const count = this.#jobs.size;
+    this.#jobs.clear();
+    return count;
+  }
+
+  async prune(before: number): Promise<number> {
+    let count = 0;
+    for (const [uuid, job] of this.#jobs) {
+      if (job.failedAt < before) {
+        this.#jobs.delete(uuid);
+        count++;
+      }
+    }
+    return count;
+  }
+}
+
+/** `QUEUE_FAILED_DRIVER=null`: failed jobs are only logged (by the worker), never kept. */
+export class NullFailedJobStore implements FailedJobStore {
+  async record(): Promise<void> {}
+  async all(): Promise<FailedJob[]> {
+    return [];
+  }
+  async find(): Promise<FailedJob | undefined> {
+    return undefined;
+  }
+  async forget(): Promise<boolean> {
+    return false;
+  }
+  async flush(): Promise<number> {
+    return 0;
+  }
+  async prune(): Promise<number> {
+    return 0;
+  }
+}

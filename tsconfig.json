@@ -41,6 +41,9 @@
       "path": "packages/mail"
     },
     {
+      "path": "packages/queue"
+    },
+    {
       "path": "packages/auth"
     },
     {

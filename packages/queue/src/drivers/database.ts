@@ -1,0 +1,177 @@
+import { SystemClock, type Clock } from '@bespokecore/core';
+import type { Kysely } from '@bespokecore/database';
+import type { FailedJob, FailedJobStore, QueueDriver, ReservedJob } from '../driver.ts';
+
+/** The tables `bespoke make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
+export const JOBS_TABLE = 'jobs';
+export const FAILED_JOBS_TABLE = 'failed_jobs';
+
+/** A connection of @bespokecore/database — or a transaction of one (`queue.using(trx)`). */
+export interface DatabaseQueueConnection {
+  readonly db: Kysely<any>;
+  readonly driver: 'sqlite' | 'pgsql';
+}
+
+type Sql = (typeof import('@bespokecore/database'))['sql'];
+
+async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { sql?: Promise<Sql> }): Promise<DatabaseQueueConnection & { sql: Sql }> {
+  // Imported here, not at the top: @bespokecore/database is an optional peer of the queue.
+  cache.sql ??= import('@bespokecore/database').then((module) => module.sql);
+  const [resolved, sql] = await Promise.all([connection(), cache.sql]);
+  return { ...resolved, sql };
+}
+
+/**
+ * Jobs in the app's database (`QUEUE_CONNECTION=database`, E83) — the table `jobs`.
+ *
+ * **The claim is one atomic statement across any number of workers:**
+ * `UPDATE jobs … WHERE id = (SELECT id … LIMIT 1) RETURNING …` — on Postgres with `FOR UPDATE SKIP LOCKED` in the
+ * subquery (a row another worker is claiming is skipped, never waited for, never taken twice); on SQLite as it is: a
+ * write statement takes the database's single write lock before it reads (waiting with the busy timeout), so two
+ * processes never claim the same row. (A `BEGIN` + `SELECT` + `UPDATE` would not be safe there — the read would come
+ * before the lock.) A claim counts the attempt; `ack` deletes, `release` hands the row back —
+ * both only while the claim is still this worker's (`attempts` unchanged), so a worker whose claim expired cannot
+ * touch the job another worker holds now.
+ *
+ * Writing through a transaction (`queue.using(trx)`) makes a dispatch part of it (E85): visible to workers with the
+ * commit, gone with a rollback.
+ */
+export class DatabaseQueueDriver implements QueueDriver {
+  readonly #connection: () => Promise<DatabaseQueueConnection>;
+  readonly #clock: Clock;
+  readonly #retryAfter: number;
+  readonly #cache: { sql?: Promise<Sql> } = {};
+
+  /**
+   * `connection`: resolved on first use (the driver is built before the database package boots).
+   * `retryAfter`: seconds after which a claimed job counts as abandoned (its worker died) and is claimed again.
+   */
+  constructor(connection: DatabaseQueueConnection | (() => Promise<DatabaseQueueConnection>), options: { retryAfter: number; clock?: Clock }) {
+    this.#connection = typeof connection === 'function' ? connection : async () => connection;
+    this.#clock = options.clock ?? new SystemClock();
+    this.#retryAfter = options.retryAfter;
+  }
+
+  /** The same driver, writing through `db` — a transaction: its dispatches commit or roll back with it. */
+  using(db: Kysely<any>): DatabaseQueueDriver {
+    const outer = this.#connection;
+    return new DatabaseQueueDriver(async () => ({ db, driver: (await outer()).driver }), { retryAfter: this.#retryAfter, clock: this.#clock });
+  }
+
+  async push(queue: string, payload: string, delay: number): Promise<string> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const now = this.#clock.now();
+    const { rows } = await sql<{ id: number | string }>`insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at)
+      values (${queue}, ${payload}, 0, null, cast(${now + Math.round(delay * 1000)} as bigint), cast(${now} as bigint)) returning id`.execute(db);
+    return String(rows[0]!.id);
+  }
+
+  async reserve(queues: readonly string[]): Promise<ReservedJob | undefined> {
+    const { db, sql, driver } = await use(this.#connection, this.#cache);
+    for (const queue of queues) {
+      const now = this.#clock.now();
+      const expired = now - this.#retryAfter * 1000;
+      const { rows } = await sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update jobs
+          set reserved_at = cast(${now} as bigint), attempts = attempts + 1
+          where id = (
+            select id from jobs
+            where queue = ${queue} and ((reserved_at is null and available_at <= cast(${now} as bigint)) or reserved_at <= cast(${expired} as bigint))
+            order by id
+            limit 1 ${driver === 'pgsql' ? sql`for update skip locked` : sql``}
+          )
+          returning id, queue, payload, attempts`.execute(db);
+      const row = rows[0];
+      if (row) return { id: String(row.id), queue: row.queue, payload: row.payload, attempts: Number(row.attempts), reservedAt: now };
+    }
+    return undefined;
+  }
+
+  async ack(job: ReservedJob): Promise<boolean> {
+    return this.#delete(job);
+  }
+
+  async release(job: ReservedJob, delay: number): Promise<boolean> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint)
+      where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
+    return result.numAffectedRows === 1n;
+  }
+
+  async fail(job: ReservedJob): Promise<boolean> {
+    return this.#delete(job);
+  }
+
+  async size(queue: string): Promise<number> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const { rows } = await sql<{ count: number | string }>`select count(*) as count from jobs where queue = ${queue}`.execute(db);
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  async #delete(job: ReservedJob): Promise<boolean> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const result = await sql`delete from jobs where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
+    return result.numAffectedRows === 1n;
+  }
+}
+
+/** Failed jobs in `failed_jobs` (from `bespoke make:queue-table`). */
+export class DatabaseFailedJobStore implements FailedJobStore {
+  readonly #connection: () => Promise<DatabaseQueueConnection>;
+  readonly #cache: { sql?: Promise<Sql> } = {};
+
+  constructor(connection: DatabaseQueueConnection | (() => Promise<DatabaseQueueConnection>)) {
+    this.#connection = typeof connection === 'function' ? connection : async () => connection;
+  }
+
+  async record(job: FailedJob): Promise<void> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    await sql`insert into failed_jobs (uuid, connection, queue, job, payload, exception, failed_at)
+      values (${job.uuid}, ${job.connection}, ${job.queue}, ${job.job}, ${job.payload}, ${job.exception}, cast(${job.failedAt} as bigint))
+      on conflict (uuid) do update set connection = excluded.connection, queue = excluded.queue, job = excluded.job,
+        payload = excluded.payload, exception = excluded.exception, failed_at = excluded.failed_at`.execute(db);
+  }
+
+  async all(): Promise<FailedJob[]> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const { rows } = await sql<Row>`select * from failed_jobs order by failed_at desc, uuid`.execute(db);
+    return rows.map(fromRow);
+  }
+
+  async find(uuid: string): Promise<FailedJob | undefined> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const { rows } = await sql<Row>`select * from failed_jobs where uuid = ${uuid}`.execute(db);
+    return rows[0] ? fromRow(rows[0]) : undefined;
+  }
+
+  async forget(uuid: string): Promise<boolean> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const result = await sql`delete from failed_jobs where uuid = ${uuid}`.execute(db);
+    return result.numAffectedRows === 1n;
+  }
+
+  async flush(): Promise<number> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const result = await sql`delete from failed_jobs`.execute(db);
+    return Number(result.numAffectedRows ?? 0n);
+  }
+
+  async prune(before: number): Promise<number> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const result = await sql`delete from failed_jobs where failed_at < cast(${before} as bigint)`.execute(db);
+    return Number(result.numAffectedRows ?? 0n);
+  }
+}
+
+interface Row {
+  uuid: string;
+  connection: string;
+  queue: string;
+  job: string;
+  payload: string;
+  exception: string;
+  failed_at: number | string;
+}
+
+function fromRow(row: Row): FailedJob {
+  return { uuid: row.uuid, connection: row.connection, queue: row.queue, job: row.job, payload: row.payload, exception: row.exception, failedAt: Number(row.failed_at) };
+}

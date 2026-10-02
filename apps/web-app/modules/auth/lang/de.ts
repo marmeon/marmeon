@@ -154,6 +154,13 @@ export default {
       button: 'Meine E-Mail-Adresse bestätigen',
       outro: 'Der Link funktioniert 60 Minuten lang. Wenn du kein Konto angelegt hast, ignoriere diese Mail.',
     },
+    welcome: {
+      subject: 'Willkommen bei {app}',
+      preview: 'Dein Konto ist bereit',
+      intro: 'willkommen bei {app} — dein Konto ist bereit.',
+      button: 'Zu deinem Profil',
+      outro: 'Bestätige deine E-Mail-Adresse mit dem Link aus unserer anderen Mail, dann kannst du Links in deinem Profil veröffentlichen.',
+    },
     email_changed: {
       subject: 'Deine E-Mail-Adresse wurde geändert',
       preview: 'Die Adresse deines Kontos hat sich geändert',

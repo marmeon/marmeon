@@ -1,7 +1,6 @@
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Application, ConfigError, Container, createApplication, type ApplicationOptions } from '@bespokecore/core';
 import { CommandRegistry, type CommandClass } from './command.ts';
@@ -12,6 +11,7 @@ import { printCommandList } from './commands/list.ts';
 import {
   MakeControllerCommand,
   MakeEventCommand,
+  MakeJobCommand,
   MakeListenerCommand,
   MakeMiddlewareCommand,
   MakeMigrationCommand,
@@ -22,6 +22,9 @@ import { RouteListCommand } from './commands/route-list.ts';
 import { RouteTypesCommand } from './commands/route-types.ts';
 import { ServeCommand } from './commands/serve.ts';
 import { Output } from './output.ts';
+import { spawnBespoke } from './spawn.ts';
+
+export { spawnBespoke, startBespoke } from './spawn.ts';
 
 const BUILT_IN: readonly CommandClass[] = [
   ServeCommand,
@@ -35,6 +38,7 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeControllerCommand,
   MakeEventCommand,
   MakeListenerCommand,
+  MakeJobCommand,
   MakeMiddlewareCommand,
   MakeMigrationCommand,
 ];
@@ -95,19 +99,6 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   } finally {
     await app?.shutdown();
   }
-}
-
-/** The `bespoke` launcher of this package — `bin/bespoke.js`, next to `src/` and `dist/`. */
-const LAUNCHER = fileURLToPath(new URL('../bin/bespoke.js', import.meta.url));
-
-/** `bespoke <args>` in `root` as a new process (the launcher sets conditions and the injection hook itself). */
-export function spawnBespoke(root: string, args: readonly string[]): Promise<number> {
-  const { BESPOKE_CHILD: _child, ...env } = process.env;
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env, stdio: 'inherit' });
-    child.once('error', reject);
-    child.once('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
-  });
 }
 
 /** A failed command: its error and where it came from — not Node's dump of every property of every cause. */

@@ -21,6 +21,7 @@
     "@bespokecore/i18n": "workspace:*",
     "@bespokecore/log": "workspace:*",
     "@bespokecore/mail": "workspace:*",
+    "@bespokecore/queue": "workspace:*",
     "@bespokecore/react": "workspace:*",
     "@bespokecore/redis": "workspace:*",
     "@bespokecore/router": "workspace:*",

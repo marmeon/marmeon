@@ -1,0 +1,60 @@
+{
+  "name": "@bespokecore/queue",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/__fixtures__",
+    "stubs"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "QueueServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/database": "workspace:*",
+    "@bespokecore/encryption": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@bespokecore/cli": {
+      "optional": true
+    },
+    "@bespokecore/database": {
+      "optional": true
+    },
+    "@bespokecore/encryption": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/database": "workspace:*",
+    "@bespokecore/encryption": "workspace:*"
+  }
+}

@@ -1,5 +1,6 @@
 import type { Application, Container, ServiceProvider } from '@bespokecore/core';
 import { CommandRegistry, type CommandClass } from './command.ts';
+import { DevProcesses } from './dev.ts';
 
 declare module '@bespokecore/core' {
   interface ModuleDefinition {
@@ -15,6 +16,7 @@ declare module '@bespokecore/core' {
 export class CliServiceProvider implements ServiceProvider {
   register(container: Container): void {
     container.singleton(CommandRegistry);
+    container.singleton(DevProcesses);
   }
 
   boot(app: Application): void {

@@ -1,8 +1,12 @@
+import type { ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import { Application, Logger } from '@bespokecore/core';
 import { startServer, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
+import { DevProcesses, type DevProcess } from '../dev.ts';
+import { startBespoke } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
 import { writeRouteTypes } from './route-types.ts';
 
@@ -10,6 +14,9 @@ import { writeRouteTypes } from './route-types.ts';
  * Runs the HTTP server. `bespoke dev` (with restarts) and `bespoke start` (production) both end up here.
  * It returns on SIGINT/SIGTERM (Ctrl+C, `node --watch` restarting, a deployment): the server stops
  * accepting requests, open keep-alive connections close, and then the CLI shuts the app down.
+ *
+ * `bespoke dev` also runs what packages add to {@link DevProcesses} (a queue worker, E101) — started with the server,
+ * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own.
  */
 export class ServeCommand {
   static command = 'serve';
@@ -19,11 +26,13 @@ export class ServeCommand {
   readonly #app: Application;
   readonly #logger: Logger;
   readonly #routeTypes: RouteTypes;
+  readonly #devProcesses: DevProcesses;
 
-  constructor(app: Application, logger: Logger, routeTypes: RouteTypes) {
+  constructor(app: Application, logger: Logger, routeTypes: RouteTypes, devProcesses: DevProcesses) {
     this.#app = app;
     this.#logger = logger;
     this.#routeTypes = routeTypes;
+    this.#devProcesses = devProcesses;
   }
 
   async handle({ output, root }: CommandInput): Promise<number> {
@@ -40,6 +49,7 @@ export class ServeCommand {
       output.error(error.message);
       return 1;
     }
+    const companions = development ? this.#devProcesses.all().map((definition) => this.#companion(definition, root)) : [];
     const signal = await new Promise<string>((resolve) => {
       process.once('SIGINT', resolve).once('SIGTERM', resolve);
     });
@@ -50,8 +60,41 @@ export class ServeCommand {
     setTimeout(() => process.exit(1), 10_000).unref();
     this.#logger.info(`${signal} received, shutting down`);
     views?.close();
-    await server.close();
+    await Promise.all([server.close(), ...companions.map((companion) => companion.stop())]);
     return 0;
+  }
+
+  /** Runs `bespoke <args>` next to the server until `stop()`; one that ends on its own is started again (unless it fails right away). */
+  #companion(definition: DevProcess, root: string): { stop(): Promise<void> } {
+    let child: ChildProcess | undefined;
+    let stopping = false;
+    const start = () => {
+      const started = Date.now();
+      const current = startBespoke(root, definition.args);
+      child = current;
+      current.once('exit', (code, signal) => {
+        if (stopping || child !== current) return;
+        const reason = signal ? `signal ${signal}` : `code ${code}`;
+        if (Date.now() - started < 3000) {
+          this.#logger.error(`The ${definition.name} process (bespoke ${definition.args.join(' ')}) ended right after it started (${reason}); fix the problem and save a file to restart.`);
+          return;
+        }
+        this.#logger.warn(`The ${definition.name} process ended (${reason}); starting it again`);
+        setTimeout(() => !stopping && start(), 1000).unref();
+      });
+    };
+    start();
+    return {
+      stop: async () => {
+        stopping = true;
+        const current = child;
+        if (!current || current.exitCode !== null || current.signalCode !== null) return;
+        const exited = once(current, 'exit');
+        current.kill('SIGTERM');
+        // It finishes its running job first (its --stop-timeout); the server's own 10-second limit still applies.
+        await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 9000).unref())]);
+      },
+    };
   }
 
   async #watchRouteTypes(output: CommandInput['output'], root: string): Promise<FSWatcher | undefined> {

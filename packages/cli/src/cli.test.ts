@@ -125,7 +125,7 @@ describe('bespoke make:* (generated code compiles)', () => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'http', 'router', 'database']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'http', 'router', 'database', 'queue']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
     for (const pkg of ['react', '@types/react', 'valibot']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
@@ -139,7 +139,7 @@ describe('bespoke make:* (generated code compiles)', () => {
   });
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
-  it('scaffolds a module, controller with view, event, listener and middleware', () => {
+  it('scaffolds a module, controller with view, event, listener, middleware and job', () => {
     expect(bespoke(app, ['make:module', 'billing']).stdout).toContain("import billing from '#modules/billing';");
     expect(bespoke(app, ['make:controller', 'ShowInvoice', '--module=billing', '--view']).code).toBe(0);
     expect(bespoke(app, ['make:event', 'InvoicePaid', '-m', 'billing']).code).toBe(0);
@@ -147,6 +147,7 @@ describe('bespoke make:* (generated code compiles)', () => {
       'listeners: [listen(InvoicePaid, SendReceipt)]',
     );
     expect(bespoke(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
+    expect(bespoke(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain('jobs: [SendInvoiceReminderJob]');
     expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
     // A reading endpoint is a GET, and a GET has no body (E65): its request validates the query.
     expect(bespoke(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
@@ -160,6 +161,9 @@ describe('bespoke make:* (generated code compiles)', () => {
     const controller = readFileSync(join(app, 'modules/billing/controllers/ShowInvoiceController.ts'), 'utf8');
     expect(controller).toContain("return this.view('billing/ShowInvoice', {});");
     expect(readFileSync(join(app, 'modules/billing/events/InvoicePaid.ts'), 'utf8')).toContain('readonly #event = true;');
+    const job = readFileSync(join(app, 'modules/billing/jobs/SendInvoiceReminderJob.ts'), 'utf8');
+    expect(job).toContain("static readonly job = 'billing.send-invoice-reminder';"); // stable, from the class name once (E84)
+    expect(job).toContain('async handle(payload: JobPayload<typeof SendInvoiceReminderJob>, job: JobContext): Promise<void> {');
     const withRequest = readFileSync(join(app, 'modules/billing/controllers/UpdateInvoiceController.ts'), 'utf8');
     expect(withRequest).toContain('export const UpdateInvoiceRequest = defineRequest({');
     expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
@@ -183,7 +187,7 @@ describe('bespoke make:* (generated code compiles)', () => {
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
-  }, 30_000); // eleven CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
+  }, 30_000); // twelve CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
 
   it('refuses to overwrite and explains missing modules', () => {
     bespoke(app, ['make:module', 'shop']);

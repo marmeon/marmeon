@@ -135,6 +135,9 @@ importers:
       '@bespokecore/mail':
         specifier: workspace:*
         version: link:../../packages/mail
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@bespokecore/react':
         specifier: workspace:*
         version: link:../../packages/react
@@ -390,6 +393,25 @@ importers:
         specifier: ^10.0.13
         version: 10.0.13
 
+  packages/queue:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+
   packages/react:
     dependencies:
       '@bespokecore/http':
@@ -523,6 +545,9 @@ importers:
       '@bespokecore/mail':
         specifier: workspace:*
         version: link:../mail
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../queue
       '@bespokecore/session':
         specifier: workspace:*
         version: link:../session

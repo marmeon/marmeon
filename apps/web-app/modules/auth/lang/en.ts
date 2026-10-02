@@ -154,6 +154,13 @@ const en = {
       button: 'Confirm my e-mail address',
       outro: 'The link works for 60 minutes. If you did not create an account, ignore this mail.',
     },
+    welcome: {
+      subject: 'Welcome to {app}',
+      preview: 'Your account is ready',
+      intro: 'welcome to {app} — your account is ready.',
+      button: 'Open your profile',
+      outro: 'Confirm your e-mail address with the link from our other mail, then you can publish links on your profile.',
+    },
     email_changed: {
       subject: 'Your e-mail address was changed',
       preview: 'The address of your account changed',

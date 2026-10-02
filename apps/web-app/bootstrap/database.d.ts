@@ -17,6 +17,26 @@ declare module '@bespokecore/database' {
       owner: string;
       expiration: number;
     };
+    /** Owned by `system`. */
+    failed_jobs: {
+      uuid: string;
+      connection: string;
+      queue: string;
+      job: string;
+      payload: string;
+      exception: string;
+      failed_at: number;
+    };
+    /** Owned by `system`. */
+    jobs: {
+      id: Generated<number>;
+      queue: string;
+      payload: string;
+      attempts: number;
+      reserved_at: number | null;
+      available_at: number;
+      created_at: number;
+    };
     /** Owned by `user-profile`. */
     login_activity: {
       user_id: number;
@@ -85,6 +105,8 @@ declare module '@bespokecore/database' {
   interface TableOwners {
     cache: 'system';
     cache_locks: 'system';
+    failed_jobs: 'system';
+    jobs: 'system';
     login_activity: 'user-profile';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';

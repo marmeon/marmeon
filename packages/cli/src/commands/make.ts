@@ -144,6 +144,34 @@ export class MakeListenerCommand {
   }
 }
 
+export class MakeJobCommand {
+  static command = 'make:job';
+  static description = 'Create a queued job (a class with handle(), a stable name and a payload schema)';
+  static usage = '<Name> --module=<module>';
+  static options = moduleOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const dir = moduleDir(input);
+    const name = className(input, 'Job');
+    if (!dir || !name) return 1;
+    const module = input.options.module as string;
+    // The stable name the queue stores (E84) — from the class name once; renaming the class later keeps it.
+    const kebab = name
+      .replace(/Job$/, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+      .toLowerCase();
+    if (!write(input, join(dir, 'jobs', `${name}.ts`), JOB(name, `${module}.${kebab || 'job'}`))) return 1;
+
+    input.output.line();
+    input.output.line(`Register it in modules/${module}/index.ts:`);
+    input.output.line(style('dim', `  jobs: [${name}]`));
+    input.output.line(style('dim', `Dispatch it: await queue.dispatch(${name}, { id: 1 });   (constructor(queue: Queue), from @bespokecore/queue)`));
+    return 0;
+  }
+}
+
 export class MakeMiddlewareCommand {
   static command = 'make:middleware';
   static description = 'Create a middleware class';
@@ -296,6 +324,29 @@ const LISTENER = (name: string, event: string) => `import type { ${event} } from
 export class ${name} {
   handle(event: ${event}): void {
     void event;
+  }
+}
+`;
+
+const JOB = (name: string, job: string) => `import type { JobContext, JobPayload } from '@bespokecore/queue';
+import * as v from 'valibot';
+
+/**
+ * A queued job: dependencies go into the constructor (injected per attempt), the data into the payload — JSON, checked
+ * against the schema when dispatched and before it runs. Pass IDs, not records. A job can run more than once (a worker
+ * may stop after the work, before the acknowledgement): make it safe to repeat.
+ */
+export class ${name} {
+  /** Stable — the queue stores this name, never the class name. */
+  static readonly job = '${job}';
+  static readonly schema = v.object({ id: v.number() });
+  // static readonly tries = 3;            // attempts in all (default 1)
+  // static readonly backoff = [10, 60];   // seconds before each retry
+  // static readonly timeout = 60;         // seconds; then job.signal aborts
+
+  async handle(payload: JobPayload<typeof ${name}>, job: JobContext): Promise<void> {
+    void payload;
+    void job; // job.signal aborts at the timeout — pass it on: fetch(url, { signal: job.signal })
   }
 }
 `;
