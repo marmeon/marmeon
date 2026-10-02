@@ -167,7 +167,9 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
   const submit = useCallback(
     async (options: Partial<ActionSubmitOptions<string>> & { params?: Readonly<Record<string, Param>>; query?: Query } = {}): Promise<ActionResultOf<string>> => {
       const navigator = router.navigator();
-      if (!navigator) throw new Error(`useAction('${name}'): actions run in the browser, not while rendering on the server.`);
+      if (!navigator) {
+        throw new Error(process.env.NODE_ENV !== 'production' ? `[bespoke:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[bespoke:R7] ${name}`);
+      }
       const target = resolveRoute(manifest, name, { ...boundParams.current, ...options.params }, options.query);
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;
       const body = options.data as Record<string, unknown> | undefined;

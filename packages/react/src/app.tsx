@@ -143,7 +143,13 @@ export function reloadsOf(
   if (!islands || only || except) reloads.push(own({ ...(only ? { only } : {}), ...(except ? { except } : {}) }));
   for (const name of islands ?? []) {
     const route = manifest && Object.hasOwn(manifest, name) ? manifest[name] : undefined;
-    if (!route) throw new Error(`reloading({ islands: ['${name}'] }): [${name}] is not a route the browser knows — an island reloads where <Island route="${name}"> shows it.`);
+    if (!route) {
+      throw new Error(
+        process.env.NODE_ENV !== 'production'
+          ? `[bespoke:R8] reloading({ islands: ['${name}'] }): [${name}] is not a route the browser knows — an island reloads where <Island route="${name}"> shows it.`
+          : `[bespoke:R8] ${name}`,
+      );
+    }
     for (const region of owner?.live ?? []) if (matchesPath(route.path, new URL(region.url, 'http://bespoke.invalid').pathname)) reloads.push(region.reloading());
   }
   return reloads;
@@ -175,7 +181,7 @@ export const RouterContext = createContext<RouterValue | null>(null);
 
 export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
-  if (!value) throw new Error('BespokeCore hooks must be used inside <BespokeApp>.');
+  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R9] BespokeCore hooks must be used inside <BespokeApp>.' : '[bespoke:R9]');
   return value;
 }
 
@@ -188,7 +194,9 @@ export function useFeature<API>(feature: Feature<API>): API {
   const navigator = useRouterContext().navigator();
   if (!navigator) {
     throw new Error(
-      `useFeature(${feature.name}): the ${feature.name} feature runs in the browser — there is no navigator while rendering on the server. Use it in a component that renders in the browser only.`,
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:R10] useFeature(${feature.name}): the ${feature.name} feature runs in the browser — there is no navigator while rendering on the server. Use it in a component that renders in the browser only.`
+        : `[bespoke:R10] ${feature.name}`,
     );
   }
   return navigator.use(feature);
@@ -394,7 +402,7 @@ export function BespokeApp({
   }, []);
 
   const browser = useCallback(() => {
-    if (!navigator.current) throw new Error('Visits run in the browser, not while rendering on the server.');
+    if (!navigator.current) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R11] Visits run in the browser, not while rendering on the server.' : '[bespoke:R11]');
     return navigator.current;
   }, []);
   const visit = useCallback((url: string, options?: VisitOptions) => browser().visit(url, options), [browser]);

@@ -1,4 +1,4 @@
-import { defaultTitle, isDevelopment, type TitleRegistry, type TitleTemplate } from '@bespokecore/http/client';
+import { defaultTitle, type TitleRegistry, type TitleTemplate } from '@bespokecore/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 
 export { defaultTitle } from '@bespokecore/http/client';
@@ -47,8 +47,9 @@ export function Head(props: HeadProps) {
   const island = useContext(IslandHeadContext);
   if (island === null) return <PageHead {...props} />;
   // An island renders after the document head went out (streamed, E49) — and beside a page that has its own.
-  if (isDevelopment()) {
-    throw new Error(`<Head> in island [${island}] — islands cannot change the document head; set it on the page.`);
+  // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the message.
+  if (process.env.NODE_ENV !== 'production') {
+    throw new Error(`[bespoke:R13] <Head> in island [${island}] — islands cannot change the document head; set it on the page.`);
   }
   return null;
 }

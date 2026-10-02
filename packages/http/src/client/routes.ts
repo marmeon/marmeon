@@ -14,14 +14,18 @@ export function resolveRoute(
 ): { url: string; method: string } {
   if (!manifest) {
     throw new Error(
-      `Route [${name}]: the browser has no route manifest — pass the routes of virtual:bespoke/routes to createBespokeApp({ routes }) and createSsrRenderer(…, { routes }).`,
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:C1] Route [${name}]: the browser has no route manifest — pass the routes of virtual:bespoke/routes to createBespokeApp({ routes }) and createSsrRenderer(…, { routes }).`
+        : `[bespoke:C1] ${name}`,
     );
   }
   const entry = Object.hasOwn(manifest, name) ? manifest[name] : undefined;
   if (!entry) {
     throw new Error(
-      `Route [${name}] is not defined in the browser: a build ships only the route names client code writes out (<Link route="…">, route('…'), useForm('…', …)), ` +
-        'never API routes, .internal() routes or clientRoutes.except (run bespoke route:types after adding a route).',
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:C2] Route [${name}] is not defined in the browser: a build ships only the route names client code writes out (<Link route="…">, route('…'), useForm('…', …)), ` +
+            'never API routes, .internal() routes or clientRoutes.except (run bespoke route:types after adding a route).'
+        : `[bespoke:C2] ${name}`,
     );
   }
   return { url: urlFor({ findByName: () => entry }, name, params, query), method: entry.method };

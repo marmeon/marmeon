@@ -47,6 +47,8 @@ export interface AppBundle {
   readonly lazy: readonly BundleChunk[];
   /** The modules in those chunks (features loaded on first use, E74). */
   readonly lazyModules: readonly string[];
+  /** Those chunks' code, joined. */
+  readonly lazyCode: string;
   /** With `sourcemap: true`: every byte of the initial and the lazy chunks attributed to its module, by source map. */
   readonly attribution?: {
     readonly initial: ReadonlyMap<string, ModuleShare>;
@@ -186,6 +188,7 @@ async function measure(config: InlineConfig, { sourcemap, entry }: { sourcemap: 
     initial: initialSizes,
     lazy: lazy.map(sizes),
     lazyModules: [...namesOf(lazy)].sort(),
+    lazyCode: lazy.map((chunk) => chunk.code).join('\n'),
     ...(sourcemap
       ? {
           attribution: {

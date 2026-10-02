@@ -146,6 +146,43 @@ Pages come from `virtual:bespoke/pages` (`bespoke({ pages })` in `@bespokecore/v
 language files from `virtual:bespoke/lang` and the route manifest from `virtual:bespoke/routes`; the adapter brings its framework's Vite plugin
 (`plugins: [bespoke(), react()]`).
 
+### Error codes
+
+A mistake in app code (a hook outside its app, a page with a broken export, a route the browser does not know) throws an
+explanation in development: what is wrong and how to fix it. A production build carries only a code and a name, such as
+`[bespoke:R2] users/Show`, so the explanations cost no download (E80). Both start with the same code: run the app in
+development to read the whole message, or look the code up here. The core and every adapter keep their explanations
+behind an inline `process.env.NODE_ENV !== 'production'`, which the bundler replaces, so the production bundle drops the text.
+Without a bundler that replaces it, `process` does not exist in the browser; React needs that replacement anyway.
+
+What is not a code: refusals a production log needs to read (an action, a live validation or a region that would go to
+another site), a missing or broken page object in the document, and every text a user sees (the leave and new-version
+questions, the error pages).
+
+| Code | Where | Meaning (the development message says more) |
+|---|---|---|
+| C1 | `resolveRoute` | A route name, but no route manifest was passed (`createBespokeApp({ routes })`). |
+| C2 | `resolveRoute` | A route name the browser does not know (API, `.internal()` and `clientRoutes.except` routes never ship). |
+| C3 | query state | Query state of a route used on the page of another route. |
+| C4 | query state | Query state of a route without a query schema. |
+| C5 | `createPoll` | A poll interval of 0 ms or less. |
+| C6 | layers | A layer depth outside 1 to 10. |
+| R1 | pages | A page's `layout` is not a component or a list of them. |
+| R2 | pages | No page of that name (no default export in `modules/<module>/views/…`). |
+| R3 | pages | A page module without a default export. |
+| R4 | pages | A page's `ssr` is not `true`, `false` or `'complete'`. |
+| R5 | pages | A page's `placeholder` is not a component. |
+| R6 | pages | A page's `revalidateOnBack` is not `true`, `false` or a list of prop names. |
+| R7 | `useAction` | An action submitted while rendering on the server. |
+| R8 | `reloading({ islands })` | An island route the browser does not know. |
+| R9 | hooks | A BespokeCore hook outside `<BespokeApp>`. |
+| R10 | `useFeature` | A client feature used while rendering on the server. |
+| R11 | `useRouter` | A visit while rendering on the server. |
+| R12 | i18n hooks | A translation hook without the app's messages (`createBespokeApp({ messages })`). |
+| R13 | `<Head>` | `<Head>` inside an island (development only: production renders nothing). |
+| R14 | layers, islands | An optimistic patch or reload while rendering on the server. |
+| R15 | `useIsland` | `useIsland()` outside the view of an island. |
+
 ## The protocol
 
 What goes over the wire, in one place (constants in `@bespokecore/http/page`). Every page and island request of the core

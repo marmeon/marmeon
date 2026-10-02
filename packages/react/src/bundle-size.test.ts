@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -178,4 +178,43 @@ describe('no injection metadata in the browser (E76)', () => {
     });
     expect(uncovered, 'Browser modules outside their package\'s "bespoke": { "browser": [...] } — add them there (E76)').toEqual([]);
   }, 60_000);
+});
+
+describe('a production bundle says codes, not explanations (E80)', () => {
+  // A few of the explanations the development build throws or warns: none may ship. A production error is its code
+  // and a name (`[bespoke:R2] users/Show`); packages/http/README.md ("Error codes") says what each code means.
+  const EXPLANATIONS = [
+    'the browser has no route manifest',
+    'is not defined in the browser',
+    'has an invalid layout',
+    'must be used inside <BespokeApp>',
+    'needs the app\'s messages',
+    'Hydration mismatch',
+    'has no heading (h1–h3)',
+    'islands cannot change the document head',
+    'needs an interval above 0 ms',
+    'is for the view of an island',
+    'there is no navigator while rendering on the server',
+  ];
+
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('%s', (name) => {
+    const { code, lazyCode } = bundle(name);
+    expect(EXPLANATIONS.filter((text) => `${code}\n${lazyCode}`.includes(text))).toEqual([]);
+  });
+
+  it('the full bundle throws the codes instead', () => {
+    const codes = new Set(bundle('everything').code.match(/\[bespoke:[CR]\d+\]/g));
+    for (const code of ['C1', 'C2', 'R1', 'R2', 'R9', 'R10', 'R12']) expect(codes, code).toContain(`[bespoke:${code}]`);
+  });
+
+  it('every code is in the README once, and every code there is thrown', () => {
+    const sources = (dir: string) =>
+      readdirSync(join(PACKAGES, dir), { recursive: true, encoding: 'utf8' })
+        .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$|__fixtures__|test-window/.test(file))
+        .map((file) => readFileSync(join(PACKAGES, dir, file), 'utf8'));
+    const used = sorted([...sources('http/src/client'), ...sources('react/src')].flatMap((text) => [...text.matchAll(/\[bespoke:([CR]\d+)\]/g)].map((match) => match[1]!)));
+    const rows = [...readFileSync(join(PACKAGES, 'http/README.md'), 'utf8').matchAll(/^\| ([CR]\d+) \|/gm)].map((match) => match[1]!);
+    expect(rows.length, 'a code listed twice in packages/http/README.md').toBe(new Set(rows).size);
+    expect(sorted(rows)).toEqual(used);
+  });
 });

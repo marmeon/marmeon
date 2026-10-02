@@ -93,7 +93,9 @@ export class Layer {
 
   /** @internal The navigator's: a layer and the handle that changes it. */
   static create(host: LayerHost, entry: string, depth: number, page: PageObject, owner: RegionOwner): LayerControl {
-    if (depth < 1 || depth > MAX_LAYER_DEPTH) throw new Error(`A layer's depth is 1 to ${MAX_LAYER_DEPTH}, got ${depth}.`);
+    if (depth < 1 || depth > MAX_LAYER_DEPTH) {
+      throw new Error(process.env.NODE_ENV !== 'production' ? `[bespoke:C6] A layer's depth is 1 to ${MAX_LAYER_DEPTH}, got ${depth}.` : `[bespoke:C6] ${depth}`);
+    }
     const layer = new Layer(host, entry, depth, page, owner);
     return {
       layer,

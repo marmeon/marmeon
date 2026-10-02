@@ -1,4 +1,4 @@
-import { isDevelopment, type Layer, type LayerCloseOptions } from '@bespokecore/http/client';
+import type { Layer, LayerCloseOptions } from '@bespokecore/http/client';
 import type { PageObject } from '@bespokecore/http/page';
 import {
   createContext,
@@ -70,7 +70,7 @@ const OUTSIDE: LayerState = {
   key: undefined,
   once: false,
   close: () => {
-    if (isDevelopment()) console.warn('[bespoke] useLayer().close() outside a layer does nothing — check useLayer().isLayer first.');
+    if (process.env.NODE_ENV !== 'production') console.warn('[bespoke] useLayer().close() outside a layer does nothing — check useLayer().isLayer first.');
     return Promise.resolve();
   },
   onClose: () => () => {},
@@ -194,11 +194,11 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       prefetch: (url, options) => base.navigator()?.prefetch(url, { ...options, layer: true }) ?? Promise.resolve(),
       // An action's patches and reloads from inside the layer are the layer's (E59).
       optimistic: (patch) => {
-        if (!layer) throw new Error('Actions run in the browser, not while rendering on the server.');
+        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');
         return layer.optimistic(patch as never);
       },
       reloading: (options) => {
-        if (!layer) throw new Error('Actions run in the browser, not while rendering on the server.');
+        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');
         return reloadsOf((spec) => layer.reloading(spec), layer.owner, manifest, options as { islands?: readonly string[] });
       },
     }),
@@ -347,7 +347,7 @@ function name(element: HTMLDialogElement, id: string): void {
       if (!heading.id) heading.id = `${id}-title`;
       element.setAttribute('aria-labelledby', heading.id);
       element.setAttribute('data-bespoke-aria-labelledby', '');
-    } else if (isDevelopment()) {
+    } else if (process.env.NODE_ENV !== 'production') {
       console.warn(`[bespoke] The layer [${element.dataset.bespokeLayer}] has no heading (h1–h3) to name its dialog — add one, or wrap LayerDialog with an aria-label.`);
     }
   }

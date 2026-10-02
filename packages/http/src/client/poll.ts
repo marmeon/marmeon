@@ -28,7 +28,9 @@ export interface Poll {
  * browsers throttle background timers anyway — and on coming back, it polls right away if a turn was missed.
  */
 export function createPoll(run: () => Promise<unknown>, interval: number, { keepAlive = false, document = globalThis.document }: PollOptions = {}): Poll {
-  if (!(interval > 0)) throw new RangeError(`A poll needs an interval above 0 ms, got ${interval}.`);
+  if (!(interval > 0)) {
+    throw new RangeError(process.env.NODE_ENV !== 'production' ? `[bespoke:C5] A poll needs an interval above 0 ms, got ${interval}.` : `[bespoke:C5] ${interval}`);
+  }
   let running = false;
   let inFlight = false;
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -89,7 +89,11 @@ function checkLayout(name: string, layout: unknown): void {
   const layouts: unknown[] = Array.isArray(layout) ? layout : [layout];
   const invalid = layouts.findIndex((entry) => !isComponent(entry));
   if (invalid !== -1) {
-    throw new Error(`Page [${name}] has an invalid layout${Array.isArray(layout) ? ` at index ${invalid}` : ''}: expected a component (or a list of them), got ${String(layouts[invalid])}.`);
+    throw new Error(
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:R1] Page [${name}] has an invalid layout${Array.isArray(layout) ? ` at index ${invalid}` : ''}: expected a component (or a list of them), got ${String(layouts[invalid])}.`
+        : `[bespoke:R1] ${name}`,
+    );
   }
 }
 
@@ -119,23 +123,33 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     if (!load && name === LAYER_BACKDROP) return Backdrop; // the neutral surface under a layer whose base is not shown (E54)
     if (!load) {
       const [module, ...rest] = name.split('/');
-      throw new Error(`Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx`);
+      throw new Error(
+        process.env.NODE_ENV !== 'production' ? `[bespoke:R2] Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx` : `[bespoke:R2] ${name}`,
+      );
     }
     const module = await load();
     if (typeof module !== 'object' || module === null || !('default' in module)) {
-      throw new Error(`Page [${name}] has no default export.`);
+      throw new Error(process.env.NODE_ENV !== 'production' ? `[bespoke:R3] Page [${name}] has no default export.` : `[bespoke:R3] ${name}`);
     }
     const page = module.default as PageComponent;
     checkLayout(name, page.layout);
     if (page.ssr !== undefined && page.ssr !== true && page.ssr !== false && page.ssr !== 'complete') {
-      throw new Error(`Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.`);
+      throw new Error(
+        process.env.NODE_ENV !== 'production' ? `[bespoke:R4] Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.` : `[bespoke:R4] ${name}`,
+      );
     }
     if (page.placeholder !== undefined && !isComponent(page.placeholder)) {
-      throw new Error(`Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.`);
+      throw new Error(
+        process.env.NODE_ENV !== 'production' ? `[bespoke:R5] Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.` : `[bespoke:R5] ${name}`,
+      );
     }
     const revalidate: unknown = page.revalidateOnBack;
     if (revalidate !== undefined && typeof revalidate !== 'boolean' && !(Array.isArray(revalidate) && revalidate.every((prop) => typeof prop === 'string' && prop !== ''))) {
-      throw new Error(`Page [${name}] has an invalid revalidateOnBack: expected true, false or a list of prop names, got ${JSON.stringify(revalidate)}.`);
+      throw new Error(
+        process.env.NODE_ENV !== 'production'
+          ? `[bespoke:R6] Page [${name}] has an invalid revalidateOnBack: expected true, false or a list of prop names, got ${JSON.stringify(revalidate)}.`
+          : `[bespoke:R6] ${name}`,
+      );
     }
     return page;
   };

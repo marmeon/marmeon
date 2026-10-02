@@ -71,10 +71,18 @@ export function linkQuery(page: Pick<PageObject, 'url' | 'queryDefaults'>, url: 
 export function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void {
   const pathname = new URL(page.url, 'http://bespoke.invalid').pathname;
   if (!matchesPath(path, pathname)) {
-    throw new Error(`Query state of [${name}] (${path}) is used on ${pathname}, a page of another route — it belongs to the page of its route.`);
+    throw new Error(
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:C3] Query state of [${name}] (${path}) is used on ${pathname}, a page of another route — it belongs to the page of its route.`
+        : `[bespoke:C3] ${name}`,
+    );
   }
   if (!page.queryDefaults) {
-    throw new Error(`Route [${name}] has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\`.`);
+    throw new Error(
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:C4] Route [${name}] has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\`.`
+        : `[bespoke:C4] ${name}`,
+    );
   }
 }
 

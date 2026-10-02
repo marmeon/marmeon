@@ -1,4 +1,4 @@
-import { hasServerMarkup, isDevelopment, loadPageMessages, readInitialPage, rootElement, type ProgressOptions, type TitleTemplate } from '@bespokecore/http/client';
+import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type ProgressOptions, type TitleTemplate } from '@bespokecore/http/client';
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
@@ -89,7 +89,8 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
 
 /** React's own report (the console), and in development the page's name and a notice on the page. */
 function reportRecoverable(error: unknown, component: string): void {
-  if (!isDevelopment()) {
+  // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the explanations.
+  if (process.env.NODE_ENV === 'production') {
     globalThis.reportError?.(error);
     return;
   }

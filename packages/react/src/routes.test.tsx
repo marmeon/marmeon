@@ -60,4 +60,17 @@ describe('routes in the browser', () => {
     expect(() => resolveRoute(routes, 'toString')).toThrow('Route [toString] is not defined'); // own keys only
     expect(() => resolveRoute(routes, 'people.show')).toThrow('Missing required parameter [person] for route [people.show].');
   });
+
+  it('says the same with its code in production — only the code and the name (E80)', async () => {
+    expect(() => resolveRoute(routes, 'admin.users')).toThrow(/^\[bespoke:C2\] Route \[admin\.users\] is not defined/);
+    const environment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      expect(() => resolveRoute(routes, 'admin.users')).toThrow(new Error('[bespoke:C2] admin.users'));
+      expect(() => resolveRoute(undefined, 'people.show')).toThrow(new Error('[bespoke:C1] people.show'));
+      await expect(resolveModulePages({})('users/Show')).rejects.toThrow(new Error('[bespoke:R2] users/Show'));
+    } finally {
+      process.env.NODE_ENV = environment;
+    }
+  });
 });

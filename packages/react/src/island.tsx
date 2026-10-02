@@ -396,7 +396,7 @@ export interface IslandState<C extends IslandAction = IslandAction> {
 }
 
 function onServer(): never {
-  throw new Error('Actions run in the browser, not while rendering on the server.');
+  throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');
 }
 
 /**
@@ -413,7 +413,7 @@ function onServer(): never {
  */
 export function useIsland<C extends IslandAction = IslandAction>(): IslandState<C> {
   const value = useContext(IslandContext);
-  if (!value) throw new Error('useIsland() is for the view of an island — the component an <Island route> renders.');
+  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R15] useIsland() is for the view of an island — the component an <Island route> renders.' : '[bespoke:R15]');
   return useMemo(
     () =>
       ({

@@ -16,8 +16,10 @@ function useI18n(hook: string): I18nValue {
   const value = useContext(I18nContext);
   if (!value) {
     throw new Error(
-      `${hook} needs the app's messages: createBespokeApp({ messages }) and createSsrRenderer(resolve, { messages }) — ` +
-        "with `messages = createMessageLoader(lang)` from '@bespokecore/i18n/messages' and `lang` from 'virtual:bespoke/lang'.",
+      process.env.NODE_ENV !== 'production'
+        ? `[bespoke:R12] ${hook} needs the app's messages: createBespokeApp({ messages }) and createSsrRenderer(resolve, { messages }) — ` +
+            "with `messages = createMessageLoader(lang)` from '@bespokecore/i18n/messages' and `lang` from 'virtual:bespoke/lang'."
+        : `[bespoke:R12] ${hook}`,
     );
   }
   return value;
