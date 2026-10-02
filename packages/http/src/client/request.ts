@@ -1,9 +1,8 @@
 /**
- * The requests of the client core: a visit's URL, headers and body (JSON, or multipart with files), the CSRF token, the
- * headers of a partial reload, and uploads with progress (XHR).
+ * The requests of the client core: a visit's URL, headers and body (JSON, or multipart with files), the CSRF token and the
+ * headers of a partial reload. (Uploads with progress, over XHR, load on first use: `upload.ts`.)
  */
 import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from '../page.ts';
-import type { VisitProgress } from './events.ts';
 import type { VisitMethod, VisitOptions } from './navigation.ts';
 
 /** The CSRF token the server put into the readable `XSRF-TOKEN` cookie. */
@@ -61,42 +60,6 @@ function toFormData(data: Record<string, unknown>, form = new FormData(), prefix
     else form.append(name, value === null ? '' : typeof value === 'boolean' ? (value ? '1' : '0') : String(value));
   }
   return form;
-}
-
-/**
- * XHR, because `fetch` reports no upload progress (streaming request bodies need HTTP/2 in Chromium, and
- * a `FormData` body would have to be streamed by hand). Answers with a `Response` like `fetch`.
- */
-export function sendWithProgress(
-  Xhr: new () => XMLHttpRequest,
-  url: string,
-  { method, headers, body, signal }: { method: string; headers: Record<string, string>; body?: BodyInit; signal: AbortSignal },
-  onProgress: (progress: VisitProgress) => void,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    const xhr = new Xhr();
-    xhr.open(method, url);
-    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
-    xhr.upload.addEventListener('progress', (event) => {
-      const total = event.lengthComputable && event.total > 0 ? event.total : undefined;
-      onProgress({ loaded: event.loaded, total, percentage: total === undefined ? undefined : Math.round((event.loaded / total) * 100) });
-    });
-    xhr.addEventListener('load', () => {
-      const responseHeaders = new Headers();
-      for (const line of xhr.getAllResponseHeaders().trim().split(/[\r\n]+/)) {
-        const colon = line.indexOf(':');
-        if (colon > 0) responseHeaders.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
-      }
-      const empty = [101, 204, 205, 304].includes(xhr.status);
-      const response = new Response(empty ? null : xhr.responseText, { status: xhr.status, statusText: xhr.statusText, headers: responseHeaders });
-      Object.defineProperty(response, 'url', { value: xhr.responseURL });
-      resolve(response);
-    });
-    xhr.addEventListener('error', () => reject(new TypeError('Network request failed')));
-    xhr.addEventListener('abort', () => reject(new DOMException('The visit was aborted.', 'AbortError')));
-    signal.addEventListener('abort', () => xhr.abort(), { once: true });
-    xhr.send(body as XMLHttpRequestBodyInit);
-  });
 }
 
 /** `promise`, or undefined as soon as `signal` aborts — a newer visit does not wait for a page fetched ahead it does not need. */

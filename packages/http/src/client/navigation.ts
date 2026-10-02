@@ -29,7 +29,7 @@ import { ONCE } from './once.ts';
 import type { OptimisticUpdate } from './optimistic.ts';
 import { applyPatches, listOf, rollBack } from './patches.ts';
 import { RegionOwner } from './owner.ts';
-import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
+import { buildRequest, partialReloadHeaders, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
 // The public API that lives in the modules around the navigator — exported from here as before (W5c.2).
@@ -1024,7 +1024,10 @@ export class Navigator {
     return this.#collect((await response.json()) as PageObject);
   }
 
-  /** Sends a request with the page headers — through XHR for `FormData` with a progress listener (upload progress). */
+  /**
+   * Sends a request with the page headers — through XHR for `FormData` with a progress listener (upload progress): its code loads
+   * with the first such upload (a chunk of its own); one that cannot load sends it with `fetch`, without progress.
+   */
   #send(url: string, { method, headers, body, signal }: SendInit, onProgress?: (progress: VisitProgress) => void): Promise<Response> {
     const init = {
       method: method.toUpperCase(),
@@ -1034,7 +1037,9 @@ export class Navigator {
       signal,
     };
     const Xhr = this.#core.window.XMLHttpRequest;
-    if (body instanceof FormData && onProgress && Xhr) return sendWithProgress(Xhr, url, init, onProgress);
+    if (body instanceof FormData && onProgress && Xhr) {
+      return import('./upload.ts').then(({ sendWithProgress }) => sendWithProgress(Xhr, url, init, onProgress), () => this.#core.window.fetch(url, init));
+    }
     return this.#core.window.fetch(url, init);
   }
 

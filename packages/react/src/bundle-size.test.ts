@@ -73,12 +73,14 @@ const FEATURES = {
   instant: { markers: ['http/client/features/instant'], use: inApp('Link'), lazy: true },
   form: { markers: ['react/form'], use: inApp('Form'), brings: ['guard', 'remember'] }, // <Form remember guard>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
+  // Uploads with progress (FormData over XHR): the core loads them with the first such upload (W5c.6), in a chunk of its own.
+  uploads: { markers: ['http/client/upload'], use: inCore(), lazy: true },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
-/** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers'];
+/** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads). */
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
