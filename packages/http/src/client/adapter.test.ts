@@ -34,6 +34,7 @@ import {
   loadPageMessages,
   Navigator,
   PROGRESS_ATTRIBUTE,
+  queryState,
   readInitialPage,
   regionInitial,
   rootElement,
@@ -482,6 +483,30 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(root.textContent).toContain('"user":"Ada"');
     navigator.reloadForNewVersion();
     expect(loads).toEqual(['/users/2']);
+    stop();
+  });
+
+  it('keeps URL state with the query-state feature, attached where it is used (E55, E70)', async () => {
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, 'https://app.test');
+      requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search, headers: { ...(init.headers as Record<string, string>) } });
+      const sort = url.searchParams.get('sort') ?? 'name';
+      return respond(page('people/Index', url.pathname + url.search, { people: sort === 'name' ? ['Ada', 'Grace'] : ['Grace', 'Ada'] }, { query: { sort }, queryDefaults: { sort: 'name' } }));
+    }) as typeof fetch;
+    window.history.replaceState(null, '', '/people');
+    serverRenderedDocument(page('people/Index', '/people', { people: ['Ada', 'Grace'] }, { query: {}, queryDefaults: { sort: 'name' } }));
+    const { navigator, root, stop } = await createTextApp();
+    // The adapter attaches it where a component shows query state — an app without it carries none of its code.
+    const state = navigator.use(queryState).create<{ sort: string }>({ only: ['people'] });
+    expect(state.value()).toEqual({ sort: 'name' });
+    state.set({ sort: '-name' });
+    expect(state.value()).toEqual({ sort: '-name' }); // at once — the URL follows with the visit
+    await vi.waitFor(() => expect(root.textContent).toBe('people/Index {"people":["Grace","Ada"]}'));
+    expect(requests.at(-1)).toMatchObject({ url: '/people?sort=-name', headers: { [PARTIAL_DATA_HEADER]: 'people' } });
+    expect(window.location.search).toBe('?sort=-name');
+    state.set({ sort: undefined }); // back to the default: no query at all
+    await vi.waitFor(() => expect(window.location.search).toBe(''));
+    state.dispose();
     stop();
   });
 

@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../page.ts';
-import { assertQueryPage, linkQuery, Navigator, pageQuery, queryUrl, withoutDefaults } from './index.ts';
+import { assertQueryPage, linkQuery, Navigator, pageQuery, queryState, queryUrl, withoutDefaults } from './index.ts';
 
 const DEFAULTS = { q: '', sort: 'name' };
 const PEOPLE = ['Ada Lovelace', 'Alan Turing', 'Grace Hopper', 'Hedy Lamarr'];
@@ -64,7 +64,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('typing: the state changes at once, the URL once per pause — one partial reload, replacing the history entry, the list replaced', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, page, stop } = start();
-    const state = navigator.queryState<{ q: string; sort: string }>({ only: ['people'], debounce: 20, history: 'replace' });
+    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'], debounce: 20, history: 'replace' });
     const length = window.history.length;
 
     for (const q of ['a', 'al', 'ala']) state.set({ q });
@@ -83,7 +83,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('keeps what is typed while a request is on its way — and what the server normalized away (a trailing space)', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, stop } = start();
-    const state = navigator.queryState<{ q: string; sort: string }>({ only: ['people'], debounce: 10, history: 'replace' });
+    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'], debounce: 10, history: 'replace' });
     let release!: () => void;
     slow = new Promise((done) => (release = done));
     state.set({ q: 'ada ' });
@@ -103,7 +103,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('a function of the current state, `undefined` for the default — and Back/Forward bring the state of their entry', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, stop } = start();
-    const state = navigator.queryState<{ q: string; sort: string }>({ only: ['people'] });
+    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'] });
     state.set((current) => ({ sort: current.sort === 'name' ? '-name' : 'name' }));
     await vi.waitFor(() => expect(window.location.search).toBe('?sort=-name'));
     state.set({ q: 'a' });
@@ -135,7 +135,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('drops a change still waiting when it is disposed (the page was left)', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, stop } = start();
-    const state = navigator.queryState({ debounce: 10 });
+    const state = navigator.use(queryState).create({ debounce: 10 });
     state.set({ q: 'x' });
     state.dispose();
     await new Promise((done) => setTimeout(done, 30));

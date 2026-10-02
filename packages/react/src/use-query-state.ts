@@ -1,4 +1,4 @@
-import { assertQueryPage, pageQuery, resolveRoute, type QueryState, type QueryStateOptions, type QueryUpdate } from '@bespokecore/http/client';
+import { assertQueryPage, pageQuery, queryState, resolveRoute, type QueryState, type QueryStateOptions, type QueryUpdate } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, Routes, RouteQueryOf } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouterContext, type PartialReloadOptions } from './app.tsx';
@@ -60,7 +60,8 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
   useEffect(() => {
     const navigator = router.navigator();
     if (!navigator) return undefined;
-    const current = navigator.queryState(latest.current as QueryStateOptions);
+    // The feature attaches on first use (E70) — an app without query state carries none of it.
+    const current = navigator.use(queryState).create(latest.current as QueryStateOptions);
     state.current = current;
     const stop = current.subscribe(() => setDraft(current.draft));
     return () => {

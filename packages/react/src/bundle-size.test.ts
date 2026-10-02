@@ -38,16 +38,16 @@ const inApp = (...names: string[]) => ({ base: 'emptyApp' as const, entry: appEn
 
 /**
  * The optional features and how to recognise them in a bundle: by module (`<package>/<path>` without src/dist and
- * extension) — the navigator's part of each lives in `http/client/features/` since Wave 5c step 2. Until step 4 makes
- * them pluggable, the navigator imports every one of them (hence `stillLeaking`). `use` is the import an app uses it
- * through, on top of a scenario; `brings`, the features it builds on.
+ * extension) — the navigator's part of each lives in `http/client/features/` since Wave 5c step 2. Step 4 takes them out
+ * of the default registration one by one (those still in it are `stillLeaking`): then the hook or component that uses one
+ * attaches it. `use` is the import an app uses it through, on top of a scenario; `brings`, the features it builds on.
  */
 const FEATURES = {
   layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer'], use: inApp('LayerDialog') },
   islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
   actions: { markers: ['http/client/features/actions', 'http/client/features/optimistic', 'http/client/action', 'http/client/optimistic', 'react/use-action'], use: inApp('useAction') },
   liveValidation: { markers: ['http/client/live-validation'], use: inApp('useForm') },
-  queryState: { markers: ['http/client/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
+  queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
   progress: { markers: ['http/client/progress'], use: inCore('showProgress') },
@@ -60,6 +60,9 @@ const FEATURES = {
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[] }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
+
+/** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
+const EXTRACTED: readonly Feature[] = ['queryState'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -123,6 +126,15 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect(leaking, `Features in "${name}" it does not use — update stillLeaking.${name} in ${BUDGET_WHERE} only when one is gone`).toEqual(
       sorted(budget.stillLeaking[name]),
     );
+  });
+
+  // Taken out of the default registration in Wave 5c step 4 (E70, E74): in none of these unless it is used — whatever
+  // stillLeaking says (a feature may not come back onto that list).
+  it.each(EXTRACTED)('%s is in no scenario that does not use it', (feature) => {
+    for (const name of ['core', 'emptyApp', 'minimalApp'] as const) {
+      if (USES[name].includes(feature)) continue;
+      expect(featuresIn(bundle(name)), `${feature} in "${name}"`).not.toContain(feature);
+    }
   });
 
   it.each(FEATURE_NAMES)('%s comes with its own import — and recognisably so', (feature) => {

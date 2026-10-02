@@ -3,6 +3,9 @@
  * (`PageObject.query`, `PageObject.queryDefaults`), changed by visits of the same page. UI-free — an adapter's
  * `useQueryState` renders `value(page)` and calls `set()`. The browser never parses a URL: what it shows is what the
  * server parsed, or what is being typed into it right now.
+ *
+ * The state (`QueryState`) is a feature (`features/query-state.ts`): in an app only when it uses it (`useQueryState`); the
+ * helpers here are what links and islands need of a page's query too.
  */
 import { matchesPath, toSearchParams, type PageObject, type Query } from '../page.ts';
 import type { Navigator, VisitOptions } from './navigation.ts';
@@ -89,7 +92,7 @@ function keyOf(values: Readonly<Record<string, unknown>>, defaults: PageObject['
  * any other reason — Back/Forward, a link — so what the state shows is always this page's query.
  */
 export class QueryState<Q extends Record<string, unknown> = Record<string, unknown>> {
-  readonly #navigator: Navigator;
+  readonly #navigator: Pick<Navigator, 'page' | 'subscribe' | 'visit'>;
   /** The latest options (an adapter passes them again on every render). */
   options: QueryStateOptions;
   #draft: Q | undefined;
@@ -101,7 +104,7 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
   readonly #listeners = new Set<() => void>();
   readonly #stop: () => void;
 
-  constructor(navigator: Navigator, options: QueryStateOptions = {}) {
+  constructor(navigator: Pick<Navigator, 'page' | 'subscribe' | 'visit'>, options: QueryStateOptions = {}) {
     this.#navigator = navigator;
     this.options = options;
     this.#stop = navigator.subscribe(() => this.#onPage());

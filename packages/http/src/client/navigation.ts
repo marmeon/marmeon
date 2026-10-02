@@ -31,7 +31,6 @@ import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
 import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
-import { QueryState, type QueryStateOptions } from './query-state.ts';
 import { REGIONS, RegionOwner, type Region, type RegionInitial } from './region.ts';
 import { REMEMBERED } from './remember.ts';
 import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
@@ -453,14 +452,6 @@ export class Navigator implements LayerHost {
   subscribe(listener: (page: PageObject) => void): () => void {
     this.#pageListeners.add(listener);
     return () => void this.#pageListeners.delete(listener);
-  }
-
-  /**
-   * Typed URL state of the page on screen (E55): its query, parsed by the server (`PageObject.query`), changed with
-   * visits of the same page — debounced, partial, keeping state and scroll. See {@link QueryState}.
-   */
-  queryState<Q extends Record<string, unknown> = Record<string, unknown>>(options: QueryStateOptions = {}): QueryState<Q> {
-    return new QueryState<Q>(this, options);
   }
 
   /**
