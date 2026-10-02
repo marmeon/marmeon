@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, type PageObject } from '../page.ts';
 import type { ConfirmRequest } from './confirm.ts';
 import { defaultFormEntries, fieldPath, formObject, restoreFormEntries } from './forms.ts';
+import { remember } from './features/remember.ts';
 import { OnceStore } from './once.ts';
 import { isSensitiveRememberField, rememberable } from './remember.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
@@ -18,33 +19,36 @@ const tick = async () => {
 
 function tab(initial: PageObject, options: Parameters<typeof boot>[2] = {}) {
   const win = new FakeWindow(`${ORIGIN}${initial.url}`);
-  return { win, ...boot(win, initial, options) };
+  const booted = boot(win, initial, options);
+  // Remembered state of the page on screen's entry — the feature attached where it is used (E70).
+  const remembered = () => booted.navigator.use(remember).of(booted.owner().entry!);
+  return { win, remembered, ...booted };
 }
 
 describe('remembered state (E63) — in memory, per history entry', () => {
   it('survives Back/Forward with its entry: each entry has its own, the page’s owner carries it', async () => {
-    const { win, navigator, owner } = tab(page('/users/1'));
-    const first = owner().remembered;
+    const { win, navigator, remembered } = tab(page('/users/1'));
+    const first = remembered();
     first.set('tab', 'links');
     win.handler = () => pageResponse(page('/people', {}, 'pages/People'));
     await navigator.visit('/people');
-    expect(owner().remembered).not.toBe(first);
-    expect(owner().remembered.has('tab')).toBe(false);
-    owner().remembered.set('q', 'ada');
+    expect(remembered()).not.toBe(first);
+    expect(remembered().has('tab')).toBe(false);
+    remembered().set('q', 'ada');
     win.back();
     await tick();
-    expect(owner().remembered.get('tab')).toBe('links');
+    expect(remembered().get('tab')).toBe('links');
     win.forward();
     await tick();
-    expect(owner().remembered.get('q')).toBe('ada');
+    expect(remembered().get('q')).toBe('ada');
   });
 
   it('counter-check: never in history.state — every entry the browser keeps (serialized, written to disk) is scanned', async () => {
-    const { win, navigator, owner } = tab(page('/users/1'));
-    owner().remembered.set('draft', { label: 'MARKER-typed-label' });
+    const { win, navigator, remembered } = tab(page('/users/1'));
+    remembered().set('draft', { label: 'MARKER-typed-label' });
     win.handler = () => pageResponse(page('/people', {}, 'pages/People'));
     await navigator.visit('/people');
-    owner().remembered.set('q', 'MARKER-search');
+    remembered().set('q', 'MARKER-search');
     win.back();
     await tick();
     expect(win.entries.length).toBe(2);
@@ -52,12 +56,12 @@ describe('remembered state (E63) — in memory, per history entry', () => {
   });
 
   it('counter-check: forgotten on a 409 (signing out) — also in an entry a component still holds', async () => {
-    const { win, navigator, owner } = tab(page('/users/1'));
-    const held = owner().remembered;
+    const { win, navigator, remembered } = tab(page('/users/1'));
+    const held = remembered();
     held.set('draft', 'secret plans');
     win.handler = () => pageResponse(page('/people', {}, 'pages/People'));
     await navigator.visit('/people');
-    const second = owner().remembered;
+    const second = remembered();
     second.set('q', 'ada');
     win.handler = () => historyConflict();
     await navigator.visit('/logout', { method: 'post' });
@@ -67,8 +71,8 @@ describe('remembered state (E63) — in memory, per history entry', () => {
   });
 
   it('gone with the entry the cache lets go of: Back to it asks the server, and nothing comes back', async () => {
-    const { win, navigator, owner } = tab(page('/a', {}, 'pages/A'), { cacheSize: 2 });
-    owner().remembered.set('draft', 'typed on a');
+    const { win, navigator, remembered } = tab(page('/a', {}, 'pages/A'), { cacheSize: 2 });
+    remembered().set('draft', 'typed on a');
     win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Other'));
     await navigator.visit('/b');
     await navigator.visit('/c');
@@ -77,20 +81,20 @@ describe('remembered state (E63) — in memory, per history entry', () => {
     win.dispatch('popstate', { state: win.history.state });
     await tick();
     expect(navigator.page.url).toBe('/a');
-    expect(owner().remembered.has('draft')).toBe(false);
+    expect(remembered().has('draft')).toBe(false);
   });
 
   it('a layer remembers with its own entry: Back closes it, Forward opens it from memory with what it kept', async () => {
     const { win, navigator } = tab(page('/users/1', {}, 'users/Show'));
     win.handler = () => pageResponse({ ...page('/users/1/edit', {}, 'users/Edit'), layer: { key: 'edit', base: '/users/1' } });
     await navigator.visit('/users/1/edit', { layer: true });
-    navigator.layers[0]!.owner.remembered.set('form:user-profile.update', { data: { name: 'Ada X' } });
+    navigator.use(remember).of(navigator.layers[0]!.entry).set('form:user-profile.update', { data: { name: 'Ada X' } });
     win.back();
     await tick();
     expect(navigator.layers).toEqual([]);
     win.forward();
     await tick();
-    expect(navigator.layers[0]!.owner.remembered.get('form:user-profile.update')).toEqual({ data: { name: 'Ada X' } });
+    expect(navigator.use(remember).of(navigator.layers[0]!.entry).get('form:user-profile.update')).toEqual({ data: { name: 'Ada X' } });
   });
 
   it('counter-check: never a password (even when asked), a token, a secret or a card unless named — and never a file', () => {

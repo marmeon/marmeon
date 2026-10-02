@@ -1,6 +1,6 @@
-import { isSensitiveRememberField, type Remembered } from '@bespokecore/http/client';
+import { isSensitiveRememberField, remember, type Remembered } from '@bespokecore/http/client';
 import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { RegionOwnerContext } from './app.tsx';
+import { RegionOwnerContext, useRouterContext } from './app.tsx';
 import { useIslandScope } from './island.tsx';
 
 /** Names that look like something never to keep (E63): a password, a token, a secret, a card. */
@@ -26,9 +26,11 @@ export interface UseRememberOptions {
 
 /** @internal Where remembered state of the component lives: its history entry's (the page's or its layer's), or none (server). */
 export function useRememberStore(key: string): { store: Remembered | undefined; key: string } {
-  const owner = useContext(RegionOwnerContext);
+  const navigator = useRouterContext().navigator();
+  const entry = useContext(RegionOwnerContext)?.entry;
   const island = useIslandScope();
-  return { store: owner?.remembered, key: island === undefined ? key : `island:${island}:${key}` };
+  // The feature attaches on first use (E70): an app that remembers nothing carries none of it.
+  return { store: entry ? navigator?.use(remember).of(entry) : undefined, key: island === undefined ? key : `island:${island}:${key}` };
 }
 
 /**

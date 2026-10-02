@@ -37,6 +37,7 @@ import {
   queryState,
   readInitialPage,
   regionInitial,
+  remember,
   rootElement,
   showProgress,
   visitUrlOf,
@@ -460,7 +461,9 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     });
     owner = navigator.regionOwner;
     const stop = navigator.start();
-    owner.remembered.set('tab', 'links'); // remembered state of /users/1's entry (E63)
+    // Remembered state of /users/1's entry (E63) — the feature attached where a component remembers.
+    const remembered = () => navigator.use(remember).of(owner.entry!);
+    remembered().set('tab', 'links');
 
     const visiting = navigator.visit('/users/2', { instant: { component: 'users/Show', props: { name: 'Grace' } } });
     await vi.waitFor(() => expect(root.textContent).toBe('Loading Grace …'));
@@ -469,10 +472,10 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     await visiting;
     expect(root.textContent).toContain('"user":"Grace"');
     expect(window.location.pathname).toBe('/users/2');
-    expect(owner.remembered.has('tab')).toBe(false);
+    expect(remembered().has('tab')).toBe(false);
     window.history.back();
     await vi.waitFor(() => expect(window.location.pathname).toBe('/users/1'));
-    await vi.waitFor(() => expect(owner.remembered.get('tab')).toBe('links'));
+    await vi.waitFor(() => expect(remembered().get('tab')).toBe('links'));
 
     // A new build (409 + `x-bespoke-reload: version`): the adapter keeps the page — "a new version is available".
     newBuild = true;

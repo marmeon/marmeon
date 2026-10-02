@@ -10,7 +10,6 @@
  */
 import type { PageObject, RegionObject, RegionResult } from '../page.ts';
 import { slot } from './feature.ts';
-import { Remembered } from './remember.ts';
 import { mergePage, pick } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
@@ -116,17 +115,18 @@ export function regionId(url: string): string {
 export class RegionOwner {
   /** What its entry keeps of its regions, by {@link regionId} — what Back/Forward shows without a request (the entry's slot). */
   readonly regions: Map<string, KeptRegion>;
-  /** What the entry's components remembered (E63) — the entry's slot, in memory only. */
-  readonly remembered: Remembered;
+  /** The key of its history entry — where what the entry's components keep lives (remembered state, E63: `host.entry`). */
+  readonly entry: string | undefined;
   readonly #transport: RegionTransport;
   readonly #controller = new AbortController();
   readonly #live = new Map<string, Region>();
   readonly #onBack: RegionOwnerOptions['onBack'];
 
-  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map(), { onBack, remembered = new Remembered() }: RegionOwnerOptions = {}) {
+  /** `entry`: its history entry's key; `onBack`: see {@link RegionOwnerOptions}. */
+  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map(), entry?: string, onBack?: RegionOwnerOptions['onBack']) {
     this.#transport = transport;
     this.regions = regions;
-    this.remembered = remembered;
+    this.entry = entry;
     this.#onBack = onBack;
   }
 
@@ -175,8 +175,6 @@ export interface RegionOwnerOptions {
    * region it kept is loaded (rendered) again.
    */
   onBack?: (component: string) => Promise<ReloadSpec | undefined>;
-  /** What the entry remembered (E63) — kept with it in memory; a new entry starts with nothing. */
-  remembered?: Remembered;
 }
 
 /**

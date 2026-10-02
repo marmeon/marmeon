@@ -3,6 +3,8 @@ import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashM
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
 import { DEFAULT_FEATURES } from './features/defaults.ts';
+import { queryState } from './features/query-state.ts';
+import { remember, type RememberFeature } from './features/remember.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './region.ts';
 import { REMEMBERED } from './remember.ts';
@@ -147,12 +149,18 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
   return [...new Set(problems)];
 }
 
+/**
+ * Every feature a navigator can attach: those attached by default and those an adapter attaches where they are used (Wave 5c
+ * step 4, E70) — the matrix holds them all to the same rules.
+ */
+const ALL_FEATURES: readonly Feature[] = [...DEFAULT_FEATURES, remember, queryState];
+
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
 async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; cacheSize?: number } = {}) {
   const win = new FakeWindow(`${ORIGIN}/users/1`);
   win.confirmAnswer = true;
   const records: Recorded[] = [];
-  const features = [...DEFAULT_FEATURES, ...extra].map((feature) => recorded(feature, records));
+  const features = [...ALL_FEATURES, ...extra].map((feature) => recorded(feature, records));
   win.handler = (url, init) => {
     const { pathname } = new URL(url);
     if (pathname === '/islands/activity') return islandResponse({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: pathname, version: null });
@@ -171,14 +179,14 @@ async function stocked({ extra = [], cacheSize }: { extra?: readonly Feature[]; 
   // with its optimistic patch and its listing, a flash message nobody heard yet, a layer, a guard.
   await navigator.prefetch('/users/2');
   await navigator.region('/islands/activity').load();
-  tab.owner().remembered.set('draft', { note: CANARY });
+  (records.find((record) => record.feature === 'remember')!.api as RememberFeature).of(pageKey).set('draft', { note: CANARY });
   const liking = new AbortController();
   const action = navigator.action('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: navigator.optimistic((props) => ({ ...props, liked: CANARY })) });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   await navigator.visit('/users/1/edit', { layer: true });
   navigator.guard({ message: 'Unsaved', active: () => false });
   const layerKey = navigator.layers[0]!.entry;
-  // What the core itself keeps — once props, flash messages, the islands and remembered input of the page's entry.
+  // What the core itself keeps — once props, flash messages, the islands of the page's entry — and the remembered input of it.
   const core = { once: host.once, flash: host.flash, regions: host.entry(REGIONS, pageKey), remembered: host.entry(REMEMBERED, pageKey) };
   return { win, tab, navigator, host, records, core, action, liking, pageKey, layerKey };
 }
@@ -192,7 +200,7 @@ function coreLeftovers({ core, navigator, host }: Awaited<ReturnType<typeof stoc
   host.flash.listen((message) => heard.push(message));
   if (heard.length > 0) problems.push('core: a flash message nobody heard');
   if (core.regions.size > 0 || holdsCanary(core.regions)) problems.push('core: the islands of the page’s entry');
-  if (core.remembered.size > 0) problems.push('core: remembered input');
+  if (core.remembered.size > 0) problems.push('remember: remembered input');
   if (navigator.cachedPages > 0) problems.push('core: pages in memory');
   if (navigator.layers.length > 0 || navigator.submissions.length > 0 || navigator.prefetchedPages > 0) problems.push('core: the navigator still lists data');
   return problems;
@@ -212,6 +220,7 @@ describe('the security matrix — every feature × every event that must forget 
     expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^prefetch: its slot "prefetched"/),
+        expect.stringMatching(/^remember: its slot "remembered"/),
         expect.stringMatching(/^layers: its slot "layers"/),
         expect.stringMatching(/^optimistic: its slot "patches"/),
         expect.stringMatching(/^actions: its slot "submissions"/),
@@ -257,7 +266,7 @@ describe('the security matrix — every feature × every event that must forget 
     await settle();
     expect(tab.win.requests.at(-1)?.url).toBe(`${ORIGIN}/users/1`);
     expect(tab.navigator.page).toMatchObject({ url: '/users/1', props: {} });
-    expect(tab.tab.owner().remembered.has('draft')).toBe(false);
+    expect(tab.navigator.use(remember).of(tab.tab.owner().entry!).has('draft')).toBe(false);
   });
 
   it('an action still under way keeps its optimistic patch on an entry memory let go of — the user’s own change, until it ends', async () => {

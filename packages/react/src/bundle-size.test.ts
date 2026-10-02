@@ -29,8 +29,11 @@ import {
 const budget = readBudget();
 type LeakScenario = Exclude<Scenario, 'everything'>;
 
-/** What each scenario uses on purpose: `createBespokeApp` turns the progress bar on. */
-const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['progress'], minimalApp: ['progress'], everything: [] };
+/**
+ * What each scenario uses on purpose: `createBespokeApp` turns the progress bar on; `useForm` remembers a form's input
+ * (`remember`, static in it — E74 loads only `validate` on first use).
+ */
+const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: ['progress'], minimalApp: ['progress', 'remember'], everything: [] };
 
 /** A feature's entry: the scenario it adds to, plus its import. */
 const inCore = (...names: string[]) => ({ base: 'core' as const, entry: coreEntry(...names) });
@@ -46,23 +49,23 @@ const FEATURES = {
   layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer'], use: inApp('LayerDialog') },
   islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
   actions: { markers: ['http/client/features/actions', 'http/client/features/optimistic', 'http/client/action', 'http/client/optimistic', 'react/use-action'], use: inApp('useAction') },
-  liveValidation: { markers: ['http/client/live-validation'], use: inApp('useForm') },
+  liveValidation: { markers: ['http/client/live-validation'], use: inApp('useForm'), brings: ['remember'] }, // useForm remembers (static)
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
-  remember: { markers: ['http/client/remember', 'react/remember'], use: inApp('useRemember') },
+  remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
   progress: { markers: ['http/client/progress'], use: inCore('showProgress') },
   prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link') },
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
   guard: { markers: ['http/client/features/guard', 'http/client/confirm', 'react/confirm'], use: inApp('useBlocker') },
   instant: { markers: ['http/client/features/instant'], use: inApp('Link') },
-  form: { markers: ['react/form'], use: inApp('Form') },
+  form: { markers: ['react/form'], use: inApp('Form'), brings: ['remember'] }, // <Form remember>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[] }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
-const EXTRACTED: readonly Feature[] = ['queryState'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'remember'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');

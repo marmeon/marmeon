@@ -32,7 +32,6 @@ import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
 import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
 import { REGIONS, RegionOwner, type Region, type RegionInitial } from './region.ts';
-import { REMEMBERED } from './remember.ts';
 import { buildRequest, partialReloadHeaders, sendWithProgress, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
@@ -317,7 +316,7 @@ export class Navigator implements LayerHost {
       document: (slot) => held(this.#document, slot),
       top: () => this.#first('top') ?? core.key!,
       ownerOf: (key, back) =>
-        new RegionOwner(core.transport, core.entry(REGIONS, key), { remembered: core.entry(REMEMBERED, key), ...(back ? { onBack: (component: string) => this.#first('declared', component) ?? Promise.resolve(undefined) } : {}) }),
+        new RegionOwner(core.transport, core.entry(REGIONS, key), key, back ? (component) => this.#first('declared', component) ?? Promise.resolve(undefined) : undefined),
       blocking: (leaving, ignore = []) => this.#all('unsaved', leaving, ignore).flat(),
       mayLeave: async (leaving, ignore) => {
         if (ignore === true) return true;

@@ -42,6 +42,8 @@ export type { EntryStack, Feature, FeatureHook, FeatureHooks, FeatureHost, Pendi
 export type { PositionCheck } from './history.ts';
 export { OnceStore } from './once.ts';
 export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, REMEMBERED, Remembered, rememberable, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
+export { remember } from './features/remember.ts';
+export type { RememberFeature } from './features/remember.ts';
 export { DEFAULT_PROGRESS_DELAY, markBusy, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export { accepted, confirmRequest, nativeConfirm } from './confirm.ts';
 export type { Confirm, ConfirmAnswer, ConfirmHandler, ConfirmOptions, ConfirmRequest, NativeDialogs } from './confirm.ts';

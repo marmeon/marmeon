@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
-import type { Navigator, RegionOwner } from '@bespokecore/http/client';
+import { remember, type Navigator, type RegionOwner } from '@bespokecore/http/client';
 import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, type PageObject, type RouteManifest } from '@bespokecore/http/page';
 import { act, useContext } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -200,7 +200,7 @@ describe('useRemember and useForm({ remember }) (E63)', () => {
     await type('password', 'hunter2-MARKER');
     await type('card', '4242-MARKER');
     await type('name', 'Ada L.');
-    const kept = owner!.remembered;
+    const kept = navigator!.use(remember).of(owner!.entry!);
     // What memory holds — inspected directly.
     expect(JSON.stringify(kept.keys().map((key) => kept.get(key)))).not.toContain('MARKER');
     await click('to-people');
@@ -216,7 +216,7 @@ describe('useRemember and useForm({ remember }) (E63)', () => {
     const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     await mount(page('Edit', '/users/1', { name: 'Ada' }));
     await type('name', 'Ada L.');
-    const kept = owner!.remembered;
+    const kept = navigator!.use(remember).of(owner!.entry!);
     expect(kept.size).toBeGreaterThan(0);
     await act(async () => void (await navigator!.visit('/logout', { method: 'post' })));
     expect(assign).toHaveBeenCalledWith('/login');
