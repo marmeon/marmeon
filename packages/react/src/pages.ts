@@ -1,4 +1,4 @@
-import { ERROR_PAGE, LAYER_BACKDROP, pageName } from '@bespokecore/http/page';
+import { ERROR_PAGE, LAYER_BACKDROP, pageName, type IslandProps, type PageProps } from '@bespokecore/http/page';
 import type { ComponentType, ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
 import { Backdrop } from './backdrop.tsx';
@@ -25,12 +25,30 @@ export type PageLayout = Layout | readonly Layout[] | null;
  */
 export type PageSsr = boolean | 'complete';
 
+type ViewAction = { handle: (...args: never[]) => unknown };
+
+/** The props of the view of controller `C`: a page's (or a layer's), else an island's. */
+type ViewPropsOf<C extends ViewAction> = [PageProps<C>] extends [never] ? IslandProps<C> : PageProps<C>;
+
+/**
+ * What a view reloads when Back/Forward shows it from memory (E58) — checked against its controller's props:
+ * `Show.revalidateOnBack = ['activity'] as const satisfies RevalidateOnBack<ShowUserProfileController>`. `true`: all of
+ * them; a list: those (an `optional()`/`defer()` prop too); `false` or nothing: none — Back shows what memory has, as it was.
+ * For pages, layers and islands alike.
+ */
+export type RevalidateOnBack<C extends ViewAction> = boolean | readonly (keyof ViewPropsOf<C> & string)[];
+
 // Page props are validated at the controller boundary (PageProps<...>), not here.
 export type PageComponent = ComponentType<any> & {
   layout?: PageLayout;
   ssr?: PageSsr;
   /** How the view looks when it is a layer (E53): `'modal'` (the default), `'slideover'`, or a frame of its own. */
   layer?: PageLayer;
+  /**
+   * What reloads when Back/Forward shows the view from memory (E58): `true`, some props, or (the default) none — shown at once,
+   * then reloaded in the background without a progress bar. See {@link RevalidateOnBack}.
+   */
+  revalidateOnBack?: boolean | readonly string[];
 };
 
 /** The app's default layout per page name — for pages without their own `layout`: `createBespokeApp({ layout: () => AppLayout })`. */
@@ -97,6 +115,10 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     checkLayout(name, page.layout);
     if (page.ssr !== undefined && page.ssr !== true && page.ssr !== false && page.ssr !== 'complete') {
       throw new Error(`Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.`);
+    }
+    const revalidate: unknown = page.revalidateOnBack;
+    if (revalidate !== undefined && typeof revalidate !== 'boolean' && !(Array.isArray(revalidate) && revalidate.every((prop) => typeof prop === 'string' && prop !== ''))) {
+      throw new Error(`Page [${name}] has an invalid revalidateOnBack: expected true, false or a list of prop names, got ${JSON.stringify(revalidate)}.`);
     }
     return page;
   };

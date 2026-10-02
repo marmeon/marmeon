@@ -1,5 +1,6 @@
 import { AssertionError, deepStrictEqual, partialDeepStrictEqual } from 'node:assert';
 import {
+  ACTION_REDIRECT_HEADER,
   isPageObject,
   LAYER_CLOSE_HEADER,
   PAGE_SCRIPT_ID,
@@ -348,6 +349,16 @@ export class TestResponse {
   assertIslandStatus(status: RegionOutcomeStatus): this {
     const outcome = this.headers.get(REGION_STATUS_HEADER);
     if (outcome !== status) this.#fail(`Expected the island's outcome "${status}", got ${outcome ? `"${outcome}"` : 'none'} (status ${this.status})`);
+    return this;
+  }
+
+  // --- Actions (E59) -----------------------------------------------------------------
+
+  /** The answer of an action (`acting()`) that redirected: `204` with `x-bespoke-redirect` — to `url`, when given. */
+  assertActionRedirect(url?: string): this {
+    const target = this.headers.get(ACTION_REDIRECT_HEADER);
+    if (this.status !== 204 || target === null) this.#fail(`Expected the action to redirect (204 with ${ACTION_REDIRECT_HEADER}), got status ${this.status}`);
+    if (url !== undefined && target !== url) this.#fail(`Expected the action to redirect to ${url}, got ${target}`);
     return this;
   }
 

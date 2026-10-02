@@ -103,6 +103,7 @@ export default {
     expires: 'läuft ab {at}',
     revoke: 'Widerrufen',
     revoked: 'Token widerrufen. Programme, die es nutzen, kommen nicht mehr hinein.',
+    confirm_again: 'Bestätige dein Passwort noch einmal, um Tokens zu verwalten.',
     create: 'Token erstellen',
     name: 'Name',
     name_placeholder: 'z. B. Backup-Skript',

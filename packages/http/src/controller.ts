@@ -3,6 +3,7 @@ import type { CheckViewName } from './page.ts';
 import { island, type IslandResult } from './island.ts';
 import { view, type PageResult, type ViewProps } from './view.ts';
 import { CloseLayerResult, type CloseLayerOptions } from './layer.ts';
+import { json, type JsonResult } from './json.ts';
 
 /**
  * Base class for invokable controllers (REPR): one class per endpoint.
@@ -39,8 +40,12 @@ export abstract class Controller {
     return island<V, TProps>(component, props);
   }
 
-  protected json(data: unknown, status = 200): Response {
-    return Response.json(data, { status });
+  /**
+   * Data as JSON — typed: an action (`useAction('user-profile.links.destroy')`, E59) gets `Serialize<T>` back as `result.data`,
+   * an API client the same JSON. `return this.json({ deleted: link.id })`.
+   */
+  protected json<T>(data: T, status = 200): JsonResult<T> {
+    return json(data, status);
   }
 
   /** `redirect('/login')`, or `redirect().route('user-profile.show', { user: id })` for a named route. */

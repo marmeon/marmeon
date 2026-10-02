@@ -17,9 +17,10 @@ export type RouteSink =
 const REACT = '@bespokecore/react';
 
 /**
- * The sinks of the React adapter. Rows for APIs that do not exist yet (`<Form route>`, `useAction`, `usePending`) are here
- * already, so they reach the manifest from their first day — and so does the error for a name built at runtime. A layer
- * link is `<Link route="…" layer>` (E53): `layer` is a flag, the name is the `route` row's.
+ * The sinks of the React adapter. Rows for APIs that do not exist yet (`<Form route>`, `usePending`) are here already, so they
+ * reach the manifest from their first day — and so does the error for a name built at runtime. A layer link is
+ * `<Link route="…" layer>` (E53): `layer` is a flag, the name is the `route` row's. `useAction(name)` (E59) resolves its URL from
+ * the manifest; `usePendingSubmissions(name)` only compares names (no URL), so it needs no row.
  */
 export const ROUTE_SINKS: readonly RouteSink[] = [
   { module: REACT, export: 'Link', kind: 'element', prop: 'route' },

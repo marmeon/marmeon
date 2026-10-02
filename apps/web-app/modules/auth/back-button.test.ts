@@ -71,6 +71,23 @@ class FakeTab {
     return this.#current!.layers;
   }
 
+  /** The current document's navigator — for an action's patches and reloads (`navigator.optimistic(…)`). */
+  get navigator(): Navigator {
+    return this.#current!.navigator;
+  }
+
+  /** An action of the current document (E59): no navigation — then everything it started has finished. */
+  async action(url: string, options?: Parameters<Navigator['action']>[1]) {
+    const outcome = await this.#current!.navigator.action(url, options);
+    await this.idle();
+    return outcome;
+  }
+
+  /** Signing out in another tab of the same browser: the cookies change, this document knows nothing of it. */
+  async signOutElsewhere(): Promise<void> {
+    await this.#request(new URL('/logout', ORIGIN).href, { method: 'POST' }, 'document');
+  }
+
   /** A click or a form inside the top layer — the layer's own visit. */
   async layerVisit(url: string, options?: Parameters<Navigator['visit']>[1]): Promise<void> {
     await this.#current!.navigator.layers.at(-1)!.visit(url, options);
@@ -530,3 +547,73 @@ describe('Layers in a tab (E53) — the real app, the real navigator', () => {
     }
   });
 });
+
+describe('Actions in a tab (E59) — the real app, the real navigator', () => {
+  type Link = { id: number; label: string };
+  const linksOf = (page: PageObject) => (page.props as { profile: { links: Link[] } }).profile.links.map((link) => link.label);
+  const without = (label: string) => (props: Readonly<Record<string, unknown>>) => {
+    const profile = props.profile as { links: Link[] };
+    return { profile: { ...profile, links: profile.links.filter((link) => link.label !== label) } };
+  };
+
+  async function onProfileWithLinks() {
+    const ada = await app.factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com', email_verified_at: new Date() });
+    const { ProfileLinkFactory } = await import('../user-profile/factories/ProfileLinkFactory.ts');
+    const [notes, blog] = await Promise.all([
+      app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Notes' }),
+      app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Blog' }),
+    ]);
+    await tab.open('/login');
+    await tab.visit('/login', { method: 'post', data: { email: 'ada@example.com', password: 'password' } });
+    expect(linksOf(tab.visible).sort()).toEqual(['Blog', 'Notes']);
+    return { ada, notes: notes!, blog: blog! };
+  }
+
+  it('removes a link without navigating: the patch at once, then the profile and the flash from the server — no history entry', async () => {
+    const { ada, notes } = await onProfileWithLinks();
+    const entries = JSON.stringify(tab.entries);
+    const outcome = await tab.action(`/users/${ada.id}/links/${notes.id}`, {
+      method: 'delete',
+      optimistic: tab.navigator.optimistic(without('Notes')),
+      reload: tab.navigator.reloading({ only: ['profile', 'flash'] }),
+    });
+    expect(outcome).toEqual({ ok: true, kind: 'redirect', redirect: `/users/${ada.id}` });
+    expect(linksOf(tab.visible)).toEqual(['Blog']);
+    expect(tab.visible.props).toMatchObject({ flash: { status: 'Link removed.' } });
+    expect(tab.requests.slice(-2)).toEqual([`DELETE /users/${ada.id}/links/${notes.id} (visit)`, `GET /users/${ada.id} (visit)`]);
+    expect(JSON.stringify(tab.entries)).toBe(entries);
+  });
+
+  it('someone else’s link: 404 — the patch goes, the list is as it was', async () => {
+    const { ada, notes } = await onProfileWithLinks();
+    const alan = await app.factory(UserFactory).create();
+    const { ProfileLinkFactory } = await import('../user-profile/factories/ProfileLinkFactory.ts');
+    const theirs = (await app.factory(ProfileLinkFactory).create({ user_id: alan.id, label: 'Theirs' }))!;
+    // Ada's user id with Alan's link: the scoped binding answers 404 (no IDOR).
+    const outcome = await tab.action(`/users/${ada.id}/links/${theirs.id}`, { method: 'delete', optimistic: tab.navigator.optimistic(without('Notes')) });
+    expect(outcome).toMatchObject({ ok: false, kind: 'exception', exception: { type: 'server', status: 404 } });
+    expect(linksOf(tab.visible).sort()).toEqual(['Blog', 'Notes']);
+    expect(notes).toBeDefined();
+  });
+
+  it('counter-check: signed out in another tab, the action is a 401 — its patch goes and stays gone (Back, Forward), nothing is retried', async () => {
+    const { ada, notes } = await onProfileWithLinks();
+    await tab.visit('/people');
+    await tab.back();
+    await tab.signOutElsewhere();
+    const asked = tab.requests.length;
+    const outcome = await tab.action(`/users/${ada.id}/links/${notes.id}`, {
+      method: 'delete',
+      optimistic: tab.navigator.optimistic(without('Notes')),
+      reload: tab.navigator.reloading({ only: ['profile'] }),
+    });
+    expect(outcome).toMatchObject({ ok: false, kind: 'exception', exception: { type: 'server', status: 401 } });
+    expect(tab.requests.slice(asked)).toEqual([`DELETE /users/${ada.id}/links/${notes.id} (visit)`]);
+    expect(linksOf(tab.visible).sort()).toEqual(['Blog', 'Notes']);
+    await tab.forward();
+    await tab.back();
+    expect(linksOf(tab.visible).sort()).toEqual(['Blog', 'Notes']);
+    await app.assertDatabaseHas('profile_links', { id: notes.id });
+  });
+});
+

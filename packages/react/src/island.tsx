@@ -1,4 +1,17 @@
-import { createPoll, pageQuery, regionInitial, resolveRoute, type Region, type RegionFailure, type RegionSnapshot, type RegionStatus } from '@bespokecore/http/client';
+import {
+  createPoll,
+  pageQuery,
+  regionInitial,
+  resolveRoute,
+  type OptimisticUpdate,
+  type PropsPatch,
+  type Region,
+  type RegionFailure,
+  type Reloading,
+  type ReloadSpec,
+  type RegionSnapshot,
+  type RegionStatus,
+} from '@bespokecore/http/client';
 import type {
   BrowserRouteNameInput,
   CheckIslandRouteName,
@@ -27,7 +40,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { RegionOwnerContext, useRouterContext } from './app.tsx';
+import { RegionOwnerContext, useRouterContext, type CheckedPatch } from './app.tsx';
 import { ErrorBoundary } from './fallbacks.tsx';
 import { IslandHeadContext } from './head.tsx';
 import { DataScript, SsrContext, streamedText, type SsrResolvers } from './streamed.tsx';
@@ -75,6 +88,8 @@ interface IslandValue {
   readonly snapshot: RegionSnapshot;
   readonly query: Record<string, unknown>;
   reload(options?: Parameters<Region['reload']>[0]): Promise<void>;
+  /** Its region — null while rendering on the server. */
+  readonly region: Region | null;
 }
 
 const IslandContext = createContext<IslandValue | null>(null);
@@ -149,7 +164,7 @@ function IslandBody(props: BodyProps) {
 function ServerIsland({ ssr, url, streamed, scriptId, onShown: _onShown, ...props }: BodyProps & { ssr: SsrResolvers }) {
   const result = streamed ? use(ssr.island(url)) : NOT_RESOLVED;
   const snapshot = snapshotOf(result);
-  const value: IslandValue = { snapshot, query: snapshot.region ? pageQuery(snapshot.region) : {}, reload: noReload };
+  const value: IslandValue = { snapshot, query: snapshot.region ? pageQuery(snapshot.region) : {}, reload: noReload, region: null };
   return (
     <>
       <IslandContent {...props} snapshot={snapshot} value={value} />
@@ -229,7 +244,7 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
   }, [region, visible, ready, poll, keepAlive]);
 
   const value = useMemo<IslandValue | null>(
-    () => (region ? { snapshot, query: region.query, reload: (options) => region.reload(options) } : null),
+    () => (region ? { snapshot, query: region.query, reload: (options) => region.reload(options), region } : null),
     [region, snapshot],
   );
   return (
@@ -365,6 +380,17 @@ export interface IslandState<C extends IslandAction = IslandAction> {
   readonly failure: RegionFailure | undefined;
   /** Asks the server again: the same query, another one, or some props — only this island. */
   reload(options?: IslandReloadOptions<C>): Promise<void>;
+  /**
+   * A patch of the island's props for an action (E59) — shown at once, rolled back unless it succeeds; typed against its props:
+   * `submit({ optimistic: island.optimistic((props) => ({ entries: [] })) })`.
+   */
+  optimistic<R extends object>(patch: ((props: IslandPropsOf<C>) => R) & NoInfer<CheckedPatch<R, IslandPropsOf<C>>>): OptimisticUpdate;
+  /** What an action reloads of the island once it succeeded — some props (`only`), all but some (`except`), or all of it. */
+  reloading(options?: { only?: readonly (keyof IslandPropsOf<C> & string)[]; except?: readonly (keyof IslandPropsOf<C> & string)[] }): readonly Reloading[];
+}
+
+function onServer(): never {
+  throw new Error('Actions run in the browser, not while rendering on the server.');
 }
 
 /**
@@ -391,6 +417,8 @@ export function useIsland<C extends IslandAction = IslandAction>(): IslandState<
         pending: value.snapshot.pending,
         failure: value.snapshot.failure,
         reload: (options?: IslandReloadOptions<C>) => value.reload(options as Parameters<Region['reload']>[0]),
+        optimistic: (patch: PropsPatch) => (value.region ? value.region.optimistic(patch) : onServer()),
+        reloading: (spec?: ReloadSpec) => (value.region ? [value.region.reloading(spec)] : onServer()),
       }) as unknown as IslandState<C>,
     [value],
   );

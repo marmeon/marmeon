@@ -9,6 +9,7 @@ import {
   AssetVersion,
   ExceptionHandler,
   HttpError,
+  isActionRequest,
   isViewResult,
   LOCATION_HEADER,
   PAGE_HEADER,
@@ -38,7 +39,7 @@ import {
 } from '@bespokecore/router';
 import { Hono } from 'hono';
 import { createProductionRenderer } from './production.ts';
-import { createResponseFactory, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
+import { createResponseFactory, toActionResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { ServerConfig } from './provider.ts';
 import { createViteDevRenderer } from './vite.ts';
 
@@ -299,6 +300,8 @@ export function createHttpKernel(
     }
     // Redirects, 401 and 403 of an island become its fallback — never a navigation of the page.
     if (island) response = await toRegionResponse(response);
+    // An action's redirect is reported, not followed — and its answer is never cached (E59).
+    else if (isActionRequest(request)) response = await toActionResponse(response);
     // Cookies queued during the request reach the client whatever the outcome (like Laravel).
     const final = await withQueuedCookies(response, state.cookies);
 

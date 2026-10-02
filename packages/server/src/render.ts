@@ -1,12 +1,17 @@
 import { ConsoleLogger, currentRequest, Translator, type Container, type Logger } from '@bespokecore/core';
 import {
+  ACTION_HEADER,
+  ACTION_REDIRECT_HEADER,
   Flasher,
   HttpError,
+  isActionRequest,
   isIslandResult,
+  isJsonResult,
   isLayerResult,
   isPrefetch,
   isRedirectResult,
   isViewResult,
+  jsonResponse,
   LAYER_BACKDROP,
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
@@ -303,7 +308,15 @@ export function createResponseFactory(
       return result.toResponse(ctx.request, routes ?? noRouter, flasher);
     }
     if (isIslandResult(result)) return islandResponse(result, ctx, version, debug);
+    if (isJsonResult(result)) return jsonResponse(result);
     if (!isViewResult(result)) return defaultToResponse(result, ctx);
+    if (isActionRequest(ctx.request)) {
+      // An action (E59) gets data, never a page: the types refuse such a route for `useAction` — a page here is a mistake.
+      throw new HttpError(
+        406,
+        debug ? `[${result.component}] is a page — an action (useAction) gets data: its controller returns this.json(…) or a redirect, not this.view(…).` : undefined,
+      );
+    }
     if (regionOf(ctx.request) === 'island') {
       // `<Island route>` takes island routes only (a type error otherwise) — at runtime a page is not one either.
       throw new HttpError(404, debug ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
@@ -411,6 +424,28 @@ export async function toRegionResponse(response: Response): Promise<Response> {
     return new Response(null, { status: outcome === 'exception' ? (response.status >= 400 ? response.status : 500) : 204, headers });
   }
   return new Response(response.body, { status: response.status >= 400 ? response.status : 500, headers });
+}
+
+/**
+ * What an action's response becomes on its way out (E59) — whatever its route's middleware or controller answered:
+ * - a redirect is not followed (the browser's `fetch` would, and the action would read the next page): `204` with
+ *   {@link ACTION_REDIRECT_HEADER} — the client reports where it pointed;
+ * - a 409 with `x-bespoke-location` (signed out through the action, a new build) passes: the client loads that page;
+ * - never kept by any cache (`no-store`, whatever the route set): the answer is about who asked, at that moment.
+ */
+export async function toActionResponse(response: Response): Promise<Response> {
+  const headers = new Headers(response.headers);
+  headers.set('cache-control', 'no-store');
+  const vary = headers.get('vary');
+  if (!vary?.toLowerCase().split(/\s*,\s*/).includes(ACTION_HEADER)) headers.set('vary', vary ? `${vary}, ${ACTION_HEADER}` : ACTION_HEADER);
+  const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+  if (location !== null) {
+    await response.body?.cancel();
+    for (const name of ['location', 'content-type', 'content-length']) headers.delete(name);
+    headers.set(ACTION_REDIRECT_HEADER, location);
+    return new Response(null, { status: 204, headers });
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 function regionOutcome(status: number): RegionOutcomeStatus {

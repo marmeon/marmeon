@@ -8,11 +8,14 @@ export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {
   BespokeAppProps,
+  CheckedPatch,
   PartialReloadOptions,
+  PatchedProps,
   PrefetchOptions,
   ProgressOptions,
   PropName,
   ReloadOptions,
+  ReloadingOptions,
   Router,
   TypedVisitOptions,
   Visit,
@@ -27,6 +30,8 @@ export type {
 export { Deferred } from './deferred.tsx';
 export type { DeferredProps } from './deferred.tsx';
 export { useForm } from './use-form.ts';
+export { useAction, usePendingSubmissions } from './use-action.ts';
+export type { Action, ActionException, ActionField, ActionReload, ActionResultOf, ActionSubmitOptions, PendingSubmission } from './use-action.ts';
 export type { Form, FormState, FormSubmitOptions, RouteForm, RouteFormFields } from './use-form.ts';
 export { useRoute } from './routes.ts';
 export type { RouteFunction } from './routes.ts';
@@ -41,7 +46,7 @@ export { Backdrop } from './backdrop.tsx';
 export type { IslandElementProps, IslandReloadOptions, IslandState } from './island.tsx';
 export type { LinkProps, PrefetchTrigger } from './link.tsx';
 export { layoutsOf, resolveModulePages } from './pages.ts';
-export type { DefaultLayout, Layout, LayoutProps, PageComponent, PageLayout, PageSsr, ResolvePage } from './pages.ts';
+export type { DefaultLayout, Layout, LayoutProps, PageComponent, PageLayout, PageSsr, ResolvePage, RevalidateOnBack } from './pages.ts';
 export { Head } from './head.tsx';
 export type { HeadProps, TitleTemplate } from './head.tsx';
 export { Pagination, pagesAround } from './pagination.tsx';

@@ -9,6 +9,8 @@ import type { Suggest } from '@bespokecore/router';
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export type { LayerResult } from './layer.ts';
+export type { JsonResult } from './json.ts';
+export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionParamsOf, ActionQueryOf, ActionRedirects, CheckActionRouteName } from './action.ts';
 export type {
   AlwaysProp,
   DeferredProp,
@@ -197,6 +199,21 @@ export interface LayerClose {
 
 /** Client-side navigations send this header and receive the page object as JSON. */
 export const PAGE_HEADER = 'x-bespoke';
+
+/**
+ * Sent with an action (E59, `useAction`): a request that does not navigate — answered with data (`this.json(…)`), never with
+ * a page. Its redirect is not followed: the server answers `204` with {@link ACTION_REDIRECT_HEADER} instead. Its answer
+ * is never cached (`Cache-Control: no-store`): it is about who asked, at that moment.
+ */
+export const ACTION_HEADER = 'x-bespoke-action';
+
+/** With an action's `204`: where its controller redirected to — the client says so (`{ kind: 'redirect' }`), it does not go there. */
+export const ACTION_REDIRECT_HEADER = 'x-bespoke-redirect';
+
+/** Whether `request` is an action's (`x-bespoke-action`, E59). */
+export function isActionRequest(request: Request): boolean {
+  return request.headers.get(ACTION_HEADER) === 'true';
+}
 
 /** The asset version the client was built with; a mismatch answers 409 (Inertia's `X-Inertia-Version`). */
 export const VERSION_HEADER = 'x-bespoke-version';

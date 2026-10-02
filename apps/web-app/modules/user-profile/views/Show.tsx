@@ -1,5 +1,18 @@
 import type { PageProps } from '@bespokecore/http';
-import { Deferred, Head, Link, useForm, usePoll, useTranslation, WhenVisible } from '@bespokecore/react';
+import {
+  Deferred,
+  Head,
+  Link,
+  useAction,
+  usePendingSubmissions,
+  usePoll,
+  useRouter,
+  useTranslation,
+  WhenVisible,
+  type RevalidateOnBack,
+} from '@bespokecore/react';
+import { useState } from 'react';
+import { ActionFailure } from '../../../layouts/ActionFailure.tsx';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
 
@@ -16,6 +29,19 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
   // "3 minutes ago", "gestern" — against the server's `now`, so server and browser render the same; the date in UTC alike.
   const ago = (iso: string) => t.format.relative(iso, now);
   const utc = (iso: string) => `${t.format.date(iso, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`;
+  const router = useRouter<ShowUserProfileController>();
+  // Removing a link (E59): an action — no page change. The link goes at once (a patch over the props, typed against this
+  // page); a failure brings it back. Once it succeeded, the profile reloads and the patch goes with the server's answer.
+  const remove = useAction('user-profile.links.destroy');
+  // Links being added, from any form: ghost rows until the real ones are there (model 2 — nothing to roll back).
+  const adding = usePendingSubmissions('user-profile.links.store');
+  const removeLink = (id: number) =>
+    void remove.submit({
+      params: { user: profile.id, link: id },
+      optimistic: router.optimistic((props) => ({ profile: { ...props.profile, links: props.profile.links.filter((link) => link.id !== id) } })),
+      // The flash too: its "Link removed." shows in the layout.
+      reload: router.reloading({ only: ['profile', 'flash'] }),
+    });
   return (
     <main>
       <Head title={profile.name}>
@@ -91,7 +117,7 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
       </section>
 
       <section aria-label={t('show.links')}>
-        {profile.links.length > 0 && (
+        {(profile.links.length > 0 || adding.length > 0) && (
           <ul>
             {profile.links.map((link) => (
               <li key={link.id}>
@@ -101,16 +127,21 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
                 {can.update && (
                   <>
                     {' '}
-                    {/* Asks first — a layer over the profile ("Remove this link?"). */}
-                    <Link route="user-profile.links.remove" params={{ user: profile.id, link: link.id }} layer aria-label={t('show.remove_label', { label: link.label })}>
+                    <button type="button" onClick={() => removeLink(link.id)} aria-label={t('show.remove_label', { label: link.label })}>
                       {t('show.remove')}
-                    </Link>
+                    </button>
                   </>
                 )}
               </li>
             ))}
+            {adding.map((call) => (
+              <li key={`adding-${call.id}`} aria-busy="true" style={{ opacity: 0.5 }} data-pending-link="">
+                {call.input.label} <small>{t('show.adding')}</small>
+              </li>
+            ))}
           </ul>
         )}
+        <ActionFailure exception={remove.exception} />
         {can.update && <AddLink userId={profile.id} />}
       </section>
 
@@ -133,22 +164,41 @@ export default function Show({ profile, email, isOwnProfile, can, lastLoginAt, a
   );
 }
 
+// What Back/Forward reloads when it shows the profile from memory (E58): the activity — the rest shows as it was.
+Show.revalidateOnBack = ['activity'] as const satisfies RevalidateOnBack<ShowUserProfileController>;
+
+/**
+ * Adding a link — an action (E59): the input moves into the list as a ghost row while it is sent (`usePendingSubmissions`);
+ * invalid input comes back into the fields, with the errors by field.
+ */
 function AddLink({ userId }: { userId: number }) {
   const t = useTranslation('user-profile');
-  const form = useForm('user-profile.links.store', { user: userId }, { label: '', url: '' });
+  const router = useRouter<ShowUserProfileController>();
+  const add = useAction('user-profile.links.store', { user: userId });
+  const [label, setLabel] = useState('');
+  const [url, setUrl] = useState('');
   return (
     <form
       noValidate
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
-        void form.submit({ onSuccess: () => form.reset() });
+        const data = { label, url };
+        setLabel('');
+        setUrl('');
+        const result = await add.submit({ data, reload: router.reloading({ only: ['profile', 'flash'] }) });
+        // Not added: what was typed comes back (unless something new was typed meanwhile).
+        if (!result.ok) {
+          setLabel((current) => current || data.label);
+          setUrl((current) => current || data.url);
+        }
       }}
     >
-      <input aria-label={t('show.add_label')} placeholder={t('show.add_label')} value={form.data.label} onChange={(e) => form.set('label', e.target.value)} />{' '}
-      <input aria-label={t('show.add_url')} placeholder="https://…" value={form.data.url} onChange={(e) => form.set('url', e.target.value)} />{' '}
-      <button disabled={form.processing}>{t('show.add')}</button>
-      {form.errors.label && <small role="alert"> {form.errors.label}</small>}
-      {form.errors.url && <small role="alert"> {form.errors.url}</small>}
+      <input aria-label={t('show.add_label')} placeholder={t('show.add_label')} value={label} onChange={(e) => (setLabel(e.target.value), add.clearErrors('label'))} aria-invalid={!!add.errors.label} />{' '}
+      <input aria-label={t('show.add_url')} placeholder="https://…" value={url} onChange={(e) => (setUrl(e.target.value), add.clearErrors('url'))} aria-invalid={!!add.errors.url} />{' '}
+      <button>{t('show.add')}</button>
+      {add.errors.label && <small role="alert"> {add.errors.label}</small>}
+      {add.errors.url && <small role="alert"> {add.errors.url}</small>}
+      <ActionFailure exception={add.exception} />
     </form>
   );
 }

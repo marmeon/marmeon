@@ -1,5 +1,5 @@
 import type { IslandProps } from '@bespokecore/http';
-import { Link, useIsland, useTranslation } from '@bespokecore/react';
+import { Link, useIsland, useTranslation, type RevalidateOnBack } from '@bespokecore/react';
 import type { ShowRecentSignInsController } from '../controllers/ShowRecentSignInsController.ts';
 
 /** The ranges the picker offers — checked against the island's query schema by `reload({ query })`. */
@@ -44,3 +44,6 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
     </>
   );
 }
+
+// Back/Forward to the dashboard or `/people` shows this island from memory at once, then refreshes who signed in (E58).
+RecentSignIns.revalidateOnBack = ['entries', 'now'] as const satisfies RevalidateOnBack<ShowRecentSignInsController>;

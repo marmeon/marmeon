@@ -23,6 +23,7 @@ export default {
     add_label: 'Bezeichnung',
     add_url: 'URL',
     add: 'Link hinzufügen',
+    adding: 'wird hinzugefügt …',
     people: 'Alle Leute',
     back: 'Zurück zu meinem Profil',
   },

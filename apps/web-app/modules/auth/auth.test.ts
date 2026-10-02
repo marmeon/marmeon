@@ -599,7 +599,8 @@ describe('API tokens', () => {
     await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).expectingJson().get('/api/users').assertUnauthorized();
     // Revoked: dead at once.
     const id = Number(/^bc_(\d+)\|/.exec(plainText)![1]);
-    await (await sudo(ada)).delete(`/settings/tokens/${id}`).assertRedirect('/settings/tokens');
+    // An action (E59): JSON back, never cached.
+    await (await sudo(ada)).acting().delete(`/settings/tokens/${id}`).assertOk().assertExactJson({ revoked: id }).assertHeader('cache-control', 'no-store');
     await api(plainText).get('/api/users').assertUnauthorized();
   });
 

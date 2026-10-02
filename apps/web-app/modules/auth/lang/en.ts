@@ -103,6 +103,7 @@ const en = {
     expires: 'expires {at}',
     revoke: 'Revoke',
     revoked: 'Token revoked. Programs using it can no longer sign in.',
+    confirm_again: 'Confirm your password again to manage tokens.',
     create: 'Create a token',
     name: 'Name',
     name_placeholder: 'e.g. Backup script',

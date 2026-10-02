@@ -8,6 +8,7 @@
 import { MAX_LAYER_DEPTH, type LayerClose, type PageObject } from '../page.ts';
 import type { RegionOwner } from './region.ts';
 import type { VisitOptions } from './navigation.ts';
+import { PatchQueue, Revalidations, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 
 export { MAX_LAYER_DEPTH } from '../page.ts';
 
@@ -20,13 +21,17 @@ export interface LayerCloseOptions {
 export interface LayerHost {
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined>;
   closeLayer(layer: Layer, close: LayerClose): Promise<void>;
+  /** Reloads the layer's props in the background for an action (E59), dropping `drop` as they land — whether they landed. */
+  reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean>;
+  /** The layer's props in memory changed (an action's patches became its state): memory keeps them. */
+  layerChanged(layer: Layer): void;
 }
 
 /** The navigator's handle on a layer — what changes it (the adapter only reads). */
 export interface LayerControl {
   readonly layer: Layer;
-  /** A new page object for the layer (props merged in, an answer that replaced it in place). */
-  update(page: PageObject): void;
+  /** A new page object for the layer (props merged in, an answer that replaced it in place) — taking the patches `drop` out with it. */
+  update(page: PageObject, drop?: ReadonlySet<number>): void;
   /** It left the screen: its regions stop, `onClose` listeners run. */
   dismiss(): void;
 }
@@ -50,6 +55,32 @@ export class Layer {
   #closing = false;
   readonly #listeners = new Set<() => void>();
   readonly #closeListeners = new Set<() => void>();
+  /** Optimistic patches under way (E59) — over its props, never in them. */
+  readonly #patches = new PatchQueue();
+  readonly #revalidations = new Revalidations();
+  readonly #target: PatchTarget = {
+    add: (patch) => {
+      const id = this.#patches.add(patch);
+      this.#emit();
+      return id;
+    },
+    settle: (ids, commit, { quiet = false } = {}) => {
+      if (!ids.some((id) => this.#patches.has(id))) return;
+      if (commit) {
+        this.#page = this.#patches.fold(this.#page, ids);
+        this.#host.layerChanged(this);
+      }
+      this.#patches.remove(ids);
+      if (!quiet) this.#emit();
+    },
+    revalidate: (spec, ids) =>
+      this.#revalidations.run(
+        spec,
+        ids,
+        (united, all, signal) => this.#host.reloadLayer(this, united, all, signal),
+        (all) => this.#target.settle(all, true),
+      ),
+  };
 
   private constructor(host: LayerHost, entry: string, depth: number, page: PageObject, owner: RegionOwner) {
     this.#host = host;
@@ -65,14 +96,29 @@ export class Layer {
     const layer = new Layer(host, entry, depth, page, owner);
     return {
       layer,
-      update: (next) => layer.#update(next),
+      update: (next, drop) => layer.#update(next, drop),
       dismiss: () => layer.#dismiss(),
     };
   }
 
-  /** Its page object — the props its view renders, its URL, its `layer` info. */
+  /** Its page object — the props in memory (the server's), its URL, its `layer` info. */
   get page(): PageObject {
     return this.#page;
+  }
+
+  /** What its view renders: {@link page} with the optimistic patches under way over it (E59) — the same object while neither changed. */
+  get view(): PageObject {
+    return this.#patches.apply(this.#page);
+  }
+
+  /** A patch of its props for an action or a form (E59) — shown at once over them, never written into them before it succeeded. */
+  optimistic(patch: PropsPatch): OptimisticUpdate {
+    return { target: this.#target, patch };
+  }
+
+  /** A reload of its props for an action to run once it succeeded: some (`only`), or all. */
+  reloading(spec: ReloadSpec = {}): Reloading {
+    return { target: this.#target, spec };
   }
 
   /** Its key: an answer with the same key replaces it in place. */
@@ -132,15 +178,23 @@ export class Layer {
     return () => void this.#closeListeners.delete(listener);
   }
 
-  #update(page: PageObject): void {
-    if (page === this.#page) return;
+  #update(page: PageObject, drop?: ReadonlySet<number>): void {
+    const dropped = drop ? this.#patches.remove(drop) : false;
+    if (page === this.#page && !dropped) return;
     this.#page = page;
+    this.#emit();
+  }
+
+  #emit(): void {
     for (const listener of this.#listeners) call(listener);
   }
 
   #dismiss(): void {
     if (this.#closed) return;
     this.#closed = true;
+    // Gone from the screen: nothing optimistic of it stays (its actions' answers land nowhere).
+    this.#patches.clear();
+    this.#revalidations.abort();
     this.owner.close();
     for (const listener of this.#closeListeners) call(listener);
     this.#closeListeners.clear();

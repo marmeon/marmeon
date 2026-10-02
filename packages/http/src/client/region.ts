@@ -10,6 +10,7 @@
  */
 import { PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type PageObject, type RegionObject, type RegionResult } from '../page.ts';
 import { mergePage } from './merge.ts';
+import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { pageQuery, queryUrl } from './query-state.ts';
 
 /** Where a region stands: loading (nothing to show yet), ready, or what kept it from showing anything. */
@@ -111,10 +112,17 @@ export class RegionOwner {
   readonly #transport: RegionTransport;
   readonly #controller = new AbortController();
   readonly #live = new Map<string, Region>();
+  readonly #onBack: RegionOwnerOptions['onBack'];
 
-  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map()) {
+  constructor(transport: RegionTransport, regions: Map<string, KeptRegion> = new Map(), { onBack }: RegionOwnerOptions = {}) {
     this.#transport = transport;
     this.regions = regions;
+    this.#onBack = onBack;
+  }
+
+  /** The regions on screen (rendered and not closed) — an action reloads some of them by route (`reloading({ islands })`). */
+  get live(): readonly Region[] {
+    return [...this.#live.values()];
   }
 
   /** Aborted once the owner is closed. */
@@ -137,7 +145,9 @@ export class RegionOwner {
     if (live) return live;
     const kept = this.regions.get(id);
     if (initial && !('failure' in initial) && !kept) this.regions.set(id, initial);
-    const region = new Region(this, this.#transport, id, url, kept ?? initial);
+    // Back/Forward brought what it kept: its view may declare props to reload then (E58).
+    const onBack = kept && isRegionObject(kept) ? this.#onBack : undefined;
+    const region = new Region(this, this.#transport, id, url, kept ?? initial, onBack);
     if (!this.closed) this.#live.set(id, region);
     return region;
   }
@@ -147,6 +157,14 @@ export class RegionOwner {
     this.#controller.abort();
     this.#live.clear();
   }
+}
+
+export interface RegionOwnerOptions {
+  /**
+   * The owner's entry came back by Back/Forward (E58): what a region's view declares to reload then — asked for when a
+   * region it kept is loaded (rendered) again.
+   */
+  onBack?: (component: string) => Promise<ReloadSpec | undefined>;
 }
 
 /** The headers of a partial reload of `component`. */
@@ -180,10 +198,38 @@ export class Region {
   readonly #deferred = new Set<string>();
   readonly #listeners = new Set<() => void>();
   #snapshot: RegionSnapshot;
+  /** Optimistic patches under way (E59) — over its region object, never in it (nor in what its owner keeps). */
+  readonly #patches = new PatchQueue();
+  /** Patches of succeeded actions that go when the region's next answer lands — carried over to a newer request. */
+  #drops: { readonly ids: readonly number[]; readonly done: () => void }[] = [];
+  /** What its view declares to reload, once, when it was shown from memory by Back/Forward (E58). */
+  #onBack: RegionOwnerOptions['onBack'];
+  readonly #target: PatchTarget = {
+    add: (patch) => {
+      const id = this.#patches.add(patch);
+      this.#emit();
+      return id;
+    },
+    settle: (ids, commit, { quiet = false } = {}) => {
+      if (!ids.some((id) => this.#patches.has(id))) return;
+      if (commit && this.#region) {
+        this.#region = this.#patches.fold(this.#region, ids);
+        this.#owner.regions.set(this.id, this.#region);
+      }
+      this.#patches.remove(ids);
+      if (!quiet) this.#emit();
+    },
+    revalidate: (spec, ids) => {
+      const done = new Promise<void>((resolve) => this.#drops.push({ ids, done: resolve }));
+      void this.#fetch(this.#url, spec.only !== undefined || (spec.except?.length ?? 0) > 0 ? { only: spec.only, except: spec.except } : {});
+      return done;
+    },
+  };
 
-  constructor(owner: RegionOwner, transport: RegionTransport, id: string, url: string, kept?: RegionInitial) {
+  constructor(owner: RegionOwner, transport: RegionTransport, id: string, url: string, kept?: RegionInitial, onBack?: RegionOwnerOptions['onBack']) {
     this.#owner = owner;
     this.#transport = transport;
+    this.#onBack = onBack;
     this.id = id;
     const region = isRegionObject(kept) ? kept : undefined;
     this.#url = region?.url ?? url;
@@ -207,6 +253,16 @@ export class Region {
     return this.#region ? pageQuery(this.#region) : {};
   }
 
+  /** A patch of its props for an action (E59) — shown at once over them, never kept before it succeeded. */
+  optimistic(patch: PropsPatch): OptimisticUpdate {
+    return { target: this.#target, patch };
+  }
+
+  /** A reload of the region for an action to run once it succeeded: some props (`only`), or all. */
+  reloading(spec: ReloadSpec = {}): Reloading {
+    return { target: this.#target, spec };
+  }
+
   /** Follows the snapshot. Returns the function that stops it. */
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -220,6 +276,15 @@ export class Region {
   load(): Promise<void> {
     if (this.#region) {
       this.#loadDeferred();
+      const onBack = this.#onBack;
+      this.#onBack = undefined;
+      // Shown from memory by Back/Forward: what its view declares reloads in the background (E58).
+      if (onBack) {
+        const component = this.#region.component;
+        void onBack(component).then((spec) => {
+          if (spec && !this.#owner.closed && this.#region?.component === component) void this.reload(spec.only || spec.except ? { only: spec.only, except: spec.except } : {});
+        });
+      }
       return Promise.resolve();
     }
     if (this.#loading) return this.#loading;
@@ -251,7 +316,7 @@ export class Region {
   }
 
   async #fetch(url: string, { only, except, reset }: Pick<RegionReloadOptions, 'only' | 'except' | 'reset'>): Promise<void> {
-    if (this.#owner.closed) return;
+    if (this.#owner.closed) return this.#settleDrops(false);
     this.#request?.abort();
     const controller = new AbortController();
     this.#request = controller;
@@ -262,12 +327,16 @@ export class Region {
     this.#emit();
     try {
       const response = await this.#transport.request(url, headers, signal);
-      if (signal.aborted || this.#owner.closed || response.kind === 'cancelled') return;
+      if (this.#owner.closed) return this.#settleDrops(false);
+      // Replaced by a newer request of the region: that one settles the patches waiting for an answer.
+      if (signal.aborted || response.kind === 'cancelled') return;
       if (response.kind === 'region') {
         const partial = Object.keys(headers).length > 0 && this.#region && response.region.component === this.#region.component;
         this.#land(partial ? (mergePage(this.#region as PageObject, response.region, reset) as RegionObject) : response.region);
+        this.#settleDrops(true);
       } else {
         this.#fail(response);
+        this.#settleDrops(false);
       }
     } finally {
       if (this.#request === controller) this.#request = undefined;
@@ -327,8 +396,23 @@ export class Region {
     this.#emit();
   }
 
+  /**
+   * The patches of succeeded actions waiting for an answer: it `landed` — they go with it (in the same snapshot) — or not
+   * (offline, turned away): what they show becomes the region's state, their action did succeed.
+   */
+  #settleDrops(landed: boolean): void {
+    const waiting = this.#drops.splice(0);
+    const ids = waiting.flatMap((entry) => entry.ids);
+    if (ids.length > 0) {
+      if (landed || this.#owner.closed) this.#patches.remove(ids);
+      else this.#target.settle(ids, true, { quiet: true });
+    }
+    for (const entry of waiting) entry.done();
+  }
+
   #take(): RegionSnapshot {
-    return { status: this.#status, region: this.#region, pending: this.#pending > 0, failure: this.#failure };
+    const region = this.#region ? this.#patches.apply(this.#region as PageObject) : undefined;
+    return { status: this.#status, region: region as RegionObject | undefined, pending: this.#pending > 0, failure: this.#failure };
   }
 
   #emit(): void {

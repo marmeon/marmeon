@@ -1,5 +1,5 @@
 import type { HttpContext, MiddlewareClass, Next } from '@bespokecore/router';
-import { LOCATION_HEADER, PAGE_HEADER } from './page.ts';
+import { isActionRequest, LOCATION_HEADER, PAGE_HEADER } from './page.ts';
 
 /**
  * Ends the browser's page session of this app with the current response — what signing in and out need
@@ -55,17 +55,32 @@ export class ClearClientHistory {
 
     const headers = new Headers(response.headers);
     if (this.#history.clearsSiteCache) headers.set('clear-site-data', '"cache"');
-    if (ctx.request.headers.get(PAGE_HEADER) !== 'true') {
+    // An action (E59) too: signing out through one must not leave the pages in memory either.
+    const action = isActionRequest(ctx.request);
+    if (ctx.request.headers.get(PAGE_HEADER) !== 'true' && !action) {
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
 
     const url = new URL(ctx.request.url);
     const redirect = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
-    const location = redirect ?? url.pathname + url.search;
+    // An action's own URL is no page: without a redirect, the page it was sent from (this site's `Referer`), else the start.
+    const location = redirect ?? (action ? refererPath(ctx.request) : url.pathname + url.search);
     await response.body?.cancel();
     for (const name of DROPPED) headers.delete(name);
     headers.set(LOCATION_HEADER, location);
     return new Response(null, { status: 409, headers });
+  }
+}
+
+/** The path of the page `request` came from — when it is this site's; else `/`. */
+function refererPath(request: Request): string {
+  const referer = request.headers.get('referer');
+  if (!referer) return '/';
+  try {
+    const from = new URL(referer);
+    return from.origin === new URL(request.url).origin ? from.pathname + from.search : '/';
+  } catch {
+    return '/';
   }
 }
 

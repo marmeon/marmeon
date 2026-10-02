@@ -21,6 +21,7 @@ const en = {
     add_label: 'Label',
     add_url: 'URL',
     add: 'Add link',
+    adding: 'adding…',
     people: 'All people',
     back: 'Back to my profile',
   },

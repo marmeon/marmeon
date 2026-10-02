@@ -6,7 +6,10 @@ import {
   showProgress,
   TitleRegistry,
   type Layer,
+  type OptimisticUpdate,
   type PrefetchOptions,
+  type Reloading,
+  type RegionOwner as RegionOwnerType,
   type ProgressOptions,
   type TitleTemplate,
   type VisitException,
@@ -14,7 +17,7 @@ import {
   type VisitEvents,
   type VisitOptions,
 } from '@bespokecore/http/client';
-import type { PageObject, PageProps, RouteManifest, SharedProps } from '@bespokecore/http/page';
+import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@bespokecore/http/page';
 import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
@@ -59,6 +62,27 @@ export interface PartialReloadOptions<T = unknown> {
   reset?: readonly PropName<T>[];
 }
 
+/** The props a patch of page `T` sees — any props when `T` is not given. */
+export type PatchedProps<T> = unknown extends T ? Readonly<Record<string, unknown>> : PropsOf<T>;
+
+/**
+ * What a patch `(props) => R` of page props `P` must be (E59): the props it changes, from the props shown (the server's, with
+ * the patches under way before it), each of its type — a prop the page does not have is named (`'profle' is not a prop of this
+ * page`), a value of the wrong type is the usual error, down to the field. It runs again whenever those change: no side effects.
+ */
+export type CheckedPatch<R, P> = (props: P) => { readonly [K in keyof R]: K extends keyof P ? P[K] : `'${K & string}' is not a prop of this page` };
+
+/**
+ * What an action reloads once it succeeded (E59) — some props of the page (`only`), all but some (`except`), its islands of a
+ * route (`islands`): `router.reloading({ only: ['profile', 'flash'] })`. Neither props nor islands: the whole page.
+ */
+export interface ReloadingOptions<T = unknown, I extends readonly string[] = readonly string[]> {
+  only?: readonly PropName<T>[];
+  except?: readonly PropName<T>[];
+  /** The islands of these routes the page (or layer) shows — each one on screen reloads. Alone: only them, not the page. */
+  islands?: { readonly [K in keyof I]: CheckIslandRouteName<I[K] & string> };
+}
+
 /** {@link VisitOptions}, with the props of a partial reload checked against page `T`. */
 export type TypedVisitOptions<T = unknown> = Omit<VisitOptions, keyof PartialReloadOptions> & PartialReloadOptions<T>;
 
@@ -78,6 +102,14 @@ export interface Router<T = unknown> {
   prefetch(url: string, options?: PrefetchOptions): Promise<void>;
   /** Listens to the events of every visit; returns the function that stops listening (for an effect's cleanup). */
   on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
+  /**
+   * A patch of this page's props (or the layer's, inside one) for an action or a form (E59) — shown at once, rolled back unless it
+   * succeeds: `submit({ optimistic: router.optimistic((props) => ({ likes: props.likes + 1 })) })`. Never in the page's memory
+   * before it succeeded, never in `history.state`.
+   */
+  optimistic<R extends object>(patch: ((props: PatchedProps<T>) => R) & NoInfer<CheckedPatch<R, PatchedProps<T>>>): OptimisticUpdate;
+  /** What an action reloads of this page (or layer) once it succeeded — `submit({ reload: router.reloading({ only: ['profile'] }) })`. */
+  reloading<const I extends readonly BrowserRouteNameInput[] = []>(options?: ReloadingOptions<T, I>): readonly Reloading[];
 }
 
 /** @internal What the hooks read: the page (or the layer) around them and how to navigate from it. */
@@ -89,6 +121,26 @@ export interface RouterValue extends Router {
   resolve: ResolvePage;
 }
 
+/**
+ * The reloads `reloading()` names: the page's (or layer's) props — unless only islands are named — and every island on screen
+ * of the routes named (the routes the browser knows, `<Island route>`).
+ */
+export function reloadsOf(
+  own: (spec: { only?: readonly string[]; except?: readonly string[] }) => Reloading,
+  owner: RegionOwnerType | null,
+  manifest: RouteManifest | undefined,
+  { only, except, islands }: { only?: readonly string[]; except?: readonly string[]; islands?: readonly string[] } = {},
+): readonly Reloading[] {
+  const reloads: Reloading[] = [];
+  if (!islands || only || except) reloads.push(own({ ...(only ? { only } : {}), ...(except ? { except } : {}) }));
+  for (const name of islands ?? []) {
+    const route = manifest && Object.hasOwn(manifest, name) ? manifest[name] : undefined;
+    if (!route) throw new Error(`reloading({ islands: ['${name}'] }): [${name}] is not a route the browser knows — an island reloads where <Island route="${name}"> shows it.`);
+    for (const region of owner?.live ?? []) if (matchesPath(route.path, new URL(region.url, 'http://bespoke.invalid').pathname)) reloads.push(region.reloading());
+  }
+  return reloads;
+}
+
 /** One id per layer object — a layer replaced by a fresh one (another state) mounts anew, even in the same entry. */
 const layerIds = new WeakMap<Layer, string>();
 let nextLayerId = 0;
@@ -97,7 +149,7 @@ let nextLayerId = 0;
 function entryOf(layer: Layer): LayerEntry {
   let id = layerIds.get(layer);
   if (id === undefined) layerIds.set(layer, (id = `layer-${++nextLayerId}`));
-  return { id, layer, page: layer.page, depth: layer.depth };
+  return { id, layer, page: layer.view, depth: layer.depth };
 }
 
 /** The page object without the layers a deep link brought (they render over it). */
@@ -137,8 +189,8 @@ export function usePage<TProps extends object = {}>(): Omit<PageObject, 'props'>
  * ```
  */
 export function useRouter<T = unknown>(): Router<T> {
-  const { visit, reload, prefetch, on } = useRouterContext();
-  return useMemo(() => ({ visit, reload, prefetch, on }) as Router<T>, [visit, reload, prefetch, on]);
+  const { visit, reload, prefetch, on, optimistic, reloading } = useRouterContext();
+  return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as Router<T>, [visit, reload, prefetch, on, optimistic, reloading]);
 }
 
 export interface BespokeAppProps {
@@ -235,7 +287,12 @@ export function BespokeApp({
   // render, so a page's own effects — which run before this component's — can already visit.
   const navigator = useRef<Navigator | null>(null);
   if (navigator.current === null && typeof window !== 'undefined') {
-    navigator.current = new Navigator({ initialPage, render: (page, options) => renderRef.current(page, options) });
+    navigator.current = new Navigator({
+      initialPage,
+      render: (page, options) => renderRef.current(page, options),
+      // What a view declares to reload when Back/Forward shows it from memory (E58): `Show.revalidateOnBack = ['activity']`.
+      revalidateOnBack: async (component) => (await resolve(component)).revalidateOnBack,
+    });
   }
   // The layers on screen — the core's in the browser; on the server, the deep link's page objects.
   const [layers, setLayers] = useState<readonly LayerEntry[]>(() =>
@@ -272,6 +329,11 @@ export function BespokeApp({
   // A prefetch while rendering on the server (an effect never runs there) has nothing to do.
   const prefetch = useCallback((url: string, options?: PrefetchOptions) => navigator.current?.prefetch(url, options) ?? Promise.resolve(), []);
   const on = useCallback(<E extends VisitEvent>(event: E, listener: VisitEvents[E]) => browser().on(event, listener), [browser]);
+  const optimistic = useCallback((patch: (props: Readonly<Record<string, unknown>>) => object) => browser().optimistic(patch as never), [browser]);
+  const reloading = useCallback(
+    (options?: ReloadingOptions) => reloadsOf((spec) => browser().reloading(spec), browser().regionOwner, routes, options as { islands?: readonly string[] }),
+    [browser, routes],
+  );
 
   // A page that throws gets one fresh copy of its props from the server: after a hot update, the code may
   // expect a shape the props in memory do not have yet (the controller changed with it). Throws again → fallback.
@@ -292,8 +354,8 @@ export function BespokeApp({
 
   const getNavigator = useCallback(() => navigator.current, []);
   const router = useMemo(
-    () => ({ page: current.page, visit, reload, prefetch, on, navigator: getNavigator, resolve }),
-    [current.page, visit, reload, prefetch, on, getNavigator, resolve],
+    () => ({ page: current.page, visit, reload, prefetch, on, optimistic, reloading, navigator: getNavigator, resolve }) as RouterValue,
+    [current.page, visit, reload, prefetch, on, optimistic, reloading, getNavigator, resolve],
   );
   const { Component, page, key, catalog } = current;
   const owner = current.owner ?? navigator.current?.regionOwner ?? null;

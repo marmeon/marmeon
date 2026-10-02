@@ -15,7 +15,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import { RegionOwnerContext, RouterContext, type RouterValue } from './app.tsx';
+import { RegionOwnerContext, reloadsOf, RouterContext, type RouterValue } from './app.tsx';
+import { RoutesContext } from './routes.ts';
 import { ErrorBoundary, RenderErrorFallback } from './fallbacks.tsx';
 import type { ResolvePage } from './pages.ts';
 import { loadView, viewOf } from './views.ts';
@@ -162,7 +163,9 @@ export function LayerStack({ entries, resolve, frame, base }: { entries: readonl
 
 function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry; isTop: boolean; resolve: ResolvePage; frame: LayerFrame | undefined; base: RouterValue }) {
   const { layer } = entry;
-  const live = useSyncExternalStore(layer?.subscribe ?? noSubscription, () => layer?.page ?? entry.page, () => entry.page);
+  // What its view renders: its props with the optimistic patches under way over them (E59).
+  const live = useSyncExternalStore(layer?.subscribe ?? noSubscription, () => layer?.view ?? entry.page, () => entry.page);
+  const manifest = useContext(RoutesContext);
   // An answer with another view (a wizard's next step, the new token replacing its form): shown once its view is loaded —
   // until then the layer keeps what it shows. Suspending would hide the dialog (out of the modal state, focus on the page).
   const [shown, setShown] = useState(live);
@@ -188,8 +191,17 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       visit: (url, options) => (layer ? layer.visit(url, options) : Promise.resolve(undefined)),
       reload: (options) => (layer ? layer.reload(options) : Promise.resolve(undefined)),
       prefetch: (url, options) => base.navigator()?.prefetch(url, { ...options, layer: true }) ?? Promise.resolve(),
+      // An action's patches and reloads from inside the layer are the layer's (E59).
+      optimistic: (patch) => {
+        if (!layer) throw new Error('Actions run in the browser, not while rendering on the server.');
+        return layer.optimistic(patch as never);
+      },
+      reloading: (options) => {
+        if (!layer) throw new Error('Actions run in the browser, not while rendering on the server.');
+        return reloadsOf((spec) => layer.reloading(spec), layer.owner, manifest, options as { islands?: readonly string[] });
+      },
     }),
-    [base, page, layer],
+    [base, page, layer, manifest],
   );
   const state = useMemo<LayerState>(
     () => ({

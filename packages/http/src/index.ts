@@ -1,5 +1,8 @@
 export { Controller } from './controller.ts';
 export { view, isViewResult } from './view.ts';
+export { isJsonResult, json, jsonResponse } from './json.ts';
+export type { JsonResult } from './json.ts';
+export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionParamsOf, ActionQueryOf, ActionRedirects, CheckActionRouteName } from './action.ts';
 export { island, isIslandResult } from './island.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export { CloseLayerResult, isCloseLayerResult, isLayerResult, toLayer } from './layer.ts';
@@ -8,6 +11,8 @@ export { ERRORS_KEY, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_I
 export type { RedirectStatus } from './redirect.ts';
 export type { PageProps, PageResult, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export {
+  ACTION_HEADER,
+  ACTION_REDIRECT_HEADER,
   ERROR_PAGE,
   LAYER_BACKDROP,
   LAYER_CLOSE_HEADER,
@@ -22,6 +27,7 @@ export {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   VERSION_HEADER,
+  isActionRequest,
   isPageObject,
   isPrefetch,
   pageName,

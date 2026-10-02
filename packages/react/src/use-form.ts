@@ -160,7 +160,8 @@ export function useForm(...args: unknown[]): unknown {
   );
 
   const submit = (...submitArgs: unknown[]): Promise<void> => {
-    if (target) return send(target.method as VisitMethod, target.url, submitArgs[0] as FormSubmitOptions | undefined);
+    // A route form is listed while under way, by its name (`usePendingSubmissions(name)`: ghost rows, E59).
+    if (target) return send(target.method as VisitMethod, target.url, { ...(name ? { name } : {}), ...(submitArgs[0] as FormSubmitOptions | undefined) });
     return send(submitArgs[0] as VisitMethod, submitArgs[1] as string, submitArgs[2] as FormSubmitOptions | undefined);
   };
 

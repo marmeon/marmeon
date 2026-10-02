@@ -10,6 +10,7 @@ import {
 import { Encrypter } from '@bespokecore/encryption';
 import { CookieEncryption, Router, writeAppBrowserRoutes } from '@bespokecore/http';
 import {
+  ACTION_HEADER,
   PAGE_HEADER,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
@@ -500,6 +501,15 @@ export class TestApp {
   layer<const N extends RouteNameInput>(name: CheckLayerRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse {
     const path = urlFor(this.make(Router), name, params as Readonly<Record<string, Param>> | undefined, query as Query | undefined);
     return this.layering().get(path);
+  }
+
+  /**
+   * Requests as an action does (E59, `useAction`): `x-bespoke-action` and `Accept: application/json` — answered with its data
+   * (`this.json(…)`), a 422 with the field errors, an `exception` status, or — a redirect, not followed — `204` with
+   * `x-bespoke-redirect` (`assertActionRedirect`). Never cached (`no-store`).
+   */
+  acting(): TestApp {
+    return this.withHeaders({ [ACTION_HEADER]: 'true', accept: 'application/json' });
   }
 
   /** Requests as an API client. */
