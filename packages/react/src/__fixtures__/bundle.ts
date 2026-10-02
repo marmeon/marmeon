@@ -45,6 +45,8 @@ export interface AppBundle {
   readonly initial: readonly BundleChunk[];
   /** Chunks loaded on demand (`import()`): listed, not counted. */
   readonly lazy: readonly BundleChunk[];
+  /** The modules in those chunks (features loaded on first use, E74). */
+  readonly lazyModules: readonly string[];
   /** With `sourcemap: true`: every byte of the initial and the lazy chunks attributed to its module, by source map. */
   readonly attribution?: {
     readonly initial: ReadonlyMap<string, ModuleShare>;
@@ -149,13 +151,17 @@ async function measure(config: InlineConfig, { sourcemap, entry }: { sourcemap: 
   for (const chunk of chunks) if (chunk.isEntry) visit(chunk);
   const lazy = chunks.filter((chunk) => !initial.has(chunk));
 
-  const modules = new Set<string>();
-  for (const chunk of initial) {
-    for (const id of chunk.moduleIds) {
-      if (id === entry) modules.add('(entry)');
-      else if (!id.startsWith('\0')) modules.add(moduleName(id));
+  const namesOf = (list: Iterable<Rolldown.OutputChunk>) => {
+    const names = new Set<string>();
+    for (const chunk of list) {
+      for (const id of chunk.moduleIds) {
+        if (id === entry) names.add('(entry)');
+        else if (!id.startsWith('\0')) names.add(moduleName(id));
+      }
     }
-  }
+    return names;
+  };
+  const modules = namesOf(initial);
   const sizes = (chunk: Rolldown.OutputChunk): BundleChunk => ({
     fileName: chunk.fileName,
     min: Buffer.byteLength(chunk.code),
@@ -179,6 +185,7 @@ async function measure(config: InlineConfig, { sourcemap, entry }: { sourcemap: 
     code: [...initial].map((chunk) => chunk.code).join('\n'),
     initial: initialSizes,
     lazy: lazy.map(sizes),
+    lazyModules: [...namesOf(lazy)].sort(),
     ...(sourcemap
       ? {
           attribution: {

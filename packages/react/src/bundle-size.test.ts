@@ -53,7 +53,8 @@ const FEATURES = {
   // The page's patches (E59): every app's router offers them (`router.optimistic`, `submit({ optimistic })`). `optimistic.ts` (the
   // patch queue) is no marker: layers and islands keep their own patches with it.
   optimistic: { markers: ['http/client/features/optimistic'], use: inCore('optimistic') },
-  liveValidation: { markers: ['http/client/live-validation'], use: inApp('useForm'), brings: ['remember'] }, // useForm remembers (static)
+  // useForm(…, { validate }): on a form's first use (E74), in a chunk of its own. useForm remembers (static).
+  liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['remember'], lazy: true },
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
@@ -64,21 +65,22 @@ const FEATURES = {
   instant: { markers: ['http/client/features/instant'], use: inApp('Link') },
   form: { markers: ['react/form'], use: inApp('Form'), brings: ['remember'] }, // <Form remember>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
-} satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[] }>;
+} satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c step 4 took out of every app that does not use them, one commit each. */
-const EXTRACTED: readonly Feature[] = ['queryState', 'remember', 'actions'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
 
 const sorted = (features: Iterable<string>) => [...new Set(features)].sort();
 
-/** The features a bundle holds, sorted. */
-function featuresIn({ modules, code }: AppBundle): string[] {
-  const keys = new Set(modules.map(moduleKey));
+/** The features a bundle holds, sorted — in its first download, or (`lazy`) in the chunks it loads on demand. */
+function featuresIn({ modules, lazyModules, code }: AppBundle, lazy = false): string[] {
+  const keys = new Set((lazy ? lazyModules : modules).map(moduleKey));
+  if (lazy) code = '';
   const markers: Record<string, readonly (string | RegExp)[]> = Object.fromEntries(FEATURE_NAMES.map((feature) => [feature, FEATURES[feature].markers]));
   return sorted(FEATURE_NAMES.filter((feature) => markers[feature]!.some((marker) => (typeof marker === 'string' ? keys.has(marker) : marker.test(code)))));
 }
@@ -145,8 +147,11 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
   });
 
   it.each(FEATURE_NAMES)('%s comes with its own import — and recognisably so', (feature) => {
-    const { use, brings = [] }: { use: { base: LeakScenario }; brings?: readonly string[] } = FEATURES[feature];
-    expect(featuresIn(bundle(`feature:${feature}`))).toEqual(sorted([...USES[use.base], ...budget.stillLeaking[use.base], feature, ...brings]));
+    const { use, brings = [], lazy = false }: { use: { base: LeakScenario }; brings?: readonly string[]; lazy?: boolean } = FEATURES[feature];
+    const built = bundle(`feature:${feature}`);
+    // A feature loaded on first use (E74) comes with its component, but in a chunk of its own — not in the first download.
+    expect(featuresIn(built)).toEqual(sorted([...USES[use.base], ...budget.stillLeaking[use.base], ...(lazy ? [] : [feature]), ...brings]));
+    if (lazy) expect(featuresIn(built, true)).toContain(feature);
   });
 });
 

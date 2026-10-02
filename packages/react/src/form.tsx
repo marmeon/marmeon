@@ -8,11 +8,12 @@ import {
   formObject,
   isSensitiveRememberField,
   linkQuery,
+  liveValidationOnFirstUse,
   resolveRoute,
   restoreFormEntries,
   sameEntries,
   type Confirm,
-  type LiveValidation,
+  type FormLiveValidation,
   type VisitMethod,
   type VisitOptions,
   type VisitProgress,
@@ -409,7 +410,7 @@ function useFormLiveValidation(
   element: { readonly current: HTMLFormElement | null },
   errors: Partial<Record<string, string>>,
   setErrors: (update: (current: Partial<Record<string, string>>) => Partial<Record<string, string>>) => void,
-): LiveValidation | undefined {
+): FormLiveValidation | undefined {
   const navigator = useRouterContext().navigator();
   const errorsRef = useRef(errors);
   errorsRef.current = errors;
@@ -417,7 +418,7 @@ function useFormLiveValidation(
   const fieldsKey = config?.fields?.join(',');
   const live = useMemo(() => {
     if (!navigator || !config || method === 'get') return undefined;
-    return navigator.liveValidation(url, {
+    return liveValidationOnFirstUse(navigator, url, {
       method,
       data: () => (element.current ? formObject(formEntries(element.current)) : {}),
       hasError: (field) => errorsRef.current[field] !== undefined,

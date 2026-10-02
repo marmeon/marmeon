@@ -32,6 +32,7 @@ import {
   firstErrors,
   hasServerMarkup,
   isHistoryState,
+  liveValidationOnFirstUse,
   loadPageMessages,
   Navigator,
   optimistic,
@@ -553,7 +554,8 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     document.body.insertAdjacentHTML('beforeend', '<form><input name="email"><input name="password" type="password"><small id="email-error"></small></form>');
     const form = document.querySelector('form')!;
     const data = () => Object.fromEntries(new FormData(form)) as Record<string, unknown>;
-    const live = navigator.liveValidation('/register', {
+    // Its code loads on the form's first use (E74): the first input fetches the feature's chunk.
+    const live = liveValidationOnFirstUse(navigator, '/register', {
       method: 'post',
       data,
       onResult: (outcome) => {

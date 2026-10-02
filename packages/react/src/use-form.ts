@@ -1,4 +1,4 @@
-import { dirtyPaths, firstErrors, isDirtyPath, resolveRoute, type LiveValidation, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
+import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, resolveRoute, type FormLiveValidation, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter, useRouterContext } from './app.tsx';
@@ -371,7 +371,8 @@ function isPending(pending: readonly string[], field?: string): boolean {
 
 /**
  * The live validation of a route form (E62) — the core's `LiveValidation`, with its results merged into the form's errors:
- * a checked field's message is replaced by what the server said now (or removed); fields not checked keep theirs.
+ * a checked field's message is replaced by what the server said now (or removed); fields not checked keep theirs. Its code
+ * loads on the form's first use (E74): an app whose forms check nothing live never downloads it.
  */
 function useLiveValidation(
   target: { method: string; url: string } | undefined,
@@ -379,7 +380,7 @@ function useLiveValidation(
   data: Record<string, unknown>,
   errors: Partial<Record<string, string>>,
   setErrors: (update: (current: Partial<Record<string, string>>) => Partial<Record<string, string>>) => void,
-): LiveValidation | undefined {
+): FormLiveValidation | undefined {
   const navigator = useRouterContext().navigator();
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -390,7 +391,7 @@ function useLiveValidation(
   const fieldsKey = config?.fields?.join(',');
   const live = useMemo(() => {
     if (!navigator || !target || !config || method === undefined || method === 'get') return undefined;
-    return navigator.liveValidation(target.url, {
+    return liveValidationOnFirstUse(navigator, target.url, {
       method: method as 'post' | 'put' | 'patch' | 'delete',
       data: () => dataRef.current,
       hasError: (field) => errorsRef.current[field] !== undefined,

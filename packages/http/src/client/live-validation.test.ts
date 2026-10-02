@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../page.ts';
+import { liveValidation } from './features/live-validation.ts';
+import { liveValidationOnFirstUse, loadLiveValidation } from './lazy.ts';
 import { isSensitiveField, liveValidationData, type LiveValidationOutcome } from './live-validation.ts';
 import { boot, FakeWindow, ORIGIN, page } from './test-window.ts';
 
@@ -18,8 +20,10 @@ function setup() {
   const win = new FakeWindow(`${ORIGIN}/register`);
   const bodies: unknown[] = [];
   const { navigator } = boot(win, page('/register', {}, 'auth/Register'));
+  // Attached where a form uses it (E70, E74) — no navigator has it by default.
+  const live = navigator.use(liveValidation);
   const record = (init?: RequestInit) => bodies.push(JSON.parse(String(init?.body ?? 'null')));
-  return { win, navigator, bodies, record };
+  return { win, navigator, live, bodies, record };
 }
 
 afterEach(() => {
@@ -28,14 +32,14 @@ afterEach(() => {
 
 describe('live validation in the core (E62)', () => {
   it('sends the form’s own request naming the fields — never cached, never followed, no page or action header', async () => {
-    const { win, navigator, record } = setup();
+    const { win, live, record } = setup();
     let init: RequestInit | undefined;
     win.handler = (_url, request) => {
       init = request;
       record(request);
       return valid('name,email');
     };
-    const outcome = await navigator.validate('/register', { method: 'post', data: { name: 'Ada', email: 'ada@example.com' }, fields: ['name', 'email'] });
+    const outcome = await live.validate('/register', { method: 'post', data: { name: 'Ada', email: 'ada@example.com' }, fields: ['name', 'email'] });
     expect(outcome).toEqual({ kind: 'valid', fields: ['name', 'email'] });
     expect(win.requests[0]).toMatchObject({ url: `${ORIGIN}/register`, method: 'POST', headers: expect.objectContaining({ [VALIDATE_HEADER]: 'name,email', accept: 'application/json' }) });
     expect(win.requests[0]!.headers[PAGE_HEADER]).toBeUndefined();
@@ -44,18 +48,18 @@ describe('live validation in the core (E62)', () => {
   });
 
   it('never sends a password field — not named, not in the body, at no depth (Gegenprobe: the body of the check)', async () => {
-    const { win, navigator, bodies, record } = setup();
+    const { win, live, bodies, record } = setup();
     win.handler = (_url, request) => {
       record(request);
       return valid('name');
     };
     const data = { name: 'Ada', password: 'hunter2-secret', password_confirmation: 'hunter2-secret', account: { currentPassword: 'old-secret', email: 'a@b.c' } };
-    await navigator.validate('/register', { method: 'post', data, fields: ['name', 'password', 'account.currentPassword'] });
+    await live.validate('/register', { method: 'post', data, fields: ['name', 'password', 'account.currentPassword'] });
     expect(win.requests[0]!.headers[VALIDATE_HEADER]).toBe('name');
     expect(bodies[0]).toEqual({ name: 'Ada', account: { email: 'a@b.c' } });
     expect(JSON.stringify(bodies)).not.toContain('secret');
     // Only password fields named: nothing to ask — no request at all.
-    expect(await navigator.validate('/register', { method: 'post', data, fields: ['password'] })).toEqual({ kind: 'cancelled' });
+    expect(await live.validate('/register', { method: 'post', data, fields: ['password'] })).toEqual({ kind: 'cancelled' });
     expect(win.requests).toHaveLength(1);
   });
 
@@ -66,42 +70,42 @@ describe('live validation in the core (E62)', () => {
   });
 
   it('a 422 gives the errors of the named fields only; anything that is not its answer is an exception, never errors', async () => {
-    const { win, navigator } = setup();
+    const { win, live } = setup();
     win.handler = () => invalid('email', { email: ['Taken.'], name: ['Not asked.'] });
-    expect(await navigator.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'invalid', fields: ['email'], errors: { email: ['Taken.'] } });
+    expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'invalid', fields: ['email'], errors: { email: ['Taken.'] } });
     // A 422 that is not a live validation's (no x-bespoke-validated — a proxy, an old server): no errors shown.
     win.handler = () => new Response(JSON.stringify({ errors: { email: ['?'] } }), { status: 422, headers: { 'content-type': 'application/json' } });
-    expect((await navigator.validate('/register', { method: 'post', data: {}, fields: ['email'] })).kind).toBe('exception');
+    expect((await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).kind).toBe('exception');
     win.handler = () => new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/me' } });
-    expect(await navigator.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'exception', exception: { type: 'server', status: 302, message: undefined } });
+    expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'exception', exception: { type: 'server', status: 302, message: undefined } });
     for (const status of [403, 419, 429, 500]) {
       win.handler = () => new Response(JSON.stringify({ message: 'no' }), { status, headers: { 'content-type': 'application/json' } });
-      expect(await navigator.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'exception', exception: { type: 'server', status, message: undefined } });
+      expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'exception', exception: { type: 'server', status, message: undefined } });
     }
     win.handler = () => Promise.reject(new TypeError('Failed to fetch'));
-    expect((await navigator.validate('/register', { method: 'post', data: {}, fields: ['email'] })).kind).toBe('exception');
+    expect((await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).kind).toBe('exception');
   });
 
   it('a 409 (the document changed: signed out) loads fully — like an action', async () => {
-    const { win, navigator } = setup();
+    const { win, live } = setup();
     win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
-    expect(await navigator.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'cancelled' });
+    expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'cancelled' });
     expect(win.loads).toEqual(['assign /login']);
   });
 
   it('refuses another site (the XSRF token and the data stay here)', async () => {
-    const { navigator } = setup();
-    await expect(navigator.validate('https://evil.test/register', { method: 'post', data: {}, fields: ['email'] })).rejects.toThrow(/to this site/);
+    const { live } = setup();
+    await expect(live.validate('https://evil.test/register', { method: 'post', data: {}, fields: ['email'] })).rejects.toThrow(/to this site/);
   });
 });
 
 describe('LiveValidation — one form (E62)', () => {
   function form(options: { on?: 'blur' | 'change'; fields?: string[]; errors?: Record<string, string> } = {}) {
-    const { win, navigator, bodies, record } = setup();
+    const { win, live: feature, bodies, record } = setup();
     const data: Record<string, unknown> = { name: '', email: '', password: '' };
     const results: LiveValidationOutcome[] = [];
     const errors = options.errors ?? {};
-    const live = navigator.liveValidation('/register', {
+    const live = feature.form('/register', {
       method: 'post',
       data: () => data,
       onResult: (outcome) => results.push(outcome),
@@ -240,5 +244,79 @@ describe('LiveValidation — one form (E62)', () => {
     await running;
     expect(live.pending).toEqual([]);
     expect(notified).toBe(2);
+  });
+});
+
+describe('live validation loaded on first use (E74)', () => {
+  /** A navigator without the feature, and a form whose live validation loads its code when first used. */
+  function lazyForm(load?: () => Promise<never>) {
+    const win = new FakeWindow(`${ORIGIN}/register`);
+    const { navigator } = boot(win, page('/register', {}, 'auth/Register'));
+    const loads: Promise<unknown>[] = [];
+    const counted: Pick<typeof navigator, 'load'> = {
+      load: (loader) => {
+        const loading = navigator.load(load ?? loader);
+        loads.push(loading.catch(() => undefined));
+        return loading;
+      },
+    };
+    const results: LiveValidationOutcome[] = [];
+    const data = { name: 'Ada', email: 'ada@example.com' };
+    const live = liveValidationOnFirstUse(counted, '/register', { method: 'post', data: () => data, onResult: (outcome) => results.push(outcome) });
+    /** Once the code is there (and what waited for it ran). */
+    const loaded = async () => {
+      await Promise.all(loads);
+      await new Promise((done) => setTimeout(done, 0));
+    };
+    return { win, navigator, live, loads, loaded, results };
+  }
+
+  it('loads its code on the first change — and checks what was touched and left meanwhile, once it is there', async () => {
+    const { win, live, loads, loaded, results } = lazyForm();
+    win.handler = () => valid('name,email');
+    expect(live.pending).toEqual([]);
+    live.changed('name');
+    live.changed('email');
+    live.blurred('email');
+    expect(win.requests).toEqual([]); // nothing until the code is there
+    await loaded();
+    await vi.waitFor(() => expect(results).toEqual([{ kind: 'valid', fields: ['name', 'email'] }]));
+    expect(loads).toHaveLength(1); // one load, however much happened meanwhile
+    expect(win.requests.map((request) => request.headers[VALIDATE_HEADER])).toEqual(['name,email']);
+    // Loaded: every call goes straight to the form's live validation.
+    live.blurred('name');
+    await vi.waitFor(() => expect(win.requests).toHaveLength(2));
+    expect(loads).toHaveLength(1);
+  });
+
+  it('a form sent (or gone) before its code arrived asks nothing — `cancel()` forgets what waited', async () => {
+    const { win, live, loaded, results } = lazyForm();
+    win.handler = () => valid('name');
+    live.changed('name');
+    live.blurred('name');
+    const asked = live.validate();
+    live.cancel();
+    expect(await asked).toEqual({ kind: 'cancelled' });
+    await loaded();
+    await new Promise((done) => setTimeout(done, 350)); // past any debounce
+    expect(win.requests).toEqual([]);
+    expect(results).toEqual([]);
+    live.blurred('name'); // not touched since
+    live.changed('name');
+    live.blurred('name');
+    await vi.waitFor(() => expect(win.requests.map((request) => request.headers[VALIDATE_HEADER])).toEqual(['name']));
+  });
+
+  it('a chunk that cannot load checks nothing and throws nothing — and is asked for again on the next change', async () => {
+    const { win, live, loads } = lazyForm(() => Promise.reject(new Error('Failed to fetch dynamically imported module')));
+    live.changed('email');
+    expect(await live.validate()).toEqual({ kind: 'cancelled' });
+    expect(win.requests).toEqual([]);
+    live.changed('email');
+    expect(loads).toHaveLength(2);
+  });
+
+  it('is in a chunk of its own: the loader imports the feature module', async () => {
+    expect(await loadLiveValidation()).toBe(liveValidation);
   });
 });

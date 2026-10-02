@@ -8,7 +8,6 @@
  * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
  */
 import { isPageObject, LOCATION_HEADER, PAGE_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type LayerClose, type PageObject, type ValidationErrors } from '../page.ts';
-import { actionHost } from './action-host.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
 import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';
@@ -25,7 +24,6 @@ import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
 import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
 import { entry, HistoryWriter, isHistoryState, newKey, withPosition, type HistoryState } from './history.ts';
 import type { Layer, LayerControl, LayerHost } from './layer.ts';
-import { LiveValidation, sendLiveValidation, type LiveValidationOptions, type LiveValidationOutcome, type LiveValidationRequest } from './live-validation.ts';
 import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
@@ -366,6 +364,14 @@ export class Navigator implements LayerHost {
     return this.#features.get(feature) as API;
   }
 
+  /**
+   * Attaches a feature whose code loads on first use (E74) — `navigator.load(loadLiveValidation)`: its chunk is fetched once,
+   * then it is attached like `use` (idempotent). Rejects when the chunk cannot load (offline, gone after a deployment).
+   */
+  async load<API>(loader: () => Promise<Feature<API>>): Promise<API> {
+    return this.use(await loader());
+  }
+
   /** The page on screen — under the layers, when some are open. */
   get page(): PageObject {
     return this.#core.page;
@@ -512,20 +518,6 @@ export class Navigator implements LayerHost {
   /** Whether a guard would ask before leaving now (unsaved changes anywhere on screen). */
   isGuarded(): boolean {
     return this.#core.blocking(() => true).length > 0;
-  }
-
-  /**
-   * A live validation (E62): checks `fields` of a form's data against the request schema of the route at `url` — sent as the form
-   * would be (method, body, XSRF) with `x-bespoke-validate`, minus password fields and files. Never navigates, never listed as a
-   * submission, never changes what was fetched ahead. Resolves with how it ended — never rejects for a failed request.
-   */
-  validate(url: string, request: LiveValidationRequest): Promise<LiveValidationOutcome> {
-    return sendLiveValidation(actionHost(this.#core), url, request);
-  }
-
-  /** The live validation of one form at `url` (E62): touched fields, debounce, the check under way — see {@link LiveValidation}. */
-  liveValidation(url: string, options: Omit<LiveValidationOptions, 'send'>): LiveValidation {
-    return new LiveValidation({ ...options, send: (request) => this.validate(url, request) });
   }
 
   /** A visit from inside a layer (E53) — `layer.visit()`: sent as the layer's, its answer placed for it. */
