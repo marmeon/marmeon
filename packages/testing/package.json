@@ -35,6 +35,7 @@
     "@bespokecore/auth": "workspace:*",
     "@bespokecore/database": "workspace:*",
     "@bespokecore/mail": "workspace:*",
+    "@bespokecore/notifications": "workspace:*",
     "@bespokecore/queue": "workspace:*",
     "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/session": "workspace:*",
@@ -48,6 +49,9 @@
       "optional": true
     },
     "@bespokecore/mail": {
+      "optional": true
+    },
+    "@bespokecore/notifications": {
       "optional": true
     },
     "@bespokecore/queue": {
@@ -67,6 +71,7 @@
     "@bespokecore/auth": "workspace:*",
     "@bespokecore/database": "workspace:*",
     "@bespokecore/mail": "workspace:*",
+    "@bespokecore/notifications": "workspace:*",
     "@bespokecore/queue": "workspace:*",
     "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/session": "workspace:*"

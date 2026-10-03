@@ -335,6 +335,23 @@ describe('Auth (session guard)', () => {
     expect(events).toEqual([expect.any(Login)]);
     expect((events[0] as Login).user).toEqual(ada);
   });
+
+  it('says how the user signed in — and is queueable (E86): its payload is JSON, `at` an ISO string', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    events.length = 0;
+    await login(browser().send);
+    const event = events[0] as Login;
+    expect(event).toMatchObject({ via: 'attempt', remember: false, ip: null, userAgent: null });
+    const queued = await Login.schema['~standard'].validate(event);
+    if ('issues' in queued && queued.issues) throw new Error('the schema rejects the event');
+    const json = JSON.parse(JSON.stringify(queued.value)) as unknown;
+    expect(json).toEqual({ userId: ada.id, remember: false, via: 'attempt', at: event.at.toISOString(), ip: null, userAgent: null });
+    // What a worker validates again — the same payload.
+    expect(await Login.schema['~standard'].validate(json)).toMatchObject({ value: json });
+    expect(new Login(ada).via).toBe('login');
+    expect(new Login(ada, false, new Date(), { via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(600) })).toMatchObject({ via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(512) });
+  });
 });
 
 describe('authenticate() and guest()', () => {

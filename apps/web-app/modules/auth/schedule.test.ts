@@ -40,9 +40,10 @@ describe('the schedule', () => {
 
   it('keeps the tables of modules/system tidy — and the requests draw no session lottery', async () => {
     const app = await createTestApp(application);
-    expect(app.schedule.tasks).toEqual(['auth:prune-tokens', 'user-profile.rebuild-member-stats', 'session:prune', 'cache:prune', 'queue:prune-failed --hours=168']);
+    expect(app.schedule.tasks).toEqual(['auth:prune-tokens', 'user-profile.rebuild-member-stats', 'session:prune', 'cache:prune', 'queue:prune-failed --hours=168', 'notifications:prune --days=30']);
     expect(app.schedule.due('2026-10-05T03:15:00+02:00')).toEqual(['session:prune']);
     expect(app.schedule.due('2026-10-05T03:20:00+02:00')).toEqual(['queue:prune-failed --hours=168']);
+    expect(app.schedule.due('2026-10-05T03:30:00+02:00')).toEqual(['session:prune', 'notifications:prune --days=30']);
     expect(app.schedule.due('2026-10-05T10:25:00Z')).toEqual(['cache:prune']);
     expect(app.make(SessionLottery).chance).toBe(0);
   });

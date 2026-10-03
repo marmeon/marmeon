@@ -20,6 +20,7 @@ export type { LoginOptions } from './auth.ts';
 export { AuthConfig } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';
+export type { LoginVia } from './events.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export type { PasswordResetTokenTable } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';

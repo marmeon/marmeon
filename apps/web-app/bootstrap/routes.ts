@@ -12,6 +12,8 @@ import type { ListUsersController } from '../modules/user-profile/controllers/Li
 import type { LoginController } from '../modules/auth/controllers/LoginController.ts';
 import type { LogoutController } from '../modules/auth/controllers/LogoutController.ts';
 import type { LogoutOtherDevicesController } from '../modules/auth/controllers/LogoutOtherDevicesController.ts';
+import type { MarkAllNotificationsReadController } from '../modules/notifications/controllers/MarkAllNotificationsReadController.ts';
+import type { MarkNotificationReadController } from '../modules/notifications/controllers/MarkNotificationReadController.ts';
 import type { RedirectToOwnProfileController } from '../modules/user-profile/controllers/RedirectToOwnProfileController.ts';
 import type { RegisterController } from '../modules/auth/controllers/RegisterController.ts';
 import type { ResendVerificationController } from '../modules/auth/controllers/ResendVerificationController.ts';
@@ -26,6 +28,7 @@ import type { ShowForgotPasswordController } from '../modules/auth/controllers/S
 import type { ShowLoginController } from '../modules/auth/controllers/ShowLoginController.ts';
 import type { ShowMemberStatsController } from '../modules/dashboard/controllers/ShowMemberStatsController.ts';
 import type { ShowMyActivityController } from '../modules/dashboard/controllers/ShowMyActivityController.ts';
+import type { ShowNotificationsController } from '../modules/notifications/controllers/ShowNotificationsController.ts';
 import type { ShowRecentSignInsController } from '../modules/dashboard/controllers/ShowRecentSignInsController.ts';
 import type { ShowRegisterController } from '../modules/auth/controllers/ShowRegisterController.ts';
 import type { ShowResetPasswordController } from '../modules/auth/controllers/ShowResetPasswordController.ts';
@@ -68,6 +71,9 @@ declare module '@bespokecore/router' {
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
+    'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };
+    'notifications.read': { method: 'post'; path: '/notifications/:notification/read'; controller: typeof MarkNotificationReadController };
+    'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
     'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
@@ -100,6 +106,7 @@ declare module '@bespokecore/http/page' {
     'lab/ClientOnly': true;
     'lab/LateError': true;
     'lab/Streaming': true;
+    'notifications/Index': true;
     'user-profile/Edit': true;
     'user-profile/People': true;
     'user-profile/RemoveLink': true;

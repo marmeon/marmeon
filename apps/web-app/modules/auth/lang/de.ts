@@ -167,5 +167,13 @@ export default {
       intro: 'die E-Mail-Adresse deines Kontos wurde in {email} geändert.',
       outro: 'Wenn du das nicht warst, setze jetzt dein Passwort zurück und melde dich bei uns.',
     },
+    new_sign_in: {
+      subject: 'Neue Anmeldung bei {app}',
+      preview: 'Warst du das?',
+      intro: 'gerade hat sich jemand mit deinem Passwort bei deinem {app}-Konto angemeldet.',
+      details: 'Wann: {at} · Adresse: {ip} · Browser: {browser}',
+      outro: 'Wenn du das warst, ist nichts zu tun. Wenn nicht, ändere jetzt dein Passwort — damit werden alle anderen Geräte abgemeldet.',
+      button: 'Sicherheitseinstellungen ansehen',
+    },
   },
 } satisfies Messages<typeof en>;

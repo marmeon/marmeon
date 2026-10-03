@@ -26,8 +26,9 @@ describe('the welcome mail', () => {
     app.queue.assertDispatchedTimes(SendWelcomeMailJob, 1).assertDispatched(SendWelcomeMailJob, (payload, job) => payload.userId === user.id && job.delay === 0);
     app.mail.assertNotSent(WelcomeMail);
 
-    // The welcome mail, the dashboard's member numbers (user-profile, a unique job) and the queued verification listener.
-    expect(await app.queue.work()).toMatchObject({ processed: 3, failed: 0 });
+    // The welcome mail, the dashboard's member numbers (user-profile, a unique job), the queued verification listener and
+    // the queued Login listener (it does nothing for the sign-in right after registering).
+    expect(await app.queue.work()).toMatchObject({ processed: 4, failed: 0 });
     const [sent] = app.mail.sent(WelcomeMail);
     expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei BespokeCore' });
     expect(sent!.message.html).toContain('href="http://localhost/users/me"');
@@ -53,7 +54,7 @@ describe('the welcome mail', () => {
     expect(JSON.parse(rows[0]!.payload)).toMatchObject({ job: 'auth.send-welcome-mail', data: { userId: expect.any(Number) }, tries: 5, backoff: [10, 60, 300] });
 
     const result = await app.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
-    expect(result).toMatchObject({ processed: 3, failed: 0 }); // + the verification listener on the `mail` queue
+    expect(result).toMatchObject({ processed: 4, failed: 0 }); // + the verification listener on the `mail` queue, the Login listener
     app.mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'Welcome to BespokeCore');
     await app.assertDatabaseCount('jobs', 0);
   });
@@ -74,8 +75,9 @@ describe('the welcome mail', () => {
     const ok = await createTestApp(application, { database: 'refresh', queue: 'real' });
     await register(ok).assertRedirect('/users/me');
     await ok.assertDatabaseHas('users', { email: 'kj@example.com' });
-    // The welcome and member-stats jobs and the verification listener — all three in the transaction (E109).
-    await ok.assertDatabaseCount('jobs', 3);
+    // The welcome and member-stats jobs and the verification listener — all three in the transaction (E109) — and the
+    // Login listener of the sign-in after it.
+    await ok.assertDatabaseCount('jobs', 4);
     await ok.assertDatabaseHas('jobs', { queue: 'mail' });
     ok.mail.assertNotQueued(VerifyEmailMail); // composed by the worker
     await ok.make(QueueConnections).worker('database', 10).run({ queues: ['mail'], stopWhenEmpty: true });

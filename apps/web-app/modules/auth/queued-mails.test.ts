@@ -1,4 +1,4 @@
-import { Registered } from '@bespokecore/auth';
+import { Login, Registered } from '@bespokecore/auth';
 import { EventDispatcher } from '@bespokecore/core';
 import { Connections, sql } from '@bespokecore/database';
 import { MailTransport, type MailMessage } from '@bespokecore/mail';
@@ -125,7 +125,8 @@ describe('the verification mail through the queue', () => {
   });
 
   it('a faked event (EventFake, W6.7) is recorded, its listeners neither run nor are queued', async () => {
-    const app = await createTestApp(application, { database: 'refresh', events: [Registered] });
+    // Login is faked too: its queued listener (the "new sign-in" notice) would be queued by the sign-in after registering.
+    const app = await createTestApp(application, { database: 'refresh', events: [Registered, Login] });
     await app.post('/register', { form: form() }).assertRedirect('/users/me');
     app.events.assertDispatchedTimes(Registered, 1);
     app.queue.assertNothingDispatched(); // no verification listener, no welcome mail, no member stats

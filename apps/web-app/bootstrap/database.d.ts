@@ -42,6 +42,16 @@ declare module '@bespokecore/database' {
       user_id: number;
       last_login_at: Timestamp;
     };
+    /** Owned by `system`. */
+    notifications: {
+      id: string;
+      recipient_type: string;
+      recipient_id: string;
+      type: string;
+      data: JsonColumn;
+      read_at: Timestamp | null;
+      created_at: Timestamp;
+    };
     /** Owned by `auth`. */
     password_reset_tokens: {
       email: string;
@@ -108,6 +118,7 @@ declare module '@bespokecore/database' {
     failed_jobs: 'system';
     jobs: 'system';
     login_activity: 'user-profile';
+    notifications: 'system';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
     profile_links: 'user-profile';
@@ -123,6 +134,7 @@ declare module '@bespokecore/database' {
     dashboard: true;
     lab: true;
     locale: true;
+    notifications: true;
     system: true;
     'user-profile': true;
   }

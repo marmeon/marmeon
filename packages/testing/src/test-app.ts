@@ -36,6 +36,7 @@ import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
 import type { MailFake } from '@bespokecore/mail';
+import type { NotificationFake } from '@bespokecore/notifications';
 import type { QueueFake } from '@bespokecore/queue';
 import type { ScheduleTester } from '@bespokecore/scheduler';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
@@ -73,6 +74,13 @@ export interface TestAppOptions {
    * test. `'real'` keeps the configured connection (`QUEUE_CONNECTION`). Needs @bespokecore/queue.
    */
   queue?: 'fake' | 'real';
+  /**
+   * Notifications are recorded, not delivered (default `'fake'`): `Notifications` is a `NotificationFake`, available as
+   * `app.notifications` — `app.notifications.assertSent({ type: 'user', id }, NewSignInNotification)`, and
+   * `await app.notifications.deliver()` delivers them for real. `'real'` keeps the real one (a `send` then queues
+   * `bespoke.notification` — on the `QueueFake`, unless `queue: 'real'`). Needs @bespokecore/notifications.
+   */
+  notifications?: 'fake' | 'real';
   /**
    * Every dispatched event is recorded — `app.events.assertDispatched(Registered)` (W6.7). Its listeners run as usual
    * (default `'real'`), none run or are queued (`'fake'`), or only those of some events are held back
@@ -118,6 +126,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let mailFake: MailFake | undefined;
   const queue = options.queue === 'real' ? undefined : await importQueue();
   let queueFake: QueueFake | undefined;
+  const notifications = options.notifications === 'real' ? undefined : await importNotifications();
+  let notificationFake: NotificationFake | undefined;
   let eventFake: EventFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
   const clock = new TestClock();
@@ -154,6 +164,10 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
         queueFake = new queue.QueueFake(container);
         container.instance(queue.Queue, queueFake);
       }
+      if (notifications && container.has(notifications.Notifications)) {
+        notificationFake = new notifications.NotificationFake(container);
+        container.instance(notifications.Notifications, notificationFake);
+      }
       eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
       container.instance(EventFake, eventFake);
       definition.override?.(container);
@@ -179,6 +193,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     database,
     mail: mailFake,
     queue: queueFake,
+    notifications: notificationFake,
     events: eventFake!,
     clock,
     ssr,
@@ -228,6 +243,8 @@ interface Shared {
   readonly mail: MailFake | undefined;
   /** The recording queue, unless the app has no queue or the test chose `queue: 'real'`. */
   readonly queue: QueueFake | undefined;
+  /** The recording notifications, unless the app has none or the test chose `notifications: 'real'`. */
+  readonly notifications: NotificationFake | undefined;
   /** Every dispatched event. */
   readonly events: EventFake;
   /** The app's `Clock`. */
@@ -290,6 +307,15 @@ async function importMail(): Promise<typeof import('@bespokecore/mail') | undefi
 async function importQueue(): Promise<typeof import('@bespokecore/queue') | undefined> {
   try {
     return await import('@bespokecore/queue');
+  } catch {
+    return undefined;
+  }
+}
+
+/** @bespokecore/notifications is an optional peer, like the session. */
+async function importNotifications(): Promise<typeof import('@bespokecore/notifications') | undefined> {
+  try {
+    return await import('@bespokecore/notifications');
   } catch {
     return undefined;
   }
@@ -400,6 +426,16 @@ export class TestApp {
   get queue(): QueueFake {
     if (!this.#shared.queue) throw new Error("app.queue needs @bespokecore/queue in the app (and not createTestApp(…, { queue: 'real' })).");
     return this.#shared.queue;
+  }
+
+  /**
+   * The notifications the app sent — recorded, not delivered: `app.notifications.assertSent({ type: 'user', id: ada.id },
+   * NewSignInNotification, { ip })`; `await app.notifications.deliver()` delivers them for real (rows, queued mails).
+   * Needs @bespokecore/notifications.
+   */
+  get notifications(): NotificationFake {
+    if (!this.#shared.notifications) throw new Error("app.notifications needs @bespokecore/notifications in the app (and not createTestApp(…, { notifications: 'real' })).");
+    return this.#shared.notifications;
   }
 
   /**

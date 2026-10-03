@@ -4,7 +4,7 @@ import { ClientHistory } from '@bespokecore/http';
 import { CookieJar } from '@bespokecore/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@bespokecore/session';
 import { AuthConfig } from './config.ts';
-import { Failed, Login, Logout, PasswordChanged } from './events.ts';
+import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher, type PasswordHash } from './hashing.ts';
 import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
@@ -42,6 +42,10 @@ export function passwordFingerprint(hash: PasswordHash | null): string {
 export interface LoginOptions {
   /** Keep the user signed in on this device beyond the session ("remember me"). */
   readonly remember?: boolean;
+  /** The client's address (`ctx.ip`) — the `Login` event carries it (for "a new sign-in" notices, audit logs). */
+  readonly ip?: string | undefined;
+  /** The browser's `User-Agent` header — carried by the `Login` event like `ip`. */
+  readonly userAgent?: string | undefined;
 }
 
 /**
@@ -98,7 +102,7 @@ export class Auth {
   async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<AuthUser | undefined> {
     const credentials = await this.#check(identifier, password);
     if (!credentials) return undefined;
-    await this.#login(credentials.user, credentials.passwordHash, options);
+    await this.#login(credentials.user, credentials.passwordHash, options, 'attempt');
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now()); // the password was just typed
     return credentials.user;
   }
@@ -106,7 +110,7 @@ export class Auth {
   /** Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the current hash. */
   async login(user: AuthUser, options: LoginOptions = {}): Promise<void> {
     const credentials = await this.#credentials(user);
-    await this.#login(credentials.user, credentials.passwordHash, options);
+    await this.#login(credentials.user, credentials.passwordHash, options, 'login');
   }
 
   /**
@@ -207,7 +211,8 @@ export class Auth {
     return { user: found.user, passwordHash };
   }
 
-  async #login(user: AuthUser, hash: PasswordHash | null, { remember = false }: LoginOptions, viaRemember = false): Promise<void> {
+  async #login(user: AuthUser, hash: PasswordHash | null, { remember = false, ip, userAgent }: LoginOptions, via: LoginVia): Promise<void> {
+    const viaRemember = via === 'remember';
     // A session id (and CSRF token) handed out before login must not survive it: session fixation.
     this.#session.regenerate();
     this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
@@ -223,7 +228,7 @@ export class Auth {
     // Another person may sit at this browser now: pages kept from before the sign-in must not come back.
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
-    await this.#events.dispatch(new Login(user, remember || viaRemember));
+    await this.#events.dispatch(new Login(user, remember || viaRemember, new Date(), { via, ip, userAgent }));
   }
 
   async #resolve(): Promise<AuthUser | undefined> {
@@ -261,7 +266,7 @@ export class Auth {
       return undefined;
     }
     if (result.cookie) this.#setCookie(result.cookie, result.expiresAt);
-    await this.#login(found.user, found.passwordHash, {}, true);
+    await this.#login(found.user, found.passwordHash, {}, 'remember');
     return found.user;
   }
 

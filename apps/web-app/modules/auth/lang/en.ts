@@ -167,6 +167,14 @@ const en = {
       intro: 'the e-mail address of your account was changed to {email}.',
       outro: 'If that was not you, reset your password now and contact us.',
     },
+    new_sign_in: {
+      subject: 'A new sign-in to {app}',
+      preview: 'Was that you?',
+      intro: 'someone just signed in to your {app} account with your password.',
+      details: 'When: {at} · Address: {ip} · Browser: {browser}',
+      outro: 'If that was you, there is nothing to do. If not, change your password now — that signs out every other device.',
+      button: 'Review your security settings',
+    },
   },
 } as const;
 

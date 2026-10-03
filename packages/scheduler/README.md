@@ -41,4 +41,5 @@ Testing (`@bespokecore/testing`, with the test clock): `app.schedule.due(time)` 
 `await app.schedule.run(time)` — moves the clock there and runs them (catching up what was missed since the last `run`);
 `app.schedule.runTask(name)`.
 
-Prune commands of the framework to schedule: `auth:prune-tokens`, `session:prune`, `cache:prune`, `queue:prune-failed`.
+Prune commands of the framework to schedule: `auth:prune-tokens`, `session:prune`, `cache:prune`, `queue:prune-failed`,
+`notifications:prune`.

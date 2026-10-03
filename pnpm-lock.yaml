@@ -141,6 +141,9 @@ importers:
       '@bespokecore/mail':
         specifier: workspace:*
         version: link:../../packages/mail
+      '@bespokecore/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
       '@bespokecore/queue':
         specifier: workspace:*
         version: link:../../packages/queue
@@ -414,6 +417,37 @@ importers:
         specifier: ^10.0.13
         version: 10.0.13
 
+  packages/notifications:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/cache':
+        specifier: workspace:*
+        version: link:../cache
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/i18n':
+        specifier: workspace:*
+        version: link:../i18n
+      '@bespokecore/mail':
+        specifier: workspace:*
+        version: link:../mail
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../queue
+
   packages/queue:
     dependencies:
       '@bespokecore/core':
@@ -606,6 +640,9 @@ importers:
       '@bespokecore/mail':
         specifier: workspace:*
         version: link:../mail
+      '@bespokecore/notifications':
+        specifier: workspace:*
+        version: link:../notifications
       '@bespokecore/queue':
         specifier: workspace:*
         version: link:../queue

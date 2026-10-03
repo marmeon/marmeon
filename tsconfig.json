@@ -47,6 +47,9 @@
       "path": "packages/scheduler"
     },
     {
+      "path": "packages/notifications"
+    },
+    {
       "path": "packages/auth"
     },
     {

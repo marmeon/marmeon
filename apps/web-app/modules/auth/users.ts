@@ -8,3 +8,10 @@ declare module '@bespokecore/auth' {
     user: User;
   }
 }
+
+declare module '@bespokecore/notifications' {
+  interface NotificationRecipients {
+    /** Users get notifications as `{ type: 'user', id: user.id }` — found again by `UserRecipients`. */
+    user: User;
+  }
+}

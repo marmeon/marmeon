@@ -4,6 +4,8 @@ const en = {
   main: 'Main',
   people: 'People',
   notifications: 'Notifications',
+  // The bell in the header: its label for screen readers.
+  bell: '{count, plural, =0 {Notifications} one {Notifications, # unread} other {Notifications, # unread}}',
   dashboard: 'Dashboard',
   account: 'Account',
   profile: 'Your profile',

@@ -6,6 +6,7 @@ export default {
   main: 'Hauptmenü',
   people: 'Personen',
   notifications: 'Benachrichtigungen',
+  bell: '{count, plural, =0 {Benachrichtigungen} one {Benachrichtigungen, # ungelesen} other {Benachrichtigungen, # ungelesen}}',
   dashboard: 'Übersicht',
   account: 'Konto',
   profile: 'Dein Profil',

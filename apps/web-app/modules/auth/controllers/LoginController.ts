@@ -56,7 +56,9 @@ export class LoginController extends Controller {
     }
 
     // Unknown e-mail and wrong password answer alike — same message, same time (dummyVerify). The attempt stays counted.
-    if (!(await this.#auth.attempt(email, password, { remember }))) {
+    // The address and browser go with the Login event (a "new sign-in" notification shows them).
+    const client = { ip: ctx.ip, userAgent: ctx.request.headers.get('user-agent') ?? undefined };
+    if (!(await this.#auth.attempt(email, password, { remember, ...client }))) {
       throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
 

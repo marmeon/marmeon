@@ -11,7 +11,7 @@ const nameOf = (locale: string) => new Intl.DisplayNames([locale], { type: 'lang
  */
 export function AppLayout({ children }: LayoutProps) {
   const { props, locale } = usePage();
-  const { auth, locales } = props;
+  const { auth, locales, bell } = props;
   const user = auth.user;
   const t = useTranslation('app');
 
@@ -51,6 +51,12 @@ export function AppLayout({ children }: LayoutProps) {
             )
           }
         </Form>
+        {/* The bell (a shared prop, counted on the server per page): a link to the list — no client code of its own. */}
+        {user && bell && (
+          <Link route="notifications.index" aria-label={t('bell', { count: bell.unread })} data-bell="">
+            🔔{bell.unread > 0 && <span data-unread="">{bell.unread}</span>}
+          </Link>
+        )}
         {user ? (
           <details data-account-menu>
             <summary>{user.name}</summary>

@@ -1,16 +1,20 @@
-import { Registered } from '@bespokecore/auth';
+import { Login, Registered } from '@bespokecore/auth';
 import { defineModule, listen } from '@bespokecore/core';
+import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { QueueWelcomeMail } from './listeners/QueueWelcomeMail.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
+import { NewSignInNotification } from './notifications/NewSignInNotification.ts';
+import { UserRecipients } from './UserRecipients.ts';
 import { DemoUsersSeeder } from './seeders/DemoUsersSeeder.ts';
 import routes from './routes.ts';
 import { schedule } from './schedule.ts';
 
 // Public API of the auth module. Other modules import from here, never from internals.
 export { UserFactory } from './factories/UserFactory.ts';
+export { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 export { UserRepository } from './UserRepository.ts';
 export type { User } from './users.ts';
 
@@ -18,7 +22,11 @@ export default defineModule({
   name: 'auth',
   providers: [AuthServiceProvider],
   // SendEmailVerification is a queued listener (static queue): a worker runs it after the registration committed.
-  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail)],
+  // NotifyAboutNewSignIn is queued too: a sign-in with a password becomes a notification (bell + mail) in a worker.
+  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn)],
+  // The module's notifications (a worker finds them by name) — and how a notification finds a user again.
+  notifications: [NewSignInNotification],
+  recipients: { user: UserRecipients },
   // Queued work of this module — a worker (`bespoke queue:work`, started by `bespoke dev`) runs only registered jobs.
   jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob],
   migrations: new URL('./migrations/', import.meta.url),
