@@ -42,7 +42,11 @@ describe('bespoke()', () => {
     const dev = configFor(bespoke(), { command: 'serve', mode: 'development' });
     expect(dev.resolve?.conditions?.[0]).toBe(SOURCE_CONDITION);
     expect(dev.ssr?.resolve?.conditions?.[0]).toBe(SOURCE_CONDITION);
-    expect(configFor(bespoke({ test: true }), { command: 'serve', mode: 'test' }).ssr?.resolve?.conditions?.[0]).toBe(SOURCE_CONDITION);
+    const test = configFor(bespoke({ test: true }), { command: 'serve', mode: 'test' });
+    expect(test.ssr?.resolve?.conditions?.[0]).toBe(SOURCE_CONDITION);
+    // Tests resolve server code as Node does: `module` is a bundler's condition (Vitest passes these to its workers).
+    expect(test.ssr?.resolve?.conditions).not.toContain('module');
+    expect(test.ssr?.resolve?.conditions).toContain('node');
 
     for (const env of [{ command: 'build', mode: 'production' }, { command: 'build', mode: 'development' }, { command: 'serve', mode: 'production' }] as const) {
       const config = configFor(bespoke(), env);

@@ -1,10 +1,11 @@
-import { authenticate, verified } from '@bespokecore/auth';
+import { authenticate, confirmedPassword, verified } from '@bespokecore/auth';
 import { defineRoutes } from '@bespokecore/http';
 import { UserRepository } from '#modules/auth';
 import { AddProfileLinkController } from './controllers/AddProfileLinkController.ts';
 import { ConfirmRemoveLinkController } from './controllers/ConfirmRemoveLinkController.ts';
 import { DeleteProfileLinkController } from './controllers/DeleteProfileLinkController.ts';
 import { EditUserProfileController } from './controllers/EditUserProfileController.ts';
+import { ExportMyDataController } from './controllers/ExportMyDataController.ts';
 import { ListPeopleController } from './controllers/ListPeopleController.ts';
 import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
@@ -18,6 +19,8 @@ export default defineRoutes((Route) => {
 
   const users = Route.prefix('/users').middleware(authenticate()).name('user-profile.');
   users.get('/me', RedirectToOwnProfileController).name('me');
+  // "Download my data" (security page): a file on the private disk, handed out by a signed URL for five minutes.
+  users.middleware(confirmedPassword()).post('/me/export', ExportMyDataController).name('export');
 
   // The profile page reads through the module's own read model; editing goes through auth's repository.
   users.bind('user', ProfileDirectory).get('/:user', ShowUserProfileController).name('show');

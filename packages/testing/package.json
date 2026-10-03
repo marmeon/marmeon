@@ -39,6 +39,7 @@
     "@bespokecore/queue": "workspace:*",
     "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/session": "workspace:*",
+    "@bespokecore/storage": "workspace:*",
     "vitest": "^5.0.0"
   },
   "peerDependenciesMeta": {
@@ -63,6 +64,9 @@
     "@bespokecore/session": {
       "optional": true
     },
+    "@bespokecore/storage": {
+      "optional": true
+    },
     "vitest": {
       "optional": true
     }
@@ -74,6 +78,7 @@
     "@bespokecore/notifications": "workspace:*",
     "@bespokecore/queue": "workspace:*",
     "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/session": "workspace:*"
+    "@bespokecore/session": "workspace:*",
+    "@bespokecore/storage": "workspace:*"
   }
 }

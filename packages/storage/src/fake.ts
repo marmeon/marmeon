@@ -1,0 +1,34 @@
+import type { Container } from '@bespokecore/core';
+import type { CheckDiskName, DefaultDiskName, DiskFor, DiskNameInput, DiskOptions } from './config.ts';
+import type { Disk } from './disk.ts';
+import type { MemoryDisk } from './drivers/memory.ts';
+import { StorageManager } from './storage.ts';
+import { StorageSetup } from './setup.ts';
+
+/** A disk of the fake: the configured disk's type plus the memory disk's assertions. */
+export type FakeDisk<N extends string> = DiskFor<N> & Pick<MemoryDisk, 'assertExists' | 'assertMissing' | 'assertCount' | 'files'>;
+
+/**
+ * The storage of a test app (default in `createTestApp`, like the mail and queue fakes): every configured disk is a
+ * {@link MemoryDisk} with the configured name, visibility and URL — nothing touches the file system or S3, and each test
+ * starts empty. Keys are checked as on every disk; `temporaryUrl()` signs real URLs the app's routes serve from memory.
+ *
+ * ```ts
+ * await app.post('/users/me/export').assertRedirect();
+ * app.storage.disk('local').assertExists(`exports/user-${ada.id}.json`);
+ * ```
+ */
+export class StorageFake extends StorageManager {
+  constructor(container: Container) {
+    const setup = container.make(StorageSetup);
+    super(setup.options, setup.dependencies);
+  }
+
+  override disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N> {
+    return super.disk(name) as FakeDisk<N>;
+  }
+
+  protected override build(name: string, options: DiskOptions): Disk {
+    return this.memory(name, options);
+  }
+}

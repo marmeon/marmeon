@@ -1,4 +1,5 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
+import { Clock } from '@bespokecore/core';
 import { EncryptionConfig } from '@bespokecore/encryption';
 import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@bespokecore/router';
 
@@ -15,6 +16,14 @@ export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
 export interface SignedRouteOptions {
   /** Prepended to the path: `https://app.example` → an absolute link, e.g. for a mail. */
   readonly base?: string;
+}
+
+/** A signed path (not a named route): its query, its expiry, its base. */
+export interface SignedPathOptions extends SignedRouteOptions {
+  /** Signed with the path (`signature` and `expires` are reserved). */
+  readonly query?: Readonly<Record<string, string>>;
+  /** Stops working after this; without it the link never expires. */
+  readonly expiresIn?: Duration;
 }
 
 const UNIT = { s: 1, m: 60, h: 3600, d: 86_400 } as const;
@@ -47,10 +56,12 @@ function derive(key: Uint8Array, purpose: string): Buffer {
 export class UrlSigner {
   readonly #router: Router;
   readonly #keys: readonly Buffer[];
+  readonly #clock: Clock;
 
-  constructor(router: Router, config: EncryptionConfig) {
+  constructor(router: Router, config: EncryptionConfig, clock: Clock) {
     this.#router = router;
     this.#keys = [config.key, ...config.previousKeys].map((key) => derive(key, 'signed-url'));
+    this.#clock = clock;
   }
 
   /**
@@ -68,7 +79,21 @@ export class UrlSigner {
     expiresIn: Duration,
     options: SignedRouteOptions = {},
   ): string {
-    return this.#sign(this.#route(name, params), Math.floor(Date.now() / 1000) + seconds(expiresIn), options);
+    return this.#sign(this.#route(name, params), this.#expiry(expiresIn), options);
+  }
+
+  /**
+   * A signed link to a path the app serves without a route name — e.g. a file of a disk
+   * (`/_bespoke/storage/local/exports/7.json`). `path` is used as given: percent-encode its segments.
+   */
+  signedPath(path: string, options: SignedPathOptions = {}): string {
+    if (!path.startsWith('/') || path.includes('?') || path.includes('#')) throw new Error(`signedPath() takes a path without query or fragment, not "${path}".`);
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (key === 'signature' || key === 'expires') throw new Error(`"${key}" is reserved in signed URLs.`);
+      query.set(key, value);
+    }
+    return this.#sign({ path, query }, options.expiresIn === undefined ? undefined : this.#expiry(options.expiresIn), options);
   }
 
   /** Whether `url` (absolute, or path and query) carries a valid, unexpired signature. */
@@ -77,13 +102,18 @@ export class UrlSigner {
     const signature = parsed.searchParams.get('signature');
     if (!signature || !/^[0-9a-f]{64}$/.test(signature)) return false;
     const expires = parsed.searchParams.get('expires');
-    if (expires !== null && (!/^\d{1,12}$/.test(expires) || Number(expires) <= Math.floor(Date.now() / 1000))) return false;
+    if (expires !== null && (!/^\d{1,12}$/.test(expires) || Number(expires) <= Math.floor(this.#clock.now() / 1000))) return false;
     const payload = canonical(parsed.pathname, parsed.searchParams);
     const given = Buffer.from(signature, 'hex');
     // Every key is tried, the comparison is constant-time: the time does not tell which key nearly matched.
     let valid = false;
     for (const key of this.#keys) valid = timingSafeEqual(createHmac('sha256', key).update(payload).digest(), given) || valid;
     return valid;
+  }
+
+  /** Seconds since the epoch, by the app's clock (E97). */
+  #expiry(expiresIn: Duration): number {
+    return Math.floor(this.#clock.now() / 1000) + seconds(expiresIn);
   }
 
   #route(name: string, params: Readonly<Record<string, Param>>): { path: string; query: URLSearchParams } {

@@ -521,12 +521,8 @@ describe('e-mail verification', () => {
     // Katherine's signature on Dorothy's path:
     const dvPath = new URL(verificationLink('dv@example.com'), 'http://localhost').pathname;
     await app.actingAs(dv).expectingJson().get(`${dvPath}${link.search}`).assertForbidden();
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61 * 60_000 });
-    try {
-      await asKj.get(link.pathname + link.search).assertForbidden();
-    } finally {
-      vi.useRealTimers();
-    }
+    app.travel({ minutes: 61 }); // signed links expire by the app clock (E97)
+    await asKj.get(link.pathname + link.search).assertForbidden();
     expect((await userBy('kj@example.com')).email_verified_at).toBeNull();
   });
 

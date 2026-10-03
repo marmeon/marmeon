@@ -38,6 +38,7 @@ import type { AuthUser } from '@bespokecore/auth';
 import type { MailFake } from '@bespokecore/mail';
 import type { NotificationFake } from '@bespokecore/notifications';
 import type { QueueFake } from '@bespokecore/queue';
+import type { StorageFake } from '@bespokecore/storage';
 import type { ScheduleTester } from '@bespokecore/scheduler';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
@@ -81,6 +82,13 @@ export interface TestAppOptions {
    * `bespoke.notification` — on the `QueueFake`, unless `queue: 'real'`). Needs @bespokecore/notifications.
    */
   notifications?: 'fake' | 'real';
+  /**
+   * Disks are in memory (default `'fake'`): `Storage` is a `StorageFake`, available as `app.storage` — every configured
+   * disk a memory disk with its name, visibility and URL, empty in each test: `app.storage.disk('public').assertExists(key)`.
+   * The app's routes serve them (`/storage/…`, signed temporary URLs). `'real'` keeps the configured disks. Needs
+   * @bespokecore/storage.
+   */
+  storage?: 'fake' | 'real';
   /**
    * Every dispatched event is recorded — `app.events.assertDispatched(Registered)` (W6.7). Its listeners run as usual
    * (default `'real'`), none run or are queued (`'fake'`), or only those of some events are held back
@@ -128,6 +136,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let queueFake: QueueFake | undefined;
   const notifications = options.notifications === 'real' ? undefined : await importNotifications();
   let notificationFake: NotificationFake | undefined;
+  const storage = options.storage === 'real' ? undefined : await importStorage();
+  let storageFake: StorageFake | undefined;
   let eventFake: EventFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
   const clock = new TestClock();
@@ -168,6 +178,10 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
         notificationFake = new notifications.NotificationFake(container);
         container.instance(notifications.Notifications, notificationFake);
       }
+      if (storage && container.has(storage.Storage)) {
+        storageFake = new storage.StorageFake(container);
+        container.instance(storage.Storage, storageFake);
+      }
       eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
       container.instance(EventFake, eventFake);
       definition.override?.(container);
@@ -194,6 +208,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     mail: mailFake,
     queue: queueFake,
     notifications: notificationFake,
+    storage: storageFake,
     events: eventFake!,
     clock,
     ssr,
@@ -245,6 +260,8 @@ interface Shared {
   readonly queue: QueueFake | undefined;
   /** The recording notifications, unless the app has none or the test chose `notifications: 'real'`. */
   readonly notifications: NotificationFake | undefined;
+  /** The memory disks, unless the app has no storage or the test chose `storage: 'real'`. */
+  readonly storage: StorageFake | undefined;
   /** Every dispatched event. */
   readonly events: EventFake;
   /** The app's `Clock`. */
@@ -307,6 +324,15 @@ async function importMail(): Promise<typeof import('@bespokecore/mail') | undefi
 async function importQueue(): Promise<typeof import('@bespokecore/queue') | undefined> {
   try {
     return await import('@bespokecore/queue');
+  } catch {
+    return undefined;
+  }
+}
+
+/** @bespokecore/storage is an optional peer, like the session. */
+async function importStorage(): Promise<typeof import('@bespokecore/storage') | undefined> {
+  try {
+    return await import('@bespokecore/storage');
   } catch {
     return undefined;
   }
@@ -436,6 +462,15 @@ export class TestApp {
   get notifications(): NotificationFake {
     if (!this.#shared.notifications) throw new Error("app.notifications needs @bespokecore/notifications in the app (and not createTestApp(…, { notifications: 'real' })).");
     return this.#shared.notifications;
+  }
+
+  /**
+   * The app's disks, in memory: `app.storage.disk('public').assertExists('avatars/7.webp')`, `assertMissing`,
+   * `assertCount`, `files()`. Needs @bespokecore/storage.
+   */
+  get storage(): StorageFake {
+    if (!this.#shared.storage) throw new Error("app.storage needs @bespokecore/storage in the app (and not createTestApp(…, { storage: 'real' })).");
+    return this.#shared.storage;
   }
 
   /**

@@ -92,6 +92,9 @@ export default {
     devices_submit: 'Andere Geräte abmelden',
     devices_done: 'Auf allen anderen Geräten abgemeldet.',
     tokens_note: 'Deine API-Tokens werden dabei nicht widerrufen — Skripte, die sie nutzen, laufen weiter. Widerrufen kannst du sie unter',
+    export_heading: 'Deine Daten',
+    export_intro: 'Alles, was wir zu deinem Konto und Profil speichern, als JSON-Datei. Der Download-Link gilt fünf Minuten.',
+    export_submit: 'Meine Daten herunterladen',
   },
   tokens: {
     title: 'API-Tokens',

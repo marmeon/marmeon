@@ -7,6 +7,7 @@ import type { ConfirmRemoveLinkController } from '../modules/user-profile/contro
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
+import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
 import type { ListPeopleController } from '../modules/user-profile/controllers/ListPeopleController.ts';
 import type { ListUsersController } from '../modules/user-profile/controllers/ListUsersController.ts';
 import type { LoginController } from '../modules/auth/controllers/LoginController.ts';
@@ -75,6 +76,7 @@ declare module '@bespokecore/router' {
     'notifications.read': { method: 'post'; path: '/notifications/:notification/read'; controller: typeof MarkNotificationReadController };
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
+    'user-profile.export': { method: 'post'; path: '/users/me/export'; controller: typeof ExportMyDataController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
     'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };

@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { createApplication, defineModule } from '@bespokecore/core';
+import { createApplication, defineModule, TestClock } from '@bespokecore/core';
 import { EncryptionConfig, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { defineRoutes, Router } from '@bespokecore/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,8 +13,9 @@ const routes = defineRoutes((Route) => {
 
 const router = new Router().load(routes);
 const keyOf = (key: string) => Buffer.from(key.slice('base64:'.length), 'base64');
+const clock = new TestClock();
 const signer = (key: string, previous: string[] = []) =>
-  new UrlSigner(router, { key: keyOf(key), previousKeys: previous.map(keyOf) } as unknown as EncryptionConfig);
+  new UrlSigner(router, { key: keyOf(key), previousKeys: previous.map(keyOf) } as unknown as EncryptionConfig, clock);
 const KEY = generateKey();
 
 afterEach(() => vi.useRealTimers());
@@ -50,11 +51,26 @@ describe('UrlSigner', () => {
     expect(signer(KEY).hasValidSignature(reused)).toBe(false); // the signature of another route
   });
 
-  it('expires', () => {
+  it('expires — by the app clock (E97)', () => {
+    clock.freeze();
     const url = signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, 60);
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 59_000 });
+    clock.travel({ seconds: 59 });
     expect(signer(KEY).hasValidSignature(url)).toBe(true);
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 2_000 });
+    clock.travel({ seconds: 2 });
+    expect(signer(KEY).hasValidSignature(url)).toBe(false);
+  });
+
+  it('signs a path without a route name: query and expiry signed, path as given', () => {
+    clock.freeze();
+    const url = signer(KEY).signedPath('/_bespoke/storage/local/exports/7%20a.json', { query: { filename: 'export.json' }, expiresIn: 300 });
+    expect(url).toMatch(/^\/_bespoke\/storage\/local\/exports\/7%20a\.json\?filename=export\.json&expires=\d+&signature=[0-9a-f]{64}$/);
+    expect(signer(KEY).hasValidSignature(url)).toBe(true);
+    expect(signer(KEY).hasValidSignature(url.replace('/local/', '/public/'))).toBe(false);
+    expect(signer(KEY).hasValidSignature(url.replace('filename=export.json', 'filename=export.html'))).toBe(false);
+    expect(signer(KEY).signedPath('/x', { base: 'https://app.example' })).toMatch(/^https:\/\/app\.example\/x\?signature=/);
+    expect(() => signer(KEY).signedPath('/x', { query: { expires: '9' } })).toThrow('"expires" is reserved');
+    expect(() => signer(KEY).signedPath('x?y')).toThrow('without query');
+    clock.travel({ seconds: 301 });
     expect(signer(KEY).hasValidSignature(url)).toBe(false);
   });
 

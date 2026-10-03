@@ -105,7 +105,9 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
       const source = command === 'serve' && mode !== 'production' ? [SOURCE_CONDITION] : [];
       const result: UserConfig = {
         resolve: { conditions: [...source, ...defaultClientConditions], dedupe: adapterPeers(root) },
-        ssr: { resolve: { conditions: [...source, ...defaultServerConditions] } },
+        // Vitest hands the server conditions to its Node workers (`--conditions`). Node itself never matches `module`: with
+        // it, tests would load builds only a bundler can run (the AWS SDK's ES build, with extensionless imports).
+        ssr: { resolve: { conditions: [...source, ...(options.test ? defaultServerConditions.filter((condition) => condition !== 'module') : defaultServerConditions)] } },
       };
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild

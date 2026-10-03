@@ -7,5 +7,7 @@ dist/
 .env
 .env.local
 storage/
+# …but not the storage package itself
+!/packages/storage/
 .claude/*
 !.claude/launch.json

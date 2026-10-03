@@ -1,3 +1,4 @@
+import { SystemClock } from '@bespokecore/core';
 import type { EncryptionConfig } from '@bespokecore/encryption';
 import { generateKey } from '@bespokecore/encryption';
 import { defineRoutes, UrlSigner } from '@bespokecore/http';
@@ -12,7 +13,7 @@ const router = new Router().load(
   }),
 );
 const key = Buffer.from(generateKey().slice('base64:'.length), 'base64');
-const signer = new UrlSigner(router, { key, previousKeys: [] } as unknown as EncryptionConfig);
+const signer = new UrlSigner(router, { key, previousKeys: [] } as unknown as EncryptionConfig, new SystemClock());
 const verification = new EmailVerification(signer);
 const ada = { id: 1, email: 'ada@example.com', email_verified_at: null };
 

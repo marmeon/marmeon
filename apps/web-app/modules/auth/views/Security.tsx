@@ -1,13 +1,14 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
 import { AppLayout } from '../../../layouts/AppLayout.tsx';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, auth }: Props) {
+export default function Security({ viaRemember, email, auth, csrfToken }: Props) {
   const t = useTranslation('auth');
+  const route = useRoute();
   // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
   // is still there after Back/Forward (remembered in memory, E63).
   const emailForm = useForm('auth.email.update', {}, { email }, { guard: t('security.unsaved'), remember: true });
@@ -110,6 +111,16 @@ export default function Security({ viaRemember, email, auth }: Props) {
           <button type="submit" disabled={devicesForm.processing}>
             {t('security.devices_submit')}
           </button>
+        </form>
+      </section>
+
+      <section aria-labelledby="export-heading">
+        <h2 id="export-heading">{t('security.export_heading')}</h2>
+        <p>{t('security.export_intro')}</p>
+        {/* A plain form on purpose: the answer is a redirect to a download (a signed, five-minute URL), not a page. */}
+        <form method="post" action={route('user-profile.export')}>
+          <input type="hidden" name="_token" value={csrfToken} />
+          <button type="submit">{t('security.export_submit')}</button>
         </form>
       </section>
     </main>

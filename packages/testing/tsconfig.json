@@ -41,6 +41,9 @@
     },
     {
       "path": "../notifications"
+    },
+    {
+      "path": "../storage"
     }
   ]
 }

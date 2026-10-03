@@ -50,6 +50,9 @@
       "path": "packages/notifications"
     },
     {
+      "path": "packages/storage"
+    },
+    {
       "path": "packages/auth"
     },
     {

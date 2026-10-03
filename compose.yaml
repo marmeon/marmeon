@@ -1,4 +1,4 @@
-# Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql` and `pnpm test:redis`.
+# Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`, `pnpm test:redis` and `pnpm test:s3`.
 # Own ports on purpose — 5432/3306 may belong to other projects on the same machine.
 name: bespokecore
 
@@ -32,3 +32,27 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+
+  # An S3-compatible store for the S3 disk (`pnpm test:s3`): SeaweedFS (Apache-2.0, maintained) — MinIO's community
+  # edition is archived and its images are gone from Docker Hub; LocalStack's image needs an account token since 2026.03.
+  # One process (`weed mini`), S3 on 56333, signatures checked against the identity below.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    container_name: bespokecore-s3
+    ports:
+      - '56333:8333'
+    command: ['mini', '-dir=/data', '-s3.config=/etc/seaweedfs/s3.json', '-admin.ui=false', '-webdav=false']
+    configs:
+      - source: s3-identities
+        target: /etc/seaweedfs/s3.json
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+configs:
+  # Test credentials only (BESPOKE_TEST_S3_KEY / BESPOKE_TEST_S3_SECRET default to them).
+  s3-identities:
+    content: |
+      {"identities": [{"name": "bespoke", "credentials": [{"accessKey": "bespoke", "secretKey": "bespoke-secret"}], "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}

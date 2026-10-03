@@ -77,7 +77,7 @@ export { ResponseLifecycle } from './response-lifecycle.ts';
 export type { ReadOnlyOptions, WritePermit } from './read-only.ts';
 export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
-export type { Duration, SignedRouteOptions } from './signed-urls.ts';
+export type { Duration, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
 export { defineMiddleware, defineRequest, defineRoutes, isLiveValidation, liveValidationFields, Router, translatable, ValidationError } from '@bespokecore/router';

@@ -92,6 +92,9 @@ const en = {
     devices_submit: 'Sign out other devices',
     devices_done: 'Signed out on all other devices.',
     tokens_note: 'This does not revoke your API tokens — scripts using them keep working. Revoke them under',
+    export_heading: 'Your data',
+    export_intro: 'Everything we keep about your account and profile, as a JSON file. The download link works for five minutes.',
+    export_submit: 'Download my data',
   },
   tokens: {
     title: 'API tokens',

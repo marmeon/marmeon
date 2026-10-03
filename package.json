@@ -14,7 +14,8 @@
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "test:pgsql": "BESPOKE_TEST_PGSQL_URL=postgres://bespoke:secret@localhost:55432/bespoke DB_CONNECTION=pgsql DB_URL=postgres://bespoke:secret@localhost:55432/bespoke pnpm test",
     "test:redis": "BESPOKE_TEST_REDIS_URL=redis://127.0.0.1:56379 pnpm test",
-    "size": "node packages/react/src/__fixtures__/size-report.ts"
+    "size": "node packages/react/src/__fixtures__/size-report.ts",
+    "test:s3": "BESPOKE_TEST_S3_ENDPOINT=http://127.0.0.1:56333 pnpm test packages/storage"
   },
   "devDependencies": {
     "@bespokecore/cli": "workspace:*",

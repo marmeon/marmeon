@@ -1,0 +1,67 @@
+{
+  "name": "@bespokecore/storage",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.type-test.*",
+    "!dist/**/__fixtures__"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "StorageServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.1000.0",
+    "@aws-sdk/s3-request-presigner": "^3.1000.0",
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/http": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/s3-request-presigner": {
+      "optional": true
+    },
+    "@bespokecore/cli": {
+      "optional": true
+    },
+    "@bespokecore/http": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "3.1143.0",
+    "@aws-sdk/s3-request-presigner": "3.1143.0",
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/server": "workspace:*"
+  }
+}
