@@ -108,6 +108,9 @@ A `ContainerError` says why (`reason`), what (`key`) and who asked (`path`, `nee
 | `no-injection-list` | A class with constructor parameters but no list — `injection` says what the transform could not inject (a number, a type-only import, a missing annotation). | Inject classes and tokens; primitives come from a config object. |
 | `circular` | `A → B → A`. | Move what both need into a third class, or pass one of them per call. |
 
+`container.keys()` lists every class and token bound in a container and its parents (the nearest binding first) — for
+tooling: `bespoke tinker` completes them and resolves them by name. Resolving stays `make()`.
+
 ## Redaction (E125)
 
 `Redactor` (one per app: `app.container.make(Redactor)`) is the one place that decides what of a value may be shown or

@@ -21,6 +21,7 @@ import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
 import { RouteTypesCommand } from './commands/route-types.ts';
 import { ServeCommand } from './commands/serve.ts';
+import { TinkerCommand } from './commands/tinker.ts';
 import { Output } from './output.ts';
 import { spawnBespoke } from './spawn.ts';
 
@@ -34,6 +35,7 @@ const BUILT_IN: readonly CommandClass[] = [
   BuildCommand,
   PackageBuildCommand,
   KeyGenerateCommand,
+  TinkerCommand,
   MakeModuleCommand,
   MakeControllerCommand,
   MakeEventCommand,

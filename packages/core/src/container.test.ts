@@ -129,6 +129,14 @@ describe('Container — scopes', () => {
     const root = new Container().singleton(Counter);
     expect(root.createScope().make(Counter)).toBe(root.createScope().make(Counter));
   });
+
+  it('lists the keys bound in it and its parents, each once (keys(), for tooling)', () => {
+    const root = new Container().singleton(Mailer, SmtpMailer).instance(Clock, new FixedClock()).singleton(Counter);
+    const scope = root.createScope().instance(Clock, { now: () => '10:00' });
+    expect(root.keys()).toEqual([Mailer, Clock, Counter]);
+    expect(scope.keys()).toEqual([Clock, Mailer, Counter]); // the scope's own binding first, the parent's Clock not twice
+    expect(new Container().keys()).toEqual([]);
+  });
 });
 
 describe('Container — errors', () => {

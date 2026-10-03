@@ -17,3 +17,14 @@ pnpm dev
 | Ada Lovelace | ada@example.com   |
 | Alan Turing  | alan@example.com  |
 | Grace Hopper | grace@example.com |
+
+## Trying things out
+
+`pnpm exec bespoke tinker` opens a REPL with the booted app (helpers: `.ls`); `--sandbox` rolls everything back at the end:
+
+```bash
+pnpm exec bespoke tinker --sandbox
+> await repos.users.update(1, { name: 'Ada King' })
+> await jobs.dispatch(SendWelcomeMailJob, { userId: 1 })   # a row in the sandbox's transaction — gone at the end
+pnpm exec bespoke tinker --execute "await repos.users.count()"   # 3
+```

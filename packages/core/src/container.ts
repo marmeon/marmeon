@@ -10,6 +10,8 @@ export type Factory<T> = (resolver: Resolver) => T;
 type Lifetime = 'transient' | 'singleton' | 'scoped' | 'instance';
 
 interface Binding {
+  /** What it was bound under — a class or a token. */
+  readonly key: Key;
   readonly lifetime: Lifetime;
   /** The container the binding was registered on; singletons are built and cached there. */
   readonly owner: Container;
@@ -145,13 +147,25 @@ export class Container implements Resolver {
   instance<T>(key: Key<T>, value: NoInfer<T>): this {
     const id = idOf(key);
     this.#instances.set(id, value);
-    this.#bindings.set(id, { lifetime: 'instance', owner: this, create: () => value });
+    this.#bindings.set(id, { key, lifetime: 'instance', owner: this, create: () => value });
     return this;
   }
 
   /** Whether `key` is bound here or in a parent. Unbound classes can still be autowired by `make`. */
   has(key: Key): boolean {
     return this.#findBinding(idOf(key)) !== undefined;
+  }
+
+  /**
+   * Every key bound here or in a parent — classes and tokens, the nearest binding first. For tooling that lists or
+   * completes what the app has (`bespoke tinker`); resolving stays `make`.
+   */
+  keys(): Key[] {
+    const keys = new Map<unknown, Key>();
+    for (let container: Container | undefined = this; container; container = container.#parent) {
+      for (const [id, binding] of container.#bindings) if (!keys.has(id)) keys.set(id, binding.key);
+    }
+    return [...keys.values()];
   }
 
   // -- Resolution ------------------------------------------------------------
@@ -251,7 +265,7 @@ export class Container implements Resolver {
 
     const id = idOf(key);
     this.#instances.delete(id); // re-binding replaces a cached singleton
-    this.#bindings.set(id, { lifetime, owner: this, create });
+    this.#bindings.set(id, { key, lifetime, owner: this, create });
     return this;
   }
 
