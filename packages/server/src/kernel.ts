@@ -4,7 +4,7 @@ import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
-import { channels, messageBase, trace, type HttpRequestMessage } from '@bespokecore/core/diagnostics';
+import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@bespokecore/core/diagnostics';
 import {
   AfterResponse,
   AssetVersion,
@@ -26,6 +26,7 @@ import {
   UPLOAD_HEADER,
   VERSION_HEADER,
   isPageObject,
+  partialReloadOf,
   type PageObject,
   type RegionObject,
   type RegionResult,
@@ -158,8 +159,10 @@ export function createHttpKernel(
   const matched = new WeakMap<Request, RouteDefinition>();
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
-  /** Development only: each request's state (its parsed body) and route parameters, for the error page. */
+  /** Development only: each request's state (its parsed body) and route parameters, for the error page — and, while
+   * something listens to `http.request`, the state and the page it answered with (the devtools, E118). */
   const states = new WeakMap<Request, RequestState>();
+  const pages = new WeakMap<Request, PageSummary>();
   const parameters = new WeakMap<Request, Record<string, string>>();
 
   /**
@@ -239,6 +242,10 @@ export function createHttpKernel(
 
   const toResponse = createResponseFactory(renderer, router, version, {
     app: application,
+    // Prop sizes for the `http.request` message (E118) — measured only while something listens.
+    onPage: (request, page, kind) => {
+      if (requests.hasSubscribers) pages.set(request, pageSummary(request, page, kind));
+    },
     logger: container.make(Logger).child({ channel: 'ssr' }),
     ssr,
     debug,
@@ -423,6 +430,10 @@ export function createHttpKernel(
         if (controller !== undefined) ended.controller = controller;
       }
       ended.status = status();
+      const page = pages.get(request);
+      if (page) ended.page = page;
+      const input = states.get(request)?.inputRead?.();
+      if (input) ended.input = input;
     });
   };
 
@@ -445,7 +456,7 @@ export function createHttpKernel(
     const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), trustedProxies);
     addresses.set(request, ip);
     const state = createRequestState(request, { maxBodySize, ip });
-    if (debug) states.set(request, state);
+    if (debug || requests.hasSubscribers) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     scope.instance(IncomingRequest, request); // which tab sent it (`x-bespoke-connection`), for the live Broadcaster
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
@@ -591,6 +602,21 @@ export function createHttpKernel(
   });
 }
 
+
+/** A page object's view, the bytes of each prop's JSON, and what a partial reload asked for — for the `http.request` message. */
+function pageSummary(request: Request, page: PageObject | RegionObject, kind: PageSummary['kind']): PageSummary {
+  const props: Record<string, number> = {};
+  for (const [key, value] of Object.entries(page.props ?? {})) props[key] = Buffer.byteLength(JSON.stringify(value) ?? '');
+  const partial = partialReloadOf(request, page.component);
+  return {
+    component: page.component,
+    props,
+    kind,
+    ...(partial?.only ? { only: partial.only } : {}),
+    ...(partial && partial.except.length > 0 ? { except: partial.except } : {}),
+    ...(page.deferredProps ? { deferred: page.deferredProps } : {}),
+  };
+}
 
 /** The page request of an island resolved in-process (`app.fetch(request, { parent })`, E49) — never set from outside. */
 function islandParent(env: unknown): IslandParent | undefined {

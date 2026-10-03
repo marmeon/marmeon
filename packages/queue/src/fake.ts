@@ -70,20 +70,20 @@ export class QueueFake implements Queue {
 
   async dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>> {
     const given = options ?? {};
-    const [id] = await this.#traced('dispatch', [job], given, (traceparent) => this.#record([[job, payload]], given, traceparent), (ids) => ids.filter((id) => id !== undefined));
+    const [id] = await this.#traced('dispatch', [[job, payload]], given, (traceparent) => this.#record([[job, payload]], given, traceparent), (ids) => ids.filter((id) => id !== undefined));
     return id as DispatchResult<O>;
   }
 
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
     if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('bulk() queues no unique jobs — dispatch them one by one.');
     const list = jobs as unknown as readonly PendingJob[];
-    return this.#traced('bulk', list.map(([job]) => job), options as DispatchOptions, (traceparent) => this.#record(list, options as DispatchOptions, traceparent) as Promise<string[]>, (ids) => ids);
+    return this.#traced('bulk', list, options as DispatchOptions, (traceparent) => this.#record(list, options as DispatchOptions, traceparent) as Promise<string[]>, (ids) => ids);
   }
 
   async chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
     if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('chain() takes no unique key — a chain is queued as it is.');
     const list = jobs as unknown as readonly PendingJob[];
-    return this.#traced('chain', list.map(([job]) => job), options as DispatchOptions, async (traceparent) => {
+    return this.#traced('chain', list, options as DispatchOptions, async (traceparent) => {
       const { first, ids } = await prepareChain(this.#deps(), list, traceparent);
       await this.#store([{ job: list[0]![0], payload: list[0]![1], prepared: first, chain: list.slice(1).map(([job, payload], index) => ({ job, payload, id: ids[index + 1]! })) }], options as DispatchOptions);
       return ids;
@@ -94,13 +94,15 @@ export class QueueFake implements Queue {
    * Like the real queue, a dispatch is traced on `queue.dispatch` while something listens (E118) — so a tracer's
    * `traceparent` reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it (E131).
    */
-  #traced<T>(kind: QueueDispatchMessage['kind'], jobs: readonly JobClass[], options: DispatchOptions | UniqueDispatchOptions, run: (traceparent?: string) => Promise<T>, ids: (result: T) => (string | undefined)[]): Promise<T> {
+  #traced<T>(kind: QueueDispatchMessage['kind'], pending: readonly (readonly [JobClass, unknown])[], options: DispatchOptions | UniqueDispatchOptions, run: (traceparent?: string) => Promise<T>, ids: (result: T) => (string | undefined)[]): Promise<T> {
     const container = this.#owner.#container;
     if (!dispatches.hasSubscribers || !container.has(Application)) return run();
     const message: QueueDispatchMessage = {
       ...messageBase(container.make(Application)),
       kind,
-      jobs: jobs.map((job) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
+      jobs: pending.map(([job]) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
+      payloads: pending.map(([, payload]) => payload),
+      encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
       connection: options.connection ?? FAKE_CONNECTION,
       queue: options.queue ?? 'default',
       delay: 0,

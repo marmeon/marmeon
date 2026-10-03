@@ -576,4 +576,13 @@ describe('a schedule set up wrongly', () => {
     await expect(scheduler.checkProcess()).rejects.toThrow('The schedule of module fixture runs the command "fixture:prnue", which the app does not have. Did you mean "fixture:prune"?');
     await app.shutdown();
   });
+
+  it('does not ask for a command limited to other environments — its package may be a dev dependency (devtools:prune)', async () => {
+    const elsewhere = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('development')), { env: { NODE_ENV: 'production' } });
+    await expect(elsewhere.scheduler.checkProcess()).resolves.toBeUndefined();
+    await elsewhere.app.shutdown();
+    const here = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('development')), { env: { NODE_ENV: 'development' } });
+    await expect(here.scheduler.checkProcess()).rejects.toThrow('runs the command "devtools:prune", which the app does not have.');
+    await here.app.shutdown();
+  });
 });

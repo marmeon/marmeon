@@ -86,7 +86,7 @@ export interface DelivererDependencies {
 const sends = channels.tracing('notification.send');
 
 /** A `notification.send` message — built only while something listens. */
-function sendMessage(app: Application, pending: PendingDelivery, queued: boolean): NotificationSendMessage {
+export function sendMessage(app: Application, pending: PendingDelivery, queued: boolean): NotificationSendMessage {
   return {
     ...messageBase(app),
     notification: pending.notification.notification,

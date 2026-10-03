@@ -34,6 +34,7 @@
   "peerDependencies": {
     "@bespokecore/auth": "workspace:*",
     "@bespokecore/database": "workspace:*",
+    "@bespokecore/devtools": "workspace:*",
     "@bespokecore/live": "workspace:*",
     "@bespokecore/mail": "workspace:*",
     "@bespokecore/notifications": "workspace:*",
@@ -48,6 +49,9 @@
       "optional": true
     },
     "@bespokecore/database": {
+      "optional": true
+    },
+    "@bespokecore/devtools": {
       "optional": true
     },
     "@bespokecore/live": {
@@ -78,6 +82,7 @@
   "devDependencies": {
     "@bespokecore/auth": "workspace:*",
     "@bespokecore/database": "workspace:*",
+    "@bespokecore/devtools": "workspace:*",
     "@bespokecore/live": "workspace:*",
     "@bespokecore/mail": "workspace:*",
     "@bespokecore/notifications": "workspace:*",

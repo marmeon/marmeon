@@ -1,4 +1,4 @@
-import { afterCommit, afterRollback, currentRequest, inTransaction, token, type Application, type Clock, type Logger } from '@bespokecore/core';
+import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, token, type Application, type Clock, type Logger } from '@bespokecore/core';
 import { channels, messageBase, trace, type QueueDispatchMessage } from '@bespokecore/core/diagnostics';
 import type { Kysely } from '@bespokecore/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
@@ -124,7 +124,7 @@ export class QueueManager implements Queue {
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>> {
     const given = options ?? {};
     if (!this.#deps.app || !dispatches.hasSubscribers) return this.#dispatch(job, payload, given) as Promise<DispatchResult<O>>;
-    const message = this.#message('dispatch', [job], given);
+    const message = this.#message('dispatch', [[job, payload]], given);
     return trace(dispatches, message, () => this.#dispatch(job, payload, given, message.traceparent), (ended, id) => {
       ended.jobIds = id === undefined ? [] : [id];
     }) as Promise<DispatchResult<O>>;
@@ -142,7 +142,7 @@ export class QueueManager implements Queue {
     const pending = jobs as unknown as readonly PendingJob[];
     const run = (traceparent?: string) => this.#prepareAll(pending, traceparent).then((prepared) => this.#push(prepared, options as DispatchOptions));
     if (!this.#deps.app || !dispatches.hasSubscribers) return run();
-    const message = this.#message('bulk', pending.map(([job]) => job), options as DispatchOptions);
+    const message = this.#message('bulk', pending, options as DispatchOptions);
     return trace(dispatches, message, () => run(message.traceparent), (ended, ids) => {
       ended.jobIds = ids;
     });
@@ -157,14 +157,14 @@ export class QueueManager implements Queue {
       return ids;
     };
     if (!this.#deps.app || !dispatches.hasSubscribers) return run();
-    const message = this.#message('chain', pending.map(([job]) => job), options as DispatchOptions);
+    const message = this.#message('chain', pending, options as DispatchOptions);
     return trace(dispatches, message, () => run(message.traceparent), (ended, ids) => {
       ended.jobIds = ids;
     });
   }
 
   /** A `queue.dispatch` message — only built while something listens. */
-  #message(kind: QueueDispatchMessage['kind'], jobs: readonly JobClass[], options: DispatchOptions | UniqueDispatchOptions): QueueDispatchMessage {
+  #message(kind: QueueDispatchMessage['kind'], pending: readonly (readonly [JobClass, unknown])[], options: DispatchOptions | UniqueDispatchOptions): QueueDispatchMessage {
     const connection = options.connection ?? this.#deps.default;
     let delay = 0;
     try {
@@ -175,7 +175,9 @@ export class QueueManager implements Queue {
     return {
       ...messageBase(this.#deps.app!),
       kind,
-      jobs: jobs.map((job) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
+      jobs: pending.map(([job]) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
+      payloads: pending.map(([, payload]) => payload),
+      encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
       connection,
       queue: options.queue ?? this.#deps.connections[connection]?.queue ?? '',
       delay,
@@ -361,8 +363,9 @@ export async function prepareRecord(
   const json = toJson(job, payload);
   await validatePayload(job, json, 'dispatch');
   const uuid = crypto.randomUUID();
-  // Where it comes from (E131): the request's id always, the trace context when a tracer gave one at dispatch.
-  const requestId = currentRequest()?.requestId;
+  // Where it comes from (E131): the request's id always — in a job, the request that job came from —, the trace context
+  // when a tracer gave one at dispatch.
+  const requestId = currentRequest()?.requestId ?? currentJob()?.requestId;
   const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
   const record: JobRecord = {
     uuid,

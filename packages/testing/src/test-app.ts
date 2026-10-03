@@ -1,11 +1,11 @@
 import {
+  Application,
   Clock,
   createApplication,
   EventFake,
   EventRegistry,
   loadEnv,
   TestClock,
-  type Application,
   type ApplicationOptions,
   type Container,
   type Duration,
@@ -49,6 +49,7 @@ import type { NotificationFake } from '@bespokecore/notifications';
 import type { BroadcastRecorder, LiveStreamReader } from '@bespokecore/live';
 import type { QueueFake } from '@bespokecore/queue';
 import type { StorageFake } from '@bespokecore/storage';
+import type { DevtoolsTester } from '@bespokecore/devtools';
 import type { ScheduleTester } from '@bespokecore/scheduler';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
@@ -119,6 +120,13 @@ export interface TestAppOptions {
    * `solution`. Off by default — tests see the error page production shows.
    */
   debug?: boolean;
+  /**
+   * Record what the app does, as the devtools do in development (E115, E116) — into memory, available as `app.devtools`:
+   * `app.devtools.assertRecorded('query', (query) => query.sql.includes('from "users"'))`, `app.devtools.entries('request')`.
+   * The only way to run them outside `NODE_ENV=development` (never in production). Without it they are off in every test —
+   * also one that runs as development (`env: { NODE_ENV: 'development' }`). Needs @bespokecore/devtools.
+   */
+  devtools?: boolean;
 }
 
 type FormValue = string | readonly string[];
@@ -163,8 +171,12 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let storageFake: StorageFake | undefined;
   const live = await importLive();
   let broadcast: BroadcastRecorder | undefined;
+  const devtools = options.devtools ? await importDevtools() : undefined;
+  let devtoolsTester: DevtoolsTester | undefined;
   let eventFake: EventFake | undefined;
-  let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
+  // The devtools record in a test only when it opts in (into memory) — never into the app's storage/framework/devtools, also
+  // not in a test that runs as development (`env: { NODE_ENV: 'development' }`, for Server-Timing or the error page).
+  let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env, ...(options.devtools ? {} : { DEVTOOLS_ENABLED: 'false' }) };
   const clock = new TestClock();
 
   let worker: WorkerDatabase | undefined;
@@ -192,7 +204,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       container.instance(Clock, clock);
       if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
       if (mail && container.has(mail.Mailer)) {
-        mailFake = new mail.MailFake(container.make(mail.MailConfig).from);
+        mailFake = new mail.MailFake(container.make(mail.MailConfig).from, container.make(Application));
         container.instance(mail.Mailer, mailFake);
       }
       if (queue && container.has(queue.Queue)) {
@@ -214,10 +226,17 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
       }
       eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
       container.instance(EventFake, eventFake);
+      // The devtools' opt-in (E115): a memory store, recorded from the boot on.
+      if (devtools) devtoolsTester = devtools.enableDevtoolsForTests(container);
       definition.override?.(container);
       options.override?.(container);
     },
   });
+
+  if (devtools && !application.container.has(devtools.Recorder)) {
+    await application.shutdown();
+    throw new Error("createTestApp(…, { devtools: true }): the app does not register @bespokecore/devtools — add it to the app's package.json (pnpm add -D @bespokecore/devtools), so discovery finds its provider.");
+  }
 
   let ssr: TestSsr | undefined;
   try {
@@ -246,6 +265,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     broadcast,
     live,
     events: eventFake!,
+    devtools: devtoolsTester,
     clock,
     ssr,
     cleanups: [...(ssr ? [() => ssr.close()] : []), ...(recorder ? [async () => recorder.close()] : [])],
@@ -298,6 +318,8 @@ interface Shared {
   readonly notifications: NotificationFake | undefined;
   /** The memory disks, unless the app has no storage or the test chose `storage: 'real'`. */
   readonly storage: StorageFake | undefined;
+  /** What the devtools recorded, with `createTestApp(…, { devtools: true })`. */
+  readonly devtools: DevtoolsTester | undefined;
   /** What the app's Broadcaster sent — when it has @bespokecore/live. */
   readonly broadcast: BroadcastRecorder | undefined;
   readonly live: LiveModule | undefined;
@@ -371,6 +393,15 @@ async function importQueue(): Promise<typeof import('@bespokecore/queue') | unde
     return await import('@bespokecore/queue');
   } catch {
     return undefined;
+  }
+}
+
+/** @bespokecore/devtools is an optional peer (a dev dependency of the app, E115) — needed only with `devtools: true`. */
+async function importDevtools(): Promise<typeof import('@bespokecore/devtools')> {
+  try {
+    return await import('@bespokecore/devtools');
+  } catch (error) {
+    throw new Error('createTestApp(…, { devtools: true }) needs @bespokecore/devtools (pnpm add -D @bespokecore/devtools).', { cause: error });
   }
 }
 
@@ -577,6 +608,15 @@ export class TestApp {
     const reader = new module.LiveStreamReader(response);
     this.#shared.cleanups.push(() => reader.close());
     return reader;
+  }
+
+  /**
+   * What the devtools recorded (E116) — with `createTestApp(App, { devtools: true })`: `app.devtools.entries('request')`,
+   * `app.devtools.assertRecorded('mail', (mail) => mail.to.includes('ada@example.com'))`.
+   */
+  get devtools(): DevtoolsTester {
+    if (!this.#shared.devtools) throw new Error('app.devtools needs createTestApp(…, { devtools: true }) (and @bespokecore/devtools in the app).');
+    return this.#shared.devtools;
   }
 
   /**
@@ -855,6 +895,7 @@ export class TestApp {
           render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
         );
         await this.#shared.kernel.settle(); // terminate hooks ran — like Laravel's test helpers call terminate()
+        await this.#shared.devtools?.settled(); // the request's entries are written (an exception's solutions looked up)
         return response;
       });
     return new PendingTestResponse(response);

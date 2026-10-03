@@ -329,11 +329,22 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   const expected = manifestHash(options.root, conditions);
 
   let manifest = readManifest(path);
-  const regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
+  let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
   // Use what was just generated — re-reading the file could see another process's write.
   if (regenerated) manifest = regenerate({ root: options.root, conditions }).manifest;
 
-  const modules = await Promise.all(manifest!.modules.map((url) => import(url) as Promise<Record<string, any>>));
+  let modules: Record<string, any>[];
+  try {
+    modules = await Promise.all(manifest!.modules.map((url) => import(url) as Promise<Record<string, any>>));
+  } catch (error) {
+    // A package the manifest lists is gone while package.json and the lockfile stayed — a production install without the dev
+    // dependencies (`pnpm install --prod`, a pruned image) next to a manifest written with them (@bespokecore/devtools, E115).
+    // Discover again from what is installed, once.
+    if (regenerated || (error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    manifest = regenerate({ root: options.root, conditions }).manifest;
+    regenerated = true;
+    modules = await Promise.all(manifest.modules.map((url) => import(url) as Promise<Record<string, any>>));
+  }
   const resolve = ([module, name]: ExportRef) => modules[module]![name];
 
   for (const entry of manifest!.injections) {

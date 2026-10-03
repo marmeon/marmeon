@@ -28,23 +28,43 @@ const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)[^@\s/]+@/gi;
 const PHC_HASH = /\$(?:argon2(?:id|i|d)|scrypt|pbkdf2(?:-sha\d+)?|bcrypt|2[abxy])\$[\w+/=,.$-]*[\w+/=$-]/g;
 // An API token (`bc_12|<secret>`, E27) under any prefix: its id stays, the secret goes.
 const API_TOKEN = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
+// A path segment of 32 or more URL-safe characters (`/reset-password/<token>`, a signed link's hash) — kept unless it reads
+// like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).
+const PATH_SEGMENT = /(?<=\/)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether a long path segment is a secret rather than a name: a hex string (a hash) or a random-looking base64url string —
+ * upper- and lower-case letters and digits, few separators. Slugs (`my-long-article-title-2026`) and UUIDs (ids) stay.
+ */
+function looksLikeToken(segment: string): boolean {
+  if (UUID.test(segment)) return false;
+  if (/^[0-9a-f]+$/i.test(segment)) return true;
+  const separators = segment.length - segment.replaceAll(/[-_]/g, '').length;
+  return /\d/.test(segment) && /[a-z]/.test(segment) && /[A-Z]/.test(segment) && separators * 8 <= segment.length;
+}
 
 /**
  * Text — an error's message and stack, as stored for a failed job — with what looks like a secret replaced: values of
  * sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials, passwords in URLs, password hashes
- * (PHC strings) and API tokens. A safety net, not a guarantee: an error that quotes a secret in free text still shows it.
+ * (PHC strings), API tokens and token-like path segments (`/reset-password/<token>` in a link, a log line or a `Referer`).
+ * A safety net, not a guarantee: an error that quotes a secret in free text still shows it.
  */
 export function redactText(text: string): string {
   return text
     .replace(URL_PASSWORD, '$1***@')
     .replace(PHC_HASH, '[redacted]')
     .replace(API_TOKEN, '$1|[redacted]')
+    .replace(PATH_SEGMENT, (segment) => (looksLikeToken(segment) ? '[redacted]' : segment))
     .replace(KEY_VALUE, (_, key: string, separator: string, scheme: string | undefined) => `${key}${separator}${scheme ?? ''}[redacted]`)
     .replace(BEARER, '$1 [redacted]');
 }
 
 /** What replaces a redacted value. */
 export const REDACTED = '[redacted]';
+
+/** What an encrypted payload (a job with `static encrypted`, a queued mail or listener) is shown as — never its contents (E125). */
+export const ENCRYPTED = '[encrypted]';
 
 /** The most of one value (a string, a statement, a body) that is shown or recorded (E125) — the rest is cut off. */
 export const MAX_ENTRY_BYTES = 64 * 1024;
@@ -134,6 +154,75 @@ export class Redactor {
       parameters: query.secret ? query.parameters.map(() => REDACTED) : query.parameters.map((parameter) => this.value(parameter)),
     };
   }
+
+  /**
+   * A queued payload that may be shown: an encrypted one (a job with `static encrypted`, a queued mail or listener — it may
+   * carry tokens or signed links) only as {@link ENCRYPTED}, never its contents; any other masked like a value (E125).
+   */
+  payload(payload: unknown, encrypted: boolean): unknown {
+    return encrypted ? ENCRYPTED : this.value(payload);
+  }
+
+  /**
+   * A request's path that may be shown: the segments of sensitive route parameters (`/reset-password/:token` →
+   * `/reset-password/[redacted]`) replaced — by the route's pattern, when it has one — then masked as text (token-like
+   * segments of unmatched paths too). A pattern that does not line up with the path (wildcards) gives the pattern itself.
+   */
+  path(path: string, pattern?: string): string {
+    if (pattern !== undefined) {
+      const names = pattern.split('/');
+      const parts = path.split('/');
+      const sensitive = (segment: string) => segment.startsWith(':') && this.isSensitive(parameterName(segment));
+      if (names.some(sensitive)) {
+        if (names.length !== parts.length || names.some((segment) => segment.includes('*'))) return pattern;
+        return this.text(names.map((segment, index) => (sensitive(segment) ? REDACTED : parts[index]!)).join('/'));
+      }
+    }
+    return this.text(path);
+  }
+
+  /** A URL that may be shown: its path as {@link path} does it, its query string as text (`?token=…` masked); the origin as it is. */
+  url(url: string, pattern?: string): string {
+    let parsed: URL;
+    try {
+      parsed = new URL(url, 'http://localhost');
+    } catch {
+      return this.text(url);
+    }
+    const origin = /^[a-z][\w+.-]*:\/\//i.test(url) ? parsed.origin : '';
+    return `${origin}${this.path(parsed.pathname, pattern)}${parsed.search.length > 1 ? `?${this.text(parsed.search.slice(1))}` : ''}`;
+  }
+
+  /**
+   * `value` (plain data, as {@link value} gives it) made to fit `maxBytes` of JSON — what one recorded entry may take (E125):
+   * long strings and lists are shortened step by step; if even that is too much, a preview of its JSON is all that stays.
+   */
+  fit(value: unknown, maxBytes = MAX_ENTRY_BYTES): unknown {
+    const json = JSON.stringify(value) ?? 'null';
+    const bytes = Buffer.byteLength(json);
+    if (bytes <= maxBytes) return value;
+    for (const limit of [8192, 1024, 128]) {
+      const shortened = shorten(value, limit);
+      if (Buffer.byteLength(JSON.stringify(shortened) ?? 'null') <= maxBytes) return shortened;
+    }
+    return { cut: `${bytes} bytes`, preview: json.slice(0, Math.max(0, Math.floor(maxBytes / 2) - 64)) };
+  }
+}
+
+/** `:token{[a-z]+}?` → `token`. */
+function parameterName(segment: string): string {
+  return /^:([\w-]+)/.exec(segment)?.[1] ?? segment.slice(1);
+}
+
+/** Plain data with every string longer than `limit` cut and every list longer than 100 items shortened. */
+function shorten(value: unknown, limit: number, depth = 0): unknown {
+  if (typeof value === 'string') return value.length <= limit ? value : `${value.slice(0, limit)}… [cut: ${value.length - limit} more characters]`;
+  if (value === null || typeof value !== 'object' || depth > 16) return value;
+  if (Array.isArray(value)) {
+    const items = value.slice(0, 100).map((item) => shorten(item, limit, depth + 1));
+    return value.length > 100 ? [...items, `… [cut: ${value.length - 100} more items]`] : items;
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, shorten(entry, limit, depth + 1)]));
 }
 
 /** `text` cut at {@link MAX_ENTRY_BYTES} (UTF-16 units — close enough to bytes for a limit), saying how much was left out. */

@@ -202,6 +202,9 @@ importers:
       '@bespokecore/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@bespokecore/devtools':
+        specifier: workspace:*
+        version: link:../../packages/devtools
       '@bespokecore/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -353,6 +356,46 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+
+  packages/devtools:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/log':
+        specifier: workspace:*
+        version: link:../log
+      '@bespokecore/mail':
+        specifier: workspace:*
+        version: link:../mail
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      '@bespokecore/scheduler':
+        specifier: workspace:*
+        version: link:../scheduler
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
 
   packages/encryption:
     dependencies:
@@ -790,6 +833,9 @@ importers:
       '@bespokecore/database':
         specifier: workspace:*
         version: link:../database
+      '@bespokecore/devtools':
+        specifier: workspace:*
+        version: link:../devtools
       '@bespokecore/live':
         specifier: workspace:*
         version: link:../live

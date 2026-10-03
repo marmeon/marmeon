@@ -1,4 +1,4 @@
-import { REDACTED, type Application, type LogContextSources, type Redactor } from '@bespokecore/core';
+import type { Application, LogContextSources, Redactor } from '@bespokecore/core';
 import { channels, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type QueueDispatchMessage, type QueueJobMessage, type TracingName } from '@bespokecore/core/diagnostics';
 import type { Attributes, Context, Span, SpanKind, SpanOptions } from '@opentelemetry/api';
 import type { OtelApi } from './api.ts';
@@ -335,22 +335,7 @@ function parseUrl(url: string): URL | undefined {
  * (E125); the rest of the path through the redactor's text rules.
  */
 export function redactedPath(path: string, pattern: string | undefined, redactor: Redactor): string {
-  if (pattern !== undefined) {
-    const names = pattern.split('/');
-    const parts = path.split('/');
-    const sensitive = names.some((segment) => segment.startsWith(':') && redactor.isSensitive(parameterName(segment)));
-    if (sensitive) {
-      // A pattern whose segments do not line up with the path (wildcards, optional parts): the pattern, then — never the value.
-      if (names.length !== parts.length || names.some((segment) => segment.includes('*'))) return pattern;
-      return names.map((segment, index) => (segment.startsWith(':') && redactor.isSensitive(parameterName(segment)) ? REDACTED : parts[index]!)).join('/');
-    }
-  }
-  return redactor.text(path);
-}
-
-/** `:token{[a-z]+}?` → `token`. */
-function parameterName(segment: string): string {
-  return /^:([\w-]+)/.exec(segment)?.[1] ?? segment.slice(1);
+  return redactor.path(path, pattern);
 }
 
 function capturedHeaders(request: HttpRequestMessage, names: readonly string[], redactor: Redactor): Attributes {

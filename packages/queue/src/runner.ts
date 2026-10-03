@@ -150,6 +150,8 @@ export class JobRunner {
       attempt: attempt.attempt,
       ...(record.requestId === undefined ? {} : { originRequestId: record.requestId }),
       ...(record.traceparent === undefined ? {} : { traceparent: record.traceparent }),
+      payload: prepared.payload,
+      encrypted: (prepared.job as { encrypted?: unknown }).encrypted === true,
     };
     return trace(attempts, message, () => this.#run(prepared, attempt), (ended, requested) => {
       ended.outcome = requested === undefined ? 'done' : requested.kind === 'discard' ? 'discarded' : requested.kind === 'release' ? 'released' : 'failed';
@@ -184,7 +186,7 @@ export class JobRunner {
     };
     const middleware: readonly JobMiddleware[] = job.middleware ?? [];
     // A job is a boundary (E107): it never runs inside a transaction that was open where it was dispatched or worked on.
-    await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt }, async () => {
+    await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }) }, async () => {
       // One scope per attempt, like a request: scoped services (a Translator, a unit of work) start fresh each time.
       const scope = this.#container.createScope();
       const instance = scope.make(job as never) as { handle(payload: unknown, job: JobContext): unknown };

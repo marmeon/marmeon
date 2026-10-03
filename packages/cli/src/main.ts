@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ServiceProviderClass } from '@bespokecore/core';
+import { channels, messageBase, trace, type CommandRunMessage } from '@bespokecore/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
@@ -47,6 +48,8 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeMigrationCommand,
   MakeLintConfigCommand,
 ];
+
+const commands = channels.tracing('command.run');
 
 /** Runs one `bespoke` invocation in the app root (`cwd`) and returns the exit code. */
 export async function run(argv: readonly string[], root = process.cwd()): Promise<number> {
@@ -97,7 +100,13 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // request or a job: scoped services (a Translator, in APP_LOCALE) resolve, and start fresh for each command.
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
-    return await runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnBespoke(root, args) });
+    const execute = () => runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnBespoke(root, args) });
+    // On the `command.run` channel while something listens (E118): the devtools keep what a command did as one batch.
+    if (!app || !commands.hasSubscribers) return await execute();
+    const message: CommandRunMessage = { ...messageBase(app), command: Command.command, args: rest };
+    return await trace(commands, message, execute, (ended, code) => {
+      ended.exitCode = code;
+    });
   } catch (error) {
     printError(output, error);
     return 1;

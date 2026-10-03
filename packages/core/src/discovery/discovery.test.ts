@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -139,6 +139,28 @@ describe('bespoke discover', () => {
     expect(results.map(({ stdout }) => stdout.trim())).toEqual(['0', '0', '0', '0']);
     expect(readdirSync(join(app, '.bespoke'))).toEqual(['manifest.json']); // no temporary files left behind
   }, 30_000);
+
+  it('discovers again when a listed package is gone but package.json and the lockfile stayed — a production install without dev dependencies (E115)', async () => {
+    writeFileSync(
+      join(app, 'packages.ts'),
+      `import { loadDiscoveredPackages } from '@bespokecore/core';
+       const { packages, regenerated } = await loadDiscoveredPackages({ root: import.meta.dirname });
+       console.log(JSON.stringify({ packages, regenerated }));`,
+    );
+    const packages = () => JSON.parse(execFileSync(process.execPath, ['--conditions=@bespokecore/source', join(app, 'packages.ts')], { cwd: app, encoding: 'utf8' })) as { packages: string[]; regenerated: boolean };
+    expect(packages().packages).toContain('@acme/source');
+    // `pnpm install --prod`: the dev dependency's link and files are gone, package.json and the lockfile are the same.
+    const workspace = join(dirname(app), 'workspace', 'acme-source');
+    const link = join(app, 'node_modules/@acme/source');
+    renameSync(workspace, `${workspace}-gone`);
+    rmSync(link);
+    try {
+      expect(packages()).toEqual({ packages: ['@acme/clock', '@acme/mailer'], regenerated: true });
+    } finally {
+      renameSync(`${workspace}-gone`, workspace);
+      symlinkSync(workspace, link, 'dir');
+    }
+  });
 
   it('works in-process too, e.g. inside Vitest', async () => {
     await loadDiscoveredPackages({ root: app, conditions: DEV, force: true });

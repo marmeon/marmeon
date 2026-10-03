@@ -240,7 +240,9 @@ export class Scheduler {
     if (!this.#container.has(Cache)) {
       throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @bespokecore/cache (installed packages register it: bespoke discover).');
     }
-    const commands = tasks.filter((task) => task.definition.kind === 'command' && typeof task.definition.target === 'string');
+    // A command limited to other environments is never run here — and may not exist here (`devtools:prune` in development:
+    // its package is a dev dependency, absent in a production install).
+    const commands = tasks.filter((task) => task.definition.kind === 'command' && typeof task.definition.target === 'string' && this.#inEnvironment(task));
     if (commands.length > 0) {
       const cli = await importCli();
       const registry = this.#container.has(cli.CommandRegistry) ? this.#container.make(cli.CommandRegistry) : new cli.CommandRegistry();

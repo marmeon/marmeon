@@ -3,6 +3,8 @@ import { subscribe as subscribeRaw, unsubscribe as unsubscribeRaw } from 'node:d
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createApplication, type Application } from './application.ts';
 import { channels, messageBase, publishEnded, trace, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type LogMessage } from './diagnostics.ts';
+import { EventDispatcher, EventRegistry, listen } from './events.ts';
+import { EventFake } from './events-fake.ts';
 import { Logger } from './logger.ts';
 import { runWithJob, runWithRequest } from './request-context.ts';
 
@@ -229,5 +231,48 @@ describe('channels.around: an operation\'s work in a context of the subscriber\'
       channels.around({} as Application, 'log', () => {});
     };
     expect(typeOnly).toBeTypeOf('function');
+  });
+});
+
+describe('bespoke:event — app events for observers (W7.7)', () => {
+  class Registered {
+    static readonly event = 'auth.registered';
+    readonly #event = true;
+    readonly userId: number;
+    constructor(userId: number) {
+      this.userId = userId;
+    }
+  }
+  class Plain {
+    readonly #event = true;
+  }
+
+  it('publishes every dispatch with its name and listeners — also one a test fake holds back; nothing is built without a subscriber', async () => {
+    const ran: number[] = [];
+    const app = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      env: {},
+      listeners: [listen(Registered, (event) => void ran.push(event.userId))],
+    });
+    const dispatcher = app.container.make(EventDispatcher);
+    await dispatcher.dispatch(new Registered(1));
+    expect(channels.built(app)).toBe(0);
+
+    const seen: { name: string; listeners: readonly string[]; userId: unknown }[] = [];
+    const off = channels.subscribe(app, 'event', (message) => void seen.push({ name: message.name, listeners: message.listeners, userId: (message.event as Registered).userId }));
+    try {
+      await dispatcher.dispatch(new Registered(2));
+      await dispatcher.dispatch(new Plain());
+      // EventFake keeps its one observer slot (it decides whether listeners run) — the channel is beside it.
+      const fake = new EventFake(app.container.make(EventRegistry), 'all');
+      await new EventDispatcher(app.container.make(EventRegistry), app.container, { app, observer: fake }).dispatch(new Registered(3));
+      fake.assertDispatched(Registered, (event) => event.userId === 3);
+    } finally {
+      off();
+    }
+    expect(seen.map(({ name, userId }) => `${name} ${String(userId)}`)).toEqual(['auth.registered 2', 'Plain undefined', 'auth.registered 3']);
+    expect(seen[0]!.listeners).toEqual(['(anonymous)']);
+    expect(ran).toEqual([1, 2]);
   });
 });

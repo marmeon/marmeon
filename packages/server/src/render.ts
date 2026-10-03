@@ -189,6 +189,11 @@ export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, s
 export interface ResponseFactoryOptions {
   /** The app whose pages these are — server rendering is reported on its `render.ssr` channel (E118). */
   app?: Application;
+  /**
+   * Hears each page, layer or island object a response carries, before it is sent — the kernel's, for the `http.request`
+   * message's prop sizes (E118; it computes nothing unless something listens).
+   */
+  onPage?: (request: Request, page: PageObject | RegionObject, kind: 'page' | 'layer' | 'island') => void;
   /** Where server-rendering errors go. */
   logger?: Logger;
   /** Server rendering at all (`SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
@@ -229,7 +234,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases }: ResponseFactoryOptions = {},
+  { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   const noRouter: RouteLookup = {
     findByName: (name) => {
@@ -405,7 +410,7 @@ export function createResponseFactory(
       // An action's redirect is not followed (E59): its answer is what the user is shown, so it takes the flash messages (E60).
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
-    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug, scope);
+    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug, scope, onPage);
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
       // An action's data (E60): with the messages its controller flashed — an API client's JSON leaves them for a page.
@@ -451,6 +456,7 @@ export function createResponseFactory(
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));
     if (flash.length > 0) page.flash = flash;
+    onPage?.(ctx.request, page, layer ? 'layer' : 'page');
     // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it (E60).
     const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash()));
     const headers = {
@@ -512,6 +518,7 @@ async function islandResponse(
   version: string | null,
   debug: boolean,
   scope: Container | undefined,
+  onPage?: ResponseFactoryOptions['onPage'],
 ): Promise<Response> {
   const { request } = ctx;
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -533,6 +540,7 @@ async function islandResponse(
   // The channels it follows (W6.10), signed for the session of the page around it (an island's request carries its cookie).
   const live = await liveSubscriptions(liveOf(result), scope, result.component);
   const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query, ...live };
+  onPage?.(request, region, 'island');
   return new Response(JSON.stringify(region), {
     status: 200,
     headers: { vary: PAGE_VARY, 'content-type': 'application/json', [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' },

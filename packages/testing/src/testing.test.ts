@@ -2,6 +2,8 @@ import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption'
 import { tmpdir } from 'node:os';
 import { Clock, defineModule, type ApplicationOptions } from '@bespokecore/core';
 import { Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
+import { DevtoolsServiceProvider } from '@bespokecore/devtools';
+import { ServerServiceProvider } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
 
@@ -169,5 +171,23 @@ describe('server rendering assertions', () => {
     expect(await failure(app.get('/greeting', { headers: { accept: 'text/html' } }).assertHydrates())).toContain(
       'assertHydrates() needs server rendering in the test: createTestApp(app, { ssr: true })',
     );
+  });
+});
+
+describe('the devtools in tests (E115, E116)', () => {
+  it('records into memory with devtools: true — app.devtools — and never without it', async () => {
+    const withDevtools = { ...definition, providers: [...(definition.providers ?? []), ServerServiceProvider, DevtoolsServiceProvider] };
+    const app = await createTestApp(withDevtools, { devtools: true });
+    await app.get('/greeting').assertOk();
+    const request = app.devtools.assertRecorded('request', (content) => content.path === '/greeting');
+    expect(request.content.page).toMatchObject({ component: 'greetings/Show', props: { message: JSON.stringify('Hello Ada').length } });
+    expect(() => app.devtools.assertRecorded('mail')).toThrow(/Expected the devtools to have recorded a mail\. Recorded 0 mail entries\./);
+
+    const without = await createTestApp(withDevtools);
+    expect(() => without.devtools).toThrow('app.devtools needs createTestApp(…, { devtools: true })');
+  });
+
+  it('says when the app does not register the devtools', async () => {
+    await expect(createTestApp(definition, { devtools: true })).rejects.toThrow(/does not register @bespokecore\/devtools — add it to the app's package\.json/);
   });
 });

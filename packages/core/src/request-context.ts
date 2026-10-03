@@ -10,6 +10,11 @@ export interface JobInfo {
   readonly job: string;
   readonly jobId: string;
   readonly attempt: number;
+  /**
+   * The request the job comes from (E131) — also through jobs it dispatched in between: a job dispatched here carries it on.
+   * Not in the log context (a job's log entries name the job).
+   */
+  readonly requestId?: string;
 }
 
 // The one deliberate piece of ambient state (decision E3): the unit of work being handled — a request or a job — for

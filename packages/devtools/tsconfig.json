@@ -1,0 +1,46 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../cli"
+    },
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../encryption"
+    },
+    {
+      "path": "../http"
+    },
+    {
+      "path": "../log"
+    },
+    {
+      "path": "../mail"
+    },
+    {
+      "path": "../queue"
+    },
+    {
+      "path": "../router"
+    },
+    {
+      "path": "../scheduler"
+    },
+    {
+      "path": "../server"
+    }
+  ]
+}

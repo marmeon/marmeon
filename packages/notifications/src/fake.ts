@@ -1,9 +1,10 @@
 import { AssertionError } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { afterCommit, inTransaction, type Container } from '@bespokecore/core';
+import { afterCommit, Application, inTransaction, type Container } from '@bespokecore/core';
+import { channels, trace } from '@bespokecore/core/diagnostics';
 import type { AnyRecipient, NotificationClass, NotificationData, RecipientRef, Recipients } from './notification.ts';
-import { checkSend, NotificationDeliverer, type DeliveryOutcome, type Notifications, type SendOptions } from './notifications.ts';
+import { checkSend, NotificationDeliverer, sendMessage, type DeliveryOutcome, type Notifications, type SendOptions } from './notifications.ts';
 import { NotificationRegistry, RecipientRegistry } from './registry.ts';
 import { validate } from './validate.ts';
 
@@ -114,6 +115,12 @@ export class NotificationFake implements Notifications {
     afterCommit(() => {
       this.#sent.push(...entries);
     });
+    // Reported on `notification.send` like the real sender's (E118) — the devtools record them in tests too.
+    const sends = channels.tracing('notification.send');
+    if (sends.hasSubscribers && this.#container.has(Application)) {
+      const app = this.#container.make(Application);
+      for (const entry of entries) await trace(sends, sendMessage(app, { id: entry.id, notification, recipient: entry.recipient, data: json }, !now), async () => undefined);
+    }
     const ids = entries.map((entry) => entry.id);
     return Array.isArray(recipient) ? ids : ids[0];
   }

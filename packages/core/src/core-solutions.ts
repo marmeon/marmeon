@@ -55,6 +55,8 @@ export const coreSolutions = defineSolutions([
   },
   {
     for: ConfigError,
+    // The variables the start found missing or invalid (listed with •) — not a ConfigError that says something else.
+    when: (e) => /•\s/.test(e.message),
     solve: (e) => configSolution(e.message),
   },
 ]);

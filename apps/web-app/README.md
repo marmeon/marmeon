@@ -47,3 +47,14 @@ OTEL_SERVICE_NAME=web-app NODE_OPTIONS='--import ./bootstrap/telemetry.ts' pnpm 
 
 `modules/system/telemetry.test.ts` shows what a registration records: `POST /register`, its queries without parameters, the
 welcome job in the same trace, its mail, and the trace id in the log line.
+
+## Devtools
+
+Under `bespoke dev` (`NODE_ENV=development`) the devtools record what the server, the worker and the scheduler do — requests
+with their queries, jobs, mails, log entries, exceptions, events — redacted, into `storage/framework/devtools/` (NDJSON,
+50 MB / 24 h; `config/devtools.ts`, packages/devtools/README.md). `@bespokecore/devtools` is a dev dependency: production
+records nothing (and does not have the package). `bespoke devtools:clear` empties the directory; `devtools:prune` runs hourly in
+development (`modules/system/schedule.ts`).
+
+`modules/system/devtools.test.ts` shows what a registration records — the request, its queries (the insert into `users`
+without parameters), the jobs it queued, and the mails the worker sent for it, all tied by the request id.

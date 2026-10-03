@@ -19,6 +19,19 @@ class StatsJob {
   }
 }
 
+/** Dispatches a StatsJob — a second hop (a queued listener queues a mail). */
+class FanOutJob {
+  static readonly job = 'test.fan-out';
+  static readonly schema = v.object({});
+  readonly #queue: Queue;
+  constructor(queue: Queue) {
+    this.#queue = queue;
+  }
+  async handle() {
+    await this.#queue.dispatch(StatsJob, { userId: 7 });
+  }
+}
+
 class BrokenJob {
   static readonly job = 'test.broken';
   static readonly schema = v.object({});
@@ -33,7 +46,7 @@ async function boot(): Promise<Application> {
     discover: false,
     env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY },
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
-    modules: [{ name: 'test', jobs: [StatsJob, BrokenJob] }],
+    modules: [{ name: 'test', jobs: [StatsJob, BrokenJob, FanOutJob] }],
     override: (container) => container.instance(Logger, silent),
   });
   await migrate(application.container.make(Connections));
@@ -53,6 +66,20 @@ describe('job metadata (E131)', () => {
     expect(records.map((record) => record.requestId)).toEqual(['req-5', undefined]);
     expect(records.every((record) => record.traceparent === undefined)).toBe(true);
     expect(channels.built(application)).toBe(0);
+  });
+
+  it('a job dispatched by such a job carries the request on — the second hop (a queued listener queueing a mail)', async () => {
+    await using application = await boot();
+    const queue = application.container.make(Queue);
+    const seen: (string | undefined)[] = [];
+    const off = channels.subscribe(application, 'queue.job', { start: (attempt) => void seen.push(`${attempt.job} ${attempt.originRequestId}`) });
+    try {
+      await runWithRequest({ requestId: 'req-8' }, () => queue.dispatch(FanOutJob, {}));
+      await work(application);
+    } finally {
+      off();
+    }
+    expect(seen).toEqual(['test.fan-out req-8', 'test.stats req-8']);
   });
 });
 

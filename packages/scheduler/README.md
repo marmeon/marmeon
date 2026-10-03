@@ -23,7 +23,9 @@ bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | sched
 - **Time zones** (`SCHEDULE_TIMEZONE`, default UTC, or `.timezone()`) by `Temporal`, daylight saving time included: a task
   at a time the clocks skip (02:30 on the last Sunday of March in Berlin) runs right after the gap; at a time they repeat
   (02:30 in October) in the first pass only. Tasks for every hour run as the minutes really pass.
-- **Filters:** `when(fn)`, `skip(fn)` (asked each time, with the run's scope), `environments('production')` (`NODE_ENV`).
+- **Filters:** `when(fn)`, `skip(fn)` (asked each time, with the run's scope), `environments('production')` (`NODE_ENV`). The
+  start checks that every `s.command()` exists — except one limited to other environments: it never runs here, and its package
+  may be a dev dependency (`s.command('devtools:prune').hourly().environments('development')`).
 - **`onOneServer()`:** the first scheduler to take the lock `schedule:<name>:<minute>` in the app's cache runs it. Needs a
   cache all servers share — `CACHE_DRIVER=database` or `redis` — when more than one scheduler runs.
 - **`withoutOverlapping(minutes = 1440)`:** a run is skipped while the previous one still runs (on any server). A

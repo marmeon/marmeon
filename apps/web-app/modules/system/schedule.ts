@@ -12,4 +12,7 @@ export const schedule = defineSchedule((s) => {
   // Uploads older than a day — used, expired or never sent: their rows first, then their files on the `uploads` disk (W6.9). One
   // server here: the uploads disk is local to this machine (with several, run it on each — without onOneServer).
   s.command('uploads:prune').hourly().withoutOverlapping().onOneServer();
+  // The devtools' ring (E116) — in development only, where they record (their package is a dev dependency, absent in production).
+  // Each writing process keeps it within 50 MB / 24 h by itself; this catches an evening's files the next morning.
+  s.command('devtools:prune').hourlyAt(40).environments('development');
 });

@@ -1,6 +1,8 @@
 import { AssertionError } from 'node:assert';
+import type { Application } from '@bespokecore/core';
 import type { Address, Mailable, MailMessage } from './message.ts';
 import { compose, type Mailer, type QueueMailOptions } from './mailer.ts';
+import { traceMail } from './trace.ts';
 
 type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
 
@@ -18,18 +20,22 @@ export class MailFake implements Mailer {
   readonly #sent: { mailable: Mailable; message: MailMessage }[] = [];
   readonly #queued: { mailable: Mailable; message: MailMessage; options: QueueMailOptions }[] = [];
 
-  constructor(from: Address = 'test@example.com') {
+  readonly #app: Application | undefined;
+
+  /** `app`: its mails are reported on the `mail.send` channel like real ones (E118) — the devtools record them in tests. */
+  constructor(from: Address = 'test@example.com', app?: Application) {
     this.#from = from;
+    this.#app = app;
   }
 
   async send(mailable: Mailable): Promise<MailMessage> {
-    const message = await compose(mailable, this.#from);
+    const message = await traceMail(this.#app, mailable.constructor.name, 'send', () => compose(mailable, this.#from));
     this.#sent.push({ mailable, message });
     return message;
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
-    const message = await compose(mailable, this.#from);
+    const message = await traceMail(this.#app, mailable.constructor.name, 'queue', () => compose(mailable, this.#from));
     this.#queued.push({ mailable, message, options });
     return message;
   }

@@ -54,7 +54,7 @@ export {
   TransactionFrame,
   transactionOf,
 } from './transaction-context.ts';
-export { describeError, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_KEYS, redactText, Redactor } from './redact.ts';
+export { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_KEYS, redactText, Redactor } from './redact.ts';
 export type { RedactableQuery } from './redact.ts';
 export { ConfigError, defineConfig, loadEnv, resolveConfig } from './config/config.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';

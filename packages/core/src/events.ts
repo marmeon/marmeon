@@ -1,4 +1,6 @@
+import type { Application } from './application.ts';
 import type { Duration } from './clock.ts';
+import { channels, messageBase } from './diagnostics.ts';
 import type { InferOutput, StandardSchemaV1 } from './config/standard-schema.ts';
 import type { Resolver } from './container.ts';
 import { token } from './token.ts';
@@ -199,6 +201,20 @@ export interface EventDispatcherOptions {
   /** Queues queued listeners — the app's {@link ListenerQueue}, if it has one. */
   readonly queue?: () => ListenerQueue | undefined;
   readonly observer?: EventObserver;
+  /** The app its dispatches are reported for on the `bespoke:event` channel (E118) — the devtools record them there. */
+  readonly app?: Application;
+}
+
+const dispatches = channels.event('event');
+
+/** An event's name for the channel: its `static event`, else its class name. */
+function eventName(event: object): string {
+  const name = (event.constructor as { event?: unknown } | undefined)?.event;
+  return typeof name === 'string' ? name : (event.constructor?.name ?? 'Object');
+}
+
+function listenerName(listener: ListenerBinding['listener']): string {
+  return listener.name || '(anonymous)';
 }
 
 /**
@@ -225,8 +241,13 @@ export class EventDispatcher {
   }
 
   async dispatch<TEvent extends object>(event: TEvent): Promise<void> {
+    const bindings = this.#registry.bindingsFor(event);
+    // Seen before a test's fake decides (it may hold the listeners back): what was dispatched is what happened. Built only
+    // while something listens — the observer slot stays the test's (EventFake), the channel is for everyone else.
+    const { app } = this.#options;
+    if (app && dispatches.hasSubscribers) dispatches.publish({ ...messageBase(app), event, name: eventName(event), listeners: bindings.map(({ listener }) => listenerName(listener)) });
     if (this.#options.observer && !this.#options.observer.observe(event)) return;
-    for (const { event: registeredFor, listener } of this.#registry.bindingsFor(event)) {
+    for (const { event: registeredFor, listener } of bindings) {
       if (isQueuedListener(listener)) {
         const queue = this.#options.queue?.();
         if (!queue) throw new Error(missingListenerQueue(listener));

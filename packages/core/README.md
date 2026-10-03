@@ -44,17 +44,19 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
 
 | Channel | Where | Message (besides `app`, `startedAt`, `requestId?`, `jobId?`, `task?`, `durationMs`, `error`) |
 |---|---|---|
-| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status` |
+| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status`; while something listens also `page` (`PageSummary`: view, kind, the bytes of each prop, `only`/`except`, deferred groups) and `input` (the body as the app read it — raw; never read for this) |
 | `db.query` | every statement of every connection | `DbQueryMessage`: `connection`, `driver` (`sqlite`/`pgsql`), `sql`, `parameters` (raw), `secret` |
-| `queue.dispatch` | `queue.dispatch()`, `bulk()`, `chain()` | `QueueDispatchMessage`: `kind`, `jobs`, `jobIds`, `connection`, `queue`, `delay`, `unique`, `traceparent` (a tracer sets it) |
-| `queue.job` | each attempt (worker, `sync`, `app.queue.work()`) | `QueueJobMessage`: `job`, `jobId`, `queue`, `connection`, `attempt`, `originRequestId`, `traceparent`, `outcome` |
+| `queue.dispatch` | `queue.dispatch()`, `bulk()`, `chain()` | `QueueDispatchMessage`: `kind`, `jobs`, `jobIds`, `connection`, `queue`, `delay`, `unique`, `traceparent` (a tracer sets it), `payloads` (raw) and `encrypted` (per job) |
+| `queue.job` | each attempt (worker, `sync`, `app.queue.work()`) | `QueueJobMessage`: `job`, `jobId`, `queue`, `connection`, `attempt`, `originRequestId`, `traceparent`, `payload` (raw), `encrypted`, `outcome` |
 | `schedule.task` | each run of a scheduled task | `ScheduleTaskMessage`: `task`, `minute`, `reason`, `outcome`, `skipped` |
-| `mail.send` | `mailer.send()`, `mailer.queue()`, the worker sending a queued mail | `MailSendMessage`: `mailable`, `mode` (`send`/`queue`/`worker`), `to`, `subject` |
-| `notification.send` | `notifications.send()` (queued), each delivery | `NotificationSendMessage`: `notification`, `id`, `recipient`, `queued`, `channels`, `outcome` |
+| `mail.send` | `mailer.send()`, `mailer.queue()`, the worker sending a queued mail (also the `MailFake` of tests) | `MailSendMessage`: `mailable`, `mode` (`send`/`queue`/`worker`), `to`, `subject`, `from`, `cc`, `bcc`, `html`, `text` (raw), `attachments` (name, bytes) |
+| `notification.send` | `notifications.send()` (queued), each delivery (also the `NotificationFake`) | `NotificationSendMessage`: `notification`, `id`, `recipient`, `queued`, `channels`, `outcome` |
 | `live.refresh` | a live hint going out (after its commit) | `LiveRefreshMessage`: `channel`, `only` |
 | `render.ssr` | server rendering of a document, until its shell | `SsrRenderMessage`: `component`, `complete` (a crawler), `streamed` |
+| `command.run` | one `bespoke <command>` in its own process (not a scheduled one) | `CommandRunMessage`: `command`, `args` (raw), `exitCode` |
 | `log` *(plain)* | every log entry, any level (before the logger's level filter) | `LogMessage`: `level`, `message`, `context` (bindings + context) |
 | `exception` *(plain)* | an error a request ends in, on its way to the `ExceptionHandler` | `ExceptionMessage`: `error`, `status`, `method`, `path` |
+| `event` *(plain)* | every `EventDispatcher.dispatch()` — before a test's `EventFake` decides whether listeners run | `EventDispatchMessage`: `event` (raw), `name` (`static event` or class name), `listeners` |
 
 - **Correlation (E131):** `requestId` is the request's `x-request-id` (the kernel answers with it); a job dispatched in a
   request keeps it as `originRequestId`. Queries, mails, notifications and log entries carry the `requestId` or `jobId` of
@@ -161,22 +163,29 @@ tooling: `bespoke tinker` completes them and resolves them by name. Resolving st
 ## Redaction (E125)
 
 `Redactor` (one per app: `app.container.make(Redactor)`) is the one place that decides what of a value may be shown or
-recorded — the development error page and its Markdown copy now, the devtools recorder and telemetry spans later. It is on
-by default, also locally:
+recorded — the development error page and its Markdown copy, the devtools recorder (`@bespokecore/devtools`) and telemetry
+spans. It is on by default, also locally:
 
 - **by key**, at any depth: `REDACTED_KEYS` (passwords, tokens, secrets, cookies, `authorization`, signatures — so also
   `set-cookie`, `x-xsrf-token`, `_token`) and the names packages add — the session's cookie name (`addKeys`);
 - **in text** (`redactText`): values of sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials,
-  URL passwords, password hashes (`$argon2id$…`, `$scrypt$…`) and API tokens (`bc_12|…`, any prefix), plus the added names'
-  values (`bespoke_session=…`);
+  URL passwords, password hashes (`$argon2id$…`, `$scrypt$…`), API tokens (`bc_12|…`, any prefix) and token-like path
+  segments — 32 or more URL-safe characters, hex or mixed-case with digits (`/reset-password/<token>` in a mail's link, a log
+  line or a `Referer`; slugs and UUIDs stay) —, plus the added names' values (`bespoke_session=…`);
 - **statements** that touch a table with secret columns (`DbQueryMessage.secret`) show none of their parameters;
-- **files and bytes** only by their size; every string is cut at 64 KB.
+- **encrypted payloads** (a job with `static encrypted`, a queued mail or listener) only as `[encrypted]` (`payload(value, encrypted)`);
+- **paths and URLs** by their route: the values of sensitive route parameters (`/reset/:token`) replaced (`path(path, pattern)`,
+  `url(url, pattern)`);
+- **files and bytes** only by their size; every string is cut at 64 KB, a recorded entry as a whole too (`fit(value)`).
 
 ```ts
 const redactor = app.container.make(Redactor);
 redactor.value({ email, password, avatar });   // { email, password: '[redacted]', avatar: '[file me.png, 5120 bytes, image/png]' }
 redactor.headers(request.headers);             // cookie, authorization, x-xsrf-token → '[redacted]'
 redactor.query(message);                       // { sql, parameters } — all '[redacted]' when message.secret
+redactor.payload(payload, job.encrypted);      // '[encrypted]', or the payload redacted like a value
+redactor.url(message.url, message.routePath);  // http://localhost/reset/[redacted]?email=…&token=[redacted]
+redactor.fit(content);                         // at most 64 KB of JSON: long strings and lists shortened, else a preview
 ```
 
 A safety net, not a guarantee: a secret quoted in free text under a harmless name still shows. Never put secrets into

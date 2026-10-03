@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_ENTRY_BYTES, REDACTED, Redactor, redactText } from './redact.ts';
+import { ENCRYPTED, MAX_ENTRY_BYTES, REDACTED, Redactor, redactText } from './redact.ts';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const SCRYPT = '$scrypt$ln=15,r=8,p=1$c2FsdA$aGFzaA';
@@ -77,5 +77,46 @@ describe('Redactor (E125)', () => {
     const shown = new Redactor().text('x'.repeat(MAX_ENTRY_BYTES + 10));
     expect(shown.length).toBeLessThan(MAX_ENTRY_BYTES + 60);
     expect(shown).toMatch(/… \[cut: 10 more characters\]$/);
+  });
+});
+
+describe('E125, completed for the devtools (W7.7)', () => {
+  const token = 'Xq3v9Lr2_pK8sT1uW4yZ6bN0cM5dF7gH-jA2eR9tY1u';
+
+  it('masks token-like path segments — a reset link in a mail, a log line, a Referer — but not slugs, words or ids', () => {
+    expect(redactText(`Reset: http://localhost/reset-password/${token}?email=ada%40example.com`)).toBe('Reset: http://localhost/reset-password/[redacted]?email=ada%40example.com');
+    expect(redactText(`GET /reset-password/${token} 200`)).toBe('GET /reset-password/[redacted] 200');
+    // A hash in a signed link's path (hex).
+    expect(redactText('/verify-email/7/2f9a6b1c0d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a')).toBe('/verify-email/7/[redacted]');
+    for (const kept of ['/posts/my-very-long-article-title-about-redaction-2026', '/notifications/550e8400-e29b-41d4-a716-446655440000', '/users/7/profile', '/assets/index-BQx7aN2c.js']) {
+      expect(redactText(kept)).toBe(kept);
+    }
+  });
+
+  it('shows encrypted payloads only as [encrypted]', () => {
+    const redactor = new Redactor();
+    expect(redactor.payload({ code: 'secret-code', password: 'x' }, true)).toBe(ENCRYPTED);
+    expect(redactor.payload({ userId: 7, password: 'x' }, false)).toEqual({ userId: 7, password: REDACTED });
+  });
+
+  it('redacts sensitive route parameters by the route pattern, and query values by key', () => {
+    const redactor = new Redactor();
+    expect(redactor.path('/reset/abc', '/reset/:token')).toBe('/reset/[redacted]');
+    expect(redactor.path('/users/7', '/users/:user')).toBe('/users/7');
+    expect(redactor.path(`/reset-password/${token}`)).toBe('/reset-password/[redacted]');
+    expect(redactor.url('http://localhost/reset/abc?email=a%40b.c&token=t0k3n&page=2', '/reset/:token')).toBe('http://localhost/reset/[redacted]?email=a%40b.c&token=[redacted]&page=2');
+    expect(redactor.url('/search?q=hello')).toBe('/search?q=hello');
+  });
+
+  it('fits a value into 64 KB of JSON — long strings and lists first, a preview at last', () => {
+    const redactor = new Redactor();
+    const small = { a: 1, b: 'two' };
+    expect(redactor.fit(small)).toBe(small);
+    const fitted = redactor.fit({ html: 'h'.repeat(100_000), text: 't'.repeat(100_000), rows: Array.from({ length: 5000 }, (_, i) => i) });
+    expect(Buffer.byteLength(JSON.stringify(fitted))).toBeLessThanOrEqual(MAX_ENTRY_BYTES);
+    expect((fitted as { html: string }).html).toMatch(/^h{8192}… \[cut: 91808 more characters\]$/);
+    const huge = redactor.fit(Object.fromEntries(Array.from({ length: 20_000 }, (_, i) => [`key${i}`, i])));
+    expect(Buffer.byteLength(JSON.stringify(huge))).toBeLessThanOrEqual(MAX_ENTRY_BYTES);
+    expect(huge).toMatchObject({ cut: expect.stringMatching(/bytes$/) });
   });
 });

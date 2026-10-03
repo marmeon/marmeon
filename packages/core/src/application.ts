@@ -191,6 +191,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     EventDispatcher,
     (resolver) =>
       new EventDispatcher(events, resolver, {
+        app,
         queue: () => (container.has(ListenerQueue) ? container.make(ListenerQueue) : undefined),
         ...(container.has(EventFake) ? { observer: container.make(EventFake) } : {}),
       }),

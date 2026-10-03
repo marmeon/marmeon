@@ -1,7 +1,7 @@
 /**
  * The framework's observation points (E118): `node:diagnostics_channel` TracingChannels named
- * `tracing:bespoke:<operation>:{start,end,asyncStart,asyncEnd,error}` plus two plain channels, `bespoke:log` and
- * `bespoke:exception`. The error page, the devtools recorder, the debug bar and `@bespokecore/otel` subscribe to them;
+ * `tracing:bespoke:<operation>:{start,end,asyncStart,asyncEnd,error}` plus three plain channels, `bespoke:log`,
+ * `bespoke:exception` and `bespoke:event`. The error page, the devtools recorder, the debug bar and `@bespokecore/otel` subscribe to them;
  * apps keep using events (job events, scheduler events) for their own reactions.
  *
  * ```ts
@@ -69,6 +69,26 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   controller?: string;
   /** The response's status. */
   status?: number;
+  /** The page or island it answered with — set only while something listens (the devtools, E118). */
+  page?: PageSummary;
+  /** The body, as the app read it (never read for this — unset when nothing read it) — raw: redact before recording (E125). */
+  input?: Readonly<Record<string, unknown>>;
+}
+
+/** What a request answered with when it was a page (a view, a layer) or an island: its view, and how big each prop was. */
+export interface PageSummary {
+  /** The view (`users/Show`). */
+  readonly component: string;
+  /** Each prop sent and the bytes of its JSON — the shared ones included. */
+  readonly props: Readonly<Record<string, number>>;
+  /** A partial reload's props (`only`), if it named them. */
+  readonly only?: readonly string[];
+  /** A partial reload's left-out props (`except`). */
+  readonly except?: readonly string[];
+  /** The props deferred to later requests (E49), by group. */
+  readonly deferred?: Readonly<Record<string, readonly string[]>>;
+  /** `page`, `layer` (E53) or `island` (E48). */
+  readonly kind: 'page' | 'layer' | 'island';
 }
 
 /** `tracing:bespoke:db.query` — one statement, published once it finished (Kysely reports queries afterwards). */
@@ -98,6 +118,10 @@ export interface QueueDispatchMessage extends MessageBase, Ended {
   readonly unique?: string;
   /** Their ids, once queued — none when a unique job with the key was queued already. */
   jobIds: string[];
+  /** Their payloads as given, in order — raw: shown only through the redactor, an encrypted one never (E125). */
+  readonly payloads?: readonly unknown[];
+  /** Which of them are encrypted (`static encrypted`), in order. */
+  readonly encrypted?: readonly boolean[];
   /**
    * The trace context to carry to the worker (W3C `traceparent`) — set by a tracer in its `start` handler
    * (`@bespokecore/otel`); stored with each job and passed on in its `queue.job` message (E131).
@@ -118,6 +142,10 @@ export interface QueueJobMessage extends MessageBase, Ended {
   readonly originRequestId?: string;
   /** The trace context it was dispatched in (E131), if a tracer gave one. */
   readonly traceparent?: string;
+  /** Its payload, as the job gets it — raw: shown only through the redactor, an encrypted one never (E125). */
+  readonly payload?: unknown;
+  /** The job is encrypted (`static encrypted`): its payload is never shown. */
+  readonly encrypted?: boolean;
   /** What the job asked for: `done`, or `discarded`/`released`/`failed` through its context; unset when it threw. */
   outcome?: 'done' | 'discarded' | 'released' | 'failed';
 }
@@ -142,6 +170,14 @@ export interface MailSendMessage extends MessageBase, Ended {
   /** The recipients' addresses, once composed. */
   to?: string[];
   subject?: string;
+  /** The sender, copies and body, once composed — raw: links in them may carry tokens (redact before recording, E125). */
+  from?: string;
+  cc?: string[];
+  bcc?: string[];
+  html?: string;
+  text?: string;
+  /** Attachments by name and size only. */
+  attachments?: { readonly filename: string; readonly bytes: number; readonly contentType?: string }[];
 }
 
 /** `tracing:bespoke:notification.send` — one notification for one recipient: queued (`send`) or delivered (`sendNow`, the worker). */
@@ -174,6 +210,26 @@ export interface SsrRenderMessage extends MessageBase, Ended {
   streamed?: boolean;
 }
 
+/** `tracing:bespoke:command.run` — one `bespoke <command>` run in its own process (not a scheduled one: that is a task). */
+export interface CommandRunMessage extends MessageBase, Ended {
+  /** Its name: `migrate`, `db:seed`. */
+  readonly command: string;
+  /** Its arguments as given — raw (`--password=…`): redact before recording. */
+  readonly args: readonly string[];
+  /** What it exited with. */
+  exitCode?: number;
+}
+
+/** `bespoke:event` — an app event dispatched through the `EventDispatcher` (also one a test's `EventFake` holds back). */
+export interface EventDispatchMessage extends MessageBase {
+  /** The event object — raw: redact before recording (E125). */
+  readonly event: object;
+  /** Its `static event` name, else its class name. */
+  readonly name: string;
+  /** The listeners registered for it, by name (a queued one is queued, not run here). */
+  readonly listeners: readonly string[];
+}
+
 /** `bespoke:log` — a log entry as written, at any level (the logger's level does not filter it). */
 export interface LogMessage extends MessageBase {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
@@ -202,12 +258,14 @@ export interface TracingMessages {
   'notification.send': NotificationSendMessage;
   'live.refresh': LiveRefreshMessage;
   'render.ssr': SsrRenderMessage;
+  'command.run': CommandRunMessage;
 }
 
 /** The plain channels (one message, nothing traced) and their messages. */
 export interface EventMessages {
   log: LogMessage;
   exception: ExceptionMessage;
+  event: EventDispatchMessage;
 }
 
 export type TracingName = keyof TracingMessages & string;
@@ -248,8 +306,9 @@ const TRACING: readonly TracingName[] = [
   'notification.send',
   'live.refresh',
   'render.ssr',
+  'command.run',
 ];
-const EVENTS: readonly EventName[] = ['log', 'exception'];
+const EVENTS: readonly EventName[] = ['log', 'exception', 'event'];
 
 // Node's channels are process-wide by name; these are handles to them, created once (Node recommends top-level handles).
 const tracings = new Map<string, TracingChannel<object>>(TRACING.map((name) => [name, tracingChannel<object>(`bespoke:${name}`)]));

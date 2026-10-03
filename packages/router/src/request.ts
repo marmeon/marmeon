@@ -32,6 +32,11 @@ export interface RequestState {
    * read once, so don't read `ctx.request` yourself after calling this.
    */
   input(): Promise<Input>;
+  /**
+   * The body if something read it already (`input()` resolved), else undefined — never reads it itself. For observers
+   * (the devtools record what the app read, E118), which must not consume or wait for a body.
+   */
+  readonly inputRead?: () => Input | undefined;
   readonly cookies: CookieJar;
   /** The client's IP address — behind trusted proxies taken from `X-Forwarded-For`. Undefined in tests. */
   readonly ip: string | undefined;
@@ -47,10 +52,16 @@ const MAX_DEPTH = 20;
 export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE, ip }: RequestStateOptions = {}): RequestState {
   const query = new URL(request.url).searchParams;
   let input: Promise<Input> | undefined;
+  let read: Input | undefined;
 
   return {
     query,
-    input: () => (input ??= parseInput(request, maxBodySize)),
+    input: () =>
+      (input ??= parseInput(request, maxBodySize).then((parsed) => {
+        read = parsed;
+        return parsed;
+      })),
+    inputRead: () => read,
     cookies: new CookieJar(request.headers.get('cookie')),
     ip,
     expectsJson: () => expectsJson(request),
