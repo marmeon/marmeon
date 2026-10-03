@@ -48,9 +48,9 @@ export class SendShippingMail {
   }
 }
 
-/** Into the transaction itself (a database queue joins it). */
+/** On the default queue. */
 export class UpdateWarehouse {
-  static readonly queue = { afterCommit: false };
+  static readonly queue = {};
   readonly #seen: Seen;
   constructor(seen: Seen) {
     this.#seen = seen;
@@ -103,7 +103,7 @@ describe('queued listeners (E86)', () => {
     ]);
   });
 
-  it('wait for the commit by default (afterCommit) — afterCommit: false writes the job into the transaction; a rollback drops both', async () => {
+  it('are part of the transaction around the dispatch (E107, E109): the job rows are written inside it — atomic with the data — and a rollback drops them', async () => {
     await using application = await app();
     const connections = application.container.make(Connections);
     const inside: string[][] = [];
@@ -111,7 +111,8 @@ describe('queued listeners (E86)', () => {
       await application.container.createScope().make(EventDispatcher).dispatch(new OrderShipped('order-1'));
       inside.push((await jobRows(application)).map((row) => row.queue));
     });
-    expect(inside).toEqual([['default']]); // only UpdateWarehouse (afterCommit: false) is part of the transaction
+    // Both jobs exist inside the transaction (never written after the commit: a crash in between would lose them).
+    expect(inside.map((queues) => [...queues].sort())).toEqual([['default', 'mail']]);
     expect((await jobRows(application)).map((row) => row.queue).sort()).toEqual(['default', 'mail']);
 
     await sql`delete from jobs`.execute(connections.get());
@@ -185,6 +186,10 @@ describe('queued listeners (E86)', () => {
       static readonly queue = { aftercommit: false };
       handle(): void {}
     }
+    class StillAfterCommit {
+      static readonly queue = { afterCommit: true };
+      handle(): void {}
+    }
     const fails = (listeners: ModuleDefinition['listeners']) => app({ listeners });
     await expect(fails([listen(JobQueued, Listens as never)])).rejects.toThrow(
       /Listens is a queued listener \(static queue\) of JobQueued, which cannot be queued: give JobQueued static event = 'module.what-happened'.*Job events \(JobQueued …\) never can/,
@@ -193,6 +198,9 @@ describe('queued listeners (E86)', () => {
     await expect(fails([listen(OrderShipped, Listens as never), listen(Twin, Listens as never)])).rejects.toThrow('Two events are named "shop.order-shipped": OrderShipped and Twin.');
     await expect(fails([listen(OrderShipped, BadTries as never)])).rejects.toThrow(QueueSetupError);
     await expect(fails([listen(OrderShipped, Typo as never)])).rejects.toThrow('Typo (static queue): unknown setting "aftercommit"');
+    await expect(fails([listen(OrderShipped, StillAfterCommit as never)])).rejects.toThrow(
+      'StillAfterCommit (static queue): afterCommit is always on: queued listeners join the transaction (E107/E109) — remove it.',
+    );
   });
 });
 
@@ -205,4 +213,10 @@ export function typeLevelTests(): void {
   }
   // @ts-expect-error — job events cannot be queued (no static event/schema): a queued listener of one would loop.
   listen(JobQueued, OnJobQueued);
+  class WithAfterCommit {
+    static readonly queue = { queue: 'mail', afterCommit: false };
+    handle(_payload: EventPayload<typeof OrderShipped>): void {}
+  }
+  // @ts-expect-error — afterCommit is gone (E109): queued listeners always join the transaction.
+  listen(OrderShipped, WithAfterCommit);
 }

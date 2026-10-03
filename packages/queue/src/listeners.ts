@@ -1,5 +1,4 @@
 import {
-  afterCommit,
   type EventClass,
   type EventRegistry,
   isQueuedListener,
@@ -92,14 +91,14 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
   const label = `${listener.name} (static queue)`;
   if (typeof listener.prototype?.handle !== 'function') throw new QueueSetupError(`${label} needs a handle(payload) method.`);
   for (const key of Object.keys(options)) {
-    if (!['queue', 'connection', 'delay', 'afterCommit', 'tries', 'backoff'].includes(key)) {
-      throw new QueueSetupError(`${label}: unknown setting "${key}" — static queue takes queue, connection, delay, afterCommit, tries and backoff.`);
+    if (key === 'afterCommit') throw new QueueSetupError(`${label}: afterCommit is always on: queued listeners join the transaction (E107/E109) — remove it.`);
+    if (!['queue', 'connection', 'delay', 'tries', 'backoff'].includes(key)) {
+      throw new QueueSetupError(`${label}: unknown setting "${key}" — static queue takes queue, connection, delay, tries and backoff.`);
     }
   }
   for (const key of ['queue', 'connection'] as const) {
     if (options[key] !== undefined && (typeof options[key] !== 'string' || options[key] === '')) throw new QueueSetupError(`${label}: ${key} must be a name, not ${JSON.stringify(options[key])}.`);
   }
-  if (options.afterCommit !== undefined && typeof options.afterCommit !== 'boolean') throw new QueueSetupError(`${label}: afterCommit is true or false.`);
   const { tries, backoff } = options;
   if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(`${label}: tries must be a whole number ≥ 1, not ${String(tries)}.`);
   const delays = backoff === undefined ? [] : typeof backoff === 'number' ? [backoff] : backoff;
@@ -138,8 +137,9 @@ export class CallQueuedListener {
 
 /**
  * Queues queued listeners (E86) — the app's `ListenerQueue`: the event checked against its schema now (a mismatch is the
- * dispatcher's error), as JSON, in a `bespoke.listener` job on the listener's queue — once the transaction around the
- * dispatch commits (`afterCommit`, the default), else at once (a database queue then writes into the transaction).
+ * dispatcher's error), as JSON, in a `bespoke.listener` job on the listener's queue — dispatched like any job (E107,
+ * E109): inside a transaction it exists only with the commit (a database queue writes it into the transaction itself,
+ * other connections hold it until the commit), never after a rollback.
  */
 export class QueueListenerDispatcher implements ListenerQueue {
   readonly #queue: () => Queue;
@@ -160,17 +160,14 @@ export class QueueListenerDispatcher implements ListenerQueue {
       throw new JobPayloadError(`${queueable.name} cannot be queued for ${listener.name}: its static schema rejects the event — ${describeIssues(result.issues)}`, result.issues);
     }
     const payload = toJson(CallQueuedListener, result.value);
-    const { queue, connection, delay, afterCommit: waitForCommit = true, tries, backoff } = listener.queue;
+    const { queue, connection, delay, tries, backoff } = listener.queue;
     const options = {
       ...(queue === undefined ? {} : { queue }),
       ...(connection === undefined ? {} : { connection }),
       ...(delay === undefined ? {} : { delay }),
       [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: typeof backoff === 'number' ? [backoff] : backoff }) },
     };
-    const dispatch = async () => {
-      await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.name, payload } as never, options);
-    };
-    if (waitForCommit) await afterCommit(dispatch);
-    else await dispatch();
+    // The normal dispatch path (E109): in a transaction, part of it — atomic with a database queue.
+    await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.name, payload } as never, options);
   }
 }

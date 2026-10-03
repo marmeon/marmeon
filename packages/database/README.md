@@ -99,7 +99,7 @@ is the same thing on the repository's connection. `{ connection: 'reporting' }` 
 | `queue.dispatch()` on the `database` queue (same connection) | a row in the transaction: visible with the commit, gone with a rollback — deliberately (E85) |
 | `queue.dispatch()` on `sync` or any other queue         | held until the outermost commit, dropped on a rollback; a `sync` job then runs outside the transaction |
 | in-process event listeners                              | run inside the transaction                                       |
-| queued listeners (`static queue`, E86)                  | queued after the outermost commit (`afterCommit`, the default), dropped on a rollback; `afterCommit: false` dispatches at once — a `database` queue then writes the job into the transaction |
+| queued listeners (`static queue`, E86, E109)            | dispatched like `queue.dispatch()` — on the `database` queue a row in the transaction, elsewhere held until the commit; there is no `afterCommit` option |
 | `mailer.queue(mail)`                                    | like `queue.dispatch()`: the composed, encrypted mail is a job (`bespoke.mail`) |
 | the database cache store — rate limits, locks — and the database session store | **never join** (E108): their own connection, see below |
 | `afterResponse.defer()`, terminate hooks                | run after the response, outside of any transaction               |

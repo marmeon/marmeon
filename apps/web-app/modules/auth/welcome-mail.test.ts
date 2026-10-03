@@ -49,7 +49,7 @@ describe('the welcome mail', () => {
     await register(app).assertRedirect('/users/me');
     await app.assertDatabaseHas('jobs', { queue: 'default', attempts: 0 });
     const db = app.make(Connections).get();
-    const { rows } = await sql<{ payload: string }>`select payload from jobs order by id`.execute(db);
+    const { rows } = await sql<{ payload: string }>`select payload from jobs where queue = 'default' order by id`.execute(db);
     expect(JSON.parse(rows[0]!.payload)).toMatchObject({ job: 'auth.send-welcome-mail', data: { userId: expect.any(Number) }, tries: 5, backoff: [10, 60, 300] });
 
     const result = await app.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
@@ -74,7 +74,7 @@ describe('the welcome mail', () => {
     const ok = await createTestApp(application, { database: 'refresh', queue: 'real' });
     await register(ok).assertRedirect('/users/me');
     await ok.assertDatabaseHas('users', { email: 'kj@example.com' });
-    // The welcome and member-stats jobs (in the transaction) and — after the commit — the verification listener.
+    // The welcome and member-stats jobs and the verification listener — all three in the transaction (E109).
     await ok.assertDatabaseCount('jobs', 3);
     await ok.assertDatabaseHas('jobs', { queue: 'mail' });
     ok.mail.assertNotQueued(VerifyEmailMail); // composed by the worker

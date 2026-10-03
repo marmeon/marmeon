@@ -87,7 +87,7 @@ describe('the verification mail through the queue', () => {
     expect(transport.sent).toEqual([]);
   });
 
-  it('is never queued for a registration that is rolled back (afterCommit) — and a rolled-back dispatch leaves no job', async () => {
+  it('is never queued for a registration that is rolled back (E109: part of the transaction) — and a rolled-back dispatch leaves no job', async () => {
     const app = await realApp(new TestTransport());
     const kj = await app.factory(UserFactory).state('unverified').create();
     await expect(

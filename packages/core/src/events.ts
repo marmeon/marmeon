@@ -26,14 +26,18 @@ export interface Listener<TEvent> {
 export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | ((event: TEvent) => void | Promise<void>);
 
 /**
- * Where and how a queued listener runs (E86) — its class's `static queue`:
+ * Where and how a queued listener runs (E86, E109) — its class's `static queue`:
  *
  * ```ts
  * export class SendEmailVerification {
- *   static readonly queue = { queue: 'mail' };          // after the commit (the default), on the `mail` queue
+ *   static readonly queue = { queue: 'mail' };          // on the `mail` queue
  *   async handle(payload: EventPayload<typeof Registered>) { … }
  * }
  * ```
+ *
+ * Its job is dispatched like any other (E107, E109): inside `connections.transaction()` it exists only once the
+ * transaction commits and is gone after a rollback — a `database` queue writes it into the transaction itself (atomic
+ * with the data), every other connection holds it until the commit. There is no `afterCommit` switch: it is always on.
  */
 export interface QueuedListenerOptions {
   /** The queue (default: the connection's default queue). */
@@ -42,12 +46,6 @@ export interface QueuedListenerOptions {
   readonly connection?: string;
   /** Run no earlier than this — seconds, or a duration. */
   readonly delay?: number | Duration;
-  /**
-   * Queue it only once the transaction around the dispatch committed — never for data that is rolled back (default
-   * `true`). Outside a transaction it is queued at once. `false`: a database queue writes it into the transaction
-   * itself; other connections hold it until the commit anyway (E85, E107).
-   */
-  readonly afterCommit?: boolean;
   /** Attempts in all (default 1: no retry). */
   readonly tries?: number;
   /** Seconds before the next attempt — one value, or one per retry (the last repeats). */
@@ -104,7 +102,9 @@ type HandleParameter<L> = L extends new (...args: any[]) => { readonly handle: (
 /** What `listen(event, listener)` checks — a failed check is a type whose name says what is wrong (message-as-type). */
 type ListenerFor<E extends EventClass, L> = L extends { readonly queue: unknown } ? QueuedListenerFor<E, L> : ListenerLike<InstanceType<E>>;
 
-type QueuedListenerFor<E extends EventClass, L> = E extends QueueableEvent
+type QueuedListenerFor<E extends EventClass, L> = L extends { readonly queue: { readonly afterCommit: unknown } }
+  ? { readonly queue: { readonly afterCommit: 'afterCommit is always on: queued listeners join the transaction (E107/E109) — remove it' } }
+  : E extends QueueableEvent
   ? IsJson<EventPayload<E>> extends false
     ? { readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E> }
     : InstanceType<E> extends SchemaInput<E['schema']>
@@ -203,12 +203,12 @@ export interface EventDispatcherOptions {
 
 /**
  * Dispatches events: listeners run in registration order, each awaited. A queued listener (`static queue`, E86) is
- * queued at its place in that order — by default once the transaction around the dispatch commits — and runs later in
- * a worker.
+ * queued at its place in that order — like any dispatch, part of the transaction around it (E107, E109) — and runs
+ * later in a worker.
  *
  * An error stops the dispatch and propagates to the caller — in a request, the exception handler. The listeners after
  * the failing one do not run and are not queued; inside `connections.transaction()` the rollback drops the queued ones
- * before it as well (they wait for the commit). For all or nothing, dispatch inside a transaction.
+ * before it as well. For all or nothing, dispatch inside a transaction.
  *
  * Created per resolution and bound to the container that asked for it, so in a
  * request, listeners are built from the request scope and may use scoped services.

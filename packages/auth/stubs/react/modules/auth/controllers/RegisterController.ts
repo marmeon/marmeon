@@ -52,7 +52,7 @@ export class RegisterController extends Controller {
     const { name, email } = ctx.body;
     const hash = await this.#hasher.make(ctx.body.password);
     // One transaction (E107): the account and whatever the Registered listeners write join it on their own. A listener
-    // that fails leaves no account behind; mails wait for the commit (afterCommit in the listener).
+    // that fails leaves no account behind; the verification mail's listener is queued in it (E109).
     const user = await this.#connections.transaction(async () => {
       // The language the account was made in: its mails (the verification link, first) are in it.
       const user = await this.#users.register({ name, email, password: hash, locale: this.#translator.locale });
