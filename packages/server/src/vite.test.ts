@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { Redactor } from '@bespokecore/core';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -59,6 +60,52 @@ describe('createViteDevRenderer', () => {
       const html = await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} });
       expect(html).toContain('demo/Home: /modules/demo/views/Home.ts');
       expect(html).toContain('<script type="module" src="/bootstrap/client.ts"></script>');
+    } finally {
+      await vite.close();
+    }
+  });
+
+  it('shows a server-rendering error of a view in Vite\'s overlay — at the line of the view that threw (E119)', async () => {
+    const root = app();
+    // Types before the throw: what Vite runs has fewer lines than the source — only the source mapping finds the line.
+    const view = [
+      'interface Props {',
+      '  title: string;',
+      '  subtitle?: string;',
+      '}',
+      'type Shown = Props & { shown: true };',
+      '',
+      'export function renderView(props: Props): string {',
+      '  const shown = { ...props, shown: true } as Shown;',
+      "  if (shown.title === 'broken') throw new Error('The view failed on purpose');",
+      '  return shown.title;',
+      '}',
+    ];
+    writeFileSync(join(root, 'modules/demo/views/Broken.ts'), view.join('\n'));
+    writeFileSync(
+      join(root, 'bootstrap/ssr.ts'),
+      "import { renderView } from '../modules/demo/views/Broken.ts';\nexport const render = async () => ({ html: renderView({ title: 'broken' }) });\n",
+    );
+    const { vite, renderer } = await start(root);
+    const sent: { type: string; err: { message: string; loc?: { file: string; line: number; column: number }; frame?: string } }[] = [];
+    const hot = vite.environments.client!.hot;
+    hot.send = ((payload: (typeof sent)[number]) => void sent.push(payload)) as typeof hot.send;
+    try {
+      const error = await renderer
+        .render({ component: 'demo/Broken', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} })
+        .then(() => undefined, (failure: unknown) => failure);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('The view failed on purpose');
+
+      const markup = await renderer.failed!(error, { component: 'demo/Broken', solutions: [{ title: 'Fix the view', text: 'It throws.' }], redactor: new Redactor() });
+      const line = view.findIndex((text) => text.includes('throw new Error')) + 1;
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ type: 'error', err: { loc: { file: join(realpathSync(root), 'modules/demo/views/Broken.ts'), line } } });
+      expect(sent[0]!.err.frame).toContain(`${line} |   if (shown.title === 'broken') throw new Error('The view failed on purpose');`);
+      expect(sent[0]!.err.message).toContain('Fix the view: It throws.');
+      // The failed document brings the same error for its own tab (Vite buffers only while no tab is connected).
+      expect(markup).toMatch(/^<script type="module">import\('\/@vite\/client'\)/);
+      expect(markup).toContain(`"line":${line}`);
     } finally {
       await vite.close();
     }

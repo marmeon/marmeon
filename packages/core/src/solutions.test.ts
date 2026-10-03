@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest';
+import { ConfigError, resolveConfig, defineConfig } from './config/config.ts';
+import { Container, ContainerError } from './container.ts';
+import { coreSolutions } from './core-solutions.ts';
+import { InjectionError } from './injection/analyze.ts';
+import { defineSolutions, ErrorSolutions } from './solutions.ts';
+import { token } from './token.ts';
+import * as v from 'valibot';
+
+interface Mailer {
+  send(): void;
+}
+const Mailer = token<Mailer>('Mailer');
+class WelcomeService {
+  static inject = [Mailer] as const;
+  constructor(_mailer: Mailer) {}
+}
+class Money {
+  constructor(_amount: number) {}
+}
+
+const solutions = new ErrorSolutions(coreSolutions);
+const thrown = (fn: () => unknown): unknown => {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('expected an error');
+};
+
+describe('the core solutions (E130)', () => {
+  it('a binding that is missing: bind it in a provider', async () => {
+    const [solution] = await solutions.find(thrown(() => new Container().make(WelcomeService)));
+    expect(solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'bespoke discover', docs: 'packages/core/README.md#the-containers-errors' });
+    expect(solution?.text).toContain('(needed by WelcomeService)');
+  });
+
+  it('a scoped service outside a scope, and in a singleton', async () => {
+    class Scoped {}
+    class Shared {
+      static inject = [Scoped] as const;
+      constructor(_scoped: Scoped) {}
+    }
+    const outside = await solutions.find(thrown(() => new Container().scoped(Scoped).make(Scoped)));
+    expect(outside[0]?.title).toBe('Resolve Scoped inside a scope');
+    const captured = await solutions.find(thrown(() => new Container().scoped(Scoped).singleton(Shared).make(Shared)));
+    expect(captured[0]?.title).toBe('Do not resolve the scoped Scoped from a singleton');
+  });
+
+  it('a class without an injection list — with the transform’s reason', async () => {
+    const [solution] = await solutions.find(thrown(() => new Container().make(Money)));
+    expect(solution?.title).toBe('Inject a class or a token');
+    expect(solution?.text).toMatch(/only classes and tokens can be injected, not "number".*inject the config object/);
+  });
+
+  it('a circular dependency', async () => {
+    class A {
+      static inject: unknown[] = [];
+      constructor(_b: unknown) {}
+    }
+    class B {
+      static inject = [A] as const;
+      constructor(_a: A) {}
+    }
+    A.inject = [B];
+    const [solution] = await solutions.find(thrown(() => new Container().make(A)));
+    expect(solution).toMatchObject({ title: 'Break the circular dependency' });
+    expect(solution?.text).toMatch(/^A → B → A:/);
+  });
+
+  it('an InjectionError (package:build)', async () => {
+    const [solution] = await solutions.find(new InjectionError('Cannot inject x.ts:1 — A, parameter "m": "Mailer" is imported with "import type", so it does not exist at runtime.'));
+    expect(solution?.title).toBe('Import the token as a value');
+  });
+
+  it('invalid configuration: the variables to set', async () => {
+    const Config = defineConfig('mail', { env: v.object({ MAIL_HOST: v.string(), MAIL_PORT: v.string() }), resolve: (env) => env });
+    const error = await resolveConfig([Config], {}).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(ConfigError);
+    const [solution] = await solutions.find(error);
+    expect(solution).toMatchObject({ title: 'Set MAIL_HOST, MAIL_PORT in .env', docs: 'packages/core/README.md#configuration' });
+  });
+});
+
+describe('ErrorSolutions', () => {
+  it('looks through causes, keeps each title once, and leaves out a solution that fails', async () => {
+    class PaymentError extends Error {}
+    const registry = new ErrorSolutions(
+      defineSolutions([
+        { for: PaymentError, solve: () => ({ title: 'Check the payment provider', text: 'It is down.' }) },
+        { for: PaymentError, solve: () => ({ title: 'Check the payment provider', text: 'Twice.' }) },
+        {
+          for: PaymentError,
+          solve: () => {
+            throw new Error('lookup failed');
+          },
+        },
+        { for: Error, when: (e) => e.message === 'never', solve: () => ({ title: 'Never', text: '' }) },
+      ]),
+    );
+    const found = await registry.find(new Error('Checkout failed', { cause: new PaymentError('declined') }));
+    expect(found).toEqual([{ title: 'Check the payment provider', text: 'It is down.' }]);
+  });
+
+  it('types each entry’s error by its class', () => {
+    defineSolutions([
+      { for: ContainerError, when: (e) => e.reason === 'unbound', solve: (e) => ({ title: e.key ?? '', text: '' }) },
+      { for: ConfigError, solve: (e) => ({ title: e.message, text: '' }) },
+      // @ts-expect-error — a ConfigError has no `reason`.
+      { for: ConfigError, when: (e) => e.reason === 'unbound', solve: () => undefined },
+      // @ts-expect-error — a solution needs a text.
+      { for: ContainerError, solve: () => ({ title: 'Only a title' }) },
+    ]);
+  });
+});

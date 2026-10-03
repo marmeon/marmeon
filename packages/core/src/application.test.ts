@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createApplication, type Application } from './application.ts';
+import { Clock, SystemClock, TestClock } from './clock.ts';
+import { Logger } from './logger.ts';
 import type { ServiceProvider } from './provider.ts';
 
 function recorder() {
@@ -53,5 +55,38 @@ describe('Application.shutdown', () => {
       shutdown(): void {}
     };
     await expect(createApplication({ root: import.meta.dirname, discover: false, env: {}, providers: [OnlyShutdown] })).resolves.toBeDefined();
+  });
+});
+
+// E128: the W6.6 case — a defaulted Clock is never injected; in development the app says so in its log.
+class DueDates {
+  readonly clock: Clock;
+  constructor(clock: Clock = new SystemClock()) {
+    this.clock = clock;
+  }
+}
+
+describe('injection warnings in the log (E128)', () => {
+  const boot = async (nodeEnv: string) => {
+    const warnings: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (message) => void warnings.push(message), error() {}, child: () => logger };
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: nodeEnv }, override: (container) => container.instance(Logger, logger) });
+    app.container.instance(Clock, new TestClock());
+    return { app, warnings };
+  };
+
+  it('development: once per class, when the container first builds it — the default is used, no error', async () => {
+    const { app, warnings } = await boot('development');
+    expect(app.container.make(DueDates).clock).toBeInstanceOf(SystemClock); // not the bound TestClock: what the warning is about
+    app.container.make(DueDates);
+    expect(warnings).toEqual([expect.stringMatching(/^Injection: DueDates \(.*application\.test\.ts:\d+\): the parameter "clock: Clock = new SystemClock\(\)" is defaulted/)]);
+    expect(app.container.warnings).toHaveLength(1);
+  });
+
+  it('elsewhere: not logged — still listed for the error page', async () => {
+    const { app, warnings } = await boot('test');
+    app.container.make(DueDates);
+    expect(warnings).toEqual([]);
+    expect(app.container.warnings).toHaveLength(1);
   });
 });

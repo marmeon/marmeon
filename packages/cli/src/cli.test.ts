@@ -47,6 +47,15 @@ describe('bespoke (in the web app)', () => {
     expect(stderr).not.toMatch(/triggerUncaughtException|node:internal/);
   });
 
+  it('says how to fix an error the app cannot start with — the solutions as text (E130)', () => {
+    const { code, stdout } = bespoke(webApp, ['route:list'], { APP_KEY: '' });
+    expect(code).toBe(1);
+    // The installed package's solution (encryption) first, then the core's.
+    expect(stdout).toContain('How to fix it: Generate an application key');
+    expect(stdout).toContain('  $ bespoke key:generate');
+    expect(stdout).toContain('How to fix it: Set APP_KEY in .env');
+  });
+
   it('shows the database connection (db:show, added by @bespokecore/database)', () => {
     const { code, stdout } = bespoke(webApp, ['db:show'], { DB_DATABASE: ':memory:' });
     expect(code).toBe(0);

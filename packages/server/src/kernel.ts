@@ -3,11 +3,12 @@ import { join, relative } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
-import { Logger, outsideTransaction, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
+import { currentRequest, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
 import { channels, messageBase, trace, type HttpRequestMessage } from '@bespokecore/core/diagnostics';
 import {
   AfterResponse,
   AssetVersion,
+  ERROR_PAGE,
   ExceptionHandler,
   HttpError,
   IncomingRequest,
@@ -49,6 +50,7 @@ import { Hono } from 'hono';
 import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
+import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { ServerConfig } from './provider.ts';
 import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
@@ -59,7 +61,11 @@ export interface KernelOptions {
   renderer?: PageRenderer;
   /** Built client output (production). Only its `/assets/*` files are served. */
   clientDir?: string;
-  /** Show exception details on error pages and in JSON errors (development). */
+  /**
+   * Development error handling (E119): the development error page — code, request, route, queries, log, solutions — for
+   * page requests that fail with a 5xx, and exception details plus a `solution` in JSON errors. Default:
+   * `ServerConfig.debug` (`NODE_ENV=development`, never "not production", E115); off without a `ServerConfig`.
+   */
   debug?: boolean;
   /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `MAX_BODY_SIZE`), else 8 MiB. */
   maxBodySize?: number;
@@ -124,7 +130,7 @@ export function createHttpKernel(
     container = application.container,
     renderer,
     clientDir,
-    debug = false,
+    debug = container.has(ServerConfig) ? container.make(ServerConfig).debug : false,
     maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
@@ -138,11 +144,16 @@ export function createHttpKernel(
   const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   // Development only (E129): its provider binds it when NODE_ENV=development.
   const timing = container.has(ServerTiming) ? container.make(ServerTiming) : undefined;
+  // Development only (E119): the error page's queries and log of each request — bound by the provider in debug mode.
+  const recorder = debug && container.has(DevRequestRecorder) ? container.make(DevRequestRecorder) : undefined;
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
   const matched = new WeakMap<Request, RouteDefinition>();
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
+  /** Development only: each request's state (its parsed body) and route parameters, for the error page. */
+  const states = new WeakMap<Request, RequestState>();
+  const parameters = new WeakMap<Request, Record<string, string>>();
 
   /**
    * An island, resolved in-process while its page renders (E49): a GET of its URL with the page request's cookies and
@@ -242,7 +253,12 @@ export function createHttpKernel(
     try {
       // In the request's language, when a translator is bound (@bespokecore/i18n) — the error page, its title, validation messages.
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
-      return await toResponse(handler.render(error, request, { debug, translator }), { request }, scope);
+      const result = handler.render(error, request, { debug, translator });
+      if (debug) {
+        const developed = await developmentError(error, result, failed, request);
+        if (developed) return developed;
+      }
+      return await toResponse(result, { request }, scope);
     } catch (failure) {
       // Building the error page failed too — most likely a shared prop (the database is down). Once more without
       // the request's scope, so with the error's own props only; server rendering failing is no reason (the browser
@@ -253,6 +269,61 @@ export function createHttpKernel(
       } catch {
         return new Response('Server Error', { status: 500 });
       }
+    }
+  };
+
+  /**
+   * Development only (E119): what replaces the handler's answer to a 5xx — for a page request (a document or a visit) whose
+   * answer is the error page, the development error page, rendered without the app's views or SSR (so also when those are
+   * what broke); for a JSON error with exception details, the same JSON plus the first `solution`. Undefined otherwise —
+   * an app's own handler answer, a 4xx, an action or an upload keep theirs. The page's code is loaded here, never in production.
+   */
+  const developmentError = async (error: unknown, result: unknown, failed: Request, request: Request): Promise<Response | undefined> => {
+    try {
+      const solutions = application.container.has(ErrorSolutions) ? application.container.make(ErrorSolutions) : undefined;
+      const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
+      if (result instanceof Response) {
+        if (result.status < 500 || !result.headers.get('content-type')?.includes('json')) return undefined;
+        const [solution] = (await solutions?.find(error, { app: application })) ?? [];
+        if (!solution) return undefined;
+        const body = (await result.clone().json()) as Record<string, unknown>;
+        const shown = { title: redactor.text(solution.title), text: redactor.text(solution.text), ...(solution.command ? { command: redactor.text(solution.command) } : {}), ...(solution.docs ? { docs: solution.docs } : {}) };
+        return Response.json({ ...body, solution: shown }, { status: result.status, headers: result.headers });
+      }
+      if (!isViewResult(result) || result.component !== ERROR_PAGE || result.status < 500 || isActionRequest(request) || request.headers.has(UPLOAD_HEADER)) return undefined;
+      const info = currentRequest();
+      const route = matched.get(failed);
+      const state = states.get(failed);
+      const { errorPageResponse } = await import('./error-page/index.ts');
+      return await errorPageResponse(
+        {
+          error,
+          status: result.status,
+          request: failed,
+          requestId: info?.requestId,
+          app: application,
+          redactor,
+          solutions,
+          ...(route
+            ? {
+                route: {
+                  name: route.routeName,
+                  path: route.path,
+                  methods: route.methods,
+                  controller: controllerOf(route),
+                  middleware: router.middlewareFor(route).map((middleware) => (typeof middleware === 'function' && middleware.name) || '(anonymous)'),
+                  params: parameters.get(failed) ?? {},
+                },
+              }
+            : {}),
+          ...(state ? { body: () => state.input() } : {}),
+          recording: info ? recorder?.recording(info) : undefined,
+        },
+        result.headers,
+      );
+    } catch (failure) {
+      logger.error('Rendering the development error page failed', { exception: failure instanceof Error ? (failure.stack ?? failure.message) : String(failure) });
+      return undefined;
     }
   };
 
@@ -293,6 +364,7 @@ export function createHttpKernel(
     const started = performance.now();
     const info: RequestInfo = { requestId };
     timing?.begin(info);
+    recorder?.begin(info);
 
     await runWithRequest(info, async () => {
       // Traced only while something listens (E118): otherwise no message is built at all.
@@ -352,6 +424,7 @@ export function createHttpKernel(
     const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), trustedProxies);
     addresses.set(request, ip);
     const state = createRequestState(request, { maxBodySize, ip });
+    if (debug) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     scope.instance(IncomingRequest, request); // which tab sent it (`x-bespoke-connection`), for the live Broadcaster
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
@@ -454,6 +527,7 @@ export function createHttpKernel(
   for (const route of router.routes) {
     app.on([...route.methods], route.path, (c) => {
       matched.set(c.req.raw, route);
+      if (debug) parameters.set(c.req.raw, c.req.param());
       return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
         router.dispatch(
           route,
@@ -569,7 +643,8 @@ export async function startServer({
 
   if (mode === 'development') {
     const { vite, renderer } = await createViteDevRenderer({ root, ssrEntry, httpServer: server });
-    kernel = createHttpKernel(app, { renderer, debug: true });
+    // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development` (E115), not this mode: Vite on a staging box shows no stack.
+    kernel = createHttpKernel(app, { renderer });
     const handle = getRequestListener(kernel.fetch);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));

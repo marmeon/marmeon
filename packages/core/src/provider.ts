@@ -1,6 +1,7 @@
 import type { Application } from './application.ts';
 import type { ConfigDefinition } from './config/config.ts';
 import type { Container } from './container.ts';
+import type { SolutionDefinition } from './solutions.ts';
 
 /**
  * Registers and boots a module's or package's services — Laravel's ServiceProvider.
@@ -20,8 +21,10 @@ export interface ServiceProvider {
 /**
  * A provider class. Packages declare the configuration they need as
  * `static config = [LogConfig]`; it is validated with the app's own config,
- * before any provider registers.
+ * before any provider registers. `static solutions` lists the solutions for the package's errors that the development
+ * error page shows (`defineSolutions`, E130).
  */
 export type ServiceProviderClass = (new (...args: any[]) => ServiceProvider) & {
   readonly config?: readonly ConfigDefinition<any>[];
+  readonly solutions?: readonly SolutionDefinition<any>[];
 };

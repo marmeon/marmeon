@@ -17,9 +17,55 @@ interface Binding {
 }
 
 const UNRESOLVABLE = Symbol.for('bespokecore.injection.unresolvable');
+const WARNINGS = Symbol.for('bespokecore.injection.warnings');
+
+/** Why the container could not resolve something — for messages and the solutions of the error page (E130). */
+export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular';
+
+export interface ContainerErrorDetails {
+  readonly reason: ContainerErrorReason;
+  /** The binding or class that failed (`Mailer`, `ShowUserController`). */
+  readonly key: string;
+  /** The chain that asked for it, outermost first (`ShowUserController → UserService`). */
+  readonly path: readonly string[];
+  /** For `no-injection-list`: why the injection transform could not derive the list, if it said. */
+  readonly injection?: string;
+}
 
 export class ContainerError extends Error {
   override name = 'ContainerError';
+  /** Why it failed — unset for errors built by hand. */
+  readonly reason: ContainerErrorReason | undefined;
+  /** The binding or class that failed. */
+  readonly key: string | undefined;
+  /** Who asked for it, outermost first. */
+  readonly path: readonly string[];
+  /** For `no-injection-list`: the injection transform's reason. */
+  readonly injection: string | undefined;
+
+  constructor(message: string, details?: ContainerErrorDetails) {
+    super(message);
+    this.reason = details?.reason;
+    this.key = details?.key;
+    this.path = details?.path ?? [];
+    this.injection = details?.injection;
+  }
+
+  /** `ShowUserController → UserService`, or undefined when it was asked for directly. */
+  get neededBy(): string | undefined {
+    return this.path.length > 0 ? this.path.join(' → ') : undefined;
+  }
+}
+
+/**
+ * A class the container built whose constructor has a defaulted or optional parameter of an injectable type (E128): the
+ * container never injects it — the default applies (or `undefined`). Reported once per class (`Container.onWarning`).
+ */
+export interface InjectionWarning {
+  /** The class's name. */
+  readonly className: string;
+  /** What the injection transform found, with file, line and parameter. */
+  readonly message: string;
 }
 
 /**
@@ -37,6 +83,9 @@ export class Container implements Resolver {
   readonly #parent: Container | undefined;
   readonly #bindings = new Map<unknown, Binding>();
   readonly #instances = new Map<unknown, unknown>();
+  /** Root only: the classes whose injection warnings were reported, and who hears about them. */
+  readonly #warned = new Map<Concrete, InjectionWarning[]>();
+  readonly #warningListeners = new Set<(warning: InjectionWarning) => void>();
 
   constructor(parent?: Container) {
     this.#parent = parent;
@@ -49,6 +98,27 @@ export class Container implements Resolver {
 
   get isScope(): boolean {
     return this.#parent !== undefined;
+  }
+
+  /**
+   * Hears about the injection warnings (E128) of classes this container — or a scope of it — builds: a defaulted or
+   * optional constructor parameter of an injectable type, which is never injected. Once per class; returns `off`.
+   */
+  onWarning(listener: (warning: InjectionWarning) => void): () => void {
+    const root = this.#root();
+    root.#warningListeners.add(listener);
+    return () => root.#warningListeners.delete(listener);
+  }
+
+  /** The injection warnings (E128) of every class built so far — what the development error page lists. */
+  get warnings(): readonly InjectionWarning[] {
+    return [...this.#root().#warned.values()].flat();
+  }
+
+  #root(): Container {
+    let container: Container = this;
+    while (container.#parent) container = container.#parent;
+    return container;
   }
 
   // -- Registration ----------------------------------------------------------
@@ -98,14 +168,22 @@ export class Container implements Resolver {
   #resolve(key: Key, path: readonly Key[]): unknown {
     const id = idOf(key);
     if (path.some((seen) => idOf(seen) === id)) {
-      throw new ContainerError(`Circular dependency: ${[...path, key].map(describeKey).join(' → ')}.`);
+      throw new ContainerError(`Circular dependency: ${[...path, key].map(describeKey).join(' → ')}.`, {
+        reason: 'circular',
+        key: describeKey(key),
+        path: path.map(describeKey),
+      });
     }
     const chain = [...path, key];
     const binding = this.#findBinding(id);
 
     if (!binding) {
       if (typeof key === 'function') return this.#build(key as Concrete, chain);
-      throw new ContainerError(`No binding for [${describeKey(key)}]${neededBy(path)}. Bind it in a service provider.`);
+      throw new ContainerError(`No binding for [${describeKey(key)}]${neededBy(path)}. Bind it in a service provider.`, {
+        reason: 'unbound',
+        key: describeKey(key),
+        path: path.map(describeKey),
+      });
     }
 
     switch (binding.lifetime) {
@@ -127,6 +205,7 @@ export class Container implements Resolver {
           throw new ContainerError(
             `[${describeKey(key)}] is scoped and can only be resolved inside a scope (e.g. a request)${neededBy(path)}.` +
               (path.length ? ' A singleton must not depend on a scoped service.' : ''),
+            { reason: 'scoped', key: describeKey(key), path: path.map(describeKey) },
           );
         }
         if (!this.#instances.has(id)) this.#instances.set(id, binding.create(this, chain));
@@ -146,9 +225,22 @@ export class Container implements Resolver {
           (reason ??
             'Lists are generated from the constructor types by the BespokeCore loader (app code), ' +
               '"bespoke package:build" or "bespoke discover" (packages).'),
+        { reason: 'no-injection-list', key: describeKey(concrete), path: chain.slice(0, -1).map(describeKey), ...(reason ? { injection: reason } : {}) },
       );
     }
+    // Inherited with the constructor — unless the class has a list of its own (its own constructor, analyzed by itself).
+    const warnings = Object.hasOwn(concrete, WARNINGS) || !Object.hasOwn(concrete, 'inject') ? (concrete as unknown as Record<symbol, readonly string[] | undefined>)[WARNINGS] : undefined;
+    if (warnings) this.#warn(concrete, warnings);
     return new concrete(...(inject ?? []).map((dependency) => this.#resolve(dependency, chain)));
+  }
+
+  /** Reports a built class's injection warnings (E128) — once per class, on the root. */
+  #warn(concrete: Concrete, messages: readonly string[]): void {
+    const root = this.#root();
+    if (root.#warned.has(concrete)) return;
+    const warnings = messages.map((message) => ({ className: describeKey(concrete), message }));
+    root.#warned.set(concrete, warnings);
+    for (const warning of warnings) for (const listener of root.#warningListeners) listener(warning);
   }
 
   #register(key: Key, lifetime: Exclude<Lifetime, 'instance'>, target: Concrete | Factory<unknown>): this {

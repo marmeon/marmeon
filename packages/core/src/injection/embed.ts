@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseSync } from 'oxc-parser';
-import { analyzeInjections, classesOf, InjectionError, insertInjections, UNRESOLVABLE, type InjectionSite } from './analyze.ts';
+import { analyzeInjections, classesOf, InjectionError, insertInjections, UNRESOLVABLE, WARNINGS, type InjectionSite } from './analyze.ts';
 import { matchesBrowserSource } from './browser.ts';
 
 type Node = { type: string; start: number; [key: string]: any };
@@ -62,7 +62,10 @@ function alreadyEmbedded(classNode: Node, source: string): boolean {
 }
 
 function isInjectionField(member: Node, source: string): boolean {
-  return member.static && (member.key?.name === 'inject' || (member.computed && source.slice(member.key.start, member.key.end).includes(UNRESOLVABLE)));
+  if (!member.static) return false;
+  if (member.key?.name === 'inject') return true;
+  const key = member.computed ? source.slice(member.key.start, member.key.end) : '';
+  return key.includes(UNRESOLVABLE) || key.includes(WARNINGS);
 }
 
 /**
@@ -71,7 +74,7 @@ function isInjectionField(member: Node, source: string): boolean {
  * (`tsc -b` leaves up-to-date output untouched).
  */
 export function removeEmbeddedInjections(jsSource: string, jsFile: string): string {
-  if (!jsSource.includes('static inject') && !jsSource.includes(UNRESOLVABLE)) return jsSource;
+  if (!jsSource.includes('static inject') && !jsSource.includes(UNRESOLVABLE) && !jsSource.includes(WARNINGS)) return jsSource;
   const { program } = parseSync(jsFile, jsSource);
   const spans: [number, number][] = [];
   for (const { node } of classesOf(program)) {

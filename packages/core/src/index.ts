@@ -1,7 +1,10 @@
 // The application kernel: service container and constructor injection today; providers,
 // config and events follow in Wave 1 (see the roadmap). HTTP concerns live in @bespokecore/http.
 export { Container, ContainerError } from './container.ts';
-export type { Factory, Resolver } from './container.ts';
+export type { ContainerErrorDetails, ContainerErrorReason, Factory, InjectionWarning, Resolver } from './container.ts';
+export { defineSolutions, ErrorSolutions } from './solutions.ts';
+export type { Solution, SolutionContext, SolutionDefinition } from './solutions.ts';
+export { coreSolutions } from './core-solutions.ts';
 export { token } from './token.ts';
 export type { Concrete, Constructor, InjectCheck, Key, Resolve, Token } from './token.ts';
 export { analyzeInjections, injectConstructorDependencies, insertInjections, InjectionError } from './injection/analyze.ts';
@@ -49,7 +52,8 @@ export {
   TransactionFrame,
   transactionOf,
 } from './transaction-context.ts';
-export { describeError, redact, REDACTED_KEYS, redactText } from './redact.ts';
+export { describeError, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_KEYS, redactText, Redactor } from './redact.ts';
+export type { RedactableQuery } from './redact.ts';
 export { ConfigError, defineConfig, loadEnv, resolveConfig } from './config/config.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
 export type { InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';

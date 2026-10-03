@@ -6,6 +6,7 @@ import { DbTypesCommand } from './commands/db-types.ts';
 import { Factories } from './factories.ts';
 import { Seeding } from './seeders.ts';
 import { Migrator } from './migrations/migrator.ts';
+import { databaseSolutions } from './solutions.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
 declare module '@bespokecore/core' {
@@ -26,6 +27,8 @@ import { Connections, Database } from './connections.ts';
  */
 export class DatabaseServiceProvider implements ServiceProvider {
   static config = [DatabaseConfig];
+  /** A missing table → the pending migrations, on the development error page (E130). */
+  static solutions = databaseSolutions;
 
   register(container: Container): void {
     container.singleton(Connections, (c) => {

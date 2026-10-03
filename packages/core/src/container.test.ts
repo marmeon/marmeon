@@ -165,6 +165,78 @@ describe('Container — errors', () => {
   });
 });
 
+describe('Container — what its errors say about themselves (E130)', () => {
+  it('names the reason, the key and who asked for it', () => {
+    const unbound = catching(() => new Container().bind(Clock, FixedClock).make(WelcomeService));
+    expect(unbound).toMatchObject({ reason: 'unbound', key: 'Mailer', path: ['WelcomeService'], neededBy: 'WelcomeService' });
+
+    class Scoped {}
+    const scoped = catching(() => new Container().scoped(Scoped).make(Scoped));
+    expect(scoped).toMatchObject({ reason: 'scoped', key: 'Scoped', path: [], neededBy: undefined });
+
+    const listless = catching(() => new Container().make(Money));
+    expect(listless).toMatchObject({ reason: 'no-injection-list', key: 'Money' });
+    expect(listless.injection).toMatch(/only classes and tokens can be injected, not "number"/);
+
+    class A {
+      static inject: unknown[] = [];
+      constructor(_b: unknown) {}
+    }
+    class B {
+      static inject = [A] as const;
+      constructor(_a: A) {}
+    }
+    A.inject = [B];
+    expect(catching(() => new Container().make(A))).toMatchObject({ reason: 'circular', key: 'A', path: ['A', 'B'] });
+  });
+});
+
+// The W6.6 case (E128): a defaulted parameter is never injected — the transform marks the class, the container says so.
+class WallClock {
+  now() {
+    return 'wall';
+  }
+}
+class FakeWallClock extends WallClock {
+  override now() {
+    return 'fake';
+  }
+}
+class Reminder {
+  readonly clock: WallClock;
+  constructor(clock: WallClock = new WallClock()) {
+    this.clock = clock;
+  }
+}
+
+describe('Container — injection warnings (E128)', () => {
+  it('builds the class with its default, and reports the warning once per class — no error', () => {
+    const container = new Container().instance(WallClock, new FakeWallClock());
+    const heard: string[] = [];
+    const off = container.onWarning((warning) => heard.push(`${warning.className}: ${warning.message}`));
+
+    // The default wins over the binding: what the warning is about.
+    expect(container.make(Reminder).clock.now()).toBe('wall');
+    container.createScope().make(Reminder);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatch(/^Reminder: Reminder \(.*container\.test\.ts:\d+\): the parameter "clock: WallClock = new WallClock\(\)" is defaulted, so the container never injects WallClock/);
+    expect(container.warnings.map((warning) => warning.className)).toEqual(['Reminder']);
+
+    off();
+    expect(new Container().make(WallClock)).toBeInstanceOf(WallClock); // no warning for a class without one
+  });
+});
+
+function catching(fn: () => unknown): ContainerError {
+  try {
+    fn();
+  } catch (error) {
+    if (error instanceof ContainerError) return error;
+    throw error;
+  }
+  throw new Error('expected a ContainerError');
+}
+
 // ---------------------------------------------------------------------------
 // Type-level guarantees — checked by `tsc`, not at runtime.
 // ---------------------------------------------------------------------------

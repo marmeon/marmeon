@@ -1,4 +1,4 @@
-import { defineConfig, token, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, defineSolutions, token, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import * as v from 'valibot';
 
 /**
@@ -109,9 +109,29 @@ export function generateKey(): string {
   return `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
 }
 
+/**
+ * A missing or broken `APP_KEY` — at the start (the configuration) or in a package that needs it (E130): the command that
+ * writes one. Text only.
+ */
+export const encryptionSolutions = defineSolutions([
+  {
+    for: Error,
+    when: (e) => /\bAPP_KEY\b/.test(e.message),
+    solve: () => ({
+      title: 'Generate an application key',
+      text:
+        'APP_KEY encrypts the cookies and the session and signs URLs; without a valid one (base64: and 32 random bytes) the app ' +
+        'cannot start. "bespoke key:generate" writes a new one into .env. Never replace the key of a running production app ' +
+        'without moving the old one to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links would stop working.',
+      command: 'bespoke key:generate',
+    }),
+  },
+]);
+
 /** Registers the `Encrypter`, keyed by `APP_KEY`. Found by `bespoke discover`. */
 export class EncryptionServiceProvider implements ServiceProvider {
   static config = [EncryptionConfig];
+  static solutions = encryptionSolutions;
 
   register(container: Container): void {
     container.singleton(Encrypter, (c) => AesGcmEncrypter.fromConfig(c.make(EncryptionConfig)));

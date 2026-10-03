@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, ConfigError, Container, createApplication, type ApplicationOptions } from '@bespokecore/core';
+import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ServiceProviderClass } from '@bespokecore/core';
 import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
@@ -58,6 +58,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     if (loaded instanceof Error) {
       if (!listing) {
         output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}`);
+        await printSolutions(output, loaded, root);
         return 1;
       }
       output.warn(`${loaded.message.split('\n')[0]} — showing built-in commands only.`);
@@ -109,6 +110,26 @@ function printError(output: Output, error: unknown): void {
   }
   const frames = (error.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line) && !line.includes('node:internal'));
   output.error([`${error.name}: ${error.message}`, ...frames.slice(0, 5).map((frame) => `  ${frame.trim()}`)].join('\n'));
+}
+
+/**
+ * What to do about an error the app could not start with (E130) — the solutions of the core and of the installed packages
+ * (`APP_KEY` → `bespoke key:generate`), as text. Never fails itself.
+ */
+async function printSolutions(output: Output, error: Error, root: string): Promise<void> {
+  try {
+    const discovered = await loadDiscoveredPackages({ root }).catch(() => undefined);
+    const providers = (discovered?.providers ?? []) as ServiceProviderClass[];
+    const solutions = await new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]).find(error);
+    for (const solution of solutions) {
+      output.line();
+      output.info(`How to fix it: ${solution.title}`);
+      output.line(`  ${solution.text}`);
+      if (solution.command) output.line(`  $ ${solution.command}`);
+    }
+  } catch {
+    // The error itself was printed — that is what counts.
+  }
 }
 
 /** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it. */

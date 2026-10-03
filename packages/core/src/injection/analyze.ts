@@ -18,8 +18,13 @@ interface SiteBase {
  */
 export type InjectionSite =
   | (SiteBase & {
-      /** Runtime expressions for each parameter, e.g. `UserRepository` or `mail.Mailer`. */
+      /** Runtime expressions for each parameter, e.g. `UserRepository` or `mail.Mailer`. Empty when only warnings are attached. */
       readonly dependencies: readonly string[];
+      /**
+       * Defaulted or optional parameters of an injectable type (E128): never injected — the default applies. The container
+       * reports them once it builds the class (`Container.onWarning`); no error.
+       */
+      readonly warnings?: readonly string[];
     })
   | (SiteBase & {
       /** Why the class cannot be built by the container. */
@@ -28,6 +33,9 @@ export type InjectionSite =
 
 /** Static, symbol-keyed field carrying the reason a class has no injection list. */
 export const UNRESOLVABLE = 'bespokecore.injection.unresolvable';
+
+/** Static, symbol-keyed field carrying a class's injection warnings (E128). */
+export const WARNINGS = 'bespokecore.injection.warnings';
 
 export class InjectionError extends Error {
   override name = 'InjectionError';
@@ -54,7 +62,9 @@ interface ModuleBindings {
  *
  * - Covered: `class X`, `export class X`, `export default class`, `const X = class`, `return class { … }`.
  * - A class declaring its own `static inject` is left alone (explicit override).
- * - Optional and defaulted parameters end the list, so their JavaScript defaults apply.
+ * - Optional and defaulted parameters end the list, so their JavaScript defaults apply. When one has an injectable type
+ *   (`clock: Clock = new SystemClock()`), the class carries a warning (E128): the container never injects it — a test's
+ *   fake `Clock` would not reach the class.
  */
 export function analyzeInjections(source: string, filename: string): InjectionSite[] {
   if (!source.includes('constructor')) return [];
@@ -73,12 +83,16 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
     const allParams: Node[] = ctor?.value.params ?? [];
     const firstOptional = allParams.findIndex((param) => param.type === 'AssignmentPattern' || param.optional);
     const params = firstOptional === -1 ? allParams : allParams.slice(0, firstOptional);
-    if (params.length === 0) continue;
-
     const context = { source, filename, className: name, bindings };
+    const warnings = firstOptional === -1 ? [] : allParams.slice(firstOptional).flatMap((param) => optionalWarning(param, context) ?? []);
+    if (params.length === 0) {
+      if (warnings.length > 0) sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies: [], warnings });
+      continue;
+    }
+
     try {
       const dependencies = params.map((param) => dependencyOf(param, context));
-      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies });
+      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies, ...(warnings.length > 0 ? { warnings } : {}) });
     } catch (error) {
       if (!(error instanceof InjectionError)) throw error;
       sites.push({ className: name, classIndex: index, bodyStart: node.body.start, unresolvable: error.message });
@@ -98,7 +112,8 @@ export function insertInjections(source: string, sites: readonly InjectionSite[]
     const at = site.bodyStart + 1;
     const field =
       'dependencies' in site
-        ? ` static inject = [${site.dependencies.join(', ')}];`
+        ? (site.dependencies.length > 0 ? ` static inject = [${site.dependencies.join(', ')}];` : '') +
+          (site.warnings?.length ? ` static [Symbol.for(${JSON.stringify(WARNINGS)})] = ${JSON.stringify(site.warnings)};` : '')
         : ` static [Symbol.for(${JSON.stringify(UNRESOLVABLE)})] = ${JSON.stringify(site.unresolvable)};`;
     output = `${output.slice(0, at)}${field}${output.slice(at)}`;
   }
@@ -231,6 +246,28 @@ function dependencyOf(param: Node, context: ParamContext): string {
     );
   }
   throw new InjectionError(`Cannot inject ${where()}: "${root}" is not imported or declared in this module.`);
+}
+
+/**
+ * The warning for a defaulted or optional parameter (E128) — when its type could be injected: a class or a token that exists
+ * at runtime (a value import or a declaration of the module). `name = 'x'`, `options?: Options` (a type only) and the like
+ * are what defaults are for: no warning.
+ */
+function optionalWarning(param: Node, context: ParamContext): string | undefined {
+  const target: Node = param.type === 'AssignmentPattern' ? param.left : param;
+  const type: Node | undefined = target.typeAnnotation?.typeAnnotation;
+  if (type?.type !== 'TSTypeReference') return undefined;
+  const expression = context.source.slice(type.typeName.start, type.typeName.end);
+  // `parent?: Node` in `class Node` is a tree, not a dependency.
+  if (!context.bindings.values.has(expression.split('.')[0]!) || expression === context.className) return undefined;
+  const where = `${context.filename}:${lineOf(context.source, param.start)}`;
+  const text = context.source.slice(param.start, param.end);
+  const outcome = param.type === 'AssignmentPattern' ? 'its default is always used' : 'it stays undefined';
+  return (
+    `${context.className} (${where}): the parameter "${text}" is ${param.type === 'AssignmentPattern' ? 'defaulted' : 'optional'}, so the container never injects ${expression} — ` +
+    `${outcome}, also when a provider or a test binds another ${expression}. Remove the ${param.type === 'AssignmentPattern' ? 'default' : '"?"'} to have it injected, ` +
+    'or write `static inject = [...]` to make the choice explicit.'
+  );
 }
 
 function lineOf(source: string, offset: number): number {

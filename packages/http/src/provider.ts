@@ -10,6 +10,7 @@ import { ParentRequest } from './parent-request.ts';
 import { ReadOnly } from './read-only.ts';
 import { ResponseLifecycle } from './response-lifecycle.ts';
 import { SharedData } from './shared-data.ts';
+import { httpSolutions } from './solutions.ts';
 import { ServerClosing } from './server-closing.ts';
 import { UrlSigner } from './signed-urls.ts';
 
@@ -55,6 +56,9 @@ declare module '@bespokecore/core' {
  * → CheckAssetVersion (250) → VerifyCsrfToken (300) → shared props (400) → app middleware (1000).
  */
 export class HttpServiceProvider implements ServiceProvider {
+  /** "Did you mean …" for an undefined route name, a missing view (R2) — on the development error page (E130). */
+  static solutions = httpSolutions;
+
   register(container: Container): void {
     container.singleton(Router);
     container.singleton(ExceptionHandler, DefaultExceptionHandler);

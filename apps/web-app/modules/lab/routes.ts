@@ -3,7 +3,9 @@ import {
   ShowBrowserOnlyLabController,
   ShowClientOnlyLabController,
   ShowLateErrorLabController,
+  ShowErrorsLabController,
   ShowStreamingLabController,
+  TriggerErrorLabController,
 } from './controllers/ShowLabPageController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
@@ -14,4 +16,7 @@ export default defineRoutes((Route) => {
   lab.get('/client-only', ShowClientOnlyLabController);
   lab.get('/browser-only', ShowBrowserOnlyLabController);
   lab.get('/late-error', ShowLateErrorLabController);
+  // Errors on purpose, one per kind — the development error page with its solutions (E119, E130).
+  lab.get('/errors', ShowErrorsLabController);
+  lab.get('/errors/:kind', TriggerErrorLabController);
 });

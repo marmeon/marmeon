@@ -41,7 +41,7 @@ import {
   type LiveSubscription,
   type PageObject,
 } from '@bespokecore/http/page';
-import { createHttpKernel } from '@bespokecore/server';
+import { createHttpKernel, DevRequestRecorder } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
 import type { MailFake } from '@bespokecore/mail';
@@ -113,6 +113,12 @@ export interface TestAppOptions {
    * (`app.stream(path)` gives the raw response, to read it as it arrives).
    */
   ssr?: boolean | 'stream';
+  /**
+   * Development error handling, as `bespoke dev` has it (E119): a page request that fails with a 5xx gets the development
+   * error page (code, request, route, queries and log of the request, solutions), JSON errors carry the exception and a
+   * `solution`. Off by default — tests see the error page production shows.
+   */
+  debug?: boolean;
 }
 
 type FormValue = string | readonly string[];
@@ -225,8 +231,12 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     throw error;
   }
   const scheduler = await importScheduler();
+  // The error page's recorder, as the server's provider binds it in development — until the app closes.
+  const recorder =
+    options.debug && !application.container.has(DevRequestRecorder) ? (await import('@bespokecore/server/error-page')).createRequestRecorder(application) : undefined;
+  if (recorder) application.container.instance(DevRequestRecorder, recorder);
   const shared: Shared = {
-    kernel: createHttpKernel(application, ssr ? { renderer: ssr.renderer } : {}),
+    kernel: createHttpKernel(application, { ...(ssr ? { renderer: ssr.renderer } : {}), ...(options.debug === undefined ? {} : { debug: options.debug }) }),
     schedule: scheduler && application.container.has(scheduler.Scheduler) ? new scheduler.ScheduleTester(application.container.make(scheduler.Scheduler), clock) : undefined,
     database,
     mail: mailFake,
@@ -238,7 +248,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     events: eventFake!,
     clock,
     ssr,
-    cleanups: ssr ? [() => ssr.close()] : [],
+    cleanups: [...(ssr ? [() => ssr.close()] : []), ...(recorder ? [async () => recorder.close()] : [])],
     closing: undefined,
   };
   const app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });

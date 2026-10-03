@@ -1,4 +1,5 @@
 import { defineConfig, type Application, type ConfigOf, type ServiceProvider } from '@bespokecore/core';
+import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-token.ts';
 import { ServerTiming } from './server-timing.ts';
 import * as v from 'valibot';
 
@@ -44,27 +45,45 @@ export const ServerConfig = defineConfig('server', {
     ssr: env.SSR_ENABLED === 'true',
     /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
     serverTiming: env.NODE_ENV === 'development',
+    /**
+     * Development error handling (E115, E119): the error page with code, request, queries and solutions, exception details in
+     * JSON errors, the Vite overlay for server-rendering errors. Only when `NODE_ENV=development` — never "not production":
+     * a staging or test server shows the plain error page.
+     */
+    debug: env.NODE_ENV === 'development',
   }),
 });
 export type ServerConfig = ConfigOf<typeof ServerConfig>;
 
 /**
- * Brings the server's configuration — and, in development, the `Server-Timing` header (E129), which listens to the
- * app's query and render channels until the app shuts down. Found by `bespoke discover` like any installed package.
+ * Brings the server's configuration — and, in development only, the `Server-Timing` header (E129) and the error page's
+ * request recorder (E119): both listen to the app's channels until the app shuts down. In production neither is loaded,
+ * and no channel gets a subscriber. Found by `bespoke discover` like any installed package.
  */
 export class ServerServiceProvider implements ServiceProvider {
   static config = [ServerConfig];
 
   #timing: ServerTiming | undefined;
+  #recorder: RequestRecorder | undefined;
 
-  boot(app: Application): void {
-    if (!app.container.make(ServerConfig).serverTiming) return;
-    this.#timing = new ServerTiming(app);
-    app.container.instance(ServerTiming, this.#timing);
+  async boot(app: Application): Promise<void> {
+    const config = app.container.make(ServerConfig);
+    if (config.serverTiming) {
+      this.#timing = new ServerTiming(app);
+      app.container.instance(ServerTiming, this.#timing);
+    }
+    if (config.debug) {
+      // Loaded only here: a production server never imports the error page's code.
+      const { createRequestRecorder } = await import('./error-page/recorder.ts');
+      this.#recorder = createRequestRecorder(app);
+      app.container.instance(DevRequestRecorder, this.#recorder);
+    }
   }
 
   shutdown(): void {
     this.#timing?.close();
     this.#timing = undefined;
+    this.#recorder?.close();
+    this.#recorder = undefined;
   }
 }

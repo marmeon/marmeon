@@ -112,6 +112,7 @@ export type {
   ValidationErrors,
 } from '@bespokecore/router';
 export { HttpServiceProvider } from './provider.ts';
+export { httpSolutions } from './solutions.ts';
 export { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 export { abort, DefaultExceptionHandler, ExceptionHandler, HttpError } from './errors.ts';
 export type { ExceptionRenderOptions } from './errors.ts';

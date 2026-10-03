@@ -1,5 +1,5 @@
 import { isAbsolute, join } from 'node:path';
-import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
+import { Application, Clock, Redactor, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
 import { CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
 import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
@@ -54,6 +54,8 @@ export class SessionServiceProvider implements ServiceProvider {
       .append('web', VerifyCsrfToken, MiddlewarePriority.verifyCsrfToken)
       .append('web', ShareErrorsFromSession, MiddlewarePriority.shareProps);
     app.container.make(CookieEncryption).except(XSRF_COOKIE); // the browser's JavaScript reads it
+    // The session cookie's value is the session — never shown or recorded (E125), whatever its name.
+    if (app.container.has(Redactor)) app.container.make(Redactor).addKeys(app.container.make(SessionConfig).cookie);
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.

@@ -8,6 +8,11 @@
       "@bespokecore/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./error-page": {
+      "@bespokecore/source": "./src/error-page/index.ts",
+      "types": "./dist/error-page/index.d.ts",
+      "default": "./dist/error-page/index.js"
     }
   },
   "files": [
@@ -31,6 +36,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./error-page": {
+        "types": "./dist/error-page/index.d.ts",
+        "default": "./dist/error-page/index.js"
       }
     }
   },

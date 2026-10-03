@@ -1,5 +1,8 @@
 import { ConfigError, loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
 import { Container } from './container.ts';
+import { coreSolutions } from './core-solutions.ts';
+import { Redactor } from './redact.ts';
+import { ErrorSolutions } from './solutions.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
 import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
 import { EventFake } from './events-fake.ts';
@@ -147,7 +150,8 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),
   ]);
-  const config = await resolveConfig([...definitions], options.env ?? loadEnv(options.root));
+  const env = options.env ?? loadEnv(options.root);
+  const config = await resolveConfig([...definitions], env);
   for (const [definition, value] of config) container.instance(definition, value);
 
   const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], options });
@@ -157,6 +161,15 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.singleton(Logger, () => new ConsoleLogger({}, app));
   // The time (E97); tests bind a `TestClock` they can move.
   container.singleton(Clock, () => new SystemClock());
+  // What may be shown or recorded of a value (E125) — packages add names (the session's cookie) while booting.
+  container.instance(Redactor, new Redactor());
+  // The solutions the development error page shows (E130): every provider's `static solutions` (the specific ones), then the core's.
+  container.instance(ErrorSolutions, new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]));
+  // A defaulted or optional constructor parameter of an injectable type is never injected (E128): said once per class, in
+  // development — `container.warnings` keeps them for the error page.
+  if (env.NODE_ENV === 'development') {
+    container.onWarning((warning) => container.make(Logger).warn(`Injection: ${warning.message}`, { class: warning.className }));
+  }
 
   // One registry; a dispatcher per resolution, bound to the asking container (e.g. the request scope).
   const events = new EventRegistry()

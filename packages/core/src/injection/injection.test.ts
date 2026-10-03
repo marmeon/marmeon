@@ -73,10 +73,38 @@ describe('injectConstructorDependencies', () => {
 
   it('stops at the first optional or defaulted parameter, so JavaScript defaults apply', () => {
     const source = "import { A, B } from './x.ts';\nclass C { constructor(a: A, b?: B, name = 'x') {} }";
-    expect(inject(source)).toContain('class C { static inject = [A]; constructor');
+    expect(inject(source)).toContain('class C { static inject = [A]; static [Symbol.for("bespokecore.injection.warnings")] = ["C (app/Example.ts:2): the parameter \\"b?: B\\" is optional');
+    // A tree's `parent?: Self` is no dependency: no warning.
     expect(inject('class Container { constructor(parent?: Container) {} }')).toBe(
       'class Container { constructor(parent?: Container) {} }',
     );
+  });
+
+  it('warns about a defaulted or optional parameter of an injectable type — never an error (E128)', () => {
+    // The W6.6 case: the job took its own SystemClock, a test's TestClock never reached it.
+    const source = [
+      "import { Clock, SystemClock } from '@bespokecore/core';",
+      "import type { Options } from './options.ts';",
+      "import { TokenRepository } from './tokens.ts';",
+      'export class PruneTokensJob {',
+      "  constructor(tokens: TokenRepository, clock: Clock = new SystemClock(), options: Options = {}, label = 'prune') {}",
+      '}',
+      'export class OnlyDefaults { constructor(clock: Clock = new SystemClock()) {} }',
+    ].join('\n');
+    const [job, onlyDefaults] = analyzeInjections(source, 'modules/auth/jobs/PruneTokensJob.ts');
+    expect(job).toMatchObject({ className: 'PruneTokensJob', dependencies: ['TokenRepository'] });
+    expect(job && 'warnings' in job ? job.warnings : undefined).toEqual([
+      'PruneTokensJob (modules/auth/jobs/PruneTokensJob.ts:5): the parameter "clock: Clock = new SystemClock()" is defaulted, so the container never injects Clock — ' +
+        'its default is always used, also when a provider or a test binds another Clock. Remove the default to have it injected, or write `static inject = [...]` to make the choice explicit.',
+    ]);
+    // Only defaults: no list (JavaScript's defaults apply), but the warning still goes with the class.
+    expect(onlyDefaults).toMatchObject({ className: 'OnlyDefaults', dependencies: [] });
+    const output = injectConstructorDependencies(source, 'modules/auth/jobs/PruneTokensJob.ts');
+    expect(output).toContain('export class OnlyDefaults { static [Symbol.for("bespokecore.injection.warnings")] = ["OnlyDefaults (');
+    expect(output).not.toContain('static inject = [];');
+    expect(output.split('\n')).toHaveLength(source.split('\n').length);
+    // A class that declares its own list made the choice: no warning.
+    expect(inject("import { Clock, SystemClock } from './c.ts';\nclass D { static inject = []; constructor(clock: Clock = new SystemClock()) {} }")).not.toContain('warnings');
   });
 
   it('never throws for classes it cannot inject — it attaches the reason instead', () => {

@@ -1,4 +1,4 @@
-import { ConsoleLogger, currentRequest, Translator, type Application, type Container, type Logger } from '@bespokecore/core';
+import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, type Application, type Container, type Logger, type Solution } from '@bespokecore/core';
 import { channels, messageBase, trace, type SsrRenderMessage } from '@bespokecore/core/diagnostics';
 import {
   ACTION_HEADER,
@@ -81,6 +81,21 @@ export interface PageRenderer {
   shell(page: PageObject, request: Request): Promise<string>;
   /** Version of the built assets; undefined in development (no checks while Vite serves sources). */
   readonly version?: string;
+  /**
+   * Development (E119): server rendering of a page failed and its document goes out without markup — tell the developer
+   * (the Vite dev renderer shows it in Vite's overlay). What it returns goes into that document, before `</body>`.
+   */
+  failed?(error: unknown, details: RenderFailureDetails): Promise<string | undefined>;
+}
+
+/** What {@link PageRenderer.failed} gets beside the error. */
+export interface RenderFailureDetails {
+  /** The page that failed. */
+  readonly component: string;
+  /** The solutions for the error (E130). */
+  readonly solutions: readonly Solution[];
+  /** The app's redactor (E125): what is shown passes it. */
+  readonly redactor: Redactor;
 }
 
 export interface DocumentRendererOptions {
@@ -90,13 +105,15 @@ export interface DocumentRendererOptions {
   ssr(): SsrRender | Promise<SsrRender>;
   /** Maps an error's stack to the sources (Vite's `ssrFixStacktrace` in development). */
   fixStack?(error: unknown): void;
+  /** Development: see {@link PageRenderer.failed}. */
+  failed?: PageRenderer['failed'];
   version?: string;
 }
 
 const renders = channels.tracing('render.ssr');
 
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
-export function createDocumentRenderer({ template, ssr, fixStack, version }: DocumentRendererOptions): PageRenderer {
+export function createDocumentRenderer({ template, ssr, fixStack, failed, version }: DocumentRendererOptions): PageRenderer {
   const fixed = (error: unknown) => {
     if (error instanceof Error) fixStack?.(error);
     return error;
@@ -123,6 +140,7 @@ export function createDocumentRenderer({ template, ssr, fixStack, version }: Doc
     async shell(page, request) {
       return renderDocument(await template(request), page, { html: '' });
     },
+    ...(failed ? { failed } : {}),
     version,
   };
 }
@@ -296,7 +314,20 @@ export function createResponseFactory(
       return await render();
     } catch (error) {
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
-      return renderer.shell(page, request);
+      const shell = await renderer.shell(page, request);
+      // Development (E119): the developer sees it — in Vite's overlay — instead of a page that silently renders in the browser.
+      if (debug && app && renderer.failed) {
+        try {
+          const solutions = app.container.has(ErrorSolutions) ? await app.container.make(ErrorSolutions).find(error, { app }) : [];
+          const redactor = app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
+          const markup = await renderer.failed(error, { component: page.component, solutions, redactor });
+          const at = shell.lastIndexOf('</body>');
+          if (markup) return at === -1 ? shell + markup : shell.slice(0, at) + markup + shell.slice(at);
+        } catch (failure) {
+          logger.error('Reporting the server-rendering error to the overlay failed', { ...describe(failure) });
+        }
+      }
+      return shell;
     }
   };
 
