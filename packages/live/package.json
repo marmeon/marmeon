@@ -1,0 +1,66 @@
+{
+  "name": "@bespokecore/live",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.type-test.*",
+    "!dist/**/__fixtures__"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "LiveServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@bespokecore/notifications": "workspace:*",
+    "@bespokecore/redis": "workspace:*",
+    "@bespokecore/session": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@bespokecore/notifications": {
+      "optional": true
+    },
+    "@bespokecore/redis": {
+      "optional": true
+    },
+    "@bespokecore/session": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@bespokecore/database": "workspace:*",
+    "@bespokecore/notifications": "workspace:*",
+    "@bespokecore/redis": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/server": "workspace:*",
+    "@bespokecore/session": "workspace:*",
+    "redis": "6.2.1"
+  }
+}

@@ -19,6 +19,37 @@ export const pageResponse = (body: PageObject) => new Response(JSON.stringify(bo
 type Handler = (url: string, init: RequestInit) => Response | Promise<Response>;
 
 /**
+ * A live stream as the browser's `EventSource` (W6.10) — what the test makes the server say: `emit('hello', { seq })`,
+ * `emit('refresh', hint)`, `fail()` (it broke: the browser reconnects), `fail(true)` (refused: it gives up).
+ */
+export class FakeEventSource extends EventTarget {
+  readonly url: string;
+  readyState = 0;
+  constructor(url: string) {
+    super();
+    this.url = url;
+  }
+  /** The channels it follows — from its URL. */
+  get channels(): string[] {
+    return new URL(this.url, ORIGIN).searchParams.getAll('c').map((pair) => pair.slice(pair.indexOf('.') + 1));
+  }
+  get closed(): boolean {
+    return this.readyState === 2;
+  }
+  emit(event: string, data: unknown): void {
+    this.readyState = 1;
+    this.dispatchEvent(Object.assign(new Event(event), { data: JSON.stringify(data) }));
+  }
+  fail(closed = false): void {
+    this.readyState = closed ? 2 : 0;
+    this.dispatchEvent(new Event('error'));
+  }
+  close(): void {
+    this.readyState = 2;
+  }
+}
+
+/**
  * One tab's history, as the browser keeps it: states are stored *serialized* (structured clone, written to
  * disk for session restore) — the test reads exactly what would end up there.
  */
@@ -37,6 +68,15 @@ export class FakeWindow implements NavigatorWindow {
   readonly #loaded = new Set<() => void>();
   readonly document: NonNullable<NavigatorWindow['document']>;
   XMLHttpRequest?: new () => XMLHttpRequest;
+  /** The tab is shown or hidden (`hide()`, `show()`) — a live stream over HTTP/1.1 waits while hidden (E104). */
+  visibilityState: DocumentVisibilityState = 'visible';
+  /** The protocol the document came over (`nextHopProtocol`) — `''`: unknown. */
+  protocol = 'h2';
+  /** The live streams opened (W6.10), oldest first — `EventSource` of this tab. */
+  readonly sources: FakeEventSource[] = [];
+  EventSource?: new (url: string) => EventSource;
+  readonly performance: NonNullable<NavigatorWindow['performance']>;
+  readonly #documentListeners = new Map<string, Set<() => void>>();
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
   handler: Handler = () => new Response('not found', { status: 404 });
   /** The browser's own dialogs (E64) — what they were asked, and what the "user" answers. */
@@ -62,8 +102,50 @@ export class FakeWindow implements NavigatorWindow {
       get readyState(): string {
         return self.readyState;
       },
-      addEventListener: (_type: 'DOMContentLoaded', listener: () => void) => void this.#loaded.add(listener),
+      get visibilityState(): DocumentVisibilityState {
+        return self.visibilityState;
+      },
+      addEventListener: (type: string, listener: () => void) => {
+        if (type === 'DOMContentLoaded') return void this.#loaded.add(listener);
+        if (!this.#documentListeners.has(type)) this.#documentListeners.set(type, new Set());
+        this.#documentListeners.get(type)!.add(listener);
+      },
     };
+    this.performance = { getEntriesByType: () => [{ nextHopProtocol: self.protocol }] as never };
+    const sources = this.sources;
+    this.EventSource = class extends FakeEventSource {
+      constructor(url: string) {
+        super(url);
+        sources.push(this);
+      }
+    } as never;
+  }
+
+  /** The live stream open now (the last one, unless it was closed). */
+  get source(): FakeEventSource | undefined {
+    const last = this.sources.at(-1);
+    return last && !last.closed ? last : undefined;
+  }
+
+  /** The user switches to another tab (`visibilitychange`). */
+  hide(): void {
+    this.visibilityState = 'hidden';
+    this.#documentEvent('visibilitychange');
+  }
+
+  /** The user comes back to this tab. */
+  show(): void {
+    this.visibilityState = 'visible';
+    this.#documentEvent('visibilitychange');
+  }
+
+  /** The browser unfreezes the tab (Page Lifecycle `resume`). */
+  resume(): void {
+    this.#documentEvent('resume');
+  }
+
+  #documentEvent(type: string): void {
+    for (const listener of this.#documentListeners.get(type) ?? []) listener();
   }
 
   /** The document has arrived completely (`DOMContentLoaded`). */

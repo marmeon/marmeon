@@ -2,6 +2,7 @@ import { Logger } from '@bespokecore/core';
 import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@bespokecore/http';
 import type { HttpContext, Next } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
+import { sessionScope, SessionEndings } from './ended.ts';
 import { Session } from './session.ts';
 import { SessionStore } from './store.ts';
 
@@ -30,8 +31,18 @@ export class StartSession {
   readonly #readOnly: ReadOnly;
   readonly #parent: ParentRequest;
   readonly #lottery: SessionLottery;
+  readonly #endings: SessionEndings;
 
-  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly, parent: ParentRequest, lottery: SessionLottery) {
+  constructor(
+    session: Session,
+    config: SessionConfig,
+    store: SessionStore,
+    logger: Logger,
+    readOnly: ReadOnly,
+    parent: ParentRequest,
+    lottery: SessionLottery,
+    endings: SessionEndings,
+  ) {
     this.#session = session;
     this.#config = config;
     this.#store = store;
@@ -39,6 +50,7 @@ export class StartSession {
     this.#readOnly = readOnly;
     this.#parent = parent;
     this.#lottery = lottery;
+    this.#endings = endings;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
@@ -63,6 +75,8 @@ export class StartSession {
       // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
       // keeps the one the sign-out sent.
       if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
+      // Signed in or out: the old session is gone — whoever listened through it stops (W6.10: its live streams, everywhere).
+      for (const id of this.#session.ended) await this.#endings.ended(sessionScope(id));
       // Saved: nothing that still runs in this request — a streamed page's deferred props (E49) — reaches the store any
       // more. Once the headers are out, the kernel makes the request read-only, and a write throws (or is dropped).
       this.#session.lock((what) => this.#readOnly.permit(what));

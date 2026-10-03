@@ -1,7 +1,7 @@
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import * as v from 'valibot';
 import { Gate } from '@bespokecore/auth';
-import { ProfileDirectory, ProfilePolicy } from '#modules/user-profile';
+import { ProfileDirectory, ProfilePolicy, SIGN_INS_CHANNEL } from '#modules/user-profile';
 
 /** The time ranges of the range picker, in the order the island offers them. */
 export const SIGN_IN_RANGES = ['7d', '30d', 'all'] as const;
@@ -45,6 +45,8 @@ export class ShowRecentSignInsController extends Controller {
       ),
       // The server's clock for "5 minutes ago".
       now: new Date(),
-    });
+    })
+      // Live (W6.10): someone signs in — the island reloads on every open dashboard (and /people), no polling.
+      .live(SIGN_INS_CHANNEL);
   }
 }

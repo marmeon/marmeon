@@ -53,6 +53,9 @@
       "path": "packages/storage"
     },
     {
+      "path": "packages/live"
+    },
+    {
       "path": "packages/auth"
     },
     {

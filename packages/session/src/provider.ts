@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { isAbsolute, join } from 'node:path';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
 import { CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
@@ -6,6 +5,7 @@ import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 import { Session } from './session.ts';
+import { sessionScope, SessionEndings } from './ended.ts';
 import { ShareErrorsFromSession } from './share-errors.ts';
 import { SessionLottery, StartSession } from './start-session.ts';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
@@ -33,6 +33,7 @@ export class SessionServiceProvider implements ServiceProvider {
 
   register(container: Container): void {
     container.singleton(CsrfProtection);
+    container.singleton(SessionEndings);
     container.scoped(Session);
     // `redirect().with(…)` flashes into the request's session.
     container.scoped(Flasher, (c) => c.make(Session));
@@ -162,7 +163,7 @@ export function pageSessionOf(session: Session): PageSession {
     csrfToken: () => started(() => session.token()),
     scope: () => {
       const id = started(() => session.id);
-      return id ? createHash('sha256').update(`bespoke-once-scope:${id}`).digest('base64url').slice(0, 22) : undefined;
+      return id ? sessionScope(id) : undefined;
     },
   };
 }

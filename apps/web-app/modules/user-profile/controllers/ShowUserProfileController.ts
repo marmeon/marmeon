@@ -5,6 +5,7 @@ import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileActivity } from '../ProfileActivity.ts';
 import { ProfileDirectory, type Profile } from '../ProfileDirectory.ts';
+import { profileChannel } from '../live.ts';
 
 export class ShowUserProfileController extends Controller {
   /**
@@ -56,6 +57,9 @@ export class ShowUserProfileController extends Controller {
       // The server's clock for "5 minutes ago": SSR and hydration compute the same text. A Date here,
       // a string in the view (PageProps are serialized).
       now: new Date(),
-    });
+    })
+      // Live (W6.10): a link added or removed, the name or the picture changed — in another tab, by anyone allowed to: this page
+      // reloads its profile (and the activity), no polling. Signed for this session: whoever may see the page may hear its hints.
+      .live(profileChannel(user.id), { only: ['profile', 'activity'] });
   }
 }

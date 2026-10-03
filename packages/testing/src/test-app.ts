@@ -14,7 +14,7 @@ import {
   type Resolve,
 } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
-import { CookieEncryption, Router, writeAppBrowserRoutes } from '@bespokecore/http';
+import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router, writeAppBrowserRoutes } from '@bespokecore/http';
 import {
   ACTION_HEADER,
   PAGE_HEADER,
@@ -38,12 +38,15 @@ import {
   type Query,
   type RouteArgs,
   type RouteNameInput,
+  type LiveSubscription,
+  type PageObject,
 } from '@bespokecore/http/page';
 import { createHttpKernel } from '@bespokecore/server';
 import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
 import type { MailFake } from '@bespokecore/mail';
 import type { NotificationFake } from '@bespokecore/notifications';
+import type { BroadcastRecorder, LiveStreamReader } from '@bespokecore/live';
 import type { QueueFake } from '@bespokecore/queue';
 import type { StorageFake } from '@bespokecore/storage';
 import type { ScheduleTester } from '@bespokecore/scheduler';
@@ -152,6 +155,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let notificationFake: NotificationFake | undefined;
   const storage = options.storage === 'real' ? undefined : await importStorage();
   let storageFake: StorageFake | undefined;
+  const live = await importLive();
+  let broadcast: BroadcastRecorder | undefined;
   let eventFake: EventFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
   const clock = new TestClock();
@@ -196,6 +201,11 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
         storageFake = new storage.StorageFake(container);
         container.instance(storage.Storage, storageFake);
       }
+      // Live hints are sent as in production (the streams of `app.live()` get them) — and recorded: `app.broadcast`.
+      if (live && container.has(live.Broadcaster)) {
+        broadcast = new live.BroadcastRecorder();
+        container.instance(live.BroadcastRecorder, broadcast);
+      }
       eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
       container.instance(EventFake, eventFake);
       definition.override?.(container);
@@ -223,6 +233,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     queue: queueFake,
     notifications: notificationFake,
     storage: storageFake,
+    broadcast,
+    live,
     events: eventFake!,
     clock,
     ssr,
@@ -276,6 +288,9 @@ interface Shared {
   readonly notifications: NotificationFake | undefined;
   /** The memory disks, unless the app has no storage or the test chose `storage: 'real'`. */
   readonly storage: StorageFake | undefined;
+  /** What the app's Broadcaster sent — when it has @bespokecore/live. */
+  readonly broadcast: BroadcastRecorder | undefined;
+  readonly live: LiveModule | undefined;
   /** Every dispatched event. */
   readonly events: EventFake;
   /** The app's `Clock`. */
@@ -353,6 +368,17 @@ async function importQueue(): Promise<typeof import('@bespokecore/queue') | unde
 async function importStorage(): Promise<typeof import('@bespokecore/storage') | undefined> {
   try {
     return await import('@bespokecore/storage');
+  } catch {
+    return undefined;
+  }
+}
+
+type LiveModule = typeof import('@bespokecore/live');
+
+/** @bespokecore/live is an optional peer, like the session. */
+async function importLive(): Promise<LiveModule | undefined> {
+  try {
+    return await import('@bespokecore/live');
   } catch {
     return undefined;
   }
@@ -491,6 +517,56 @@ export class TestApp {
   get storage(): StorageFake {
     if (!this.#shared.storage) throw new Error("app.storage needs @bespokecore/storage in the app (and not createTestApp(…, { storage: 'real' })).");
     return this.#shared.storage;
+  }
+
+  /**
+   * What the app's `Broadcaster` sent (W6.10) — every refresh once it went out (after its commit): `app.broadcast.assertRefreshed(
+   * \`users.${ada.id}\`, { only: ['profile'] })`, `assertNotRefreshed`, `assertNothingRefreshed`. The hints reach the streams as in
+   * production (`app.live(path)`). Needs @bespokecore/live.
+   */
+  get broadcast(): BroadcastRecorder {
+    if (!this.#shared.broadcast) throw new Error('app.broadcast needs @bespokecore/live in the app.');
+    return this.#shared.broadcast;
+  }
+
+  /**
+   * Opens a live stream (W6.10) as a tab does — for the channels the page at `path` follows (its `PageObject.live`, signed for
+   * this view's session), or for those given (`(await app.island(…)).page()?.live`) — and reads it as it arrives:
+   *
+   * ```ts
+   * const ada$ = app.actingAs(ada);
+   * const stream = await ada$.live(\`/users/${ada.id}\`);
+   * await stream.hello();
+   * await app.actingAs(ada).withHeaders({ 'x-bespoke-connection': 'another-tab' }).post(\`/users/${ada.id}/links\`, { json });
+   * await stream.waitFor(1);
+   * expect(stream.hints).toEqual([{ channel: \`users.${ada.id}\`, only: ['profile'], seq: 1 }]);
+   * ```
+   *
+   * The stream belongs to this view's session (`actingAs`/`withSession`): signing out through the same view ends it. It closes
+   * when the app does — or with `stream.close()`. `connection` is the tab's id (`x-bespoke-connection`, default `test-tab-0001`).
+   */
+  async live(
+    target: string | readonly LiveSubscription[],
+    { connection = 'test-tab-0001', lastEventId }: { connection?: string; lastEventId?: string } = {},
+  ): Promise<LiveStreamReader> {
+    const module = this.#shared.live;
+    if (!module) throw new Error('app.live() needs @bespokecore/live in the app.');
+    let subscriptions = target;
+    if (typeof target === 'string') {
+      const answer = await this.navigating().get(target);
+      const page = answer.status === 200 ? (answer.json() as PageObject) : undefined;
+      if (!page?.live?.length) throw new AssertionError({ message: `app.live(${JSON.stringify(target)}): the page answered ${answer.status} and follows no live channel (.live()).` });
+      subscriptions = page.live;
+    }
+    const query = new URLSearchParams({ connection });
+    const channels = new Map((subscriptions as readonly LiveSubscription[]).map((subscription) => [subscription.channel, subscription.token]));
+    for (const [channel, token] of channels) query.append('c', `${token}.${channel}`);
+    const response = await this.stream(`${LIVE_PATH}?${query}`, {
+      headers: { accept: 'text/event-stream', [CONNECTION_HEADER]: connection, ...(lastEventId === undefined ? {} : { 'last-event-id': lastEventId }) },
+    });
+    const reader = new module.LiveStreamReader(response);
+    this.#shared.cleanups.push(() => reader.close());
+    return reader;
   }
 
   /**

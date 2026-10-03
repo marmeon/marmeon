@@ -17,7 +17,8 @@ export function actionHost(core: ActionsCore): ActionHost {
     get href() {
       return core.window.location.href;
     },
-    fetch: (url, init) => core.window.fetch(url, init),
+    // Features add their headers first (W6.10: the tab's live connection, so its own writes do not hint it).
+    fetch: (url, init) => (core.fire('send', init.headers as Record<string, string>), core.window.fetch(url, init)),
     leaveFor: (location) => {
       core.leave();
       core.window.location.assign(location);

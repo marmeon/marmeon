@@ -2,6 +2,7 @@ import type { CheckViewName, SharedProps } from './page.ts';
 import type { ResolvedProps } from './props.ts';
 import { toLayer, type LayerMethod } from './layer.ts';
 import { addFlash, type FlashMethod } from './flash.ts';
+import { addLive, type LiveMethod, type PagePropNames } from './live.ts';
 
 const VIEW_RESULT = Symbol.for('bespokecore.view-result');
 
@@ -38,6 +39,12 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
    * `redirect().flash()`).
    */
   readonly flash: FlashMethod<PageResult<TProps, TComponent>>;
+  /**
+   * Follows a live channel (W6.10, E89, E90): when the server hints that it changed (`broadcast.refresh('users.7', { only })`),
+   * the browser reloads `only` of this page — `this.view('user-profile/Show', { profile }).live(\`users.${id}\`, { only:
+   * ['profile'] })`. Signed for the session: whoever may see the page may hear its hints. Needs @bespokecore/live.
+   */
+  readonly live: LiveMethod<PageResult<TProps, TComponent>, PagePropNames<TProps>>;
 }
 
 /**
@@ -58,10 +65,12 @@ export function view<const V extends string, const TProps extends ViewProps>(
     ...(headers ? { headers } : {}),
     layer: (options) => toLayer(result, options),
     flash: ((key: string, data: unknown) => addFlash(result, key, data)) as PageResult<TProps, V>['flash'],
+    live: ((channel: string, options?: { only?: readonly string[] }) => addLive(result, channel, options)) as PageResult<TProps, V>['live'],
   };
   // Not enumerable: a result is data (spread, compared in tests) — the methods are no part of it.
   Object.defineProperty(result, 'layer', { enumerable: false });
   Object.defineProperty(result, 'flash', { enumerable: false });
+  Object.defineProperty(result, 'live', { enumerable: false });
   return result;
 }
 

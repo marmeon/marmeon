@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { FileInput, Head, Link, useForm, useLayer, useTranslation } from '@bespokecore/react';
+import { FileInput, Head, Link, useForm, useLayer, useLiveUpdates, useTranslation } from '@bespokecore/react';
 import { useId } from 'react';
 import type { EditUserProfileController } from '../controllers/EditUserProfileController.ts';
 
@@ -27,6 +27,9 @@ export default function Edit({ profile, old }: Props) {
   // bytes (PNG, JPEG, WebP — an SVG or a renamed HTML file is refused) and moved to the public disk under a random name.
   const avatarForm = useForm('user-profile.avatar.update', { user: profile.id }, { avatar: null });
   const avatar = avatarForm.data.avatar;
+  // Live (W6.10): the profile beneath follows `users.<id>` — while this form has unsaved changes (its guard), a change from
+  // another tab reloads nothing; it waits here until it is applied.
+  const updates = useLiveUpdates();
 
   // Under the page's own heading in a layer; the page's heading when the view is a page.
   const Heading = layer.isLayer ? 'h2' : 'h1';
@@ -34,6 +37,14 @@ export default function Edit({ profile, old }: Props) {
     <section>
       <Head title={t('edit.title')} />
       <Heading>{t('edit.title')}</Heading>
+      {updates.pending && (
+        <p role="status">
+          {t('edit.updates')}{' '}
+          <button type="button" onClick={updates.apply}>
+            {t('edit.updates_apply')}
+          </button>
+        </p>
+      )}
       <form
         noValidate
         aria-labelledby={`${id}-avatar-label`}

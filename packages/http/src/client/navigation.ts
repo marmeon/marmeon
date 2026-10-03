@@ -150,8 +150,14 @@ export interface NavigatorWindow {
     getElementById(id: string): { scrollIntoView(): void } | null;
     /** `loading` while the document still streams in — streamed deferred props wait for its end (E49). */
     readonly readyState?: string;
-    addEventListener?(type: 'DOMContentLoaded', listener: () => void, options?: AddEventListenerOptions): void;
+    /** Whether the tab is shown — a live stream over HTTP/1.1 connects only while it is (E104). */
+    readonly visibilityState?: DocumentVisibilityState;
+    addEventListener?(type: 'DOMContentLoaded' | 'visibilitychange' | 'resume', listener: () => void, options?: AddEventListenerOptions): void;
   };
+  /** Live hints (W6.10): one stream per document — without it, none. */
+  readonly EventSource?: new (url: string) => EventSource;
+  /** How the document was loaded — its protocol (`nextHopProtocol`): a live stream over HTTP/1.1 waits while the tab is hidden (E104). */
+  readonly performance?: Pick<Performance, 'getEntriesByType'>;
   /** For the upload progress of `FormData` visits — `fetch` cannot report it (over HTTP/1.1). */
   readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
@@ -1090,6 +1096,9 @@ export class Navigator {
 
   /** The page without its flash messages — they go into the inbox, fired once the page (or what it came with) is on screen. */
   #collect(page: PageObject): PageObject {
+    // It follows live channels (W6.10): the core attaches the live feature — server-driven, like the layers (E71); once there, it
+    // follows the screen itself. A chunk that cannot load: no hints (the page works without them).
+    if (page.live) import('./features/live.ts').then((module) => this.use(module.live), () => {});
     const { page: rest, flash } = takeFlash(page);
     if (flash.length > 0) this.#core.inbox.push(...flash);
     // Once props (E64): kept when they came, put back when the server skipped them (they are held).

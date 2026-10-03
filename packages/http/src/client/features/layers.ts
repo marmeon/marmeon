@@ -12,6 +12,7 @@ import { defineFeature, slot, type EntryStack } from '../feature.ts';
 import { takeFlash } from '../flash.ts';
 import { entry, isHistoryState, newKey, type HistoryState, type PositionCheck } from '../history.ts';
 import { Layer, type LayerControl, type LayerHost } from '../layer.ts';
+import { follow } from '../load-live.ts';
 import { keepDeferred, mergePage, pick } from '../merge.ts';
 import type { VisitOptions } from '../navigation.ts';
 import type { ReloadSpec } from '../optimistic.ts';
@@ -136,6 +137,8 @@ export class LayerStack implements LayerHost {
     const pageKey = newKey();
     const below = [pageKey];
     initial.forEach((page, index) => {
+      // A deep link's layer that follows live channels (W6.10): the core's live feature follows them too.
+      follow(this.#core.navigator, page);
       const own = index === initial.length - 1 ? key : newKey();
       // Not pushed over an entry of their own: closing one replaces the entry with what is beneath.
       this.#keep(own, page, [...below], false);

@@ -232,7 +232,40 @@ export interface PageObject {
    * Client-side requests send the `XSRF-TOKEN` cookie's copy instead. Absent without a session.
    */
   csrf?: string;
+  /**
+   * The live subscriptions of this page (or island, or layer) — W6.10, E89/E90: what its controller declared
+   * (`this.view(…).live('users.7', { only: ['profile'] })`) and what every page shares (`shared.live(…)`), each with its
+   * channel signed for this session. The client core then loads the live feature, which follows every channel on screen
+   * over one stream per document and reloads `only` when the server hints that a channel changed — never data.
+   */
+  live?: LiveSubscription[];
 }
+
+/** A channel a page (island, layer) follows (E89, E90) — `PageObject.live`. */
+export interface LiveSubscription {
+  /** The channel's name: `users.7`, `dashboard.sign-ins`. */
+  readonly channel: string;
+  /** The props a hint on the channel reloads (those of them the hint names) — absent: every prop the hint names, or all. */
+  readonly only?: readonly string[];
+  /**
+   * The channel signed for the session the page was rendered for (E90: an HMAC over the channel and a hash of the session
+   * id) — the stream accepts only this. Whoever may see the page may hear its hints; signing in or out voids it.
+   */
+  readonly token: string;
+}
+
+/**
+ * A hint on a live stream (W6.10): a channel changed — reload `only` of what follows it. Never data: whatever a reload
+ * brings goes through the page's own route (its middleware, policies and props). `only: null` — the props each
+ * subscription names (or all); `only: []` — nothing (the request that caused it came from this tab). `seq` counts the
+ * channel's hints, so a stream that was away knows whether it missed one.
+ */
+export interface LiveHint {
+  readonly channel: string;
+  readonly only: readonly string[] | null;
+  readonly seq: number;
+}
+
 
 /** Where the browser keeps a once prop (E64). */
 export interface OnceInfo {

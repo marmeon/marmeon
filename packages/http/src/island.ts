@@ -1,6 +1,7 @@
 import type { CheckViewName } from './page.ts';
 import type { ResolvedProps } from './props.ts';
 import type { Serialize, ViewProps } from './view.ts';
+import { withLiveMethod, type LiveMethod } from './live.ts';
 
 const ISLAND_RESULT = Symbol.for('bespokecore.island-result');
 
@@ -15,11 +16,17 @@ export interface IslandResult<TProps extends ViewProps = ViewProps, TComponent e
   readonly region: 'island';
   readonly component: TComponent;
   readonly props: TProps;
+  /**
+   * Follows a live channel (W6.10, E89, E90): when the server hints that it changed (`broadcast.refresh('dashboard.sign-ins')`),
+   * the browser reloads `only` of this island (default: all of it) — `this.island('dashboard/RecentSignIns', { entries })
+   * .live('dashboard.sign-ins')`. Signed for the session. Needs @bespokecore/live.
+   */
+  readonly live: LiveMethod<IslandResult<TProps, TComponent>, keyof TProps & string, 'this island'>;
 }
 
 /** An island: the view's name — checked against the app's views — and its props. */
 export function island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V> {
-  return { [ISLAND_RESULT]: true, region: 'island', component: component as V, props };
+  return withLiveMethod({ [ISLAND_RESULT]: true, region: 'island', component: component as V, props } as IslandResult<TProps, V>);
 }
 
 export function isIslandResult(value: unknown): value is IslandResult {

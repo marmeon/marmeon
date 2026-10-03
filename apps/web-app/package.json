@@ -19,6 +19,7 @@
     "@bespokecore/database": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/i18n": "workspace:*",
+    "@bespokecore/live": "workspace:*",
     "@bespokecore/log": "workspace:*",
     "@bespokecore/mail": "workspace:*",
     "@bespokecore/notifications": "workspace:*",

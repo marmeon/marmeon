@@ -69,6 +69,8 @@ export type { HeadProps, TitleTemplate } from './head.tsx';
 export { Pagination, pagesAround } from './pagination.tsx';
 export type { PaginationProps } from './pagination.tsx';
 export { usePoll } from './use-poll.ts';
+export { useLiveUpdates } from './live.ts';
+export type { LiveUpdatesState } from './live.ts';
 export { useQueryState } from './use-query-state.ts';
 export type { SetQueryState, UseQueryStateOptions } from './use-query-state.ts';
 export type { UsePollOptions } from './use-poll.ts';

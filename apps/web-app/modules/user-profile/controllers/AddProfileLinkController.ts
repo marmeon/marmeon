@@ -1,8 +1,10 @@
 import { can } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Broadcaster } from '@bespokecore/live';
 import { trans, Translator } from '@bespokecore/i18n';
 import * as v from 'valibot';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
+import { profileChannel } from '../live.ts';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
 export const AddProfileLinkRequest = defineRequest({
@@ -19,15 +21,19 @@ export class AddProfileLinkController extends Controller {
 
   readonly #links: ProfileLinkRepository;
   readonly #translator: Translator;
+  readonly #broadcast: Broadcaster;
 
-  constructor(links: ProfileLinkRepository, translator: Translator) {
+  constructor(links: ProfileLinkRepository, translator: Translator, broadcast: Broadcaster) {
     super();
     this.#links = links;
     this.#translator = translator;
+    this.#broadcast = broadcast;
   }
 
   async handle(ctx: ContextOf<typeof AddProfileLinkRequest>) {
     await this.#links.insert({ user_id: ctx.params.user.id, ...ctx.body });
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.link_added') });
   }
 }

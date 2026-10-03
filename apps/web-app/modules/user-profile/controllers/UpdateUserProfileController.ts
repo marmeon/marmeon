@@ -1,9 +1,11 @@
 import { can } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Broadcaster } from '@bespokecore/live';
 import { trans, Translator } from '@bespokecore/i18n';
 import * as v from 'valibot';
 import { UserRepository } from '#modules/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
+import { profileChannel } from '../live.ts';
 
 /** REPR: what the endpoint accepts and who may call it — next to the endpoint itself. */
 export const UpdateUserProfileRequest = defineRequest({
@@ -20,16 +22,20 @@ export class UpdateUserProfileController extends Controller {
 
   readonly #users: UserRepository;
   readonly #translator: Translator;
+  readonly #broadcast: Broadcaster;
 
-  constructor(users: UserRepository, translator: Translator) {
+  constructor(users: UserRepository, translator: Translator, broadcast: Broadcaster) {
     super();
     this.#users = users;
     this.#translator = translator;
+    this.#broadcast = broadcast;
   }
 
   async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
     // ctx.body is { name: string; bio: string } — validated and trimmed
     await this.#users.update(ctx.params.user.id, ctx.body);
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     // Saved from the edit layer: it closes, and what is beneath shows the new name (and the message). Without JavaScript
     // (or the form opened as a page): to the profile.
     return this.closeLayer({ reload: ['profile'] })

@@ -59,6 +59,9 @@ const en = {
     avatar_uploading: 'Uploading {percent} %',
     avatar_ready: 'Ready — save to use it.',
     avatar_cancel: 'Cancel upload',
+    // Live (W6.10): the profile changed in another tab while this form has unsaved changes — nothing was reloaded over them.
+    updates: 'This profile changed meanwhile.',
+    updates_apply: 'Show the changes',
     avatar_save: 'Save picture',
   },
   remove: {

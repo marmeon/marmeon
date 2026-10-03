@@ -67,10 +67,16 @@ export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export { addFlash, flashEntry, flashOf, serializedFlash } from './flash.ts';
 export type { FlashEntry, FlashMethod } from './flash.ts';
 export type { CheckFlashKey, CheckUploadField, FlashData, FlashKey, FlashMessage, FlashValue, Upload, UploadField, UploadToken } from './page.ts';
+export type { LiveHint, LiveSubscription } from './page.ts';
 export type { CheckViewName, DeferredResult, ErrorPageProps, InstantProps, LayerClose, OnceInfo, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, staticView, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoute, BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
+export { addLive, carryLive, checkedChannel, isLiveChannel, LIVE_CHANNEL, LiveSigner, liveOf, signedLive, withLiveMethod } from './live.ts';
+export type { LiveDeclaration, LiveMethod, LiveOnly, PagePropNames } from './live.ts';
+export { IncomingRequest, ServerClosing } from './server-closing.ts';
+// The live protocol (W6.10) — not re-exported by `page.ts`: what the browser needs of it, only the live feature's chunk imports.
+export { CONNECTION_HEADER, LIVE_PATH } from './live-protocol.ts';
 export { AfterResponse } from './after-response.ts';
 export { ReadOnly, ReadOnlyViolation } from './read-only.ts';
 export { ParentRequest } from './parent-request.ts';

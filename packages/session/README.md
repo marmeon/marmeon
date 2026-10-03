@@ -85,3 +85,11 @@ the sign-out, with the session as it was when it started: still signed in.
 - **`cookie` driver:** cannot be protected. The whole session travels in the cookie, so the slower response brings
   the signed-in cookie back and the sign-out is undone. With `@bespokecore/auth` registered, the app logs a warning
   at boot (E46). **Use `file`, `database` or `redis` for apps with login.**
+
+### When a session ends
+
+Signing in (`regenerate()`) or out (`invalidate()`) gives the session a new id and destroys the old one when the request saves
+it. Whoever must know — the live package closes every stream of the old session, in every process (W6.10) — listens through
+`SessionEndings` (one per app): `container.make(SessionEndings).listen((scope) => …)` hears the old session's **scope**
+(`sessionScope(id)`, a hash of its id — never the id, which is a secret; the same value `PageSession.scope()` hands out for
+once props and live tokens). A listener that fails does not stop the others.

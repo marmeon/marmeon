@@ -10,6 +10,7 @@ import { ParentRequest } from './parent-request.ts';
 import { ReadOnly } from './read-only.ts';
 import { ResponseLifecycle } from './response-lifecycle.ts';
 import { SharedData } from './shared-data.ts';
+import { ServerClosing } from './server-closing.ts';
 import { UrlSigner } from './signed-urls.ts';
 
 declare module '@bespokecore/core' {
@@ -65,6 +66,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.scoped(ResponseLifecycle);
     container.scoped(ClientHistory);
     container.singleton(UrlSigner);
+    container.singleton(ServerClosing);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
   }
 

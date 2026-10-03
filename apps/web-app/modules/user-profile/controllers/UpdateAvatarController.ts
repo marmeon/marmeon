@@ -1,10 +1,12 @@
 import { can } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Broadcaster } from '@bespokecore/live';
 import { Translator } from '@bespokecore/i18n';
 import { Storage, upload } from '@bespokecore/storage';
 import * as v from 'valibot';
 import { UserRepository } from '#modules/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
+import { profileChannel } from '../live.ts';
 
 /**
  * The avatar (W6.9): the file was uploaded ahead (`<FileInput>` in the edit layer, to the private `uploads` disk) — the form
@@ -23,12 +25,14 @@ export class UpdateAvatarController extends Controller {
   readonly #users: UserRepository;
   readonly #storage: Storage;
   readonly #translator: Translator;
+  readonly #broadcast: Broadcaster;
 
-  constructor(users: UserRepository, storage: Storage, translator: Translator) {
+  constructor(users: UserRepository, storage: Storage, translator: Translator, broadcast: Broadcaster) {
     super();
     this.#users = users;
     this.#storage = storage;
     this.#translator = translator;
+    this.#broadcast = broadcast;
   }
 
   async handle(ctx: ContextOf<typeof UpdateAvatarRequest>) {
@@ -38,6 +42,8 @@ export class UpdateAvatarController extends Controller {
     // Uses the upload up (once — a second submit of the same token is a 422) and moves it: avatars/<random>.<its type>.
     const path = await ctx.body.avatar.store(disk, 'avatars');
     await this.#users.update(user.id, { avatar_path: path });
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    await this.#broadcast.refresh(profileChannel(user.id), { only: ['profile'] });
     // The picture it replaces goes (a failure here leaves a file nobody links to — nothing worse).
     if (previous) await disk.delete(previous).catch(() => false);
     return this.closeLayer({ reload: ['profile'] })

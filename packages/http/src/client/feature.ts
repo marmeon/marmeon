@@ -167,6 +167,8 @@ export interface FeatureHooks {
   // Events.
   /** A write (a non-GET visit or action) changed what the server shows. */
   write(): void;
+  /** A request of a feature goes out (an action, a live validation): features add their headers (the live connection). */
+  send(headers: Record<string, string>): void;
   /** A page keeping its state takes the place of the one on screen in another entry: what `from`'s entry kept goes along (islands). */
   carry(from: RegionOwner, to: RegionOwner): void;
   /** The user chose to leave the document (another site, a full load): the browser's own question must not ask again. */

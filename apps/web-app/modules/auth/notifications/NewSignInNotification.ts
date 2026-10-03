@@ -9,7 +9,8 @@ import { describeBrowser } from './browser.ts';
 /**
  * "Someone signed in to your account" — after every sign-in with a password (not the one right after registering, not
  * a remember-me cookie): in the bell for everyone, by mail only to a confirmed address (an unconfirmed one may not even
- * be the user's). Its job and its mail run on the `mail` queue.
+ * be the user's). Its job and its mail run on the `mail` queue. `live` (W6.10): once the row is committed, the user's open
+ * tabs hear it — the bell and the list reload, no polling.
  */
 export class NewSignInNotification implements Notification<'user'> {
   static readonly notification = 'auth.new-sign-in';
@@ -25,7 +26,7 @@ export class NewSignInNotification implements Notification<'user'> {
   }
 
   via(user: User) {
-    return user.email_verified_at !== null ? (['database', 'mail'] as const) : (['database'] as const);
+    return user.email_verified_at !== null ? (['database', 'live', 'mail'] as const) : (['database', 'live'] as const);
   }
 
   toDatabase(data: NotificationData<typeof NewSignInNotification>): DatabaseInput<typeof NewSignInNotification> {

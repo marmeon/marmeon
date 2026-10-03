@@ -135,6 +135,9 @@ importers:
       '@bespokecore/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@bespokecore/live':
+        specifier: workspace:*
+        version: link:../../packages/live
       '@bespokecore/log':
         specifier: workspace:*
         version: link:../../packages/log
@@ -379,6 +382,43 @@ importers:
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../server
+
+  packages/live:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
+      '@bespokecore/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@bespokecore/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
+      '@bespokecore/session':
+        specifier: workspace:*
+        version: link:../session
+      redis:
+        specifier: 6.2.1
+        version: 6.2.1
 
   packages/log:
     dependencies:
@@ -677,6 +717,9 @@ importers:
       '@bespokecore/database':
         specifier: workspace:*
         version: link:../database
+      '@bespokecore/live':
+        specifier: workspace:*
+        version: link:../live
       '@bespokecore/mail':
         specifier: workspace:*
         version: link:../mail

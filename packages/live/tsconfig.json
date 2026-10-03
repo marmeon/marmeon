@@ -1,0 +1,40 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../encryption"
+    },
+    {
+      "path": "../http"
+    },
+    {
+      "path": "../router"
+    },
+    {
+      "path": "../redis"
+    },
+    {
+      "path": "../session"
+    },
+    {
+      "path": "../notifications"
+    },
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../server"
+    }
+  ]
+}

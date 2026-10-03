@@ -55,6 +55,8 @@ export class Session {
   #taken: FlashEntry[] = [];
   /** The CSRF token was handed out (a page, a form): the browser will send it back, so a new session is kept. */
   #issued = false;
+  /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (W6.10: their live streams close). */
+  #ended: string[] = [];
 
   constructor(store: SessionStore, config: SessionConfig) {
     this.#store = store;
@@ -310,10 +312,16 @@ export class Session {
     // The session this request loaded, under its id: written back only while it still exists — one atomic step.
     if (this.#loaded && this.#obsolete.length === 0) return this.#store.writeIfExists(this.#id, this.#data, lifetime);
     // New, or regenerated (a new id): the old id goes, the new one is written — unless a new session holds nothing.
-    for (const id of this.#obsolete.splice(0)) await this.#store.destroy(id);
+    this.#ended = this.#obsolete.splice(0);
+    for (const id of this.#ended) await this.#store.destroy(id);
     if (!this.persists) return false;
     await this.#store.write(this.#id, this.#data, lifetime);
     return true;
+  }
+
+  /** The ids the last `save()` destroyed: the session was regenerated (signed in) or invalidated (signed out). */
+  get ended(): readonly string[] {
+    return this.#ended;
   }
 
   #flash(): FlashState {

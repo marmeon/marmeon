@@ -1,15 +1,21 @@
 import type { Login } from '@bespokecore/auth';
+import { Broadcaster } from '@bespokecore/live';
 import { LoginActivityRepository } from '../LoginActivityRepository.ts';
+import { SIGN_INS_CHANNEL } from '../live.ts';
 
 /** Reacts to the framework's Login event — the auth module does not know this module exists. */
 export class RecordLastLogin {
   readonly #activity: LoginActivityRepository;
+  readonly #broadcast: Broadcaster;
 
-  constructor(activity: LoginActivityRepository) {
+  constructor(activity: LoginActivityRepository, broadcast: Broadcaster) {
     this.#activity = activity;
+    this.#broadcast = broadcast;
   }
 
   async handle(event: Login): Promise<void> {
     await this.#activity.record(event.user.id, event.at);
+    // Live (W6.10): the "Recent sign-ins" island on every open dashboard (and /people) reloads — after the commit, if any.
+    await this.#broadcast.refresh(SIGN_INS_CHANNEL);
   }
 }

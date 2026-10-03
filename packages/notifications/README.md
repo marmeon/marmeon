@@ -3,7 +3,8 @@
 Notifications (E92): a class per notification — a stable name, the schema of its data, `via()` for its channels and a
 `to…()` per channel —, sent to **recipients as data** (`{ type: 'user', id }`), delivered by a worker through the
 channels `mail` and `database`, read back from an **Inbox that is always bound to its recipient**. The channel contract is
-open: `live` comes with `@bespokecore/live` (W6 step 10), Web Push with `@bespokecore/pwa` (W8.6, E93).
+open: `live` comes with `@bespokecore/live` (W6.10: once the delivery committed, a hint on `notificationsChannel(recipient)` —
+the bell and the list of the recipient's open tabs reload, see that package's README), Web Push with `@bespokecore/pwa` (W8.6, E93).
 
 ```ts
 // modules/auth/notifications/NewSignInNotification.ts — and `notifications: [NewSignInNotification]` in defineModule

@@ -2,6 +2,7 @@ import { Auth } from '@bespokecore/auth';
 import { once, SharedData, type HttpContext, type Next } from '@bespokecore/http';
 import { Locales } from '@bespokecore/i18n';
 import { Inbox } from '@bespokecore/notifications';
+import { notificationsChannel } from '@bespokecore/live';
 
 declare module '@bespokecore/http/page' {
   interface SharedProps {
@@ -53,7 +54,16 @@ export class ShareAppProps {
       })
       // The same list on every page (E64): sent with the first page, then kept by the browser — the server skips it while the
       // tab holds it. A language switch or signing in or out is a full load: it comes again then.
-      .share('locales', once(() => this.#locales.supported));
+      .share('locales', once(() => this.#locales.supported))
+      // Live (W6.10): the bell reloads when a notification arrives (the `live` channel of NewSignInNotification) or one is
+      // read in another tab — no polling. A guest follows nothing.
+      .live(
+        async () => {
+          const user = await this.#auth.user();
+          return user ? notificationsChannel({ type: 'user', id: user.id }) : undefined;
+        },
+        { only: ['bell'] },
+      );
     return next();
   }
 }

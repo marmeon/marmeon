@@ -4,7 +4,8 @@
  * adapter with the render (`RenderOptions.owner`). Features hang what lives on screen with the entry off it: islands (their
  * live regions, `live`), remembered state (`entry`). Closing it aborts what is under way and lets go of what is live.
  */
-import type { KeptRegion } from './region.ts';
+import type { KeptRegion, RegionReloadOptions } from './region.ts';
+import type { RegionObject } from '../page.ts';
 import type { Reloading, ReloadSpec } from './optimistic.ts';
 import { slot } from './feature.ts';
 
@@ -12,6 +13,10 @@ import { slot } from './feature.ts';
 export interface LiveRegion {
   readonly url: string;
   reloading(spec?: ReloadSpec): Reloading;
+  /** What it shows — the channels it follows are in its region object (`live`, W6.10). */
+  readonly snapshot: { readonly region: RegionObject | undefined };
+  /** Asks the server again — some props (`only`): a live hint's reload. */
+  reload(options?: RegionReloadOptions): Promise<void>;
 }
 
 /** What a history entry keeps of its islands (E48): their region objects by id — what Back/Forward shows without a request. */

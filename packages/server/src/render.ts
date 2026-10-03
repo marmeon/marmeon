@@ -16,6 +16,8 @@ import {
   isViewResult,
   jsonResponse,
   LAYER_BACKDROP,
+  LiveSigner,
+  liveOf,
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
   heldOnceProps,
@@ -36,6 +38,8 @@ import {
   ResponseLifecycle,
   serializedFlash,
   SharedData,
+  signedLive,
+  type LiveDeclaration,
   type FlashEntry,
   type FlashMessage,
   type DeferredResult,
@@ -143,6 +147,20 @@ const BOTS =
  * (`Cache-Control: private, max-age=…`) must never answer one with the other.
  */
 const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PURPOSE_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER].join(', ');
+
+/**
+ * The live subscriptions of a response (W6.10), signed for the request's session — `PageObject.live`. A result that declares
+ * some in an app without @bespokecore/live is a mistake that says so.
+ */
+async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope: Container | undefined, component: string): Promise<{ live?: PageObject['live'] }> {
+  const live = await signedLive(declarations, () => {
+    if (!scope?.has(LiveSigner)) {
+      throw new Error(`[${component}] follows a live channel (.live() or shared.live()), which needs @bespokecore/live in the app: pnpm add @bespokecore/live (bespoke discover registers it).`);
+    }
+    return scope.make(LiveSigner);
+  });
+  return live ? { live } : {};
+}
 
 /** A response factory that may use the request's container scope (the kernel passes it). */
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
@@ -309,7 +327,15 @@ export function createResponseFactory(
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     const resolved = await resolvePageProps({}, shared, undefined);
     const csrf = scope?.has(PageSession) ? scope.make(PageSession).csrfToken() : undefined;
-    const surface: PageObject = { component: LAYER_BACKDROP, ...resolved, url: layers[0]!.layer?.base ?? layer.url, version, ...(csrf !== undefined ? { csrf } : {}) };
+    const surface: PageObject = {
+      component: LAYER_BACKDROP,
+      ...resolved,
+      url: layers[0]!.layer?.base ?? layer.url,
+      version,
+      ...(csrf !== undefined ? { csrf } : {}),
+      // What every page follows (the layout's bell) — the surface shows the layout.
+      ...(await liveSubscriptions(shared?.liveChannels() ?? [], scope, LAYER_BACKDROP)),
+    };
     for (const key of ['locale', 'fallbackLocale'] as const) if (layer[key] !== undefined) surface[key] = layer[key];
     return JSON.parse(JSON.stringify({ ...surface, layers })) as PageObject;
   };
@@ -333,7 +359,7 @@ export function createResponseFactory(
       // An action's redirect is not followed (E59): its answer is what the user is shown, so it takes the flash messages (E60).
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
-    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug);
+    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug, scope);
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
       // An action's data (E60): with the messages its controller flashed — an API client's JSON leaves them for a page.
@@ -372,7 +398,9 @@ export function createResponseFactory(
     // The route that answered (E64, `<Link activeMatch>`): its name — never an internal one's, and none for an error page.
     const matched = (ctx as { route?: { routeName?: string | undefined; isInternal?: boolean } }).route;
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route, ...pageSession };
+    // The channels it follows (W6.10): its own and — a page, which shows the layout — the shared ones, signed for this session.
+    const live = await liveSubscriptions([...(layer ? [] : (shared?.liveChannels() ?? [])), ...liveOf(result)], scope, result.component);
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
     // Shown to the user: it takes the flash messages (E60) — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));
@@ -437,6 +465,7 @@ async function islandResponse(
   ctx: ResponseContext,
   version: string | null,
   debug: boolean,
+  scope: Container | undefined,
 ): Promise<Response> {
   const { request } = ctx;
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -455,7 +484,9 @@ async function islandResponse(
   // Its own props only: the page around it has the shared ones. Partial reloads of the island name its component.
   const resolved = await resolvePageProps(result.props, undefined, partialReloadOf(request, result.component));
   const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
-  const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query };
+  // The channels it follows (W6.10), signed for the session of the page around it (an island's request carries its cookie).
+  const live = await liveSubscriptions(liveOf(result), scope, result.component);
+  const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query, ...live };
   return new Response(JSON.stringify(region), {
     status: 200,
     headers: { vary: PAGE_VARY, 'content-type': 'application/json', [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' },

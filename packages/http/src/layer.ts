@@ -2,6 +2,7 @@ import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteLookup, 
 import { LAYER_CLOSE_HEADER, regionOf, type LayerClose } from './page.ts';
 import { RedirectResult, type Flasher } from './redirect.ts';
 import { carryFlash, serializedFlash, withFlashMethod, type FlashMethod } from './flash.ts';
+import { carryLive, withLiveMethod, type LiveMethod, type PagePropNames } from './live.ts';
 import type { ViewProps, ViewResult } from './view.ts';
 
 const LAYER_RESULT = Symbol.for('bespokecore.layer-result');
@@ -45,6 +46,8 @@ export interface LayerResult<TProps extends ViewProps = ViewProps, TComponent ex
   readonly layer: { readonly base: LayerBaseRoute; readonly key: string | undefined };
   /** A flash message delivered with the layer (E60) — see `PageResult.flash`. */
   readonly flash: FlashMethod<LayerResult<TProps, TComponent>>;
+  /** Follows a live channel (W6.10) — see `PageResult.live`: a hint reloads `only` of the layer. */
+  readonly live: LiveMethod<LayerResult<TProps, TComponent>, PagePropNames<TProps>, 'this layer'>;
 }
 
 export function isLayerResult(value: unknown): value is LayerResult {
@@ -59,9 +62,10 @@ export function toLayer<TProps extends ViewProps, V extends string>(
   if (typeof base !== 'string') throw new Error(`A layer's base is a route name: got ${JSON.stringify(base)} for [${view.component}].`);
   const { layer: _layer, ...data } = view as ViewResult<TProps, V> & { layer?: unknown };
   const result = { ...data, [LAYER_RESULT]: true, region: 'layer', layer: { base: { name: base, params, query: query as Query | undefined }, key } } as LayerResult<TProps, V>;
-  // What the view was flashed with goes with the layer.
+  // What the view was flashed with, and the channels it follows, go with the layer.
   carryFlash(view, result);
-  return withFlashMethod(result);
+  carryLive(view, result);
+  return withLiveMethod(withFlashMethod(result));
 }
 
 /** The view's `.layer()` — on every result of `view()` (see `PageResult`). */

@@ -75,12 +75,15 @@ const FEATURES = {
   // Uploads (W6.9): <FileInput> (static, small) loads the feature where it renders, in a chunk of its own with the XHR code —
   // which the core also loads with the first FormData visit with progress (W5c.6). Running uploads and tokens: its slot only.
   uploads: { markers: ['http/client/upload', 'http/client/features/uploads'], use: inApp('FileInput'), lazy: true },
+  // W6.10: server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
+  // asks for the waiting updates (`useLiveUpdates`) loads it too. The stream, sequences and hints: its document slot only.
+  live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -168,6 +171,14 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
   it('the core alone carries uploads only in a chunk it loads on demand', () => {
     expect(featuresIn(bundle('core'))).not.toContain('uploads');
     expect(featuresIn(bundle('core'), true)).toContain('uploads');
+  });
+
+  // W6.10: an answer may follow a live channel whatever the app imported — the core loads the feature then (server-driven, like the
+  // layers): never in a first download, always there to load.
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('live props are a chunk of their own in %s — loaded on demand', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built)).not.toContain('live');
+    expect(featuresIn(built, true)).toContain('live');
   });
 
   it('a view that asks useLayer() and an app frame of LayerDialog bring no layer code into the first download', async () => {

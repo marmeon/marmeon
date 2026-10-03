@@ -159,7 +159,7 @@ Nothing is attached by default (`NavigatorOptions.features` is empty). A feature
 | --- | --- | --- |
 | **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack`, the progress bar (E82) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })` |
 | **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open, uploads (W6.9) | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders; a `<FileInput>` when it renders (`loadUploads`) |
-| **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers | an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry) |
+| **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers, live props (W6.10) | layers: an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry); live props: a page, a layer or an island that follows a channel (`PageObject.live`) — and `useLiveUpdates()` where it renders |
 
 The core itself loads uploads with progress (`FormData` with a progress listener, over XHR) with the first such upload — a
 chunk that cannot load sends it with `fetch`, without progress. Polling (`createPoll`), `<Form>` and pagination are plain
@@ -174,6 +174,20 @@ it is serialized (`toJSON`), so a 409 (signed out, a new build) aborts every upl
 on screen then sends `""`. It is a function object on purpose: remembered input (E63) leaves functions out, so an upload is
 never remembered. Its state is on the value (`form.data.avatar?.progress`): `form.progress` stays the progress of a visit with
 `FormData`.
+
+**Live props (W6.10)** are a feature the server triggers, like the layers: a page object (a page, a layer's, an island's region
+object) with `live` — the channels it follows, each signed for the session — makes the core attach `live` (its chunk is
+loaded then; an app whose pages follow nothing never loads it). The feature opens **one** `EventSource` per document for every
+channel on screen (`GET /_bespoke/live`, see the protocol), switches it when what is on screen changes, and turns each hint into
+a partial reload of what follows the channel — hints that come in a burst (250 ms quiet, at most 2 s) into **one** reload per
+page, layer or island (`navigator.reload`, `layer.reload`, `region.reload` with `only`). Every request of the document names
+it (`x-bespoke-connection`: visits through the `start` hook, actions and live validations through the `send` event), so the
+server leaves a tab out of the hints its own writes cause. While a guard holds (unsaved changes) nothing reloads:
+`navigator.use(live).updates` (`pending`, `apply()`, `subscribe`; React: `useLiveUpdates()`). The connection rule (E104): always
+connected, except a page loaded over HTTP/1.1 or an unknown protocol (`nextHopProtocol`) — then only while the tab is visible;
+whenever a stream comes back, `hello` compares each channel's sequence with the last one seen and what moved reloads once. The
+stream, the sequences and the hints waiting live **only in the feature's slot of the document**: a 409 closes the stream and
+forgets them.
 
 **The progress bar is opt-in (E82):** `createBespokeApp({ progress: progressBar({ delay: 250 }) })` — the starters (blank-app,
 web-app, and so `make:auth`) pass it; an app that leaves it out carries none of its code. Without it, what every app has says
@@ -313,6 +327,8 @@ never a token from the URL.
 | `x-bespoke-validate: a,b` | live validation (the form's own method, URL and body) | run middleware, `authorize` and the schema, never the controller; answer `204`/`422` for these fields only (E62) |
 | `x-bespoke-upload: avatar` | an upload's target (the form's own method and URL, `{ name, size, type }` as JSON) — and `bytes` on the request that sends the file | run middleware, bindings and `authorize`, never the controller; answer `{ token, upload: { method, url, fields? } }` from the field's `upload()` rule (404 without one, 422 too large); read-only like a live validation, errors as JSON (W6.9) |
 | `x-bespoke-once: k1,k2` + `x-bespoke-once-scope` | page requests | the once props held (by key) under that scope — skipped by the server for the same scope only (E64) |
+| `x-bespoke-connection: <id>` | every request of a document that follows live channels (visits, actions, live validations) | which tab sent it: a live hint its write causes reaches that tab with `only: []` (W6.10) |
+| `Accept: text/event-stream` | the live stream (`EventSource`) | an event stream — read-only like an island: no session write, no cookie, no flash taken (W6.10) |
 
 | Response header | Meaning |
 | --- | --- |
@@ -326,12 +342,25 @@ never a token from the URL.
 | `x-bespoke-flash-waiting` | on a prefetch: messages wait for the page the user is shown — do not show this prefetch |
 | `x-bespoke-validated: a,b` | on a live validation's `204`/`422`: the fields checked — a client trusts only an answer with it (a proxy's 422 shows nothing) |
 
+**The live stream (W6.10, `@bespokecore/live`)**: `GET /_bespoke/live?connection=<id>&c=<token>.<channel>&…` — one per
+document, for every channel its page, layers and islands follow (`PageObject.live`: `[{ channel, only?, token }]`, the token an
+HMAC over the channel and a hash of the session id, E90). Answered `200` with `Content-Type: text/event-stream`,
+`Cache-Control: no-cache, no-store, no-transform` and `X-Accel-Buffering: no`, or refused: `400` (no connection, no channel, too
+many — `LIVE_MAX_CHANNELS`), `401` (no session), `403` (a token that does not fit: another channel, another session, one that
+ended — no stream at all), `503` + `Retry-After` (`LIVE_MAX_STREAMS` reached, the backend down, the server closing). Its events:
+`retry: <ms>` first; `hello` — `{ seq: { <channel>: n }, missed?: [<channel>] }` (each channel's sequence; `missed` after a
+reconnect with `Last-Event-ID`); `refresh` — `{ channel, only, seq }`, a hint and never data (`only: null` — what each follower
+names; `[]` — nothing: this tab caused it); `end` — `{}`, the session ended (signed in or out): do not reconnect; a comment line
+(`: heartbeat`) every `LIVE_HEARTBEAT` seconds. Each `hello` and `refresh` carries `id:` — the sequences the stream has seen
+(`users.7=4&dashboard.sign-ins=12`), what the browser sends back as `Last-Event-ID`.
+
 **The page object** (`PageObject`): `component`, `props`, `url`, `version`; `locale`, `fallbackLocale` (W5); `deferredProps`,
 `mergeProps`, `deepMergeProps`, `matchPropsOn`; and from Wave 5b `query` + `queryDefaults` (the query as the server parsed
 it, E55 — the browser never parses a URL), `streamedProps` (deferred groups streamed in the document, E49), `layer`
 (`{ key, base, once? }`, E53) and `layers` (a deep link's document), `flash` (`[{ id, key, data }]` — a protocol field,
 not a prop, E60), `route` (the answering route's name for `activeMatch`, never an `.internal()` one), `onceProps` +
-`onceScope` (E64), `csrf` (for forms without JavaScript). A region object (`RegionObject`) is a page object without
+`onceScope` (E64), `csrf` (for forms without JavaScript), and from Wave 6 `live` (`[{ channel, only?, token }]`, the channels it
+follows — W6.10; a page's own and the shared ones, a layer's and an island's their own). A region object (`RegionObject`) is a page object without
 `locale`, `fallbackLocale`, `streamedProps`, `layer`, `layers` and `flash` — and without shared props.
 
 **A history entry** (`HistoryState`) holds positions only, never props (E36): `component`, `url`, `key` (the entry's memory),

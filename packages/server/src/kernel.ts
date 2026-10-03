@@ -9,6 +9,7 @@ import {
   AssetVersion,
   ExceptionHandler,
   HttpError,
+  IncomingRequest,
   isActionRequest,
   isViewResult,
   LOCATION_HEADER,
@@ -19,6 +20,7 @@ import {
   REGION_STATUS_HEADER,
   regionOf,
   ResponseLifecycle,
+  ServerClosing,
   UPLOAD_HEADER,
   VERSION_HEADER,
   isPageObject,
@@ -299,6 +301,7 @@ export function createHttpKernel(
     addresses.set(request, ip);
     const state = createRequestState(request, { maxBodySize, ip });
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
+    scope.instance(IncomingRequest, request); // which tab sent it (`x-bespoke-connection`), for the live Broadcaster
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
     // An island's request is read-only (E52): no session write, no cookie, no work after the response — and so is every
     // request resolved in-process for another (an island while its page renders, a layer's base for its deep link).
@@ -309,21 +312,28 @@ export function createHttpKernel(
     // An upload's target or its bytes (W6.9): a request beside the page — like a live validation, it never writes the session
     // (flash data meant for the next page stays) or cookies.
     const upload = request.headers.has(UPLOAD_HEADER);
+    // An event stream (W6.10, the live stream: `EventSource` asks for `text/event-stream`) stays open beside the page for as long
+    // as the tab does: it reads the session to check who listens, never writes it — no cookie, no flash data taken.
+    const stream = request.headers.get('accept')?.includes('text/event-stream') === true;
     const { pathname } = new URL(request.url);
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
-    if ((island || parent || live || upload) && readOnly) {
+    if ((island || parent || live || upload || stream) && readOnly) {
       const reason = live
         ? `a live validation (${request.method} ${pathname})`
         : upload
           ? `an upload (${request.method} ${pathname})`
-          : island
-          ? `an island request (${request.method} ${pathname})`
-          : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
+          : stream
+            ? `an event stream (${request.method} ${pathname})`
+            : island
+              ? `an island request (${request.method} ${pathname})`
+              : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
       const rule = live
         ? 'a live validation is read-only (E62) — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
         : upload
           ? 'an upload is read-only (W6.9) — it stores a file beside the page: no session, cookies or flash data, no work after the response.'
-          : undefined;
+          : stream
+            ? 'an event stream is read-only (W6.10) — it stays open beside the page and only listens: no session, cookies or flash data, no work after the response.'
+            : undefined;
       readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message), ...(rule ? { rule } : {}) });
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
@@ -518,12 +528,18 @@ export async function startServer({
   }
 
   const close = async () => {
+    // Responses that stay open (live streams, W6.10) end first: `server.close()` waits for every connection, and a tab never
+    // closes its stream by itself — it connects to the next server instead.
+    if (app.container.has(ServerClosing)) app.container.make(ServerClosing).close();
     const closed = new Promise<void>((resolve) => server.close(() => resolve()));
     server.closeIdleConnections();
+    // A connection whose response is ending now (a live stream just closed) turns idle only afterwards — sweep those up too.
+    const sweep = setInterval(() => server.closeIdleConnections(), 50);
     // Vite's HMR WebSocket is an upgraded socket: neither `close()` nor `closeAllConnections()` ends it,
     // so the server would wait forever for an open browser tab. Closing Vite closes its clients.
     await closeVite?.();
     await closed;
+    clearInterval(sweep);
     // The requests are answered; what they deferred until after their response (a mail, a terminate hook) still runs —
     // and needs the app's pools, which the caller closes next (E102). Bounded: a hanging task must not block the exit.
     let timer: ReturnType<typeof setTimeout> | undefined;
