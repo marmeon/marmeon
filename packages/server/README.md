@@ -2,19 +2,52 @@
 
 The HTTP kernel (Hono for matching, the BespokeCore router for the typed pipeline), server rendering through Vite in
 development and the build in production, islands and layers resolved in-process, `startServer()` with a graceful drain.
-This README covers what the kernel reports and the development error page; the rest follows with the docs app.
+This README covers the health endpoints, what the kernel reports and the development error page; the rest follows with the
+docs app.
+
+## Health (E126)
+
+Two endpoints for load balancers and orchestrators, answered by the kernel **before anything else** runs for a request: no
+middleware of any group (no session, no cookie, no CSRF), no request id, no log line, no `http.request` message — so neither a
+span (`@bespokecore/otel`) nor a devtools entry. Responses are `Cache-Control: no-store`; `HEAD` works too.
+
+| | Answers | Checks |
+|---|---|---|
+| `GET /up` — liveness | `200 OK` once the app booted; `503` from the moment the server closes (the drain of E102) | nothing else — a database outage must not get a healthy process restarted |
+| `GET /up/ready` — readiness | `200 {"status":"ok"}`; `503 {"status":"failing"}`; `503 {"status":"draining"}` while the server closes | every `HealthCheck` (core README: database, redis, cache, queue and the app's own), at once, each with its time limit (2 s) |
+
+```yaml
+# Kubernetes
+livenessProbe:  { httpGet: { path: /up, port: 3000 } }
+readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 10 }
+```
+
+- **Details only in development** (`ServerConfig.debug`, `NODE_ENV=development`): then `/up/ready` names each check with its
+  status (`ok`, `failing`, `timeout`), time in ms, note (`default, system`, `database, 3 waiting`) and error — redacted (E125).
+  Elsewhere the answer is the status only: what an app depends on and how it fails is nobody's business outside.
+- **One run at a time:** probes arriving while the checks run share that run — a burst of probes is one `select 1`.
+- **Readiness falls first:** a deployment's `SIGTERM` closes the server — from then on both answer 503 on connections still
+  open, while requests in flight finish and work after the response drains.
+- **The checks' own queries leave no span** (a statement outside every span is not traced) — the probes do not flood a trace
+  backend.
+- **Where:** `HEALTH_PATH` moves them (`/healthz` → `/healthz`, `/healthz/ready`); `HEALTH_PATH=off` turns them off. A route of
+  the app on one of the two paths fails the start — it could never be reached: `The route "status" (GET /up) is where the health
+  check answers (E126) — it would never be reached. Give the route another path, or move the health check: HEALTH_PATH=/healthz
+  (or HEALTH_PATH=off).` (A route with a parameter, `/:page`, simply never sees `up`.)
 
 ## The request log line
 
 Every request writes one entry on the `http` channel — `GET /users/7 200` with `{ requestId, route: 'users.show', ms }`
 (`route` only for a named route). The kernel answers with the request's id (`x-request-id`, taken from the request when it
-is a sane one, else generated); every log entry of the request carries it.
+is a sane one, else generated); every log entry of the request carries it — and, with `@bespokecore/otel`, the request span's
+`trace_id` and `span_id` (the line is written inside the span).
 
 ## Observation (E118)
 
-The kernel traces each request on the `http.request` channel of `@bespokecore/core/diagnostics` — method, path, route name
-and pattern, controller, status, duration — and sends the error a request ends in to `exception`; server rendering goes to
-`render.ssr`. Without a subscriber none of it is built. See the core README for the channels and their messages.
+The kernel traces each request on the `http.request` channel of `@bespokecore/core/diagnostics` — method, path, URL and
+headers (raw), route name and pattern, controller, status, duration — and sends the error a request ends in to `exception`;
+server rendering goes to `render.ssr`. Without a subscriber none of it is built. See the core README for the channels, their
+messages and the spans `@bespokecore/otel` makes of them. The health endpoints are not traced.
 
 ## `Server-Timing` (E129) — development only
 

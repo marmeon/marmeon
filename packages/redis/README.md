@@ -55,6 +55,9 @@ defineApplication({ config: [QueueRedis], … });   // REDIS_QUEUE_CONNECTION=qu
   `<prefix>cache:…` and `<prefix>lock:…` (cache, locks), `<prefix>session:<id>` (sessions), `<prefix>queues:<queue>[:delayed|:reserved]`
   and the set `<prefix>queues` (queue), `<prefix>live:seq:<channel>` and the pub/sub channel `<prefix>live` (live). `cache:clear` deletes only `cache:` keys
   (`SCAN` + `UNLINK`), never `FLUSHDB`.
+- **Readiness (E126):** `RedisHealthCheck` (registered by the provider for `/up/ready`) pings every connection **in use** — one a
+  driver or the app asked for with `get()`. A configured connection nothing uses is not checked (`REDIS_URL` has a default; an
+  app on the database drivers is not "not ready" for a Redis it never talks to).
 - **Time:** Redis TTLs follow Redis' clock, never the app's `Clock` — `app.travel()` in a test does not expire Redis keys.
 
 ## Not supported (yet)

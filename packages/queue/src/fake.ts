@@ -1,6 +1,7 @@
 import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
-import { afterCommit, afterRollback, Clock, inTransaction, Logger, type Container, type QueuedListenerClass } from '@bespokecore/core';
+import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, type Container, type QueuedListenerClass } from '@bespokecore/core';
+import { channels, messageBase, trace, type QueueDispatchMessage } from '@bespokecore/core/diagnostics';
 import type { Kysely } from '@bespokecore/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';
@@ -39,6 +40,8 @@ export type ChainMatch = JobClass | readonly [job: JobClass, payload: Record<str
 
 const FAKE_CONNECTION = 'fake';
 
+const dispatches = channels.tracing('queue.dispatch');
+
 /**
  * Records jobs instead of queuing them — `@bespokecore/testing` puts it in place of the `Queue` (`app.queue`, E101), like
  * `MailFake`. Payloads are still checked against the job's schema (a bad dispatch fails the test), and the jobs wait in
@@ -66,21 +69,52 @@ export class QueueFake implements Queue {
   // --- Queue ---------------------------------------------------------------
 
   async dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>> {
-    const [id] = await this.#record([[job, payload]], options ?? {});
+    const given = options ?? {};
+    const [id] = await this.#traced('dispatch', [job], given, (traceparent) => this.#record([[job, payload]], given, traceparent), (ids) => ids.filter((id) => id !== undefined));
     return id as DispatchResult<O>;
   }
 
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
     if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('bulk() queues no unique jobs — dispatch them one by one.');
-    return this.#record(jobs as unknown as readonly PendingJob[], options as DispatchOptions) as Promise<string[]>;
+    const list = jobs as unknown as readonly PendingJob[];
+    return this.#traced('bulk', list.map(([job]) => job), options as DispatchOptions, (traceparent) => this.#record(list, options as DispatchOptions, traceparent) as Promise<string[]>, (ids) => ids);
   }
 
   async chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
     if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('chain() takes no unique key — a chain is queued as it is.');
     const list = jobs as unknown as readonly PendingJob[];
-    const { first, ids } = await prepareChain(this.#deps(), list);
-    await this.#store([{ job: list[0]![0], payload: list[0]![1], prepared: first, chain: list.slice(1).map(([job, payload], index) => ({ job, payload, id: ids[index + 1]! })) }], options as DispatchOptions);
-    return ids;
+    return this.#traced('chain', list.map(([job]) => job), options as DispatchOptions, async (traceparent) => {
+      const { first, ids } = await prepareChain(this.#deps(), list, traceparent);
+      await this.#store([{ job: list[0]![0], payload: list[0]![1], prepared: first, chain: list.slice(1).map(([job, payload], index) => ({ job, payload, id: ids[index + 1]! })) }], options as DispatchOptions);
+      return ids;
+    }, (ids) => ids);
+  }
+
+  /**
+   * Like the real queue, a dispatch is traced on `queue.dispatch` while something listens (E118) — so a tracer's
+   * `traceparent` reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it (E131).
+   */
+  #traced<T>(kind: QueueDispatchMessage['kind'], jobs: readonly JobClass[], options: DispatchOptions | UniqueDispatchOptions, run: (traceparent?: string) => Promise<T>, ids: (result: T) => (string | undefined)[]): Promise<T> {
+    const container = this.#owner.#container;
+    if (!dispatches.hasSubscribers || !container.has(Application)) return run();
+    const message: QueueDispatchMessage = {
+      ...messageBase(container.make(Application)),
+      kind,
+      jobs: jobs.map((job) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
+      connection: options.connection ?? FAKE_CONNECTION,
+      queue: options.queue ?? 'default',
+      delay: 0,
+      ...(options.unique === undefined ? {} : { unique: String(options.unique) }),
+      jobIds: [],
+    };
+    try {
+      (message as { delay: number }).delay = delaySeconds(options.delay);
+    } catch {
+      // An invalid delay fails the dispatch itself, with its message.
+    }
+    return trace(dispatches, message, () => run(message.traceparent), (ended, result) => {
+      ended.jobIds = ids(result).filter((id): id is string => id !== undefined);
+    });
   }
 
   using(_transaction: Kysely<any>): Queue {
@@ -231,11 +265,13 @@ export class QueueFake implements Queue {
     return { registry: container.make(JobRegistry), cipher: () => connections.cipher(), clock: container.make(Clock) };
   }
 
-  async #record(jobs: readonly PendingJob[], options: DispatchOptions | UniqueDispatchOptions): Promise<(string | undefined)[]> {
+  async #record(jobs: readonly PendingJob[], options: DispatchOptions | UniqueDispatchOptions, traceparent?: string): Promise<(string | undefined)[]> {
     const deps = this.#deps();
     const unique = options.unique === undefined ? undefined : uniqueRecord(jobs[0]![0], options as UniqueDispatchOptions);
     // Checked like a real dispatch — registered, JSON, the schema — before any is recorded.
-    const prepared = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}) })));
+    const prepared = await Promise.all(
+      jobs.map(([job, payload]) => prepareRecord(deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}), ...(traceparent ? { traceparent } : {}) })),
+    );
     const entries = prepared.map((record, index) => ({ job: jobs[index]![0], payload: jobs[index]![1], prepared: record, chain: [] }));
     if (!unique) return this.#store(entries, options);
 

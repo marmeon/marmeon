@@ -7,7 +7,8 @@ import { loadDiscoveredPackages } from './discovery/discover.ts';
 import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
 import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
-import { ConsoleLogger, Logger } from './logger.ts';
+import { HealthChecks, type HealthCheckClass } from './health.ts';
+import { ConsoleLogger, LogContextSources, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 
@@ -26,6 +27,8 @@ export interface ApplicationOptions {
   listeners?: readonly ListenerBinding[];
   /** App-level configuration; modules can contribute their own through `config`. */
   config?: readonly ConfigDefinition<any>[];
+  /** App-level readiness checks for `/up/ready` (E126); packages and modules bring their own through `health`. */
+  health?: readonly HealthCheckClass[];
   /**
    * Environment to validate the configuration against. Default: `.env`, then
    * `.env.{NODE_ENV}`, then the real environment (which wins).
@@ -91,8 +94,8 @@ export class Application {
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
-      if (!hooks && !Provider.config?.length) {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown() or static config.`);
+      if (!hooks && !Provider.config?.length && !Provider.health?.length) {
+        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config or static health.`);
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -157,6 +160,8 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], options });
   container.instance(Application, app);
   container.instance(Container, container);
+  // Fields every log entry carries besides the request's or job's (@bespokecore/otel: the active span's ids).
+  container.instance(LogContextSources, new LogContextSources());
   // Fallback until a logging package (e.g. @bespokecore/log) binds its own.
   container.singleton(Logger, () => new ConsoleLogger({}, app));
   // The time (E97); tests bind a `TestClock` they can move.
@@ -165,6 +170,11 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.instance(Redactor, new Redactor());
   // The solutions the development error page shows (E130): every provider's `static solutions` (the specific ones), then the core's.
   container.instance(ErrorSolutions, new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]));
+  // The readiness checks of `/up/ready` (E126): the packages' (database, redis, cache, queue), then the app's and its modules'.
+  container.instance(
+    HealthChecks,
+    new HealthChecks([...providers.flatMap((Provider) => Provider.health ?? []), ...(options.health ?? []), ...modules.flatMap((module) => module.health ?? [])]),
+  );
   // A defaulted or optional constructor parameter of an injectable type is never injected (E128): said once per class, in
   // development — `container.warnings` keeps them for the error page.
   if (env.NODE_ENV === 'development') {

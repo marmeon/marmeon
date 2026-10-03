@@ -1,4 +1,4 @@
-import { Application, currentLogContext, defineConfig, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
+import { Application, currentLogContext, defineConfig, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
 import { channels, messageBase } from '@bespokecore/core/diagnostics';
 import { pino, type Logger as Pino } from 'pino';
 import pretty from 'pino-pretty';
@@ -83,14 +83,20 @@ function withoutBound(context: Readonly<Record<string, unknown>>, instance: unkn
 export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
     destination ?? (config.format === 'pretty' ? pretty({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
+  // What the app's packages add to every entry (@bespokecore/otel: `trace_id`, `span_id`) — nothing to merge without a source.
+  const sources = logContextSourcesOf(app);
   const logger = pino(
     {
       level: config.level,
       base: undefined,
       formatters: { log: (object) => redact(object) },
-      // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt.
+      // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt; and
+      // what the app's log context sources add (the active span's ids).
       // A key a child logger is bound with already (the scheduler's `task`) is left out: pino would write it twice.
-      mixin: (_merge, _level, instance) => withoutBound(currentLogContext(), instance),
+      mixin: (_merge, _level, instance) => {
+        const added = sources?.current();
+        return withoutBound(added ? { ...currentLogContext(), ...added } : currentLogContext(), instance);
+      },
     },
     stream as never,
   );

@@ -15,7 +15,7 @@ class ShowUserController extends Controller {
     // A query while the request runs — as the database would report it (on the app's channel, in the request's context).
     const app = current;
     if (app && channels.tracing('db.query').hasSubscribers) {
-      publishEnded(channels.tracing('db.query'), { ...messageBase(app), connection: 'default', sql: 'select * from users where id = ?', parameters: [7], secret: true, durationMs: 2.5 });
+      publishEnded(channels.tracing('db.query'), { ...messageBase(app), connection: 'default', driver: 'sqlite', sql: 'select * from users where id = ?', parameters: [7], secret: true, durationMs: 2.5 });
     }
     return { id: 7 };
   }

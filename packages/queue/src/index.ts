@@ -2,6 +2,7 @@ import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Log
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
+import { QueueHealthCheck } from './health.ts';
 import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
 import type { JobClass } from './job.ts';
 import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
@@ -12,6 +13,7 @@ import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
 // contract (sync, database, redis), a worker with a scope per job, retries, failed jobs, unique jobs, chains, job
 // middleware, job events — and a fake for tests.
 export { QueueConfig } from './config.ts';
+export { QueueHealthCheck } from './health.ts';
 export { checkTimeouts, QueueConnections } from './connections.ts';
 export { backoffDelay } from './driver.ts';
 export type { FailedJob, FailedJobStore, JobRecord, QueueDriver, QueuedJob, QueuedPush, ReservedJob, UniqueRecord } from './driver.ts';
@@ -68,6 +70,8 @@ declare module '@bespokecore/core' {
  */
 export class QueueServiceProvider implements ServiceProvider {
   static config = [QueueConfig];
+  /** The default connection's driver answers, for `/up/ready` (E126). */
+  static health = [QueueHealthCheck];
 
   register(container: Container): void {
     container.singleton(JobRegistry, (c) => {

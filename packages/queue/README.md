@@ -167,6 +167,9 @@ context (`traceparent`). The devtools and OpenTelemetry follow a request into it
 `jobIds`, `queue`, `connection`, `delay`, `requestId`) and every attempt (`job`, `jobId`, `attempt`, `originRequestId`,
 `traceparent`, `outcome`, `durationMs`, `error`); job events stay the app's interface.
 
+**Readiness (E126):** the provider registers `QueueHealthCheck` for `/up/ready` — the default connection's driver answers (the
+size of its default queue; `sync` has nothing to reach).
+
 ## Testing
 
 `createTestApp()` puts a **`QueueFake`** in place (`queue: 'fake'`, the default; `'real'` keeps the configured queue):
@@ -182,7 +185,9 @@ await app.queue.failed();                                                     //
 ```
 
 `app.queue.work()` builds each job in a scope, runs middleware, retries, chains and events — like a worker without the
-process. The real worker is tested as a process too (`worker-processes.test.ts`: SIGKILL in the middle of a job, SIGTERM, a job
+process. Like the real queue, the fake traces a dispatch on `queue.dispatch` while something listens — a tracer's `traceparent`
+reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it (`@bespokecore/otel`, E131).
+The real worker is tested as a process too (`worker-processes.test.ts`: SIGKILL in the middle of a job, SIGTERM, a job
 that ignores its signal, two workers × 200 jobs — on SQLite, Postgres and Redis).
 
 ## Upgrading from before Wave 6 (for the W8.5 changelog)

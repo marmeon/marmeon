@@ -12,6 +12,9 @@ await this.#cache.lock(`report:${id}`, 60).block(5, () => this.#reports.build(id
 `add`, `increment` and `lock` are atomic in every store (E103): counting and deciding is one step of the store, so
 concurrent requests in any number of processes never get past a limit together.
 
+**Readiness (E126):** the provider registers `CacheHealthCheck` for `/up/ready` — the store of `CACHE_DRIVER` takes a new key
+(`add`) and lets it go (`forget`); the database store writes on its infrastructure connection (E108), as the cache always does.
+
 ## Cache drivers (`CACHE_DRIVER`)
 
 | Driver     | Where the data lives                                                              | Use it for                                    |

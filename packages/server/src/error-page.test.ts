@@ -20,7 +20,7 @@ const Mailer = token<Mailer>('Mailer');
 let current: Application | undefined;
 const query = (sql: string, parameters: unknown[] = [], secret = false) => {
   if (current && channels.tracing('db.query').hasSubscribers) {
-    publishEnded(channels.tracing('db.query'), { ...messageBase(current), connection: 'default', sql, parameters, secret, durationMs: 1.25 });
+    publishEnded(channels.tracing('db.query'), { ...messageBase(current), connection: 'default', driver: 'sqlite', sql, parameters, secret, durationMs: 1.25 });
   }
 };
 

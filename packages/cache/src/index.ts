@@ -3,6 +3,7 @@ import { Application, Clock, type Container, type Resolver, type ServiceProvider
 import { GLOBAL, MiddlewarePriority, Router } from '@bespokecore/router';
 import { Cache, StoreCache, type CacheStore } from './cache.ts';
 import { CacheConfig } from './config.ts';
+import { CacheHealthCheck } from './health.ts';
 import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 import { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 import { LimitLiveValidation, RateLimiter } from './rate-limiter.ts';
@@ -25,6 +26,7 @@ export { DEFAULT_LIVE_VALIDATION_LIMIT, Limit, LimitLiveValidation, LIVE_VALIDAT
 export type { LimiterCallback } from './rate-limiter.ts';
 
 export { CacheConfig } from './config.ts';
+export { CacheHealthCheck } from './health.ts';
 
 /** A driver's package is missing: what to install, said at startup (the CLI prints it without a stack trace). */
 export class CacheSetupError extends Error {
@@ -66,6 +68,8 @@ const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@b
 /** Registers the `Cache` (`CACHE_DRIVER`) and the `RateLimiter`, and `make:cache-table`. Found by `bespoke discover`. */
 export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
+  /** The cache takes and frees a key, for `/up/ready` (E126). */
+  static health = [CacheHealthCheck];
 
   register(container: Container): void {
     const config = container.make(CacheConfig);

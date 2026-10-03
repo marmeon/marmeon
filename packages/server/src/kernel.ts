@@ -51,6 +51,7 @@ import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
+import { checkHealthPaths, createHealthEndpoints } from './health.ts';
 import { ServerConfig } from './provider.ts';
 import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
@@ -80,6 +81,11 @@ export interface KernelOptions {
   strictReadOnly?: boolean;
   /** How long an island resolved in-process may take before it shows its `exception` fallback (ms, default 10 s). */
   islandTimeout?: number;
+  /**
+   * The health endpoints' path (E126): `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
+   * `ServerConfig.health` (env `HEALTH_PATH`, `/up`); `false`: none.
+   */
+  health?: string | false;
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
@@ -136,6 +142,7 @@ export function createHttpKernel(
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
     strictReadOnly = process.env.NODE_ENV !== 'production',
     islandTimeout = 10_000,
+    health = container.has(ServerConfig) ? container.make(ServerConfig).health : '/up',
   }: KernelOptions = {},
 ): HttpKernel {
   const router = application.container.make(Router);
@@ -358,6 +365,14 @@ export function createHttpKernel(
     return renderRegionError(handler, error, request, scope);
   };
 
+  // Health (E126): answered first — before the request id, the log line, the request channel and every middleware group.
+  if (health !== false) {
+    const endpoints = createHealthEndpoints(application, container, { path: health, debug });
+    checkHealthPaths(endpoints, router.routes);
+    app.get(endpoints.path, () => endpoints.live());
+    app.get(endpoints.readyPath, () => endpoints.ready());
+  }
+
   app.use(async (c, next) => {
     const header = c.req.header('x-request-id');
     const requestId = header && REQUEST_ID.test(header) ? header : randomUUID();
@@ -367,11 +382,15 @@ export function createHttpKernel(
     recorder?.begin(info);
 
     await runWithRequest(info, async () => {
+      // The log line is written inside the request's trace (a tracer's span, E120: its `trace_id` in the line).
+      const run = async () => {
+        await next();
+        const route = matched.get(c.req.raw)?.routeName;
+        logger.info(`${c.req.method} ${c.req.path} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
+      };
       // Traced only while something listens (E118): otherwise no message is built at all.
-      if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, next, () => c.res.status);
-      else await next();
-      const route = matched.get(c.req.raw)?.routeName;
-      logger.info(`${c.req.method} ${c.req.path} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
+      if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, run, () => c.res.status);
+      else await run();
     });
 
     // Some responses (e.g. Response.redirect) have immutable headers — copy before setting.
@@ -389,6 +408,8 @@ export function createHttpKernel(
       requestId,
       method: request.method,
       path: new URL(request.url).pathname,
+      url: request.url,
+      headers: request.headers,
       ...(region ? { region } : {}),
       inProcess: islandParent(env) !== undefined,
     };

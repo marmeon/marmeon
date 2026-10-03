@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream';
-import { createApplication, describeError, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { ConsoleLogger, createApplication, describeError, LogContextSources, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
 import { channels, type LogMessage } from '@bespokecore/core/diagnostics';
 import { describe, expect, it } from 'vitest';
 import { createPinoLogger } from './index.ts';
@@ -40,6 +41,44 @@ describe('@bespokecore/log', () => {
     expect(lines[0]).toMatchObject({ msg: 'Sending', job: 'auth.send-welcome-mail', jobId: 'j-1', attempt: 2 });
     expect(lines[0]).not.toHaveProperty('requestId');
     expect(lines[1]).toMatchObject({ requestId: 'req-7', job: 'auth.sync', jobId: 'j-2', attempt: 1 });
+  });
+
+  it('adds what the app\'s log context sources give — a tracer\'s trace_id and span_id (E120) — and nothing without a source', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const lines: Record<string, unknown>[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(JSON.parse(String(chunk)));
+        done();
+      },
+    });
+    const logger = createPinoLogger({ level: 'info', format: 'json' }, stream, app);
+    const span = new AsyncLocalStorage<string>();
+    logger.info('Before');
+    const off = app.container.make(LogContextSources).add(() => (span.getStore() ? { trace_id: span.getStore() } : undefined));
+    span.run('4bf92f3577b34da6a3ce929d0e0e4736', () => runWithRequest({ requestId: 'req-1' }, () => logger.child({ channel: 'http' }).info('Inside')));
+    logger.info('Outside a span');
+    off();
+    span.run('4bf92f3577b34da6a3ce929d0e0e4736', () => logger.info('Source removed'));
+    expect(lines.map(({ msg, trace_id, requestId }) => ({ msg, trace_id, requestId }))).toEqual([
+      { msg: 'Before', trace_id: undefined, requestId: undefined },
+      { msg: 'Inside', trace_id: '4bf92f3577b34da6a3ce929d0e0e4736', requestId: 'req-1' },
+      { msg: 'Outside a span', trace_id: undefined, requestId: undefined },
+      { msg: 'Source removed', trace_id: undefined, requestId: undefined },
+    ]);
+
+    // The fallback logger too.
+    const printed: string[] = [];
+    const original = console.log;
+    console.log = (line: string) => void printed.push(line);
+    try {
+      const off2 = app.container.make(LogContextSources).add(() => ({ trace_id: 'abc' }));
+      new ConsoleLogger({}, app).info('Console');
+      off2();
+    } finally {
+      console.log = original;
+    }
+    expect(printed).toEqual(['[info] Console {"trace_id":"abc"}']);
   });
 
   it('writes a key of the log context once when a child logger is bound with it too (the scheduler’s task)', () => {

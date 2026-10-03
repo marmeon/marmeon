@@ -35,6 +35,14 @@ export const ServerConfig = defineConfig('server', {
      * `Page.ssr = false`). Not `SSR`: Vite and Vitest set that one themselves.
      */
     SSR_ENABLED: v.optional(v.picklist(['true', 'false']), 'true'),
+    /**
+     * Where the health endpoints answer (E126): liveness at this path, readiness below it (`/up/ready`). `off`: neither —
+     * e.g. when the app's own route needs `/up`.
+     */
+    HEALTH_PATH: v.optional(
+      v.union([v.literal('off'), v.pipe(v.string(), v.regex(/^\/[\w./-]*[\w-]$/, 'Expected a path like /up or /healthz (no trailing slash), or off'))]),
+      '/up',
+    ),
     NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
@@ -43,6 +51,8 @@ export const ServerConfig = defineConfig('server', {
     assetVersion: env.ASSET_VERSION,
     trustedProxies: env.TRUSTED_PROXIES,
     ssr: env.SSR_ENABLED === 'true',
+    /** The liveness path of the health endpoints (readiness: `<path>/ready`), or `false` without them (E126). */
+    health: env.HEALTH_PATH === 'off' ? (false as const) : env.HEALTH_PATH,
     /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
     serverTiming: env.NODE_ENV === 'development',
     /**

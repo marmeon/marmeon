@@ -168,8 +168,12 @@ scratch database: the generated `Tables` know every table, wherever it lives.
 
 Every statement — of every connection, the infrastructure handle included — goes to the `db.query` channel of
 `@bespokecore/core/diagnostics` while something listens (the error page, the devtools, `Server-Timing`, OpenTelemetry):
-`connection`, `sql`, `parameters`, `durationMs`, `error`, and the request (`requestId`) or job (`jobId`) it ran in.
+`connection`, `driver`, `sql`, `parameters`, `durationMs`, `error`, and the request (`requestId`) or job (`jobId`) it ran in.
 **`secret: true`** marks a statement that touches a table with secret columns (`.secret()` in its migration) — every
 table the query builder names, and for raw SQL any secret table's name in its text. Its parameters may hold a password
 hash or a token: whatever records or shows queries redacts them all (E125). Without a subscriber nothing is built.
-`connections.onQuery(listener)` stays for code that counts queries itself (tests).
+`connections.onQuery(listener)` stays for code that counts queries itself (tests). OpenTelemetry (`@bespokecore/otel`) records
+a statement as a client span with its text only — never its parameters.
+
+**Readiness (E126):** the provider registers `DatabaseHealthCheck` for `/up/ready` — `select 1` on every configured connection
+(the app's pools, as requests use them); one that fails makes the instance "not ready" and says which.

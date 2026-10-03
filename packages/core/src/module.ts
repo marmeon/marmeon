@@ -1,5 +1,6 @@
 import type { ConfigDefinition } from './config/config.ts';
 import type { ListenerBinding } from './events.ts';
+import type { HealthCheckClass } from './health.ts';
 import type { ServiceProviderClass } from './provider.ts';
 
 /**
@@ -20,6 +21,8 @@ export interface ModuleDefinition {
   readonly config?: readonly ConfigDefinition<any>[];
   /** Event listeners, e.g. `[listen(UserLoggedIn, RecordLastLogin)]`. */
   readonly listeners?: readonly ListenerBinding[];
+  /** Readiness checks for `/up/ready` (E126): `[StorageWritable]` — classes with `static check` and `handle()`. */
+  readonly health?: readonly HealthCheckClass[];
 }
 
 /** Declares a module. The identity function exists for type inference and discoverability. */

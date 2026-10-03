@@ -7,6 +7,7 @@ import { Factories } from './factories.ts';
 import { Seeding } from './seeders.ts';
 import { Migrator } from './migrations/migrator.ts';
 import { databaseSolutions } from './solutions.ts';
+import { DatabaseHealthCheck } from './health.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
 declare module '@bespokecore/core' {
@@ -29,6 +30,8 @@ export class DatabaseServiceProvider implements ServiceProvider {
   static config = [DatabaseConfig];
   /** A missing table → the pending migrations, on the development error page (E130). */
   static solutions = databaseSolutions;
+  /** Every connection answers `select 1`, for `/up/ready` (E126). */
+  static health = [DatabaseHealthCheck];
 
   register(container: Container): void {
     container.singleton(Connections, (c) => {

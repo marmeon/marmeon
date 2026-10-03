@@ -1,11 +1,13 @@
 import { Application, defineConfig, Logger, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@bespokecore/core';
 import * as v from 'valibot';
 import { RedisConnections, type RedisConnectionOptions } from './connections.ts';
+import { RedisHealthCheck } from './health.ts';
 
 // Redis (E87): connections like database connections — lazy per name, closed on shutdown — on the official client
 // `redis` (node-redis), an optional peer. The cache, session, queue and live drivers build on it.
 export { defineRedisScript, describeRedisUrl, loadRedisClient, REDIS_INSTALL, RedisConnection, RedisConnections, RedisSetupError } from './connections.ts';
 export type { ImportRedisClient, RedisConnectionOptions, RedisScript } from './connections.ts';
+export { RedisHealthCheck } from './health.ts';
 
 const redisUrl = v.pipe(v.string(), v.regex(/^rediss?:\/\//, 'Expected a redis:// or rediss:// URL'), v.url());
 
@@ -69,6 +71,8 @@ export function isRedisConnectionDefinition(value: unknown): value is RedisConne
 /** Registers `RedisConnections` and closes every connection on shutdown. Found by `bespoke discover`. */
 export class RedisServiceProvider implements ServiceProvider {
   static config = [RedisConfig];
+  /** The connections in use answer `PING`, for `/up/ready` (E126). */
+  static health = [RedisHealthCheck];
 
   register(container: Container): void {
     container.singleton(RedisConnections, (c) => {

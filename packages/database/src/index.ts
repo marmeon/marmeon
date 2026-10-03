@@ -31,6 +31,7 @@ export { InfrastructureTransactionError } from './infrastructure.ts';
 export type { InfrastructureUsage } from './infrastructure.ts';
 export { isUniqueViolation, missingTable } from './errors.ts';
 export { databaseSolutions } from './solutions.ts';
+export { DatabaseHealthCheck } from './health.ts';
 export { DatabaseServiceProvider } from './provider.ts';
 export { DbShowCommand } from './commands/db-show.ts';
 export { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';

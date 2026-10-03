@@ -270,6 +270,11 @@ export class RedisConnections {
     return [...this.#options.keys()];
   }
 
+  /** Names of the connections the app uses — asked for with `get()` by a driver or the app — in that order. */
+  inUse(): string[] {
+    return [...this.#instances.keys()];
+  }
+
   /**
    * Checks what can be checked without connecting: that the client is installed. Drivers call it when they boot, so a
    * missing client is a message at startup ({@link RedisSetupError}), not an error on the first request.

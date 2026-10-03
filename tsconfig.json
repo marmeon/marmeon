@@ -17,6 +17,9 @@
       "path": "packages/redis"
     },
     {
+      "path": "packages/otel"
+    },
+    {
       "path": "packages/cache"
     },
     {

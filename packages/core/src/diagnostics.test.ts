@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { subscribe as subscribeRaw, unsubscribe as unsubscribeRaw } from 'node:diagnostics_channel';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createApplication, type Application } from './application.ts';
@@ -9,7 +10,7 @@ const boot = () => createApplication({ root: import.meta.dirname, discover: fals
 
 /** A query message as the database would publish it — for the app given. */
 function query(app: Application, sql = 'select 1'): DbQueryMessage {
-  return { ...messageBase(app), connection: 'default', sql, parameters: [], secret: false, durationMs: 1.5 };
+  return { ...messageBase(app), connection: 'default', driver: 'sqlite', sql, parameters: [], secret: false, durationMs: 1.5 };
 }
 
 describe('channels.subscribe (E118)', () => {
@@ -130,7 +131,7 @@ describe('messages', () => {
     expect(channels.built(app)).toBe(1);
   });
 
-  it('the raw TracingChannel: every app\'s messages — what a tracer binds its context store to', async () => {
+  it('the raw TracingChannel: every app\'s messages', async () => {
     const one = await boot();
     const two = await boot();
     const seen: Application[] = [];
@@ -143,5 +144,89 @@ describe('messages', () => {
       unsubscribeRaw('tracing:bespoke:db.query:asyncEnd', raw);
     }
     expect(seen).toEqual([one, two]);
+  });
+});
+
+describe('channels.around: an operation\'s work in a context of the subscriber\'s (E120)', () => {
+  it('runs the work inside the wrapper — what happens there sees the wrapper\'s context; other apps\' operations do not', async () => {
+    const one = await boot();
+    const two = await boot();
+    const store = new AsyncLocalStorage<string>();
+    const seen: (string | undefined)[] = [];
+    const work = async () => {
+      await null;
+      seen.push(store.getStore());
+      return 'sent';
+    };
+    // A wrapper only runs while the channel has a subscriber (the operation is traced only then).
+    const offs = [
+      channels.subscribe(one, 'live.refresh', {}),
+      channels.around(one, 'live.refresh', (message, run) => store.run(`span of ${message.channel}`, run)),
+    ];
+    try {
+      const tracing = channels.tracing('live.refresh');
+      expect(await trace(tracing, { ...messageBase(one), channel: 'users.1', only: null }, work)).toBe('sent');
+      expect(await trace(tracing, { ...messageBase(two), channel: 'users.2', only: null }, work)).toBe('sent');
+    } finally {
+      offs.forEach((off) => off());
+    }
+    expect(await trace(channels.tracing('live.refresh'), { ...messageBase(one), channel: 'users.3', only: null }, work)).toBe('sent');
+    expect(seen).toEqual(['span of users.1', undefined, undefined]);
+  });
+
+  it('the work runs exactly once — also when a wrapper throws before it, or never calls run (a process warning each)', async () => {
+    const app = await boot();
+    const warnings: string[] = [];
+    const onWarning = (warning: Error) => void warnings.push(warning.message);
+    process.on('warning', onWarning);
+    let runs = 0;
+    const work = async () => {
+      runs++;
+      return runs;
+    };
+    const offs = [channels.subscribe(app, 'mail.send', {})];
+    try {
+      const tracing = channels.tracing('mail.send');
+      const message = () => ({ ...messageBase(app), mailable: 'WelcomeMail', mode: 'send' as const });
+      offs.push(
+        channels.around(app, 'mail.send', () => {
+          throw new Error('the tracer is broken');
+        }),
+      );
+      expect(await trace(tracing, message(), work)).toBe(1);
+      offs.pop()!();
+      offs.push(channels.around(app, 'mail.send', () => {}));
+      expect(await trace(tracing, message(), work)).toBe(2);
+      offs.pop()!();
+      // Called twice: the work still runs once.
+      offs.push(
+        channels.around(app, 'mail.send', (_message, run) => {
+          run();
+          run();
+        }),
+      );
+      expect(await trace(tracing, message(), work)).toBe(3);
+      // The operation's own failure stays its own.
+      offs.push(channels.around(app, 'mail.send', (_message, run) => void run()));
+      await expect(trace(tracing, message(), async () => Promise.reject(new Error('smtp is down')))).rejects.toThrow('smtp is down');
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      offs.forEach((off) => off());
+      process.off('warning', onWarning);
+    }
+    expect(runs).toBe(3);
+    expect(warnings.filter((warning) => warning.startsWith('A wrapper of bespoke:mail.send failed: Error: the tracer is broken'))).toHaveLength(1);
+    expect(warnings.filter((warning) => warning === 'A wrapper of bespoke:mail.send did not run the operation; it ran without it.')).toHaveLength(2);
+  });
+
+  it('is typed per channel; db.query has none (it is published after the statement ran)', () => {
+    const typeOnly = () => {
+      channels.around({} as Application, 'http.request', (request, run) => (request.method === 'GET' ? run() : run()));
+      // @ts-expect-error — a request message has no sql.
+      channels.around({} as Application, 'http.request', (request) => request.sql);
+      // @ts-expect-error — a plain channel is never wrapped.
+      channels.around({} as Application, 'log', () => {});
+    };
+    expect(typeOnly).toBeTypeOf('function');
   });
 });

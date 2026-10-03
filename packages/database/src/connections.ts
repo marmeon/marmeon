@@ -287,6 +287,7 @@ export class Connections {
         // Kysely reports a query once it ended: it started `durationMs` before.
         startedAt: performance.timeOrigin + performance.now() - query.durationMs,
         connection,
+        driver: this.#options.get(connection)?.driver ?? 'unknown',
         sql: query.sql,
         parameters: query.parameters,
         secret: touchesSecrets(event.query, this.#instances.get(connection)?.metadata.secrets),

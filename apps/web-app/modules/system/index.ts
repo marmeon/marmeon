@@ -1,5 +1,6 @@
 import { defineModule, listen } from '@bespokecore/core';
 import { ScheduledTaskFailed } from '@bespokecore/scheduler';
+import { StorageWritable } from './health/StorageWritable.ts';
 import { AlertOnFailedTask } from './listeners/AlertOnFailedTask.ts';
 import { schedule } from './schedule.ts';
 
@@ -12,4 +13,6 @@ export default defineModule({
   schedule,
   // Every failed scheduled task of the app (any module's) raises an alert (E127).
   listeners: [listen(ScheduledTaskFailed, AlertOnFailedTask)],
+  // `/up/ready` (E126) checks the database, cache and queue through their packages — and, here, that the disks take files.
+  health: [StorageWritable],
 });

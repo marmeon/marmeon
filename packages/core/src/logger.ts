@@ -23,6 +23,44 @@ export const Logger = token<Logger>('Logger');
 const entries = channels.event('log');
 
 /**
+ * More fields for every log entry written now — beside the request's id or the job's name (`currentLogContext()`). One per
+ * app; `@bespokecore/otel` adds the active span's `trace_id` and `span_id`. A source runs for every entry: keep it cheap, and
+ * return nothing when it has nothing to add.
+ */
+export class LogContextSources {
+  readonly #sources = new Set<() => LogContext | undefined>();
+
+  /** Adds a source; returns a function that removes it (a provider's `shutdown()`). */
+  add(source: () => LogContext | undefined): () => void {
+    this.#sources.add(source);
+    return () => {
+      this.#sources.delete(source);
+    };
+  }
+
+  /** What the sources add now — `undefined` when none adds anything (the common case: no source at all). */
+  current(): LogContext | undefined {
+    if (this.#sources.size === 0) return undefined;
+    let merged: Record<string, unknown> | undefined;
+    for (const source of this.#sources) {
+      let fields: LogContext | undefined;
+      try {
+        fields = source();
+      } catch {
+        // A source must never cost a log entry.
+      }
+      if (fields) merged = { ...merged, ...fields };
+    }
+    return merged;
+  }
+}
+
+/** The log context sources of `app` (bound by `createApplication`), if any. */
+export function logContextSourcesOf(app: Application | undefined): LogContextSources | undefined {
+  return app?.container.has(LogContextSources) ? app.container.make(LogContextSources) : undefined;
+}
+
+/**
  * Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included.
  * With an `app`, entries also go to the `log` channel (E118) while something listens.
  */
@@ -53,7 +91,7 @@ export class ConsoleLogger implements Logger {
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
-    const data = { ...this.#bindings, ...currentLogContext(), ...context };
+    const data = { ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context };
     const line = `[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`;
     (level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }

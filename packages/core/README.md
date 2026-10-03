@@ -44,8 +44,8 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
 
 | Channel | Where | Message (besides `app`, `startedAt`, `requestId?`, `jobId?`, `task?`, `durationMs`, `error`) |
 |---|---|---|
-| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process) | `HttpRequestMessage`: `method`, `path`, `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status` |
-| `db.query` | every statement of every connection | `DbQueryMessage`: `connection`, `sql`, `parameters` (raw), `secret` |
+| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status` |
+| `db.query` | every statement of every connection | `DbQueryMessage`: `connection`, `driver` (`sqlite`/`pgsql`), `sql`, `parameters` (raw), `secret` |
 | `queue.dispatch` | `queue.dispatch()`, `bulk()`, `chain()` | `QueueDispatchMessage`: `kind`, `jobs`, `jobIds`, `connection`, `queue`, `delay`, `unique`, `traceparent` (a tracer sets it) |
 | `queue.job` | each attempt (worker, `sync`, `app.queue.work()`) | `QueueJobMessage`: `job`, `jobId`, `queue`, `connection`, `attempt`, `originRequestId`, `traceparent`, `outcome` |
 | `schedule.task` | each run of a scheduled task | `ScheduleTaskMessage`: `task`, `minute`, `reason`, `outcome`, `skipped` |
@@ -59,13 +59,60 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
 - **Correlation (E131):** `requestId` is the request's `x-request-id` (the kernel answers with it); a job dispatched in a
   request keeps it as `originRequestId`. Queries, mails, notifications and log entries carry the `requestId` or `jobId` of
   where they happen.
-- **Trace context:** a tracer binds its context store to a channel (`channels.tracing('http.request').start.bindStore(…)`);
-  operations run inside `start.runStores`, so spans nest. On `queue.dispatch` it sets `message.traceparent` in `start` —
-  the job stores it, its `queue.job` message carries it to the worker. A raw subscriber hears every app: compare
+- **Trace context:** `channels.around(app, name, (message, run) => …)` runs each traced operation's work inside a context
+  of the subscriber's — `@bespokecore/otel` runs it in the operation's span (`context.with(…, run)`), so what happens inside
+  (its queries, the jobs it dispatches, its log lines, the app's own spans) is its child. Call `run` once, synchronously; a
+  wrapper that throws or forgets it is a process warning and the work runs without it. (Node's `start.bindStore` cannot carry
+  OpenTelemetry's context: Node 26 enters a bound store with `store.withScope()`, which only an `AsyncLocalStorage` has.)
+  On `queue.dispatch` a tracer sets `message.traceparent` in `start` — the job stores it, its `queue.job` message carries it
+  to the worker (also through the `QueueFake`). A raw subscriber (`channels.tracing(name)`) hears every app: compare
   `message.app` itself.
+- **Log fields:** `LogContextSources` (one per app) adds fields to every log entry written now — `@bespokecore/otel` adds
+  the active span's `trace_id`, `span_id` and `trace_flags`; `@bespokecore/log` and the fallback logger merge them.
 - **Publishing (packages):** `messageBase(app)` (the common fields — counts as a message built), `trace(channel, message,
   fn, finish?)` (start → end → error → asyncStart → asyncEnd, `durationMs` set first) and `publishEnded(channel, message)`
   for an operation that already ended. Always behind `channel.hasSubscribers`.
+
+### What `@bespokecore/otel` makes of them (E120)
+
+| Channel | Span (kind) | Attributes (semantic conventions; `bespoke.*` our own) |
+|---|---|---|
+| `http.request` | `GET /users/:user` (server; in-process: internal) — `{method}` without a route | `http.request.method`, `http.route`, `http.response.status_code`, `url.path` (sensitive route parameters `[redacted]`), `url.query` and `user_agent.original` (redacted), `url.scheme`, `server.address`/`port`, `bespoke.route.name`, `bespoke.controller`, `bespoke.request.id`; a 5xx: status error + `error.type` |
+| `exception` | — (on the request's span, 5xx only) | an `exception` event, message and stack redacted; `error.type` = the error's class |
+| `db.query` | `SELECT users` (client) — only inside another span | `db.system.name`, `db.query.text` (**no parameters**), `db.operation.name`, `db.collection.name`, `bespoke.db.connection` |
+| `queue.dispatch` | `send <job>` (producer) | `messaging.system=bespokecore`, `messaging.operation.type=send`, `messaging.destination.name`, `messaging.message.id`; its context → `traceparent` |
+| `queue.job` | `process <job>` (consumer) — parent: the dispatch (`traceparent`) | `messaging.*`, `bespoke.job`, `bespoke.job.attempt`, `bespoke.job.outcome`, `bespoke.request.origin_id` |
+| `schedule.task` | `schedule <task>` | `bespoke.schedule.task`, `.reason`, `.outcome`, `.skipped` |
+| `mail.send` | `mail <Mailable>` (client) | `bespoke.mail.mailable`, `.mode`, `.recipients` (a count — no addresses, no subject) |
+| `notification.send` | `notify <notification>` | `bespoke.notification`, `.queued`, `.recipient_type`, `.channels`, `.outcome` |
+| `live.refresh` | `live refresh` (producer) | `bespoke.live.channel`, `.only` |
+| `render.ssr` | `render <View>` | `bespoke.view`, `bespoke.ssr.complete`, `.streamed` |
+| `log` | — | `trace_id`, `span_id`, `trace_flags` in the entry (`LogContextSources`) |
+
+## Health checks (E126)
+
+`/up/ready` (`@bespokecore/server`) runs the app's `HealthChecks`: invokable classes with `static check` (the name) and
+`handle()` (throws when the check fails; may return a short note), dependencies through the constructor. Packages list theirs as
+`static health` on their provider (database: `select 1` on every connection; redis: `PING` on each connection in use; cache:
+`add` + `forget`; queue: the default connection's size); the app adds its own with `defineApplication({ health })` or
+`defineModule({ health })`. They run at once, each with a time limit (2 s, or `static timeout` in ms); `run()` never throws.
+
+```ts
+export class StorageWritable implements HealthCheck {
+  static check = 'storage';
+  readonly #storage: Storage;
+  constructor(storage: Storage) {
+    this.#storage = storage;
+  }
+  async handle(): Promise<void> {
+    await this.#storage.disk('local').put('.health', 'ok');
+  }
+}
+defineModule({ name: 'system', health: [StorageWritable] });
+```
+
+A class without `static check` or `handle()` does not compile (`Property 'check' is missing in type 'typeof NoName' but required
+in type '{ readonly check: string; readonly timeout?: number | undefined; }'.`); two classes with one name fail the start.
 
 ## Configuration
 

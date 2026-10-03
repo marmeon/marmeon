@@ -53,6 +53,10 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   readonly method: string;
   /** The path as requested (no query string). */
   readonly path: string;
+  /** The URL as requested, with its query string — raw: redact before recording or showing (E125). */
+  readonly url: string;
+  /** The request's headers — raw (cookies, `authorization`): redact before recording or showing (E125). */
+  readonly headers: Headers;
   /** `island` or `layer`: a region's request (`x-bespoke-region`). */
   readonly region?: string;
   /** Resolved in-process for another request — an island while its page renders, a layer's base for its deep link (E49, E53). */
@@ -71,6 +75,8 @@ export interface HttpRequestMessage extends MessageBase, Ended {
 export interface DbQueryMessage extends MessageBase, Ended {
   /** The connection's name (`default`). */
   readonly connection: string;
+  /** The connection's driver: `sqlite` or `pgsql`. */
+  readonly driver: string;
   readonly sql: string;
   /** As bound — raw. Redact before recording or showing (E125); with `secret`, all of them. */
   readonly parameters: readonly unknown[];
@@ -220,6 +226,12 @@ export interface TracingHandlers<M> {
   error?(message: M & { error: unknown }): void;
 }
 
+/**
+ * Runs a traced operation's work in a context of the subscriber's — a tracer's active span — for {@link channels.around}.
+ * Call `run` once and synchronously (`context.with(ctx, run)`); what it returns is the operation's, not the wrapper's.
+ */
+export type Around<M> = (message: M, run: () => unknown) => void;
+
 /** A plain channel, typed: what framework packages publish through. */
 export interface EventChannel<M> {
   readonly hasSubscribers: boolean;
@@ -245,6 +257,9 @@ const events = new Map<string, EventChannel<object>>(EVENTS.map((name) => [name,
 
 /** Messages built for an app — tests prove that nothing is built without a subscriber. Kept on the app itself. */
 const BUILT: unique symbol = Symbol.for('bespokecore.diagnostics.built');
+
+/** The wrappers of each traced channel ({@link channels.around}), per app — consulted only while the channel has subscribers. */
+const arounds = new Map<object, Set<{ readonly app: Application; readonly around: Around<object> }>>();
 
 /** A subscriber's error never reaches the operation it watches (Node would rethrow it as an uncaught exception). */
 function guarded<M>(name: string, handler: ((message: M) => void) | undefined, app: Application): ((message: M) => void) | undefined {
@@ -310,6 +325,32 @@ export const channels = {
   subscribe,
 
   /**
+   * Runs the work of each traced operation of `app` on channel `name` inside `around` — the one thing a `start` handler
+   * cannot do: put the work into a context of its own, so what the operation does (its queries, the jobs it dispatches, its
+   * log lines) happens inside it. `@bespokecore/otel` runs it in the operation's span (`context.with(…)`). Node's
+   * `bindStore` cannot carry OpenTelemetry's context: Node 26 enters a bound store with `store.withScope()`, which only an
+   * `AsyncLocalStorage` has, and OpenTelemetry's context manager offers only `with(context, fn)`.
+   *
+   * ```ts
+   * const off = channels.around(app, 'http.request', (request, run) => context.with(contextOf(request), run));
+   * ```
+   *
+   * `run` must be called once, synchronously; a wrapper that throws or never calls it is reported as a process warning and the
+   * work runs without it. Not for `db.query` (published after the statement ran). Returns `off`.
+   */
+  around<N extends TracingName>(app: Application, name: N, around: Around<TracingMessages[N]>): () => void {
+    const tracing = tracings.get(name);
+    if (!tracing) throw new TypeError(`There is no traced channel "${name}". Traced: ${TRACING.join(', ')}.`);
+    let set = arounds.get(tracing);
+    if (!set) arounds.set(tracing, (set = new Set()));
+    const entry = { app, around: around as Around<object> };
+    set.add(entry);
+    return () => {
+      set.delete(entry);
+    };
+  },
+
+  /**
    * The TracingChannel of a traced operation — where framework packages publish (`if (channel.hasSubscribers) …`), and
    * what a tracer binds its context store to (`channel.start.bindStore(…)`). A raw subscriber gets every app's messages:
    * compare `message.app` itself.
@@ -361,13 +402,52 @@ export function trace<M extends MessageBase & Ended, T>(channel: TracingChannel<
   const started = performance.now();
   return channel.tracePromise(async () => {
     try {
-      const result = await fn();
+      const result = await within(channel, message, fn);
       finish?.(message, result);
       return result;
     } finally {
       message.durationMs = performance.now() - started;
     }
   }, message);
+}
+
+function nameOf(channel: object): string | undefined {
+  for (const [name, tracing] of tracings) if (tracing === channel) return name;
+  return undefined;
+}
+
+/** `fn`, inside the wrappers of `message.app` on `channel` ({@link channels.around}), in the order they were added. */
+function within<M extends MessageBase, T>(channel: TracingChannel<M>, message: M, fn: () => Promise<T>): Promise<T> {
+  const set = arounds.get(channel);
+  if (!set || set.size === 0) return fn();
+  let run = fn;
+  for (const { app, around } of set) {
+    if (app !== message.app) continue;
+    const inner = run;
+    run = () => {
+      // The operation runs once: inside the wrapper if it calls `run`, else (it threw first, or forgot) without it.
+      let called = false;
+      let started: Promise<T> | undefined;
+      try {
+        around(message, () => {
+          if (!called) {
+            called = true;
+            started = inner();
+          }
+          return started;
+        });
+      } catch (error) {
+        if (called && started === undefined) throw error; // the operation itself threw, synchronously
+        process.emitWarning(`A wrapper of bespoke:${String(nameOf(channel))} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`, 'BespokeDiagnosticsWarning');
+      }
+      if (!called) {
+        process.emitWarning(`A wrapper of bespoke:${String(nameOf(channel))} did not run the operation; it ran without it.`, 'BespokeDiagnosticsWarning');
+        return inner();
+      }
+      return started!;
+    };
+  }
+  return run();
 }
 
 /**
