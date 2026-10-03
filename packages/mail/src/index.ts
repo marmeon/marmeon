@@ -80,8 +80,8 @@ export class MailServiceProvider implements ServiceProvider {
       }
       return container.make(module.Queue).dispatch(SendQueuedMail, payload, options);
     };
-    container.singleton(Mailer, (c) => new TransportMailer(() => c.make(MailTransport), config.from, queue));
-    container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport)));
+    container.singleton(Mailer, (c) => new TransportMailer(() => c.make(MailTransport), config.from, queue, c.make(Application)));
+    container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport), c.make(Application)));
   }
 
   async boot(app: Application): Promise<void> {

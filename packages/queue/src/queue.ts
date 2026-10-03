@@ -1,4 +1,5 @@
-import { afterCommit, afterRollback, inTransaction, token, type Clock, type Logger } from '@bespokecore/core';
+import { afterCommit, afterRollback, currentRequest, inTransaction, token, type Application, type Clock, type Logger } from '@bespokecore/core';
+import { channels, messageBase, trace, type QueueDispatchMessage } from '@bespokecore/core/diagnostics';
 import type { Kysely } from '@bespokecore/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
@@ -17,6 +18,8 @@ export interface RecordOptions {
   readonly tries?: number;
   readonly backoff?: readonly number[];
 }
+
+const dispatches = channels.tracing('queue.dispatch');
 export function recordOptionsOf(options: object): RecordOptions {
   return (options as { [RECORD_OPTIONS]?: RecordOptions })[RECORD_OPTIONS] ?? {};
 }
@@ -98,6 +101,8 @@ export interface QueueManagerDependencies {
   readonly cache?: CacheSource;
   /** `JobQueued` (and, for `sync`, `JobProcessing`, `JobProcessed`, `JobFailed`) — the app's `EventDispatcher`. */
   readonly events?: JobEvents;
+  /** The app its dispatches are reported for on the `queue.dispatch` channel (E118). */
+  readonly app?: Application;
 }
 
 /** A job checked and ready to queue: its record and that record as stored. */
@@ -117,26 +122,66 @@ export class QueueManager implements Queue {
   }
 
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>> {
-    return this.#dispatch(job, payload, options ?? {}) as Promise<DispatchResult<O>>;
+    const given = options ?? {};
+    if (!this.#deps.app || !dispatches.hasSubscribers) return this.#dispatch(job, payload, given) as Promise<DispatchResult<O>>;
+    const message = this.#message('dispatch', [job], given);
+    return trace(dispatches, message, () => this.#dispatch(job, payload, given, message.traceparent), (ended, id) => {
+      ended.jobIds = id === undefined ? [] : [id];
+    }) as Promise<DispatchResult<O>>;
   }
 
-  async #dispatch(job: JobClass, payload: unknown, options: DispatchOptions | UniqueDispatchOptions): Promise<string | undefined> {
+  async #dispatch(job: JobClass, payload: unknown, options: DispatchOptions | UniqueDispatchOptions, traceparent?: string): Promise<string | undefined> {
     const unique = options.unique === undefined ? undefined : uniqueRecord(job, options as UniqueDispatchOptions);
-    const prepared = await prepareRecord(this.#deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}) });
+    const prepared = await prepareRecord(this.#deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}), ...(traceparent ? { traceparent } : {}) });
     if (!unique) return (await this.#push([prepared], options))[0]!;
     return this.#pushUnique(prepared as Prepared & { record: { unique: UniqueRecord } }, options);
   }
 
   bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
     if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('bulk() queues no unique jobs — dispatch them one by one.');
-    return this.#prepareAll(jobs as unknown as readonly PendingJob[]).then((prepared) => this.#push(prepared, options as DispatchOptions));
+    const pending = jobs as unknown as readonly PendingJob[];
+    const run = (traceparent?: string) => this.#prepareAll(pending, traceparent).then((prepared) => this.#push(prepared, options as DispatchOptions));
+    if (!this.#deps.app || !dispatches.hasSubscribers) return run();
+    const message = this.#message('bulk', pending.map(([job]) => job), options as DispatchOptions);
+    return trace(dispatches, message, () => run(message.traceparent), (ended, ids) => {
+      ended.jobIds = ids;
+    });
   }
 
-  async chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
-    if ((options as { unique?: unknown }).unique !== undefined) throw new QueueError('chain() takes no unique key — a chain is queued as it is.');
-    const { first, ids } = await prepareChain(this.#deps, jobs as unknown as readonly PendingJob[]);
-    await this.#push([first], options as DispatchOptions);
-    return ids;
+  chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options: BatchOptions = {}): Promise<string[]> {
+    if ((options as { unique?: unknown }).unique !== undefined) return Promise.reject(new QueueError('chain() takes no unique key — a chain is queued as it is.'));
+    const pending = jobs as unknown as readonly PendingJob[];
+    const run = async (traceparent?: string) => {
+      const { first, ids } = await prepareChain(this.#deps, pending, traceparent);
+      await this.#push([first], options as DispatchOptions);
+      return ids;
+    };
+    if (!this.#deps.app || !dispatches.hasSubscribers) return run();
+    const message = this.#message('chain', pending.map(([job]) => job), options as DispatchOptions);
+    return trace(dispatches, message, () => run(message.traceparent), (ended, ids) => {
+      ended.jobIds = ids;
+    });
+  }
+
+  /** A `queue.dispatch` message — only built while something listens. */
+  #message(kind: QueueDispatchMessage['kind'], jobs: readonly JobClass[], options: DispatchOptions | UniqueDispatchOptions): QueueDispatchMessage {
+    const connection = options.connection ?? this.#deps.default;
+    let delay = 0;
+    try {
+      delay = delaySeconds(options.delay);
+    } catch {
+      // An invalid delay fails the dispatch itself, with its message.
+    }
+    return {
+      ...messageBase(this.#deps.app!),
+      kind,
+      jobs: jobs.map((job) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
+      connection,
+      queue: options.queue ?? this.#deps.connections[connection]?.queue ?? '',
+      delay,
+      ...(options.unique === undefined ? {} : { unique: String(options.unique) }),
+      jobIds: [],
+    };
   }
 
   using(transaction: Kysely<any>): Queue {
@@ -160,9 +205,9 @@ export class QueueManager implements Queue {
     return driver.using(this.#transaction);
   }
 
-  #prepareAll(jobs: readonly PendingJob[]): Promise<Prepared[]> {
+  #prepareAll(jobs: readonly PendingJob[], traceparent?: string): Promise<Prepared[]> {
     // Every payload is checked before the first is queued: a bad one queues none.
-    return Promise.all(jobs.map(([job, payload]) => prepareRecord(this.#deps, job, payload)));
+    return Promise.all(jobs.map(([job, payload]) => prepareRecord(this.#deps, job, payload, traceparent ? { traceparent } : {})));
   }
 
   /**
@@ -287,9 +332,10 @@ export class QueueManager implements Queue {
 export async function prepareChain(
   deps: Parameters<typeof prepareRecord>[0],
   jobs: readonly PendingJob[],
+  traceparent?: string,
 ): Promise<{ first: Prepared; ids: string[] }> {
   if (jobs.length === 0) throw new QueueError('chain() needs at least one job.');
-  const links = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload)));
+  const links = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload, traceparent ? { traceparent } : {})));
   const [head, ...rest] = links.map(({ record }) => record);
   const record: JobRecord = rest.length > 0 ? { ...head!, chain: rest } : head!;
   return { first: { record, serialized: JSON.stringify(record) }, ids: links.map(({ record }) => record.uuid) };
@@ -300,7 +346,7 @@ export async function prepareRecord(
   deps: { readonly registry: JobRegistry; readonly cipher: () => Promise<PayloadCipher>; readonly clock: Clock },
   job: JobClass,
   payload: unknown,
-  extra: RecordOptions & { readonly unique?: UniqueRecord } = {},
+  extra: RecordOptions & { readonly unique?: UniqueRecord; readonly traceparent?: string } = {},
 ): Promise<{ record: JobRecord; serialized: string }> {
   if (typeof job !== 'function' || typeof job.job !== 'string') throw new QueueError(`Only job classes can be dispatched (a class with static job and static schema), not ${String(job)}.`);
   if (!deps.registry.has(job)) {
@@ -315,6 +361,8 @@ export async function prepareRecord(
   const json = toJson(job, payload);
   await validatePayload(job, json, 'dispatch');
   const uuid = crypto.randomUUID();
+  // Where it comes from (E131): the request's id always, the trace context when a tracer gave one at dispatch.
+  const requestId = currentRequest()?.requestId;
   const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
   const record: JobRecord = {
     uuid,
@@ -325,6 +373,8 @@ export async function prepareRecord(
     backoff: extra.backoff ? [...extra.backoff] : backoffOf(job),
     dispatchedAt: deps.clock.now(),
     ...(extra.unique ? { unique: extra.unique } : {}),
+    ...(requestId === undefined ? {} : { requestId }),
+    ...(extra.traceparent === undefined ? {} : { traceparent: extra.traceparent }),
   };
   return { record, serialized: JSON.stringify(record) };
 }

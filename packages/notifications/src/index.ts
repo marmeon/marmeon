@@ -128,6 +128,7 @@ export class NotificationServiceProvider implements ServiceProvider {
           store: c.make(NotificationStore),
           connections: c.make(Connections),
           translator: (locale, scope) => this.#translator(container, locale, scope),
+          app: c.make(Application),
         }),
     );
     const queue: QueueNotification = async (pending, options) => {
@@ -151,7 +152,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     };
     // Per resolution, bound to the container that asks: `sendNow` in a request builds the notification and the resolver
     // from the request's scope.
-    container.bind(Notifications, (c) => new NotificationSender(c, c.make(NotificationRegistry), c.make(RecipientRegistry), () => c.make(NotificationDeliverer), queue));
+    container.bind(Notifications, (c) => new NotificationSender(c, c.make(NotificationRegistry), c.make(RecipientRegistry), () => c.make(NotificationDeliverer), queue, c.make(Application)));
     container.bind(SendQueuedNotification, (c) => new SendQueuedNotification(c, c.make(NotificationDeliverer), c.make(NotificationRegistry)));
     container.bind(PruneNotificationsCommand, (c) => new PruneNotificationsCommand(c.make(NotificationStore), c.make(Clock)));
   }

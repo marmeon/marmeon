@@ -23,8 +23,9 @@ const APP = fileURLToPath(new URL('./__fixtures__/app/', import.meta.url));
 const silent = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
 /** Where the processes share their cache (the locks) — and the table `ran` they record their runs in. */
-type Target = { kind: 'sqlite'; file: string } | { kind: 'pgsql'; url: string } | { kind: 'redis'; file: string; url: string; prefix: string };
-const kinds = ['sqlite', ...(PGSQL_URL ? (['pgsql'] as const) : []), ...(REDIS_URL ? (['redis'] as const) : [])] as const;
+// `file`: the cache in files on this machine (E123) — locks hold for every process of one machine; the table `ran` in SQLite.
+type Target = { kind: 'sqlite'; file: string } | { kind: 'file'; file: string; cache: string } | { kind: 'pgsql'; url: string } | { kind: 'redis'; file: string; url: string; prefix: string };
+const kinds = ['sqlite', 'file', ...(PGSQL_URL ? (['pgsql'] as const) : []), ...(REDIS_URL ? (['redis'] as const) : [])] as const;
 
 function connections(target: Target): Connections {
   const options: ConnectionOptions = target.kind === 'pgsql' ? { driver: 'pgsql', url: target.url, poolMax: 2 } : { driver: 'sqlite', database: target.file };
@@ -51,6 +52,9 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
     const removeFile = async () => rmSync(directory, { recursive: true, force: true });
     if (kind === 'sqlite') {
       target = { kind, file };
+      drop = removeFile;
+    } else if (kind === 'file') {
+      target = { kind, file, cache: join(directory, 'cache') };
       drop = removeFile;
     } else {
       const prefix = `bespoke-schedule-test-${crypto.randomUUID().slice(0, 8)}:`;
@@ -80,6 +84,8 @@ function env(target: Target): Record<string, string> {
   switch (target.kind) {
     case 'sqlite':
       return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'database' };
+    case 'file':
+      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'file', CACHE_PATH: target.cache };
     case 'pgsql':
       return { DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '2', CACHE_DRIVER: 'database' };
     case 'redis':
@@ -255,14 +261,20 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     }
   });
 
-  it('refuses to start with onOneServer() on a file cache — with what to do instead', { timeout: 30_000 }, async () => {
+  // E123 (revises E88): a cache that is not shared is no reason to refuse — a single scheduler runs correctly with it, in
+  // production too. The start says where the locks hold.
+  it.each([
+    ['file', 'onOneServer() locks in CACHE_DRIVER=file: locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (bespoke make:cache-table) or redis. Tasks: record'],
+    ['memory', 'onOneServer() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again.'],
+  ])('starts with onOneServer() on a %s cache, in production too — and warns (E123)', { timeout: 30_000 }, async (driver, warning) => {
     const directory = mkdtempSync(join(tmpdir(), 'bespoke-schedule-file-'));
     const started: SchedulerProcess[] = [];
     try {
-      const work = start(started, 'schedule:work', { DB_DATABASE: ':memory:', CACHE_DRIVER: 'file', CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
-      expect(await work.exited()).toBe(1);
-      expect(work.lines.join('\n')).toContain('record should run on one server only (onOneServer()), but the cache is CACHE_DRIVER=file');
-      expect(work.lines.join('\n')).not.toMatch(/\n\s+at /);
+      // Production without a .env: everything it needs is given here.
+      const work = start(started, 'schedule:work', { NODE_ENV: 'production', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
+      await work.waitFor(/Running the schedule every minute/);
+      expect(work.lines.join('\n')).toContain(warning);
+      await stop(work);
     } finally {
       kill(started);
       rmSync(directory, { recursive: true, force: true });

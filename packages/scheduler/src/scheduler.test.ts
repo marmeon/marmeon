@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@bespokecore/cache';
 import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from '@bespokecore/cli';
-import { Clock, createApplication, currentLogContext, defineModule, inTransaction, Logger, TestClock, type Application, type ModuleDefinition, type ServiceProviderClass } from '@bespokecore/core';
+import { Clock, createApplication, currentLogContext, defineModule, EventFake, EventRegistry, inTransaction, listen, Logger, TestClock, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@bespokecore/core';
+import { channels, type ScheduleTaskMessage } from '@bespokecore/core/diagnostics';
 import { Connections, DatabaseServiceProvider, Schema } from '@bespokecore/database';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { QUEUE_MIGRATION, Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@bespokecore/queue';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
-import { defineSchedule, Scheduler, SchedulerServiceProvider, ScheduleTester, ScheduleWorker, type TaskResult } from './index.ts';
+import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, ScheduleTester, ScheduleWorker, type TaskResult } from './index.ts';
 import { MINUTE } from './time.ts';
 
 const temporary: string[] = [];
@@ -138,7 +139,14 @@ interface Booted {
 
 async function boot(
   schedule: ModuleDefinition['schedule'],
-  options: { env?: Record<string, string>; providers?: ServiceProviderClass[]; cache?: Cache; modules?: ModuleDefinition[] } = {},
+  options: {
+    env?: Record<string, string>;
+    providers?: ServiceProviderClass[];
+    cache?: Cache;
+    modules?: ModuleDefinition[];
+    listeners?: ListenerBinding[];
+    eventFake?: EventFake;
+  } = {},
 ): Promise<Booted> {
   const clock = new TestClock();
   clock.freeze(START);
@@ -151,6 +159,7 @@ async function boot(
     env: { CACHE_DRIVER: 'memory', ...options.env },
     providers: [CliServiceProvider, CacheServiceProvider, ...(options.providers ?? []), SchedulerServiceProvider],
     modules: [defineModule({ name: 'fixture', schedule, commands: [PruneCommand] }), ...(options.modules ?? [])],
+    listeners: options.listeners ?? [],
     override: (c) => {
       c.instance(Clock, clock);
       c.instance(Logger, log);
@@ -158,6 +167,8 @@ async function boot(
       c.instance(Gate, gate);
       c.scoped(UnitOfWork);
       if (options.cache) c.instance(Cache, options.cache);
+      // What createTestApp does for `app.events`.
+      if (options.eventFake) c.instance(EventFake, options.eventFake);
     },
   });
   const scheduler = app.container.make(Scheduler);
@@ -347,18 +358,151 @@ describe('onOneServer', () => {
     await two.app.shutdown();
   });
 
-  it('with a file or memory cache the scheduler refuses to start (E88)', async () => {
+  it('with a file or memory cache the scheduler starts — and says where its locks hold (E123, revises E88)', async () => {
     const { scheduler, app } = await boot(defineSchedule((s) => void s.command('fixture:prune').daily().at('03:10').onOneServer()));
-    await expect(scheduler.checkProcess()).rejects.toThrow(
-      'fixture:prune should run on one server only (onOneServer()), but the cache is CACHE_DRIVER=memory — this process\'s memory, which no other server sees, so every server would run it. ' +
-        'Use a cache all servers share for the lock: CACHE_DRIVER=database (bespoke make:cache-table) or redis.',
+    await expect(scheduler.checkProcess()).resolves.toBeUndefined();
+    expect(scheduler.lockWarning()).toBe(
+      'onOneServer() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. ' +
+        'Use CACHE_DRIVER=file for one machine, database (bespoke make:cache-table) or redis for more. Tasks: fixture:prune',
     );
-    // schedule:test ignores onOneServer — and so does not refuse.
-    await expect(scheduler.checkProcess({ oneServer: false })).resolves.toBeUndefined();
     await app.shutdown();
-    const file = await boot(defineSchedule((s) => void s.command('fixture:prune').daily().onOneServer()), { env: { CACHE_DRIVER: 'file', CACHE_PATH: mkdtempSync(join(tmpdir(), 'bespoke-schedule-')) } });
-    await expect(file.scheduler.checkProcess()).rejects.toThrow(/CACHE_DRIVER=file — files on this machine/);
+    const file = await boot(
+      defineSchedule((s) => {
+        s.command('fixture:prune').daily().onOneServer();
+        s.call(SlowTask).everyMinute().name('slow').withoutOverlapping();
+        s.call(CountRun).everyMinute().name('count');
+      }),
+      { env: { CACHE_DRIVER: 'file', CACHE_PATH: mkdtempSync(join(tmpdir(), 'bespoke-schedule-')) } },
+    );
+    await expect(file.scheduler.checkProcess()).resolves.toBeUndefined();
+    expect(file.scheduler.lockWarning()).toBe(
+      'onOneServer()/withoutOverlapping() lock in CACHE_DRIVER=file: locks only hold on this machine. With more than one scheduler instance (more servers), ' +
+        'use CACHE_DRIVER=database (bespoke make:cache-table) or redis. Tasks: fixture:prune, slow',
+    );
     await file.app.shutdown();
+    // Nothing to warn about: no task locks, or a cache all servers share.
+    const plain = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')));
+    expect(plain.scheduler.lockWarning()).toBeUndefined();
+    await plain.app.shutdown();
+    const shared = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count').onOneServer()), {
+      providers: [DatabaseServiceProvider],
+      env: { CACHE_DRIVER: 'database', DB_DATABASE: ':memory:' },
+    });
+    expect(shared.scheduler.lockWarning()).toBeUndefined();
+    await shared.app.shutdown();
+  });
+
+  it('schedule:list shows the same warning', async () => {
+    const { app } = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count').withoutOverlapping()));
+    const lines: string[] = [];
+    const output = { line: (text = '') => lines.push(text), info: (text: string) => lines.push(text), success: (text: string) => lines.push(text), warn: (text: string) => lines.push(`WARN ${text}`), error: (text: string) => lines.push(`ERROR ${text}`), table: () => {} };
+    const List = app.container.make(CommandRegistry).get('schedule:list')!;
+    expect(await (app.container.make(List) as { handle(input: unknown): number }).handle({ args: [], options: {}, output, root: app.root })).toBe(0);
+    expect(lines).toEqual(['WARN withoutOverlapping() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (bespoke make:cache-table) or redis for more. Tasks: count']);
+    await app.shutdown();
+  });
+});
+
+describe('events (E127)', () => {
+  /** Every scheduler event, in order — through the app's EventDispatcher, as a listener of the base class. */
+  async function withEvents(schedule: ModuleDefinition['schedule'], options: Parameters<typeof boot>[1] = {}) {
+    const events: ScheduledTaskEvent[] = [];
+    const booted = await boot(schedule, { ...options, listeners: [listen(ScheduledTaskEvent, (event) => void events.push(event))] });
+    return { ...booted, events };
+  }
+  const names = (events: readonly ScheduledTaskEvent[]) => events.map((event) => `${event.constructor.name} ${event.task}`);
+
+  it('a run that ends: Starting, then Finished with how long it took', async () => {
+    const { schedule, events, app } = await withEvents(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')));
+    await schedule.runTask('count');
+    expect(names(events)).toEqual(['ScheduledTaskStarting count', 'ScheduledTaskFinished count']);
+    expect(events[0]).toMatchObject({ task: 'count', minute: START, reason: 'test' });
+    expect((events[1] as ScheduledTaskFinished).ms).toBeGreaterThanOrEqual(0);
+    await app.shutdown();
+  });
+
+  it('a run that fails: exactly one Failed, with the error', async () => {
+    const { scheduler, events, app, clock } = await withEvents(defineSchedule((s) => void s.call(FailingTask).everyMinute().name('failing')));
+    const runs = await scheduler.tick(clock.now());
+    const [result] = await Promise.all(runs.map((run) => run.done));
+    expect(result).toMatchObject({ task: 'failing', outcome: 'failed' });
+    expect(names(events)).toEqual(['ScheduledTaskStarting failing', 'ScheduledTaskFailed failing']);
+    expect(((events[1] as ScheduledTaskFailed).error as Error).message).toBe('the report service is down');
+    await app.shutdown();
+  });
+
+  it('a listener that throws changes nothing about the run — logged as a warning', async () => {
+    const thrown: unknown[] = [];
+    class Alert {
+      handle(event: ScheduledTaskFailed) {
+        thrown.push(event.error);
+        throw new Error('the pager is down');
+      }
+    }
+    const { scheduler, app, clock, log } = await boot(defineSchedule((s) => void s.call(FailingTask).everyMinute().name('failing')), {
+      listeners: [listen(ScheduledTaskFailed, Alert)],
+    });
+    const [result] = await Promise.all((await scheduler.tick(clock.now())).map((run) => run.done));
+    expect(result).toMatchObject({ task: 'failing', outcome: 'failed' });
+    expect((thrown[0] as Error).message).toBe('the report service is down');
+    expect(log.entries.some((entry) => entry.level === 'warn' && entry.message === 'A listener of ScheduledTaskFailed failed: the pager is down')).toBe(true);
+    await app.shutdown();
+  });
+
+  it('a run that does not happen: Skipped with why — filter, overlapping', async () => {
+    const { scheduler, events, app, clock, gate } = await withEvents(
+      defineSchedule((s) => {
+        s.call(CountRun).everyMinute().name('never').when(() => false);
+        s.call(SlowTask).everyMinute().name('slow').withoutOverlapping();
+      }),
+    );
+    const first = await scheduler.tick(clock.now());
+    const second = await scheduler.tick(clock.travel({ minutes: 1 }));
+    await Promise.all(second.map((run) => run.done));
+    gate.open();
+    await Promise.all(first.map((run) => run.done));
+    expect(events.filter((event) => event instanceof ScheduledTaskSkipped).map((event) => [event.task, (event as ScheduledTaskSkipped).skipped])).toEqual([
+      ['never', 'filter'],
+      ['never', 'filter'],
+      ['slow', 'overlapping'],
+    ]);
+    await app.shutdown();
+  });
+
+  it('are in a test app\'s app.events like every event — through the dispatcher, not around it', async () => {
+    const fake = new EventFake(new EventRegistry(), []);
+    const { schedule, app } = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')), { eventFake: fake });
+    await schedule.runTask('count');
+    fake.assertDispatched(ScheduledTaskStarting, (event) => event.task === 'count');
+    fake.assertDispatched(ScheduledTaskFinished);
+    fake.assertNotDispatched(ScheduledTaskFailed);
+    await app.shutdown();
+  });
+});
+
+describe('the schedule.task channel (E118)', () => {
+  it('traces each run for its app — with the outcome and the error', async () => {
+    const one = await boot(defineSchedule((s) => {
+      s.call(CountRun).everyMinute().name('count');
+      s.call(FailingTask).everyMinute().name('failing');
+    }));
+    const other = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')));
+    const ended: ScheduleTaskMessage[] = [];
+    const off = channels.subscribe(one.app, 'schedule.task', { end: (message) => void ended.push(message) });
+    try {
+      await Promise.all((await one.scheduler.tick(one.clock.now())).map((run) => run.done));
+      await Promise.all((await other.scheduler.tick(other.clock.now())).map((run) => run.done));
+    } finally {
+      off();
+    }
+    expect(ended.map((message) => [message.task, message.outcome, message.reason, message.minute]).sort()).toEqual([
+      ['count', 'ran', 'due', START],
+      ['failing', 'failed', 'due', START],
+    ]);
+    expect((ended.find((message) => message.task === 'failing')!.error as Error).message).toBe('the report service is down');
+    expect(ended.every((message) => message.app === one.app && typeof message.durationMs === 'number')).toBe(true);
+    await one.app.shutdown();
+    await other.app.shutdown();
   });
 });
 

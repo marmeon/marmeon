@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { token, type Duration, type Resolver, type StandardSchemaV1, type Translator } from '@bespokecore/core';
+import { token, type Application, type Duration, type Resolver, type StandardSchemaV1, type Translator } from '@bespokecore/core';
+import { channels, messageBase, trace, type NotificationSendMessage } from '@bespokecore/core/diagnostics';
 import type { Connections } from '@bespokecore/database';
 import type { NotificationChannels } from './channels.ts';
 import type { AnyRecipient, CheckNotification, NotificationClass, Recipients, RecipientTypeOf, SendResult } from './notification.ts';
@@ -78,6 +79,21 @@ export interface DelivererDependencies {
   readonly connections: Connections;
   /** A translator in `locale` (the recipient's), else `APP_LOCALE`. */
   readonly translator: (locale: string | null | undefined, container: Resolver) => Translator;
+  /** The app its deliveries are reported for on the `notification.send` channel (E118). */
+  readonly app?: Application;
+}
+
+const sends = channels.tracing('notification.send');
+
+/** A `notification.send` message — built only while something listens. */
+function sendMessage(app: Application, pending: PendingDelivery, queued: boolean): NotificationSendMessage {
+  return {
+    ...messageBase(app),
+    notification: pending.notification.notification,
+    id: pending.id,
+    recipient: { type: pending.recipient.type, id: pending.recipient.id },
+    queued,
+  };
 }
 
 /**
@@ -97,7 +113,17 @@ export class NotificationDeliverer {
     this.#deps = deps;
   }
 
-  async deliver(container: Resolver, pending: PendingDelivery): Promise<DeliveryOutcome> {
+  /** Traced on `notification.send` while something listens (E118): the channels `via()` chose, and the outcome. */
+  deliver(container: Resolver, pending: PendingDelivery): Promise<DeliveryOutcome> {
+    const { app } = this.#deps;
+    if (!app || !sends.hasSubscribers) return this.#deliver(container, pending);
+    const message = sendMessage(app, pending, false);
+    return trace(sends, message, () => this.#deliver(container, pending, message), (ended, outcome) => {
+      ended.outcome = outcome;
+    });
+  }
+
+  async #deliver(container: Resolver, pending: PendingDelivery, message?: NotificationSendMessage): Promise<DeliveryOutcome> {
     const { recipients, channels: registry, store, connections } = this.#deps;
     const { notification: Class, recipient, data, id } = pending;
     const Resolver = recipients.get(recipient.type);
@@ -112,6 +138,7 @@ export class NotificationDeliverer {
       throw new NotificationChannelError(`${Class.name} (${Class.notification}): via() must return a list of channel names, like ['database', 'mail'].`);
     }
     const names = [...new Set(via as readonly string[])];
+    if (message) message.channels = names;
     const unknown = names.filter((name) => !registry.has(name));
     if (unknown.length > 0) {
       const hint = unknown.includes('mail') ? ' (the mail channel needs @bespokecore/mail)' : '';
@@ -173,13 +200,16 @@ export class NotificationSender implements Notifications {
   readonly #recipients: RecipientRegistry;
   readonly #deliverer: () => NotificationDeliverer;
   readonly #dispatch: QueueNotification;
+  readonly #app: Application | undefined;
 
-  constructor(container: Resolver, registry: NotificationRegistry, recipients: RecipientRegistry, deliverer: () => NotificationDeliverer, dispatch: QueueNotification) {
+  /** `app`: queued notifications are reported on its `notification.send` channel (E118). */
+  constructor(container: Resolver, registry: NotificationRegistry, recipients: RecipientRegistry, deliverer: () => NotificationDeliverer, dispatch: QueueNotification, app?: Application) {
     this.#container = container;
     this.#registry = registry;
     this.#recipients = recipients;
     this.#deliverer = deliverer;
     this.#dispatch = dispatch;
+    this.#app = app;
   }
 
   async send(recipient: Recipients, notification: unknown, data: unknown, options: SendOptions = {}): Promise<any> {
@@ -188,9 +218,10 @@ export class NotificationSender implements Notifications {
     const json = await checkSend(this.#registry, this.#recipients, Class, list, data);
     const ids: string[] = [];
     for (const one of list) {
-      const id = randomUUID();
-      await this.#dispatch({ id, notification: Class, recipient: { type: one.type, id: one.id }, data: json }, options);
-      ids.push(id);
+      const pending: PendingDelivery = { id: randomUUID(), notification: Class, recipient: { type: one.type, id: one.id }, data: json };
+      if (this.#app && sends.hasSubscribers) await trace(sends, sendMessage(this.#app, pending, true), () => this.#dispatch(pending, options));
+      else await this.#dispatch(pending, options);
+      ids.push(pending.id);
     }
     return Array.isArray(recipient) ? ids : ids[0];
   }

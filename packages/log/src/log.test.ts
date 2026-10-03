@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream';
-import { describeError, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
+import { createApplication, describeError, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
+import { channels, type LogMessage } from '@bespokecore/core/diagnostics';
 import { describe, expect, it } from 'vitest';
 import { createPinoLogger } from './index.ts';
 
@@ -87,5 +88,35 @@ describe('@bespokecore/log', () => {
     logger.info('hidden');
     logger.error('shown');
     expect(lines.map((line) => line.msg)).toEqual(['shown']);
+  });
+});
+
+describe('the log channel (E118)', () => {
+  it('carries every entry of its app — any level, the bindings of every parent, the request — while something listens', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const other = await createApplication({ root: import.meta.dirname, discover: false, env: {} });
+    const lines: Record<string, unknown>[] = [];
+    const stream = new Writable({ write: (chunk, _encoding, done) => (lines.push(JSON.parse(String(chunk))), done()) });
+    const logger = createPinoLogger({ level: 'warn', format: 'json' }, stream, app);
+    const foreign = createPinoLogger({ level: 'warn', format: 'json' }, stream, other);
+    logger.info('before anyone listens');
+    expect(channels.built(app)).toBe(0);
+
+    const entries: LogMessage[] = [];
+    const off = channels.subscribe(app, 'log', (entry) => void entries.push(entry));
+    try {
+      runWithRequest({ requestId: 'req-3' }, () => logger.child({ channel: 'http' }).child({ part: 'kernel' }).debug('below the level', { ms: 3 }));
+      logger.warn('a warning');
+      foreign.warn('another app');
+    } finally {
+      off();
+    }
+    logger.warn('after off');
+    expect(entries.map(({ level, message, context, requestId }) => ({ level, message, context, requestId }))).toEqual([
+      { level: 'debug', message: 'below the level', context: { channel: 'http', part: 'kernel', ms: 3 }, requestId: 'req-3' },
+      { level: 'warn', message: 'a warning', context: {}, requestId: undefined },
+    ]);
+    // pino writes as before — its level decides, not the channel.
+    expect(lines.map((line) => line.msg)).toEqual(['a warning', 'another app', 'after off']);
   });
 });

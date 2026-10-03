@@ -98,6 +98,7 @@ export class QueueServiceProvider implements ServiceProvider {
         logger: c.make(Logger),
         cache: () => connections.cache(),
         events: connections.events,
+        app: c.make(Application),
       });
     });
   }

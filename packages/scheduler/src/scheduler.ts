@@ -1,10 +1,12 @@
 import { hostname } from 'node:os';
 import { Cache, CacheConfig, type Lock } from '@bespokecore/cache';
 import type { CommandClass } from '@bespokecore/cli';
-import { Application, Clock, Logger, outsideTransaction, runWithTask, type Container } from '@bespokecore/core';
+import { Application, Clock, EventDispatcher, Logger, outsideTransaction, runWithTask, type Container } from '@bespokecore/core';
+import { channels, messageBase, trace, type ScheduleTaskMessage } from '@bespokecore/core/diagnostics';
 import type { JobClass } from '@bespokecore/queue';
 import { ScheduleConfig } from './config.ts';
 import { CronExpression, ScheduleError } from './cron.ts';
+import { ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, type ScheduledTaskEvent } from './events.ts';
 import { collectTasks, type ScheduleDefinition } from './schedule.ts';
 import type { InvokableClass, TaskDefinition } from './task.ts';
 import { checkTimeZone, isDue, lastDue, MINUTE, minuteOf, nextDue } from './time.ts';
@@ -18,6 +20,8 @@ export const ONE_SERVER_SECONDS = 3600;
  * (deleted, flushed) no longer blocks new ones.
  */
 export const JOB_UNIQUE_FOR = 3600;
+
+const runs = channels.tracing('schedule.task');
 
 /** A task of the schedule, ready to run. */
 export interface Task {
@@ -228,24 +232,13 @@ export class Scheduler {
 
   /**
    * What a scheduler process checks before its first tick (`schedule:work`, `schedule:run`), on top of the checks at
-   * boot: every `s.command()` names a known command, every `s.job()` a registered job, and `onOneServer()` has a cache
-   * that servers share (E88: never `file` or `memory`).
+   * boot: the app has a cache (`ScheduleError` without one), every `s.command()` names a known command, every `s.job()` a
+   * registered job. Locks in a cache that is not shared are no error (E123) — see {@link lockWarning}.
    */
-  async checkProcess(options: { oneServer?: boolean } = {}): Promise<void> {
+  async checkProcess(): Promise<void> {
     const tasks = this.tasks;
     if (!this.#container.has(Cache)) {
       throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @bespokecore/cache (installed packages register it: bespoke discover).');
-    }
-    const shared = tasks.filter((task) => task.definition.onOneServer);
-    if (options.oneServer !== false && shared.length > 0 && this.#container.has(CacheConfig)) {
-      const { driver } = this.#container.make(CacheConfig);
-      if (driver === 'file' || driver === 'memory') {
-        throw new ScheduleError(
-          `${shared.map((task) => task.name).join(', ')} should run on one server only (onOneServer()), but the cache is CACHE_DRIVER=${driver} — ` +
-            `${driver === 'file' ? 'files on this machine' : 'this process\'s memory'}, which no other server sees, so every server would run it. ` +
-            'Use a cache all servers share for the lock: CACHE_DRIVER=database (bespoke make:cache-table) or redis.',
-        );
-      }
     }
     const commands = tasks.filter((task) => task.definition.kind === 'command' && typeof task.definition.target === 'string');
     if (commands.length > 0) {
@@ -269,6 +262,29 @@ export class Scheduler {
         }
       }
     }
+  }
+
+  /**
+   * The warning a scheduler shows at its start (E123, revising E88), in every environment, when tasks lock with
+   * `onOneServer()` or `withoutOverlapping()` in a cache that is not shared: `file` locks hold on this machine only, `memory`
+   * locks in this process only. A single scheduler runs correctly with them — a production with one instance included —
+   * so it is a warning, not an error. `undefined` when there is nothing to warn about. `schedule:list` shows it too.
+   */
+  lockWarning(): string | undefined {
+    if (!this.#container.has(CacheConfig)) return undefined;
+    const { driver } = this.#container.make(CacheConfig);
+    if (driver !== 'file' && driver !== 'memory') return undefined;
+    const locking = this.tasks.filter((task) => task.definition.onOneServer || task.definition.overlapMinutes !== undefined);
+    if (locking.length === 0) return undefined;
+    const kinds = [
+      locking.some((task) => task.definition.onOneServer) ? 'onOneServer()' : '',
+      locking.some((task) => task.definition.overlapMinutes !== undefined) ? 'withoutOverlapping()' : '',
+    ].filter(Boolean);
+    const scope =
+      driver === 'file'
+        ? 'locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (bespoke make:cache-table) or redis.'
+        : 'locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (bespoke make:cache-table) or redis for more.';
+    return `${kinds.join('/')} ${kinds.length === 1 ? 'locks' : 'lock'} in CACHE_DRIVER=${driver}: ${scope} Tasks: ${locking.map((task) => task.name).join(', ')}`;
   }
 
   /** Frees the overlap locks of runs still going — when the process stops before they end (they end with it). */
@@ -319,8 +335,18 @@ export class Scheduler {
     return { task, minute, reason, done: this.#execute(task, minute, reason) };
   }
 
-  /** One run — never rejects: a failure is logged and reported in the result, the scheduler goes on. */
-  async #execute(task: Task, minute: number, reason: RunReason): Promise<TaskResult> {
+  /** One run — never rejects: a failure is logged and reported in the result, the scheduler goes on. Traced on `schedule.task` while something listens (E118). */
+  #execute(task: Task, minute: number, reason: RunReason): Promise<TaskResult> {
+    if (!runs.hasSubscribers) return this.#run(task, minute, reason);
+    const message: ScheduleTaskMessage = { ...messageBase(this.#app), task: task.name, minute, reason };
+    return trace(runs, message, () => this.#run(task, minute, reason), (ended, result) => {
+      ended.outcome = result.outcome;
+      if (result.skipped) ended.skipped = result.skipped;
+      if (result.outcome === 'failed') ended.error = result.error;
+    });
+  }
+
+  async #run(task: Task, minute: number, reason: RunReason): Promise<TaskResult> {
     const started = performance.now();
     const result = (outcome: TaskResult['outcome'], extra: Partial<TaskResult> = {}): TaskResult => ({
       task: task.name,
@@ -335,17 +361,31 @@ export class Scheduler {
       runWithTask({ task: task.name }, async () => {
         const scope = this.#container.createScope();
         const logger = this.#logger.child({ task: task.name });
+        const about = { task: task.name, minute, reason };
+        // The events (E127) go through the app's dispatcher; a listener's error is logged, never the run's.
+        const emit = async (event: ScheduledTaskEvent) => {
+          try {
+            await scope.make(EventDispatcher).dispatch(event);
+          } catch (error) {
+            logger.warn(`A listener of ${event.constructor.name} failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        };
+        const skip = async (skipped: SkipReason) => {
+          await emit(new ScheduledTaskSkipped({ ...about, skipped }));
+          return result('skipped', { skipped });
+        };
+        let outcome: TaskResult;
         try {
           if (reason !== 'test' && !(await this.#passes(task, scope))) {
             logger.debug(`Skipped ${task.name}: its when()/skip() said no`);
-            return result('skipped', { skipped: 'filter' });
+            return await skip('filter');
           }
           const cache = this.#cache();
           if (reason !== 'test' && task.definition.onOneServer) {
             const lock = cache.lock(`schedule:${task.name}:${new Date(minute).toISOString().slice(0, 16)}`, ONE_SERVER_SECONDS);
             if (!(await lock.get())) {
               logger.debug(`Skipped ${task.name}: another server runs it`);
-              return result('skipped', { skipped: 'other-server' });
+              return await skip('other-server');
             }
           }
           let overlap: Lock | undefined;
@@ -353,20 +393,21 @@ export class Scheduler {
             overlap = cache.lock(`schedule:overlap:${task.name}`, task.definition.overlapMinutes * 60);
             if (!(await overlap.get())) {
               logger.info(`Skipped ${task.name}: its previous run has not finished (withoutOverlapping)`);
-              return result('skipped', { skipped: 'overlapping' });
+              return await skip('overlapping');
             }
             this.#held.add(overlap);
           }
           try {
             logger.info(reason === 'catch-up' ? `Running ${task.name} — missed while the scheduler was down` : `Running ${task.name}`);
+            await emit(new ScheduledTaskStarting(about));
             const queued = await this.#perform(task, minute, scope, logger);
             if (queued === false) {
               logger.info(`Skipped ${task.name}: the job queued last time still waits for a worker`);
-              return result('skipped', { skipped: 'job-waiting' });
+              outcome = result('skipped', { skipped: 'job-waiting' });
+            } else {
+              outcome = result('ran');
+              logger.info(`Done: ${task.name}`, { ms: outcome.ms });
             }
-            const done = result('ran');
-            logger.info(`Done: ${task.name}`, { ms: done.ms });
-            return done;
           } finally {
             if (overlap) {
               this.#held.delete(overlap);
@@ -375,8 +416,13 @@ export class Scheduler {
           }
         } catch (error) {
           logger.error(`Failed: ${task.name}`, { exception: error instanceof Error ? `${error.name}: ${error.message}` : String(error) });
-          return result('failed', { error });
+          const failed = result('failed', { error });
+          await emit(new ScheduledTaskFailed({ ...about, error, ms: failed.ms }));
+          return failed;
         }
+        if (outcome.outcome === 'skipped') await emit(new ScheduledTaskSkipped({ ...about, skipped: outcome.skipped! }));
+        else await emit(new ScheduledTaskFinished({ ...about, ms: outcome.ms }));
+        return outcome;
       }),
     );
   }

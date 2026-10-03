@@ -1,4 +1,5 @@
-import { currentLogContext, defineConfig, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
+import { Application, currentLogContext, defineConfig, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
+import { channels, messageBase } from '@bespokecore/core/diagnostics';
 import { pino, type Logger as Pino } from 'pino';
 import pretty from 'pino-pretty';
 import * as v from 'valibot';
@@ -17,28 +18,53 @@ export const LogConfig = defineConfig('log', {
 });
 export type LogConfig = ConfigOf<typeof LogConfig>;
 
-/** Adapts pino to the framework's Logger contract (`message, context` order, like Laravel). */
+const entries = channels.event('log');
+
+/**
+ * Adapts pino to the framework's Logger contract (`message, context` order, like Laravel). With an `app`, every entry also
+ * goes to the `log` channel (E118) — at any level, before pino's level filter — while something listens; otherwise the
+ * path is pino's alone. A subscriber of `log` must not log itself.
+ */
 export class PinoLogger implements Logger {
   readonly #pino: Pino;
+  readonly #app: Application | undefined;
+  /** This logger's own bindings — with its parent's, only computed for a message on the channel. */
+  readonly #bindings: LogContext | undefined;
+  readonly #parent: PinoLogger | undefined;
 
-  constructor(logger: Pino) {
+  constructor(logger: Pino, app?: Application, bindings?: LogContext, parent?: PinoLogger) {
     this.#pino = logger;
+    this.#app = app;
+    this.#bindings = bindings;
+    this.#parent = parent;
   }
 
   debug(message: string, context?: LogContext): void {
     this.#pino.debug(context ?? {}, message);
+    if (this.#app && entries.hasSubscribers) this.#publish('debug', message, context);
   }
   info(message: string, context?: LogContext): void {
     this.#pino.info(context ?? {}, message);
+    if (this.#app && entries.hasSubscribers) this.#publish('info', message, context);
   }
   warn(message: string, context?: LogContext): void {
     this.#pino.warn(context ?? {}, message);
+    if (this.#app && entries.hasSubscribers) this.#publish('warn', message, context);
   }
   error(message: string, context?: LogContext): void {
     this.#pino.error(context ?? {}, message);
+    if (this.#app && entries.hasSubscribers) this.#publish('error', message, context);
   }
   child(bindings: LogContext): Logger {
-    return new PinoLogger(this.#pino.child(bindings));
+    return new PinoLogger(this.#pino.child(bindings), this.#app, bindings, this);
+  }
+
+  #publish(level: 'debug' | 'info' | 'warn' | 'error', message: string, context: LogContext | undefined): void {
+    entries.publish({ ...messageBase(this.#app!), level, message, context: { ...this.#allBindings(), ...context } });
+  }
+
+  #allBindings(): LogContext {
+    return this.#parent ? { ...this.#parent.#allBindings(), ...this.#bindings } : { ...this.#bindings };
   }
 }
 
@@ -53,7 +79,8 @@ function withoutBound(context: Readonly<Record<string, unknown>>, instance: unkn
   return keys.some((key) => key in bound) ? Object.fromEntries(Object.entries(context).filter(([key]) => !(key in bound))) : context;
 }
 
-export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream): Logger {
+/** `app`: its entries also go to the `log` channel (E118) while something listens. */
+export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
     destination ?? (config.format === 'pretty' ? pretty({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
   const logger = pino(
@@ -67,7 +94,7 @@ export function createPinoLogger(config: LogConfig, destination?: NodeJS.Writabl
     },
     stream as never,
   );
-  return new PinoLogger(logger);
+  return new PinoLogger(logger, app);
 }
 
 /** Found by `bespoke discover` through the "bespoke" field in package.json. */
@@ -75,6 +102,6 @@ export class LogServiceProvider implements ServiceProvider {
   static config = [LogConfig];
 
   register(container: Container): void {
-    container.singleton(Logger, (c) => createPinoLogger(c.make(LogConfig)));
+    container.singleton(Logger, (c) => createPinoLogger(c.make(LogConfig), undefined, c.make(Application)));
   }
 }

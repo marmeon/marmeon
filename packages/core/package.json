@@ -18,6 +18,11 @@
       "@bespokecore/source": "./src/vite.ts",
       "types": "./dist/vite.d.ts",
       "default": "./dist/vite.js"
+    },
+    "./diagnostics": {
+      "@bespokecore/source": "./src/diagnostics.ts",
+      "types": "./dist/diagnostics.d.ts",
+      "default": "./dist/diagnostics.js"
     }
   },
   "files": [
@@ -44,6 +49,10 @@
       "./vite": {
         "types": "./dist/vite.d.ts",
         "default": "./dist/vite.js"
+      },
+      "./diagnostics": {
+        "types": "./dist/diagnostics.d.ts",
+        "default": "./dist/diagnostics.js"
       }
     }
   },

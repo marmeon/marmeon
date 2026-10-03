@@ -83,6 +83,10 @@ export interface JobRecord {
   readonly unique?: UniqueRecord;
   /** The rest of its chain (`queue.chain([...])`): queued one after the other, each when the one before succeeded. */
   readonly chain?: readonly JobRecord[];
+  /** The request it was dispatched in (its `x-request-id`, E131) — what the devtools and logs link the job to. */
+  readonly requestId?: string;
+  /** The trace context it was dispatched in (W3C `traceparent`, E131) — when a tracer (`@bespokecore/otel`) gave one. */
+  readonly traceparent?: string;
 }
 
 /** The unique lock of a job, as its record carries it: the lock's name (the job's id is its owner), how long it holds, until when. */

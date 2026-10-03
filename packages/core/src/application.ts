@@ -154,7 +154,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   container.instance(Application, app);
   container.instance(Container, container);
   // Fallback until a logging package (e.g. @bespokecore/log) binds its own.
-  container.singleton(Logger, () => new ConsoleLogger());
+  container.singleton(Logger, () => new ConsoleLogger({}, app));
   // The time (E97); tests bind a `TestClock` they can move.
   container.singleton(Clock, () => new SystemClock());
 

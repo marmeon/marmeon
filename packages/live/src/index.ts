@@ -106,7 +106,7 @@ export class LiveServiceProvider implements ServiceProvider {
     // Per resolution: in a request it knows the tab that sent it (x-bespoke-connection); in a job or a command, none.
     container.bind(Broadcaster, (c) => {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
-      return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder });
+      return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application) });
     });
     container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c)));
   }

@@ -33,7 +33,7 @@ export type {
 export { EventFake } from './events-fake.ts';
 export type { EventMatch } from './events-fake.ts';
 export type { LogContext } from './logger.ts';
-export { currentJob, currentLogContext, currentRequest, runWithJob, runWithRequest, runWithTask } from './request-context.ts';
+export { currentJob, currentLogContext, currentRequest, currentTask, runWithJob, runWithRequest, runWithTask } from './request-context.ts';
 export type { JobInfo, RequestInfo, TaskInfo } from './request-context.ts';
 export {
   afterCommit,

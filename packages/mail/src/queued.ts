@@ -1,6 +1,8 @@
+import type { Application } from '@bespokecore/core';
 import type { JobContext } from '@bespokecore/queue';
 import * as v from 'valibot';
 import type { Attachment, MailMessage } from './message.ts';
+import { traceMail } from './trace.ts';
 import type { MailTransport } from './transports.ts';
 
 const address = v.object({ address: v.string(), name: v.optional(v.string()) });
@@ -41,13 +43,19 @@ export class SendQueuedMail {
   static readonly timeout = 30;
 
   readonly #transport: MailTransport;
+  readonly #app: Application | undefined;
 
-  constructor(transport: MailTransport) {
+  constructor(transport: MailTransport, app?: Application) {
     this.#transport = transport;
+    this.#app = app;
   }
 
   async handle(payload: QueuedMailPayload, _job: JobContext): Promise<void> {
-    await this.#transport.send(fromQueued(payload.message));
+    await traceMail(this.#app, payload.mailable, 'worker', async () => {
+      const message = fromQueued(payload.message);
+      await this.#transport.send(message);
+      return message;
+    });
   }
 }
 

@@ -120,12 +120,14 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
   /**
    * Runs on one server only, when several run the scheduler (E88): the first to take the lock
    * `schedule:<name>:<minute>` in the shared cache runs it. Needs a cache all servers share — `CACHE_DRIVER=database`
-   * or `redis`; with `file` or `memory` the scheduler refuses to start.
+   * or `redis`. With `file` the lock holds on this machine only, with `memory` in this process only: the scheduler starts
+   * and warns (E123) — right for a single scheduler, wrong for several.
    */
   onOneServer(): ScheduledTask<K>;
   /**
    * Skips a run while the previous one still runs — on any server (a lock in the cache, which expires after
-   * `expiresAfterMinutes`, default 1440, in case a scheduler dies holding it).
+   * `expiresAfterMinutes`, default 1440, in case a scheduler dies holding it). "Any server" needs a shared cache, like
+   * `onOneServer()`: with `file` or `memory` the scheduler warns at its start (E123).
    */
   withoutOverlapping: Overlapping<K>;
   /**

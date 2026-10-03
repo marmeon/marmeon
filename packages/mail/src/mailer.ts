@@ -1,8 +1,9 @@
-import { token, type Duration } from '@bespokecore/core';
+import { token, type Application, type Duration } from '@bespokecore/core';
 import { fromHtml, Html } from './html.ts';
 import type { Address, Mailable, MailContent, MailMessage } from './message.ts';
 import { fromMjml, Mjml } from './mjml.ts';
 import { toQueued, type QueuedMailPayload } from './queued.ts';
+import { traceMail } from './trace.ts';
 import type { MailTransport } from './transports.ts';
 
 /** Where and when a queued mail goes (`mailer.queue(mail, options)`). */
@@ -79,24 +80,32 @@ export class TransportMailer implements Mailer {
   readonly #transport: () => MailTransport;
   readonly #from: Address;
   readonly #queue: MailQueue | undefined;
+  readonly #app: Application | undefined;
 
-  constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue) {
+  /** `app`: the mails are reported on its `mail.send` channel (E118). */
+  constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue, app?: Application) {
     this.#transport = typeof transport === 'function' ? transport : () => transport;
     this.#from = from;
     this.#queue = queue;
+    this.#app = app;
   }
 
-  async send(mailable: Mailable): Promise<MailMessage> {
-    const message = await compose(mailable, this.#from);
-    await this.#transport().send(message);
-    return message;
+  send(mailable: Mailable): Promise<MailMessage> {
+    return traceMail(this.#app, mailable.constructor.name, 'send', async () => {
+      const message = await compose(mailable, this.#from);
+      await this.#transport().send(message);
+      return message;
+    });
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
     if (!this.#queue) throw new MailError('mailer.queue() needs @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover) — or send the mail now: mailer.send().');
-    const message = await compose(mailable, this.#from);
-    await this.#queue({ mailable: mailable.constructor.name, message: toQueued(message) }, options);
-    return message;
+    const queue = this.#queue;
+    return traceMail(this.#app, mailable.constructor.name, 'queue', async () => {
+      const message = await compose(mailable, this.#from);
+      await queue({ mailable: mailable.constructor.name, message: toQueued(message) }, options);
+      return message;
+    });
   }
 }
 

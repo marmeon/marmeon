@@ -25,10 +25,20 @@ bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | sched
   (02:30 in October) in the first pass only. Tasks for every hour run as the minutes really pass.
 - **Filters:** `when(fn)`, `skip(fn)` (asked each time, with the run's scope), `environments('production')` (`NODE_ENV`).
 - **`onOneServer()`:** the first scheduler to take the lock `schedule:<name>:<minute>` in the app's cache runs it. Needs a
-  cache all servers share — `CACHE_DRIVER=database` or `redis`; with `file` or `memory`, `schedule:work`/`schedule:run`
-  refuse to start.
+  cache all servers share — `CACHE_DRIVER=database` or `redis` — when more than one scheduler runs.
 - **`withoutOverlapping(minutes = 1440)`:** a run is skipped while the previous one still runs (on any server). A
   scheduler that stops before its runs end frees their locks.
+- **Locks in a cache that is not shared (E123):** with `CACHE_DRIVER=file` the locks hold on this machine only, with
+  `memory` in this process only. That is right for a single scheduler — also a production with one instance — so
+  `schedule:work` and `schedule:run` start, in every environment, and warn; `schedule:list` shows the same warning:
+
+  ```text
+  onOneServer()/withoutOverlapping() lock in CACHE_DRIVER=file: locks only hold on this machine. With more than one
+  scheduler instance (more servers), use CACHE_DRIVER=database (bespoke make:cache-table) or redis. Tasks: auth:prune-tokens, session:prune
+  ```
+
+  Two `schedule:work` on one machine share a `file` cache: an `onOneServer()` task still runs once a minute. With `memory`
+  each process has its own locks — a second one runs everything again. Only a missing cache stops the start (`ScheduleError`).
 - **Missed runs (`catchUp('once' | 'skip')`, default `once`):** a scheduler that was down (a deploy, a sleeping machine)
   runs a task it missed **once** when it is back — however often it was due meanwhile (at most 7 days back). The last tick
   is kept in the cache.
@@ -37,12 +47,34 @@ bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | sched
 - **Every run is a boundary** like a request or a job: outside any transaction (E107), in a container scope of its own,
   with `{ task }` in its log entries. Runs never wait for each other; a failing run is logged, the others go on.
 
+## Events (E127)
+
+Every run says what became of it through the app's `EventDispatcher` — like Laravel's `ScheduledTask*` events; tests see
+them in `app.events`:
+
+| Event | When | Fields (besides `task`, `minute`, `reason`) |
+|---|---|---|
+| `ScheduledTaskStarting` | it passed its filters and locks and starts | — |
+| `ScheduledTaskFinished` | it ran to its end | `ms` |
+| `ScheduledTaskFailed` | it threw (or its command exited ≠ 0) — once per failed run | `error`, `ms` |
+| `ScheduledTaskSkipped` | it was due and did not run | `skipped`: `filter`, `other-server`, `overlapping`, `job-waiting` (after `Starting`) |
+
+`reason` is why it ran: `due`, `catch-up` or `test` (`schedule:test`). Listen to one (`listen(ScheduledTaskFailed,
+AlertOnFailedTask)` — the web app raises an alert) or to all of them (`listen(ScheduledTaskEvent, …)`). They are not
+queueable: listeners run in the scheduler's process; a listener's error is logged as a warning and changes nothing about
+the run. Tools (devtools, OpenTelemetry) use the `schedule.task` channel of `@bespokecore/core/diagnostics` instead (E118):
+one traced message per run with `task`, `minute`, `reason`, `outcome`, `skipped` and `durationMs`.
+
+## Testing
+
 Testing (`@bespokecore/testing`, with the test clock): `app.schedule.due(time)` — the tasks due then;
 `await app.schedule.run(time)` — moves the clock there and runs them (catching up what was missed since the last `run`);
 `app.schedule.runTask(name)`.
 
 Prune commands of the framework to schedule: `auth:prune-tokens`, `session:prune`, `cache:prune`, `queue:prune-failed`,
 `notifications:prune`, `uploads:prune` — each one statement (or one guarded step per entry), its time from the app's `Clock`.
+
+## Production
 
 In production run **one `schedule:work` per server** under a supervisor (or `schedule:run` from cron every minute), next to the
 web processes and `queue:work`; `onOneServer()` tasks then run once across them. `bespoke dev` starts it with the server when a

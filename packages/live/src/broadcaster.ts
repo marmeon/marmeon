@@ -1,4 +1,5 @@
-import { afterCommit, outsideTransaction, token, type Logger } from '@bespokecore/core';
+import { afterCommit, outsideTransaction, token, type Application, type Logger } from '@bespokecore/core';
+import { channels, messageBase, trace } from '@bespokecore/core/diagnostics';
 import { checkedChannel } from '@bespokecore/http';
 import type { LiveBackend } from './backend.ts';
 import type { BroadcastRecorder } from './recorder.ts';
@@ -38,19 +39,25 @@ export interface LiveBroadcasterDependencies {
   readonly logger: Logger;
   /** Tests: what was refreshed (`app.broadcast`). */
   readonly recorder?: BroadcastRecorder | undefined;
+  /** The app its hints are reported for on the `live.refresh` channel (E118). */
+  readonly app?: Application | undefined;
 }
+
+const refreshes = channels.tracing('live.refresh');
 
 export class LiveBroadcaster implements Broadcaster {
   readonly #backend: () => LiveBackend;
   readonly #connection: string | undefined;
   readonly #logger: Logger;
   readonly #recorder: BroadcastRecorder | undefined;
+  readonly #app: Application | undefined;
 
-  constructor({ backend, connection, logger, recorder }: LiveBroadcasterDependencies) {
+  constructor({ backend, connection, logger, recorder, app }: LiveBroadcasterDependencies) {
     this.#backend = backend;
     this.#connection = connection !== undefined && CONNECTION_ID.test(connection) ? connection : undefined;
     this.#logger = logger;
     this.#recorder = recorder;
+    this.#app = app;
   }
 
   async refresh(channel: string, options: RefreshOptions = {}): Promise<void> {
@@ -66,7 +73,10 @@ export class LiveBroadcaster implements Broadcaster {
       outsideTransaction(async () => {
         this.#recorder?.record({ channel: name, only, connection: except });
         try {
-          await this.#backend().refresh(name, only, except);
+          const send = () => this.#backend().refresh(name, only, except);
+          // On the `live.refresh` channel while something listens (E118) — once it goes out, after the commit.
+          if (this.#app && refreshes.hasSubscribers) await trace(refreshes, { ...messageBase(this.#app), channel: name, only }, send);
+          else await send();
         } catch (error) {
           // The change is committed; its hint is lost — a tab that reconnects later still compares sequences (E104).
           this.#logger.error(`A live hint on "${name}" could not be sent`, { channel: name, exception: String(error) });

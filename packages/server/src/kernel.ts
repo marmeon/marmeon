@@ -3,7 +3,8 @@ import { join, relative } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
-import { Logger, outsideTransaction, runWithRequest, Translator, type Application, type Container } from '@bespokecore/core';
+import { Logger, outsideTransaction, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
+import { channels, messageBase, trace, type HttpRequestMessage } from '@bespokecore/core/diagnostics';
 import {
   AfterResponse,
   AssetVersion,
@@ -37,6 +38,7 @@ import {
   VALIDATED_HEADER,
   Router,
   withQueuedCookies,
+  type RouteDefinition,
   type DispatchOptions,
   type HttpContext,
   type MiddlewareHandler,
@@ -48,6 +50,7 @@ import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { ServerConfig } from './provider.ts';
+import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
 
 export interface KernelOptions {
@@ -74,6 +77,15 @@ export interface KernelOptions {
 }
 
 const REQUEST_ID = /^[\w.:-]{1,128}$/;
+
+const requests = channels.tracing('http.request');
+const exceptions = channels.event('exception');
+
+/** The class name of a route's action (`ShowUserController`) — none for a closure. */
+function controllerOf(route: RouteDefinition): string | undefined {
+  const action = route.action as unknown;
+  return typeof action === 'function' && action.name !== '' && typeof (action as { prototype?: { handle?: unknown } }).prototype?.handle === 'function' ? action.name : undefined;
+}
 
 /** The page request an island resolved in-process belongs to (E49) — what `handle` gives the island's request. */
 interface IslandParent {
@@ -124,7 +136,11 @@ export function createHttpKernel(
   const logger = container.make(Logger).child({ channel: 'http' });
   container.instance(AssetVersion, { value: version });
   const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
+  // Development only (E129): its provider binds it when NODE_ENV=development.
+  const timing = container.has(ServerTiming) ? container.make(ServerTiming) : undefined;
   const app = new Hono();
+  /** The route each request in flight matched — its name for the log line and the request channel. */
+  const matched = new WeakMap<Request, RouteDefinition>();
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
 
@@ -204,6 +220,7 @@ export function createHttpKernel(
   };
 
   const toResponse = createResponseFactory(renderer, router, version, {
+    app: application,
     logger: container.make(Logger).child({ channel: 'ssr' }),
     ssr,
     debug,
@@ -212,6 +229,10 @@ export function createHttpKernel(
   });
 
   const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
+    if (exceptions.hasSubscribers) {
+      const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
+      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname });
+    }
     const handler = container.make(ExceptionHandler);
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);
     // An upload (W6.9) is answered as JSON whatever it accepts — never back to a form with flashed errors (it is read-only).
@@ -270,16 +291,47 @@ export function createHttpKernel(
     const header = c.req.header('x-request-id');
     const requestId = header && REQUEST_ID.test(header) ? header : randomUUID();
     const started = performance.now();
+    const info: RequestInfo = { requestId };
+    timing?.begin(info);
 
-    await runWithRequest({ requestId }, async () => {
-      await next();
-      logger.info(`${c.req.method} ${c.req.path} ${c.res.status}`, { ms: Math.round(performance.now() - started) });
+    await runWithRequest(info, async () => {
+      // Traced only while something listens (E118): otherwise no message is built at all.
+      if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, next, () => c.res.status);
+      else await next();
+      const route = matched.get(c.req.raw)?.routeName;
+      logger.info(`${c.req.method} ${c.req.path} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
     });
 
     // Some responses (e.g. Response.redirect) have immutable headers — copy before setting.
     c.res = new Response(c.res.body, c.res);
     c.res.headers.set('x-request-id', requestId);
+    const serverTiming = timing?.header(info, performance.now() - started);
+    if (serverTiming) c.res.headers.set('server-timing', serverTiming);
   });
+
+  /** One request on the `http.request` channel — with the route and controller it matched, and its status. */
+  const traceRequest = (request: Request, requestId: string, env: unknown, next: () => Promise<void>, status: () => number): Promise<void> => {
+    const region = regionOf(request);
+    const message: HttpRequestMessage = {
+      ...messageBase(application),
+      requestId,
+      method: request.method,
+      path: new URL(request.url).pathname,
+      ...(region ? { region } : {}),
+      inProcess: islandParent(env) !== undefined,
+    };
+    return trace(requests, message, next, (ended) => {
+      const route = matched.get(request);
+      if (route) {
+        const name = route.routeName;
+        const controller = controllerOf(route);
+        if (name !== undefined) ended.route = name;
+        ended.routePath = route.path;
+        if (controller !== undefined) ended.controller = controller;
+      }
+      ended.status = status();
+    });
+  };
 
   if (clientDir) {
     // serveStatic appends the request path to `root`, which it resolves against the working directory.
@@ -400,8 +452,9 @@ export function createHttpKernel(
   };
 
   for (const route of router.routes) {
-    app.on([...route.methods], route.path, (c) =>
-      handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
+    app.on([...route.methods], route.path, (c) => {
+      matched.set(c.req.raw, route);
+      return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
         router.dispatch(
           route,
           { request: c.req.raw, params: c.req.param() },
@@ -414,8 +467,8 @@ export function createHttpKernel(
           },
         ),
         islandParent(c.env),
-      ),
-    );
+      );
+    });
   }
 
   // Unknown paths still pass the global middleware, then end in the exception handler's 404.

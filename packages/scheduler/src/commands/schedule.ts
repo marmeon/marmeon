@@ -1,6 +1,5 @@
-import { CacheConfig } from '@bespokecore/cache';
 import type { CommandInput } from '@bespokecore/cli';
-import { Clock, Container, Logger } from '@bespokecore/core';
+import { Clock, Logger } from '@bespokecore/core';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute } from '../time.ts';
@@ -13,16 +12,21 @@ function describe(result: TaskResult): string {
   return `skipped — ${why[result.skipped!]}`;
 }
 
-/** A scheduler that cannot start (a missing command, `onOneServer()` on a file cache …) says so, without a stack trace. */
-async function checked(scheduler: Scheduler, output: CommandInput['output'], options?: { oneServer?: boolean }): Promise<boolean> {
+/**
+ * A scheduler that cannot start (no cache, a missing command …) says so, without a stack trace. One that starts with
+ * locks in a cache that is not shared (E123) says that too — and starts.
+ */
+async function checked(scheduler: Scheduler, output: CommandInput['output'], options: { warn?: boolean } = {}): Promise<boolean> {
   try {
-    await scheduler.checkProcess(options);
-    return true;
+    await scheduler.checkProcess();
   } catch (error) {
     if (!(error instanceof ScheduleError)) throw error;
     output.error(error.message);
     return false;
   }
+  const warning = options.warn === false ? undefined : scheduler.lockWarning();
+  if (warning) output.warn(warning);
+  return true;
 }
 
 /**
@@ -119,12 +123,10 @@ export class ScheduleListCommand {
 
   readonly #scheduler: Scheduler;
   readonly #clock: Clock;
-  readonly #container: Container;
 
-  constructor(scheduler: Scheduler, clock: Clock, container: Container) {
+  constructor(scheduler: Scheduler, clock: Clock) {
     this.#scheduler = scheduler;
     this.#clock = clock;
-    this.#container = container;
   }
 
   handle({ output }: CommandInput): number {
@@ -149,11 +151,9 @@ export class ScheduleListCommand {
         return [task.name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), task.summary, options.join(', ')];
       }),
     );
-    const shared = tasks.filter((task) => task.definition.onOneServer);
-    const driver = this.#container.has(CacheConfig) ? this.#container.make(CacheConfig).driver : undefined;
-    if (shared.length > 0 && (driver === 'file' || driver === 'memory')) {
-      output.warn(`onOneServer() needs a cache servers share — with CACHE_DRIVER=${driver} schedule:work and schedule:run refuse to start. Use database or redis.`);
-    }
+    // The same warning schedule:work and schedule:run start with (E123).
+    const warning = this.#scheduler.lockWarning();
+    if (warning) output.warn(warning);
     return 0;
   }
 }
@@ -176,8 +176,8 @@ export class ScheduleTestCommand {
       output.error(`Which task? bespoke schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
       return 1;
     }
-    // A test run ignores onOneServer() — a file cache is no reason to refuse it.
-    if (!(await checked(this.#scheduler, output, { oneServer: false }))) return 1;
+    // A test run ignores onOneServer(): no word about where its lock lives.
+    if (!(await checked(this.#scheduler, output, { warn: false }))) return 1;
     let task;
     try {
       task = this.#scheduler.task(name);

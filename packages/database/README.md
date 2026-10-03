@@ -163,3 +163,13 @@ columns are kept on the connection the table is on, so `selectAll()` there never
 another connection runs in a transaction of that connection, then is recorded — two databases, two transactions.
 `migrate:fresh` drops the tables of every connection a migration runs on. `bespoke db:types` runs every migration on one
 scratch database: the generated `Tables` know every table, wherever it lives.
+
+## The query channel (E118)
+
+Every statement — of every connection, the infrastructure handle included — goes to the `db.query` channel of
+`@bespokecore/core/diagnostics` while something listens (the error page, the devtools, `Server-Timing`, OpenTelemetry):
+`connection`, `sql`, `parameters`, `durationMs`, `error`, and the request (`requestId`) or job (`jobId`) it ran in.
+**`secret: true`** marks a statement that touches a table with secret columns (`.secret()` in its migration) — every
+table the query builder names, and for raw SQL any secret table's name in its text. Its parameters may hold a password
+hash or a token: whatever records or shows queries redacts them all (E125). Without a subscriber nothing is built.
+`connections.onQuery(listener)` stays for code that counts queries itself (tests).

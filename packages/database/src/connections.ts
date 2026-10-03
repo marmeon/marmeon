@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { runTransaction, TransactionError, transactionOf, token, type Logger } from '@bespokecore/core';
-import { Kysely, type Dialect, type IsolationLevel, type LogEvent, type Transaction } from 'kysely';
+import { runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@bespokecore/core';
+import { channels, messageBase, publishEnded, type DbQueryMessage } from '@bespokecore/core/diagnostics';
+import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
 import { BespokeDriver, DatabaseConnectionError, multipleConnections, withBespokeDriver } from './driver.ts';
@@ -55,7 +56,9 @@ export class Connections {
   readonly #options: ReadonlyMap<string, ConnectionOptions>;
   readonly #root: string;
   readonly #logger: Logger;
-  readonly #instances = new Map<string, { db: Kysely<any>; driver: BespokeDriver; file?: string }>();
+  /** The app the queries are reported for on the `db.query` channel (E118) — none: not reported (scratch connections). */
+  readonly #app: Application | undefined;
+  readonly #instances = new Map<string, Instance>();
   /** Infrastructure handles (E108), per connection and user. */
   readonly #infrastructure = new Map<string, Kysely<any>>();
   /** Postgres: the infrastructure's own pool, per connection. */
@@ -63,10 +66,11 @@ export class Connections {
   readonly #listeners = new Set<(query: QueryEvent) => void>();
   #destroyed = false;
 
-  constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger }) {
+  constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application }) {
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });
+    this.#app = options.app;
   }
 
   /** The connection by name (default: `default`, from `DB_CONNECTION`). Typed by `Tables` unless given its own. */
@@ -225,16 +229,16 @@ export class Connections {
     await Promise.all([...instances.map(({ db }) => db.destroy()), ...pools.map((pool) => pool.destroy())]);
   }
 
-  #instance(name: string): { db: Kysely<any>; driver: BespokeDriver; file?: string } {
+  #instance(name: string): Instance {
     if (this.#destroyed) throw new Error(`The database connections are closed (the application shut down); cannot use "${name}".`);
-    let instance: { db: Kysely<any>; driver: BespokeDriver; file?: string } | undefined = this.#instances.get(name);
+    let instance: Instance | undefined = this.#instances.get(name);
     if (!instance) {
       const options = this.options(name);
       const metadata = new SchemaMetadata(options.driver);
       const { dialect, driver } = withBespokeDriver(this.#dialect(options), { name, target: describeConnection(options), metadata });
       const plugins = [metadata.plugin(), new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
-      instance = { db, driver, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
+      instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);
     }
     return instance;
@@ -276,5 +280,65 @@ export class Connections {
     // Parameters stay out of the log line — they may hold password hashes or tokens.
     this.#logger.debug(query.error ? 'Query failed' : 'Query', { connection, sql: query.sql, durationMs: Math.round(query.durationMs * 100) / 100 });
     for (const listener of this.#listeners) listener(query);
+    // Called where the query was awaited: the request's or job's context is the current one (E118).
+    if (this.#app && queries.hasSubscribers) {
+      const message: DbQueryMessage = {
+        ...messageBase(this.#app),
+        // Kysely reports a query once it ended: it started `durationMs` before.
+        startedAt: performance.timeOrigin + performance.now() - query.durationMs,
+        connection,
+        sql: query.sql,
+        parameters: query.parameters,
+        secret: touchesSecrets(event.query, this.#instances.get(connection)?.metadata.secrets),
+        durationMs: query.durationMs,
+        ...(query.error === undefined ? {} : { error: query.error }),
+      };
+      publishEnded(queries, message);
+    }
+  }
+}
+
+const queries = channels.tracing('db.query');
+
+interface Instance {
+  db: Kysely<any>;
+  driver: BespokeDriver;
+  metadata: SchemaMetadata;
+  file?: string;
+}
+
+/**
+ * Whether a statement touches a table with secret columns (E125: its parameters may hold a password hash or a token) —
+ * every table the query builder named, and for raw SQL (`sql\`…\``, in whole or in part) any secret table's name in
+ * the text. When in doubt, yes.
+ */
+export function touchesSecrets(query: CompiledQuery, secrets: ReadonlyMap<string, ReadonlySet<string>> | undefined): boolean {
+  if (!secrets || secrets.size === 0) return false;
+  let raw = false;
+  let touches = false;
+  visit(query.query, (node) => {
+    if (node.kind === 'RawNode') raw = true;
+    else if (TableNode.is(node) && secrets.has(node.table.identifier.name)) touches = true;
+  });
+  if (touches) return true;
+  if (!raw) return false;
+  const sql = query.sql.toLowerCase();
+  for (const table of secrets.keys()) {
+    const name = table.toLowerCase();
+    for (let at = sql.indexOf(name); at !== -1; at = sql.indexOf(name, at + 1)) {
+      if (!/[\w$]/.test(sql[at - 1] ?? ' ') && !/[\w$]/.test(sql[at + name.length] ?? ' ')) return true;
+    }
+  }
+  return false;
+}
+
+/** Visits every operation node below `node` (nodes are plain frozen objects with a `kind`). */
+function visit(node: unknown, fn: (node: OperationNode) => void): void {
+  if (ArrayBuffer.isView(node)) return; // a binary parameter — nothing to visit, possibly large
+  if (Array.isArray(node)) {
+    for (const item of node) visit(item, fn);
+  } else if (node !== null && typeof node === 'object') {
+    if (typeof (node as { kind?: unknown }).kind === 'string') fn(node as OperationNode);
+    for (const value of Object.values(node)) if (value !== null && typeof value === 'object') visit(value, fn);
   }
 }

@@ -1,4 +1,5 @@
-import { defineConfig, type ConfigOf, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, type Application, type ConfigOf, type ServiceProvider } from '@bespokecore/core';
+import { ServerTiming } from './server-timing.ts';
 import * as v from 'valibot';
 
 const UNITS = { '': 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 } as const;
@@ -33,6 +34,7 @@ export const ServerConfig = defineConfig('server', {
      * `Page.ssr = false`). Not `SSR`: Vite and Vitest set that one themselves.
      */
     SSR_ENABLED: v.optional(v.picklist(['true', 'false']), 'true'),
+    NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
     port: env.PORT,
@@ -40,11 +42,29 @@ export const ServerConfig = defineConfig('server', {
     assetVersion: env.ASSET_VERSION,
     trustedProxies: env.TRUSTED_PROXIES,
     ssr: env.SSR_ENABLED === 'true',
+    /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
+    serverTiming: env.NODE_ENV === 'development',
   }),
 });
 export type ServerConfig = ConfigOf<typeof ServerConfig>;
 
-/** Brings the server's configuration. Found by `bespoke discover` like any installed package. */
+/**
+ * Brings the server's configuration — and, in development, the `Server-Timing` header (E129), which listens to the
+ * app's query and render channels until the app shuts down. Found by `bespoke discover` like any installed package.
+ */
 export class ServerServiceProvider implements ServiceProvider {
   static config = [ServerConfig];
+
+  #timing: ServerTiming | undefined;
+
+  boot(app: Application): void {
+    if (!app.container.make(ServerConfig).serverTiming) return;
+    this.#timing = new ServerTiming(app);
+    app.container.instance(ServerTiming, this.#timing);
+  }
+
+  shutdown(): void {
+    this.#timing?.close();
+    this.#timing = undefined;
+  }
 }

@@ -21,9 +21,12 @@ if (process.env.BESPOKE_CHILD === '1') {
   const flags = [...(production ? [] : ['--conditions=@bespokecore/source']), ...(command === 'dev' ? ['--watch'] : [])];
   const args = command === 'dev' || command === 'start' ? ['serve', ...rest] : process.argv.slice(2);
 
+  // `start` is production; `dev` is development (E115: development-only tools — `Server-Timing`, devtools — check for
+  // `NODE_ENV=development`, never for "not production"), unless the environment says otherwise.
+  const mode = production ? { NODE_ENV: 'production' } : command === 'dev' && !process.env.NODE_ENV ? { NODE_ENV: 'development' } : {};
   const child = spawn(process.execPath, [...flags, fileURLToPath(import.meta.url), ...args], {
     stdio: 'inherit',
-    env: { ...process.env, BESPOKE_CHILD: '1', ...(production ? { NODE_ENV: 'production' } : {}) },
+    env: { ...process.env, BESPOKE_CHILD: '1', ...mode },
   });
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
   child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

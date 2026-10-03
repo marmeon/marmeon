@@ -160,6 +160,13 @@ static readonly middleware = [withoutOverlapping<typeof RebuildStatsJob>((p) => 
 (`error`) — all `JobEvent`s: `listen(JobEvent, …)` hears every one. A listener's error is logged, never the job's. Job events
 cannot be queued (a queued listener of a job event would make jobs whose events … — a loop; a readable type error).
 
+**Where a job comes from (E131):** a job dispatched in a request carries the request's id in its record (`requestId`, also
+without any subscriber) — and, when a tracer (`@bespokecore/otel`) put one on the `queue.dispatch` message, the trace
+context (`traceparent`). The devtools and OpenTelemetry follow a request into its jobs that way. For tools, the
+`queue.dispatch` and `queue.job` channels of `@bespokecore/core/diagnostics` (E118) trace every dispatch (`kind`, `jobs`,
+`jobIds`, `queue`, `connection`, `delay`, `requestId`) and every attempt (`job`, `jobId`, `attempt`, `originRequestId`,
+`traceparent`, `outcome`, `durationMs`, `error`); job events stay the app's interface.
+
 ## Testing
 
 `createTestApp()` puts a **`QueueFake`** in place (`queue: 'fake'`, the default; `'real'` keeps the configured queue):

@@ -5,7 +5,7 @@ import { Scheduler } from './scheduler.ts';
 
 // The scheduler (E88): tasks in the modules (`schedule: defineSchedule(…)`), a process of its own (`schedule:work`, or
 // `schedule:run` from cron), time zones by Temporal, locks for `onOneServer()`/`withoutOverlapping()` in the app's cache,
-// missed runs caught up once.
+// missed runs caught up once, `ScheduledTask*` events (E127) and the `schedule.task` channel (E118).
 export { ScheduleConfig } from './config.ts';
 export { CronExpression, ScheduleError } from './cron.ts';
 export type { WallTime } from './cron.ts';
@@ -15,6 +15,7 @@ export type { CatchUp, CheckTime, Frequencies, Invokable, InvokableClass, Schedu
 export { CATCH_UP_DAYS, didYouMean, JOB_UNIQUE_FOR, ONE_SERVER_SECONDS, Scheduler } from './scheduler.ts';
 export type { RunReason, SkipReason, Task, TaskResult, TaskRun } from './scheduler.ts';
 export { dueMinutes, formatMinute, isDue, lastDue, MINUTE, minuteOf, nextDue } from './time.ts';
+export { ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting } from './events.ts';
 export { ScheduleWorker } from './worker.ts';
 export type { Sleep } from './worker.ts';
 export { ScheduleTester, toEpoch } from './testing.ts';

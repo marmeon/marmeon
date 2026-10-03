@@ -1,4 +1,5 @@
-import { durationToMilliseconds, outsideTransaction, runWithJob, type Container, type Duration, type StandardIssue } from '@bespokecore/core';
+import { Application, durationToMilliseconds, outsideTransaction, runWithJob, type Container, type Duration, type StandardIssue } from '@bespokecore/core';
+import { channels, messageBase, trace, type QueueJobMessage } from '@bespokecore/core/diagnostics';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobClass, JobContext, JobMiddleware } from './job.ts';
 import { runOnce, type CacheSource } from './locks.ts';
@@ -75,6 +76,8 @@ export type Prepared =
   /** No class for this name in this app (yet — a rolling deploy): released with backoff until its tries are used up. */
   | { readonly kind: 'unknown'; readonly record: JobRecord };
 
+const attempts = channels.tracing('queue.job');
+
 /** The outcome a job chose through its `JobContext`, if any. */
 export type Requested = { readonly kind: 'discard'; readonly reason: string | undefined } | { readonly kind: 'release'; readonly delay: number } | { readonly kind: 'fail'; readonly reason: string | Error };
 
@@ -130,8 +133,30 @@ export class JobRunner {
   /**
    * Runs one attempt in its own container scope, with `{ job, jobId, attempt }` as the log context. Resolves with what
    * the job asked for through its context (`discard`, `release`, `fail`), if anything; rejects with what it threw.
+   * Traced on the `queue.job` channel while something listens (E118).
    */
-  async run(
+  run(
+    prepared: Extract<Prepared, { kind: 'ready' }>,
+    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfter?: number },
+  ): Promise<Requested | undefined> {
+    if (!attempts.hasSubscribers || !this.#container.has(Application)) return this.#run(prepared, attempt);
+    const { record } = prepared;
+    const message: QueueJobMessage = {
+      ...messageBase(this.#container.make(Application)),
+      job: record.job,
+      jobId: record.uuid,
+      queue: attempt.queue,
+      connection: attempt.connection,
+      attempt: attempt.attempt,
+      ...(record.requestId === undefined ? {} : { originRequestId: record.requestId }),
+      ...(record.traceparent === undefined ? {} : { traceparent: record.traceparent }),
+    };
+    return trace(attempts, message, () => this.#run(prepared, attempt), (ended, requested) => {
+      ended.outcome = requested === undefined ? 'done' : requested.kind === 'discard' ? 'discarded' : requested.kind === 'release' ? 'released' : 'failed';
+    });
+  }
+
+  async #run(
     prepared: Extract<Prepared, { kind: 'ready' }>,
     attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfter?: number },
   ): Promise<Requested | undefined> {
@@ -208,6 +233,8 @@ export function parseRecord(payload: string): JobRecord | undefined {
     dispatchedAt: typeof record.dispatchedAt === 'number' ? record.dispatchedAt : 0,
     ...(isUnique(record.unique) ? { unique: record.unique } : {}),
     ...(Array.isArray(record.chain) && record.chain.length > 0 ? { chain: record.chain.map((link) => parseRecord(JSON.stringify(link))).filter((link) => link !== undefined) } : {}),
+    ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
+    ...(typeof record.traceparent === 'string' ? { traceparent: record.traceparent } : {}),
   };
 }
 

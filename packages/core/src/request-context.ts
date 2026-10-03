@@ -48,6 +48,11 @@ export function runWithTask<T>(info: TaskInfo, fn: () => T): T {
   return tasks.run(info, fn);
 }
 
+/** The scheduled task currently running, if any. */
+export function currentTask(): TaskInfo | undefined {
+  return tasks.getStore();
+}
+
 /**
  * What a log entry written now carries: `{ requestId }` in a request, `{ job, jobId, attempt }` in a job (both, when a job
  * runs inside a request), `{ task }` in a scheduled task.

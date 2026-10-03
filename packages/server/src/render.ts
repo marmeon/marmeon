@@ -1,4 +1,5 @@
-import { ConsoleLogger, currentRequest, Translator, type Container, type Logger } from '@bespokecore/core';
+import { ConsoleLogger, currentRequest, Translator, type Application, type Container, type Logger } from '@bespokecore/core';
+import { channels, messageBase, trace, type SsrRenderMessage } from '@bespokecore/core/diagnostics';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
@@ -92,6 +93,8 @@ export interface DocumentRendererOptions {
   version?: string;
 }
 
+const renders = channels.tracing('render.ssr');
+
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
 export function createDocumentRenderer({ template, ssr, fixStack, version }: DocumentRendererOptions): PageRenderer {
   const fixed = (error: unknown) => {
@@ -166,6 +169,8 @@ async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope
 export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, scope?: Container]) => ReturnType<ResponseFactory>;
 
 export interface ResponseFactoryOptions {
+  /** The app whose pages these are — server rendering is reported on its `render.ssr` channel (E118). */
+  app?: Application;
   /** Where server-rendering errors go. */
   logger?: Logger;
   /** Server rendering at all (`SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
@@ -206,7 +211,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases }: ResponseFactoryOptions = {},
+  { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   const noRouter: RouteLookup = {
     findByName: (name) => {
@@ -271,14 +276,24 @@ export function createResponseFactory(
   ): Promise<string | ReadableStream<Uint8Array>> => {
     if (!ssr) return renderer.shell(page, request);
     const report = (message: string) => (error: unknown) => logger.error(message, { component: page.component, ...describe(error) });
-    try {
-      return await renderer.render(page, request, {
-        complete: isBot(request),
+    const complete = isBot(request);
+    const render = () =>
+      renderer.render(page, request, {
+        complete,
         signal: request.signal,
         onError: report(`Server rendering of [${page.component}] failed in a Suspense boundary — the browser renders that part`),
         onWarning: (message) => logger.warn(message, { component: page.component }),
         ...resolvers,
       });
+    try {
+      // On the `render.ssr` channel only while something listens (E118).
+      if (app && renders.hasSubscribers) {
+        const message: SsrRenderMessage = { ...messageBase(app), component: page.component, complete };
+        return await trace(renders, message, render, (ended, result) => {
+          ended.streamed = typeof result !== 'string';
+        });
+      }
+      return await render();
     } catch (error) {
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
       return renderer.shell(page, request);

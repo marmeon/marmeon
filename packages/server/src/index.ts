@@ -7,3 +7,4 @@ export { bespokeEntries, createViteDevRenderer, explainConfigError, importVite, 
 export type { ViteDevOptions } from './vite.ts';
 export { createProductionRenderer } from './production.ts';
 export { ServerConfig, ServerServiceProvider } from './provider.ts';
+export { ServerTiming } from './server-timing.ts';
