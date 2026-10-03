@@ -3,7 +3,7 @@
 The `bespoke` command: the launcher (`bespoke dev`, `bespoke start`), the built-in commands (`route:list`, `route:types`,
 `build`, `key:generate`, `make:*`, `tinker`) and the commands of the installed packages and the app's modules. A command is
 a class with `handle()` and constructor injection, built in a container scope of its own (see `src/command.ts`). This README
-covers `bespoke tinker`; the rest follows with the docs app.
+covers `bespoke tinker` and the lint preset (`make:lint-config`); the rest follows with the docs app.
 
 ## tinker
 
@@ -91,3 +91,62 @@ The inputs of interactive sessions are kept in `storage/framework/tinker_history
 **It is plain text:** whatever you type — a password you hash, a token you paste — is in it. `--no-history` keeps none.
 Values the REPL prints are not redacted: they are what you asked for (a `secret()` column you selected shows); the history
 holds inputs only, never output, and the banner never shows a secret.
+
+## Lint
+
+`bespoke make:lint-config` writes an [oxlint](https://oxc.rs/docs/guide/usage/linter) config for the app (E121) —
+`.oxlintrc.json` in the app root, yours to change (`--force` writes it anew):
+
+```text
+$ bespoke make:lint-config [--boundaries]
+✓ Created .oxlintrc.json
+$ pnpm add -D oxlint && pnpm exec oxlint
+modules/auth/views/Login.tsx:3:1: error eslint(no-restricted-imports): '../controllers/ShowLoginController.ts' import is
+  restricted from being used by a pattern. help: Client code (views, layouts, the client entry) imports server code —
+  controllers, repositories, service providers, a module's entry (#modules/…) — only with `import type`: a value import
+  bundles it, and everything it imports, into the browser.
+```
+
+**Client code imports server code as types only.** A view needs its controller's type (`PageProps<ShowLoginController>`),
+never the class. `import { ShowLoginController }` is a value import even where only the type is used — with
+`verbatimModuleSyntax` it stays in the output and drags the controller, and everything it imports (the session, the database
+driver …), into the browser bundle. The preset restricts, in `modules/*/views/**`, `modules/*/layouts/**`, `layouts/**` and
+`bootstrap/client.*`, imports of `**/controllers/**`, of `*Repository`/`*ServiceProvider` files and of module entries
+(`#modules/<name>`) to `import type` (`no-restricted-imports` with `allowTypeImports`), and everywhere
+`import { type X }` to `import type { X }` (`typescript/no-import-type-side-effects`): the inline form also stays in the
+output, as `import {} from …`, and loads the module.
+
+oxlint sees the import's text, not the file it resolves to. The authoritative check is the `bespoke()` Vite plugin's: it
+resolves every import of client code, follows indirect ones (view → helper → controller) and knows more server modules
+(jobs, listeners, mails, policies, `config/` …) — an error in the dev overlay and a failed build, without a linter
+(`@bespokecore/vite`, "Server code in the browser"). The preset shows the common case in the editor.
+
+**`--boundaries` (opt-in, Leitprinzip 5):** a module imports another module only through its entry —
+`import { MemberStats } from '#modules/user-profile'` (the app's `package.json` maps `"#modules/*": "./modules/*/index.ts"`),
+never `../../user-profile/MemberStats.ts`. The module's `index.ts` decides what it shares; its tables stay its own with
+`Database<'module'>` and `exposes` (E20). Tests may reach into any module (factories, jobs). Without the flag nothing about
+module structure is checked — BespokeCore imposes no architecture.
+
+Why the generated file is long: oxlint matches import specifiers as text, so "leaves the module" depends on the folder depth
+(`../billing/x.ts` from `modules/auth/a.ts`, `../../billing/x.ts` from `modules/auth/listeners/b.ts` — but
+`../notifications/n.ts` from there is the module's own `notifications/` folder). The preset has one override per depth
+(eight, more when the app's modules go deeper), and a later override replaces an earlier one's options for the same rule, so
+the client folders carry both rules. The patterns are gitignore globs with negations (`!../*/index.*`): oxlint's `regex`
+has no lookaround, and a regex it cannot compile is dropped without a word — the generator's test lints a fixture app to
+prove every pattern fires. Two more oxlint findings: its `ignorePatterns` filters what it reports but still walks the
+directories — only a `.gitignore` (or `--ignore-pattern`) keeps it out of `node_modules`; without one, the walk through pnpm's
+links took 30 s and more (the blank app now has its own `.gitignore`). And a nested `.oxlintrc.json` replaces the one above it
+instead of merging (an app's preset is complete on its own).
+
+**Before E121**, nothing enforced `import type` (W7 plan, finding 8). A value import of a controller in a view failed the
+build only by accident — after 144 "externalized for browser compatibility" warnings, with
+`Rolldown failed to resolve import "@oxc-parser/binding-wasm32-wasip1"` (core's injection analyzer pulls in oxc-parser), and
+the view named nowhere; a server module that did not reach `@bespokecore/core` built green and shipped its code. The dev
+server showed the same unrelated error in the overlay, and the page did not hydrate.
+
+**The repository** lints itself with `pnpm lint` (`oxlint --deny-warnings`, part of `pnpm run ci`): the root
+`.oxlintrc.json` (oxlint's correctness rules as errors, plus `no-import-type-side-effects`; off with a reason: unused
+private brands such as `readonly #event = true`, deliberate copies before deleting while iterating, `this` aliases that walk a
+parent chain). The apps carry the generated preset — `apps/web-app` with `--boundaries`, `apps/blank-app` without — which
+oxlint takes for their files instead (nested configs do not merge). `make:auth` does not write a lint config (it belongs to
+the app, not to a module); the make:auth fixture test lints the generated module with and without `--boundaries`.

@@ -35,7 +35,7 @@ export async function findMailPreviews(root: string): Promise<Map<string, Previe
   for (const module of modules.filter((entry) => entry.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
     const dir = join(root, 'modules', module.name, 'mail');
     const files = (await readdir(dir, { withFileTypes: true }).catch(() => [])).filter(
-      (entry) => entry.isFile() && /\.ts$/.test(entry.name) && !/\.(test|type-test|d)\.ts$/.test(entry.name),
+      (entry) => entry.isFile() && entry.name.endsWith('.ts') && !/\.(test|type-test|d)\.ts$/.test(entry.name),
     );
     for (const file of files.sort((a, b) => a.name.localeCompare(b.name))) {
       const exports = (await import(pathToFileURL(join(dir, file.name)).href)) as Record<string, unknown>;

@@ -117,6 +117,13 @@ describe('make:auth', () => {
       expect(typecheck.out).toBe('');
       expect(typecheck.code).toBe(0);
 
+      // Clean under the lint preset the blank app carries (E121), and with module boundaries too: views import controllers
+      // with `import type`, other modules through their entry.
+      const lint = () => run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings']);
+      expect(lint()).toMatchObject({ code: 0 });
+      expect(bespoke('make:lint-config', '--boundaries', '--force').code).toBe(0);
+      expect(lint()).toMatchObject({ code: 0 });
+
       const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
       expect(tests.out).not.toMatch(/failed/);

@@ -59,7 +59,7 @@ export class InstantVisits {
     this.#core.scroll.cancelSave();
     // Swapping in: what lands for the page on screen meanwhile (a deferred prop, a poll) goes to memory, scroll events to nobody.
     this.#core.transitioning = true;
-    const page: PageObject = { component: instant.component, props: { ...(instant.props ?? {}) }, url };
+    const page: PageObject = { component: instant.component, props: { ...instant.props }, url };
     void this.#core.render(page, { preserveState: false, owner: this.#core.owner, layers: [], placeholder: true }).then(
       () => {
         if (this.#shown === shown) this.#core.window.scrollTo(0, 0);

@@ -688,7 +688,7 @@ declare const user: User;
 
 export function userTypes() {
   // @ts-expect-error — the hash is not part of a user (E24): it travels separately, read with secret()
-  user.password;
+  void user.password;
   // @ts-expect-error — actingAs() takes the app's user type (AuthTypes), not any object with an id
   app.actingAs({ id: 1 });
 }

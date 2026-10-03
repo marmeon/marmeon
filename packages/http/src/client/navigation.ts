@@ -7,7 +7,7 @@
  * it is used — and the core loads the layers itself when the server answers with one (E71).
  * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
  */
-import { isPageObject, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type LayerClose, type PageObject, type ValidationErrors } from '../page.ts';
+import { isPageObject, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type PageObject, type ValidationErrors } from '../page.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
 import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';

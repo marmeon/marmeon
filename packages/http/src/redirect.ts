@@ -174,6 +174,7 @@ const DONT_FLASH = /password/i;
 
 /** A path on this site (`/users/1?tab=links`) — not `//evil.example`, `/\\evil.example` or a full URL. */
 export function isLocalPath(value: unknown): value is string {
+  // oxlint-disable-next-line no-control-regex -- control characters are exactly what it refuses
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u001f]/.test(value)) return false;
   try {
     return new URL(value, 'http://local.invalid').host === 'local.invalid';

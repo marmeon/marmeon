@@ -11,7 +11,6 @@ import {
   authenticate,
   AuthServiceProvider,
   confirmedPassword,
-  DEFAULT_HASHER_OPTIONS,
   Failed,
   PasswordChanged,
   RememberTokenStore,

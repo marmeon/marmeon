@@ -5,7 +5,7 @@
  */
 import type { PageObject } from '../page.ts';
 
-export interface LruOptions<K, V> {
+export interface LruOptions<K> {
   /** Never evicted while in here (what is on screen) — nor is the entry just set. */
   pinned?: () => ReadonlySet<K>;
   /** The keys used together with `key` — moved up with it (what is beneath a layer stays while the layer does). */
@@ -18,11 +18,11 @@ export interface LruOptions<K, V> {
 export class LruMap<K, V> {
   readonly #entries = new Map<K, V>();
   readonly #size: number;
-  readonly #pinned: LruOptions<K, V>['pinned'];
-  readonly #together: LruOptions<K, V>['together'];
-  readonly #forget: LruOptions<K, V>['forget'];
+  readonly #pinned: LruOptions<K>['pinned'];
+  readonly #together: LruOptions<K>['together'];
+  readonly #forget: LruOptions<K>['forget'];
 
-  constructor(size: number, { pinned, together, forget }: LruOptions<K, V> = {}) {
+  constructor(size: number, { pinned, together, forget }: LruOptions<K> = {}) {
     this.#size = Math.max(1, size);
     this.#pinned = pinned;
     this.#together = together;

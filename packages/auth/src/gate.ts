@@ -120,6 +120,7 @@ export interface Projection<T> extends PromiseLike<T> {
 function projection<T>(compute: () => Promise<T>): Projection<T> {
   let answer: Promise<T> | undefined;
   const run = () => (answer ??= compute());
+  // oxlint-disable-next-line unicorn/no-thenable -- a projection is awaitable on purpose (PromiseLike)
   return Object.assign(run, { then: <A = T, B = never>(fulfilled?: ((value: T) => A | PromiseLike<A>) | null, rejected?: ((reason: unknown) => B | PromiseLike<B>) | null) => run().then(fulfilled, rejected) });
 }
 

@@ -18,6 +18,7 @@ export const MAX_KEY_BYTES = 1024;
 export function normalizeKey(key: string): string {
   if (typeof key !== 'string' || key === '') throw new InvalidKeyError(String(key), 'a key is a non-empty string');
   if (Buffer.byteLength(key) > MAX_KEY_BYTES) throw new InvalidKeyError(key, `longer than ${MAX_KEY_BYTES} bytes`);
+  // oxlint-disable-next-line no-control-regex -- control characters are exactly what it refuses
   if (/[\u0000-\u001f\u007f]/.test(key)) throw new InvalidKeyError(key, 'it contains a NUL byte or another control character');
   if (key.includes('\\')) throw new InvalidKeyError(key, 'it contains a backslash — keys use "/"');
   if (key.startsWith('/')) throw new InvalidKeyError(key, 'it is absolute — keys are relative to the disk');

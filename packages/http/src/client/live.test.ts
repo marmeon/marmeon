@@ -91,7 +91,7 @@ describe('live props in the client core — server-driven, one stream per docume
 
   it('an island and a layer reload themselves — once per burst, each its own props', async () => {
     const { win, navigator } = await tab({ features: [layers] });
-    win.handler = (url, init) => {
+    win.handler = (url) => {
       const { pathname } = new URL(url);
       if (pathname === '/islands/sign-ins') return islandResponse({ component: 'dashboard/SignIns', props: { entries: [] }, url: pathname, version: null, live: [follows('dashboard.sign-ins')] });
       if (pathname === '/users/1/edit') return pageResponse({ ...livePage(pathname, [follows('users.1', ['name'])], { name: 'Ada' }, 'users/Edit'), layer: { key: 'edit', base: '/users/1' } });

@@ -59,7 +59,7 @@ function markup(bytes: Uint8Array): ActiveType | undefined {
   let text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, SNIFF_BYTES));
   text = text.replace(/^﻿/, '').replace(/^[\s\0]+/, '').toLowerCase();
   if (/^<svg[\s>/]/.test(text)) return 'image/svg+xml';
-  if (/^<\?xml/.test(text)) return /<svg[\s>/]/.test(text) ? 'image/svg+xml' : /<html[\s>/]|<script[\s>/]/.test(text) ? 'text/html' : 'application/xml';
+  if (text.startsWith('<?xml')) return /<svg[\s>/]/.test(text) ? 'image/svg+xml' : /<html[\s>/]|<script[\s>/]/.test(text) ? 'text/html' : 'application/xml';
   if (/^<(!doctype html|html|head|body|script|iframe|h1|div|font|table|a|style|title|b|br|p|img|object|embed|!--)[\s>/!]/.test(text)) {
     return /<svg[\s>/]/.test(text.slice(0, 200)) && !/<html[\s>/]/.test(text) ? 'image/svg+xml' : 'text/html';
   }

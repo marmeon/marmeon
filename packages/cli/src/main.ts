@@ -7,6 +7,7 @@ import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { printCommandList } from './commands/list.ts';
+import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
 import {
   MakeControllerCommand,
   MakeEventCommand,
@@ -44,6 +45,7 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeNotificationCommand,
   MakeMiddlewareCommand,
   MakeMigrationCommand,
+  MakeLintConfigCommand,
 ];
 
 /** Runs one `bespoke` invocation in the app root (`cwd`) and returns the exit code. */

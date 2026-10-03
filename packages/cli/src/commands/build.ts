@@ -10,7 +10,8 @@ import { typecheckApp } from '../typecheck.ts';
  * First, `bespoke route:types` brings `bootstrap/routes.ts` and `.bespoke/routes.json` up to date — the plugin builds
  * the bundle's route manifest from the latter — in a process of its own, as it boots the app (this command does not).
  * Then the app is type-checked against it, like `next build`: a renamed route or a missing view fails the build.
- * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too.
+ * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too, and so does
+ * client code that imports a server module (a controller, a job …) as a value (E121).
  */
 export class BuildCommand {
   static command = 'build';
@@ -51,10 +52,12 @@ export class BuildCommand {
       await vite.build(shared);
       await vite.build({ ...shared, build: { ssr: true } });
     } catch (error) {
-      const problems = routeNameProblems(error);
+      const problems = pluginProblems(error);
       if (problems) {
-        for (const line of problems) output.error(line);
-        output.error(`Not built: ${problems.length} route name${problems.length === 1 ? '' : 's'} the browser's route manifest cannot be built from.`);
+        for (const line of [...problems.routes, ...problems.imports]) output.error(line);
+        const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+        if (problems.routes.length > 0) output.error(`Not built: ${count(problems.routes.length, 'route name', 'route names')} the browser's route manifest cannot be built from.`);
+        if (problems.imports.length > 0) output.error(`Not built: ${count(problems.imports.length, 'import brings', 'imports bring')} server code into the browser.`);
         return 1;
       }
       if (!(error instanceof ViteSetupError)) throw error;
@@ -66,10 +69,19 @@ export class BuildCommand {
   }
 }
 
-/** The messages of the route collector (`bespokecore:routes` in `@bespokecore/vite`) — readable on their own, no stack. */
-function routeNameProblems(error: unknown): string[] | undefined {
+/**
+ * The messages of the route collector (`bespokecore:routes`) and of the server-import check (`bespokecore:server-imports`)
+ * in `@bespokecore/vite` — readable on their own, no stack. Anything else is thrown on.
+ */
+function pluginProblems(error: unknown): { routes: string[]; imports: string[] } | undefined {
   const errors = (error as { errors?: unknown } | null)?.errors;
   if (!Array.isArray(errors) || errors.length === 0) return undefined;
-  if (!errors.every((entry) => (entry as { plugin?: unknown }).plugin === 'bespokecore:routes')) return undefined;
-  return errors.flatMap((entry) => String((entry as { message?: unknown }).message ?? '').split('\n').filter(Boolean));
+  const plugins = { 'bespokecore:routes': 'routes', 'bespokecore:server-imports': 'imports' } as const;
+  const problems = { routes: [] as string[], imports: [] as string[] };
+  for (const entry of errors as { plugin?: unknown; message?: unknown }[]) {
+    const kind = plugins[entry.plugin as keyof typeof plugins];
+    if (kind === undefined) return undefined;
+    problems[kind].push(...String(entry.message ?? '').split('\n').filter(Boolean));
+  }
+  return problems;
 }

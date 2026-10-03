@@ -154,6 +154,7 @@ describe('channels.around: an operation\'s work in a context of the subscriber\'
     const store = new AsyncLocalStorage<string>();
     const seen: (string | undefined)[] = [];
     const work = async () => {
+      // oxlint-disable-next-line unicorn/no-unnecessary-await -- yields once, so the store must survive a microtask
       await null;
       seen.push(store.getStore());
       return 'sent';

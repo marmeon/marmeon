@@ -39,7 +39,7 @@ describe('the observation hooks in the web app (E118, E131)', () => {
     const queries = recorded.of<DbQueryMessage>('db.query');
     const inRequest = queries.filter((query) => query.requestId === 'req-register');
     // The account is written in the request — a table with secret columns (the password hash): `secret`, its parameters raw.
-    const insert = inRequest.find((query) => /^insert into "users"/.test(query.sql));
+    const insert = inRequest.find((query) => query.sql.startsWith('insert into "users"'));
     expect(insert).toMatchObject({ secret: true, connection: 'default' });
     expect(insert!.parameters.some((parameter) => typeof parameter === 'string' && parameter.startsWith('$argon2id$'))).toBe(true);
 

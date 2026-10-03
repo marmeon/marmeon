@@ -6,7 +6,6 @@ import {
   OperationNodeTransformer,
   ReferenceNode,
   SelectQueryNode,
-  sql,
   TableNode,
   type AliasableExpression,
   type ExpressionBuilder,

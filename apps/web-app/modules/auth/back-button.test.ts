@@ -244,6 +244,7 @@ class FakeTab {
 
   /** `window`, as a document of this tab sees it. */
   #window(listeners: Doc['listeners']): NavigatorWindow {
+    // oxlint-disable-next-line typescript/no-this-alias -- the history object's getters below have their own `this`
     const tab = this;
     const entry = () => tab.entries[tab.index]!;
     const navigate = (to: string | URL, mode: 'push' | 'replace') => void tab.#pending.push(tab.#load(String(to), mode));

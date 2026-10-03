@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   check:
-    name: build, typecheck, test, size, types:check
+    name: build, typecheck, lint, test, size, types:check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -28,7 +28,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run ci --only build,typecheck,test,size,types:check
+      - run: pnpm run ci --only build,typecheck,lint,test,size,types:check
 
   pgsql:
     name: test:pgsql

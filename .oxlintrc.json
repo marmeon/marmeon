@@ -1,0 +1,24 @@
+// The repository's lint: `pnpm lint` (oxlint), part of `pnpm run ci`. The apps carry their own `.oxlintrc.json` — the preset
+// `bespoke make:lint-config` writes (E121) — which oxlint takes for their files instead of this one.
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": { "correctness": "error" },
+  "rules": {
+    // With verbatimModuleSyntax, `import { type X }` stays as `import {} from …` and loads the module.
+    "typescript/no-import-type-side-effects": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    // `readonly #event = true` makes a class nominal (events, PolicyResponse): never read, on purpose.
+    "no-unused-private-class-members": "off",
+    // A copy before deleting while iterating (`for (const key of [...map.keys()]) map.delete(key)`) is deliberate.
+    "unicorn/no-useless-spread": "off",
+    // Walking a parent chain starts at `this` (`for (let scope = this; scope; scope = scope.parent)`).
+    "typescript/no-this-alias": "off"
+  },
+  "overrides": [
+    {
+      // Type tests provoke errors on purpose: `// @ts-expect-error` above `user.password;`.
+      "files": ["**/*.test.*", "**/*.type-test.*"],
+      "rules": { "no-unused-expressions": "off" }
+    }
+  ]
+}

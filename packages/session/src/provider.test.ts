@@ -8,7 +8,7 @@ import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokeco
 import { RedisConnections, RedisServiceProvider } from '@bespokecore/redis';
 import { createHttpKernel } from '@bespokecore/server';
 import * as v from 'valibot';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionConfig } from './config.ts';

@@ -1,7 +1,6 @@
 import { formatParts, LocaleFormats, MessageSyntaxError, parseMessage, type Part } from './format.ts';
 import { baseLanguage } from './locale.ts';
 import type { Translate } from './messages.ts';
-import type { MessageTree } from './types.ts';
 
 /** Numbers, dates and relative times for one locale — `Intl`, with its formatters reused. */
 export interface Formatter {

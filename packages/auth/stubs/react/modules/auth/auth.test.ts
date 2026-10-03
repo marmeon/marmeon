@@ -177,5 +177,5 @@ declare const user: User;
 
 export function userTypes() {
   // @ts-expect-error — the hash is not part of a user: it travels separately
-  user.password;
+  void user.password;
 }

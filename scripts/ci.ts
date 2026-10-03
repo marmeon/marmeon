@@ -16,7 +16,7 @@
  * `compose.yaml` — only its own containers (`bespokecore-*`), never another project's. The Postgres and Redis suites run
  * one after the other, never at once: they share their test databases.
  *
- * A later step adds its part to `parts` (lint, docs:check) — that is all.
+ * A later step adds its part to `parts` (docs:check) — that is all.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,8 @@ const pnpm = (script: string) => ['pnpm', 'run', script] as const;
 export const parts: readonly Part[] = [
   { name: 'build', command: pnpm('build') },
   { name: 'typecheck', command: pnpm('typecheck'), after: ['build'] },
+  // oxlint over the repository; the apps' own .oxlintrc.json (bespoke make:lint-config) for their files.
+  { name: 'lint', command: pnpm('lint') },
   // The bundle-size test measures the packages' dist/ — after the build.
   { name: 'test', command: pnpm('test'), after: ['build'] },
   { name: 'test:pgsql', command: pnpm('test:pgsql'), services: ['pgsql'], after: ['build'] },

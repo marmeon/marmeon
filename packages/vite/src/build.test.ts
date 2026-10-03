@@ -269,3 +269,51 @@ describe('virtual:bespoke/routes in a build', () => {
     expect(code).toBe(1);
   }, 60_000);
 });
+
+/** An app with a controller that imports nothing: without the check, a value import would build green and ship it. */
+function serverCodeApp(files: Record<string, string>): string {
+  return app({
+    files: {
+      'modules/demo/controllers/ShowHomeController.ts': "export class ShowHomeController {\n  handle() {\n    return 'server-only-secret';\n  }\n}\n",
+      'bootstrap/ssr.ts': "import { ShowHomeController } from '../modules/demo/controllers/ShowHomeController.ts';\nexport const render = async () => ({ html: new ShowHomeController().handle() });\n",
+      ...files,
+    },
+  });
+}
+
+describe('server imports in a build (E121)', () => {
+  it('fails the build for a page that imports a controller as a value — file, line and the fix, no stack', () => {
+    const root = serverCodeApp({ 'modules/demo/views/Home.ts': "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (page: ShowHomeController) => page;\n" });
+    const { code, out } = build(root, '--no-typecheck');
+    expect(out).toContain(
+      "[bespoke] modules/demo/views/Home.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'.",
+    );
+    expect(out).toContain('✗ Not built: 1 import brings server code into the browser.');
+    expect(out).not.toContain('RolldownError');
+    expect(out).not.toContain('Built dist/client');
+    expect(code).toBe(1);
+  }, 60_000);
+
+  it('fails it for an indirect import too (page → helper → controller), naming the helper and the chain', () => {
+    const root = serverCodeApp({
+      'modules/demo/helpers.ts': "import { ShowHomeController } from './controllers/ShowHomeController.ts';\nexport const label = () => ShowHomeController.name;\n",
+      'modules/demo/views/Home.ts': "import { label } from '../helpers.ts';\nexport default label();\n",
+    });
+    const { code, out } = build(root, '--no-typecheck');
+    expect(out).toContain(
+      '[bespoke] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.ts → modules/demo/helpers.ts): a controller is server code',
+    );
+    expect(code).toBe(1);
+  }, 60_000);
+
+  it('builds a page that imports the controller with import type or re-exports its type — the controller stays on the server, where SSR may import it', () => {
+    const root = serverCodeApp({
+      'modules/demo/views/Home.ts': "import type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport type { ShowHomeController as Page } from '../controllers/ShowHomeController.ts';\nexport default (page?: ShowHomeController) => `home page ${typeof page}`;\n",
+    });
+    const { code, out } = build(root, '--no-typecheck');
+    expect(out).toContain('Built dist/client and dist/server');
+    expect(code).toBe(0);
+    expect(bundle(join(root, 'dist/client'))).not.toContain('server-only-secret');
+    expect(bundle(join(root, 'dist/server'))).toContain('server-only-secret');
+  }, 60_000);
+});

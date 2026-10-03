@@ -4,10 +4,13 @@ import { bespokeInjection } from '@bespokecore/core/vite';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
+import { serverImports } from './server-imports.ts';
 
 export { collectRouteReferences, ROUTE_SINKS } from './route-references.ts';
 export type { CollectOptions, RouteReference, RouteReferenceProblem, RouteSink } from './route-references.ts';
 export { BROWSER_ROUTES_FILE, routesModule } from './routes-module.ts';
+export { SERVER_MODULES, serverImports, valueImports } from './server-imports.ts';
+export type { ServerImportsOptions, ServerModule } from './server-imports.ts';
 
 /**
  * The export condition that maps framework packages to their TypeScript sources inside the
@@ -46,6 +49,13 @@ export interface BespokeOptions {
    * reach the browser's route manifest (`virtual:bespoke/routes`).
    */
   routeSinks?: readonly RouteSink[];
+  /**
+   * More server modules — globs relative to the app root — besides the conventions in `SERVER_MODULES` (controllers, jobs,
+   * listeners, mails, policies, providers, repositories, a module's `index.ts`/`routes.ts`/`config.ts`, `config/`, …).
+   * Client code (pages, layouts, the client entry and what they import) never imports one as a value: a dev error and a
+   * failed build (E121). `'!glob'` takes modules out of the conventions.
+   */
+  serverModules?: readonly string[];
   /**
    * For `vitest.config.ts`: conditions, injection and virtual modules only — no entries, no HTML,
    * no build settings.
@@ -90,10 +100,13 @@ const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
  * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
  * - splits the client build's initial load into two chunks, `vendor` and `index` ({@link CLIENT_CHUNKS});
  * - serves `virtual:bespoke/pages`, `virtual:bespoke/lang` and `virtual:bespoke/routes` (types: `@bespokecore/vite/client`) —
- *   the route manifest with only the names client code writes out (E57).
+ *   the route manifest with only the names client code writes out (E57);
+ * - refuses client code that imports a server module as a value — a controller, a job, a repository … (E121, {@link serverImports}):
+ *   an error in Vite's overlay while serving, a failed build, and in tests too.
  */
 export function bespoke(options: BespokeOptions = {}): Plugin[] {
   const entries: BespokeEntries = { ...DEFAULT_ENTRIES, ...options.entries };
+  const pages = options.pages ?? DEFAULT_PAGES;
   const api: BespokePluginApi = { entries };
 
   const main: Plugin & { api: BespokePluginApi } = {
@@ -146,9 +159,10 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
     main,
     asyncEntry,
     bespokeInjection() as Plugin,
-    virtualGlob('pages', options.pages ?? DEFAULT_PAGES),
+    virtualGlob('pages', pages),
     virtualGlob('lang', options.lang ?? DEFAULT_LANG),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
+    serverImports({ pages: typeof pages === 'string' ? [pages] : pages, client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
   ];
 }
 

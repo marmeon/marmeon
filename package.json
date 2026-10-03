@@ -17,6 +17,7 @@
     "size": "node packages/react/src/__fixtures__/size-report.ts",
     "test:s3": "BESPOKE_TEST_S3_ENDPOINT=http://127.0.0.1:56333 pnpm test packages/storage",
     "types:check": "export NODE_ENV=test && cd apps/web-app && bespoke route:types --check && bespoke db:types --check && cd ../blank-app && bespoke route:types --check && bespoke db:types --check",
+    "lint": "oxlint --deny-warnings",
     "ci": "node scripts/ci.ts"
   },
   "devDependencies": {
@@ -24,6 +25,7 @@
     "@bespokecore/core": "workspace:*",
     "@bespokecore/vite": "workspace:*",
     "@types/node": "^26.6.3",
+    "oxlint": "^1.86.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"

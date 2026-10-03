@@ -4,7 +4,7 @@
  * in memory. An island (`<Island route>`, E48) is a region embedded in a page, without a URL of its own; a layer (W5b step
  * 5) will be a region with a history entry over the page. Adapters render a region's snapshot and call `load`/`reload`.
  *
- * Where a region keeps what it loaded is its owner's history entry ({@link RegionOwner}, the slot {@link REGIONS}) — in this
+ * Where a region keeps what it loaded is its owner's history entry ({@link RegionOwner}, the slot `REGIONS` in owner.ts) — in this
  * tab's memory only (E36), never in `history.state` or any storage. Back/Forward shows them from there without a request;
  * leaving the document (signing out, a new build) drops them with the pages. The islands feature makes them (`islands.region`).
  */
@@ -13,7 +13,7 @@ import { mergePage, pick } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { pageQuery, queryUrl } from './query-state.ts';
-import { REGIONS, type RegionOwner } from './owner.ts';
+import type { RegionOwner } from './owner.ts';
 import { partialReloadHeaders } from './request.ts';
 
 /** Where a region stands: loading (nothing to show yet), ready, or what kept it from showing anything. */
@@ -108,7 +108,7 @@ export type DeclaredOnBack = (component: string) => Promise<ReloadSpec | undefin
 
 /**
  * The region of `url` in `owner`'s entry — the same one for the same id while the owner is on screen (two identical islands
- * share one request and one state). It starts with what the entry kept of it (`kept`, its slot {@link REGIONS} — Back/Forward)
+ * share one request and one state). It starts with what the entry kept of it (`kept`, its slot `REGIONS` in owner.ts — Back/Forward)
  * or with `initial` (what the server streamed with the page, E49: its region object, `unauthorized`/`forbidden` — kept like a
  * loaded one — or an `exception`, shown but not kept), else `loading` until `load()`. Closed with its owner: requests under
  * way are aborted, nothing lands any more.
@@ -134,7 +134,7 @@ export function ownedRegion(owner: RegionOwner, kept: Map<string, KeptRegion>, t
 export class Region {
   readonly id: string;
   readonly #owner: RegionOwner;
-  /** What its owner's entry keeps of its regions (the slot {@link REGIONS}). */
+  /** What its owner's entry keeps of its regions (the slot `REGIONS` in owner.ts). */
   readonly #kept: Map<string, KeptRegion>;
   readonly #transport: RegionTransport;
   #url: string;

@@ -101,6 +101,7 @@ export interface UseLayerOptions {
  *
  * Given the view's controller, a controller that never answers a layer is a compile error.
  */
+// oxlint-disable-next-line no-unused-vars -- C is checked where useLayer<C>() is called, never used inside
 export function useLayer<C extends LayerController<C> = LayerAction>({ onClose }: UseLayerOptions = {}): LayerState {
   const state = useContext(LayerContext) ?? OUTSIDE;
   const listener = useRef(onClose);

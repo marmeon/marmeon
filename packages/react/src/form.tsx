@@ -193,7 +193,6 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   } = props as FormProps<string> & { params?: Record<string, string | number> };
   const page = usePage();
   const { visit } = useRouterContext();
-  const navigator = useRouterContext().navigator();
   const manifest = useContext(RoutesContext);
   const target = resolveRoute(manifest, route as string, params);
   const method = target.method.toLowerCase() as VisitMethod;

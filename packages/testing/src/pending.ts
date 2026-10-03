@@ -21,6 +21,7 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
     this.#response = response;
   }
 
+  // oxlint-disable-next-line unicorn/no-thenable -- `await app.get(…).assertOk()` is the point (PromiseLike)
   then<TResult1 = TestResponse, TResult2 = never>(
     onfulfilled?: ((value: TestResponse) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,

@@ -158,7 +158,7 @@ export class RouteTypes {
     if (wanted.size === 0) return located;
 
     const files = globSync('**/*.ts', { cwd: this.#app.root, exclude: (path: string) => IGNORED.test(path) })
-      .filter((file) => !file.endsWith('.d.ts') && !/\.test\.ts$/.test(file))
+      .filter((file) => !file.endsWith('.d.ts') && !file.endsWith('.test.ts'))
       .map((file) => join(this.#app.root, file));
     for (const file of files) {
       const text = readFileSync(file, 'utf8');

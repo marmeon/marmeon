@@ -165,11 +165,6 @@ const back = () =>
     history.back();
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-const forward = () =>
-  act(async () => {
-    history.forward();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
 
 /** Everything the browser keeps beyond this document's memory: history states, both storages, cookies. */
 const persisted = () => [...states, JSON.stringify(history.state), JSON.stringify({ ...sessionStorage }), JSON.stringify({ ...localStorage }), document.cookie].join('\n');

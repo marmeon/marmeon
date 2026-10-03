@@ -2,7 +2,6 @@ import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger,
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import {
   abort,
-  AfterResponse,
   defer,
   HttpServiceProvider,
   island,

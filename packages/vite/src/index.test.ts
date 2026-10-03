@@ -91,6 +91,7 @@ describe('bespoke()', () => {
       'bespokecore:virtual-pages',
       'bespokecore:virtual-lang',
       'bespokecore:routes',
+      'bespokecore:server-imports',
     ]);
     const lang = plugins.find((plugin) => plugin.name === 'bespokecore:virtual-lang')!;
     // Lazy: one chunk per language file, the browser loads only its locale's.
