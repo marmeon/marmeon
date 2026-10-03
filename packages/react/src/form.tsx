@@ -382,8 +382,9 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
       {...(processing ? { 'data-pending': '' } : {})}
       {...(dirty ? { 'data-dirty': '' } : {})}
     >
-      {native === 'post' && page.csrf !== undefined && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
+      {/* `_method` first: the server looks for it at the start of the body only (W5b.10). */}
       {native === 'post' && method !== 'post' && <input type="hidden" name={FORM_METHOD_FIELD} value={method.toUpperCase()} />}
+      {native === 'post' && page.csrf !== undefined && <input type="hidden" name={FORM_TOKEN_FIELD} value={page.csrf} />}
       {typeof children === 'function' ? (children as (form: FormRenderState<Record<string, unknown>>) => ReactNode)(state) : children}
     </form>
   );

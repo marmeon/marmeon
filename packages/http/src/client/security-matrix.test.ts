@@ -11,6 +11,8 @@ import { prefetch, type Prefetches } from './features/prefetch.ts';
 import { queryState } from './features/query-state.ts';
 import { remember, type RememberFeature } from './features/remember.ts';
 import { revalidateOnBack } from './features/revalidate-on-back.ts';
+import { uploads, type UploadsFeature } from './features/uploads.ts';
+import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
 import { islands, type IslandsFeature } from './features/islands.ts';
@@ -35,6 +37,36 @@ const CANARY = 'CANARY-signed-in';
 const secretPage = (url: string, component = 'pages/Show', extra: Partial<PageObject> = {}): PageObject => ({ ...page(url, { secret: `${CANARY} ${url}` }, component), ...extra });
 const conflict = (reason: 'history' | 'version', location = '/login') => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: location, [RELOAD_HEADER]: reason } });
 const islandResponse = (body: RegionObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+
+/** An XHR that sends nothing back — until it is aborted (an upload under way): what it was sent, and whether it was aborted. */
+class PendingXhr extends EventTarget {
+  static readonly opened: PendingXhr[] = [];
+  readonly upload = new EventTarget();
+  status = 0;
+  statusText = '';
+  responseText = '';
+  responseURL = '';
+  url = '';
+  aborted = false;
+  constructor() {
+    super();
+    PendingXhr.opened.push(this);
+  }
+  open(_method: string, url: string) {
+    this.url = url;
+  }
+  setRequestHeader() {}
+  getAllResponseHeaders() {
+    return '';
+  }
+  send() {
+    this.upload.dispatchEvent(Object.assign(new Event('progress'), { lengthComputable: true, loaded: 1, total: 2 }));
+  }
+  abort() {
+    this.aborted = true;
+    this.dispatchEvent(new Event('abort'));
+  }
+}
 
 /** A response that never comes — until the request is aborted. */
 const pending = (init: RequestInit) =>
@@ -160,7 +192,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads];
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
 async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly Feature[]; cacheSize?: number; lazyLayers?: Promise<void> } = {}) {
@@ -170,8 +202,13 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves (E71).
   const features = [...ALL_FEATURES.filter((feature) => !lazyLayers || feature !== layers), ...extra].map((feature) => recorded(feature, records));
   const loadLayers = lazyLayers && (async () => (await lazyLayers, recorded(layers, records) as Feature<LayerStack>));
+  win.XMLHttpRequest = PendingXhr as never;
   win.handler = (url, init) => {
     const { pathname } = new URL(url);
+    // An upload's target (W6.9): its token is the signed-in user's — the canary.
+    if ((init.headers as Record<string, string> | undefined)?.['x-bespoke-upload']) {
+      return Response.json({ token: `tu_${CANARY}`, upload: { method: 'PUT', url: `/_bespoke/uploads/1?signature=${CANARY}` } });
+    }
     if (pathname === '/islands/activity') return islandResponse({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: pathname, version: null });
     if (pathname === '/users/1/like') return pending(init);
     if (pathname === '/users/1/edit') return pageResponse(secretPage(pathname, 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }));
@@ -197,11 +234,16 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   if (!lazyLayers) await navigator.visit('/users/1/edit', { layer: true });
   api<Guards>('guard').add({ message: 'Unsaved', active: () => false });
+  // An upload under way (W6.9): its target answered with the token, its bytes still going (the XHR never answers).
+  const uploaded: (Upload | null)[] = [];
+  api<UploadsFeature>('uploads').start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: new File(['png'], 'me.png', { type: 'image/png' }), onChange: (upload) => uploaded.push(upload) });
+  await settle();
+  await settle();
   const layerKey = navigator.layers[0]?.entry ?? 'no-layer';
   // What the core itself keeps — once props, flash messages, the islands of the page's entry — and the remembered input of it.
   const core = { once: host.once, flash: host.flash, regions: host.entry(REGIONS, pageKey), remembered: host.entry(REMEMBERED, pageKey) };
   const prefetched = () => api<Prefetches>('prefetch').size;
-  return { win, tab, navigator, host, records, core, action, liking, pageKey, layerKey, submissions, prefetched };
+  return { win, tab, navigator, host, records, core, action, liking, pageKey, layerKey, submissions, prefetched, uploaded };
 }
 
 /** What the core still keeps of the signed-in user after the document was left. */
@@ -243,8 +285,47 @@ describe('the security matrix — every feature × every event that must forget 
         expect.stringMatching(/^layers: its hook "extras" hands out/),
         expect.stringMatching(/^optimistic: its hook "paint" hands out/),
         expect.stringMatching(/^prefetch: its hook "start" hands out/),
+        expect.stringMatching(/^uploads: its slot "uploads"/),
       ]),
     );
+    // The upload is on its way: its progress came, its XHR is open.
+    expect([tab.uploaded.at(-1)?.status, tab.uploaded.at(-1)?.progress]).toEqual(['uploading', 0.5]);
+    expect(PendingXhr.opened.at(-1)?.url).toContain(CANARY);
+  });
+
+  it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload (W6.9)', async () => {
+    const tab = await stocked();
+    const xhr = PendingXhr.opened.at(-1)!;
+    const upload = tab.uploaded.at(-1)!;
+    expect(xhr.aborted).toBe(false);
+    tab.win.handler = () => conflict('history');
+    await tab.navigator.visit('/users/3');
+    expect(tab.win.loads).toEqual(['assign /login']);
+    expect(xhr.aborted).toBe(true);
+    expect(JSON.stringify(upload)).toBe('""'); // what a form would send now
+    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
+  });
+
+  it('counter-check: an upload that arrived holds its token until the document is left — then its Upload sends nothing', async () => {
+    const tab = await stocked();
+    const done: (Upload | null)[] = [];
+    class AnsweringXhr extends PendingXhr {
+      override send() {
+        Object.assign(this, { status: 200, responseText: '{"size":3}' });
+        this.dispatchEvent(new Event('load'));
+      }
+    }
+    tab.win.XMLHttpRequest = AnsweringXhr as never;
+    tab.navigator.use(uploads).start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: new File(['png'], 'b.png'), onChange: (upload) => done.push(upload) });
+    for (let i = 0; i < 6; i++) await settle();
+    const arrived = done.at(-1)!;
+    expect([arrived.status, arrived.progress]).toEqual(['uploaded', 1]);
+    expect(JSON.stringify({ avatar: arrived })).toBe(`{"avatar":"tu_${CANARY}"}`);
+    // Never a property of the Upload — only what it hands to JSON.
+    expect(holdsCanary(Object.fromEntries(Object.entries(arrived)))).toBe(false);
+    tab.win.handler = () => conflict('history');
+    await tab.navigator.visit('/users/3');
+    expect(JSON.stringify({ avatar: arrived })).toBe('{"avatar":""}');
   });
 
   for (const reason of ['history', 'version'] as const) {

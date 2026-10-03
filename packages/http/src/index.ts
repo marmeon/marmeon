@@ -31,6 +31,7 @@ export {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   RELOAD_HEADER,
+  UPLOAD_HEADER,
   VALIDATE_HEADER,
   VALIDATED_HEADER,
   VERSION_HEADER,
@@ -65,7 +66,7 @@ export { PageSession } from './page-session.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 export { addFlash, flashEntry, flashOf, serializedFlash } from './flash.ts';
 export type { FlashEntry, FlashMethod } from './flash.ts';
-export type { CheckFlashKey, FlashData, FlashKey, FlashMessage, FlashValue } from './page.ts';
+export type { CheckFlashKey, CheckUploadField, FlashData, FlashKey, FlashMessage, FlashValue, Upload, UploadField, UploadToken } from './page.ts';
 export type { CheckViewName, DeferredResult, ErrorPageProps, InstantProps, LayerClose, OnceInfo, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, staticView, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 export type { BrowserRoute, BrowserRoutes, ClientRoutesOptions, HiddenReason } from './browser-routes.ts';

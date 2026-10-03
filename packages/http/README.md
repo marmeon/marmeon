@@ -158,12 +158,22 @@ Nothing is attached by default (`NavigatorOptions.features` is empty). A feature
 | How | Features | Attached by (React) |
 | --- | --- | --- |
 | **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack`, the progress bar (E82) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })` |
-| **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders |
+| **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open, uploads (W6.9) | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders; a `<FileInput>` when it renders (`loadUploads`) |
 | **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers | an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry) |
 
 The core itself loads uploads with progress (`FormData` with a progress listener, over XHR) with the first such upload — a
 chunk that cannot load sends it with `fetch`, without progress. Polling (`createPoll`), `<Form>` and pagination are plain
 modules, in an app when it imports them.
+
+**Uploads (W6.9)** are a feature like these: `<FileInput field={form.field('avatar')} />` loads it where it renders. A chosen
+file goes ahead of its form — a target from the form's own route (`x-bespoke-upload: <field>`: its middleware and `authorize`
+run, its `upload()` rule sets the limit), then the bytes with progress (XHR) to that target — and the field holds an `Upload`:
+`status`, `progress`, a `blob:` `preview`, `error`, `cancel()`. The form sends its token, never the file. The uploads under way
+and their tokens live **only in the feature's slot of the document**: the `Upload` a form holds reads its token from there when
+it is serialized (`toJSON`), so a 409 (signed out, a new build) aborts every upload and leaves no token anywhere — the `Upload`
+on screen then sends `""`. It is a function object on purpose: remembered input (E63) leaves functions out, so an upload is
+never remembered. Its state is on the value (`form.data.avatar?.progress`): `form.progress` stays the progress of a visit with
+`FormData`.
 
 **The progress bar is opt-in (E82):** `createBespokeApp({ progress: progressBar({ delay: 250 }) })` — the starters (blank-app,
 web-app, and so `make:auth`) pass it; an app that leaves it out carries none of its code. Without it, what every app has says
@@ -301,6 +311,7 @@ never a token from the URL.
 | `x-bespoke-region: island \| layer` | regions (with `x-bespoke`) | an island's region object (E48), a layer's request (E53); an island route without it is a 404 |
 | `x-bespoke-action: true` | actions (without `x-bespoke`) | answered with data, never a page (406); a redirect becomes `204` + `x-bespoke-redirect`; always `no-store` (E59) |
 | `x-bespoke-validate: a,b` | live validation (the form's own method, URL and body) | run middleware, `authorize` and the schema, never the controller; answer `204`/`422` for these fields only (E62) |
+| `x-bespoke-upload: avatar` | an upload's target (the form's own method and URL, `{ name, size, type }` as JSON) — and `bytes` on the request that sends the file | run middleware, bindings and `authorize`, never the controller; answer `{ token, upload: { method, url, fields? } }` from the field's `upload()` rule (404 without one, 422 too large); read-only like a live validation, errors as JSON (W6.9) |
 | `x-bespoke-once: k1,k2` + `x-bespoke-once-scope` | page requests | the once props held (by key) under that scope — skipped by the server for the same scope only (E64) |
 
 | Response header | Meaning |

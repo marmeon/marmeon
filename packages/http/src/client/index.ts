@@ -90,6 +90,9 @@ export { BackRevalidation, revalidateOnBack } from './features/revalidate-on-bac
 export { instant, InstantVisits } from './features/instant.ts';
 export { guard, Guards } from './features/guard.ts';
 export { liveValidationOnFirstUse, loadInstant, loadLayers, loadLiveValidation, loadPrefetch, prefetchWith } from './lazy.ts';
+export { loadUploads } from './load-uploads.ts';
+export { uploads } from './features/uploads.ts';
+export type { UploadRequest, UploadsFeature } from './features/uploads.ts';
 export type { FormLiveValidation } from './lazy.ts';
 export type { LiveValidationOptions, LiveValidationOutcome, LiveValidationRequest, LiveValidationTrigger } from './live-validation.ts';
 export type { OptimisticUpdate, PatchTarget, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';

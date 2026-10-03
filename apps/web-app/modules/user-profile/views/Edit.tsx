@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useLayer, useTranslation } from '@bespokecore/react';
+import { FileInput, Head, Link, useForm, useLayer, useTranslation } from '@bespokecore/react';
 import { useId } from 'react';
 import type { EditUserProfileController } from '../controllers/EditUserProfileController.ts';
 
@@ -22,12 +22,58 @@ export default function Edit({ profile, old }: Props) {
   // In memory only, with the layer's history entry: a reload, signing out or a new build start over.
   const form = useForm('user-profile.update', { user: profile.id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved'), validate: true, remember: true });
 
+  // The picture (W6.9): a file input that uploads at once — to a target this route hands out for `avatar` (its policy decides),
+  // with progress and cancel; the form sends only the token. On the server the file is checked again by its size and its
+  // bytes (PNG, JPEG, WebP — an SVG or a renamed HTML file is refused) and moved to the public disk under a random name.
+  const avatarForm = useForm('user-profile.avatar.update', { user: profile.id }, { avatar: null });
+  const avatar = avatarForm.data.avatar;
+
   // Under the page's own heading in a layer; the page's heading when the view is a page.
   const Heading = layer.isLayer ? 'h2' : 'h1';
   return (
     <section>
       <Head title={t('edit.title')} />
       <Heading>{t('edit.title')}</Heading>
+      <form
+        noValidate
+        aria-labelledby={`${id}-avatar-label`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void avatarForm.submit();
+        }}
+      >
+        <p>
+          <span id={`${id}-avatar-label`}>{t('edit.avatar')}</span>
+          <br />
+          {(avatar?.preview ?? profile.avatar) && <img src={avatar?.preview ?? profile.avatar ?? undefined} alt="" width={96} height={96} style={{ objectFit: 'cover', borderRadius: '50%' }} />}
+          <br />
+          <label htmlFor={`${id}-avatar`}>{t('edit.avatar_choose')}</label>
+          <br />
+          <FileInput
+            id={`${id}-avatar`}
+            field={avatarForm.field('avatar')}
+            accept="image/png,image/jpeg,image/webp"
+            aria-invalid={!!(avatarForm.errors.avatar ?? avatar?.error)}
+            aria-describedby={`${id}-avatar-status`}
+          />
+        </p>
+        <p id={`${id}-avatar-status`} aria-live="polite">
+          {avatar?.uploading && (
+            <>
+              <progress value={avatar.progress} max={1} /> <small>{t('edit.avatar_uploading', { percent: Math.round(avatar.progress * 100) })}</small>{' '}
+              <button type="button" onClick={() => avatar.cancel()}>
+                {t('edit.avatar_cancel')}
+              </button>
+            </>
+          )}
+          {avatar?.status === 'uploaded' && <small>{t('edit.avatar_ready')}</small>}
+          {(avatarForm.errors.avatar ?? avatar?.error) && <small role="alert">{avatarForm.errors.avatar ?? avatar?.error}</small>}
+        </p>
+        <button type="submit" disabled={avatar?.status !== 'uploaded' || avatarForm.processing} data-pending={avatarForm.processing || undefined}>
+          {avatarForm.processing ? t('edit.saving') : t('edit.avatar_save')}
+        </button>
+      </form>
+
       <form
         noValidate
         data-dirty={form.isDirty() || undefined}

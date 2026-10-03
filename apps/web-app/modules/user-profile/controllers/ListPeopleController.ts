@@ -1,5 +1,6 @@
 import type { Authenticated } from '@bespokecore/auth';
 import { Controller, deepMerge, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Storage } from '@bespokecore/storage';
 import * as v from 'valibot';
 import { PEOPLE_SORTS, ProfileDirectory } from '../ProfileDirectory.ts';
 
@@ -23,10 +24,12 @@ export class ListPeopleController extends Controller {
   declare readonly instant: {};
 
   readonly #directory: ProfileDirectory;
+  readonly #storage: Storage;
 
-  constructor(directory: ProfileDirectory) {
+  constructor(directory: ProfileDirectory, storage: Storage) {
     super();
     this.#directory = directory;
+    this.#storage = storage;
   }
 
   handle(ctx: ContextOf<typeof ListPeopleRequest> & Authenticated) {
@@ -37,7 +40,13 @@ export class ListPeopleController extends Controller {
       people: deepMerge(async () => {
         const page = await this.#directory.people(ctx.query);
         return {
-          data: page.data.map((person) => ({ id: person.id, name: person.name, lastLoginAt: person.activity?.last_login_at ?? null, isMe: person.id === ctx.user.id })),
+          data: page.data.map((person) => ({
+            id: person.id,
+            name: person.name,
+            avatar: person.avatar_path ? this.#storage.disk('public').url(person.avatar_path) : null,
+            lastLoginAt: person.activity?.last_login_at ?? null,
+            isMe: person.id === ctx.user.id,
+          })),
           meta: page.meta,
         };
       }).matchOn('data.id'),

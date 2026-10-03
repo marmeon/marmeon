@@ -60,7 +60,7 @@ S3 keys are checked too: some S3-compatible stores map keys onto paths.
   and text are downloads, never pages on the app's origin. Public files: `Cache-Control: public, max-age=0,
   must-revalidate` with `Last-Modified`/304; temporary URLs: `private, no-store`.
 - A refused key and a missing file are the same 404. The content type comes from the extension (local) or what was
-  stored (S3, memory) — this package does not inspect bytes; uploads check magic bytes (W6 step 9).
+  stored (S3, memory) — a disk does not inspect bytes; uploads do (their type by magic bytes, see Uploads).
 - At startup a **private local disk that shares a directory with a public one** (the same root, or one inside the other,
   also through symlinks) fails the boot: its files would be served as public. So does a private disk with a `url`.
 
@@ -78,6 +78,49 @@ The S3 tests run against an S3-compatible container: `docker compose up -d` (ser
 community edition is archived and LocalStack's image needs an account token), then `pnpm test:s3`. They are not part of
 `pnpm test`.
 
+## Uploads
+
+Livewire's three steps (W6.9), with what the route already knows deciding everything:
+
+1. **A target for the field.** The browser asks the form's own route — its method and URL, with `x-bespoke-upload: avatar` and
+   `{ name, size, type }` — for a target. The route's middleware, bindings and `authorize` run (whoever may send the form may
+   upload its files — no second policy); its controller does not. The field's `upload()` rule in the request schema decides the
+   limit (no such rule: 404; a file the browser says is too large: 422). The answer is a token `tu_<id>.<hmac>` and where the
+   bytes go: a signed URL of the app (`PUT /_bespoke/uploads/<id>`, 15 minutes) or — when the uploads disk is S3 — a
+   **presigned POST** with `content-length-range` (the store refuses one byte more; the bucket needs CORS for the app's origin,
+   and `pnpm add @aws-sdk/s3-presigned-post`).
+2. **The bytes**, with progress — streamed onto the private `uploads` disk (`UPLOADS_DISK`), cut off after `maxBytes` whatever
+   `Content-Length` said (413, and nothing stays: the disk writes a temporary file and renames it only when complete). Never
+   through `ctx.input()`/`MAX_BODY_SIZE`, never in memory.
+3. **The token in the form.** On submit, before the schema runs, the token is verified — its signature, the **session** it was
+   made for (a hash of the session id), the route and field, its expiry (`UPLOADS_LIFETIME`, 2 hours), that it was not used —
+   and the file's type is read from its **first bytes** (never the name or the `Content-Type` the browser sent). The rule then
+   checks the size and the type; HTML, SVG and XML are never accepted, whatever `mime` says.
+
+```ts
+export const UpdateAvatarRequest = defineRequest({
+  schema: v.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
+  authorize: can(ProfilePolicy, 'update', 'user'),
+});
+// ctx.body.avatar is a TemporaryUpload — `store()` uses the token up (once) and moves the file:
+const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'); // 'avatars/<26 random chars>.png'
+```
+
+- **Once:** `store()` marks the token used with one `UPDATE … WHERE consumed_at IS NULL` — of two submits racing, exactly one
+  stores the file; the other is a 422 of its field. A failed submit keeps the token usable (fix another field, send again).
+- **Infrastructure (E108):** the table `temporary_uploads` (`bespoke make:uploads-table`, E96) is written on its own connection
+  (`UPLOADS_CONNECTION`), never in the app's transaction — a rollback never makes a used token usable again. With SQLite give it
+  the file of the cache and sessions (`system`); on Postgres it opens its small pool by itself.
+- **Never echoed:** a `TemporaryUpload` serializes to nothing — old input after a failed submit, logs and JSON never hold the
+  token or the file.
+- **Housekeeping:** `bespoke uploads:prune [--hours=24]` deletes uploads made more than a day ago — the rows first (one
+  statement), then their files. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()`; with
+  a local uploads disk on several servers, on each).
+- **Not yet:** lists of files (`v.array(upload(…))`) and a `<Form>` without JavaScript (it would post the file itself — refused).
+
+The browser side is the `uploads` feature of `@bespokecore/http/client` and `<FileInput field={form.field('avatar')} />` of
+`@bespokecore/react` (packages/http/README.md, "Features"). Tests: `app.upload(route, field, file, params)` (below).
+
 ## Testing
 
 `createTestApp` replaces `Storage` with a `StorageFake` (`storage: 'fake'`, the default): every configured disk is a memory
@@ -90,3 +133,14 @@ app.storage.disk('public').assertMissing('avatars/old.webp');
 ```
 
 `createTestApp(app, { storage: 'real' })` keeps the configured disks.
+
+Uploads go through the real target and the real receiving route, onto the fake `uploads` disk — `app.upload()` returns the
+token the form sends. The upload belongs to the view's session: send the form through the same view.
+
+```ts
+const ada$ = app.actingAs(ada);
+const token = await ada$.upload('user-profile.avatar.update', 'avatar', new File([png], 'me.png'), { user: ada.id });
+app.storage.disk('uploads').assertCount(1);
+await ada$.expectingJson().put(`/users/${ada.id}/avatar`, { json: { avatar: token } }).assertRedirect();
+app.storage.disk('public').assertCount(1);
+```

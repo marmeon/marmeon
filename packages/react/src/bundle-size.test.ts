@@ -7,7 +7,6 @@ import {
   appEntry,
   BUDGET_WHERE,
   budgetProblem,
-  coreEntry,
   kb,
   limitFor,
   lowerLimits,
@@ -37,7 +36,6 @@ type LeakScenario = Exclude<Scenario, 'everything'>;
 const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: [], minimalApp: ['guard', 'remember'], everything: [] };
 
 /** A feature's entry: the scenario it adds to, plus its import. */
-const inCore = (...names: string[]) => ({ base: 'core' as const, entry: coreEntry(...names) });
 const inApp = (...names: string[]) => ({ base: 'emptyApp' as const, entry: appEntry(...names) });
 
 /**
@@ -74,8 +72,9 @@ const FEATURES = {
   instant: { markers: ['http/client/features/instant'], use: inApp('Link'), lazy: true },
   form: { markers: ['react/form'], use: inApp('Form'), brings: ['guard', 'remember'] }, // <Form remember guard>, static like useForm's
   pagination: { markers: ['react/pagination'], use: inApp('Pagination') },
-  // Uploads with progress (FormData over XHR): the core loads them with the first such upload (W5c.6), in a chunk of its own.
-  uploads: { markers: ['http/client/upload'], use: inCore(), lazy: true },
+  // Uploads (W6.9): <FileInput> (static, small) loads the feature where it renders, in a chunk of its own with the XHR code —
+  // which the core also loads with the first FormData visit with progress (W5c.6). Running uploads and tokens: its slot only.
+  uploads: { markers: ['http/client/upload', 'http/client/features/uploads'], use: inApp('FileInput'), lazy: true },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
@@ -163,6 +162,12 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('layers');
     expect(featuresIn(built, true)).toContain('layers');
+  });
+
+  // W5c.6 / W6.9: the XHR code is no part of any first download — the core loads it with the first FormData visit with progress.
+  it('the core alone carries uploads only in a chunk it loads on demand', () => {
+    expect(featuresIn(bundle('core'))).not.toContain('uploads');
+    expect(featuresIn(bundle('core'), true)).toContain('uploads');
   });
 
   it('a view that asks useLayer() and an app frame of LayerDialog bring no layer code into the first download', async () => {

@@ -99,6 +99,23 @@ declare module '@bespokecore/database' {
       payload: Secret<string>;
       last_activity: number;
     };
+    /** Owned by `system`. */
+    temporary_uploads: {
+      id: string;
+      session: string;
+      route: string;
+      field: string;
+      disk: string;
+      key: string;
+      name: string;
+      max_bytes: number;
+      size: number | null;
+      created_at: number;
+      expires_at: number;
+      started_at: number | null;
+      uploaded_at: number | null;
+      consumed_at: number | null;
+    };
     /** Owned by `auth`. */
     users: {
       id: Generated<number>;
@@ -110,6 +127,7 @@ declare module '@bespokecore/database' {
       updated_at: Generated<Timestamp>;
       email_verified_at: Timestamp | null;
       locale: string | null;
+      avatar_path: string | null;
     };
   }
   interface TableOwners {
@@ -124,6 +142,7 @@ declare module '@bespokecore/database' {
     profile_links: 'user-profile';
     remember_tokens: 'auth';
     sessions: 'system';
+    temporary_uploads: 'system';
     users: 'auth';
   }
   interface ExposedTables {

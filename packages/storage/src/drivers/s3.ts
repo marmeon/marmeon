@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import type * as S3 from '@aws-sdk/client-s3';
 import type * as Presigner from '@aws-sdk/s3-request-presigner';
+import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
 import type { Clock } from '@bespokecore/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import type { S3DiskOptions } from '../config.ts';
@@ -26,6 +27,22 @@ const importModules: ImportS3 = async () => ({
   client: require('@aws-sdk/client-s3') as typeof S3,
   presigner: require('@aws-sdk/s3-request-presigner') as typeof Presigner,
 });
+
+/** What uploads straight to S3 need (W6.9: presigned POST with a size limit) — installed only by apps that upload there. */
+export const S3_UPLOADS_INSTALL = 'pnpm add @aws-sdk/s3-presigned-post';
+
+/** `@aws-sdk/s3-presigned-post`, or how to install it. */
+export function loadPresignedPost(): typeof PresignedPost {
+  try {
+    return require('@aws-sdk/s3-presigned-post') as typeof PresignedPost;
+  } catch (error) {
+    const { code } = (error ?? {}) as { code?: unknown };
+    if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
+      throw new StorageSetupError(`Uploads to an S3 disk need @aws-sdk/s3-presigned-post, which is not installed in this app: ${S3_UPLOADS_INSTALL}`);
+    }
+    throw error;
+  }
+}
 
 /** Imports the AWS SDK, or explains how to install it. Other failures (a broken install) pass through. */
 export async function loadS3(load: ImportS3 = importModules): Promise<S3Modules> {
@@ -219,6 +236,18 @@ export class S3Disk implements Disk {
       ResponseContentDisposition: contentDisposition(isInlineType(type) ? 'inline' : 'attachment', filename),
     });
     return modules.presigner.getSignedUrl(client, command, { expiresIn: secondsOf(options.expiresIn), signingDate: new Date(this.#clock.now()) });
+  }
+
+  /**
+   * A presigned POST for the browser to send one file to `key` (W6.9): a policy the store checks — this key, at most `maxBytes`
+   * (`content-length-range`), until it expires (seconds). The browser posts `fields`, then the file as `file`. (The bucket
+   * needs a CORS rule that allows the app's origin to POST.)
+   */
+  async presignedPost(key: string, { maxBytes, expiresIn }: { maxBytes: number; expiresIn: number }): Promise<{ url: string; fields: Record<string, string> }> {
+    const { client } = await this.#client();
+    const { createPresignedPost } = loadPresignedPost();
+    const target = this.#key(key);
+    return createPresignedPost(client, { Bucket: this.#bucket, Key: target, Conditions: [['content-length-range', 1, maxBytes], ['eq', '$key', target]], Expires: expiresIn });
   }
 
   /** Closes the client's sockets. */

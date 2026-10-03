@@ -3,7 +3,7 @@ import { runPipeline } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
 import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
-import { nothingToValidate, validateRequest } from './request-definition.ts';
+import { authorizeRequest, nothingToValidate, validateRequest, type RequestDefinition, type ValidationHook } from './request-definition.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
@@ -27,6 +27,18 @@ export interface RouteDefinitions {
  */
 export function defineRoutes(register: (Route: Route) => void): RouteDefinitions {
   return { register };
+}
+
+/**
+ * A request a package answers in the route's place (`router.intercept(…)`): it runs the route's middleware and bindings, then the
+ * route's `authorize` (403) — and the interceptor answers; the controller is never built (like a live validation, E62).
+ * @bespokecore/storage answers upload targets this way (W6.9: `x-bespoke-upload` names the field) — who may submit the form
+ * may upload its files, by the same rules.
+ */
+export interface RouteInterceptor {
+  /** Whether this request is the interceptor's (a header it looks for). */
+  claims(request: Request): boolean;
+  answer(ctx: HttpContext, request: RequestDefinition | undefined, resolve: ClassResolver): Response | Promise<Response>;
 }
 
 export interface RouterOptions {
@@ -95,6 +107,8 @@ export class Router {
   #byName = new Map<string, RouteDefinition>();
   /** Middleware groups and the global stack — packages and apps add to them while booting. */
   readonly middleware = new MiddlewareGroups();
+  readonly #validationHooks: ValidationHook[] = [];
+  readonly #interceptors: RouteInterceptor[] = [];
 
   constructor(options: RouterOptions = {}) {
     this.#resolve = options.resolve ?? ((Class) => new Class());
@@ -119,6 +133,21 @@ export class Router {
     });
     for (const definition of definitions) definition.register(root);
     this.#indexNames();
+    return this;
+  }
+
+  /**
+   * Runs `hook` before every body schema validates (after `authorize`; a submit and a live validation alike) — it may replace
+   * input values with what the schema expects (see {@link ValidationHook}). For packages, while booting.
+   */
+  beforeValidation(hook: ValidationHook): this {
+    this.#validationHooks.push(hook);
+    return this;
+  }
+
+  /** Answers requests an interceptor claims in the route's place (see {@link RouteInterceptor}). For packages, while booting. */
+  intercept(interceptor: RouteInterceptor): this {
+    this.#interceptors.push(interceptor);
     return this;
   }
 
@@ -163,11 +192,17 @@ export class Router {
         const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
         const { action } = route;
         // A live validation (E62): as far as the validation — the controller is never built, `handle` never runs.
+        const interceptor = this.#interceptors.find((candidate) => candidate.claims(finalCtx.request));
+        if (interceptor) {
+          const request = isControllerClass(action) ? action.request : undefined;
+          if (request) await authorizeRequest(request, finalCtx, resolve);
+          return interceptor.answer(finalCtx, request, resolve);
+        }
         const live = liveValidationFields(finalCtx.request);
         if (live) {
           const method = finalCtx.request.method;
           if (!isControllerClass(action) || !action.request || method === 'GET' || method === 'HEAD' || live.length === 0) throw nothingToValidate();
-          await validateRequest(action.request, finalCtx, resolve, { only: live });
+          await validateRequest(action.request, finalCtx, resolve, { only: live, hooks: this.#validationHooks });
           return new Response(null, { status: 204, headers: { [VALIDATED_HEADER]: live.join(','), 'cache-control': 'no-store' } });
         }
         let result: unknown;
@@ -176,7 +211,7 @@ export class Router {
           // REPR: authorize and validate before the controller is even built.
           let handlerCtx: HttpContext = finalCtx;
           if (action.request) {
-            const { body, query } = await validateRequest(action.request, finalCtx, resolve);
+            const { body, query } = await validateRequest(action.request, finalCtx, resolve, { hooks: this.#validationHooks });
             if (query) {
               const method = finalCtx.request.method;
               // E56: a URL with an invalid or unknown field may go to its canonical form instead (GET only).

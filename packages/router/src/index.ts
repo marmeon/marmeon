@@ -1,7 +1,7 @@
 export { Route, joinPaths } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
 export { Router, defineRoutes, defaultToResponse, isControllerClass } from './router.ts';
-export type { DispatchInput, DispatchOptions, LoadOptions, PageQuery, ResponseContext, ResponseFactory, RouteDefinitions, RouterOptions } from './router.ts';
+export type { DispatchInput, DispatchOptions, LoadOptions, PageQuery, ResponseContext, ResponseFactory, RouteDefinitions, RouteInterceptor, RouterOptions } from './router.ts';
 export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';
 export { defineMiddleware, isMiddlewareClass, runPipeline } from './middleware.ts';
 export type { PipelineOptions } from './middleware.ts';
@@ -15,7 +15,7 @@ export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './c
 export type { CookieCodec, CookieOptions } from './cookies.ts';
 export { clientIp, createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
-export { defineRequest, nothingToValidate, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
+export { authorizeRequest, defineRequest, nothingToValidate, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
 export { isLiveValidation, issueOfFields, liveValidationFields, VALIDATE_HEADER, VALIDATED_HEADER } from './live-validation.ts';
 export { GET_HAS_NO_BODY, ISLAND_IS_GET_ONLY } from './route.ts';
 export type {
@@ -39,6 +39,8 @@ export type {
   StandardResult,
   StandardSchemaV1,
   ValidateOptions,
+  ValidationHook,
+  ValidationHookContext,
   Validated,
   ValidatedRequest,
   ValidationErrors,

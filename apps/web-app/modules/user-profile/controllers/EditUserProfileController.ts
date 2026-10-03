@@ -1,6 +1,7 @@
 import { Gate, type Authenticated } from '@bespokecore/auth';
 import { Controller, type HttpContext } from '@bespokecore/http';
 import { Session } from '@bespokecore/session';
+import { Storage } from '@bespokecore/storage';
 import type { User } from '#modules/auth';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
@@ -14,12 +15,14 @@ export class EditUserProfileController extends Controller {
   readonly #session: Session;
   readonly #gate: Gate;
   readonly #directory: ProfileDirectory;
+  readonly #storage: Storage;
 
-  constructor(session: Session, gate: Gate, directory: ProfileDirectory) {
+  constructor(session: Session, gate: Gate, directory: ProfileDirectory, storage: Storage) {
     super();
     this.#session = session;
     this.#gate = gate;
     this.#directory = directory;
+    this.#storage = storage;
   }
 
   async handle(ctx: HttpContext<Authenticated, { user: User }>) {
@@ -29,7 +32,14 @@ export class EditUserProfileController extends Controller {
 
     return this.view('user-profile/Edit', {
       // The layer's own projection (E61): each link with `can.delete` — a region asks its own policies.
-      profile: { id: user.id, name: user.name, bio: user.bio, links: await this.#gate.withAbilities(await this.#directory.links(user.id), ProfileLinkPolicy, ['delete']) },
+      profile: {
+        id: user.id,
+        name: user.name,
+        bio: user.bio,
+        // The picture as it is now — the upload's own preview (blob:) shows over it while a new one is chosen.
+        avatar: user.avatar_path ? this.#storage.disk('public').url(user.avatar_path) : null,
+        links: await this.#gate.withAbilities(await this.#directory.links(user.id), ProfileLinkPolicy, ['delete']),
+      },
       // A failed submit without JavaScript comes back here: refill the fields from old().
       old: this.#session.old() as { name?: string; bio?: string },
     }).layer({ base: 'user-profile.show', params: { user: user.id } });

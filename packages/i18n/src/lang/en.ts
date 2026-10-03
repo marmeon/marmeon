@@ -31,6 +31,14 @@ const en = {
       max: 'The password is too long.',
     },
     confirmed: 'The passwords do not match.',
+    upload: {
+      required: 'Choose a file.',
+      invalid: 'The file did not arrive — choose it again.',
+      expired: 'The upload expired — choose the file again.',
+      used: 'This file was saved already — choose it again.',
+      max: 'The file may be at most {max}.',
+      type: 'This type of file is not accepted (allowed: {types}).',
+    },
     more: '(and {count, plural, one {# more error} other {# more errors}})',
   },
 } as const;

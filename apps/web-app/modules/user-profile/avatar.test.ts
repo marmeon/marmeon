@@ -1,0 +1,268 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Connections, InfrastructureTransactionError, Migrator } from '@bespokecore/database';
+import { UPLOAD_HEADER } from '@bespokecore/http';
+import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@bespokecore/storage';
+import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { afterEach, describe, expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserRepository } from '../auth/UserRepository.ts';
+import { UserFactory } from '../auth/factories/UserFactory.ts';
+import type { User } from '../auth/users.ts';
+
+/** A real PNG: the 8 signature bytes, then whatever — the server goes by the first bytes. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 1, 2, 3, 4]);
+const png = (name = 'me.png') => new File([PNG], name, { type: 'image/png' });
+const HTML = '<!DOCTYPE html><html><body><script>fetch("/users/me/export",{method:"POST"})</script></body></html>';
+const SVG = '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>';
+
+const ROUTE = 'user-profile.avatar.update';
+const KEY = /^avatars\/[a-z2-7]{26}\.png$/;
+
+let app: TestApp;
+afterEach(async () => app?.close());
+
+async function setUp() {
+  app = await createTestApp(application, { database: 'refresh' });
+  const ada = await app.factory(UserFactory).create({ name: 'Ada', email: 'ada@example.com' });
+  return { ada, as: app.actingAs(ada) };
+}
+
+const send = (as: TestApp, user: User, avatar: unknown) => as.expectingJson().put(`/users/${user.id}/avatar`, { json: { avatar } });
+const uploadRows = async () => (await app.make(Connections).get().selectFrom(UPLOADS_TABLE as never).selectAll().execute()) as { id: string; consumed_at: unknown }[];
+
+describe('the avatar (W6.9: uploaded ahead, a token in the form, checked by its bytes)', () => {
+  it('uploads to the private uploads disk, then the form stores it on the public disk under a random name — shown on the profile and in the list', async () => {
+    const { ada, as } = await setUp();
+    const token = await as.upload(ROUTE, 'avatar', png(), { user: ada.id });
+    expect(token).toMatch(/^tu_[0-9a-f-]{36}\.[\w-]{43}$/);
+    app.storage.disk('uploads').assertCount(1);
+    app.storage.disk('public').assertCount(0);
+
+    await send(as, ada, token).assertRedirect(`/users/${ada.id}`).assertFlashed('toast', { kind: 'success', message: 'Picture saved.' });
+    const path = (await app.make(UserRepository).find(ada.id))!.avatar_path!;
+    expect(path).toMatch(KEY);
+    app.storage.disk('public').assertExists(path, (bytes) => bytes.join() === PNG.join());
+    app.storage.disk('uploads').assertCount(0); // moved, not copied
+
+    // On the profile and in the people list: its public URL — served inline as an image, nosniff.
+    const profile = (await as.navigating().get(`/users/${ada.id}`).assertOk()).page()!.props as { profile: { avatar: string | null } };
+    expect(profile.profile.avatar).toBe(`/storage/${path}`);
+    const people = (await as.navigating().get('/people').assertOk()).page()!.props as { people: { data: { id: number; avatar: string | null }[] } };
+    expect(people.people.data.find((person) => person.id === ada.id)?.avatar).toBe(`/storage/${path}`);
+    (await app.get(`/storage/${path}`).assertOk()).assertHeader('content-type', 'image/png').assertHeader('x-content-type-options', 'nosniff');
+
+    // A new picture replaces the old file.
+    const next = await as.upload(ROUTE, 'avatar', png('again.png'), { user: ada.id });
+    await send(as, ada, next).assertRedirect();
+    const replaced = (await app.make(UserRepository).find(ada.id))!.avatar_path!;
+    expect(replaced).not.toBe(path);
+    app.storage.disk('public').assertMissing(path).assertExists(replaced).assertCount(1);
+  });
+
+  it('path traversal in the file name: stored under a random name in avatars/ — the name never becomes a path', async () => {
+    const { ada, as } = await setUp();
+    for (const name of ['../../.env', '..\\x', '/etc/passwd', 'avatars/../../secret.png']) {
+      await send(as, ada, await as.upload(ROUTE, 'avatar', png(name), { user: ada.id })).assertRedirect();
+      expect((await app.make(UserRepository).find(ada.id))!.avatar_path).toMatch(KEY);
+    }
+    expect(app.storage.disk('public').files().every((key) => KEY.test(key))).toBe(true);
+    app.storage.disk('public').assertCount(1);
+  });
+
+  it('type spoofing: HTML named .png with image/png, an SVG with a script, a JS file — 422, nothing stored', async () => {
+    const { ada, as } = await setUp();
+    const spoofs = [
+      new File([HTML], 'cute.png', { type: 'image/png' }),
+      new File([SVG], 'logo.svg', { type: 'image/svg+xml' }),
+      new File([`﻿  ${HTML}`], 'bom.jpg', { type: 'image/jpeg' }),
+      new File(['alert(document.cookie)'], 'x.png', { type: 'image/png' }),
+    ];
+    for (const file of spoofs) {
+      const token = await as.upload(ROUTE, 'avatar', file, { user: ada.id });
+      (await send(as, ada, token).assertStatus(422)).assertInvalid({ avatar: 'This type of file is not accepted (allowed: PNG, JPG, WEBP).' });
+    }
+    app.storage.disk('public').assertCount(0);
+    expect((await app.make(UserRepository).find(ada.id))!.avatar_path).toBeNull();
+  });
+
+  it('a token of another session (another browser of the same user) is refused — 422', async () => {
+    const { ada, as } = await setUp();
+    const token = await as.upload(ROUTE, 'avatar', png(), { user: ada.id });
+    (await send(app.actingAs(ada), ada, token).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
+    app.storage.disk('public').assertCount(0);
+    await send(as, ada, token).assertRedirect(); // its own session still may
+  });
+
+  it('a token works once: the second submit is a 422 — also when both race (one atomic UPDATE decides)', async () => {
+    const { ada, as } = await setUp();
+    const token = await as.upload(ROUTE, 'avatar', png(), { user: ada.id });
+    await send(as, ada, token).assertRedirect();
+    (await send(as, ada, token).assertStatus(422)).assertInvalid({ avatar: 'This file was saved already — choose it again.' });
+
+    const racing = await as.upload(ROUTE, 'avatar', png('race.png'), { user: ada.id });
+    const answers = await Promise.all([send(as, ada, racing), send(as, ada, racing), send(as, ada, racing)]);
+    expect(answers.map((answer) => answer.status).sort()).toEqual([303, 422, 422]);
+    app.storage.disk('public').assertCount(1);
+  });
+
+  it('a lying Content-Length: the stream is cut off after maxBytes (413) — nothing stays on the uploads disk', async () => {
+    const { ada, as } = await setUp();
+    const target = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.id}/avatar`, { json: { name: 'big.png', size: 1000 } }).assertOk()).json() as { upload: { url: string } };
+    let pulled = 0;
+    const fifty = 50 * 1024 * 1024;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= fifty) return controller.close();
+        const chunk = new Uint8Array(64 * 1024);
+        chunk.set(PNG);
+        pulled += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    });
+    await as.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream', 'content-length': '1000' }).put(target.upload.url, { body }).assertStatus(413);
+    expect(pulled).toBeLessThan(3 * 1024 * 1024); // cut off after 2 MB — not 50 MB read
+    app.storage.disk('uploads').assertCount(0);
+    // A Content-Length over the limit is refused before a byte is read.
+    const second = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.id}/avatar`, { json: { name: 'big.png', size: 10 } }).assertOk()).json() as { upload: { url: string } };
+    await as.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-length': '3000000' }).put(second.upload.url, { body: new Uint8Array(10) }).assertStatus(413);
+  });
+
+  it('the bytes of a target are sent once: a second PUT (another file) is refused (409) — the first file stays', async () => {
+    const { ada, as } = await setUp();
+    const target = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string; upload: { url: string } };
+    const bytes = as.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' });
+    await bytes.put(target.upload.url, { body: PNG }).assertOk();
+    await bytes.put(target.upload.url, { body: new TextEncoder().encode(HTML) }).assertStatus(409);
+    await send(as, ada, target.token).assertRedirect();
+    app.storage.disk('public').assertExists((await app.make(UserRepository).find(ada.id))!.avatar_path!, (stored) => stored.join() === PNG.join());
+  });
+
+  it('a file the browser says is too large is refused at the target (422) — no row, no target', async () => {
+    const { ada, as } = await setUp();
+    (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.id}/avatar`, { json: { name: 'huge.png', size: 2_000_001 } }).assertStatus(422)).assertInvalid({
+      avatar: 'The file may be at most 2 MB.',
+    });
+    expect(await uploadRows()).toEqual([]);
+  });
+
+  it('an upload target only for a route field with an upload() rule (404), for whoever may send the form (403/401)', async () => {
+    const { ada, as } = await setUp();
+    const bob = await app.factory(UserFactory).create();
+    const target = (who: TestApp, path: string, field: string) => who.withHeaders({ [UPLOAD_HEADER]: field, accept: 'application/json' }).put(path, { json: { name: 'a.png', size: 10 } });
+    await target(as, `/users/${ada.id}`, 'avatar').assertNotFound(); // the profile's route: no upload() field
+    await target(as, `/users/${ada.id}`, 'bio').assertNotFound();
+    await target(as, `/users/${ada.id}/avatar`, 'bio').assertNotFound(); // the avatar route, but no such field
+    await target(as, `/users/${ada.id}/avatar`, '../avatar').assertNotFound();
+    await target(app.actingAs(bob), `/users/${ada.id}/avatar`, 'avatar').assertForbidden(); // the route's own policy
+    await target(app, `/users/${ada.id}/avatar`, 'avatar').assertUnauthorized();
+    expect(await uploadRows()).toEqual([]);
+  });
+
+  it('what is not a verified upload never passes: a file in the body, a made-up token, a token never sent, an expired one', async () => {
+    const { ada, as } = await setUp();
+    await as.expectingJson().put(`/users/${ada.id}/avatar`, { multipart: { avatar: png() } }).assertStatus(422);
+    const made = `tu_${crypto.randomUUID()}.${'A'.repeat(43)}`;
+    (await send(as, ada, made).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
+    (await send(as, ada, null).assertStatus(422)).assertInvalid({ avatar: 'Choose a file.' });
+
+    const target = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string };
+    (await send(as, ada, target.token).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' }); // no bytes sent
+
+    // A real upload's id with a signature of one's own: the HMAC refuses it before anything else is looked at.
+    const real = await as.upload(ROUTE, 'avatar', png(), { user: ada.id });
+    const forged = `${real.slice(0, 40)}${real[40] === 'A' ? 'B' : 'A'}${real.slice(41)}`;
+    (await send(as, ada, forged).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
+
+    const token = await as.upload(ROUTE, 'avatar', png(), { user: ada.id });
+    app.travel({ minutes: 121 });
+    (await send(as, ada, token).assertStatus(422)).assertInvalid({ avatar: 'The upload expired — choose the file again.' });
+  });
+
+  it('a failed submit never echoes the token back (old input) — and a log of the input shows no upload', async () => {
+    const { ada, as } = await setUp();
+    const token = await as.upload(ROUTE, 'avatar', new File([HTML], 'x.png', { type: 'image/png' }), { user: ada.id });
+    const response = await as.put(`/users/${ada.id}/avatar`, { json: { avatar: token }, headers: { accept: 'text/html', referer: `http://localhost/users/${ada.id}/edit` } }).assertRedirect();
+    const session = JSON.stringify(response.session());
+    expect(session).toContain('errors'); // the failed submit went back with its errors …
+    expect(session).not.toContain(token); // … but never with the token
+    expect(session).not.toContain(token.slice(3, 39));
+  });
+
+  it('an upload never writes the session: the errors of a failed submit, flashed for the next page, survive a target and the bytes', async () => {
+    const { ada } = await setUp();
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect();
+    const browser = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    const edit = `http://localhost/users/${ada.id}/edit`;
+    // A failed submit without JavaScript: back to the form, the errors flashed for exactly the next request that renders it.
+    await browser.put(`/users/${ada.id}`, { form: { name: 'A', bio: '' }, headers: { referer: edit, accept: 'text/html' } }).assertRedirect(`/users/${ada.id}/edit`);
+    // Meanwhile (another tab, a slow upload) a file goes ahead: neither request may age the flashed errors away.
+    expect(await browser.upload(ROUTE, 'avatar', png(), { user: ada.id })).toMatch(/^tu_/);
+    const page = (await browser.navigating().get(`/users/${ada.id}/edit`).assertOk()).page()!;
+    expect(JSON.stringify((page.props as { errors: Record<string, unknown> }).errors.name)).toMatch(/at least/);
+  });
+
+  it('uploads:prune deletes uploads older than a day — the rows, then their files; younger ones stay and still work', async () => {
+    const { ada, as } = await setUp();
+    app.freeze();
+    const old = await as.upload(ROUTE, 'avatar', png('old.png'), { user: ada.id });
+    app.travel({ hours: 23 });
+    const fresh = await as.upload(ROUTE, 'avatar', png('fresh.png'), { user: ada.id });
+    app.storage.disk('uploads').assertCount(2);
+    app.travel({ hours: 1, seconds: 1 });
+
+    expect(await app.make(PruneUploadsCommand).handle({ options: {}, args: [], output: { success: () => {}, error: () => {} } } as never)).toBe(0);
+    const rows = await uploadRows();
+    expect(rows.map((row) => row.id)).toEqual([fresh.slice(3, 39)]);
+    app.storage.disk('uploads').assertCount(1);
+    (await send(as, ada, old).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
+    await send(as, ada, fresh).assertRedirect(); // an hour old: kept by the prune, and it still works
+  });
+
+  it('the system schedule runs uploads:prune hourly, the user-profile schedule clears old data exports', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    expect(app.schedule.due('2026-10-03T12:00:00Z')).toEqual(expect.arrayContaining(['uploads:prune', 'user-profile.prune-data-exports']));
+  });
+});
+
+// The table is infrastructure (E108): written on its own connection, never in the app's transaction.
+describe('a used token stays used when the transaction around it rolls back (E108)', () => {
+  class Rollback extends Error {}
+  let directory: string | undefined;
+  afterEach(() => {
+    if (directory) rmSync(directory, { recursive: true, force: true });
+    directory = undefined;
+  });
+
+  /** A token of a fresh upload, and consume() of it inside a transaction of the app's connection that rolls back. */
+  async function consumeAndRollBack() {
+    const ada = await app.factory(UserFactory).create();
+    const token = await app.actingAs(ada).upload(ROUTE, 'avatar', png(), { user: ada.id });
+    const uploads = app.make(TemporaryUploads);
+    const inside = app.make(Connections).transaction(async () => {
+      expect(await uploads.consume(token.slice(3, 39))).toBe(true);
+      throw new Rollback();
+    });
+    return { id: token.slice(3, 39), uploads, inside };
+  }
+
+  // On Postgres (a pool of its own, never the transaction): packages/storage/src/uploads-database.test.ts — a test app's
+  // database is isolated (one physical connection), so there the loud error below applies on both drivers.
+  it('in a test app (one isolated connection) on the app’s database: inside a transaction a loud error (E108) — never a silent join', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    const { inside } = await consumeAndRollBack();
+    await expect(inside).rejects.toThrow(InfrastructureTransactionError);
+  });
+
+  it('on SQLite with a file of its own (the app’s .env.example: UPLOADS_CONNECTION=system) — after the rollback the token is still used', async () => {
+    directory = mkdtempSync(join(tmpdir(), 'bespoke-web-uploads-'));
+    app = await createTestApp(application, {
+      env: { DB_CONNECTION: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite'), SYSTEM_DB_DATABASE: join(directory, 'system.sqlite'), UPLOADS_CONNECTION: 'system' },
+    });
+    await app.make(Migrator).migrate();
+    const { id, uploads, inside } = await consumeAndRollBack();
+    await expect(inside).rejects.toThrow(Rollback);
+    expect(await uploads.consume(id)).toBe(false);
+  });
+});

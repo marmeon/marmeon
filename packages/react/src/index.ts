@@ -33,6 +33,8 @@ export type {
 export { Deferred } from './deferred.tsx';
 export type { DeferredProps } from './deferred.tsx';
 export { useForm } from './use-form.ts';
+export { FileInput, useUpload } from './file-input.tsx';
+export type { FileInputProps } from './file-input.tsx';
 export { useFlash } from './flash.ts';
 export type { FlashHandler } from './flash.ts';
 export { SHORT_PENDING_DELAY, useBlocker, useNewVersion, usePending } from './state.ts';
@@ -45,7 +47,7 @@ export { ConfirmDialog } from './confirm.tsx';
 export type { Confirm, ConfirmAnswer, ConfirmComponent, ConfirmDialogProps, ConfirmOptions, ConfirmProps, ConfirmRequest } from './confirm.tsx';
 export { useAction, usePendingSubmissions } from './use-action.ts';
 export type { Action, ActionException, ActionField, ActionReload, ActionResultOf, ActionSubmitOptions, PendingSubmission } from './use-action.ts';
-export type { FieldPath, Form as FormHandle, FormOptions, FormState, FormSubmitOptions, LiveValidationSetting, PasswordNeverRemembered, RememberFormOptions, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
+export type { FieldPath, Form as FormHandle, FormField, FormOptions, FormState, FormSubmitOptions, LiveValidationSetting, PasswordNeverRemembered, RememberFormOptions, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
 export { useRoute } from './routes.ts';
 export type { RouteFunction } from './routes.ts';
 export { createBespokeApp } from './client.tsx';

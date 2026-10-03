@@ -311,6 +311,20 @@ export interface ValidatedRequest {
   readonly query?: ParsedQuery;
 }
 
+/**
+ * Runs before a body schema validates the input (`router.beforeValidation(hook)`) — after `authorize`, for a submit and a live
+ * validation alike. A hook may replace values of `input` with what the schema expects instead: @bespokecore/storage puts the
+ * verified upload in place of an upload token (W6.9), which needs the request (its session) that a schema never sees.
+ */
+export type ValidationHook = (input: Record<string, unknown>, context: ValidationHookContext) => void | Promise<void>;
+
+export interface ValidationHookContext {
+  readonly ctx: HttpContext;
+  /** The body schema about to run (built by its factory, when it has one). */
+  readonly schema: StandardSchemaV1;
+  readonly resolve: ClassResolver;
+}
+
 /** How {@link validateRequest} runs. */
 export interface ValidateOptions {
   /**
@@ -318,6 +332,15 @@ export interface ValidateOptions {
    * body (the controller does not run). A request without a body schema has nothing to check: 400.
    */
   readonly only?: readonly string[] | undefined;
+  /** What runs before the body schema (see {@link ValidationHook}). */
+  readonly hooks?: readonly ValidationHook[] | undefined;
+}
+
+/** The request's `authorize` — a 403 when it says no. (What {@link validateRequest} runs first.) */
+export async function authorizeRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<void> {
+  if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
+    throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'bespoke.errors.unauthorized' });
+  }
 }
 
 /**
@@ -328,11 +351,9 @@ export async function validateRequest(
   definition: RequestDefinition,
   ctx: HttpContext,
   resolve: ClassResolver = (Class) => new Class(),
-  { only }: ValidateOptions = {},
+  { only, hooks = [] }: ValidateOptions = {},
 ): Promise<ValidatedRequest> {
-  if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
-    throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'bespoke.errors.unauthorized' });
-  }
+  await authorizeRequest(definition, ctx, resolve);
   const query = definition.query ? await parseQuery(definition.query, ctx.query) : undefined;
   if (!definition.schema) {
     if (only) throw nothingToValidate();
@@ -340,6 +361,7 @@ export async function validateRequest(
   }
   const schema: StandardSchemaV1 = typeof definition.schema === 'function' ? definition.schema(resolve) : definition.schema;
   const input = await ctx.input();
+  for (const hook of hooks) await hook(input, { ctx, schema, resolve });
   const result = await schema['~standard'].validate(input);
   if (only) {
     // The named fields' issues only — the others are not filled in yet (or never sent: passwords). No input goes back.

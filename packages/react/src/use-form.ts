@@ -1,5 +1,5 @@
 import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, resolveRoute, type FormLiveValidation, type VisitMethod, type VisitOptions, type VisitProgress } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@bespokecore/http/page';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@bespokecore/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
@@ -142,6 +142,12 @@ export interface Form<T> extends FormState<FormFields<T>> {
   delete(url: string, options?: FormSubmitOptions): Promise<void>;
 }
 
+/** A field of a route form, bound to an input — what `<FileInput field>` takes: `form.field('avatar')`. */
+export interface FormField {
+  readonly form: Pick<RouteForm<Record<string, unknown>>, 'data' | 'set' | 'method' | 'url'>;
+  readonly name: string;
+}
+
 /** A form for a named route (E40): it knows method, URL and fields — `form.submit()`. */
 export interface RouteForm<F> extends FormState<F> {
   /** Sends the data with the route's method to its URL. */
@@ -155,6 +161,12 @@ export interface RouteForm<F> extends FormState<F> {
   validate<const K extends string>(field?: CheckLiveField<F, K>): void;
   /** Whether a live check of `field` (or of any field) is under way — for a spinner, `aria-busy`. */
   validating<const K extends string>(field?: CheckLiveField<F, K>): boolean;
+  /**
+   * An upload field (W6.9, its rule is `upload()`), bound for `<FileInput field={form.field('avatar')} />`. The field's value is
+   * then the {@link Upload} — `form.data.avatar?.uploading`, `.progress`, `.preview`, `.error`, `.cancel()` — and goes to the
+   * server as its token.
+   */
+  field<const K extends string>(name: CheckUploadField<F, K>): FormField;
 }
 
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
@@ -298,7 +310,7 @@ export function useForm(...args: unknown[]): unknown {
 
   const submit = (...submitArgs: unknown[]): Promise<void> => {
     // A route form is listed while under way, by its name (`usePendingSubmissions(name)`: ghost rows, E59).
-    if (target) return send(target.method as VisitMethod, target.url, { ...(name ? { name } : {}), ...(submitArgs[0] as FormSubmitOptions | undefined) });
+    if (target) return send(target.method as VisitMethod, target.url, { name, ...(submitArgs[0] as FormSubmitOptions | undefined) } as FormSubmitOptions);
     return send(submitArgs[0] as VisitMethod, submitArgs[1] as string, submitArgs[2] as FormSubmitOptions | undefined);
   };
 
@@ -309,38 +321,37 @@ export function useForm(...args: unknown[]): unknown {
       live?.changed(field);
     },
     setData: (next) => {
-      for (const field of new Set([...Object.keys(data), ...Object.keys(next)])) if (!Object.is(data[field], next[field])) live?.changed(field);
+      for (const field in { ...data, ...next }) if (!Object.is(data[field], next[field])) live?.changed(field);
       setData(next);
     },
     errors,
     hasErrors: Object.keys(errors).length > 0,
     clearErrors: (...fields) =>
-      setErrors((current) => (fields.length === 0 ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !fields.includes(key))))),
+      setErrors((current) => Object.fromEntries(fields.length === 0 ? [] : Object.entries(current).filter(([key]) => !fields.includes(key)))),
     processing,
     progress,
     wasSuccessful,
     recentlySuccessful,
     isDirty: (path?: string) => isDirtyPath(dirty, path),
     dirty,
-    reset: (...fields) => {
-      if (fields.length === 0) setData(defaults);
-      else setData((current) => ({ ...current, ...Object.fromEntries(fields.map((field) => [field, defaults[field]])) }));
-    },
+    reset: (...fields) => setData((current) => (fields.length === 0 ? defaults : { ...current, ...Object.fromEntries(fields.map((field) => [field, defaults[field]])) })),
     submit: submit as Form<Record<string, unknown>>['submit'],
-    get: (url, options) => send('get', url, options),
-    post: (url, options) => send('post', url, options),
-    put: (url, options) => send('put', url, options),
-    patch: (url, options) => send('patch', url, options),
-    delete: (url, options) => send('delete', url, options),
-    ...(target ? { method: target.method as VisitMethod, url: target.url } : {}),
+    // get, post, put, patch, delete
+    ...(Object.fromEntries((['get', 'post', 'put', 'patch', 'delete'] as const).map((method) => [method, (url: string, options?: FormSubmitOptions) => send(method, url, options)])) as Pick<
+      Form<Record<string, unknown>>,
+      VisitMethod
+    >),
     ...(target
       ? {
+          method: target.method as VisitMethod,
+          url: target.url,
           validate: (field?: string) => {
             if (!live) return;
             if (field === undefined) void live.validate();
             else live.blurred(field);
           },
-          validating: (field?: string) => (live ? isPending(live.pending, field) : false),
+          validating: (field?: string) => !!live && isPending(live.pending, field),
+          field: (name: string) => ({ form, name }),
         }
       : {}),
   };
@@ -358,15 +369,18 @@ interface KeptForm {
 
 /** The `remember` option as key and fields — undefined when the form remembers nothing. */
 function rememberSetting(setting: RouteFormOptions<Record<string, unknown>>['remember'], name: string | undefined): { key: string; include: readonly string[] } | undefined {
-  if (setting === undefined || (setting as unknown) === false) return undefined;
+  // Not set, or `false` (an empty key is none either).
+  if (!setting) return undefined;
   const options = typeof setting === 'object' ? setting : {};
   const key = typeof setting === 'string' ? setting : (options.key ?? (name !== undefined ? `form:${name}` : 'form'));
   return { key, include: (options.include ?? []) as readonly string[] };
 }
 
+/** Whether path `name` is `field` or lies under it (`address.city` under `address`). */
+const under = (name: string, field: string) => name === field || name.startsWith(`${field}.`);
+
 function isPending(pending: readonly string[], field?: string): boolean {
-  if (field === undefined) return pending.length > 0;
-  return pending.some((name) => name === field || name.startsWith(`${field}.`));
+  return field === undefined ? pending.length > 0 : pending.some((name) => under(name, field));
 }
 
 /**
@@ -396,11 +410,12 @@ function useLiveValidation(
       data: () => dataRef.current,
       hasError: (field) => errorsRef.current[field] !== undefined,
       on: config.on ?? 'blur',
-      ...(config.debounce === undefined ? {} : { debounce: config.debounce }),
-      ...(config.fields ? { fields: config.fields as readonly string[] } : {}),
+      // Unset ones stay undefined: the live validation's defaults apply.
+      debounce: config.debounce as number,
+      fields: config.fields as readonly string[],
       onResult: (outcome) =>
         setErrors((current) => {
-          const next = Object.fromEntries(Object.entries(current).filter(([field]) => !outcome.fields.some((name) => field === name || field.startsWith(`${name}.`))));
+          const next = Object.fromEntries(Object.entries(current).filter(([field]) => !outcome.fields.some((name) => under(field, name))));
           if (outcome.kind === 'invalid') for (const [field, messages] of Object.entries(outcome.errors)) if (typeof messages[0] === 'string') next[field] = messages[0];
           return next;
         }),

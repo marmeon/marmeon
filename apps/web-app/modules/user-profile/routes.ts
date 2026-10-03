@@ -9,6 +9,7 @@ import { ExportMyDataController } from './controllers/ExportMyDataController.ts'
 import { ListPeopleController } from './controllers/ListPeopleController.ts';
 import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
+import { UpdateAvatarController } from './controllers/UpdateAvatarController.ts';
 import { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 import { ProfileDirectory } from './ProfileDirectory.ts';
 import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
@@ -28,6 +29,8 @@ export default defineRoutes((Route) => {
   // A layer over whatever is on screen (E53); its base, for deep links, is the profile.
   user.get('/:user/edit', EditUserProfileController).name('edit');
   user.put('/:user', UpdateUserProfileController).name('update');
+  // The picture, from the edit layer: uploaded ahead (W6.9) — this route hands out the upload target for its `avatar` field.
+  user.put('/:user/avatar', UpdateAvatarController).name('avatar.update');
 
   // A link is looked up *within* its user: another user's link id under this user is a 404 (no IDOR).
   // Publishing links needs a confirmed address.

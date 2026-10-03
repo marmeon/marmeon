@@ -101,6 +101,7 @@ export class ProfileDirectory implements RouteBinder<Profile> {
       .select((eb) => [
         'users.id',
         'users.name',
+        'users.avatar_path',
         hasOne(eb, 'login_activity', 'user_id', 'users.id', (activity) => activity.select('login_activity.last_login_at')).as('activity'),
       ]);
     if (q) {

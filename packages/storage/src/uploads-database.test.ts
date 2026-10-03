@@ -1,0 +1,75 @@
+import { ConsoleLogger, createApplication, type Application } from '@bespokecore/core';
+import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
+import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { HttpServiceProvider } from '@bespokecore/http';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
+import { StorageServiceProvider, TemporaryUploads, UPLOADS_TABLE } from './index.ts';
+
+/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
+const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+const silent = Object.assign(new ConsoleLogger(), { debug() {}, info() {}, warn() {}, error() {} });
+
+class Rollback extends Error {}
+
+/**
+ * The table of temporary uploads is infrastructure (E108): the provider writes it on its own connection — on Postgres a pool of
+ * its own — never in the app's transaction. A token used inside a transaction that rolls back stays used: a rollback never makes
+ * a second `store()` of the same upload possible. (Not isolated like a test app's database: a real pool, a real transaction.)
+ */
+describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s transactions (E108)', () => {
+  const name = `bespoke_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
+  let app: Application;
+
+  beforeAll(async () => {
+    await sql`create database ${sql.id(name)}`.execute(admin.get());
+    const url = new URL(PGSQL_URL!);
+    url.pathname = `/${name}`;
+    app = await createApplication({
+      root: freshDirectory(),
+      discover: false,
+      env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent', DB_CONNECTION: 'pgsql', DB_URL: url.href, UPLOADS_CONNECTION: 'default' },
+      providers: [EncryptionServiceProvider, DatabaseServiceProvider, HttpServiceProvider, StorageServiceProvider],
+    });
+    await app.container
+      .make(Connections)
+      .get()
+      .schema.createTable(UPLOADS_TABLE)
+      .addColumn('id', 'varchar(36)', (c) => c.primaryKey())
+      .addColumn('session', 'varchar(64)', (c) => c.notNull())
+      .addColumn('route', 'varchar(200)', (c) => c.notNull())
+      .addColumn('field', 'varchar(200)', (c) => c.notNull())
+      .addColumn('disk', 'varchar(100)', (c) => c.notNull())
+      .addColumn('key', 'varchar(255)', (c) => c.notNull())
+      .addColumn('name', 'varchar(255)', (c) => c.notNull())
+      .addColumn('max_bytes', 'bigint', (c) => c.notNull())
+      .addColumn('size', 'bigint')
+      .addColumn('created_at', 'bigint', (c) => c.notNull())
+      .addColumn('expires_at', 'bigint', (c) => c.notNull())
+      .addColumn('started_at', 'bigint')
+      .addColumn('uploaded_at', 'bigint')
+      .addColumn('consumed_at', 'bigint')
+      .execute();
+  });
+
+  afterAll(async () => {
+    await app?.shutdown();
+    await sql`drop database if exists ${sql.id(name)} with (force)`.execute(admin.get());
+    await admin.destroy();
+    removeDirectories();
+  });
+
+  it('a token used inside a transaction that rolls back is still used afterwards', async () => {
+    const uploads = app.container.make(TemporaryUploads);
+    const { token } = await uploads.target({ route: 'avatar.update', field: 'avatar', rule: { maxBytes: 100, mime: undefined }, session: 's', name: 'a.png', size: 10 });
+    const id = token.slice(3, 39);
+    await expect(
+      app.container.make(Connections).transaction(async () => {
+        expect(await uploads.consume(id)).toBe(true);
+        throw new Rollback();
+      }),
+    ).rejects.toThrow(Rollback);
+    expect(await uploads.consume(id)).toBe(false);
+  });
+});

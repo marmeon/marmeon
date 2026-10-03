@@ -217,9 +217,9 @@ describe('temporary URLs of local disks', () => {
 });
 
 describe('configuration', () => {
-  it('without defineStorage: local (private) and public (/storage) under storage/app', async () => {
+  it('without defineStorage: local (private), public (/storage) and uploads (private, W6.9) under storage/app', async () => {
     const { storage, app } = await boot();
-    expect(storage.names).toEqual(['local', 'public']);
+    expect(storage.names).toEqual(['local', 'public', 'uploads']);
     await storage.disk('public').put('a.png', 'x');
     await storage.disk().put('b.txt', 'y');
     expect(storage.disk('public').url('a.png')).toBe('/storage/a.png');
@@ -232,6 +232,15 @@ describe('configuration', () => {
     const { storage } = await boot(storageConfig(freshDirectory()));
     expect(() => storage.named('pubic')).toThrow(StorageError);
     expect(() => storage.named('pubic')).toThrow('No disk "pubic" — the disks: local, public, cdn, bucket. Did you mean "public"?');
+  });
+
+  it('counter-check: the disk of temporary uploads must be private — a public one fails the start (W6.9)', async () => {
+    const base = freshDirectory();
+    const config = defineStorage({
+      default: 'local',
+      disks: { local: { driver: 'local', root: join(base, 'private') }, uploads: { driver: 'local', root: join(base, 'uploads'), visibility: 'public', url: '/uploads' } },
+    });
+    await expect(boot(config)).rejects.toThrow('The disk "uploads" holds temporary uploads (UPLOADS_DISK) but is public');
   });
 
   it('counter-check: a private disk inside (or around, or on) a public one fails the start', async () => {

@@ -1,9 +1,15 @@
+import { hkdfSync } from 'node:crypto';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
 import { DEFAULT_STORAGE, isStorageDefinition, type StorageOptions } from './config.ts';
 import type { Disk } from './disk.ts';
 import { registerStorageRoutes } from './routes.ts';
 import { StorageSetup } from './setup.ts';
-import { checkStorage, Storage, StorageManager } from './storage.ts';
+import { checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
+import { StorageSetupError } from './errors.ts';
+import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
+import { UploadsConfig } from './uploads/config.ts';
+import { registerUploads, UPLOADS_PREFIX } from './uploads/http.ts';
+import { TemporaryUploads } from './uploads/service.ts';
 import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './temporary.ts';
 import { encodeKey } from './keys.ts';
 import { secondsOf } from './contents.ts';
@@ -45,6 +51,20 @@ export { TEMPORARY_PREFIX } from './temporary.ts';
 export type { TemporaryUrls } from './temporary.ts';
 export { StorageSetup } from './setup.ts';
 
+// Uploads (W6.9, Livewire's model): a target per route field, the bytes to a private disk, a token in the form, verified on submit.
+export { upload, uploadFields, uploadRuleOf, formatBytes, UPLOAD_RULE } from './uploads/rule.ts';
+export type { CheckUploadMime, UploadInput, UploadRule, UploadSchema } from './uploads/rule.ts';
+export { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';
+export type { UploadProblem, UploadSource } from './uploads/temporary-upload.ts';
+export { sniff, isActiveType, ACTIVE_TYPES, SNIFF_BYTES, UPLOAD_TYPES } from './uploads/sniff.ts';
+export type { ActiveType, Sniffed, UploadMime } from './uploads/sniff.ts';
+export { TemporaryUploads, UPLOADS_TABLE, uploadError } from './uploads/service.ts';
+export type { TargetRequest, UploadTarget, UploadsOptions } from './uploads/service.ts';
+export { UploadsConfig } from './uploads/config.ts';
+export { MakeUploadsTableCommand, PruneUploadsCommand, UPLOADS_MIGRATION, uploadsTableConnection } from './uploads/commands.ts';
+export { UPLOADS_PREFIX } from './uploads/http.ts';
+export { loadPresignedPost, S3_UPLOADS_INSTALL } from './drivers/s3.ts';
+
 /**
  * A file of a disk as a mail attachment (`attachments()` of a mailable may be async):
  *
@@ -58,6 +78,14 @@ export async function diskAttachment(disk: Disk, key: string, options: { filenam
   const [content, contentType] = await Promise.all([disk.get(key), disk.mimeType(key)]);
   return { filename: options.filename ?? key.slice(key.lastIndexOf('/') + 1), content, contentType };
 }
+
+/** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file (E108). */
+const UPLOADS_INFRASTRUCTURE = {
+  system: 'Temporary uploads (temporary_uploads)',
+  remedy:
+    'Give them their own SQLite file — the connection of the cache and sessions (UPLOADS_CONNECTION=system) — and `bespoke migrate` (the migration of ' +
+    '`bespoke make:uploads-table` follows UPLOADS_CONNECTION), or store a file outside the transaction.',
+};
 
 /** The app's storage configuration: its `defineStorage(…)` (in the app's or a module's `config`), else the defaults. */
 function storageOptions(container: Resolver): StorageOptions {
@@ -74,8 +102,12 @@ function storageOptions(container: Resolver): StorageOptions {
  * Found by `bespoke discover`.
  */
 export class StorageServiceProvider implements ServiceProvider {
+  static config = [UploadsConfig];
+
   #temporaryUrls: TemporaryUrls = NO_TEMPORARY_URLS;
   #manager: StorageManager | undefined;
+  /** What uploads need from other packages — found while booting (http, database, encryption). */
+  #uploads: Omit<ConstructorParameters<typeof TemporaryUploads>[0], 'disk' | 'clock' | 'lifetime' | 'sendWithin'> | undefined;
 
   register(container: Container): void {
     container.singleton(StorageSetup, (c) => ({
@@ -92,12 +124,43 @@ export class StorageServiceProvider implements ServiceProvider {
       this.#manager = new StorageManager(setup.options, setup.dependencies);
       return this.#manager;
     });
+    // Temporary uploads (W6.9): built on first use — the disk looked up per use (the test fake replaces `Storage`).
+    container.singleton(TemporaryUploads, (c) => {
+      if (!this.#uploads) {
+        throw new StorageSetupError('Uploads need @bespokecore/http, @bespokecore/database and @bespokecore/encryption in the app (and their providers: bespoke discover).');
+      }
+      const config = c.make(UploadsConfig);
+      return new TemporaryUploads({
+        ...this.#uploads,
+        disk: () => {
+          const storage = c.make(Storage) as unknown as StorageManager;
+          if (!storage.names.includes(config.disk)) {
+            throw new StorageSetupError(
+              `Uploads wait on the private disk "${config.disk}" (UPLOADS_DISK), which is not configured — add it to defineStorage(…): ${config.disk}: { driver: 'local', root: 'storage/app/uploads' }.`,
+            );
+          }
+          return storage.named(config.disk);
+        },
+        clock: c.make(Clock),
+        lifetime: config.lifetime * 60_000,
+        sendWithin: config.sendWithin * 60,
+      });
+    });
   }
 
   async boot(app: Application): Promise<void> {
     const { container } = app;
     const { options } = container.make(StorageSetup);
     checkStorage(options, app.root);
+    // Temporary uploads are anyone's files until a form checked them: never on a public disk.
+    const uploads = container.make(UploadsConfig);
+    const uploadDisk = options.disks[uploads.disk];
+    if (uploadDisk && visibilityOf(uploadDisk) === 'public') {
+      throw new StorageSetupError(`The disk "${uploads.disk}" holds temporary uploads (UPLOADS_DISK) but is public — files nobody checked yet would be served. Make it private.`);
+    }
+
+    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([MakeUploadsTableCommand, PruneUploadsCommand]);
 
     let http: typeof import('@bespokecore/http') | undefined;
     try {
@@ -116,6 +179,20 @@ export class StorageServiceProvider implements ServiceProvider {
         }),
     };
     registerStorageRoutes(http, container, options);
+
+    const database = await import('@bespokecore/database').catch(() => undefined);
+    const encryption = await import('@bespokecore/encryption').catch(() => undefined);
+    if (database && encryption && container.has(database.Connections) && container.has(encryption.EncryptionConfig)) {
+      const key = container.make(encryption.EncryptionConfig);
+      const connections = container.make(database.Connections);
+      this.#uploads = {
+        // Infrastructure (E108): never the app's transaction — a rollback after store() never makes a used token usable again.
+        db: () => connections.infrastructure(uploads.connection, UPLOADS_INFRASTRUCTURE),
+        keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'bespokecore:upload-token', 32))),
+        receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),
+      };
+      registerUploads(http, container, () => container.make(TemporaryUploads));
+    }
   }
 
   async shutdown(): Promise<void> {

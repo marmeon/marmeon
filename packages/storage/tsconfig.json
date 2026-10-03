@@ -22,6 +22,9 @@
       "path": "../http"
     },
     {
+      "path": "../database"
+    },
+    {
       "path": "../server"
     },
     {

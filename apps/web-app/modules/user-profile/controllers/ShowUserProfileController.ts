@@ -1,5 +1,6 @@
 import { Controller, defer, optional, type HttpContext } from '@bespokecore/http';
 import { Gate, type Authenticated } from '@bespokecore/auth';
+import { Storage } from '@bespokecore/storage';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileActivity } from '../ProfileActivity.ts';
@@ -15,26 +16,30 @@ export class ShowUserProfileController extends Controller {
   readonly #directory: ProfileDirectory;
   readonly #activity: ProfileActivity;
   readonly #gate: Gate;
+  readonly #storage: Storage;
 
-  constructor(directory: ProfileDirectory, activity: ProfileActivity, gate: Gate) {
+  constructor(directory: ProfileDirectory, activity: ProfileActivity, gate: Gate, storage: Storage) {
     super();
     this.#directory = directory;
     this.#activity = activity;
     this.#gate = gate;
+    this.#storage = storage;
   }
 
   /** `user` is bound by the route (ProfileDirectory): a missing one never gets here — it is a 404. */
   async handle(ctx: HttpContext<Authenticated, { user: Profile }>) {
     // The selected row goes to the view as it is — the migration's column types reach the view.
     // Held back on purpose: the e-mail (owner only) and the last sign-in (shown as lastLoginAt).
-    const { email, activity: login, links, ...user } = ctx.params.user;
+    // The avatar as its public URL (the public disk serves it: raster images only, `nosniff`) — never the storage key.
+    const { email, activity: login, links, avatar_path, ...user } = ctx.params.user;
+    const avatar = avatar_path ? this.#storage.disk('public').url(avatar_path) : null;
     const isOwnProfile = ctx.user.id === user.id;
 
     return this.view('user-profile/Show', {
       // Each link with what the viewer may do with it (E61): `link.can.delete`, one ProfileLinkPolicy call per link.
       // Inside the prop on purpose: a reload of `profile` (a link added) brings the new link's abilities with it.
       // A function: a partial reload for other props (the activity poll) never asks the policy.
-      profile: async () => ({ ...user, links: await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete']) }),
+      profile: async () => ({ ...user, avatar, links: await this.#gate.withAbilities(links, ProfileLinkPolicy, ['delete']) }),
       // Only the owner may see their e-mail (ProfilePolicy) — the controller decides what leaves the server.
       email: (await this.#gate.allows(ProfilePolicy, 'viewEmail', user)) ? email : null,
       // Who this is, not what they may do: "this is your profile" (no policy behind it).

@@ -61,6 +61,8 @@ export default function People({ people, now }: Props) {
         <ul>
           {people.data.map((person) => (
             <li key={person.id}>
+              {/* The avatar (W6.9), from the public disk — decorative next to the name, so no alt text of its own. */}
+              {person.avatar && <img src={person.avatar} alt="" width={24} height={24} loading="lazy" style={{ objectFit: 'cover', borderRadius: '50%', verticalAlign: 'middle' }} />}{' '}
               {/* Fetched ahead while the pointer rests on it: the click shows the profile at once. If it is not here yet, an instant
                   visit (E64) shows the profile's placeholder with the name the list knows — then the profile. */}
               <Link route="user-profile.show" params={{ user: person.id }} prefetch instant={{ name: person.name }}>

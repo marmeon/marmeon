@@ -19,6 +19,7 @@ import {
 import { defineRoutes, Router } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
+import { METHOD_FIELD_WINDOW, overrideMethod } from './method-override.ts';
 
 /** Once props, the two kinds of 409, method spoofing and the CSRF token of a page — on the server (W5b step 10, E64). */
 
@@ -184,6 +185,55 @@ describe('method spoofing (E64) — a form without JavaScript sends PUT, PATCH a
     expect(await (await form('_method=GET')).text()).toBe('post');
     expect(await (await form('_method=TRACE')).text()).toBe('post');
     expect(await (await form(JSON.stringify({ _method: 'DELETE' }), '/api/links/1', 'application/json')).text()).toBe('post');
+  });
+
+  it('`_method` next to `_token` (a form written by hand, Laravel’s @csrf @method) counts too — in any order at the start', async () => {
+    expect(await (await form('_token=abc&_method=PUT&label=Blog')).text()).toBe('put');
+    const multipart = new FormData();
+    multipart.set('_token', 'abc');
+    multipart.set('_method', 'DELETE');
+    expect(await (await app.request('/api/links/1', { method: 'POST', body: multipart })).text()).toBe('delete');
+  });
+
+  /** A body of `size` bytes that counts what was read of it. */
+  function counted(prefix: string, size: number) {
+    const encoded = new TextEncoder().encode(prefix);
+    const read = { bytes: 0 };
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= size) return controller.close();
+        const chunk = sent === 0 ? encoded : new Uint8Array(Math.min(64 * 1024, size - sent)).fill(120);
+        sent += chunk.byteLength;
+        read.bytes += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    });
+    return { body, read };
+  }
+
+  it('a big body is not read twice (W5b.10): only its start is looked at, then it goes on to the route as it came', async () => {
+    const size = 20 * 1024 * 1024;
+    const { body, read } = counted('_method=PUT&label=', size);
+    const request = new Request('http://localhost/api/links/1', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body, duplex: 'half' } as RequestInit);
+    const overridden = await overrideMethod(request);
+    expect(overridden.method).toBe('PUT');
+    // Read so far: the window and a chunk or two the streams fetch ahead — not the 20 MB.
+    expect(read.bytes).toBeLessThan(256 * 1024);
+    // The route gets every byte, once.
+    const reader = overridden.body!.getReader();
+    let total = 0;
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) total += chunk.value.byteLength;
+    expect(total).toBe(size);
+    expect(read.bytes).toBe(size);
+  });
+
+  it('counter-check: `_method` after a file, or past the start of the body, does not count', async () => {
+    const multipart = new FormData();
+    multipart.set('avatar', new File(['png'], 'a.png', { type: 'image/png' }));
+    multipart.set('_method', 'DELETE');
+    expect(await (await app.request('/api/links/1', { method: 'POST', body: multipart })).text()).toBe('post');
+    expect(await (await form(`label=${'x'.repeat(METHOD_FIELD_WINDOW)}&_method=DELETE`)).text()).toBe('post');
   });
 });
 

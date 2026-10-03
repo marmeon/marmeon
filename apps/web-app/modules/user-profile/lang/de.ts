@@ -28,6 +28,7 @@ export default {
     adding: 'wird hinzugefügt …',
     people: 'Alle Leute',
     back: 'Zurück zu meinem Profil',
+    avatar: 'Bild von {name}',
   },
   people: {
     title: 'Leute',
@@ -54,6 +55,12 @@ export default {
     saving: 'Wird gespeichert …',
     checking: 'Wird geprüft …',
     cancel: 'Abbrechen',
+    avatar: 'Bild',
+    avatar_choose: 'Bild wählen (PNG, JPEG oder WebP, höchstens 2 MB)',
+    avatar_uploading: 'Wird hochgeladen: {percent} %',
+    avatar_ready: 'Bereit — speichern, um es zu verwenden.',
+    avatar_cancel: 'Hochladen abbrechen',
+    avatar_save: 'Bild speichern',
   },
   remove: {
     title: '„{label}“ entfernen?',
@@ -65,6 +72,7 @@ export default {
     saved: 'Profil gespeichert.',
     link_added: 'Link hinzugefügt.',
     link_removed: 'Link entfernt.',
+    avatar_saved: 'Bild gespeichert.',
   },
   validation: {
     name_min: 'Der Name braucht mindestens {requirement} Zeichen.',

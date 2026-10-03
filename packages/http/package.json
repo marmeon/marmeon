@@ -58,7 +58,8 @@
     ],
     "browser": [
       "src/client/**",
-      "src/page.ts"
+      "src/page.ts",
+      "src/upload-header.ts"
     ]
   }
 }

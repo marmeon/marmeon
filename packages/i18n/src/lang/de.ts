@@ -31,6 +31,14 @@ export default {
       max: 'Das Passwort ist zu lang.',
     },
     confirmed: 'Die Passwörter stimmen nicht überein.',
+    upload: {
+      required: 'Bitte eine Datei wählen.',
+      invalid: 'Die Datei ist nicht angekommen — bitte noch einmal wählen.',
+      expired: 'Der Upload ist abgelaufen — bitte die Datei noch einmal wählen.',
+      used: 'Diese Datei wurde schon gespeichert — bitte noch einmal wählen.',
+      max: 'Die Datei darf höchstens {max} groß sein.',
+      type: 'Dieser Dateityp ist nicht erlaubt (erlaubt: {types}).',
+    },
     more: '(und {count, plural, one {# weiterer Fehler} other {# weitere Fehler}})',
   },
 } satisfies Messages<typeof en>;

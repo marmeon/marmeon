@@ -36,6 +36,7 @@ import type { ShowResetPasswordController } from '../modules/auth/controllers/Sh
 import type { ShowSecurityController } from '../modules/auth/controllers/ShowSecurityController.ts';
 import type { ShowUserProfileController } from '../modules/user-profile/controllers/ShowUserProfileController.ts';
 import type { ShowVerifyEmailNoticeController } from '../modules/auth/controllers/ShowVerifyEmailNoticeController.ts';
+import type { UpdateAvatarController } from '../modules/user-profile/controllers/UpdateAvatarController.ts';
 import type { UpdateEmailController } from '../modules/auth/controllers/UpdateEmailController.ts';
 import type { UpdateLocaleController } from '../modules/locale/controllers/UpdateLocaleController.ts';
 import type { UpdatePasswordController } from '../modules/auth/controllers/UpdatePasswordController.ts';
@@ -75,6 +76,7 @@ declare module '@bespokecore/router' {
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };
     'notifications.read': { method: 'post'; path: '/notifications/:notification/read'; controller: typeof MarkNotificationReadController };
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
+    'user-profile.avatar.update': { method: 'put'; path: '/users/:user/avatar'; controller: typeof UpdateAvatarController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.export': { method: 'post'; path: '/users/me/export'; controller: typeof ExportMyDataController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };

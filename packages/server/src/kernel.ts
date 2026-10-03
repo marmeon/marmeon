@@ -19,6 +19,7 @@ import {
   REGION_STATUS_HEADER,
   regionOf,
   ResponseLifecycle,
+  UPLOAD_HEADER,
   VERSION_HEADER,
   isPageObject,
   type PageObject,
@@ -208,9 +209,11 @@ export function createHttpKernel(
     layerBases: dispatchLayerBase,
   });
 
-  const renderError = async (error: unknown, request: Request, scope?: Container): Promise<Response> => {
+  const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
     const handler = container.make(ExceptionHandler);
-    if (isLiveValidation(request)) return renderLiveValidationError(handler, error, request, scope);
+    if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);
+    // An upload (W6.9) is answered as JSON whatever it accepts — never back to a form with flashed errors (it is read-only).
+    const request = failed.headers.has(UPLOAD_HEADER) ? new Request(failed.url, { method: failed.method, headers: { ...Object.fromEntries(failed.headers), accept: 'application/json' } }) : failed;
     handler.report(error);
     if (regionOf(request) === 'island') return renderRegionError(handler, error, request, scope);
     try {
@@ -303,17 +306,24 @@ export function createHttpKernel(
     // A live validation (E62) checks input and changes nothing: read-only like an island — no session write (its flash data
     // stays), no cookie, no work after the response; its controller never runs.
     const live = isLiveValidation(request);
+    // An upload's target or its bytes (W6.9): a request beside the page — like a live validation, it never writes the session
+    // (flash data meant for the next page stays) or cookies.
+    const upload = request.headers.has(UPLOAD_HEADER);
     const { pathname } = new URL(request.url);
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
-    if ((island || parent || live) && readOnly) {
+    if ((island || parent || live || upload) && readOnly) {
       const reason = live
         ? `a live validation (${request.method} ${pathname})`
-        : island
+        : upload
+          ? `an upload (${request.method} ${pathname})`
+          : island
           ? `an island request (${request.method} ${pathname})`
           : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
       const rule = live
         ? 'a live validation is read-only (E62) — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
-        : undefined;
+        : upload
+          ? 'an upload is read-only (W6.9) — it stores a file beside the page: no session, cookies or flash data, no work after the response.'
+          : undefined;
       readOnly.engage({ reason, strict: strictReadOnly, report: (message) => logger.error(message), ...(rule ? { rule } : {}) });
       state.cookies.lock((what) => readOnly.permit(what));
       if (scope.has(AfterResponse)) scope.make(AfterResponse).lock((what) => readOnly.permit(what));
@@ -414,7 +424,7 @@ export function createHttpKernel(
 
   // A plain HTML form's PUT, PATCH or DELETE (`_method` in its POST body, E64) is routed as that method.
   const dispatch = app.fetch;
-  app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(request, maxBodySize), env, executionContext);
+  app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(request), env, executionContext);
 
   return Object.assign(app, {
     settle: async () => {

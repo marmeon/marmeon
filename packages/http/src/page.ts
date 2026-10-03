@@ -331,6 +331,59 @@ export const VALIDATE_HEADER = 'x-bespoke-validate';
 /** On a live validation's `204` and `422`: the fields it checked — so a client tells its answer from a proxy's. */
 export const VALIDATED_HEADER = 'x-bespoke-validated';
 
+/**
+ * Uploads (W6.9, Livewire's three steps): the client asks the form's route for an upload target — the route's own method and
+ * URL, naming the field (`avatar`), with the file's name, size and type as JSON. The server runs the route's middleware and
+ * `authorize`, reads the field's `upload()` rule and answers `{ token, upload: { method, url, fields?, headers? } }`; the file
+ * goes there (with progress), and the form sends the token in the field — never the file. The receiving request carries the
+ * header too (with the token's id). Read-only like a live validation: no session write, no cookie.
+ */
+export { UPLOAD_HEADER } from './upload-header.ts';
+
+/** The token of an upload (`tu_<id>.<signature>`): what an upload field sends — and what a test gets from `app.upload(…)`. */
+export type UploadToken = string & { readonly '~uploadToken': true };
+
+/**
+ * A file uploaded ahead (W6.9) — the value of a form field with an `upload()` rule, made by `<FileInput>` (or `upload(…)`): its
+ * state and progress, a preview, and `cancel()`. It goes to the server as its token (`toJSON`), which only the client core
+ * holds — in memory, emptied when the document is left (signed out, a new build); never kept by remember or in history.state.
+ */
+export interface Upload {
+  readonly '~upload': true;
+  /** The file's name as the browser has it — for showing; the server stores the file under a name of its own. */
+  readonly name: string;
+  readonly size: number;
+  /** The type the browser claims (`image/png`) — the server goes by the file's bytes. */
+  readonly type: string;
+  /** `uploading`, `uploaded` (the token is ready), `failed` (see `error`). */
+  readonly status: 'uploading' | 'uploaded' | 'failed';
+  readonly uploading: boolean;
+  /** How far: 0 … 1. */
+  readonly progress: number;
+  /** A `blob:` URL of the chosen file (images), for a preview — revoked when the upload is replaced, cancelled or the field unmounts. */
+  readonly preview: string | undefined;
+  /** Why it failed — a message for the user (the server's, or a network error). */
+  readonly error: string | undefined;
+  /** Stops the upload (or forgets the uploaded file): the field goes back to empty. */
+  cancel(): void;
+  /** The token when uploaded — else an empty string (the server says "choose it again"). */
+  toJSON(): string;
+}
+
+/** The fields of form data `F` an `upload()` rule takes (their input is an {@link Upload}). */
+export type UploadField<F> = keyof { [K in keyof F & string as [Extract<F[K], Upload>] extends [never] ? never : K]: true } & string;
+
+/** `K` when it is an upload field of form data `F`; otherwise the message the compiler shows as the expected type. */
+export type CheckUploadField<F, K extends string> = string extends K
+  ? UploadField<F>
+  : string extends keyof F
+    ? K // an untyped form (no generated routes yet): any field
+    : K extends UploadField<F>
+    ? K
+    : [UploadField<F>] extends [never]
+      ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)`
+      : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
+
 /** What a password field's name looks like to live validation (`/password/i`): it is never sent for a check (E62). */
 type PasswordLike<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
 

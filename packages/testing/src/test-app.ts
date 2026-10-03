@@ -23,9 +23,16 @@ import {
   PARTIAL_EXCEPT_HEADER,
   PURPOSE_HEADER,
   REGION_HEADER,
+  UPLOAD_HEADER,
   urlFor,
   VALIDATE_HEADER,
   type CheckIslandRouteName,
+  type CheckRouteName,
+  type CheckUploadField,
+  type ControllerOf,
+  type FormOf,
+  type ParamsOf,
+  type UploadToken,
   type CheckLayerRouteName,
   type Param,
   type Query,
@@ -116,7 +123,14 @@ export interface RequestOptions {
   multipart?: Record<string, MultipartValue>;
   /** Sent as JSON. */
   json?: unknown;
+  /** Sent as it is (bytes, a stream) — e.g. the bytes of an upload. */
+  body?: RequestInit['body'];
 }
+
+/** A file for `app.upload(…)`: a `File`/`Blob`, or its name and contents. */
+export type UploadFile = Blob | { readonly name: string; readonly contents: string | Uint8Array; readonly type?: string };
+
+type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
 
 /**
  * Boots a fresh application from its definition — the default export of
@@ -291,12 +305,18 @@ interface Defaults {
   readonly user?: AuthUser;
   /** Signed in through an API token with these abilities instead of the session (`actingAs(user, { guard: 'api' })`). */
   readonly token?: { readonly user: AuthUser; readonly abilities: readonly string[] };
+  /**
+   * The id of the session `withSession`/`actingAs` start — the same for every request of this view (and the views made from it),
+   * written afresh with their data before each: like one browser, so what binds to a session (an upload) carries over.
+   */
+  readonly sessionId?: { value?: string };
 }
 
 /** Access to the app's session store — when the app uses @bespokecore/session (an optional peer). */
 export interface SessionAccess {
   readonly cookie: string;
-  create(data: Readonly<Record<string, unknown>>): Promise<string>;
+  /** Writes a session holding `data` (under `id`, or a new id) — returns its id. */
+  create(data: Readonly<Record<string, unknown>>, id?: string): Promise<string>;
   read(id: string): Promise<Record<string, unknown> | undefined>;
 }
 
@@ -384,8 +404,8 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
   };
   return {
     cookie: config.cookie,
-    create: async (data) => {
-      const id = session.createSessionId();
+    create: async (data, given) => {
+      const id = given ?? session.createSessionId();
       const token = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
       await store().write(id, { _token: token, ...data }, config.lifetime * 60);
       return id;
@@ -608,7 +628,7 @@ export class TestApp {
    * `app.withSession({ cart: [42] }).get('/checkout')` — to sign someone in, use `actingAs(user)`.
    */
   withSession(data: Record<string, unknown>): TestApp {
-    return this.#with({ session: { ...this.#defaults.session, ...data } });
+    return this.#with({ session: { ...this.#defaults.session, ...data }, sessionId: {} });
   }
 
   /**
@@ -618,7 +638,7 @@ export class TestApp {
    */
   actingAs(user: AuthUser, options: { guard?: 'web' } | { guard: 'api'; abilities?: readonly string[] } = {}): TestApp {
     if (options.guard === 'api') return this.#with({ token: { user, abilities: options.abilities ?? ['*'] } });
-    return this.#with({ user });
+    return this.#with({ user, sessionId: {} });
   }
 
   /** Sends a cookie exactly as given — e.g. to prove that forged values are ignored. */
@@ -754,7 +774,52 @@ export class TestApp {
     return new PendingTestResponse(response);
   }
 
-  async #init(method: string, { headers = {}, form, multipart, json }: RequestOptions): Promise<RequestInit> {
+  /**
+   * Uploads a file for a form field (W6.9) as the browser does — the route's upload target (its middleware and `authorize`
+   * run), then the bytes — and returns the token the form sends in the field:
+   *
+   * ```ts
+   * const ada$ = app.actingAs(ada);
+   * const token = await ada$.upload('user-profile.avatar.update', 'avatar', new File([png], 'me.png'), { user: ada.id });
+   * app.storage.disk('uploads').assertCount(1);
+   * await ada$.put(`/users/${ada.id}/avatar`, { json: { avatar: token } }).assertRedirect();
+   * ```
+   *
+   * The upload belongs to this view's session: send the form through the same view (another one is another browser — 422).
+   * A target the route refuses (no `upload()` rule: 404, not allowed: 403, too large: 422) fails with the response.
+   */
+  async upload<const N extends RouteNameInput, const K extends string>(
+    name: CheckRouteName<N>,
+    field: CheckUploadField<FormOf<Instance<ControllerOf<N>>>, K>,
+    file: UploadFile,
+    ...[params]: {} extends ParamsOf<N> ? [params?: ParamsOf<N>] : [params: ParamsOf<N>]
+  ): Promise<UploadToken> {
+    const router = this.make(Router);
+    const route = router.findByName(name as string);
+    if (!route) throw new Error(`app.upload(): no route "${String(name)}".`);
+    const blob = file instanceof Blob ? file : new Blob([typeof file.contents === 'string' ? file.contents : new Uint8Array(file.contents)], { type: file.type ?? '' });
+    const fileName = file instanceof File ? file.name : file instanceof Blob ? 'upload' : file.name;
+    const url = urlFor(router, name as string, params as Readonly<Record<string, Param>> | undefined);
+    const target = await this.withHeaders({ [UPLOAD_HEADER]: field as string, accept: 'application/json' })
+      .request(route.methods[0]!, url, { json: { name: fileName, size: blob.size, type: blob.type } });
+    if (target.status !== 200) throw new AssertionError({ message: `The upload target of ${String(name)} (${String(field)}) answered ${target.status}: ${target.body.slice(0, 300)}` });
+    const { token, upload } = target.json() as { token: UploadToken; upload: { method: 'PUT' | 'POST'; url: string; fields?: Record<string, string> } };
+    if (upload.fields) {
+      // A presigned POST to S3 (storage: 'real' with an S3 uploads disk): the fields, then the file.
+      const form = new FormData();
+      for (const [key, value] of Object.entries(upload.fields)) form.append(key, value);
+      form.append('file', blob, fileName);
+      const sent = await fetch(upload.url, { method: 'POST', body: form });
+      if (!sent.ok) throw new AssertionError({ message: `The upload to S3 failed: ${sent.status} ${(await sent.text()).slice(0, 300)}` });
+      return token;
+    }
+    const received = await this.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' })
+      .request(upload.method, upload.url, { body: new Uint8Array(await blob.arrayBuffer()) });
+    if (received.status !== 200) throw new AssertionError({ message: `Sending the upload answered ${received.status}: ${received.body.slice(0, 300)}` });
+    return token;
+  }
+
+  async #init(method: string, { headers = {}, form, multipart, json, body }: RequestOptions): Promise<RequestInit> {
     const testCookies = [...this.#defaults.cookies];
     let data = this.#defaults.session;
     const tokenHeader: Record<string, string> = {};
@@ -772,7 +837,10 @@ export class TestApp {
     if (data) {
       const session = await this.#session;
       if (!session) throw new Error('withSession() and actingAs() need @bespokecore/session in the app.');
-      testCookies.push({ name: session.cookie, value: await session.create(data), encrypt: true });
+      const holder = this.#defaults.sessionId;
+      const id = await session.create(data, holder?.value);
+      if (holder) holder.value = id;
+      testCookies.push({ name: session.cookie, value: id, encrypt: true });
     }
     const cookies = await Promise.all(
       testCookies.map(
@@ -790,6 +858,11 @@ export class TestApp {
       const body = new FormData();
       for (const [name, value] of Object.entries(multipart)) for (const item of [value].flat()) body.append(name, item);
       init.body = body;
+    }
+    if (body !== undefined) {
+      init.body = body;
+      // A stream goes out as it is read (Node needs to be told).
+      if (body instanceof ReadableStream) (init as { duplex?: 'half' }).duplex = 'half';
     }
     if (json !== undefined) {
       init.body = JSON.stringify(json);

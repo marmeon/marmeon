@@ -77,7 +77,7 @@ const NO_ENV = v.object({});
  * ```
  *
  * Without a definition the app has `local` (private, `storage/app/private`) and `public` (`storage/app/public` under
- * `/storage`) — Laravel's defaults.
+ * `/storage`) — Laravel's defaults — and `uploads` (private, `storage/app/uploads`), where uploaded files wait for their form.
  */
 export function defineStorage<const D extends Readonly<Record<string, DiskOptions>>, const Default extends keyof D & string, const Schema extends StandardSchemaV1 = typeof NO_ENV>(definition: {
   readonly env?: Schema;
@@ -107,6 +107,8 @@ export const DEFAULT_STORAGE: StorageOptions = {
   disks: {
     local: { driver: 'local', root: 'storage/app/private' },
     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
+    // Temporary uploads (W6.9, UPLOADS_DISK): private — a file waits here until a form checked and stored it.
+    uploads: { driver: 'local', root: 'storage/app/uploads' },
   },
 };
 

@@ -128,7 +128,7 @@ export class RedirectResult {
   }
 
   /**
-   * Flashes the input for `old()`, so the form can be filled again. Files and
+   * Flashes the input for `old()`, so the form can be filled again. Files, uploads and
    * passwords never go into the session.
    */
   withInput(input: Record<string, unknown>): this {
@@ -183,7 +183,9 @@ export function isLocalPath(value: unknown): value is string {
 }
 
 function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
-  const clean = (value: unknown): unknown => {
+  const clean = (given: unknown): unknown => {
+    // What JSON would make of it: a verified upload (W6.9) is nothing — neither its token nor its file go into the session.
+    const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;
     if (typeof value === 'object' && value !== null && !(value instanceof File)) {
       if (Array.isArray(value)) return value.map(clean).filter((item) => item !== undefined);
       return flashableInput(value as Record<string, unknown>);

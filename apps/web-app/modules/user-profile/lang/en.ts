@@ -27,6 +27,7 @@ const en = {
     adding: 'adding…',
     people: 'All people',
     back: 'Back to my profile',
+    avatar: 'Picture of {name}',
   },
   people: {
     title: 'People',
@@ -53,6 +54,12 @@ const en = {
     saving: 'Saving…',
     checking: 'Checking …',
     cancel: 'Cancel',
+    avatar: 'Picture',
+    avatar_choose: 'Choose a picture (PNG, JPEG or WebP, at most 2 MB)',
+    avatar_uploading: 'Uploading {percent} %',
+    avatar_ready: 'Ready — save to use it.',
+    avatar_cancel: 'Cancel upload',
+    avatar_save: 'Save picture',
   },
   remove: {
     title: 'Remove “{label}”?',
@@ -64,6 +71,7 @@ const en = {
     saved: 'Profile saved.',
     link_added: 'Link added.',
     link_removed: 'Link removed.',
+    avatar_saved: 'Picture saved.',
   },
   validation: {
     name_min: 'The name needs at least {requirement} characters.',

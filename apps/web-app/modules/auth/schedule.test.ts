@@ -25,10 +25,14 @@ describe('the schedule', () => {
     await app.make(RememberTokenStore).create(alan!.id, new Date(app.clock.now() + 30 * 86_400_000));
     const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { expiresIn: '365d' });
 
-    expect(app.schedule.due('2026-10-05T03:10:00+02:00')).toEqual(['auth:prune-tokens']);
-    expect(app.schedule.due('2026-10-05T03:10:00Z')).toEqual([]); // 05:10 in Berlin
+    // (The data exports are cleared every ten minutes — W6.9.)
+    expect(app.schedule.due('2026-10-05T03:10:00+02:00')).toEqual(['auth:prune-tokens', 'user-profile.prune-data-exports']);
+    expect(app.schedule.due('2026-10-05T03:10:00Z')).toEqual(['user-profile.prune-data-exports']); // 05:10 in Berlin
     const results = await app.schedule.run('2026-10-05T03:10:00+02:00');
-    expect(results.map((result) => [result.task, result.outcome])).toEqual([['auth:prune-tokens', 'ran']]);
+    expect(results.map((result) => [result.task, result.outcome])).toEqual([
+      ['auth:prune-tokens', 'ran'],
+      ['user-profile.prune-data-exports', 'ran'],
+    ]);
 
     const db = app.make(Connections).get<any>();
     expect((await db.selectFrom(PASSWORD_RESET_TABLE).select('email').execute()).map((row) => row.email)).toEqual([alan!.email]);
@@ -40,11 +44,21 @@ describe('the schedule', () => {
 
   it('keeps the tables of modules/system tidy — and the requests draw no session lottery', async () => {
     const app = await createTestApp(application);
-    expect(app.schedule.tasks).toEqual(['auth:prune-tokens', 'user-profile.rebuild-member-stats', 'session:prune', 'cache:prune', 'queue:prune-failed --hours=168', 'notifications:prune --days=30']);
+    expect(app.schedule.tasks).toEqual([
+      'auth:prune-tokens',
+      'user-profile.rebuild-member-stats',
+      'user-profile.prune-data-exports',
+      'session:prune',
+      'cache:prune',
+      'queue:prune-failed --hours=168',
+      'notifications:prune --days=30',
+      'uploads:prune',
+    ]);
     expect(app.schedule.due('2026-10-05T03:15:00+02:00')).toEqual(['session:prune']);
-    expect(app.schedule.due('2026-10-05T03:20:00+02:00')).toEqual(['queue:prune-failed --hours=168']);
-    expect(app.schedule.due('2026-10-05T03:30:00+02:00')).toEqual(['session:prune', 'notifications:prune --days=30']);
+    expect(app.schedule.due('2026-10-05T03:20:00+02:00')).toEqual(['user-profile.prune-data-exports', 'queue:prune-failed --hours=168']);
+    expect(app.schedule.due('2026-10-05T03:30:00+02:00')).toEqual(['user-profile.prune-data-exports', 'session:prune', 'notifications:prune --days=30']);
     expect(app.schedule.due('2026-10-05T10:25:00Z')).toEqual(['cache:prune']);
+    expect(app.schedule.due('2026-10-05T11:00:00Z')).toEqual(['user-profile.rebuild-member-stats', 'user-profile.prune-data-exports', 'session:prune', 'uploads:prune']);
     expect(app.make(SessionLottery).chance).toBe(0);
   });
 
