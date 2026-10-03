@@ -1,17 +1,19 @@
 import { Writable } from 'node:stream';
-import { describeError, redactText, runWithJob, runWithRequest } from '@bespokecore/core';
+import { describeError, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
 import { describe, expect, it } from 'vitest';
 import { createPinoLogger } from './index.ts';
 
 function capture(level: 'info' | 'warn' = 'info') {
   const lines: Record<string, unknown>[] = [];
+  const raw: string[] = [];
   const stream = new Writable({
     write(chunk, _encoding, done) {
+      raw.push(String(chunk));
       lines.push(JSON.parse(String(chunk)));
       done();
     },
   });
-  return { lines, logger: createPinoLogger({ level, format: 'json' }, stream) };
+  return { lines, raw, logger: createPinoLogger({ level, format: 'json' }, stream) };
 }
 
 describe('@bespokecore/log', () => {
@@ -37,6 +39,15 @@ describe('@bespokecore/log', () => {
     expect(lines[0]).toMatchObject({ msg: 'Sending', job: 'auth.send-welcome-mail', jobId: 'j-1', attempt: 2 });
     expect(lines[0]).not.toHaveProperty('requestId');
     expect(lines[1]).toMatchObject({ requestId: 'req-7', job: 'auth.sync', jobId: 'j-2', attempt: 1 });
+  });
+
+  it('writes a key of the log context once when a child logger is bound with it too (the scheduler’s task)', () => {
+    const { lines, raw, logger } = capture();
+    runWithTask({ task: 'session:prune' }, () => logger.child({ channel: 'schedule', task: 'session:prune' }).info('Done'));
+    runWithTask({ task: 'cache:prune' }, () => logger.child({ channel: 'schedule' }).info('Running'));
+    expect(raw[0]!.match(/"task":/g)).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ msg: 'Done', channel: 'schedule', task: 'session:prune' });
+    expect(lines[1]).toMatchObject({ msg: 'Running', task: 'cache:prune' });
   });
 
   it('redacts secrets in text — a failed job\'s stored error (E105)', () => {

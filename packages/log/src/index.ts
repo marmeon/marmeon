@@ -45,6 +45,14 @@ export class PinoLogger implements Logger {
 // The redaction lives in core: the queue redacts a failed job's error the same way (E105).
 export { redact, REDACTED_KEYS } from '@bespokecore/core';
 
+/** The log context without the keys `instance` (a child logger) is bound with — each key once in a JSON line. */
+function withoutBound(context: Readonly<Record<string, unknown>>, instance: unknown): Readonly<Record<string, unknown>> {
+  const keys = Object.keys(context);
+  if (keys.length === 0) return context;
+  const bound = (instance as { bindings?: () => Record<string, unknown> }).bindings?.() ?? {};
+  return keys.some((key) => key in bound) ? Object.fromEntries(Object.entries(context).filter(([key]) => !(key in bound))) : context;
+}
+
 export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream): Logger {
   const stream =
     destination ?? (config.format === 'pretty' ? pretty({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
@@ -54,7 +62,8 @@ export function createPinoLogger(config: LogConfig, destination?: NodeJS.Writabl
       base: undefined,
       formatters: { log: (object) => redact(object) },
       // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt.
-      mixin: () => currentLogContext(),
+      // A key a child logger is bound with already (the scheduler's `task`) is left out: pino would write it twice.
+      mixin: (_merge, _level, instance) => withoutBound(currentLogContext(), instance),
     },
     stream as never,
   );
