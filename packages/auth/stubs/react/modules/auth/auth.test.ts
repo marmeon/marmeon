@@ -1,8 +1,11 @@
+import { Registered } from '@bespokecore/auth';
 import type { Mailable } from '@bespokecore/mail';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
+import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { User } from './users.ts';
@@ -17,9 +20,9 @@ beforeEach(async () => {
 const credentials = (user: User, password = 'password') => ({ form: { email: user.email, password } });
 /** A request that keeps the session of `response`. */
 const continuing = (response: { cookie(name: string): string | undefined }) => app.withCookie('bespoke_session', response.cookie('bespoke_session')!);
-/** The link in the last mail of a class — path and query. */
+/** The link in the last queued mail of a class — path and query. Mails are composed now and sent by a worker. */
 const linkIn = <M extends Mailable>(Mail: abstract new (...args: any[]) => M, path: string) => {
-  const sent = app.mail.sent(Mail).at(-1)!;
+  const sent = app.mail.queued(Mail).at(-1)!;
   const url = new URL(new RegExp(`https?://\\S+${path}\\S*(?=\\))`).exec(sent.message.text)![0]);
   return url.pathname + url.search;
 };
@@ -74,11 +77,21 @@ describe('registration and verification', () => {
 
   it('registers, signs in and mails a signed link that verifies the address', async () => {
     const registered = await register().assertRedirect('/dashboard');
-    app.mail.assertSent(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
+    // A queued listener: the registration queued it (app.queue), a worker composes and queues the mail (app.queue.work()).
+    app.events.assertDispatched(Registered);
+    app.queue.assertListenerQueued(SendEmailVerification);
+    app.mail.assertNothingQueued();
+    await app.queue.work();
+    app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
     const link = linkIn(VerifyEmailMail, '/email/verify/');
     const tampered = link.replace(/\/email\/verify\/\d+\//, '/email/verify/999999/');
     await continuing(registered).expectingJson().get(tampered).assertForbidden();
     await continuing(registered).get(link).assertRedirect('/dashboard').assertFlashed('toast', { message: 'Your e-mail address is verified.' });
+  });
+
+  it('throttles registration: the 11th a minute from one address gets 429', async () => {
+    for (let i = 1; i <= 10; i++) await register(`user${i}@example.com`).assertRedirect('/dashboard');
+    await register('user11@example.com').assertStatus(429);
   });
 
   it('refuses an address that exists, in any case', async () => {
@@ -95,7 +108,10 @@ describe('password reset', () => {
     // The same toast either way — waiting for the page the redirect leads to (E60).
     expect(unknown.flashed().map((message) => message.data)).toEqual(known.flashed().map((message) => message.data));
     expect(known.flashed()).toHaveLength(1);
-    app.mail.assertSentCount(ResetPasswordMail, 1);
+    // The request only queues a job, whatever the address; the job makes the token and queues the mail.
+    app.queue.assertDispatchedTimes(SendPasswordResetLinkJob, 2);
+    await app.queue.work();
+    app.mail.assertQueuedCount(ResetPasswordMail, 1);
 
     const opened = await app.get(linkIn(ResetPasswordMail, '/reset-password')).assertRedirect('/reset-password');
     const cookie = opened.cookie('password_reset')!;

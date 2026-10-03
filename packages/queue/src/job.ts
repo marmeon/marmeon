@@ -1,5 +1,5 @@
 import type { Cache } from '@bespokecore/cache';
-import type { Duration, StandardSchemaV1 } from '@bespokecore/core';
+import type { Duration, IsJson, StandardSchemaV1 } from '@bespokecore/core';
 
 /**
  * What a job's `handle(payload, job)` gets besides its payload: who it is, which attempt this is, a signal that aborts
@@ -111,21 +111,6 @@ export type JobPayload<J extends JobStatics> = SchemaOutput<J['schema']>;
 
 /** What a job is dispatched with: the input of its `static schema`. */
 export type JobInput<J extends JobStatics> = SchemaInput<J['schema']>;
-
-/** Whether `T` survives `JSON.stringify` → `JSON.parse` unchanged (optional properties may be left out). */
-type IsJson<T> = 0 extends 1 & T ? true : false extends JsonMember<T> ? false : true;
-/** Per member of a union (distributive): `{ id: number } | null` is JSON, `string | Date` is not. */
-type JsonMember<T> = T extends string | number | boolean | null
-  ? true
-  : T extends readonly (infer E)[]
-    ? IsJson<E>
-    : T extends Date | RegExp | Map<any, any> | Set<any> | ((...args: any[]) => any) | bigint | symbol | undefined
-      ? false
-      : T extends object
-        ? false extends { [K in keyof T]-?: IsJson<Exclude<T[K], undefined>> }[keyof T]
-          ? false
-          : true
-        : false;
 
 /**
  * Checks a job class where it is dispatched: its payload must be JSON, and `handle()` must take what the schema yields.

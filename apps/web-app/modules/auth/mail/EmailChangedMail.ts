@@ -1,6 +1,7 @@
 import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable } from '@bespokecore/mail';
+import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
 import { layout } from './layout.ts';
+import { previewData } from './preview-data.ts';
 
 /** To the old address when the address changes — if it was not you, you learn about it. In the user's language. */
 export class EmailChangedMail implements Mailable {
@@ -14,6 +15,12 @@ export class EmailChangedMail implements Mailable {
     this.#oldEmail = oldEmail;
     this.#newEmail = newEmail;
     this.#t = t;
+  }
+
+  /** The preview (`/_bespoke/mail/auth/EmailChangedMail`, development only). */
+  static preview(context: MailPreviewContext): EmailChangedMail {
+    const { user, t } = previewData(context);
+    return new EmailChangedMail(user.name, user.email, 'ada.lovelace@example.com', t);
   }
 
   envelope() {

@@ -1,4 +1,4 @@
-import { Translator } from '@bespokecore/i18n';
+import { Translators } from '@bespokecore/i18n';
 import { Mailer } from '@bespokecore/mail';
 import type { JobContext, JobPayload } from '@bespokecore/queue';
 import * as v from 'valibot';
@@ -22,13 +22,13 @@ export class SendWelcomeMailJob {
 
   readonly #users: UserRepository;
   readonly #mailer: Mailer;
-  readonly #translator: Translator;
+  readonly #translators: Translators;
   readonly #app: AppConfig;
 
-  constructor(users: UserRepository, mailer: Mailer, translator: Translator, app: AppConfig) {
+  constructor(users: UserRepository, mailer: Mailer, translators: Translators, app: AppConfig) {
     this.#users = users;
     this.#mailer = mailer;
-    this.#translator = translator;
+    this.#translators = translators;
     this.#app = app;
   }
 
@@ -39,7 +39,7 @@ export class SendWelcomeMailJob {
     // the mail went out — the SMTP server answered slowly, the attempt timed out — does not send it again. (A worker
     // that dies between the mail and the marker still would: at-least-once, see JobContext.once.)
     await job.once(`welcome-mail:${user.id}`, () =>
-      this.#mailer.send(new WelcomeMail(user, new URL('/users/me', this.#app.url).href, this.#translator.forLocale(user.locale))),
+      this.#mailer.send(new WelcomeMail(user, new URL('/users/me', this.#app.url).href, this.#translators.for(user.locale))),
     );
   }
 }

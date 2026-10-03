@@ -1,6 +1,8 @@
 import { Application, defineConfig, Logger, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import * as v from 'valibot';
-import { Mailer, TransportMailer } from './mailer.ts';
+import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
+import { MailPreviews } from './preview.ts';
+import { SendQueuedMail } from './queued.ts';
 import { ArrayTransport, LogTransport, MailTransport, SmtpTransport } from './transports.ts';
 
 // Mail (E29): mails as classes, a transport behind a neutral message type, UI-agnostic content (MJML or HTML).
@@ -8,6 +10,13 @@ export { escapeHtml, fromHtml, Html, html, raw, textFromHtml } from './html.ts';
 export { fromMjml, Mjml, mjml, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
 export { compose, MailError, Mailer, TransportMailer } from './mailer.ts';
+export type { MailQueue, QueueMailOptions } from './mailer.ts';
+export { fromQueued, SendQueuedMail, toQueued } from './queued.ts';
+export type { QueuedMailPayload } from './queued.ts';
+export { calendarEvent } from './ics.ts';
+export type { CalendarEvent } from './ics.ts';
+export { findMailPreviews, MailPreviews } from './preview.ts';
+export type { MailPreviewContext, PreviewableMail } from './preview.ts';
 export { MailFake } from './fake.ts';
 export { ArrayTransport, LogTransport, MailTransport, SmtpTransport } from './transports.ts';
 export type { SmtpOptions } from './transports.ts';
@@ -33,22 +42,77 @@ export const MailConfig = defineConfig('mail', {
 });
 export type MailConfig = ConfigOf<typeof MailConfig>;
 
-/** Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`). Found by `bespoke discover`. */
+type QueueModule = typeof import('@bespokecore/queue');
+
+/** @bespokecore/queue is an optional peer: only `mailer.queue()` needs it. */
+async function importQueue(): Promise<QueueModule | undefined> {
+  try {
+    return await import('@bespokecore/queue');
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && String((error as Error).message).includes('@bespokecore/queue')) return undefined;
+    throw error;
+  }
+}
+
+/**
+ * Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`) — built on first use —, the `bespoke.mail` job for
+ * `mailer.queue()` when the app has @bespokecore/queue, and outside production the mail previews (`/_bespoke/mail`,
+ * E106). Found by `bespoke discover`.
+ */
 export class MailServiceProvider implements ServiceProvider {
   static config = [MailConfig];
+
+  /** Whether the transport was built — a web process that only queues mails never opens one, and closes none. */
+  #transport: MailTransport | undefined;
 
   register(container: Container): void {
     const config = container.make(MailConfig);
     container.singleton(MailTransport, (c) => {
-      if (config.mailer === 'array') return new ArrayTransport();
-      if (config.mailer === 'smtp') return new SmtpTransport(config.smtp);
-      return new LogTransport(c.make(Logger));
+      if (config.mailer === 'array') this.#transport = new ArrayTransport();
+      else if (config.mailer === 'smtp') this.#transport = new SmtpTransport(config.smtp);
+      else this.#transport = new LogTransport(c.make(Logger));
+      return this.#transport;
     });
-    container.singleton(Mailer, (c) => new TransportMailer(c.make(MailTransport), config.from));
+    const queue: MailQueue = async (payload, options) => {
+      const module = await importQueue();
+      if (!module || !container.has(module.Queue)) {
+        throw new MailError('mailer.queue() needs @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover) — or send the mail now: mailer.send().');
+      }
+      return container.make(module.Queue).dispatch(SendQueuedMail, payload, options);
+    };
+    container.singleton(Mailer, (c) => new TransportMailer(() => c.make(MailTransport), config.from, queue));
+    container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport)));
   }
 
-  async shutdown(app: Application): Promise<void> {
-    const transport = app.container.make(MailTransport);
-    if (transport instanceof SmtpTransport) await transport.close();
+  async boot(app: Application): Promise<void> {
+    // The job behind mailer.queue(): a framework job (`bespoke.mail`), registered with the app's jobs.
+    const queue = await importQueue();
+    if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@bespokecore/mail', { framework: true });
+
+    // Mail previews (E106): never registered in production.
+    if (process.env.NODE_ENV !== 'production') await registerPreviews(app);
   }
+
+  async shutdown(): Promise<void> {
+    if (this.#transport instanceof SmtpTransport) await this.#transport.close();
+  }
+}
+
+async function registerPreviews(app: Application): Promise<void> {
+  let router: typeof import('@bespokecore/router');
+  try {
+    router = await import('@bespokecore/router');
+  } catch {
+    return; // no HTTP in this app
+  }
+  if (!app.container.has(router.Router)) return;
+  const previews = new MailPreviews(app.root, app.container, app.container.make(MailConfig).from);
+  app.container.instance(MailPreviews, previews);
+  // No middleware group: no session, no cookies — a page for the developer's browser only.
+  app.container.make(router.Router).load(
+    router.defineRoutes((Route) => {
+      Route.get('/_bespoke/mail', () => previews.index());
+      Route.get('/_bespoke/mail/:module/:mail', (ctx) => previews.show(`${ctx.params.module}/${ctx.params.mail}`, new URL(ctx.request.url)));
+    }),
+  );
 }

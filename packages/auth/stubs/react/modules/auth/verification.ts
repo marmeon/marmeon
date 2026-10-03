@@ -1,26 +1,30 @@
 import { EmailVerification } from '@bespokecore/auth';
-import { Translator } from '@bespokecore/i18n';
+import { Translators } from '@bespokecore/i18n';
 import { Mailer } from '@bespokecore/mail';
 import { AppConfig } from '../../config/app.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { User } from './users.ts';
 
-/** Sends the verification mail — after registration, on request, after a change of address. */
+/**
+ * Queues the verification mail — after registration (from the queued listener), on request, after a change of address.
+ * Composed here, sent by a worker (E105: the signed link travels encrypted).
+ */
 export class VerificationMailer {
   readonly #verification: EmailVerification;
   readonly #mailer: Mailer;
   readonly #app: AppConfig;
-  readonly #translator: Translator;
+  readonly #translators: Translators;
 
-  constructor(verification: EmailVerification, mailer: Mailer, app: AppConfig, translator: Translator) {
+  constructor(verification: EmailVerification, mailer: Mailer, app: AppConfig, translators: Translators) {
     this.#verification = verification;
     this.#mailer = mailer;
     this.#app = app;
-    this.#translator = translator;
+    this.#translators = translators;
   }
 
-  /** In the user's language (stored with the account), else the request's. */
+  /** In the user's language (stored with the account) — not the request's; links from APP_URL, never from a Host header. */
   async send(user: User): Promise<void> {
-    await this.#mailer.send(new VerifyEmailMail(user, this.#verification.link(user, { base: this.#app.url }), this.#translator.forLocale(user.locale)));
+    const mail = new VerifyEmailMail(user, this.#verification.link(user, { base: this.#app.url }), this.#translators.for(user.locale));
+    await this.#mailer.queue(mail, { queue: 'mail' });
   }
 }

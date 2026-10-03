@@ -1,17 +1,28 @@
 import type { Registered } from '@bespokecore/auth';
-import { afterCommit } from '@bespokecore/database';
+import type { EventPayload } from '@bespokecore/core';
+import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
-/** New accounts get the verification mail — once the account is committed (the registration runs in a transaction). */
+/**
+ * New accounts get the verification mail — a queued listener (E86): the registration only queues it, once its
+ * transaction committed (`afterCommit`, the default — never for an account that is rolled back), and a worker composes
+ * the mail. An SMTP failure never fails the registration: the mail retries in the queue.
+ */
 export class SendEmailVerification {
+  static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
+
+  readonly #users: UserRepository;
   readonly #mailer: VerificationMailer;
 
-  constructor(mailer: VerificationMailer) {
+  constructor(users: UserRepository, mailer: VerificationMailer) {
+    this.#users = users;
     this.#mailer = mailer;
   }
 
-  async handle(event: Registered): Promise<void> {
-    // Never for an account that is rolled back; outside a transaction it is sent at once.
-    await afterCommit(() => this.#mailer.send(event.user));
+  async handle(payload: EventPayload<typeof Registered>): Promise<void> {
+    // The account as it is now: gone, or verified in the meantime — nothing to send.
+    const user = await this.#users.find(payload.userId);
+    if (!user || user.email_verified_at !== null) return;
+    await this.#mailer.send(user);
   }
 }

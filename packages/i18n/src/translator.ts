@@ -13,6 +13,9 @@ import type { CheckTranslationKey, MessageOf, TranslateArgs, TranslationKey } fr
  * translator.forLocale(user.locale).get('auth.mail.reset.subject');   // a mail in the recipient's language
  * ```
  *
+ * Outside a request — in a job, a command — it speaks `APP_LOCALE`; `Translators.for(locale)` gives a translator for
+ * any locale anywhere (a root service).
+ *
  * The same token as the `Translator` contract of @bespokecore/core, which framework packages use.
  */
 export interface Translator extends TranslatorContract {

@@ -32,7 +32,8 @@ export default defineRoutes((Route) => {
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.post('/login', LoginController).name('auth.login.store');
   guests.get('/register', ShowRegisterController).name('auth.register');
-  guests.post('/register', RegisterController).name('auth.register.store');
+  // A few sign-ups per minute and address (E100) — live validation of the form does not count.
+  guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
   guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
   guests.middleware(throttle('password-reset')).post('/forgot-password', SendPasswordResetLinkController).name('auth.password.email');
   guests.get('/reset-password', ShowResetPasswordController).name('auth.password.reset');

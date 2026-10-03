@@ -1,7 +1,8 @@
-import { loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
+import { ConfigError, loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
 import { Container } from './container.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
-import { EventDispatcher, EventRegistry, type ListenerBinding } from './events.ts';
+import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
+import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
 import { ConsoleLogger, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
@@ -162,10 +163,21 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     .add(options.listeners ?? [])
     .add(modules.flatMap((module) => module.listeners ?? []));
   container.instance(EventRegistry, events);
-  container.bind(EventDispatcher, (resolver) => new EventDispatcher(events, resolver));
+  // Queued listeners (E86) go to the app's ListenerQueue (@bespokecore/queue); a test's EventFake sees every event first.
+  container.bind(
+    EventDispatcher,
+    (resolver) =>
+      new EventDispatcher(events, resolver, {
+        queue: () => (container.has(ListenerQueue) ? container.make(ListenerQueue) : undefined),
+        ...(container.has(EventFake) ? { observer: container.make(EventFake) } : {}),
+      }),
+  );
 
   app.register(providers);
   options.override?.(container);
   await app.boot();
+  // A queued listener in an app without a queue fails the start, not its first dispatch.
+  const queued = events.all().find((binding) => isQueuedListener(binding.listener));
+  if (queued && !container.has(ListenerQueue)) throw new ConfigError(missingListenerQueue(queued.listener as { name: string }));
   return app;
 }

@@ -1,13 +1,14 @@
 import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
-import { afterCommit, afterRollback, Clock, inTransaction, Logger, type Container } from '@bespokecore/core';
+import { afterCommit, afterRollback, Clock, inTransaction, Logger, type Container, type QueuedListenerClass } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
+import { CallQueuedListener } from './listeners.ts';
 import { uniqueLock, uniqueRecord } from './locks.ts';
-import { prepareChain, prepareRecord, type PendingJobs, type Queue } from './queue.ts';
+import { prepareChain, prepareRecord, recordOptionsOf, type PendingJobs, type Queue } from './queue.ts';
 import { QueueError, JobRegistry } from './registry.ts';
 import { delaySeconds, JobRunner } from './runner.ts';
 import { Worker, type WorkOptions, type WorkResult } from './worker.ts';
@@ -133,6 +134,34 @@ export class QueueFake implements Queue {
     return this;
   }
 
+  /**
+   * The queued runs of a queued listener (E86, `static queue`) — each with the event's payload as queued. The dispatch
+   * happens with the commit of the transaction around it (the default `afterCommit`).
+   */
+  listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): { readonly payload: P; readonly dispatched: DispatchedJob }[] {
+    return this.dispatched(CallQueuedListener as unknown as JobClass)
+      .filter((entry) => (entry.payload as { listener: string }).listener === listener.name)
+      .map((entry) => ({ payload: (entry.payload as { payload: P }).payload, dispatched: entry }))
+      .filter(({ payload }) => matches({ payload } as DispatchedJob, match as never));
+  }
+
+  /** A queued listener was queued (at least once, matching the payload part if given): `assertListenerQueued(SendEmailVerification, { userId })`. */
+  assertListenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this {
+    if (this.listenerQueued(listener, match).length === 0) {
+      const queued = this.dispatched(CallQueuedListener as unknown as JobClass).map((entry) => (entry.payload as { listener: string }).listener);
+      throw new AssertionError({
+        message: `Expected the queued listener ${listener.name} to be queued${match ? ' with a matching payload' : ''}. Queued listeners: ${queued.join(', ') || 'none'}.`,
+      });
+    }
+    return this;
+  }
+
+  assertListenerNotQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this {
+    const found = this.listenerQueued(listener, match).length;
+    if (found > 0) throw new AssertionError({ message: `Expected the queued listener ${listener.name} not to be queued${match ? ' with a matching payload' : ''}, found ${found}.` });
+    return this;
+  }
+
   assertDispatchedTimes<J extends JobClass>(job: J, times: number, match?: DispatchMatch<J>): this {
     const actual = this.dispatched(job, match).length;
     if (actual !== times) throw new AssertionError({ message: `Expected ${times} × ${job.name} (${job.job}), dispatched ${actual}.`, actual, expected: times });
@@ -206,7 +235,7 @@ export class QueueFake implements Queue {
     const deps = this.#deps();
     const unique = options.unique === undefined ? undefined : uniqueRecord(jobs[0]![0], options as UniqueDispatchOptions);
     // Checked like a real dispatch — registered, JSON, the schema — before any is recorded.
-    const prepared = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload, unique ? { unique } : {})));
+    const prepared = await Promise.all(jobs.map(([job, payload]) => prepareRecord(deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}) })));
     const entries = prepared.map((record, index) => ({ job: jobs[index]![0], payload: jobs[index]![1], prepared: record, chain: [] }));
     if (!unique) return this.#store(entries, options);
 

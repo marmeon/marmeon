@@ -1,11 +1,8 @@
-import { AuthConfig, PasswordBroker } from '@bespokecore/auth';
-import { AfterResponse, Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import { trans, Translator } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
-import { Router } from '@bespokecore/router';
+import { Queue } from '@bespokecore/queue';
 import * as v from 'valibot';
-import { AppConfig } from '../../../config/app.ts';
-import { ResetPasswordMail } from '../mail/ResetPasswordMail.ts';
+import { SendPasswordResetLinkJob } from '../jobs/SendPasswordResetLinkJob.ts';
 
 export const SendPasswordResetLinkRequest = defineRequest({
   schema: v.object({
@@ -16,36 +13,19 @@ export const SendPasswordResetLinkRequest = defineRequest({
 export class SendPasswordResetLinkController extends Controller {
   static request = SendPasswordResetLinkRequest;
 
-  readonly #broker: PasswordBroker;
-  readonly #mailer: Mailer;
-  readonly #afterResponse: AfterResponse;
-  readonly #app: AppConfig;
-  readonly #auth: AuthConfig;
-  readonly #router: Router;
+  readonly #queue: Queue;
   readonly #translator: Translator;
 
-  constructor(broker: PasswordBroker, mailer: Mailer, afterResponse: AfterResponse, app: AppConfig, auth: AuthConfig, router: Router, translator: Translator) {
+  constructor(queue: Queue, translator: Translator) {
     super();
-    this.#broker = broker;
-    this.#mailer = mailer;
-    this.#afterResponse = afterResponse;
-    this.#app = app;
-    this.#auth = auth;
-    this.#router = router;
+    this.#queue = queue;
     this.#translator = translator;
   }
 
-  handle(ctx: ContextOf<typeof SendPasswordResetLinkRequest>) {
-    const { email } = ctx.body;
-    // After the response: known or unknown address, the answer is the same — in content and in time.
-    this.#afterResponse.defer(async () => {
-      const reset = await this.#broker.createToken(email);
-      if (!reset) return;
-      // The token rides in the query (the request log shows paths only); the link page moves it into a cookie.
-      const url = new URL(this.#router.url('auth.password.reset', {}, { token: reset.token, email }), this.#app.url);
-      // In the account's language (whoever asked for the link, and in whatever language): the recipient's.
-      await this.#mailer.send(new ResetPasswordMail(reset.user, url.href, this.#auth.resetExpire, this.#translator.forLocale(reset.user.locale)));
-    });
+  async handle(ctx: ContextOf<typeof SendPasswordResetLinkRequest>) {
+    // Known or unknown address, the request does the same — queue one job — so the answer is the same in content and
+    // in time. The job looks the account up, makes the token and queues the mail.
+    await this.#queue.dispatch(SendPasswordResetLinkJob, { email: ctx.body.email, locale: this.#translator.locale }, { queue: 'mail' });
     return this.back('/forgot-password').flash('toast', { kind: 'success', message: this.#translator.get('auth.forgot.sent') });
   }
 }

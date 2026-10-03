@@ -87,10 +87,11 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     return 1;
   }
 
-  // Commands are built through the container, so they get constructor injection.
+  // Commands are built through the container, so they get constructor injection — in a scope of their own, like a
+  // request or a job: scoped services (a Translator, in APP_LOCALE) resolve, and start fresh for each command.
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
-    const command = (app?.container ?? new Container()).make(Command);
+    const command = (app?.container.createScope() ?? new Container()).make(Command);
     const code = await command.handle({ args: parsed.positionals, options: parsed.values, output, root, spawn: (...args) => spawnBespoke(root, args) });
     return typeof code === 'number' ? code : 0;
   } catch (error) {

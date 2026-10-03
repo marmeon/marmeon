@@ -56,6 +56,9 @@ importers:
       '@bespokecore/mail':
         specifier: workspace:*
         version: link:../../packages/mail
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@bespokecore/react':
         specifier: workspace:*
         version: link:../../packages/react
@@ -352,6 +355,9 @@ importers:
       '@bespokecore/auth':
         specifier: workspace:*
         version: link:../auth
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@bespokecore/encryption':
         specifier: workspace:*
         version: link:../encryption
@@ -386,6 +392,15 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
       mjml:
         specifier: ^5.4.1
         version: 5.4.1(svgo@4.1.0)(typescript@7.0.2)

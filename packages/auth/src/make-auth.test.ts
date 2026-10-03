@@ -55,7 +55,7 @@ describe('make:auth', () => {
     expect(existsSync(join(root, 'modules/auth/migrations/0001_01_01_000000_create_users_table.ts'))).toBe(true);
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import auth from '#modules/auth';");
-    expect(app).toMatch(/modules: \[auth\]/);
+    expect(app).toMatch(/modules: \[auth, system\]/);
     expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
   });

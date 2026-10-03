@@ -106,6 +106,52 @@ export class Locales {
 }
 
 /**
+ * Translators for any locale — outside a request too (finding 3 of W6): a root service, so a job, a command, a scheduled
+ * task or a queued listener injects it like anything else. Each translator it hands out is fixed to its locale (no
+ * global state, nothing set later):
+ *
+ * ```ts
+ * constructor(translators: Translators) { this.#translators = translators; }
+ * await this.#mailer.queue(new ResetPasswordMail(user, url, this.#translators.for(user.locale)));   // the recipient's language
+ * ```
+ *
+ * `for(locale)` takes the supported locale `locale` names (in the app's spelling), else `APP_LOCALE` — never a locale
+ * the app does not have. Inside a request, `Translator` is the request's language; in a job or a command it is
+ * `APP_LOCALE`: whoever a text is for, ask `Translators`.
+ */
+export class Translators {
+  readonly #catalog: Catalog;
+  readonly #locales: Locales;
+  readonly #cache = new Map<string, Translator>();
+
+  constructor(catalog: Catalog, locales: Locales) {
+    this.#catalog = catalog;
+    this.#locales = locales;
+  }
+
+  /** A translator fixed to `locale` — or to `APP_LOCALE` when `locale` is none of the supported ones (or missing). */
+  for(locale: string | null | undefined): Translator {
+    const fixed = this.#locales.find(locale) ?? this.#locales.default;
+    let translator = this.#cache.get(fixed);
+    if (!translator) {
+      translator = createTranslator(this.#catalog, () => fixed, { locales: () => this.#locales.supported });
+      this.#cache.set(fixed, translator);
+    }
+    return translator;
+  }
+
+  /** The translator of `APP_LOCALE`. */
+  get default(): Translator {
+    return this.for(this.#locales.default);
+  }
+
+  /** The supported locales, the default first. */
+  get locales(): readonly string[] {
+    return this.#locales.supported;
+  }
+}
+
+/**
  * The signed-in user's stored locale, if the app keeps one (Laravel's `HasLocalePreference`) — `SetLocale` asks
  * after the session and before the browser. Bound per request; the default knows none. Bind your own in a provider:
  *
@@ -215,8 +261,8 @@ export async function loadLangFiles(root: string, catalog: Catalog, locales: Loc
 }
 
 /**
- * Registers the translations (`Catalog`, loaded at boot), the request's `Translator` and `SetLocale` in the `web`
- * group. Found by `bespoke discover`.
+ * Registers the translations (`Catalog`, loaded at boot), `Translators` (any locale, anywhere), the request's
+ * `Translator` and `SetLocale` in the `web` group. Found by `bespoke discover`.
  */
 export class I18nServiceProvider implements ServiceProvider {
   static config = [I18nConfig];
@@ -226,6 +272,8 @@ export class I18nServiceProvider implements ServiceProvider {
     const catalog = new Catalog({ fallback: locales.fallback }).add('en', 'bespoke', frameworkEn, '@bespokecore/i18n (en)').add('de', 'bespoke', frameworkDe, '@bespokecore/i18n (de)');
     container.instance(Locales, locales);
     container.instance(Catalog, catalog);
+    container.instance(Translators, new Translators(catalog, locales));
+    // The request's locale (SetLocale sets it); in any other scope — a job, a command — APP_LOCALE.
     container.scoped(CurrentLocale, () => new CurrentLocale(locales.default));
     container.scoped(Translator, (c) => {
       const current = c.make(CurrentLocale);

@@ -1,7 +1,8 @@
 import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable } from '@bespokecore/mail';
+import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
 import type { User } from '../users.ts';
 import { layout } from './layout.ts';
+import { previewData } from './preview-data.ts';
 
 /** After registration, from the queue: hello, and where to start — in the user's language. */
 export class WelcomeMail implements Mailable {
@@ -13,6 +14,12 @@ export class WelcomeMail implements Mailable {
     this.#user = user;
     this.#url = url;
     this.#t = t;
+  }
+
+  /** The preview (`/_bespoke/mail/auth/WelcomeMail`, development only). */
+  static preview(context: MailPreviewContext): WelcomeMail {
+    const { user, url, t } = previewData(context);
+    return new WelcomeMail(user, url('/users/me'), t);
   }
 
   envelope() {

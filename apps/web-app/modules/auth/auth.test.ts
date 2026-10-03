@@ -14,6 +14,7 @@ import type { ConfirmPasswordController } from './controllers/ConfirmPasswordCon
 import type { LoginController } from './controllers/LoginController.ts';
 import type { RegisterController } from './controllers/RegisterController.ts';
 import type { ResetPasswordController } from './controllers/ResetPasswordController.ts';
+import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
 import { EmailChangedMail } from './mail/EmailChangedMail.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
@@ -326,19 +327,27 @@ describe('password reset', () => {
   const ask = (email: string) => app.post('/forgot-password', { form: { email }, headers: { referer: 'http://localhost/forgot-password' } });
   /** The link from the last reset mail — path and query, as a browser would open it. */
   const linkInMail = () => {
-    const [sent] = app.mail.sent(ResetPasswordMail).slice(-1);
+    const [sent] = app.mail.queued(ResetPasswordMail).slice(-1);
     const url = new URL(/https?:\/\/\S+\/reset-password\?\S+(?=\))/.exec(sent!.message.text)![0]);
     return { path: url.pathname + url.search, token: url.searchParams.get('token')! };
   };
-  const open = async () => (await app.get(linkInMail().path).assertRedirect('/reset-password')).cookie('password_reset')!;
+  /** Lets the worker run what the request queued, then opens the link of the mail. */
+  const open = async () => {
+    await app.queue.work();
+    return (await app.get(linkInMail().path).assertRedirect('/reset-password')).cookie('password_reset')!;
+  };
   const resetWith = (cookie: string, password = 'brand new password') =>
     app.withCookie('password_reset', cookie).post('/reset-password', { form: { password, password_confirmation: password }, headers: { referer: 'http://localhost/reset-password' } });
 
   it('mails a link, takes the token out of the URL, sets the new password — once', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', email: 'ada@example.com' });
     await ask(' ADA@example.com ').assertRedirect('/forgot-password').assertFlashed('toast', { message: SENT });
-    app.mail.assertSentCount(ResetPasswordMail, 1).assertSent(ResetPasswordMail, (_mail, message) => message.to[0]!.address === 'ada@example.com');
-    const [mail] = app.mail.sent(ResetPasswordMail);
+    // The request queued a job (the same for every address); the job made the token and queued the mail.
+    app.queue.assertDispatched(SendPasswordResetLinkJob, { email: 'ada@example.com' });
+    app.mail.assertNothingQueued();
+    await app.queue.work();
+    app.mail.assertQueuedCount(ResetPasswordMail, 1).assertQueued(ResetPasswordMail, (_mail, message, options) => message.to[0]!.address === 'ada@example.com' && options.queue === 'mail');
+    const [mail] = app.mail.queued(ResetPasswordMail);
     expect(mail!.message.html).toContain('<!--[if mso'); // MJML: built for mail clients
     expect(mail!.message.text).toContain('Hello Ada,');
 
@@ -359,17 +368,19 @@ describe('password reset', () => {
     const known = await ask('ada@example.com');
     const unknown = await ask('nobody@example.com');
     expect([unknown.status, unknown.headers.get('location'), unknown.session().status]).toEqual([known.status, known.headers.get('location'), known.session().status]);
-    app.mail.assertSentCount(ResetPasswordMail, 1);
+    app.queue.assertDispatchedTimes(SendPasswordResetLinkJob, 2); // the request did the same for both
+    await app.queue.work();
+    app.mail.assertQueuedCount(ResetPasswordMail, 1);
   });
 
-  it('counter-check (enumeration by timing): the mail goes out after the response', async () => {
+  it('counter-check (enumeration by timing): the request only queues a job — token and mail are made by the worker', async () => {
     await app.close(); // one database app per test
     let mailed = 0;
     class SlowMailer extends MailFake {
-      override async send(mailable: Mailable): Promise<MailMessage> {
-        await new Promise((resolve) => setTimeout(resolve, 150)); // a slow SMTP server
+      override async queue(mailable: Mailable): Promise<MailMessage> {
+        await new Promise((resolve) => setTimeout(resolve, 150)); // slow work for a known address
         mailed++;
-        return super.send(mailable);
+        return super.queue(mailable);
       }
     }
     app = await createTestApp(application, { database: 'refresh', mail: 'real', override: (c) => c.instance(Mailer, new SlowMailer()) });
@@ -385,6 +396,8 @@ describe('password reset', () => {
     expect(await time('ada@example.com')).toBeLessThan(100);
     expect(await time('nobody@example.com')).toBeLessThan(100);
     await kernel.settle();
+    expect(mailed).toBe(0);
+    await app.queue.work();
     expect(mailed).toBe(1);
   });
 
@@ -422,6 +435,7 @@ describe('password reset', () => {
     app = await createTestApp(application, { database: 'refresh', override: (c) => c.instance(Logger, new Capture()) });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     await ask('ada@example.com');
+    await app.queue.work();
     const { token } = linkInMail();
     await open();
     const rows = await app.make(Database).selectFrom('password_reset_tokens').select(['email', (eb) => secret(eb, 'token_hash')]).execute();
@@ -444,7 +458,8 @@ describe('password reset', () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     await ask('ada@example.com');
     await ask('ada@example.com');
-    app.mail.assertSentCount(ResetPasswordMail, 1);
+    await app.queue.work();
+    app.mail.assertQueuedCount(ResetPasswordMail, 1);
     for (let i = 0; i < 3; i++) await ask(`someone${i}@example.com`);
     await ask('ada@example.com').assertStatus(429);
   });
@@ -453,17 +468,21 @@ describe('password reset', () => {
 describe('e-mail verification', () => {
   /** The link of the last verification mail (to `address`) — path and query. */
   const verificationLink = (address?: string) => {
-    const sent = app.mail.sent(VerifyEmailMail, (_mail, message) => address === undefined || message.to[0]!.address === address).at(-1);
+    const sent = app.mail.queued(VerifyEmailMail, (_mail, message) => address === undefined || message.to[0]!.address === address).at(-1);
     const url = new URL(/https?:\/\/\S+\/email\/verify\/\S+(?=\))/.exec(sent!.message.text)![0]);
     return url.pathname + url.search;
   };
-  const register = (email = 'kj@example.com') =>
-    app.post('/register', { form: { name: 'Katherine Johnson', email, password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } });
+  /** Registers — and lets the worker run what the registration queued (the verification listener, which queues the mail). */
+  const register = async (email = 'kj@example.com') => {
+    const response = await app.post('/register', { form: { name: 'Katherine Johnson', email, password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } });
+    await app.queue.work();
+    return response;
+  };
   const userBy = (email: string) => app.make(UserRepository).query().selectAll().where('email', '=', email).executeTakeFirstOrThrow() as Promise<User>;
 
   it('mails a signed link after registration; the link verifies — then links may be published', async () => {
-    const registered = await register().assertRedirect('/users/me');
-    app.mail.assertSent(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
+    const registered = (await register()).assertRedirect('/users/me');
+    app.mail.assertQueued(VerifyEmailMail, (_mail, message, options) => message.to[0]!.address === 'kj@example.com' && options.queue === 'mail');
     const kj = await userBy('kj@example.com');
     expect(kj.email_verified_at).toBeNull();
     const session = app.withCookie('bespoke_session', registered.cookie('bespoke_session')!);
@@ -525,7 +544,7 @@ describe('e-mail verification', () => {
   it('sends the link again on request — three times a minute', async () => {
     const kj = await app.factory(UserFactory).state('unverified').create();
     for (let i = 0; i < 3; i++) await app.actingAs(kj).post('/email/verification-notification').assertRedirect();
-    app.mail.assertSentCount(VerifyEmailMail, 3);
+    app.mail.assertQueuedCount(VerifyEmailMail, 3);
     await app.actingAs(kj).post('/email/verification-notification').assertStatus(429);
   });
 
@@ -538,8 +557,8 @@ describe('e-mail verification', () => {
     const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
     await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'E-mail address changed. Please confirm the new one — we sent you a link.' });
     expect(await userBy('katherine@nasa.example')).toMatchObject({ id: kj.id, email_verified_at: null });
-    app.mail.assertSent(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
-    app.mail.assertSent(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
+    app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
+    app.mail.assertQueued(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
     await session.expectingJson().get(oldLink).assertForbidden(); // the link for the old address
     await session.get(verificationLink('katherine@nasa.example')).assertRedirect('/users/me');
   });

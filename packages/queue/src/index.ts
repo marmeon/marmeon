@@ -1,11 +1,12 @@
-import { Application, Clock, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
 import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
 import type { JobClass } from './job.ts';
+import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
 import { Queue, QueueManager } from './queue.ts';
-import { JobRegistry, QueueSetupError } from './registry.ts';
+import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
 
 // The queue (E83–E85, E98): jobs as injectable classes with a stable name and a payload schema, drivers behind one
 // contract (sync, database, redis), a worker with a scope per job, retries, failed jobs, unique jobs, chains, job
@@ -46,6 +47,9 @@ export { cipherContext, describeIssues, JobPayloadError, JobRunner, nextInChain,
 export type { PayloadCipher, Prepared } from './runner.ts';
 export { JobStuckError, JobTimeoutError, Worker } from './worker.ts';
 export type { WorkerDependencies, WorkOptions, WorkResult } from './worker.ts';
+export { CallQueuedListener, checkQueueableEvent, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
+export { RECORD_OPTIONS } from './queue.ts';
+export type { RecordOptions } from './queue.ts';
 export { QueueFake } from './fake.ts';
 export type { ChainMatch, DispatchedJob, DispatchMatch } from './fake.ts';
 export { EXIT_STUCK, QueueWorkCommand } from './commands/work.ts';
@@ -69,8 +73,16 @@ export class QueueServiceProvider implements ServiceProvider {
     container.singleton(JobRegistry, (c) => {
       const registry = new JobRegistry();
       for (const module of c.make(Application).modules) registry.add(module.jobs ?? [], `module ${module.name}`);
+      // The framework's own jobs (`bespoke.*`): queued listeners here — when the app has one —, queued mails from
+      // @bespokecore/mail. (A worker checks every registered job's timeout against retryAfter.)
+      if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@bespokecore/queue', { framework: true });
       return registry;
     });
+    // Queued listeners (E86): checked at startup, queued by the EventDispatcher through the ListenerQueue, run by a
+    // `bespoke.listener` job — built in the job's scope, which then builds the listener.
+    container.singleton(QueuedListeners, (c) => new QueuedListeners(c.make(EventRegistry)));
+    container.singleton(ListenerQueue, (c) => new QueueListenerDispatcher(() => container.make(Queue), c.make(QueuedListeners)));
+    container.bind(CallQueuedListener, (c) => new CallQueuedListener(c, c.make(QueuedListeners)));
     container.singleton(QueueConnections, (c) => new QueueConnections(container, c.make(QueueConfig)));
     container.singleton(Queue, (c) => {
       const config = c.make(QueueConfig);
@@ -117,9 +129,14 @@ export class QueueServiceProvider implements ServiceProvider {
       connections.options(used.connection);
       await connections.verify();
     }
-    if (registry.all().some((job) => job.encrypted)) {
+    // Every event with a queued listener can be queued, names are unique, `static queue` is sane — or the start fails.
+    const queuedListeners = app.container.make(QueuedListeners);
+    // Framework jobs need the Encrypter only when they are used (a queued listener here; a queued mail says so itself).
+    if (registry.all().some((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX)) || queuedListeners.any) {
       const { Encrypter } = await importEncryption();
-      if (!app.container.has(Encrypter)) throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @bespokecore/encryption and an APP_KEY.');
+      if (!app.container.has(Encrypter)) {
+        throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @bespokecore/encryption and an APP_KEY — every queued listener (static queue) is one.');
+      }
     }
 
     const cli = await import('@bespokecore/cli').catch(() => undefined);

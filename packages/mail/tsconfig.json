@@ -11,6 +11,15 @@
   "references": [
     {
       "path": "../core"
+    },
+    {
+      "path": "../router"
+    },
+    {
+      "path": "../queue"
+    },
+    {
+      "path": "../encryption"
     }
   ]
 }

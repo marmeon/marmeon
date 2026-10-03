@@ -7,7 +7,7 @@ import type { CommandInput } from '@bespokecore/cli';
 export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
 /** What the generated module imports — reported when the app lacks it. */
-const NEEDED = ['@bespokecore/auth', '@bespokecore/cache', '@bespokecore/database', '@bespokecore/mail', '@bespokecore/react', '@bespokecore/router', '@bespokecore/session', 'mjml', 'valibot'];
+const NEEDED = ['@bespokecore/auth', '@bespokecore/cache', '@bespokecore/database', '@bespokecore/mail', '@bespokecore/queue', '@bespokecore/react', '@bespokecore/router', '@bespokecore/session', 'mjml', 'valibot'];
 
 /**
  * `bespoke make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
@@ -57,6 +57,7 @@ export class MakeAuthCommand {
     if (missing.length > 0) input.output.line(`Install what the module uses: pnpm add ${missing.join(' ')}`);
     if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: bespoke migrate — and set MAIL_* in .env (development writes mails to the log).');
+    input.output.line('Its mails go through the queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one).');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
     return 0;
   }

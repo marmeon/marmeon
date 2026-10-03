@@ -1,7 +1,8 @@
 import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable } from '@bespokecore/mail';
+import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
 import type { User } from '../users.ts';
 import { layout } from './layout.ts';
+import { previewData } from './preview-data.ts';
 
 /** After registration and after a change of address: a signed link to confirm the address — in the user's language. */
 export class VerifyEmailMail implements Mailable {
@@ -13,6 +14,12 @@ export class VerifyEmailMail implements Mailable {
     this.#user = user;
     this.#url = url;
     this.#t = t;
+  }
+
+  /** The preview (`/_bespoke/mail/auth/VerifyEmailMail`, development only). */
+  static preview(context: MailPreviewContext): VerifyEmailMail {
+    const { user, url, t } = previewData(context);
+    return new VerifyEmailMail(user, url('/email/verify/1/preview?expires=0&signature=preview'), t);
   }
 
   envelope() {

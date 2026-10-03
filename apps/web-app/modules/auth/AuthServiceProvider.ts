@@ -18,6 +18,8 @@ export class AuthServiceProvider implements ServiceProvider {
     // the e-mail is not validated yet when middleware runs (W2 rule: never raw input).
     const limiter = app.container.make(RateLimiter);
     limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(ctx.ip ?? 'unknown'));
+    // Registrations (E100): ten a minute per IP — scripted sign-ups (and the mails they queue) are slowed down.
+    limiter.for('register', (ctx) => Limit.perMinute(10).by(ctx.ip ?? 'unknown'));
     // Resending the verification mail: per signed-in user (the route is behind authenticate()).
     limiter.for('verification', (ctx) => Limit.perMinute(3).by(String((ctx as { user?: { id: number } }).user?.id ?? ctx.ip)));
   }

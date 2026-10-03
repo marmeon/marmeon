@@ -1,6 +1,7 @@
 import { Registered } from '@bespokecore/auth';
 import { defineModule, listen } from '@bespokecore/core';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
+import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
 import apiRoutes from './api-routes.ts';
 import routes from './routes.ts';
@@ -15,7 +16,10 @@ export type { User } from './users.ts';
 export default defineModule({
   name: 'auth',
   providers: [AuthServiceProvider],
+  // A queued listener (static queue): a worker sends the verification mail once the registration committed.
   listeners: [listen(Registered, SendEmailVerification)],
+  // Queued work — a worker (`bespoke queue:work`, started by `bespoke dev`) runs only registered jobs.
+  jobs: [SendPasswordResetLinkJob],
   migrations: new URL('./migrations/', import.meta.url),
   // Other modules may read and join `users` — writing goes through the UserRepository.
   exposes: ['users'],

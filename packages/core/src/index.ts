@@ -16,8 +16,22 @@ export { ConsoleLogger, Logger } from './logger.ts';
 export { Clock, durationToMilliseconds, SystemClock, TestClock } from './clock.ts';
 export type { Duration } from './clock.ts';
 export { fillPlaceholders, Translator } from './translator.ts';
-export { EventDispatcher, EventRegistry, listen } from './events.ts';
-export type { EventClass, Listener, ListenerBinding, ListenerLike } from './events.ts';
+export { EventDispatcher, EventRegistry, isQueuedListener, listen, ListenerQueue, missingListenerQueue } from './events.ts';
+export type {
+  EventClass,
+  EventDispatcherOptions,
+  EventObserver,
+  EventPayload,
+  IsJson,
+  Listener,
+  ListenerBinding,
+  ListenerLike,
+  QueueableEvent,
+  QueuedListenerClass,
+  QueuedListenerOptions,
+} from './events.ts';
+export { EventFake } from './events-fake.ts';
+export type { EventMatch } from './events-fake.ts';
 export type { LogContext } from './logger.ts';
 export { currentJob, currentLogContext, currentRequest, runWithJob, runWithRequest } from './request-context.ts';
 export type { JobInfo, RequestInfo } from './request-context.ts';

@@ -1,4 +1,5 @@
-import type { AuthUser } from './user.ts';
+import * as v from 'valibot';
+import { idOf, type AuthUser, type AuthUserId } from './user.ts';
 
 /** A user signed in (password, remember-me cookie, registration). */
 export class Login {
@@ -52,13 +53,26 @@ export class Lockout {
   }
 }
 
-/** A new user registered — the app dispatches it (verification mails listen to it, step 6). */
+/** A user id as JSON: a string or a number, typed as the app's (`AuthTypes`). */
+const userId = v.custom<AuthUserId>((value) => typeof value === 'string' || typeof value === 'number', 'Expected a user id (a string or a number)');
+
+/**
+ * A new user registered — the app dispatches it (the verification mail listens to it). Queueable (E86): a queued
+ * listener gets `{ userId }` (`EventPayload<typeof Registered>`) and reads the account as it is when it runs.
+ */
 export class Registered {
+  static readonly event = 'auth.registered';
+  static readonly schema = v.object({ userId });
   readonly #event = true;
   readonly user: AuthUser;
 
   constructor(user: AuthUser) {
     this.user = user;
+  }
+
+  /** What a queued listener gets of the event. */
+  get userId(): AuthUserId {
+    return idOf(this.user) as AuthUserId;
   }
 }
 

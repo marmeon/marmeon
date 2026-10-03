@@ -7,6 +7,20 @@ import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './loc
 import { backoffOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
 import { cipherContext, delaySeconds, nextInChain, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
 
+/**
+ * Settings of one queued record that the framework's own jobs take from elsewhere — a queued listener's `tries` and
+ * `backoff` (`static queue`, E86) instead of those of the `bespoke.listener` class. A symbol key of the dispatch options:
+ * not part of the public API.
+ */
+export const RECORD_OPTIONS: unique symbol = Symbol.for('bespokecore.queue.record-options');
+export interface RecordOptions {
+  readonly tries?: number;
+  readonly backoff?: readonly number[];
+}
+export function recordOptionsOf(options: object): RecordOptions {
+  return (options as { [RECORD_OPTIONS]?: RecordOptions })[RECORD_OPTIONS] ?? {};
+}
+
 /** A `bulk()` or `chain()` list: each entry's payload typed by its job class, checked like a single dispatch. */
 export type PendingJobs<J extends readonly JobClass[]> = { readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>] };
 
@@ -108,7 +122,7 @@ export class QueueManager implements Queue {
 
   async #dispatch(job: JobClass, payload: unknown, options: DispatchOptions | UniqueDispatchOptions): Promise<string | undefined> {
     const unique = options.unique === undefined ? undefined : uniqueRecord(job, options as UniqueDispatchOptions);
-    const prepared = await prepareRecord(this.#deps, job, payload, unique ? { unique } : {});
+    const prepared = await prepareRecord(this.#deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}) });
     if (!unique) return (await this.#push([prepared], options))[0]!;
     return this.#pushUnique(prepared as Prepared & { record: { unique: UniqueRecord } }, options);
   }
@@ -286,7 +300,7 @@ export async function prepareRecord(
   deps: { readonly registry: JobRegistry; readonly cipher: () => Promise<PayloadCipher>; readonly clock: Clock },
   job: JobClass,
   payload: unknown,
-  extra: { readonly unique?: UniqueRecord } = {},
+  extra: RecordOptions & { readonly unique?: UniqueRecord } = {},
 ): Promise<{ record: JobRecord; serialized: string }> {
   if (typeof job !== 'function' || typeof job.job !== 'string') throw new QueueError(`Only job classes can be dispatched (a class with static job and static schema), not ${String(job)}.`);
   if (!deps.registry.has(job)) {
@@ -307,8 +321,8 @@ export async function prepareRecord(
     job: job.job,
     data,
     ...(job.encrypted ? { encrypted: true as const } : {}),
-    tries: triesOf(job),
-    backoff: backoffOf(job),
+    tries: extra.tries ?? triesOf(job),
+    backoff: extra.backoff ? [...extra.backoff] : backoffOf(job),
     dispatchedAt: deps.clock.now(),
     ...(extra.unique ? { unique: extra.unique } : {}),
   };

@@ -1,16 +1,22 @@
 import { AssertionError } from 'node:assert';
 import type { Address, Mailable, MailMessage } from './message.ts';
-import { compose, type Mailer } from './mailer.ts';
+import { compose, type Mailer, type QueueMailOptions } from './mailer.ts';
 
 type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
 
 /**
  * Records mail instead of sending it — `@bespokecore/testing` puts it in place of the `Mailer` (`app.mail`).
  * Every mail is still composed (envelope and content run), so a broken template fails the test.
+ *
+ * Mails sent now (`mailer.send`) and queued ones (`mailer.queue`) are kept apart: `assertSent` sees the first,
+ * `assertQueued` the second (Laravel's `Mail::assertQueued`). A queued mail is composed here like a real one — in the
+ * language and with the links of the moment it was queued — but not put on the queue: test the queue's `bespoke.mail`
+ * job with `createTestApp(…, { mail: 'real' })`.
  */
 export class MailFake implements Mailer {
   readonly #from: Address;
   readonly #sent: { mailable: Mailable; message: MailMessage }[] = [];
+  readonly #queued: { mailable: Mailable; message: MailMessage; options: QueueMailOptions }[] = [];
 
   constructor(from: Address = 'test@example.com') {
     this.#from = from;
@@ -20,6 +26,48 @@ export class MailFake implements Mailer {
     const message = await compose(mailable, this.#from);
     this.#sent.push({ mailable, message });
     return message;
+  }
+
+  async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
+    const message = await compose(mailable, this.#from);
+    this.#queued.push({ mailable, message, options });
+    return message;
+  }
+
+  /** The queued mails of a class (with their composed messages and where they were to go), optionally filtered. */
+  queued<M extends Mailable>(
+    Class: MailableClass<M>,
+    filter: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean = () => true,
+  ): { mail: M; message: MailMessage; options: QueueMailOptions }[] {
+    return this.#queued
+      .filter((entry): entry is { mailable: M; message: MailMessage; options: QueueMailOptions } => entry.mailable instanceof Class)
+      .filter((entry) => filter(entry.mailable, entry.message, entry.options))
+      .map(({ mailable, message, options }) => ({ mail: mailable, message, options }));
+  }
+
+  assertQueued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): this {
+    if (this.queued(Class, filter).length === 0) {
+      const queued = this.#queued.map((entry) => `${entry.mailable.constructor.name} to ${entry.message.to.map((to) => to.address).join(', ')}`);
+      const sent = this.sent(Class).length > 0 ? ` (${Class.name} was sent now, not queued — assertSent)` : '';
+      throw new AssertionError({ message: `Expected a ${Class.name}${filter ? ' matching the filter' : ''} to be queued${sent}. Queued: ${queued.join('; ') || 'nothing'}.` });
+    }
+    return this;
+  }
+
+  assertQueuedCount<M extends Mailable>(Class: MailableClass<M>, count: number): this {
+    const actual = this.queued(Class).length;
+    if (actual !== count) throw new AssertionError({ message: `Expected ${count} queued × ${Class.name}, queued ${actual}.`, actual, expected: count });
+    return this;
+  }
+
+  assertNotQueued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): this {
+    if (this.queued(Class, filter).length > 0) throw new AssertionError({ message: `Expected no ${Class.name}${filter ? ' matching the filter' : ''} to be queued.` });
+    return this;
+  }
+
+  assertNothingQueued(): this {
+    if (this.#queued.length > 0) throw new AssertionError({ message: `Expected no queued mail, queued ${this.#queued.map((entry) => entry.mailable.constructor.name).join(', ')}.` });
+    return this;
   }
 
   /** The sent mails of a class (with their composed messages), optionally filtered. */
@@ -33,7 +81,8 @@ export class MailFake implements Mailer {
   assertSent<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage) => boolean): this {
     if (this.sent(Class, filter).length === 0) {
       const sent = this.#sent.map((entry) => `${entry.mailable.constructor.name} to ${entry.message.to.map((to) => to.address).join(', ')}`);
-      throw new AssertionError({ message: `Expected a ${Class.name}${filter ? ' matching the filter' : ''} to be sent. Sent: ${sent.join('; ') || 'nothing'}.` });
+      const queued = this.queued(Class).length > 0 ? ` (${Class.name} was queued, not sent now — assertQueued)` : '';
+      throw new AssertionError({ message: `Expected a ${Class.name}${filter ? ' matching the filter' : ''} to be sent${queued}. Sent: ${sent.join('; ') || 'nothing'}.` });
     }
     return this;
   }

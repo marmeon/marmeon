@@ -36,7 +36,9 @@
   },
   "peerDependencies": {
     "mjml": ">=5",
-    "nodemailer": ">=10"
+    "nodemailer": ">=10",
+    "@bespokecore/queue": "workspace:*",
+    "@bespokecore/router": "workspace:*"
   },
   "peerDependenciesMeta": {
     "nodemailer": {
@@ -44,10 +46,19 @@
     },
     "mjml": {
       "optional": true
+    },
+    "@bespokecore/queue": {
+      "optional": true
+    },
+    "@bespokecore/router": {
+      "optional": true
     }
   },
   "devDependencies": {
     "mjml": "^5.4.1",
-    "nodemailer": "^10.0.13"
+    "nodemailer": "^10.0.13",
+    "@bespokecore/queue": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/encryption": "workspace:*"
   }
 }

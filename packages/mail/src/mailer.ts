@@ -1,14 +1,44 @@
-import { token } from '@bespokecore/core';
+import { token, type Duration } from '@bespokecore/core';
 import { fromHtml, Html } from './html.ts';
 import type { Address, Mailable, MailContent, MailMessage } from './message.ts';
 import { fromMjml, Mjml } from './mjml.ts';
-import { MailTransport } from './transports.ts';
+import { toQueued, type QueuedMailPayload } from './queued.ts';
+import type { MailTransport } from './transports.ts';
 
-/** Sends mailables — `constructor(mailer: Mailer)`, then `await mailer.send(new ResetPasswordMail(user, url))`. */
+/** Where and when a queued mail goes (`mailer.queue(mail, options)`). */
+export interface QueueMailOptions {
+  /** The queue (default: the connection's default queue). A worker must take it: `queue:work --queue=mail,default`. */
+  readonly queue?: string;
+  /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
+  readonly delay?: number | Duration;
+  /** The queue connection (default: `QUEUE_CONNECTION`). */
+  readonly connection?: string;
+}
+
+/**
+ * Sends mailables — `constructor(mailer: Mailer)`, then:
+ *
+ * ```ts
+ * await this.#mailer.send(new WelcomeMail(user, url, t));                       // now: composed and handed to the transport
+ * await this.#mailer.queue(new ResetPasswordMail(user, url, t), { queue: 'mail' }); // composed now, sent by a worker
+ * ```
+ */
 export interface Mailer {
   send(mailable: Mailable): Promise<MailMessage>;
+  /**
+   * Composes the mail **now** — its language, its links, its content: the recipient's translator and absolute links
+   * (from `APP_URL`) belong in the mailable — and queues the message for a worker to hand to the transport (E105). The
+   * request does not wait for the mail server, and an SMTP failure retries in the worker instead of failing the request.
+   * The queued message is **encrypted** (`jobs`/`failed_jobs` keep no reset link in plain text). Inside
+   * `connections.transaction()` it is queued only if the transaction commits. Resolves with the composed message.
+   * Needs @bespokecore/queue (and APP_KEY).
+   */
+  queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
 }
 export const Mailer = token<Mailer>('Mailer');
+
+/** Puts a composed mail on the queue — the `bespoke.mail` job (`MailServiceProvider` wires it to @bespokecore/queue). */
+export type MailQueue = (payload: QueuedMailPayload, options: QueueMailOptions) => Promise<unknown>;
 
 export class MailError extends Error {
   override name = 'MailError';
@@ -25,6 +55,7 @@ export async function compose(mailable: Mailable, defaultFrom: Address): Promise
     if (!/^[A-Za-z0-9-]+$/.test(name)) throw new MailError(`Invalid mail header name "${name}".`);
     singleLine(value, `header ${name}`);
   }
+  checkLinks(mailable, content.html);
   return {
     from: address(envelope.from ?? defaultFrom),
     to,
@@ -39,20 +70,49 @@ export async function compose(mailable: Mailable, defaultFrom: Address): Promise
   };
 }
 
-/** The default `Mailer`: composes, then hands the message to the configured transport. */
+/**
+ * The default `Mailer`: composes, then hands the message to the configured transport — now (`send`), or through the queue
+ * (`queue`). The transport is built on first use: an app that only queues mails never opens an SMTP connection in its
+ * web process.
+ */
 export class TransportMailer implements Mailer {
-  readonly #transport: MailTransport;
+  readonly #transport: () => MailTransport;
   readonly #from: Address;
+  readonly #queue: MailQueue | undefined;
 
-  constructor(transport: MailTransport, from: Address) {
-    this.#transport = transport;
+  constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue) {
+    this.#transport = typeof transport === 'function' ? transport : () => transport;
     this.#from = from;
+    this.#queue = queue;
   }
 
   async send(mailable: Mailable): Promise<MailMessage> {
     const message = await compose(mailable, this.#from);
-    await this.#transport.send(message);
+    await this.#transport().send(message);
     return message;
+  }
+
+  async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
+    if (!this.#queue) throw new MailError('mailer.queue() needs @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover) — or send the mail now: mailer.send().');
+    const message = await compose(mailable, this.#from);
+    await this.#queue({ mailable: mailable.constructor.name, message: toQueued(message) }, options);
+    return message;
+  }
+}
+
+/** `href="/users/me"`, `src='../logo.png'`, `href=?page=2` — a link a mail client cannot resolve. */
+const RELATIVE_LINK = /\b(?:href|src)\s*=\s*(["']?)\s*((?:\/(?!\/)|\.{1,2}\/|\?)[^"'\s>]*)/i;
+
+/**
+ * Links in a mail are absolute — a mail client has no page to resolve `/users/me` against, and a mail composed in a
+ * worker has no request whose host could fill one in (nor should a Host header ever decide where a link points).
+ */
+function checkLinks(mailable: Mailable, html: string): void {
+  const relative = RELATIVE_LINK.exec(html);
+  if (relative) {
+    throw new MailError(
+      `${mailable.constructor.name} links to "${relative[2]}" — a link in a mail must be absolute. Build it from APP_URL: new URL(path, config.url).href, or a signed URL with { base: config.url }.`,
+    );
   }
 }
 

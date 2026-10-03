@@ -8,7 +8,7 @@ import { password } from '@bespokecore/auth';
 import { Session, SessionServiceProvider } from '@bespokecore/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
-import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator } from './index.ts';
+import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
 
 const root = join(import.meta.dirname, '__fixtures__', 'shop');
 
@@ -298,6 +298,44 @@ describe('I18nConfig', () => {
     expect(translator.forLocale('fr').locale).toBe('en'); // not supported: the translator's own
     expect(translator.forLocale(null).locale).toBe('en');
     expect(translator.get('app.title')).toBe('Shop'); // lang/en.ts: namespace `app`
+  });
+});
+
+describe('Translators — any locale, outside a request too', () => {
+  it('is a root service: for(locale) is fixed to a supported locale, else APP_LOCALE', async () => {
+    const { application } = await boot({ env: { APP_LOCALE: 'de' } });
+    const translators = application.container.make(Translators); // no scope: a command, a job's constructor, a scheduler
+    expect(translators.for('en').get('shop.greeting', { name: 'Ada' })).toBe('Hello Ada');
+    expect(translators.for('DE').locale).toBe('de'); // in the app's spelling
+    expect(translators.for('fr').locale).toBe('de'); // not supported (APP_LOCALES=en,de): APP_LOCALE, not the translator of whoever asks
+    expect(translators.for(undefined).get('shop.greeting', { name: 'Ada' })).toBe('Hallo Ada');
+    expect(translators.default.locale).toBe('de');
+    expect(translators.for('en')).toBe(translators.for('en'));
+    expect(translators.locales).toEqual(['de', 'en']);
+  });
+
+  it('a command resolves the Translator — it runs in a scope of its own (finding 3: never "scoped outside a scope")', async () => {
+    const { run } = await import('@bespokecore/cli/main');
+    const out: string[] = [];
+    const err: string[] = [];
+    const stdout = process.stdout.write.bind(process.stdout);
+    const stderr = process.stderr.write.bind(process.stderr);
+    process.stdout.write = ((chunk: string) => (out.push(String(chunk)), true)) as typeof process.stdout.write;
+    process.stderr.write = ((chunk: string) => (err.push(String(chunk)), true)) as typeof process.stderr.write;
+    try {
+      expect(await run(['fixture:greet'], join(import.meta.dirname, '__fixtures__', 'command-app'))).toBe(0);
+    } finally {
+      process.stdout.write = stdout;
+      process.stderr.write = stderr;
+    }
+    expect(err.join('')).toBe('');
+    expect(out.join('')).toBe('de: Zu viele Versuche.\n'); // APP_LOCALE
+  });
+
+  it('a Translator outside a request — a job or a command scope — speaks APP_LOCALE', async () => {
+    const { application } = await boot({ env: { APP_LOCALE: 'de' } });
+    expect(() => application.container.make(Translator)).toThrow(/scoped and can only be resolved inside a scope/);
+    expect(application.container.createScope().make(Translator).get('shop.greeting', { name: 'Ada' })).toBe('Hallo Ada');
   });
 });
 

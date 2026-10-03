@@ -1,6 +1,6 @@
 import type { Authenticated } from '@bespokecore/auth';
 import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
+import { trans, Translator, Translators } from '@bespokecore/i18n';
 import { Mailer } from '@bespokecore/mail';
 import * as v from 'valibot';
 import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
@@ -26,13 +26,15 @@ export class UpdateEmailController extends Controller {
   readonly #verification: VerificationMailer;
   readonly #mailer: Mailer;
   readonly #translator: Translator;
+  readonly #translators: Translators;
 
-  constructor(users: UserRepository, verification: VerificationMailer, mailer: Mailer, translator: Translator) {
+  constructor(users: UserRepository, verification: VerificationMailer, mailer: Mailer, translator: Translator, translators: Translators) {
     super();
     this.#users = users;
     this.#verification = verification;
     this.#mailer = mailer;
     this.#translator = translator;
+    this.#translators = translators;
   }
 
   async handle(ctx: ContextOf<typeof UpdateEmailRequest>) {
@@ -41,9 +43,10 @@ export class UpdateEmailController extends Controller {
     const updated = await this.#users.changeEmail(ctx.user.id, email);
     if (updated === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
     if (!updated) return this.redirect().route('auth.login');
+    // Both queued (composed now, sent by a worker): the answer does not wait for the mail server.
     await this.#verification.send(updated);
     // To the old address, in the user's language (not necessarily this request's).
-    await this.#mailer.send(new EmailChangedMail(ctx.user.name, ctx.user.email, email, this.#translator.forLocale(ctx.user.locale)));
+    await this.#mailer.queue(new EmailChangedMail(ctx.user.name, ctx.user.email, email, this.#translators.for(ctx.user.locale)), { queue: 'mail' });
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_changed') });
   }
 }

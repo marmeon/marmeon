@@ -110,26 +110,30 @@ describe('the language switcher (POST /locale)', () => {
 describe('mails in the recipient’s language', () => {
   const ask = (email: string, headers: Record<string, string> = {}) =>
     app.withHeaders(headers).post('/forgot-password', { form: { email }, headers: referer('/forgot-password') });
-  const lastMail = () => app.mail.sent(ResetPasswordMail).at(-1)!.message;
+  /** The last reset mail — composed by the worker (no request there), queued for the transport. */
+  const lastMail = async () => {
+    await app.queue.work();
+    return app.mail.queued(ResetPasswordMail).at(-1)!.message;
+  };
 
   it('a reset link asked for in German, for an account in English, is in English — the account’s language wins', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', locale: 'en' });
     await ask(ada.email, german).assertFlashed('toast', { message: 'Falls es zu dieser Adresse ein Konto gibt, haben wir einen Link zum Zurücksetzen des Passworts geschickt.' });
-    expect(lastMail().subject).toBe('Reset your password');
-    expect(lastMail().text).toContain('Hello Ada,');
-    expect(lastMail().html).toContain('<html lang="en"');
+    expect((await lastMail()).subject).toBe('Reset your password');
+    expect((await lastMail()).text).toContain('Hello Ada,');
+    expect((await lastMail()).html).toContain('<html lang="en"');
   });
 
   it('…and the other way round; without a stored language, the request’s', async () => {
     const grace = await app.factory(UserFactory).create({ name: 'Grace', locale: 'de' });
     await ask(grace.email).assertFlashed('toast', { message: 'If an account exists for that address, we sent a link to reset its password.' });
-    expect(lastMail().subject).toBe('Passwort zurücksetzen');
-    expect(lastMail().text).toContain('Hallo Grace,');
-    expect(lastMail().text).toContain('Der Link funktioniert einmal, 60 Minuten lang.');
+    expect((await lastMail()).subject).toBe('Passwort zurücksetzen');
+    expect((await lastMail()).text).toContain('Hallo Grace,');
+    expect((await lastMail()).text).toContain('Der Link funktioniert einmal, 60 Minuten lang.');
 
     const alan = await app.factory(UserFactory).create({ name: 'Alan', locale: null });
     await ask(alan.email, german);
-    expect(lastMail().subject).toBe('Passwort zurücksetzen');
+    expect((await lastMail()).subject).toBe('Passwort zurücksetzen');
   });
 
   it('registering stores the language the account was made in (its verification mail is in it)', async () => {

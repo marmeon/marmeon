@@ -1,12 +1,15 @@
 import {
   Clock,
   createApplication,
+  EventFake,
+  EventRegistry,
   loadEnv,
   TestClock,
   type Application,
   type ApplicationOptions,
   type Container,
   type Duration,
+  type EventClass,
   type Key,
   type Resolve,
 } from '@bespokecore/core';
@@ -70,6 +73,12 @@ export interface TestAppOptions {
    */
   queue?: 'fake' | 'real';
   /**
+   * Every dispatched event is recorded — `app.events.assertDispatched(Registered)` (W6.7). Its listeners run as usual
+   * (default `'real'`), none run or are queued (`'fake'`), or only those of some events are held back
+   * (`[Registered]` — Laravel's `Event::fake([…])`).
+   */
+  events?: 'real' | 'fake' | readonly EventClass[];
+  /**
    * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `bespoke dev` does) — so the markup
    * and `<Head>` are testable (`assertSee`, `assertServerRendered`, `assertHydrates`). Off by default: responses carry
    * the page object only (fast, no Vite). Every page renders completely, as for a bot — islands included (E49).
@@ -108,6 +117,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let mailFake: MailFake | undefined;
   const queue = options.queue === 'real' ? undefined : await importQueue();
   let queueFake: QueueFake | undefined;
+  let eventFake: EventFake | undefined;
   let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env };
   const clock = new TestClock();
 
@@ -143,6 +153,8 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
         queueFake = new queue.QueueFake(container);
         container.instance(queue.Queue, queueFake);
       }
+      eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
+      container.instance(EventFake, eventFake);
       definition.override?.(container);
       options.override?.(container);
     },
@@ -164,6 +176,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     database,
     mail: mailFake,
     queue: queueFake,
+    events: eventFake!,
     clock,
     ssr,
     cleanups: ssr ? [() => ssr.close()] : [],
@@ -212,6 +225,8 @@ interface Shared {
   readonly mail: MailFake | undefined;
   /** The recording queue, unless the app has no queue or the test chose `queue: 'real'`. */
   readonly queue: QueueFake | undefined;
+  /** Every dispatched event. */
+  readonly events: EventFake;
   /** The app's `Clock`. */
   readonly clock: TestClock;
   /** Server rendering, with `ssr: true`. */
@@ -371,6 +386,15 @@ export class TestApp {
   get queue(): QueueFake {
     if (!this.#shared.queue) throw new Error("app.queue needs @bespokecore/queue in the app (and not createTestApp(…, { queue: 'real' })).");
     return this.#shared.queue;
+  }
+
+  /**
+   * The events the app dispatched — `app.events.assertDispatched(Registered, (event) => event.user.id === ada.id)`,
+   * `assertListening(Registered, SendEmailVerification)`. Listeners run unless the test fakes them
+   * (`createTestApp(…, { events: 'fake' | [Registered] })`).
+   */
+  get events(): EventFake {
+    return this.#shared.events;
   }
 
   /**
