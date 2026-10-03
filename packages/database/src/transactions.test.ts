@@ -283,20 +283,41 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
   });
 
   it('keeps the context to its own call chain: concurrent transactions never see each other (AsyncLocalStorage)', async () => {
-    const chain = (title: string, delay: number, hold: number) =>
-      sleep(delay).then(() =>
+    // On Postgres the three run at once (three connections): each step waits for the others to have looked — not for a
+    // guessed time, which a loaded machine overran (W7.1). On SQLite (one connection) they queue: b and the plain chain
+    // start a moment later and wait for a's commit.
+    const signal = () => {
+      let open!: () => void;
+      return Object.assign(new Promise<void>((resolve) => (open = resolve)), { open: () => open() });
+    };
+    const aInserted = signal();
+    const bLooked = signal();
+    const plainLooked = signal();
+    const after = (event: Promise<unknown>, ms: number) => (driver === 'pgsql' ? event : sleep(ms));
+    const chain = (title: string, start: Promise<unknown>, inserted: () => void, looked: () => void, hold: Promise<unknown>) =>
+      start.then(() =>
         within(
           connections.transaction(async () => {
             await notes.insert({ title });
+            inserted();
             const seen = { inTransaction: inTransaction(), titles: await notes.titles() };
-            await sleep(hold);
+            looked();
+            await hold;
             return seen;
           }),
         ),
       );
-    const outside = sleep(15).then(async () => ({ inTransaction: inTransaction(), titles: await within(notes.titles()) }));
-    // a stays open for 80 ms; b starts while it is open.
-    const [a, b, plain] = await Promise.all([chain('a', 0, 80), chain('b', 5, 10), outside]);
+    const outside = after(bLooked, 15).then(async () => {
+      const seen = { inTransaction: inTransaction(), titles: await within(notes.titles()) };
+      plainLooked.open();
+      return seen;
+    });
+    // a stays open until b and the plain chain have looked; b starts while it is open and stays open until the plain chain has looked.
+    const [a, b, plain] = await Promise.all([
+      chain('a', sleep(0), aInserted.open, () => {}, after(Promise.all([bLooked, plainLooked]), 80)),
+      chain('b', after(aInserted, 5), () => {}, bLooked.open, after(plainLooked, 10)),
+      outside,
+    ]);
     expect(a).toEqual({ inTransaction: true, titles: ['a'] });
     // On SQLite (one connection) b waits for a's commit, so it sees a; on Postgres both run at once and b sees only its own.
     expect(b).toEqual({ inTransaction: true, titles: driver === 'sqlite' ? ['a', 'b'] : ['b'] });

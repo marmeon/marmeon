@@ -45,6 +45,30 @@ export class SlowJob {
   }
 }
 
+/**
+ * Holds its worker until the test says go (a row with the event `go` in `handled`), at most 0.6 s — well within its
+ * timeout, and never past its signal. Two of them prove that two workers take jobs at the same time before a race starts.
+ */
+export class GateJob {
+  static readonly job = 'fixture.gate';
+  static readonly schema = v.object({ n: v.number() });
+  static readonly timeout = 1;
+
+  readonly #db: Database;
+
+  constructor(db: Database) {
+    this.#db = db;
+  }
+
+  async handle(payload: JobPayload<typeof GateJob>, job: JobContext): Promise<void> {
+    await sql`insert into handled (uuid, n, attempt, pid, event) values (${job.id}, ${payload.n}, ${job.attempt}, ${process.pid}, 'started')`.execute(this.#db);
+    const deadline = Date.now() + 600;
+    const open = async () => (await sql`select 1 from handled where event = 'go'`.execute(this.#db)).rows.length > 0;
+    while (Date.now() < deadline && !job.signal.aborted && !(await open())) await sleep(10);
+    await sql`insert into handled (uuid, n, attempt, pid, event) values (${job.id}, ${payload.n}, ${job.attempt}, ${process.pid}, 'done')`.execute(this.#db);
+  }
+}
+
 /** On its first attempt it never finishes and ignores `job.signal` (a hung SMTP call); later attempts finish at once. */
 export class StubbornJob {
   static readonly job = 'fixture.stubborn';
@@ -151,7 +175,7 @@ export class MailOnceJob {
   }
 }
 
-export const fixtureJobs = [RecordJob, SlowJob, StubbornJob, UserJob, GuardedJob, UnguardedJob, MailOnceJob];
+export const fixtureJobs = [RecordJob, SlowJob, GateJob, StubbornJob, UserJob, GuardedJob, UnguardedJob, MailOnceJob];
 
 /**
  * `bespoke fixture:dispatch --count=20 [--unique=key] [--n=1]`: dispatches `fixture.record` jobs at once — after printing

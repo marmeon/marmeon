@@ -68,7 +68,10 @@ describe('bespoke (in the web app)', () => {
     expect(ran).toEqual(ran.toSorted());
     // …then regenerates the table types (already committed, so unchanged).
     expect(migrate.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
-    expect(bespoke(webApp, ['migrate:fresh'], { ...memory, NODE_ENV: 'production' }).stderr).toContain('Pass --force to drop every table.');
+    // Production loads no .env.test: what it needs to boot comes from here, not from a developer's .env (CI has none).
+    const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
+    const production = { ...memory, SYSTEM_DB_DATABASE: ':memory:', NODE_ENV: 'production', APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: key };
+    expect(bespoke(webApp, ['migrate:fresh'], production).stderr).toContain('Pass --force to drop every table.');
   });
 
   it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {

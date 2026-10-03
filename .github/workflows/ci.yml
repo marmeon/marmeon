@@ -1,0 +1,101 @@
+# The same parts as `pnpm run ci` (scripts/ci.ts, E111) — one job per suite that needs a database, so they run side by
+# side on their own runners. Locally `pnpm run ci` runs them all, one after the other.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: build, typecheck, test, size, types:check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4 # the version from "packageManager"
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci --only build,typecheck,test,size,types:check
+
+  pgsql:
+    name: test:pgsql
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # As in compose.yaml (bespokecore-pgsql): the port and credentials test:pgsql uses.
+      pgsql:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: bespoke
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: bespoke
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U bespoke"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci --only build,test:pgsql --no-compose
+
+  redis:
+    name: test:redis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # As in compose.yaml (bespokecore-redis).
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci --only build,test:redis --no-compose
+
+  s3:
+    name: test:s3
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # SeaweedFS needs its identities file (compose.yaml "configs"), which a service container cannot mount: scripts/ci.ts
+    # starts it with docker compose, as it does locally.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci --only build,test:s3

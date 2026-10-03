@@ -1,5 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,9 +130,23 @@ export async function appBundle(code: string, { external = EXTERNAL, sourcemap =
  * monorepo the framework packages come from `dist/` too: a build never takes the `@bespokecore/source` condition.
  */
 export async function appClientBuild(root: string, { sourcemap = false }: Pick<BundleOptions, 'sourcemap'> = {}): Promise<AppBundle> {
+  writeBrowserRoutes(root);
   // Before Vite resolves the config: an unset NODE_ENV becomes "development", and React's development build with it.
   process.env.NODE_ENV = 'production';
   return measure({ root, logLevel: 'silent', build: {} }, { sourcemap });
+}
+
+/**
+ * The browser's route manifest (`.bespoke/routes.json`, E57) the build reads — `bespoke build` writes it first, a fresh
+ * checkout (CI) has none: `bespoke route:types` writes it, in the app's committed test environment (no `.env` needed).
+ * It also writes `bootstrap/routes.ts`, unchanged while `pnpm types:check` is green.
+ */
+function writeBrowserRoutes(root: string): void {
+  if (existsSync(join(root, '.bespoke/routes.json'))) return;
+  const { BESPOKE_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...env } = process.env;
+  const bin = join(PACKAGES, 'cli/bin/bespoke.js');
+  const result = spawnSync(process.execPath, [bin, 'route:types'], { cwd: root, encoding: 'utf8', env: { ...env, NODE_ENV: 'test' } });
+  if (result.status !== 0) throw new Error(`bespoke route:types failed in ${root}:\n${result.stdout}${result.stderr}`);
 }
 
 /** Vite's helper around every `import()` of a client build (it preloads a lazy chunk's dependencies). */

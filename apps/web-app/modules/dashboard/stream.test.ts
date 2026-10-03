@@ -123,9 +123,13 @@ describe('a deep link of a layer, streamed (E53, E71)', () => {
     const started = performance.now();
     const streamed = await app.actingAs(ada).stream(`/users/${ada.id}/edit`);
     const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-bespoke-layer="user-profile\/Edit"/ });
-    // Before the profile's deferred activity (150 ms): in the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first.
-    expect(at.layer!).toBeLessThan(150);
+    // In the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first: no later than the profile's
+    // deferred activity (150 ms) would take, counted from the shell — not from the request, whose shell a loaded machine
+    // can hold back on its own (W6.11: 228 ms under a full `test:pgsql`).
+    expect(at.layer! - at.shell!).toBeLessThan(150);
     expect(html.indexOf('data-bespoke-layer')).toBeGreaterThan(html.indexOf('<h1>Ada Lovelace</h1>'));
+    // Not a part streamed after the shell (React sends those as hidden segments).
+    expect(html.slice(0, html.indexOf('data-bespoke-layer'))).not.toContain('<div hidden id="');
     // Rendered at once, not suspended: the layer stack's code was loaded before rendering (a boundary already resolved, `<!--$-->`).
     expect(html).toContain('<!--$--><div data-bespoke-layers="">');
   });

@@ -122,7 +122,20 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
         const a = fixture.worker(['--sleep=0.01']);
         const b = fixture.worker(['--sleep=0.01']);
         await Promise.all([a.waitFor(/^Processing jobs of the /), b.waitFor(/^Processing jobs of the /)]);
-        // All 200 appear at once (with the commit; on Redis as fast as they are pushed) — both workers race for them from the first.
+        // Started is not taking jobs yet: under load one worker took its first job only after the other had taken all 200
+        // (W6.11). So both first hold a gate job at the same time — a gate one worker took after the other is offered again,
+        // as long as it takes — and the race starts when both are taking jobs, not after a guessed time.
+        let gates = 0;
+        const gate = () => fixture.driver.push('default', record('fixture.gate', { n: -++gates }), 0);
+        await gate();
+        await gate();
+        const gateWorkers = await fixture.until(async () => {
+          const workers = new Set((await fixture.handled('started')).filter((row) => row.n < 0).map((row) => row.pid));
+          if (workers.size === 2) return workers;
+          if ((await fixture.jobs()).length === 0) await gate(); // one worker took every gate so far: one more for the other
+          return undefined;
+        });
+        // All 200 appear at once (with the commit; on Redis as fast as they are pushed) — then both gates open.
         const payloads = Array.from({ length: 200 }, (_, n) => record('fixture.record', { n }));
         if (fixture.driver.using) {
           await fixture.connections.get().transaction().execute(async (trx) => {
@@ -132,21 +145,24 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
         } else {
           await Promise.all(payloads.map((payload) => fixture.driver.push('default', payload, 0)));
         }
-        await fixture.until(async () => (await fixture.jobs()).length === 0 && (await fixture.handled()).length >= 200, 60_000);
+        await sql`insert into handled (uuid, n, attempt, pid, event) values ('go', ${-1000}, ${0}, ${0}, 'go')`.execute(fixture.connections.get());
+        const raced = async () => (await fixture.handled()).filter((row) => row.n >= 0);
+        await fixture.until(async () => (await fixture.jobs()).length === 0 && (await raced()).length >= 200, 60_000);
         await sleep(200); // a duplicate still in flight would land now
         a.child.kill('SIGTERM');
         b.child.kill('SIGTERM');
         expect(await a.exited()).toBe(0);
         expect(await b.exited()).toBe(0);
 
-        const handled = await fixture.handled();
+        const handled = await raced();
         const runs = new Map<number, number>();
         for (const row of handled) runs.set(row.n, (runs.get(row.n) ?? 0) + 1);
         const twice = [...runs].filter(([, count]) => count > 1).map(([n]) => n);
         expect(twice, `jobs that ran more than once: ${twice.join(', ')}`).toEqual([]);
         expect(runs.size).toBe(200);
-        // Both took part (otherwise the race proved nothing).
-        expect(new Set(handled.map((row) => row.pid)).size).toBe(2);
+        // Both took part in the race (otherwise it proved nothing): both held a gate at once and were released together. How
+        // many of the 200 each wins is up to the machine — a starved worker may win none, which is no duplicate risk.
+        expect(gateWorkers).toEqual(new Set([a.child.pid, b.child.pid]));
       });
     },
   );
