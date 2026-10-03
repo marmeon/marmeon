@@ -8,6 +8,7 @@ import apiRoutes from './api-routes.ts';
 import routes from './routes.ts';
 import { UserProfileServiceProvider } from './UserProfileServiceProvider.ts';
 import { ProfileConfig } from './config.ts';
+import { schedule } from './schedule.ts';
 
 // Public API of the module — the dashboard's islands read through it.
 export { MemberStats, type MemberNumbers } from './MemberStats.ts';
@@ -26,4 +27,6 @@ export default defineModule({
   seeders: [DemoLinksSeeder],
   routes,
   apiRoutes,
+  // The member numbers, also rebuilt hourly (a queued job — bespoke schedule:work queues it, a worker runs it).
+  schedule,
 });

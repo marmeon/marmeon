@@ -1,3 +1,4 @@
+import { SystemClock } from '@bespokecore/core';
 import type { Connections } from '@bespokecore/database';
 import { defineRoutes, type HttpContext } from '@bespokecore/http';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +14,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
 
   beforeAll(async () => {
     ({ connections, close } = await migratedConnections(driver));
-    tokens = new DatabaseAccessTokens(connections, { tokenPrefix: 'bc_' } as never);
+    tokens = new DatabaseAccessTokens(connections, { tokenPrefix: 'bc_' } as never, new SystemClock());
     connections.onQuery((query) => queries.push(query.sql));
   });
   afterAll(() => close());

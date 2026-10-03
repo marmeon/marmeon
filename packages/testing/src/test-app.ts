@@ -37,6 +37,7 @@ import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@bespokecore/auth';
 import type { MailFake } from '@bespokecore/mail';
 import type { QueueFake } from '@bespokecore/queue';
+import type { ScheduleTester } from '@bespokecore/scheduler';
 import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
@@ -171,8 +172,10 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
     await application.shutdown();
     throw error;
   }
+  const scheduler = await importScheduler();
   const shared: Shared = {
     kernel: createHttpKernel(application, ssr ? { renderer: ssr.renderer } : {}),
+    schedule: scheduler && application.container.has(scheduler.Scheduler) ? new scheduler.ScheduleTester(application.container.make(scheduler.Scheduler), clock) : undefined,
     database,
     mail: mailFake,
     queue: queueFake,
@@ -229,6 +232,8 @@ interface Shared {
   readonly events: EventFake;
   /** The app's `Clock`. */
   readonly clock: TestClock;
+  /** The app's schedule, run with the test clock — when the app has @bespokecore/scheduler. */
+  readonly schedule: ScheduleTester | undefined;
   /** Server rendering, with `ssr: true`. */
   readonly ssr: TestSsr | undefined;
   /** Run before the app shuts down, e.g. rolling back the test's transaction. */
@@ -285,6 +290,15 @@ async function importMail(): Promise<typeof import('@bespokecore/mail') | undefi
 async function importQueue(): Promise<typeof import('@bespokecore/queue') | undefined> {
   try {
     return await import('@bespokecore/queue');
+  } catch {
+    return undefined;
+  }
+}
+
+/** @bespokecore/scheduler is an optional peer, like the session. */
+async function importScheduler(): Promise<typeof import('@bespokecore/scheduler') | undefined> {
+  try {
+    return await import('@bespokecore/scheduler');
   } catch {
     return undefined;
   }
@@ -395,6 +409,16 @@ export class TestApp {
    */
   get events(): EventFake {
     return this.#shared.events;
+  }
+
+  /**
+   * The app's schedule (E88), with the test clock: `app.schedule.due('2026-10-04T03:10:00+02:00')` lists the tasks due
+   * then, `await app.schedule.run(time)` moves the clock there and runs them (catching up what was missed since the last
+   * `run`, like a scheduler), `app.schedule.runTask(name)` runs one now. Needs @bespokecore/scheduler.
+   */
+  get schedule(): ScheduleTester {
+    if (!this.#shared.schedule) throw new Error('app.schedule needs @bespokecore/scheduler in the app.');
+    return this.#shared.schedule;
   }
 
   /**

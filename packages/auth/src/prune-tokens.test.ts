@@ -1,0 +1,66 @@
+import { TestClock } from '@bespokecore/core';
+import type { Connections } from '@bespokecore/database';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { drivers, migratedConnections } from './__fixtures__/databases.ts';
+import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-reset.ts';
+import { PruneTokensCommand } from './prune-tokens.ts';
+import { DatabaseRememberTokens, REMEMBER_TABLE } from './remember.ts';
+import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
+
+describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ connections, close } = await migratedConnections(driver));
+  });
+  afterAll(() => close());
+
+  it('deletes expired reset, remember-me and API tokens — every valid one stays (finding 5)', async () => {
+    const clock = new TestClock();
+    clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
+    const resets = new DatabasePasswordResetTokens(connections, clock);
+    const remember = new DatabaseRememberTokens(connections, clock);
+    const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'bc_' } as never, clock);
+    const config = { resetExpire: 60 } as never;
+
+    // Two hours ago: a reset token (expired after 60 minutes), a remember-me token for one hour, API tokens for one hour.
+    clock.travel({ hours: -2 });
+    await resets.create('old@example.com', 0);
+    const oldCookie = await remember.create(1, new Date(clock.now() + 3_600_000));
+    const expired = await access.create(1, 'expired an hour ago', { expiresIn: '1h' });
+    const justExpired = await access.create(1, 'expired a minute ago', { expiresIn: '119m' });
+    clock.travel({ hours: 2 });
+    // Valid now: a fresh reset token, a remember-me token for 30 days, API tokens with and without expiry.
+    const fresh = await resets.create('fresh@example.com', 0);
+    const cookie = await remember.create(2, new Date(clock.now() + 30 * 86_400_000));
+    const valid = await access.create(2, 'valid', { expiresIn: '1h' });
+    const forever = await access.create(2, 'no expiry');
+
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
+    const prune = (hours?: string) =>
+      new PruneTokensCommand(resets, remember, access, config).handle({ args: [], options: hours === undefined ? {} : { hours }, output, root: '/', spawn: async () => 0 } as never);
+
+    // With --hours=1: only API tokens expired more than an hour ago.
+    expect(await prune('1')).toBe(0);
+    expect(lines.pop()).toBe('Pruned 1 password reset token, 1 remember-me token and 1 API token.');
+    expect(await prune()).toBe(0);
+    expect(lines.pop()).toBe('Pruned 0 password reset tokens, 0 remember-me tokens and 1 API token.');
+
+    const db = connections.get<any>();
+    expect((await db.selectFrom(PASSWORD_RESET_TABLE).select('email').execute()).map((row: { email: string }) => row.email)).toEqual(['fresh@example.com']);
+    expect((await db.selectFrom(REMEMBER_TABLE).select('user_id').execute()).map((row: { user_id: number }) => Number(row.user_id))).toEqual([2]);
+    expect((await db.selectFrom(ACCESS_TOKEN_TABLE).select('name').orderBy('id').execute()).map((row: { name: string }) => row.name)).toEqual(['valid', 'no expiry']);
+    // The survivors still work; the pruned ones are gone for good.
+    expect(await resets.consume('fresh@example.com', fresh!, 3600)).toBe(true);
+    expect(await remember.consume(cookie)).toMatchObject({ kind: 'valid', userId: 2 });
+    expect(await remember.consume(oldCookie)).toBeUndefined();
+    expect(await access.find(valid.plainText)).toBeDefined();
+    expect(await access.find(forever.plainText)).toBeDefined();
+    expect(await access.find(expired.plainText)).toBeUndefined();
+    expect(await access.find(justExpired.plainText)).toBeUndefined();
+
+    expect(await prune('-1')).toBe(1);
+    expect(lines.pop()).toMatch(/^✗ --hours must be a number ≥ 0/);
+  });
+});

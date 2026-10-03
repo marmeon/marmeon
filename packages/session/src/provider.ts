@@ -7,7 +7,7 @@ import { SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 import { Session } from './session.ts';
 import { ShareErrorsFromSession } from './share-errors.ts';
-import { StartSession } from './start-session.ts';
+import { SessionLottery, StartSession } from './start-session.ts';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionStore } from './store.ts';
@@ -40,6 +40,7 @@ export class SessionServiceProvider implements ServiceProvider {
     container.scoped(PageSession, (c) => pageSessionOf(c.make(Session)));
 
     const config = container.make(SessionConfig);
+    container.singleton(SessionLottery, () => new SessionLottery(config.lottery));
     // The cookie store works on the request's cookie jar: one per request. The others are shared.
     if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
     else container.singleton(SessionStore, (c) => storeFor(config, c));
@@ -70,6 +71,12 @@ export class SessionServiceProvider implements ServiceProvider {
         throw new SessionSetupError('SESSION_DRIVER=database needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).');
       }
       app.container.make(database.Connections).options(connection);
+    }
+
+    // The scheduler runs `bespoke session:prune`: then it is the one sweeper, and requests no longer draw the lottery.
+    const scheduler = await import('@bespokecore/scheduler').catch(() => undefined);
+    if (scheduler && app.container.has(scheduler.Scheduler) && app.container.make(scheduler.Scheduler).schedules(PruneSessionsCommand.command)) {
+      app.container.make(SessionLottery).chance = 0;
     }
 
     const cli = await import('@bespokecore/cli').catch(() => undefined);

@@ -95,6 +95,28 @@ describe.each(storeKinds)('the %s store', (kind) => {
     expect(await lock.owned()).toBe(true);
   });
 
+  it('prunes expired entries and locks — and nothing that is still live (cache:prune)', async () => {
+    const { cache, pass } = await open();
+    await cache.put('forever', 1);
+    await cache.put('long', 2, 3600);
+    await cache.put('short', 3, 1);
+    await cache.increment('hits', 1, 1);
+    const held = cache.lock('held', 3600);
+    const brief = cache.lock('brief', 1);
+    expect([await held.get(), await brief.get()]).toEqual([true, true]);
+    await pass(1_100);
+    const removed = await cache.prune();
+    if (kind === 'redis') {
+      expect(removed).toBeUndefined(); // Redis expires keys itself
+      return;
+    }
+    expect(removed).toBe(3); // short, hits, brief
+    expect(await cache.get('forever')).toBe(1);
+    expect(await cache.get('long')).toBe(2);
+    expect(await held.owned()).toBe(true);
+    expect(await cache.prune()).toBe(0);
+  });
+
   it('remembers computed values', async () => {
     const { cache } = await open();
     const compute = vi.fn(() => 42);

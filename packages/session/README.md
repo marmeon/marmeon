@@ -27,7 +27,8 @@ The table: `id` (primary key), `user_id` (nullable, indexed — the signed-in us
 `_auth_id`; `null` for guests), `payload` (the session as JSON — a `.secret()` column, so `selectAll()` never returns it)
 and `last_activity` (epoch milliseconds of the last write, indexed). A session expires `SESSION_LIFETIME` minutes after
 its last activity. Expired rows are deleted by the lottery (`SESSION_LOTTERY`, default 2 in 100 requests, after the
-response) or by `bespoke session:prune` — from a scheduler or cron, then set `SESSION_LOTTERY=0/1`.
+response) or by `bespoke session:prune` — from cron (then set `SESSION_LOTTERY=0/1`) or from the app's scheduler
+(`s.command('session:prune').everyFifteenMinutes()`, `@bespokecore/scheduler`): then requests draw no lottery at all.
 
 **Its own connection, never the app's transactions (E108).** The store writes through `connections.infrastructure()`
 (see `packages/database/README.md`): a session written while a transaction is open — an in-process request inside

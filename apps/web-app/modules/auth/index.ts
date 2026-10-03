@@ -7,6 +7,7 @@ import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
 import { DemoUsersSeeder } from './seeders/DemoUsersSeeder.ts';
 import routes from './routes.ts';
+import { schedule } from './schedule.ts';
 
 // Public API of the auth module. Other modules import from here, never from internals.
 export { UserFactory } from './factories/UserFactory.ts';
@@ -25,4 +26,6 @@ export default defineModule({
   exposes: ['users'],
   seeders: [DemoUsersSeeder],
   routes,
+  // Scheduled work: the nightly token prune (bespoke schedule:work).
+  schedule,
 });

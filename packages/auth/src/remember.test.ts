@@ -1,3 +1,4 @@
+import { SystemClock } from '@bespokecore/core';
 import type { Connections } from '@bespokecore/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
@@ -12,7 +13,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
 
   beforeAll(async () => {
     ({ connections, close } = await migratedConnections(driver));
-    tokens = new DatabaseRememberTokens(connections);
+    tokens = new DatabaseRememberTokens(connections, new SystemClock());
   });
   afterAll(() => close());
   beforeEach(() => connections.get<any>().deleteFrom(REMEMBER_TABLE).execute());

@@ -134,7 +134,7 @@ const provider: UserProvider = {
   findForLogin: async () => undefined,
   updatePasswordHash: async () => {},
 };
-const noRemember: RememberTokenStore = { create: async () => '', consume: async () => undefined, forget: async () => {}, forgetUser: async () => {} };
+const noRemember: RememberTokenStore = { create: async () => '', consume: async () => undefined, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
 const routes = defineRoutes((Route) => {
   Route.post('/as/:id', SignInController);

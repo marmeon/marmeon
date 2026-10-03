@@ -1,4 +1,4 @@
-import { Registered } from '@bespokecore/auth';
+import { AccessTokenStore, Registered } from '@bespokecore/auth';
 import type { Mailable } from '@bespokecore/mail';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -150,6 +150,17 @@ describe('API tokens', () => {
     await app.expectingJson().get('/api/user').assertUnauthorized();
     await sudo.delete(`/settings/tokens/${/^\w*?(\d+)\|/.exec(plainText)![1]}`).assertRedirect('/settings/tokens');
     await api(plainText).get('/api/user').assertUnauthorized();
+  });
+
+  it('are pruned by the nightly schedule once expired — valid ones stay', async () => {
+    const ada = await app.factory(UserFactory).create();
+    app.freeze(Date.parse('2026-10-04T12:00:00Z'));
+    const expired = await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: '1h' });
+    const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: '365d' });
+    expect(app.schedule.due('2026-10-05T03:10:00Z')).toContain('auth:prune-tokens');
+    expect((await app.schedule.run('2026-10-05T03:10:00Z')).find((result) => result.task === 'auth:prune-tokens')).toMatchObject({ outcome: 'ran' });
+    expect((await app.make(AccessTokenStore).list(ada.id)).map((token) => token.id)).toEqual([valid.token.id]);
+    expect(await app.make(AccessTokenStore).find(expired.plainText)).toBeUndefined();
   });
 });
 

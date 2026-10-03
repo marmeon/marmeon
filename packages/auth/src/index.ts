@@ -7,6 +7,7 @@ import { AuthConfig } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
+import { PruneTokensCommand } from './prune-tokens.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -28,6 +29,7 @@ export type { RememberResult, RememberTokenTable } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand, STUBS } from './make-auth.ts';
+export { PruneTokensCommand } from './prune-tokens.ts';
 export { confirmed, password } from './rules.ts';
 export type { ConfirmedOptions } from './rules.ts';
 export { EmailVerification, emailHash, verified } from './verification.ts';
@@ -106,6 +108,6 @@ export class AuthServiceProvider implements ServiceProvider {
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     warnAboutCookieSessions(app.container);
     const cli = await import('@bespokecore/cli').catch(() => undefined);
-    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand]);
+    if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand]);
   }
 }

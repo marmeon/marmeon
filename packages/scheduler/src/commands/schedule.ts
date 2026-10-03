@@ -1,0 +1,193 @@
+import { CacheConfig } from '@bespokecore/cache';
+import type { CommandInput } from '@bespokecore/cli';
+import { Clock, Container, Logger } from '@bespokecore/core';
+import { ScheduleError } from '../cron.ts';
+import { Scheduler, type TaskResult } from '../scheduler.ts';
+import { formatMinute } from '../time.ts';
+import { ScheduleWorker } from '../worker.ts';
+
+function describe(result: TaskResult): string {
+  if (result.outcome === 'ran') return `ran (${result.ms} ms)`;
+  if (result.outcome === 'failed') return `failed: ${result.error instanceof Error ? result.error.message : String(result.error)}`;
+  const why = { filter: 'when()/skip() said no', 'other-server': 'another server runs it', overlapping: 'its previous run has not finished', 'job-waiting': 'the job queued last time still waits' };
+  return `skipped — ${why[result.skipped!]}`;
+}
+
+/** A scheduler that cannot start (a missing command, `onOneServer()` on a file cache …) says so, without a stack trace. */
+async function checked(scheduler: Scheduler, output: CommandInput['output'], options?: { oneServer?: boolean }): Promise<boolean> {
+  try {
+    await scheduler.checkProcess(options);
+    return true;
+  } catch (error) {
+    if (!(error instanceof ScheduleError)) throw error;
+    output.error(error.message);
+    return false;
+  }
+}
+
+/**
+ * `bespoke schedule:work`: the scheduler as a process of its own (E88) — a tick at the start of every minute, until
+ * stopped. `bespoke dev` starts it next to the server (E101); in production run one per server under a supervisor (or
+ * `schedule:run` from cron). SIGTERM/SIGINT: no new tick; runs still going get `--stop-timeout` seconds, then the process
+ * ends and frees their overlap locks.
+ */
+export class ScheduleWorkCommand {
+  static command = 'schedule:work';
+  static description = 'Run the scheduled tasks every minute, until stopped';
+  static usage = '[--stop-timeout=30]';
+  static options = { 'stop-timeout': { type: 'string' } } as const;
+
+  readonly #scheduler: Scheduler;
+  readonly #clock: Clock;
+  readonly #logger: Logger;
+
+  constructor(scheduler: Scheduler, clock: Clock, logger: Logger) {
+    this.#scheduler = scheduler;
+    this.#clock = clock;
+    this.#logger = logger.child({ channel: 'schedule' });
+  }
+
+  async handle({ options, output }: CommandInput): Promise<number> {
+    const stopTimeout = options['stop-timeout'] === undefined ? 30 : Number(options['stop-timeout']);
+    if (!Number.isFinite(stopTimeout) || stopTimeout < 0) {
+      output.error(`--stop-timeout must be a number of seconds ≥ 0, not ${String(options['stop-timeout'])}.`);
+      return 1;
+    }
+    if (!(await checked(this.#scheduler, output))) return 1;
+
+    const stop = new AbortController();
+    const onSignal = (signal: NodeJS.Signals) => {
+      if (stop.signal.aborted) return; // Ctrl+C arrives twice (terminal + launcher): one shutdown
+      this.#logger.info(`${signal} received: no new runs; those still going have ${stopTimeout}s to finish`);
+      stop.abort();
+      setTimeout(() => process.exit(1), (stopTimeout + 10) * 1000).unref();
+    };
+    process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
+
+    const tasks = this.#scheduler.tasks;
+    output.line(`Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''}`);
+    const worker = new ScheduleWorker(this.#scheduler, this.#clock, this.#logger);
+    try {
+      await worker.run({ signal: stop.signal });
+      if (!(await worker.drain(stopTimeout))) {
+        this.#logger.warn(`${worker.running} ${worker.running === 1 ? 'run' : 'runs'} did not finish within ${stopTimeout}s and end with the process`);
+        await this.#scheduler.releaseHeld();
+        setTimeout(() => process.exit(0), 2000).unref();
+      }
+      this.#logger.info('Scheduler stopped');
+      return 0;
+    } finally {
+      process.off('SIGINT', onSignal).off('SIGTERM', onSignal);
+    }
+  }
+}
+
+/**
+ * `bespoke schedule:run`: one tick, for the current minute — for a system cron that calls it every minute
+ * (`* * * * * cd /app && bespoke schedule:run`). Waits for the runs, then exits (1 if one failed). Missed minutes are
+ * caught up like in `schedule:work`.
+ */
+export class ScheduleRunCommand {
+  static command = 'schedule:run';
+  static description = 'Run the scheduled tasks that are due now (for a system cron, every minute)';
+
+  readonly #scheduler: Scheduler;
+  readonly #clock: Clock;
+
+  constructor(scheduler: Scheduler, clock: Clock) {
+    this.#scheduler = scheduler;
+    this.#clock = clock;
+  }
+
+  async handle({ output }: CommandInput): Promise<number> {
+    if (!(await checked(this.#scheduler, output))) return 1;
+    const runs = await this.#scheduler.tick(this.#clock.now());
+    if (runs.length === 0) {
+      output.line('No scheduled tasks are due.');
+      return 0;
+    }
+    const results = await Promise.all(runs.map((run) => run.done));
+    for (const result of results) output.line(`${result.task}${result.reason === 'catch-up' ? ' (missed earlier)' : ''}: ${describe(result)}`);
+    return results.some((result) => result.outcome === 'failed') ? 1 : 0;
+  }
+}
+
+/** `bespoke schedule:list`: every task, when it runs (in its time zone), when next, and its options. */
+export class ScheduleListCommand {
+  static command = 'schedule:list';
+  static description = 'List the scheduled tasks';
+
+  readonly #scheduler: Scheduler;
+  readonly #clock: Clock;
+  readonly #container: Container;
+
+  constructor(scheduler: Scheduler, clock: Clock, container: Container) {
+    this.#scheduler = scheduler;
+    this.#clock = clock;
+    this.#container = container;
+  }
+
+  handle({ output }: CommandInput): number {
+    const tasks = this.#scheduler.tasks;
+    if (tasks.length === 0) {
+      output.line('No scheduled tasks. Add a schedule to a module: defineModule({ schedule: defineSchedule((s) => { … }) }).');
+      return 0;
+    }
+    const now = this.#clock.now();
+    output.table(
+      ['Task', 'Schedule', 'Next run', 'Does', 'Options'],
+      tasks.map((task) => {
+        const { definition } = task;
+        const next = this.#scheduler.next(task, now);
+        const options = [
+          definition.onOneServer ? 'one server' : '',
+          definition.overlapMinutes !== undefined ? 'no overlap' : '',
+          definition.catchUp === 'skip' ? 'no catch-up' : '',
+          definition.environments ? `only ${definition.environments.join('/')}` : '',
+          definition.when.length + definition.skip.length > 0 ? 'filtered' : '',
+        ].filter(Boolean);
+        return [task.name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), task.summary, options.join(', ')];
+      }),
+    );
+    const shared = tasks.filter((task) => task.definition.onOneServer);
+    const driver = this.#container.has(CacheConfig) ? this.#container.make(CacheConfig).driver : undefined;
+    if (shared.length > 0 && (driver === 'file' || driver === 'memory')) {
+      output.warn(`onOneServer() needs a cache servers share — with CACHE_DRIVER=${driver} schedule:work and schedule:run refuse to start. Use database or redis.`);
+    }
+    return 0;
+  }
+}
+
+/** `bespoke schedule:test <name>`: runs one task now — whatever its frequency, filters and environments say. */
+export class ScheduleTestCommand {
+  static command = 'schedule:test';
+  static description = 'Run one scheduled task now';
+  static usage = '<name>';
+
+  readonly #scheduler: Scheduler;
+
+  constructor(scheduler: Scheduler) {
+    this.#scheduler = scheduler;
+  }
+
+  async handle({ args, output }: CommandInput): Promise<number> {
+    const name = args.join(' ').trim();
+    if (name === '') {
+      output.error(`Which task? bespoke schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
+      return 1;
+    }
+    // A test run ignores onOneServer() — a file cache is no reason to refuse it.
+    if (!(await checked(this.#scheduler, output, { oneServer: false }))) return 1;
+    let task;
+    try {
+      task = this.#scheduler.task(name);
+    } catch (error) {
+      if (!(error instanceof ScheduleError)) throw error;
+      output.error(error.message);
+      return 1;
+    }
+    const result = await this.#scheduler.runNow(task).done;
+    (result.outcome === 'failed' ? output.error.bind(output) : output.success.bind(output))(`${task.name}: ${describe(result)}`);
+    return result.outcome === 'failed' ? 1 : 0;
+  }
+}

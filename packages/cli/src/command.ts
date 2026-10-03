@@ -1,4 +1,5 @@
-import type { ParseArgsOptionsConfig } from 'node:util';
+import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
+import type { Container } from '@bespokecore/core';
 import type { Output } from './output.ts';
 
 export interface CommandInput {
@@ -64,4 +65,30 @@ export class CommandRegistry {
   all(): CommandClass[] {
     return [...this.#commands.values()].sort((a, b) => a.command.localeCompare(b.command));
   }
+}
+
+/** The arguments do not fit the command's options — the message says what, and how the command is used. */
+export class CommandArgumentsError extends Error {
+  override name = 'CommandArgumentsError';
+}
+
+/** Splits `argv` into positionals and the options `Command` declares (unknown options are an error). */
+export function parseCommandArgs(Command: CommandClass, argv: readonly string[]): Pick<CommandInput, 'args' | 'options'> {
+  try {
+    const parsed = parseArgs({ args: [...argv], options: Command.options ?? {}, allowPositionals: true, strict: true });
+    return { args: parsed.positionals, options: parsed.values };
+  } catch (error) {
+    throw new CommandArgumentsError(`${(error as Error).message}\nUsage: bespoke ${Command.command} ${Command.usage ?? ''}`.trimEnd());
+  }
+}
+
+/**
+ * Runs `Command` with `argv` — built through `container` (constructor injection), as `bespoke <command>` does: the
+ * scheduler runs `s.command(…)` tasks this way, each in a scope of its own. Resolves with the exit code.
+ */
+export async function runCommand(container: Container, Command: CommandClass, argv: readonly string[], context: Pick<CommandInput, 'output' | 'root' | 'spawn'>): Promise<number> {
+  const input = parseCommandArgs(Command, argv);
+  const command = container.make(Command as never) as Command;
+  const code = await command.handle({ ...input, ...context });
+  return typeof code === 'number' ? code : 0;
 }

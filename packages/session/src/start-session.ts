@@ -6,6 +6,18 @@ import { Session } from './session.ts';
 import { SessionStore } from './store.ts';
 
 /**
+ * The chance that a request cleans up expired sessions after its response (Laravel's lottery): `SESSION_LOTTERY` — or 0
+ * when the app's scheduler runs `session:prune` (then that is the one sweeper, not the requests).
+ */
+export class SessionLottery {
+  chance: number;
+
+  constructor(chance: number) {
+    this.chance = chance;
+  }
+}
+
+/**
  * Loads the session before the route and saves it afterwards — also when the
  * route throws, so flash data and a regenerated id are never lost. Sends the
  * session id as a cookie (encrypted by `EncryptCookies`, which must run first).
@@ -17,14 +29,16 @@ export class StartSession {
   readonly #logger: Logger;
   readonly #readOnly: ReadOnly;
   readonly #parent: ParentRequest;
+  readonly #lottery: SessionLottery;
 
-  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly, parent: ParentRequest) {
+  constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly, parent: ParentRequest, lottery: SessionLottery) {
     this.#session = session;
     this.#config = config;
     this.#store = store;
     this.#logger = logger;
     this.#readOnly = readOnly;
     this.#parent = parent;
+    this.#lottery = lottery;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
@@ -57,7 +71,7 @@ export class StartSession {
 
   /** After the response: now and then, clean up expired sessions — the client does not wait for it. */
   async terminate(): Promise<void> {
-    if (Math.random() >= this.#config.lottery) return;
+    if (Math.random() >= this.#lottery.chance) return;
     try {
       await this.#store.gc(this.#config.lifetime * 60);
     } catch (error) {

@@ -65,6 +65,9 @@ importers:
       '@bespokecore/router':
         specifier: workspace:*
         version: link:../../packages/router
+      '@bespokecore/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -150,6 +153,9 @@ importers:
       '@bespokecore/router':
         specifier: workspace:*
         version: link:../../packages/router
+      '@bespokecore/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -480,6 +486,34 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
 
+  packages/scheduler:
+    dependencies:
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@bespokecore/cache':
+        specifier: workspace:*
+        version: link:../cache
+      '@bespokecore/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@bespokecore/redis':
+        specifier: workspace:*
+        version: link:../redis
+
   packages/server:
     dependencies:
       '@bespokecore/core':
@@ -523,6 +557,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
+      '@bespokecore/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@bespokecore/cli':
         specifier: workspace:*
         version: link:../cli
@@ -535,6 +572,9 @@ importers:
       '@bespokecore/redis':
         specifier: workspace:*
         version: link:../redis
+      '@bespokecore/scheduler':
+        specifier: workspace:*
+        version: link:../scheduler
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../server
@@ -569,6 +609,9 @@ importers:
       '@bespokecore/queue':
         specifier: workspace:*
         version: link:../queue
+      '@bespokecore/scheduler':
+        specifier: workspace:*
+        version: link:../scheduler
       '@bespokecore/session':
         specifier: workspace:*
         version: link:../session

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { token } from '@bespokecore/core';
+import { Clock, token } from '@bespokecore/core';
 import { Connections, type Generated } from '@bespokecore/database';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link RememberTokenTable}. */
@@ -57,6 +57,8 @@ export interface RememberTokenStore {
   forget(cookie: string): Promise<void>;
   /** Drops every token of the user — except the one of `except` (the current device). */
   forgetUser(userId: number | string, except?: string): Promise<void>;
+  /** Deletes every expired token (`bespoke auth:prune-tokens`) — a lookup drops only the one it finds. How many. */
+  prune(): Promise<number>;
 }
 export const RememberTokenStore = token<RememberTokenStore>('RememberTokenStore');
 
@@ -68,15 +70,17 @@ const GRACE_MS = 60_000;
 /** The default {@link RememberTokenStore}, on the app's `remember_tokens` table. */
 export class DatabaseRememberTokens implements RememberTokenStore {
   readonly #connections: Connections;
+  readonly #clock: Clock;
 
-  constructor(connections: Connections) {
+  constructor(connections: Connections, clock: Clock) {
     this.#connections = connections;
+    this.#clock = clock;
   }
 
   async create(userId: number | string, expiresAt: Date): Promise<string> {
     const selector = randomBytes(16).toString('base64url');
     const validator = randomBytes(32).toString('base64url');
-    const now = new Date();
+    const now = new Date(this.#clock.now());
     await this.#db()
       .insertInto(REMEMBER_TABLE)
       .values({ user_id: userId, selector, validator_hash: sha256(validator), expires_at: expiresAt, created_at: now, updated_at: now })
@@ -95,7 +99,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
       .executeTakeFirst();
     if (!row) return undefined;
     const expiresAt = new Date(row.expires_at);
-    if (expiresAt.getTime() <= Date.now()) {
+    if (expiresAt.getTime() <= this.#clock.now()) {
       await db.deleteFrom(REMEMBER_TABLE).where('id', '=', row.id).execute();
       return undefined;
     }
@@ -103,7 +107,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     const presented = sha256(parts.validator);
     if (equal(presented, row.validator_hash)) {
       const validator = randomBytes(32).toString('base64url');
-      const now = new Date();
+      const now = new Date(this.#clock.now());
       // Only if nobody rotated in between — a concurrent request with the same cookie is not a theft.
       const result = await db
         .updateTable(REMEMBER_TABLE)
@@ -115,7 +119,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
       return { kind: 'valid', userId: row.user_id, cookie: rotated ? `${parts.selector}.${validator}` : undefined, expiresAt };
     }
     const rotatedAt = row.rotated_at === null ? 0 : new Date(row.rotated_at).getTime();
-    if (row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash) && Date.now() - rotatedAt < GRACE_MS) {
+    if (row.previous_validator_hash !== null && equal(presented, row.previous_validator_hash) && this.#clock.now() - rotatedAt < GRACE_MS) {
       return { kind: 'valid', userId: row.user_id, cookie: undefined, expiresAt }; // the other tab's response carries the new cookie
     }
     // A validator that is neither current nor just rotated: someone else used this cookie first.
@@ -133,6 +137,11 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     const keep = except === undefined ? undefined : parse(except);
     if (keep) query = query.where('selector', '!=', keep.selector);
     await query.execute();
+  }
+
+  async prune(): Promise<number> {
+    const result = await this.#db().deleteFrom(REMEMBER_TABLE).where('expires_at', '<=', new Date(this.#clock.now())).executeTakeFirst();
+    return Number(result.numDeletedRows);
   }
 
   #db() {

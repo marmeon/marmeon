@@ -59,3 +59,15 @@ The queue does exactly this for unique jobs (`queue.dispatch(Job, payload, { uni
 job's id, so the worker that finishes the job frees it), the locks of the `withoutOverlapping` job middleware
 (`queue:overlap:…`) and the markers of `job.once` (`queue:once:<key>`, kept a day by default). With workers on several
 machines the cache must be shared: `database` or `redis` — `file` and `memory` lock only one machine (one process).
+
+The scheduler (`@bespokecore/scheduler`) keeps its locks here too: `schedule:<task>:<minute>` for `onOneServer()` (an hour),
+`schedule:overlap:<task>` for `withoutOverlapping()`, and its last tick (`schedule:last-tick`, `schedule:last-tick:<host>`) for
+catching up missed runs. `onOneServer()` with `file` or `memory` is refused when the scheduler starts.
+
+### Expired entries: `cache:prune`, emptying: `cache:clear`
+
+Expired entries and locks stay in `memory`, `file` and `database` stores until they are read or overwritten.
+`bespoke cache:prune` deletes them (each in one statement or under its guard — a live one is never touched); Redis expires
+keys itself. Schedule it: `s.command('cache:prune').hourly()`. `bespoke cache:clear` empties the cache — every entry, never
+a lock: rate-limit windows, `job.once` markers and the scheduler's last tick are gone too (after `migrate:fresh`, when ids
+start over and old markers would match new records).

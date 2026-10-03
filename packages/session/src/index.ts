@@ -6,7 +6,7 @@ export { SessionServiceProvider, SessionSetupError, sessionTableConnection } fro
 export { Session } from './session.ts';
 export type { SessionData } from './session.ts';
 export { ShareErrorsFromSession } from './share-errors.ts';
-export { StartSession } from './start-session.ts';
+export { SessionLottery, StartSession } from './start-session.ts';
 export { createSessionId, SESSION_ID, SESSION_USER_KEY, SessionStore } from './store.ts';
 export type { SessionPayload } from './store.ts';
 export { CookieSessionStore } from './stores/cookie.ts';

@@ -16,6 +16,12 @@ export interface JobInfo {
 // cross-cutting concerns like logging, so a logger needs nothing passed around. Context only, never services or data.
 const requests = new AsyncLocalStorage<RequestInfo>();
 const jobs = new AsyncLocalStorage<JobInfo>();
+const tasks = new AsyncLocalStorage<TaskInfo>();
+
+/** What every log entry of a scheduled task carries — its name (@bespokecore/scheduler). */
+export interface TaskInfo {
+  readonly task: string;
+}
 
 /** Runs `fn` with `info` as the current request — set by the HTTP kernel per request. */
 export function runWithRequest<T>(info: RequestInfo, fn: () => T): T {
@@ -37,10 +43,23 @@ export function currentJob(): JobInfo | undefined {
   return jobs.getStore();
 }
 
-/** What a log entry written now carries: `{ requestId }` in a request, `{ job, jobId, attempt }` in a job (both, when a job runs inside a request). */
+/** Runs `fn` with `info` as the current scheduled task — set by the scheduler per run. */
+export function runWithTask<T>(info: TaskInfo, fn: () => T): T {
+  return tasks.run(info, fn);
+}
+
+/**
+ * What a log entry written now carries: `{ requestId }` in a request, `{ job, jobId, attempt }` in a job (both, when a job
+ * runs inside a request), `{ task }` in a scheduled task.
+ */
 export function currentLogContext(): Readonly<Record<string, unknown>> {
   const request = requests.getStore();
   const job = jobs.getStore();
-  if (!request && !job) return {};
-  return { ...(request ? { requestId: request.requestId } : {}), ...(job ? { job: job.job, jobId: job.jobId, attempt: job.attempt } : {}) };
+  const task = tasks.getStore();
+  if (!request && !job && !task) return {};
+  return {
+    ...(request ? { requestId: request.requestId } : {}),
+    ...(job ? { job: job.job, jobId: job.jobId, attempt: job.attempt } : {}),
+    ...(task ? { task: task.task } : {}),
+  };
 }

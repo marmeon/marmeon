@@ -116,6 +116,15 @@ export class DatabaseStore implements CacheStore {
     return rows[0]?.owner;
   }
 
+  async prune(): Promise<number> {
+    const { db, sql } = await this.#use();
+    const now = this.#clock.now();
+    // One statement each: a row written again meanwhile has a new expiration and stays.
+    const entries = await sql`delete from cache where expiration is not null and expiration <= ${now}`.execute(db);
+    const locks = await sql`delete from cache_locks where expiration <= ${now}`.execute(db);
+    return Number(entries.numAffectedRows ?? 0n) + Number(locks.numAffectedRows ?? 0n);
+  }
+
   async #use(): Promise<DatabaseStoreConnection & { sql: Sql }> {
     // Imported here, not at the top: @bespokecore/database is an optional peer of the cache.
     this.#sql ??= import('@bespokecore/database').then((module) => module.sql);

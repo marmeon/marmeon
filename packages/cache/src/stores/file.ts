@@ -102,6 +102,31 @@ export class FileStore implements CacheStore {
     return current && this.#isAlive(current) ? (current.value as string) : undefined;
   }
 
+  /**
+   * Removes expired entry and lock files, each under its guard (an `add`, `increment` or lock at the same moment waits).
+   * A plain `put` that replaces an entry right while it is checked can lose that new value — a cache miss, nothing worse.
+   */
+  async prune(): Promise<number> {
+    let removed = 0;
+    for (const [directory, test] of [
+      [this.#directory, ENTRY],
+      [this.#locks, ENTRY],
+    ] as const) {
+      for (const name of await readdir(directory)) {
+        if (!test.test(name)) continue;
+        const file = join(directory, name);
+        const gone = await this.#guarded(file, async () => {
+          const entry = await this.#readFile(file);
+          if (!entry || this.#isAlive(entry)) return false;
+          await rm(file, { force: true });
+          return true;
+        });
+        if (gone) removed++;
+      }
+    }
+    return removed;
+  }
+
   #isAlive(entry: Entry): boolean {
     return entry.expires === null || entry.expires > this.#clock.now();
   }

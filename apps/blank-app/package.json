@@ -24,6 +24,7 @@
     "@bespokecore/queue": "workspace:*",
     "@bespokecore/react": "workspace:*",
     "@bespokecore/router": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/server": "workspace:*",
     "@bespokecore/session": "workspace:*",
     "mjml": "^5.4.1",
@@ -42,5 +43,5 @@
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   },
-  "description": "An app without modules — the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
+  "description": "An app without modules \u2014 the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
 }

@@ -1,6 +1,6 @@
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { token } from '@bespokecore/core';
+import { Clock, token } from '@bespokecore/core';
 import { Connections, type Generated, type JsonColumn } from '@bespokecore/database';
 import type { Duration } from '@bespokecore/http';
 import { AuthConfig } from './config.ts';
@@ -68,6 +68,11 @@ export interface AccessTokenStore {
   list(userId: number | string): Promise<AccessToken[]>;
   /** Revokes one token of the user — `false` if the user has no such token. */
   revoke(userId: number | string, id: number): Promise<boolean>;
+  /**
+   * Deletes the tokens that expired more than `graceSeconds` ago (`bespoke auth:prune-tokens`) — they stop working when
+   * they expire, but stay listed until pruned. How many. Tokens without an expiry stay until revoked.
+   */
+  prune(graceSeconds?: number): Promise<number>;
 }
 export const AccessTokenStore = token<AccessTokenStore>('AccessTokenStore');
 
@@ -98,15 +103,17 @@ export function parseAccessToken(plainText: string, prefix: string): { id: numbe
 export class DatabaseAccessTokens implements AccessTokenStore {
   readonly #connections: Connections;
   readonly #prefix: string;
+  readonly #clock: Clock;
 
-  constructor(connections: Connections, config: AuthConfig) {
+  constructor(connections: Connections, config: AuthConfig, clock: Clock) {
     this.#connections = connections;
     this.#prefix = config.tokenPrefix;
+    this.#clock = clock;
   }
 
   async create(userId: number | string, name: string, { abilities = ['*'], expiresIn }: { abilities?: readonly string[]; expiresIn?: Duration } = {}) {
     const secret = Array.from({ length: 40 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
-    const now = new Date();
+    const now = new Date(this.#clock.now());
     const row = await this.#db()
       .insertInto(ACCESS_TOKEN_TABLE)
       .values({
@@ -135,13 +142,13 @@ export class DatabaseAccessTokens implements AccessTokenStore {
       .where('id', '=', parsed.id)
       .executeTakeFirst();
     if (!row || !equal(sha256(parsed.secret), row.token_hash)) return undefined;
-    if (row.expires_at !== null && new Date(row.expires_at).getTime() <= Date.now()) return undefined;
+    if (row.expires_at !== null && new Date(row.expires_at).getTime() <= this.#clock.now()) return undefined;
     return toToken(row);
   }
 
   async touch(token: AccessToken): Promise<void> {
-    if (token.lastUsedAt !== null && Date.now() - new Date(token.lastUsedAt).getTime() < 60_000) return;
-    await this.#db().updateTable(ACCESS_TOKEN_TABLE).set({ last_used_at: new Date() }).where('id', '=', token.id).execute();
+    if (token.lastUsedAt !== null && this.#clock.now() - new Date(token.lastUsedAt).getTime() < 60_000) return;
+    await this.#db().updateTable(ACCESS_TOKEN_TABLE).set({ last_used_at: new Date(this.#clock.now()) }).where('id', '=', token.id).execute();
   }
 
   async list(userId: number | string): Promise<AccessToken[]> {
@@ -157,6 +164,15 @@ export class DatabaseAccessTokens implements AccessTokenStore {
   async revoke(userId: number | string, id: number): Promise<boolean> {
     const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numDeletedRows > 0n;
+  }
+
+  async prune(graceSeconds = 0): Promise<number> {
+    const result = await this.#db()
+      .deleteFrom(ACCESS_TOKEN_TABLE)
+      .where('expires_at', 'is not', null)
+      .where('expires_at', '<=', new Date(this.#clock.now() - graceSeconds * 1000))
+      .executeTakeFirst();
+    return Number(result.numDeletedRows);
   }
 
   #db() {

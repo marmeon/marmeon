@@ -41,7 +41,8 @@
   "peerDependencies": {
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/database": "workspace:*",
-    "@bespokecore/redis": "workspace:*"
+    "@bespokecore/redis": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@bespokecore/cli": {
@@ -52,13 +53,18 @@
     },
     "@bespokecore/redis": {
       "optional": true
+    },
+    "@bespokecore/scheduler": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@bespokecore/cache": "workspace:*",
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/database": "workspace:*",
     "@bespokecore/encryption": "workspace:*",
     "@bespokecore/redis": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/server": "workspace:*"
   }
 }

@@ -1,9 +1,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
 import { Application, ConfigError, Container, createApplication, type ApplicationOptions } from '@bespokecore/core';
-import { CommandRegistry, type CommandClass } from './command.ts';
+import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
@@ -79,11 +78,11 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     return 1;
   }
 
-  let parsed;
   try {
-    parsed = parseArgs({ args: [...rest], options: Command.options ?? {}, allowPositionals: true, strict: true });
+    parseCommandArgs(Command, rest);
   } catch (error) {
-    output.error(`${(error as Error).message}\nUsage: bespoke ${Command.command} ${Command.usage ?? ''}`.trimEnd());
+    if (!(error instanceof CommandArgumentsError)) throw error;
+    output.error(error.message);
     return 1;
   }
 
@@ -91,9 +90,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // request or a job: scoped services (a Translator, in APP_LOCALE) resolve, and start fresh for each command.
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
-    const command = (app?.container.createScope() ?? new Container()).make(Command);
-    const code = await command.handle({ args: parsed.positionals, options: parsed.values, output, root, spawn: (...args) => spawnBespoke(root, args) });
-    return typeof code === 'number' ? code : 0;
+    return await runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnBespoke(root, args) });
   } catch (error) {
     printError(output, error);
     return 1;

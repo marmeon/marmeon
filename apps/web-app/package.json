@@ -25,6 +25,7 @@
     "@bespokecore/react": "workspace:*",
     "@bespokecore/redis": "workspace:*",
     "@bespokecore/router": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/server": "workspace:*",
     "@bespokecore/session": "workspace:*",
     "mjml": "^5.4.1",

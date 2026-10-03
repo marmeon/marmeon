@@ -68,6 +68,14 @@ export class MemoryStore implements CacheStore {
     return this.#lockHeld(name)?.owner;
   }
 
+  async prune(): Promise<number> {
+    const now = this.#clock.now();
+    let removed = 0;
+    for (const [key, entry] of this.#entries) if (entry.expires !== null && entry.expires <= now && this.#entries.delete(key)) removed++;
+    for (const [name, lock] of this.#locks) if (lock.expires <= now && this.#locks.delete(name)) removed++;
+    return removed;
+  }
+
   /** Serialized, like every real store: a cached object is a copy, never shared with the caller. */
   #set(key: string, entry: Entry): void {
     this.#entries.set(key, { raw: JSON.stringify(entry.value) as string | undefined, expires: entry.expires });

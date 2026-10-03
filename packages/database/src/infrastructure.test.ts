@@ -258,15 +258,19 @@ describe.runIf(PGSQL_URL)('connections.infrastructure() on Postgres', () => {
   });
 
   it('closes its pool with the connections', async () => {
+    // Its own backend, by pid — not a count of the shared test database, which other test files use at the same time.
     const observer = connect();
-    const backends = async () =>
-      Number((await sql<{ n: string }>`select count(*) as n from pg_stat_activity where datname = current_database()`.execute(observer.get())).rows[0]!.n);
+    const alive = async (pid: number) =>
+      Number((await sql<{ n: string }>`select count(*) as n from pg_stat_activity where pid = ${pid}`.execute(observer.get())).rows[0]!.n) === 1;
     const connections = connect();
-    const before = await backends();
-    await hit(connections.infrastructure('default', USAGE));
-    expect(await backends()).toBe(before + 1); // the infrastructure pool's connection (the app's pool never opened)
+    const infrastructure = connections.infrastructure('default', USAGE);
+    await hit(infrastructure);
+    const pid = Number((await sql<{ pid: number }>`select pg_backend_pid() as pid`.execute(infrastructure)).rows[0]!.pid);
+    expect(await alive(pid)).toBe(true);
     await connections.destroy();
-    expect(await backends()).toBe(before);
+    // The server drops a closed backend a moment later.
+    for (let i = 0; i < 20 && (await alive(pid)); i++) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(await alive(pid)).toBe(false);
     expect(() => connections.infrastructure('default', USAGE)).toThrow('The database connections are closed');
   });
 });

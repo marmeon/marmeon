@@ -1,6 +1,9 @@
-import { createApplication, defineModule } from '@bespokecore/core';
+import { CacheServiceProvider } from '@bespokecore/cache';
+import { CliServiceProvider } from '@bespokecore/cli';
+import { createApplication, defineModule, type ModuleDefinition, type ServiceProviderClass } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
+import { defineSchedule, SchedulerServiceProvider } from '@bespokecore/scheduler';
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
 import { CsrfProtection } from './csrf.ts';
@@ -51,13 +54,13 @@ const apiRoutes = defineRoutes((Route) => {
 
 const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
 
-async function boot(env: Record<string, string> = {}, kernelOptions: { version?: string } = {}) {
+async function boot(env: Record<string, string> = {}, kernelOptions: { version?: string } = {}, extra: { providers?: ServiceProviderClass[]; schedule?: ModuleDefinition['schedule'] } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', ...env },
-    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
-    modules: [defineModule({ name: 'visits', routes, apiRoutes })],
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', CACHE_DRIVER: 'memory', ...env },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ...(extra.providers ?? [])],
+    modules: [defineModule({ name: 'visits', routes, apiRoutes, ...(extra.schedule ? { schedule: extra.schedule } : {}) })],
     override: (container) => container.make(CsrfProtection).disable(), // CSRF has its own tests
   });
   const kernel = createHttpKernel(application, kernelOptions);
@@ -110,6 +113,23 @@ describe('StartSession', () => {
     await send('/count');
     await application.kernel.settle();
     expect(await store.gc(0)).toBe(0); // the expired session was already collected by terminate()
+  });
+
+  it('draws no lottery when the scheduler runs session:prune — then that is the one sweeper', async () => {
+    const providers = [CliServiceProvider, CacheServiceProvider, SchedulerServiceProvider];
+    const scheduled = await boot({ SESSION_LOTTERY: '1/1' }, {}, { providers, schedule: defineSchedule((s) => void s.command('session:prune').everyFifteenMinutes()) });
+    const store = scheduled.application.container.make(SessionStore);
+    await store.write('e'.repeat(40), {}, -1);
+    await scheduled.send('/count');
+    await scheduled.application.kernel.settle();
+    expect(await store.gc(0)).toBe(1); // still there for session:prune
+    // A schedule without it: the lottery as configured.
+    const other = await boot({ SESSION_LOTTERY: '1/1' }, {}, { providers, schedule: defineSchedule((s) => void s.command('cache:prune').hourly()) });
+    const otherStore = other.application.container.make(SessionStore);
+    await otherStore.write('e'.repeat(40), {}, -1);
+    await other.send('/count');
+    await other.application.kernel.settle();
+    expect(await otherStore.gc(0)).toBe(0);
   });
 
   it('keeps flash data through an asset-version reload (409)', async () => {

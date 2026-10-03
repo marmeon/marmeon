@@ -27,6 +27,11 @@ export interface Cache {
   /** Empties the cache. Locks stay — they belong to whoever holds them. */
   flush(): Promise<void>;
   /**
+   * Removes expired entries and expired locks (`bespoke cache:prune`, for the scheduler) — how many; undefined when the
+   * store expires them by itself (Redis).
+   */
+  prune(): Promise<number | undefined>;
+  /**
    * An atomic lock, held for at most `seconds` (it expires, so a crashed holder cannot block forever):
    *
    * ```ts
@@ -75,6 +80,11 @@ export interface CacheStore {
   forceUnlock(name: string): Promise<void>;
   /** Who holds the lock now; undefined when it is free or expired. */
   lockOwner(name: string): Promise<string | undefined>;
+  /**
+   * Removes expired entries and locks — which stay until read or overwritten otherwise — and returns how many. Stores
+   * whose entries expire on their own (Redis) have none (`bespoke cache:prune` says so).
+   */
+  prune?(): Promise<number>;
 }
 
 /** The lock was not free within the time `block()` waited. */
@@ -215,6 +225,10 @@ export class StoreCache implements Cache {
 
   async flush(): Promise<void> {
     await this.#store.clear();
+  }
+
+  async prune(): Promise<number | undefined> {
+    return this.#store.prune?.();
   }
 
   lock(name: string, seconds: number, owner?: string): Lock {

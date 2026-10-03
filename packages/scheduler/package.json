@@ -1,0 +1,59 @@
+{
+  "name": "@bespokecore/scheduler",
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@bespokecore/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/__fixtures__"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "bespoke": {
+    "providers": [
+      "SchedulerServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@bespokecore/core": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@bespokecore/cache": "workspace:*",
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/queue": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@bespokecore/cli": {
+      "optional": true
+    },
+    "@bespokecore/queue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@bespokecore/cache": "workspace:*",
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/database": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
+    "@bespokecore/queue": "workspace:*",
+    "@bespokecore/redis": "workspace:*"
+  }
+}

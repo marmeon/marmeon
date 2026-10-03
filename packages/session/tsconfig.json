@@ -32,6 +32,12 @@
     },
     {
       "path": "../cli"
+    },
+    {
+      "path": "../scheduler"
+    },
+    {
+      "path": "../cache"
     }
   ]
 }

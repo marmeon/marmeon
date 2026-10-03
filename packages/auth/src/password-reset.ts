@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { EventDispatcher, token } from '@bespokecore/core';
+import { Clock, EventDispatcher, token } from '@bespokecore/core';
 import { Connections } from '@bespokecore/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
@@ -37,6 +37,8 @@ export interface PasswordResetTokenStore {
   /** Whether `token` is the current token of `email` and younger than `maxAgeSeconds` — and if so, it is used up. */
   consume(email: string, token: string, maxAgeSeconds: number): Promise<boolean>;
   forget(email: string): Promise<void>;
+  /** Deletes every token older than `maxAgeSeconds` — expired ones nobody used (`bespoke auth:prune-tokens`). How many. */
+  prune(maxAgeSeconds: number): Promise<number>;
 }
 export const PasswordResetTokenStore = token<PasswordResetTokenStore>('PasswordResetTokenStore');
 
@@ -45,20 +47,22 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 /** The default {@link PasswordResetTokenStore}, on the app's `password_reset_tokens` table. */
 export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
   readonly #connections: Connections;
+  readonly #clock: Clock;
 
-  constructor(connections: Connections) {
+  constructor(connections: Connections, clock: Clock) {
     this.#connections = connections;
+    this.#clock = clock;
   }
 
   async create(email: string, throttleSeconds: number): Promise<string | undefined> {
     const db = this.#db();
     const existing = await db.selectFrom(PASSWORD_RESET_TABLE).select('created_at').where('email', '=', email).executeTakeFirst();
-    if (existing && Date.now() - new Date(existing.created_at).getTime() < throttleSeconds * 1000) return undefined;
+    if (existing && this.#clock.now() - new Date(existing.created_at).getTime() < throttleSeconds * 1000) return undefined;
     const value = randomBytes(32).toString('base64url');
     // The ambient transaction (E107): `db` joins it — and inside a caller's transaction this becomes a savepoint.
     await this.#connections.transaction(async () => {
       await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
-      await db.insertInto(PASSWORD_RESET_TABLE).values({ email, token_hash: sha256(value), created_at: new Date() }).execute();
+      await db.insertInto(PASSWORD_RESET_TABLE).values({ email, token_hash: sha256(value), created_at: new Date(this.#clock.now()) }).execute();
     });
     return value;
   }
@@ -68,7 +72,7 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
     const db = this.#db();
     const row = await db.selectFrom(PASSWORD_RESET_TABLE).select(['token_hash', 'created_at']).where('email', '=', email).executeTakeFirst();
     if (!row) return false;
-    if (Date.now() - new Date(row.created_at).getTime() >= maxAgeSeconds * 1000) {
+    if (this.#clock.now() - new Date(row.created_at).getTime() >= maxAgeSeconds * 1000) {
       await this.forget(email);
       return false;
     }
@@ -80,6 +84,14 @@ export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
 
   async forget(email: string): Promise<void> {
     await this.#db().deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).execute();
+  }
+
+  async prune(maxAgeSeconds: number): Promise<number> {
+    const result = await this.#db()
+      .deleteFrom(PASSWORD_RESET_TABLE)
+      .where('created_at', '<=', new Date(this.#clock.now() - maxAgeSeconds * 1000))
+      .executeTakeFirst();
+    return Number(result.numDeletedRows);
   }
 
   #db() {

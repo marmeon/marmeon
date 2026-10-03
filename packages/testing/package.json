@@ -36,6 +36,7 @@
     "@bespokecore/database": "workspace:*",
     "@bespokecore/mail": "workspace:*",
     "@bespokecore/queue": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/session": "workspace:*",
     "vitest": "^5.0.0"
   },
@@ -52,6 +53,9 @@
     "@bespokecore/queue": {
       "optional": true
     },
+    "@bespokecore/scheduler": {
+      "optional": true
+    },
     "@bespokecore/session": {
       "optional": true
     },
@@ -64,6 +68,7 @@
     "@bespokecore/database": "workspace:*",
     "@bespokecore/mail": "workspace:*",
     "@bespokecore/queue": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/session": "workspace:*"
   }
 }

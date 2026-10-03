@@ -1,3 +1,4 @@
+import { SystemClock } from '@bespokecore/core';
 import type { Connections } from '@bespokecore/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
@@ -31,7 +32,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
 
   beforeAll(async () => {
     ({ connections, close } = await migratedConnections(driver));
-    tokens = new DatabasePasswordResetTokens(connections);
+    tokens = new DatabasePasswordResetTokens(connections, new SystemClock());
   });
   afterAll(() => close());
   beforeEach(async () => {
