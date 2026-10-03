@@ -43,6 +43,10 @@ response) or by `bespoke session:prune` — from cron (then set `SESSION_LOTTERY
 The migration `make:session-table` writes follows the connection: `connection: sessionTableConnection` puts the table on
 `SESSION_CONNECTION` (with the database driver; otherwise on `default`), and `bespoke migrate` creates it there.
 
+**The payload is not encrypted** in a file, a row or Redis (like Laravel without `SESSION_ENCRYPT`): it holds the CSRF token, the
+signed-in user's id and their password fingerprint. Protect the store like the database; encryption as an option is a
+candidate for later.
+
 ### What `writeIfExists` guarantees
 
 Every store implements `SessionStore.writeIfExists(id, data, lifetime) → boolean`: it writes a session back **only while

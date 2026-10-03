@@ -125,21 +125,21 @@ describe('bespoke make:* (generated code compiles)', () => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'http', 'router', 'database', 'queue']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
     for (const pkg of ['react', '@types/react', 'valibot']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
       join(app, 'tsconfig.json'),
       JSON.stringify({
         extends: join(repo, 'tsconfig.base.json'),
-        compilerOptions: { noEmit: true, jsx: 'react-jsx', lib: ['ES2025', 'ESNext.TypedArrays', 'DOM'], types: ['node'] },
+        compilerOptions: { noEmit: true, jsx: 'react-jsx', lib: ['ES2025', 'ESNext.Temporal', 'ESNext.TypedArrays', 'DOM'], types: ['node'] },
         include: ['modules'],
       }),
     );
   });
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
-  it('scaffolds a module, controller with view, event, listener, middleware and job', () => {
+  it('scaffolds a module, controller with view, event, listener, middleware, job and notification', () => {
     expect(bespoke(app, ['make:module', 'billing']).stdout).toContain("import billing from '#modules/billing';");
     expect(bespoke(app, ['make:controller', 'ShowInvoice', '--module=billing', '--view']).code).toBe(0);
     expect(bespoke(app, ['make:event', 'InvoicePaid', '-m', 'billing']).code).toBe(0);
@@ -148,6 +148,7 @@ describe('bespoke make:* (generated code compiles)', () => {
     );
     expect(bespoke(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
     expect(bespoke(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain('jobs: [SendInvoiceReminderJob]');
+    expect(bespoke(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain('notifications: [InvoiceOverdueNotification]');
     expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
     // A reading endpoint is a GET, and a GET has no body (E65): its request validates the query.
     expect(bespoke(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
@@ -164,6 +165,20 @@ describe('bespoke make:* (generated code compiles)', () => {
     const job = readFileSync(join(app, 'modules/billing/jobs/SendInvoiceReminderJob.ts'), 'utf8');
     expect(job).toContain("static readonly job = 'billing.send-invoice-reminder';"); // stable, from the class name once (E84)
     expect(job).toContain('async handle(payload: JobPayload<typeof SendInvoiceReminderJob>, job: JobContext): Promise<void> {');
+    const notification = readFileSync(join(app, 'modules/billing/notifications/InvoiceOverdueNotification.ts'), 'utf8');
+    expect(notification).toContain("static readonly notification = 'billing.invoice-overdue';"); // stable, like a job's (E92)
+    expect(notification).toContain('toDatabase(data: NotificationData<typeof InvoiceOverdueNotification>): DatabaseInput<typeof InvoiceOverdueNotification> {');
+    // The generated class passes the checks where a notification is sent (channels, toDatabase against static database).
+    writeFileSync(
+      join(app, 'modules/billing/send-overdue.ts'),
+      [
+        "import type { Notifications } from '@bespokecore/notifications';",
+        "import { InvoiceOverdueNotification } from './notifications/InvoiceOverdueNotification.ts';",
+        "declare module '@bespokecore/notifications' { interface NotificationRecipients { user: { readonly id: number } } }",
+        'export const sendOverdue = (notifications: Notifications) => notifications.send({ type: \'user\', id: 7 }, InvoiceOverdueNotification, { id: 1 });',
+        '',
+      ].join('\n'),
+    );
     const withRequest = readFileSync(join(app, 'modules/billing/controllers/UpdateInvoiceController.ts'), 'utf8');
     expect(withRequest).toContain('export const UpdateInvoiceRequest = defineRequest({');
     expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
@@ -187,7 +202,7 @@ describe('bespoke make:* (generated code compiles)', () => {
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
-  }, 30_000); // twelve CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
+  }, 30_000); // thirteen CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
 
   it('refuses to overwrite and explains missing modules', () => {
     bespoke(app, ['make:module', 'shop']);

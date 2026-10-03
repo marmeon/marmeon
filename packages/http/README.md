@@ -248,7 +248,9 @@ await navigator.load(loadInstant);                           // async: fetch the
 **The size budget** (E75). `packages/react/size-budget.json` holds a limit per scenario, in KB gzip of the initial download,
 measured in Vite's app mode against `dist/` (minified, production defines, React and i18n left out, and without Vite's preload
 helper — the first `import()` of any client build brings it, so it is no framework code). The limits are where Wave 5c ended
-(core 11.2, `emptyApp` 13.6, `minimalApp` 18.2, `blank-app` 14.1, `web-app` 22.6 KB gzip) and only go down:
+(core 11.2, `emptyApp` 13.6, `minimalApp` 18.2, `blank-app` 14.1, `web-app` 22.6 KB gzip; the `everything` ceiling 31.1 since
+E110 — Wave 6 added uploads and live props as lazy features, and the core's server-driven live trigger costs every app ≈ 40 B)
+and only go down:
 
 | Scenario | What |
 | --- | --- |
@@ -353,6 +355,12 @@ reconnect with `Last-Event-ID`); `refresh` — `{ channel, only, seq }`, a hint 
 names; `[]` — nothing: this tab caused it); `end` — `{}`, the session ended (signed in or out): do not reconnect; a comment line
 (`: heartbeat`) every `LIVE_HEARTBEAT` seconds. Each `hello` and `refresh` carries `id:` — the sequences the stream has seen
 (`users.7=4&dashboard.sign-ins=12`), what the browser sends back as `Last-Event-ID`.
+
+**The upload endpoint (W6.9, `@bespokecore/storage`)**: `PUT /_bespoke/uploads/<id>?expires=…&signature=…` — the URL the target
+answered with, signed for 15 minutes, in the `web` group. The body is the file's bytes. Answers `200` `{ size }`, or: `403` (a
+signature that does not fit or expired), `404` (no such upload, another session's, or past its lifetime), `409` (its bytes were
+sent already — one PUT per upload), `413` (more than the field allows — cut off in the stream, whatever `Content-Length` said;
+nothing stays), `419` (no session), `400` (no body). Uploads to S3 go to the store itself (a presigned POST) instead.
 
 **The page object** (`PageObject`): `component`, `props`, `url`, `version`; `locale`, `fallbackLocale` (W5); `deferredProps`,
 `mergeProps`, `deepMergeProps`, `matchPropsOn`; and from Wave 5b `query` + `queryDefaults` (the query as the server parsed

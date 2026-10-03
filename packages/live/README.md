@@ -70,6 +70,16 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
 - **Server shutdown** closes every stream (`startServer().close()` would wait for them otherwise); the browsers reconnect to
   the next server and catch up.
 
+### Behind a proxy
+
+- Speak **h2 (or h3) to the browser** — nginx `listen 443 ssl; http2 on;`, Caddy by default, Cloudflare and AWS ALB by default —, so
+  every tab may stay connected; the app behind it may speak HTTP/1.1.
+- Let the stream through **unbuffered and uncompressed**: the app sends `X-Accel-Buffering: no` (nginx honours it per response) and
+  `no-transform`; a proxy that compresses `text/event-stream` anyway holds hints back until a buffer fills.
+- **Idle timeouts longer than `LIVE_HEARTBEAT`** (nginx `proxy_read_timeout`, ALB idle timeout, Cloudflare's 100 s) — the
+  heartbeat is what keeps an idle stream open.
+- Count connections: each open tab holds one stream (one socket through the proxy); `LIVE_MAX_STREAMS` caps them per process.
+
 ## Configuration
 
 ```sh

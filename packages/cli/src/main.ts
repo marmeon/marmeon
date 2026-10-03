@@ -15,6 +15,7 @@ import {
   MakeMiddlewareCommand,
   MakeMigrationCommand,
   MakeModuleCommand,
+  MakeNotificationCommand,
 } from './commands/make.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
@@ -38,6 +39,7 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeEventCommand,
   MakeListenerCommand,
   MakeJobCommand,
+  MakeNotificationCommand,
   MakeMiddlewareCommand,
   MakeMigrationCommand,
 ];

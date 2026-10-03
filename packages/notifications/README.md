@@ -34,6 +34,7 @@ if (!(await this.#inbox.markRead(me, ctx.params.notification))) abort(404);   //
 ```
 
 ```text
+bespoke make:notification <Name> --module=<module>   # a class with a stable name, schema, static database, via() and toDatabase()
 bespoke make:notifications-table [--module=system] | notifications:prune [--days=30] [--unread-days=N]
 ```
 

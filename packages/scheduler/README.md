@@ -42,4 +42,8 @@ Testing (`@bespokecore/testing`, with the test clock): `app.schedule.due(time)` 
 `app.schedule.runTask(name)`.
 
 Prune commands of the framework to schedule: `auth:prune-tokens`, `session:prune`, `cache:prune`, `queue:prune-failed`,
-`notifications:prune`.
+`notifications:prune`, `uploads:prune` — each one statement (or one guarded step per entry), its time from the app's `Clock`.
+
+In production run **one `schedule:work` per server** under a supervisor (or `schedule:run` from cron every minute), next to the
+web processes and `queue:work`; `onOneServer()` tasks then run once across them. `bespoke dev` starts it with the server when a
+module has a schedule (E101).

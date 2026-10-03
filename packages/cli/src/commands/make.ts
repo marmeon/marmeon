@@ -157,17 +157,47 @@ export class MakeJobCommand {
     if (!dir || !name) return 1;
     const module = input.options.module as string;
     // The stable name the queue stores (E84) — from the class name once; renaming the class later keeps it.
-    const kebab = name
-      .replace(/Job$/, '')
-      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-      .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
-      .toLowerCase();
-    if (!write(input, join(dir, 'jobs', `${name}.ts`), JOB(name, `${module}.${kebab || 'job'}`))) return 1;
+    if (!write(input, join(dir, 'jobs', `${name}.ts`), JOB(name, `${module}.${stableName(name, 'Job') || 'job'}`))) return 1;
 
     input.output.line();
     input.output.line(`Register it in modules/${module}/index.ts:`);
     input.output.line(style('dim', `  jobs: [${name}]`));
     input.output.line(style('dim', `Dispatch it: await queue.dispatch(${name}, { id: 1 });   (constructor(queue: Queue), from @bespokecore/queue)`));
+    return 0;
+  }
+}
+
+/** `SendInvoiceReminderJob` → `send-invoice-reminder`: the kebab-case part of a stable name, without the class suffix. */
+function stableName(name: string, suffix: string): string {
+  return name
+    .replace(new RegExp(`${suffix}$`), '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase();
+}
+
+export class MakeNotificationCommand {
+  static command = 'make:notification';
+  static description = 'Create a notification (a stable name, the schema of its data, via() and a to…() per channel)';
+  static usage = '<Name> --module=<module>';
+  static options = moduleOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const dir = moduleDir(input);
+    const name = className(input, 'Notification');
+    if (!dir || !name) return 1;
+    const module = input.options.module as string;
+    // The stable name the queue and the notifications table store (E92) — from the class name once, like a job's.
+    if (!write(input, join(dir, 'notifications', `${name}.ts`), NOTIFICATION(name, `${module}.${stableName(name, 'Notification') || 'notification'}`))) return 1;
+
+    input.output.line();
+    input.output.line(`Register it in modules/${module}/index.ts:`);
+    input.output.line(style('dim', `  notifications: [${name}]`));
+    input.output.line(
+      style('dim', `Send it: await notifications.send({ type: 'user', id: user.id }, ${name}, { id: 1 });   (constructor(notifications: Notifications), from @bespokecore/notifications)`),
+    );
+    input.output.line(style('dim', 'The database channel needs its table once: bespoke make:notifications-table && bespoke migrate'));
     return 0;
   }
 }
@@ -347,6 +377,34 @@ export class ${name} {
   async handle(payload: JobPayload<typeof ${name}>, job: JobContext): Promise<void> {
     void payload;
     void job; // job.signal aborts at the timeout — pass it on: fetch(url, { signal: job.signal })
+  }
+}
+`;
+
+const NOTIFICATION = (name: string, notification: string) => `import type { DatabaseInput, NotificationData } from '@bespokecore/notifications';
+import * as v from 'valibot';
+
+/**
+ * A notification (E92): sent to recipients as data — \`notifications.send({ type: 'user', id }, ${name}, { id })\` —
+ * and delivered by a worker through the channels \`via()\` returns, in the recipient's language. Dependencies go into
+ * the constructor (injected per delivery), the data into the schema — JSON, checked when sent and before delivery.
+ * Pass IDs, not records. \`implements Notification<'user'>\` checks \`via()\` against a kind of recipient where it is written.
+ */
+export class ${name} {
+  /** Stable — the queue and the notifications table store this name, never the class name. */
+  static readonly notification = '${notification}';
+  static readonly schema = v.object({ id: v.number() });
+  /** What the database channel keeps — the inbox reads it back typed (notificationData(row, ${name})). */
+  static readonly database = v.object({ id: v.number() });
+  // static readonly queue = { queue: 'mail' };   // its job (and its mail) on the \`mail\` queue
+
+  via(recipient: unknown) {
+    void recipient;
+    return ['database'] as const; // and 'mail' with toMail(recipient, data, t) — t in the recipient's language
+  }
+
+  toDatabase(data: NotificationData<typeof ${name}>): DatabaseInput<typeof ${name}> {
+    return { id: data.id };
   }
 }
 `;
