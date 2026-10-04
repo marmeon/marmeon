@@ -6,17 +6,20 @@
  * - injection lists for their exported classes (from the constructor signatures),
  * - their service providers, in dependency order.
  *
- * Module references in the manifest are absolute (like Composer's classmap), so
- * dependencies the app cannot import itself — transitive ones under pnpm — resolve.
+ * One file per set of resolution conditions (E160): `manifest.json` for the published packages (production, an installed app),
+ * `manifest.source.json` for the framework's monorepo (`@bespokecore/source`) — switching between `bespoke dev` and
+ * `bespoke start` there rewrites nothing. Module references are file paths relative to the app (the classmap of Composer,
+ * portable like a Docker build stage), so dependencies the app cannot import itself — transitive ones under pnpm — resolve.
+ * `bespoke build` writes the production manifest; a start that finds `.bespoke/` read-only discovers in memory and says so once.
  *
  * The manifest is data (JSON), applied by {@link loadDiscoveredPackages}. Being read
  * rather than imported, it is never watched by `node --watch`, so regenerating it can
  * never restart a dev server.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import {
   exportedSubpaths,
@@ -29,7 +32,7 @@ import {
 } from './resolve.ts';
 
 /** Bump when the manifest format changes, so old manifests are regenerated. */
-const MANIFEST_VERSION = '2';
+const MANIFEST_VERSION = '3';
 const UNRESOLVABLE = Symbol.for('bespokecore.injection.unresolvable');
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
@@ -63,7 +66,7 @@ export interface Manifest {
   readonly version: string;
   readonly hash: string;
   readonly packages: readonly string[];
-  /** Absolute module URLs; everything else refers to them by index. */
+  /** Module files relative to the app root (`node_modules/.pnpm/…/dist/index.js`); everything else refers to them by index. */
   readonly modules: readonly string[];
   readonly injections: readonly (
     | { readonly class: ExportRef; readonly inject: readonly ExportRef[]; readonly package: string }
@@ -80,8 +83,10 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const reader = new DeclarationReader();
   const modules: string[] = [];
   const moduleIndex = (url: string) => {
-    const index = modules.indexOf(url);
-    return index === -1 ? modules.push(url) - 1 : index;
+    // Kept relative to the app (E160): the same manifest serves the app wherever it is copied to.
+    const path = relative(root, fileURLToPath(url)).split(sep).join('/');
+    const index = modules.indexOf(path);
+    return index === -1 ? modules.push(path) - 1 : index;
   };
   const injections: Manifest['injections'][number][] = [];
   const providers: ExportRef[] = [];
@@ -273,6 +278,11 @@ function publicRef(pkg: PackageInfo, declared: Location, reader: DeclarationRead
 // Freshness & loading
 // ---------------------------------------------------------------------------
 
+/** Node's own conditions — present in every process; the others are the ones a manifest file is named after. */
+const NODE_CONDITIONS = new Set(['node', 'import', 'module-sync', 'node-addons', 'default', 'require']);
+/** What happens when `.bespoke/` cannot be written (E160): a read-only image, a locked-down directory. */
+const UNWRITABLE = new Set(['EACCES', 'EPERM', 'EROFS']);
+
 /** Changes whenever installed dependencies or resolution conditions change. */
 export function manifestHash(root: string, conditions: readonly string[]): string {
   // Resolution depends on the *set* of conditions, not their order or repetition.
@@ -292,28 +302,46 @@ function findLockfile(root: string): string | undefined {
   }
 }
 
-export function manifestPath(root: string): string {
-  return join(root, '.bespoke', 'manifest.json');
+/**
+ * The manifest of one set of conditions (E160): `.bespoke/manifest.json` with Node's own (published packages, production),
+ * `.bespoke/manifest.source.json` with `@bespokecore/source` (the monorepo), `manifest.<conditions>.json` for any other set.
+ */
+export function manifestPath(root: string, conditions: readonly string[] = runtimeConditions()): string {
+  // `@bespokecore/source` reads as `source`; Vitest adds `development`: `manifest.development+source.json`.
+  const own = [...new Set(conditions.filter((condition) => !NODE_CONDITIONS.has(condition)))].map((condition) =>
+    condition === '@bespokecore/source' ? 'source' : condition.replace(/[^\w.-]+/g, '_'),
+  );
+  return join(root, '.bespoke', own.length === 0 ? 'manifest.json' : `manifest.${own.sort().join('+')}.json`);
 }
 
-/** Writes `.bespoke/manifest.json` (what `bespoke discover` runs). */
-export function writeManifest(options: DiscoverOptions): DiscoverySummary {
-  return regenerate(options).summary;
+/** Writes the manifest of the given (or this process's) conditions — what `bespoke discover` and `bespoke build` run. */
+export function writeManifest(options: DiscoverOptions): DiscoverySummary & { readonly path: string } {
+  const conditions = options.conditions ?? runtimeConditions();
+  const result = regenerate({ ...options, conditions });
+  if (result.unwritable) throw result.unwritable;
+  return { ...result.summary, path: manifestPath(options.root, conditions) };
 }
 
 /**
  * Generates and writes the manifest atomically: a temporary file renamed into place.
  * Several processes may regenerate at once (the dev server, `bespoke` commands, test
- * workers) — a reader must never see a half-written file.
+ * workers) — a reader must never see a half-written file. A directory that cannot be
+ * written is no failure here: the manifest is returned with the error (E160).
  */
-function regenerate(options: DiscoverOptions): { manifest: Manifest; summary: DiscoverySummary } {
+function regenerate(options: DiscoverOptions): { manifest: Manifest; summary: DiscoverySummary; unwritable?: NodeJS.ErrnoException } {
   const conditions = options.conditions ?? runtimeConditions();
   const result = generateManifest({ ...options, conditions });
-  const path = manifestPath(options.root);
-  mkdirSync(dirname(path), { recursive: true });
+  const path = manifestPath(options.root, conditions);
   const temporary = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(result.manifest, null, 2)}\n`);
-  renameSync(temporary, path);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(temporary, `${JSON.stringify(result.manifest, null, 2)}\n`);
+    renameSync(temporary, path);
+  } catch (error) {
+    if (!UNWRITABLE.has((error as NodeJS.ErrnoException).code ?? '')) throw error;
+    rmSync(temporary, { force: true });
+    return { ...result, unwritable: error as NodeJS.ErrnoException };
+  }
   return result;
 }
 
@@ -323,7 +351,15 @@ export interface DiscoveredPackages {
   readonly packages: readonly string[];
   /** Whether the manifest was (re)generated during this call. */
   readonly regenerated: boolean;
+  /**
+   * Set when the manifest was out of date and `.bespoke/` could not be written (E160): the packages were discovered in memory —
+   * once per process, the app logs it (run `bespoke build` or `bespoke discover` where it can write, e.g. in the image's build stage).
+   */
+  readonly warning?: string;
 }
+
+/** Manifest files a warning was given for — once per process, not once per app (tests boot many). */
+const warned = new Set<string>();
 
 /**
  * Loads the manifest — regenerating it first if dependencies or conditions changed,
@@ -332,25 +368,33 @@ export interface DiscoveredPackages {
  */
 export async function loadDiscoveredPackages(options: DiscoverOptions & { force?: boolean }): Promise<DiscoveredPackages> {
   const conditions = options.conditions ?? runtimeConditions();
-  const path = manifestPath(options.root);
+  const path = manifestPath(options.root, conditions);
   const expected = manifestHash(options.root, conditions);
+  let unwritable: NodeJS.ErrnoException | undefined;
+  const discover = () => {
+    const result = regenerate({ root: options.root, conditions });
+    unwritable ??= result.unwritable;
+    return result.manifest;
+  };
 
   let manifest = readManifest(path);
   let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
   // Use what was just generated — re-reading the file could see another process's write.
-  if (regenerated) manifest = regenerate({ root: options.root, conditions }).manifest;
+  if (regenerated) manifest = discover();
 
+  const load = (current: Manifest) =>
+    Promise.all(current.modules.map((file) => import(pathToFileURL(resolvePath(options.root, file)).href) as Promise<Record<string, any>>));
   let modules: Record<string, any>[];
   try {
-    modules = await Promise.all(manifest!.modules.map((url) => import(url) as Promise<Record<string, any>>));
+    modules = await load(manifest!);
   } catch (error) {
     // A package the manifest lists is gone while package.json and the lockfile stayed — a production install without the dev
     // dependencies (`pnpm install --prod`, a pruned image) next to a manifest written with them (@bespokecore/devtools, E115).
     // Discover again from what is installed, once.
     if (regenerated || (error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
-    manifest = regenerate({ root: options.root, conditions }).manifest;
+    manifest = discover();
     regenerated = true;
-    modules = await Promise.all(manifest.modules.map((url) => import(url) as Promise<Record<string, any>>));
+    modules = await load(manifest);
   }
   const resolve = ([module, name]: ExportRef) => modules[module]![name];
 
@@ -362,7 +406,14 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     else target[UNRESOLVABLE] ??= entry.unresolvable;
   }
 
-  return { providers: manifest!.providers.map(resolve), packages: manifest!.packages, regenerated };
+  let warning: string | undefined;
+  if (unwritable && !warned.has(path)) {
+    warned.add(path);
+    warning =
+      `${relative(options.root, path)} is out of date and .bespoke/ cannot be written (${unwritable.code}): the packages were discovered in memory, ` +
+      'on every start. Run `bespoke build` (or `bespoke discover`) where the app can write — in a Docker image, in its build stage.';
+  }
+  return { providers: manifest!.providers.map(resolve), packages: manifest!.packages, regenerated, ...(warning ? { warning } : {}) };
 }
 
 function readManifest(path: string): Manifest | undefined {

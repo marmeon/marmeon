@@ -172,7 +172,7 @@ describe('MailServiceProvider', () => {
     await expect(boot({ MAIL_FROM_ADDRESS: 'nope' })).rejects.toThrow(/mail: MAIL_FROM_ADDRESS/);
   });
 
-  it('warns once at boot when production runs on the log mailer — reset links would land in the log (W7.11)', async () => {
+  it('warns once at boot when a protected environment runs on the log mailer — reset links would land in the log (W7.11, E139)', async () => {
     const warningsWith = async (env: Record<string, string>) => {
       const warnings: string[] = [];
       const logger: Logger = { debug() {}, info() {}, warn: (message: string, _context?: LogContext) => void warnings.push(message), error() {}, child: () => logger };
@@ -188,7 +188,9 @@ describe('MailServiceProvider', () => {
     expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'array' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'development' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'test' })).toEqual([]);
-    expect(await warningsWith({ NODE_ENV: 'staging' })).toEqual([]);
+    // Fail-closed (E139): staging and a missing NODE_ENV are protected like production.
+    expect(await warningsWith({ NODE_ENV: 'staging' })).toEqual([LOG_MAILER_WARNING]);
+    expect(await warningsWith({ NODE_ENV: '' })).toEqual([LOG_MAILER_WARNING]);
   });
 
   it('takes a transport of your own — a class against the neutral message type', async () => {

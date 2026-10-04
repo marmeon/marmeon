@@ -1,4 +1,4 @@
-import { Logger } from '@bespokecore/core';
+import { environment, Logger } from '@bespokecore/core';
 import type { CommandInput } from '@bespokecore/cli';
 import { QueueConnections } from '../connections.ts';
 import { QueueSetupError } from '../registry.ts';
@@ -71,7 +71,8 @@ export class QueueWorkCommand {
     };
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
-    output.line(`Processing jobs of the ${connection} connection: ${queues.map((queue) => (queue === '*' ? '* (every queue)' : queue)).join(', ')}`);
+    // The environment it assumed (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
+    output.line(`Processing jobs of the ${connection} connection: ${queues.map((queue) => (queue === '*' ? '* (every queue)' : queue)).join(', ')} — in ${environment.describe()}`);
     try {
       const result = await worker.run({
         queues,

@@ -4,6 +4,7 @@ import { coreSolutions } from './core-solutions.ts';
 import { Redactor } from './redact.ts';
 import { ErrorSolutions } from './solutions.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
+import { environment } from './environment.ts';
 import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
 import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
@@ -177,7 +178,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   );
   // A defaulted or optional constructor parameter of an injectable type is never injected (E128): said once per class, in
   // development — `container.warnings` keeps them for the error page.
-  if (env.NODE_ENV === 'development') {
+  if (environment.isDevelopment(env)) {
     container.onWarning((warning) => container.make(Logger).warn(`Injection: ${warning.message}`, { class: warning.className }));
   }
 
@@ -200,6 +201,8 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   app.register(providers);
   options.override?.(container);
   await app.boot();
+  // An out-of-date manifest in a read-only .bespoke/ (E160): discovered in memory — said once per process, in the app's log.
+  if (discovered?.warning) container.make(Logger).warn(discovered.warning);
   // A queued listener in an app without a queue fails the start, not its first dispatch.
   const queued = events.all().find((binding) => isQueuedListener(binding.listener));
   if (queued && !container.has(ListenerQueue)) throw new ConfigError(missingListenerQueue(queued.listener as { name: string }));

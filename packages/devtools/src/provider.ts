@@ -35,10 +35,10 @@ export class DevtoolsServiceProvider implements ServiceProvider {
   static solutions = defineSolutions([
     {
       for: DevtoolsConfigError,
-      when: (e) => e.message.includes('NODE_ENV=production'),
+      when: (e) => e.message.startsWith('DEVTOOLS_ENABLED=true with') || e.message.startsWith('The devtools were opted in'),
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
-        text: 'The devtools run with NODE_ENV=development only (E115) — nothing can turn them on in production. Remove DEVTOOLS_ENABLED from the environment, and install @bespokecore/devtools as a dev dependency (pnpm add -D @bespokecore/devtools): a production install then does not even have it.',
+        text: 'The devtools run with NODE_ENV=development only (E115) — nothing can turn them on in production, staging or without NODE_ENV (E139). Remove DEVTOOLS_ENABLED from the environment, and install @bespokecore/devtools as a dev dependency (pnpm add -D @bespokecore/devtools): a production install then does not even have it.',
         docs: 'packages/devtools/README.md#only-in-development-e115-fail-closed',
       }),
     },
@@ -61,8 +61,10 @@ export class DevtoolsServiceProvider implements ServiceProvider {
 
     const config = app.container.make(DevtoolsConfig);
     const test = app.container.has(DevtoolsTestOptIn) ? app.container.make(DevtoolsTestOptIn) : undefined;
-    if (test && config.environment === 'production') {
-      throw new DevtoolsConfigError('The devtools were opted in (createTestApp(…, { devtools: true })) with NODE_ENV=production — they never run in production (E115).');
+    if (test && config.protected) {
+      throw new DevtoolsConfigError(
+        `The devtools were opted in (createTestApp(…, { devtools: true })) with NODE_ENV=${config.environment ?? '(unset)'} — they never run in production, staging or without NODE_ENV (E115, E139).`,
+      );
     }
     if (config.ineffective && !test) {
       app.container.make(Logger).warn(`DEVTOOLS_ENABLED=true has no effect with NODE_ENV=${config.environment ?? '(unset)'}: the devtools run with NODE_ENV=development only (E115).`);

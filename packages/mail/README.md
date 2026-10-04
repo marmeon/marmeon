@@ -42,8 +42,9 @@ app's `.env.test` sets `MAIL_MAILER=array`.
 > **`log` is the default in every environment — set `MAIL_MAILER` in production.** The log mailer sends nothing: it writes each
 > mail's text to the log, its links and tokens (password reset, e-mail verification, signed URLs) in plain text — in development
 > that is the point (the links are clicked from there), in production it puts working reset links into the log and leaves users
-> without their mails. With `NODE_ENV=production` and `MAIL_MAILER=log` (or unset) the boot therefore warns once per process
-> (`LOG_MAILER_WARNING`): `MAIL_MAILER=log in production: no mail is sent — every mail is written to the log instead, …`. It is a
+> without their mails. Where the app is protected (E139: `production`, `staging`, any `NODE_ENV` but `development` and `test`,
+> and none) with `MAIL_MAILER=log` (or unset) the boot therefore warns once per process (`LOG_MAILER_WARNING`):
+> `MAIL_MAILER=log outside development and tests: no mail is sent — every mail is written to the log instead, …`. It is a
 > warning, not an error (like Laravel's `log` mailer, decided 04.10.): a deployment may route mails through the log on purpose.
 
 ## Mails

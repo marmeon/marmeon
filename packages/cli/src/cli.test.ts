@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -78,13 +78,33 @@ describe('bespoke (in the web app)', () => {
     const ran = [...migrate.stdout.matchAll(/^✓ Migrated (\d{4}_\d\d_\d\d_\d{6}_\w+) \(([\w-]+)\) [\d.]+ ms$/gm)].map((match) => match[1]!);
     expect(ran.slice(0, 3)).toEqual(['2026_10_01_120000_create_users_table', '2026_10_01_120100_create_login_activity_table', '2026_10_01_120101_create_profile_links_table']);
     expect(ran).toEqual(ran.toSorted());
-    // …then regenerates the table types (already committed, so unchanged).
-    expect(migrate.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
-    // Production loads no .env.test: what it needs to boot comes from here, not from a developer's .env (CI has none).
-    const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
-    const production = { ...memory, SYSTEM_DB_DATABASE: ':memory:', NODE_ENV: 'production', APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: key };
-    expect(bespoke(webApp, ['migrate:fresh'], production).stderr).toContain('Pass --force to drop every table.');
+    // It names the environment it assumed — and a test writes no table types (E164: development only).
+    expect(migrate.stdout).toMatch(/^Environment: test\n/);
+    expect(migrate.stdout).not.toContain('database.d.ts');
   });
+
+  it('asks for --force wherever the app is protected — staging and a missing NODE_ENV too — and writes table types in development only (E139, E164)', () => {
+    const memory = { DB_DATABASE: ':memory:' };
+    // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
+    const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
+    const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: key, DEVTOOLS_ENABLED: 'false' };
+    // Development regenerates the table types (already committed, so unchanged).
+    const development = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
+    expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
+    expect(bespoke(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (protected)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development.');
+    // Fail-closed (E139): staging and a missing NODE_ENV ask for --force too; with it, staging migrates — and writes no types.
+    const staging = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: 'staging' });
+    expect(staging.code).toBe(1);
+    expect(staging.stdout).toContain('Environment: staging (protected)\n');
+    expect(staging.stdout).not.toContain('Migrated');
+    expect(staging.stderr).toContain('Pass --force to migrate — or, on a development machine, set NODE_ENV=development.');
+    const unset = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: '' });
+    expect(unset.stderr).toContain('The application is protected (unset NODE_ENV (protected, like production)). Pass --force to migrate — or, on a development machine, set NODE_ENV=development.');
+    const forced = bespoke(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'staging' });
+    expect(forced.code).toBe(0);
+    expect(forced.stdout).toContain('Migrated 2026_10_01_120000_create_users_table');
+    expect(forced.stdout).not.toContain('database.d.ts');
+  }, 30_000);
 
   it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {
     const fresh = bespoke(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
@@ -249,4 +269,70 @@ describe('bespoke make:* (generated code compiles)', () => {
     expect(bespoke(app, ['make:event', 'CartEmptied', '--module=shop']).code).toBe(0);
     expect(bespoke(app, ['route:list']).stderr).toContain('No BespokeCore app');
   });
+});
+
+/**
+ * `bespoke start` (E139, E159): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
+ * it — and the `NODE_ENV` it is given (staging stays staging, protected; a missing one becomes production). An app of its own
+ * that resolves the framework's built `dist/` like an installed one (`start` never uses the source condition).
+ */
+describe('bespoke start', () => {
+  let app: string;
+  const key = `base64:${Buffer.alloc(32, 3).toString('base64')}`;
+
+  beforeAll(() => {
+    app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-start-')));
+    const packages = ['core', 'encryption', 'http', 'router', 'server', 'log'];
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: Object.fromEntries(packages.map((name) => [`@bespokecore/${name}`, '*'])) }));
+    for (const name of packages) {
+      mkdirSync(join(app, 'node_modules/@bespokecore'), { recursive: true });
+      symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@bespokecore', name), 'dir');
+    }
+    mkdirSync(join(app, 'bootstrap'));
+    writeFileSync(join(app, 'bootstrap/app.ts'), "import { join } from 'node:path';\nimport { defineApplication } from '@bespokecore/core';\nexport default defineApplication({ root: join(import.meta.dirname, '..') });\n");
+    // What `bespoke build` leaves for the production renderer.
+    mkdirSync(join(app, 'dist/client'), { recursive: true });
+    mkdirSync(join(app, 'dist/server'), { recursive: true });
+    writeFileSync(join(app, 'dist/client/index.html'), '<!doctype html><html><head></head><body><div id="app"></div></body></html>\n');
+    writeFileSync(join(app, 'dist/server/ssr.js'), "export const render = async () => ({ html: '' });\n");
+  });
+  afterAll(() => rmSync(app, { recursive: true, force: true }));
+
+  async function start(env: Record<string, string>) {
+    const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    const port = 39_000 + Math.floor(Math.random() * 1000);
+    const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (chunk) => (output += chunk));
+    child.stderr.on('data', (chunk) => (output += chunk));
+    const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
+    const deadline = Date.now() + 20_000;
+    while (!output.includes(`on http://localhost:${port}`)) {
+      if (child.exitCode !== null || Date.now() > deadline) throw new Error(`bespoke start did not start:\n${output}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return { child, port, exited, output: () => output };
+  }
+
+  it('is one process, respects NODE_ENV=staging — protected, JSON logs — and drains on SIGTERM (E139, E159, E102)', async () => {
+    const server = await start({ NODE_ENV: 'staging' });
+    try {
+      // No launcher, no child: the process that was started is the server.
+      expect(spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout).toBe('');
+      expect((await fetch(`http://127.0.0.1:${server.port}/up`)).status).toBe(200);
+      const line = server.output().split('\n').find((entry) => entry.includes('BespokeCore in'))!;
+      expect(JSON.parse(line).msg).toMatch(new RegExp(`^BespokeCore in staging \\(protected\\) on http://localhost:${server.port} \\(the build; `));
+    } finally {
+      server.child.kill('SIGTERM');
+    }
+    expect(await server.exited).toBe(0);
+    expect(server.output()).toContain('SIGTERM received, shutting down');
+  }, 30_000);
+
+  it('runs as production when NODE_ENV is missing', async () => {
+    const server = await start({});
+    server.child.kill('SIGTERM');
+    expect(await server.exited).toBe(0);
+    expect(server.output()).toContain('BespokeCore in production (protected) on http://localhost:');
+  }, 30_000);
 });

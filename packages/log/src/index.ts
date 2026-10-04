@@ -1,4 +1,4 @@
-import { Application, currentLogContext, defineConfig, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
+import { Application, currentLogContext, defineConfig, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
 import { channels, messageBase } from '@bespokecore/core/diagnostics';
 import { pino, type Logger as Pino } from 'pino';
 import pretty from 'pino-pretty';
@@ -7,13 +7,13 @@ import * as v from 'valibot';
 export const LogConfig = defineConfig('log', {
   env: v.object({
     LOG_LEVEL: v.optional(v.picklist(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']), 'info'),
-    /** `pretty` for humans, `json` for log shippers. Defaults to pretty outside production. */
+    /** `pretty` for humans, `json` for log shippers. Defaults to pretty with `NODE_ENV=development` only (E164) — JSON everywhere else, also without a `NODE_ENV`. */
     LOG_FORMAT: v.optional(v.picklist(['pretty', 'json'])),
     NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
     level: env.LOG_LEVEL,
-    format: env.LOG_FORMAT ?? (env.NODE_ENV === 'production' ? 'json' : 'pretty'),
+    format: env.LOG_FORMAT ?? (environment.isDevelopment(env) ? 'pretty' : 'json'),
   }),
 });
 export type LogConfig = ConfigOf<typeof LogConfig>;

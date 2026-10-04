@@ -118,7 +118,8 @@ function kill(processes: readonly SchedulerProcess[]): void {
 function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule:run', processEnv: Record<string, string>): SchedulerProcess {
   const child = spawn(process.execPath, ['--conditions=@bespokecore/source', CLI, command], {
     cwd: APP,
-    env: { PATH: process.env.PATH ?? '', BESPOKE_CHILD: '1', NODE_ENV: 'test', LOG_LEVEL: 'info', ...processEnv },
+    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs BESPOKE_CHILD.
+    env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', LOG_LEVEL: 'info', ...processEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const lines: string[] = [];

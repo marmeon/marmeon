@@ -123,6 +123,18 @@ describe('make:auth', () => {
     expect(spawned).toEqual([]);
   });
 
+  it('names what the module runs with in production but the app has as a dev dependency — @bespokecore/cli (E159)', async () => {
+    const root = blankApp();
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+    pkg.devDependencies['@bespokecore/cli'] = pkg.dependencies['@bespokecore/cli']!;
+    delete pkg.dependencies['@bespokecore/cli'];
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const { input, lines } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    expect(lines).toContain('Production needs these as dependencies, not dev dependencies: pnpm add @bespokecore/cli');
+    expect(lines.filter((line) => line.startsWith('Install what the module uses'))).toEqual([]);
+  });
+
   it('knows its adapters', async () => {
     const { input, lines } = fakeInput(blankApp(), { adapter: 'vue' });
     expect(await new MakeAuthCommand().handle(input)).toBe(1);

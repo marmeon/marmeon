@@ -3,6 +3,7 @@ import { createTestApp } from '@bespokecore/testing';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { LabConfig } from './config.ts';
 import type { SendDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
 
 /** Keeps what the app logs, to look for the SSR errors. */
@@ -13,7 +14,7 @@ function recordingLogger(entries: { level: string; message: string; context: Log
 
 async function lab() {
   const entries: { level: string; message: string; context: LogContext }[] = [];
-  const app = await createTestApp(application, { ssr: true, override: (container) => container.instance(Logger, recordingLogger(entries)) });
+  const app = await createTestApp(application, { ssr: true, env: { LAB_PAGES: 'true' }, override: (container) => container.instance(Logger, recordingLogger(entries)) });
   return { app, entries };
 }
 
@@ -68,9 +69,14 @@ describe('the SSR lab (W5 step 7)', () => {
     expect(entries).toContainEqual(expect.objectContaining({ level: 'error', message: 'Server rendering of [lab/LateError] failed in a Suspense boundary — the browser renders that part' }));
   });
 
-  it('is off unless enabled: 404 with LAB_PAGES=false (the default in production)', async () => {
+  it('is off unless enabled: 404 with LAB_PAGES=false — and by default anywhere but development (E164)', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
     await app.get('/lab/streaming', page).assertNotFound();
+    for (const NODE_ENV of ['test', 'staging', 'production', '']) {
+      expect(LabConfig.resolve({ NODE_ENV, LAB_DELAY: 0 }).enabled).toBe(false);
+    }
+    expect(LabConfig.resolve({ NODE_ENV: 'development', LAB_DELAY: 0 }).enabled).toBe(true);
+    expect(LabConfig.resolve({ NODE_ENV: 'production', LAB_PAGES: 'true', LAB_DELAY: 0 }).enabled).toBe(true);
   });
 });
 

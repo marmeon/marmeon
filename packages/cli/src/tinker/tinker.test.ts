@@ -244,6 +244,9 @@ describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(script.stdout).toBe('2\n');
     expect(script.stderr).toContain('PRODUCTION — NODE_ENV=production, db sqlite');
     expect(script.stderr).toContain('changes are rolled back at the end (--sandbox).');
+    // Fail-closed (E139): staging is protected like production.
+    const staging = bespoke(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'staging' });
+    expect(staging.stderr).toContain('PROTECTED (staging) — NODE_ENV=staging, db sqlite');
   });
 
   it('keeps a history in storage/framework/tinker_history only for the owner — none with --no-history', async () => {

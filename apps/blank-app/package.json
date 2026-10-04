@@ -16,6 +16,7 @@
   "dependencies": {
     "@bespokecore/auth": "workspace:*",
     "@bespokecore/cache": "workspace:*",
+    "@bespokecore/cli": "workspace:*",
     "@bespokecore/core": "workspace:*",
     "@bespokecore/database": "workspace:*",
     "@bespokecore/http": "workspace:*",
@@ -34,7 +35,6 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@bespokecore/cli": "workspace:*",
     "@bespokecore/testing": "workspace:*",
     "@bespokecore/vite": "workspace:*",
     "@types/node": "^26.6.3",

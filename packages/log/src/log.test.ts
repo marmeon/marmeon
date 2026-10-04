@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { ConsoleLogger, createApplication, describeError, LogContextSources, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
 import { channels, type LogMessage } from '@bespokecore/core/diagnostics';
 import { describe, expect, it } from 'vitest';
-import { createPinoLogger } from './index.ts';
+import { createPinoLogger, LogConfig } from './index.ts';
 
 function capture(level: 'info' | 'warn' = 'info') {
   const lines: Record<string, unknown>[] = [];
@@ -19,6 +19,14 @@ function capture(level: 'info' | 'warn' = 'info') {
 }
 
 describe('@bespokecore/log', () => {
+  it('logs pretty lines with NODE_ENV=development only — JSON everywhere else, a missing NODE_ENV included (E139, E164)', () => {
+    const format = (NODE_ENV: string | undefined, LOG_FORMAT?: 'pretty' | 'json') => LogConfig.resolve({ LOG_LEVEL: 'info', NODE_ENV, LOG_FORMAT }).format;
+    expect(format('development')).toBe('pretty');
+    for (const environment of [undefined, '', 'production', 'staging', 'test']) expect(format(environment)).toBe('json');
+    expect(format('staging', 'pretty')).toBe('pretty');
+    expect(format('development', 'json')).toBe('json');
+  });
+
   it('writes JSON with the message and context, in Laravel argument order', () => {
     const { lines, logger } = capture();
     logger.info('User signed in', { userId: '1' });

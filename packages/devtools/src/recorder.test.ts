@@ -169,7 +169,7 @@ async function boot(env: Record<string, string> = {}, options: { test?: boolean;
   const app = await createApplication({
     root,
     discover: false,
-    env: { APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_CONNECTION: 'sync', MAIL_MAILER: 'array', ...env },
+    env: { NODE_ENV: 'test', APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_CONNECTION: 'sync', MAIL_MAILER: 'array', ...env },
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, QueueServiceProvider, MailServiceProvider, ...(options.providers ?? [DevtoolsServiceProvider])],
     modules: [defineModule({ name: 'people', routes, jobs: [ReportJob, SecretJob], migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
     override: (container) => {
@@ -231,9 +231,12 @@ describe('the gate (E115: fail closed, development only)', () => {
     }
   });
 
-  it('fails the start with DEVTOOLS_ENABLED=true and NODE_ENV=production — and a test opt-in in production', async () => {
-    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with NODE_ENV=production[\s\S]*never run in production \(E115\)/);
+  it('fails the start with DEVTOOLS_ENABLED=true where the app is protected — and a test opt-in there (E139: staging and no NODE_ENV too)', async () => {
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(protected\)[\s\S]*never run in production, staging or without NODE_ENV/);
+    await expect(boot({ NODE_ENV: 'staging', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with staging \(protected\)/);
+    await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with unset NODE_ENV/);
     await expect(boot({ NODE_ENV: 'production' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run in production/);
+    await expect(boot({ NODE_ENV: 'staging' }, { test: true })).rejects.toThrow(/NODE_ENV=staging — they never run/);
     // What `bespoke` prints with it (E130): the devtools' own solution — not "set the variables in .env".
     const error = await boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' }).catch((failure: unknown) => failure);
     const solutions = await new ErrorSolutions([...DevtoolsServiceProvider.solutions, ...coreSolutions]).find(error);
@@ -241,7 +244,7 @@ describe('the gate (E115: fail closed, development only)', () => {
   });
 
   it('cannot be turned on outside development with DEVTOOLS_ENABLED=true', async () => {
-    const { app } = await boot({ NODE_ENV: 'staging', DEVTOOLS_ENABLED: 'true' });
+    const { app } = await boot({ NODE_ENV: 'test', DEVTOOLS_ENABLED: 'true' });
     try {
       expect(app.container.has(Recorder)).toBe(false);
       expect(channels.built(app)).toBe(0);

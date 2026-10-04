@@ -137,7 +137,43 @@ registered by every app that installs it — no list in the app:
   `package.json`, the lockfile or the resolution conditions change — `pnpm add` needs no extra step — and again when a listed
   package is gone (a production install without the dev dependencies). The manifest is data, never imported: rewriting it
   restarts no dev server.
+- **One manifest per set of resolution conditions (E160):** `.bespoke/manifest.json` for the published packages (an installed
+  app, production) and `.bespoke/manifest.source.json` inside the framework's monorepo (`@bespokecore/source`) — switching
+  between `bespoke dev` and `bespoke start` there rewrites neither. Module paths are relative to the app, so a manifest written
+  in a Docker build stage works where the app is copied to. `bespoke build` writes the production manifest.
+- **Read-only `.bespoke/`:** when the manifest is out of date and cannot be written (`EACCES`, `EROFS`), the app discovers in
+  memory and logs one warning — it starts, never fails with `EACCES`. Run `bespoke build` (or `bespoke discover`) where it can
+  write, e.g. in the image's build stage.
 - `defineApplication({ discover: false })` registers nothing of the installed packages (`providers` then lists them by hand).
+
+## The environment: `NODE_ENV`
+
+One place decides what `NODE_ENV` means (E115, E139) — `environment` from `@bespokecore/core` — and the two rules are not
+mirror images:
+
+| | `development` | `test` | `production`, `staging`, anything else, **none** |
+| --- | --- | --- | --- |
+| `environment.isDevelopment()` — development tools (Vite's dev server, error page details, devtools, `Server-Timing`, mail previews, pretty logs, regenerated table types) | yes | no | no |
+| `environment.isProtected()` — protections (JSON logs, `migrate` needs `--force`, boot warnings, no lab pages, read-only writes dropped instead of thrown) | no | no | **yes** |
+
+Protections are **fail-closed**: a staging box, a typo and a server without `NODE_ENV` are protected like production. Check
+`isProtected()` on the protecting side and `isDevelopment()` for a development tool — never `=== 'production'` or
+`!== 'production'`. Both read `process.env` unless given the `env` a config definition resolves from:
+
+```ts
+export const LabConfig = defineConfig('lab', {
+  env: v.object({ NODE_ENV: v.optional(v.string()), LAB_PAGES: v.optional(v.picklist(['true', 'false'])) }),
+  resolve: (env) => ({ enabled: env.LAB_PAGES === undefined ? environment.isDevelopment(env) : env.LAB_PAGES === 'true' }),
+});
+```
+
+`environment.describe()` names it the way start lines do: `production (protected)`, `staging (protected)`, `development`,
+`test`, `unset NODE_ENV (protected, like production)`. Set `NODE_ENV` in the process environment — the supervisor, the
+Dockerfile, the shell: `bespoke dev` sets `development` itself, and on a development machine `export NODE_ENV=development` makes
+the other commands (`migrate`, `tinker`, `queue:work`) development too; without it they are protected and say so when they
+start (`Environment: unset NODE_ENV (protected, like production)`). `bespoke start` sets `production` only when `NODE_ENV` is missing
+([@bespokecore/cli](../cli/README.md#bespoke-build-and-bespoke-start)); `createTestApp` runs as `test` unless its `env` says
+otherwise.
 
 ## Configuration
 

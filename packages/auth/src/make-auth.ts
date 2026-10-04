@@ -8,11 +8,14 @@ export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
 /**
  * What the generated module imports — reported when the app lacks it (the fixture test checks the list against every import
- * of the templates). `mjml` is the mail package's optional peer behind the templates' `mjml` mails.
+ * of the templates). `mjml` is the mail package's optional peer behind the templates' `mjml` mails. `@bespokecore/cli` runs the
+ * module in production — `bespoke start`, the worker its mails go through, the scheduler that prunes its tokens (E159) — so
+ * it is a dependency, never a dev dependency.
  */
 export const NEEDED = [
   '@bespokecore/auth',
   '@bespokecore/cache',
+  '@bespokecore/cli',
   '@bespokecore/core',
   '@bespokecore/database',
   '@bespokecore/http',
@@ -75,13 +78,17 @@ export class MakeAuthCommand {
     const missing = missingDependencies(input.root);
     const runtime = missing.filter((name) => NEEDED.includes(name));
     const forTests = missing.filter((name) => NEEDED_FOR_TESTS.includes(name));
+    // A dev dependency is gone after `pnpm install --prod` (a Docker image): what the module runs with belongs in `dependencies`.
+    const lists = dependencyLists(input.root);
+    const devOnly = NEEDED.filter((name) => name in (lists.devDependencies ?? {}) && !(name in (lists.dependencies ?? {})));
     // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
     const typed = runtime.length === 0 && registered !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
     if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add ${runtime.join(' ')}`);
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -D ${forTests.join(' ')}`);
+    if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add ${devOnly.join(' ')}`);
     if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
-    input.output.line('Then: bespoke migrate — and set MAIL_* in .env (development writes mails to the log).');
+    input.output.line('Then: NODE_ENV=development bespoke migrate (it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one).');
     input.output.line('Expired tokens are pruned at night by the scheduler (bespoke dev starts it; in production: bespoke schedule:work or schedule:run from cron).');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
@@ -121,8 +128,12 @@ function missingDependencies(root: string): string[] {
 
 /** The app's dependencies and dev dependencies (none without a package.json). */
 function installed(root: string): Record<string, string> {
+  const pkg = dependencyLists(root);
+  return { ...pkg.dependencies, ...pkg.devDependencies };
+}
+
+function dependencyLists(root: string): { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } {
   const file = join(root, 'package.json');
   if (!existsSync(file)) return {};
-  const pkg = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  return { ...pkg.dependencies, ...pkg.devDependencies };
+  return JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
 }

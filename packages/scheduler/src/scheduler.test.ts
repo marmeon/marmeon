@@ -156,7 +156,7 @@ async function boot(
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { CACHE_DRIVER: 'memory', ...options.env },
+    env: { NODE_ENV: 'test', CACHE_DRIVER: 'memory', ...options.env },
     providers: [CliServiceProvider, CacheServiceProvider, ...(options.providers ?? []), SchedulerServiceProvider],
     modules: [defineModule({ name: 'fixture', schedule, commands: [PruneCommand] }), ...(options.modules ?? [])],
     listeners: options.listeners ?? [],
@@ -584,5 +584,15 @@ describe('a schedule set up wrongly', () => {
     const here = await boot(defineSchedule((s) => void s.command('devtools:prune').hourly().environments('development')), { env: { NODE_ENV: 'development' } });
     await expect(here.scheduler.checkProcess()).rejects.toThrow('runs the command "devtools:prune", which the app does not have.');
     await here.app.shutdown();
+  });
+
+  it('counts a missing NODE_ENV as production for environments() — protected like production (E139)', async () => {
+    const schedule = defineSchedule((s) => {
+      s.call(CountRun).hourly().environments('production').name('production-only');
+      s.call(CountRun).hourly().environments('development').name('development-only');
+    });
+    const unset = await boot(schedule, { env: { NODE_ENV: '' } });
+    expect(unset.schedule.due('2026-10-05T11:00:00Z')).toEqual(['production-only']);
+    await unset.app.shutdown();
   });
 });

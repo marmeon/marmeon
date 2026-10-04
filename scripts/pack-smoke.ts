@@ -3,6 +3,10 @@
  * the blank app OUTSIDE the monorepo, without its node_modules, and the app's life from there. A part of `pnpm run ci`.
  *
  *   install → key:generate → build → start → GET /up 200 → make:auth → migrate → vitest run → build → start → GET /login 200
+ *   → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
+ *
+ * Every `bespoke start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
+ * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the app in $TMPDIR (the path is printed); a red run always keeps it
@@ -185,7 +189,15 @@ class Smoke {
     return this.run(join(this.app, 'node_modules/.bin/bespoke'), args);
   }
 
-  /** `bespoke start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). */
+  /** `bespoke <args>` as a developer runs it: NODE_ENV=development (migrate writes the table types there only, E164). */
+  bespokeInDevelopment(...args: string[]): string {
+    return this.run(join(this.app, 'node_modules/.bin/bespoke'), args, { NODE_ENV: 'development' });
+  }
+
+  /**
+   * `bespoke start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
+   * answers, its process group must be exactly one process, and that one Node (E159).
+   */
   async serve(path: string): Promise<void> {
     const port = await freePort();
     const child = spawn(join(this.app, 'node_modules/.bin/bespoke'), ['start'], {
@@ -207,7 +219,16 @@ class Smoke {
         try {
           const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual', signal: AbortSignal.timeout(2_000) });
           await response.body?.cancel();
-          if (response.status === 200) return;
+          if (response.status === 200) {
+            const group = spawnSync('ps', ['-A', '-o', 'pid=,pgid=,comm='], { encoding: 'utf8' })
+              .stdout.split('\n')
+              .map((line) => line.trim().split(/\s+/))
+              .filter(([, pgid]) => pgid === String(child.pid));
+            if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node$/.test(group[0]![2] ?? '')) {
+              throw new SmokeError(`bespoke start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
+            }
+            return;
+          }
           last = `${response.status}`;
         } catch (error) {
           last = (error as Error).message;
@@ -274,15 +295,27 @@ async function main(): Promise<number> {
       const asks = /^(Install what the module uses|And what its tests use): (.*)$/m.exec(output);
       if (asks) throw new SmokeError(`make:auth asks for packages the blank app should have: ${asks[2]}`);
     });
-    await smoke.step('bespoke migrate', () => smoke.bespoke('migrate', '--force'));
+    // As a developer migrates: in development, where it writes bootstrap/database.d.ts (E164) — no --force needed there.
+    await smoke.step('bespoke migrate (development)', () => {
+      const output = smoke.bespokeInDevelopment('migrate');
+      if (!existsSync(join(app, 'bootstrap/database.d.ts'))) throw new SmokeError(`bespoke migrate in development wrote no bootstrap/database.d.ts:\n${output}`);
+    });
     const tests = await smoke.step('vitest run', () => {
       const output = smoke.run(join(app, 'node_modules/.bin/vitest'), ['run']);
       return /Tests\s+(\d+ passed[^\n]*)/.exec(output)?.[1] ?? '?';
     });
     await smoke.step('bespoke build (with the auth module)', () => smoke.bespoke('build'));
     await smoke.step('bespoke start → GET /login 200', () => smoke.serve('/login'));
+    // Production installs without the dev dependencies (E159): `bespoke` is a dependency, and the app starts without the rest.
+    await smoke.step('pnpm install --prod → node_modules/.bin/bespoke', () => {
+      const flags = [values.offline ? '--offline' : '--prefer-offline', ...(values['store-dir'] ? ['--store-dir', values['store-dir']] : [])];
+      smoke.run('pnpm', ['install', '--prod', ...flags, '--reporter', 'append-only']);
+      if (existsSync(join(app, 'node_modules/vitest'))) throw new SmokeError('pnpm install --prod left the dev dependency vitest in node_modules.');
+      if (!existsSync(join(app, 'node_modules/.bin/bespoke'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/bespoke — @bespokecore/cli must be a dependency of the app.');
+    });
+    await smoke.step('bespoke start (production install) → GET /login 200', () => smoke.serve('/login'));
     const total = ((performance.now() - started) / 1000).toFixed(1);
-    console.log(`pack:smoke: ${tarballs.size} tarballs outside the monorepo — install, build, start, make:auth, migrate, ${tests} tests, start: green (${total}s).`);
+    console.log(`pack:smoke: ${tarballs.size} tarballs outside the monorepo — install, build, start, make:auth, migrate, ${tests} tests, start, production install, start: green (${total}s).`);
     return 0;
   } catch (error) {
     if (error instanceof Offline) {

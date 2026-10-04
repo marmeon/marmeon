@@ -1,4 +1,4 @@
-import { Application, defineConfig, Logger, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, defineConfig, environment, Logger, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import * as v from 'valibot';
 import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
 import { MailPreviews } from './preview.ts';
@@ -43,19 +43,23 @@ export const MailConfig = defineConfig('mail', {
      * The mail previews under `/_bespoke/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
      * a test, staging or a server without `NODE_ENV` has no such routes.
      */
-    previews: env.NODE_ENV === 'development',
-    /** `NODE_ENV=production`: the boot warns about `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}). */
-    production: env.NODE_ENV === 'production',
+    previews: environment.isDevelopment(env),
+    /**
+     * Protected (E139 — every `NODE_ENV` but `development` and `test`: production, staging, none): the boot warns about
+     * `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}).
+     */
+    protected: environment.isProtected(env),
   }),
 });
 export type MailConfig = ConfigOf<typeof MailConfig>;
 
 /**
- * What the boot logs, once per process, when production runs on the `log` mailer — the default when `MAIL_MAILER` is not set.
+ * What the boot logs, once per process, when a protected environment (production, staging, no `NODE_ENV` — E139) runs on the
+ * `log` mailer — the default when `MAIL_MAILER` is not set.
  * The log mailer stays as it is everywhere (Laravel's too): in development the links of a mail are clicked from the log.
  */
 export const LOG_MAILER_WARNING =
-  'MAIL_MAILER=log in production: no mail is sent — every mail is written to the log instead, its links and tokens (password ' +
+  'MAIL_MAILER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password ' +
   'reset, e-mail verification, signed URLs) in plain text. Set MAIL_MAILER=smtp (pnpm add nodemailer) and MAIL_HOST, ' +
   'MAIL_USERNAME, MAIL_PASSWORD.';
 
@@ -108,7 +112,7 @@ export class MailServiceProvider implements ServiceProvider {
 
     const config = app.container.make(MailConfig);
     // Production on the log mailer (W7.11, Max 04.10.): no mail goes out, and reset links land in the log — said once, at boot.
-    if (config.production && config.mailer === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { mailer: 'log' });
+    if (config.protected && config.mailer === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { mailer: 'log' });
     // Mail previews (E106): only in development (E115) — the devtools link to them.
     if (config.previews) await registerPreviews(app);
   }

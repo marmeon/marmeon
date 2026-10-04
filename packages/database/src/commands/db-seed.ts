@@ -1,5 +1,6 @@
 import type { CommandInput } from '@bespokecore/cli';
 import { Seeding } from '../seeders.ts';
+import { confirmed } from './confirm.ts';
 
 /** Laravel's `db:seed`: runs the modules' seeders (`--module=auth`, `--class=DemoUsersSeeder`). */
 export class DbSeedCommand {
@@ -15,10 +16,7 @@ export class DbSeedCommand {
   }
 
   async handle(input: CommandInput): Promise<number> {
-    if (process.env.NODE_ENV === 'production' && input.options.force !== true) {
-      input.output.error('The application is in production. Pass --force to seed.');
-      return 1;
-    }
+    if (!confirmed(input, 'seed')) return 1;
     return seed(this.#seeding, input);
   }
 }

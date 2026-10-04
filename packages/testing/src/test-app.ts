@@ -176,7 +176,9 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   let eventFake: EventFake | undefined;
   // The devtools record in a test only when it opts in (into memory) — never into the app's storage/framework/devtools, also
   // not in a test that runs as development (`env: { NODE_ENV: 'development' }`, for Server-Timing or the error page).
-  let env = { ...(definition.env ?? loadEnv(definition.root)), ...options.env, ...(options.devtools ? {} : { DEVTOOLS_ENABLED: 'false' }) };
+  // A test app is a test (NODE_ENV=test) unless its environment names another: an app's own `env` without NODE_ENV would
+  // otherwise count as protected, like production (E139).
+  let env = { NODE_ENV: 'test', ...(definition.env ?? loadEnv(definition.root)), ...options.env, ...(options.devtools ? {} : { DEVTOOLS_ENABLED: 'false' }) };
   const clock = new TestClock();
 
   let worker: WorkerDatabase | undefined;

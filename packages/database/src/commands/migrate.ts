@@ -1,4 +1,6 @@
 import type { CommandInput } from '@bespokecore/cli';
+import { environment } from '@bespokecore/core';
+import { confirmed } from './confirm.ts';
 import { Migrator, type MigrationRun } from '../migrations/migrator.ts';
 import { TypeGenerator } from '../types-gen/generator.ts';
 import { Seeding } from '../seeders.ts';
@@ -7,20 +9,16 @@ import { writeTypes } from './db-types.ts';
 
 const force = { force: { type: 'boolean' } } as const;
 
-/** Destructive commands ask for `--force` in production, like Laravel's confirmation. */
-function confirmed({ options, output }: CommandInput, what: string): boolean {
-  if (process.env.NODE_ENV !== 'production' || options.force === true) return true;
-  output.error(`The application is in production. Pass --force to ${what}.`);
-  return false;
-}
-
 function report(output: CommandInput['output'], verb: string) {
   return (run: MigrationRun) => output.success(`${verb} ${run.name} (${run.module}) ${run.ms.toFixed(1)} ms`);
 }
 
-/** After new migrations ran: regenerate the table types — not in production, where the committed file is final. */
+/**
+ * After new migrations ran: regenerate the table types — with `NODE_ENV=development` only (E164). Anywhere else (staging,
+ * production, a test) the committed file is final, and the app directory may not even be writable.
+ */
 async function afterMigrating(generator: TypeGenerator, input: CommandInput, types: boolean): Promise<void> {
-  if (!types || process.env.NODE_ENV === 'production') return;
+  if (!types || !environment.isDevelopment()) return;
   await writeTypes(generator, input.output, input.root);
 }
 

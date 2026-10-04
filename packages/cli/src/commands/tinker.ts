@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { Application } from '@bespokecore/core';
+import { Application, environment } from '@bespokecore/core';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import { evaluateOnce, formatValue, interactive, sandboxHint } from '../tinker/repl.ts';
@@ -54,7 +54,7 @@ export class TinkerCommand {
     try {
       if (execute !== undefined) {
         // Scripts read stdout: the value goes there, everything else to stderr.
-        if (process.env.NODE_ENV === 'production') output.warn(this.#productionLine(session));
+        if (environment.isProtected()) output.warn(this.#productionLine(session));
         const aborted = new Promise<number>((resolve) => stop.signal.addEventListener('abort', () => resolve(130), { once: true }));
         return await Promise.race([this.#execute(session, execute, output), aborted]);
       }
@@ -96,13 +96,16 @@ export class TinkerCommand {
       output.line(style('cyan', 'Sandbox: every change to the default connection is rolled back when the session ends (mails, files and Redis are real).'));
       if (database?.startsWith('sqlite')) output.line(style('dim', 'SQLite: once the session wrote, other processes (the dev server, a worker) cannot write to the file until it ends.'));
     }
-    if (env === 'production') output.line(style(['bold', 'red'], this.#productionLine(session)));
+    // Protected (E139): production, staging and a missing NODE_ENV get the red line.
+    if (environment.isProtected()) output.line(style(['bold', 'red'], this.#productionLine(session)));
     if (!history) output.line(style('dim', 'No history (--no-history).'));
   }
 
   #productionLine(session: TinkerSession): string {
     const database = session.database();
-    return `PRODUCTION — NODE_ENV=production${database ? `, db ${database}` : ''}: ${session.sandbox ? 'changes are rolled back at the end (--sandbox).' : 'every change is real.'}`;
+    const name = environment.name();
+    const label = name === undefined || name === 'production' ? 'PRODUCTION' : `PROTECTED (${name})`;
+    return `${label} — NODE_ENV=${name ?? '(not set)'}${database ? `, db ${database}` : ''}: ${session.sandbox ? 'changes are rolled back at the end (--sandbox).' : 'every change is real.'}`;
   }
 }
 

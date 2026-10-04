@@ -68,7 +68,7 @@ bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | sched
 
 ```sh
 SCHEDULE_TIMEZONE=Europe/Berlin   # an IANA name, checked at the start: whose clocks the tasks' times are on — default UTC
-NODE_ENV=production               # what environments(…) compares against — default development
+NODE_ENV=production               # what environments(…) compares against — a missing one counts as production (E139)
 ```
 
 `ScheduleConfig` (`config.timezone`, `config.environment`) is the package's config class. The locks follow the cache's driver

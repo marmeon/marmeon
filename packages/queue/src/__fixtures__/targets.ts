@@ -196,7 +196,8 @@ export function startDispatcher(target: SharedTarget, args: readonly string[], e
 function startProcess(argv: readonly string[], env: Record<string, string>, stdin: 'ignore' | 'pipe' = 'ignore'): WorkerProcess {
   const child = spawn(process.execPath, argv, {
     cwd: APP,
-    env: { PATH: process.env.PATH ?? '', BESPOKE_CHILD: '1', NODE_ENV: 'test', ...env },
+    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs BESPOKE_CHILD.
+    env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...env },
     stdio: [stdin, 'pipe', 'pipe'],
   });
   const lines: string[] = [];

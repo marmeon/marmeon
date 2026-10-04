@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ConfigError, defineConfig, type ConfigOf } from '@bespokecore/core';
+import { ConfigError, defineConfig, environment, type ConfigOf } from '@bespokecore/core';
 import * as v from 'valibot';
 import { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES } from './file-store.ts';
 
@@ -135,7 +135,8 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
 /**
  * Whether the devtools run (E115, fail closed): **only** with `NODE_ENV=development` — not "anything but production" (a missing
  * `NODE_ENV`, `test` or `staging` keeps them off). `DEVTOOLS_ENABLED=false` turns them off there too; `DEVTOOLS_ENABLED=true`
- * cannot turn them on anywhere else — in production it fails the start. Tests opt in with `createTestApp(App, { devtools: true })`.
+ * cannot turn them on anywhere else — where the app is protected (E139: production, staging, no `NODE_ENV`) it fails the start.
+ * Tests opt in with `createTestApp(App, { devtools: true })`.
  */
 export const DevtoolsConfig = defineConfig('devtools', {
   env: v.object({
@@ -145,17 +146,19 @@ export const DevtoolsConfig = defineConfig('devtools', {
     APP_URL: v.optional(v.string()),
   }),
   resolve: (env) => {
-    if (env.DEVTOOLS_ENABLED === 'true' && env.NODE_ENV === 'production') {
+    if (env.DEVTOOLS_ENABLED === 'true' && environment.isProtected(env)) {
       throw new DevtoolsConfigError(
-        'DEVTOOLS_ENABLED=true with NODE_ENV=production: the devtools record requests, queries and mails — they never run in production (E115). ' +
+        `DEVTOOLS_ENABLED=true with ${environment.describe(env)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV (E115, E139). ` +
           'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @bespokecore/devtools as a dev dependency.',
       );
     }
     return {
-      enabled: env.NODE_ENV === 'development' && env.DEVTOOLS_ENABLED !== 'false',
-      environment: env.NODE_ENV,
-      /** `DEVTOOLS_ENABLED=true` outside development: it has no effect (said once, at the start). */
-      ineffective: env.DEVTOOLS_ENABLED === 'true' && env.NODE_ENV !== 'development',
+      enabled: environment.isDevelopment(env) && env.DEVTOOLS_ENABLED !== 'false',
+      environment: environment.name(env),
+      /** Production, staging, no `NODE_ENV` (E139): a test's opt-in fails the start there. */
+      protected: environment.isProtected(env),
+      /** `DEVTOOLS_ENABLED=true` in a test: it has no effect (said once, at the start). */
+      ineffective: env.DEVTOOLS_ENABLED === 'true' && !environment.isDevelopment(env),
       /** The hosts the pages answer (a request for any other gets 403 — DNS rebinding): loopback names and `APP_URL`'s host. */
       hosts: allowedHosts(env.APP_URL),
     };

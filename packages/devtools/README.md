@@ -22,9 +22,9 @@ discovers again.
 | `NODE_ENV=development` (`bespoke dev` sets it when the environment has none — also for its worker and scheduler) | records |
 | any other `NODE_ENV` — `test`, `staging`, **unset** | nothing subscribed, nothing written, `config/devtools.ts` never loaded |
 | `DEVTOOLS_ENABLED=false` | off, also in development |
-| `DEVTOOLS_ENABLED=true` with `NODE_ENV=production` | **the start fails** |
-| `DEVTOOLS_ENABLED=true` elsewhere | no effect (a warning at the start) |
-| `createTestApp(App, { devtools: true })` | records into memory — the only way outside development (never in production) |
+| `DEVTOOLS_ENABLED=true` where the app is protected — `production`, `staging`, **unset** (E139) | **the start fails** |
+| `DEVTOOLS_ENABLED=true` with `NODE_ENV=test` | no effect (a warning at the start) |
+| `createTestApp(App, { devtools: true })` | records into memory — the only way outside development (never where the app is protected) |
 
 "Not production" is not the gate: a server without `NODE_ENV` would record everything. The commands `devtools:clear` and
 `devtools:prune` exist everywhere — they only remove files.
@@ -164,7 +164,7 @@ Filters (`?status=4xx&route=auth.login&tag=failed&requestId=…&search=…`) are
 
 - **Gate (E115):** the routes exist only where the devtools run — `NODE_ENV=development` (or a test's `devtools: true`). In
   production, staging, tests without the opt-in or without `NODE_ENV` they are **not registered** (404); `DEVTOOLS_ENABLED=true`
-  in production fails the start.
+  where the app is protected (production, staging, no `NODE_ENV`) fails the start.
 - **Host check (DNS rebinding):** a request whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or the host of `APP_URL` gets
   **403** — a page on `evil.example` whose name was pointed at 127.0.0.1 cannot read the devtools as same-origin. No CORS header
   is ever set.

@@ -65,7 +65,8 @@ it (inside this workspace, so the framework packages resolve):
 pnpm install
 pnpm exec bespoke key:generate        # copies .env.example to .env and writes APP_KEY: cookies, signed URLs, encrypted jobs
 pnpm exec bespoke make:auth           # sign-up, login, password reset, e-mail verification, API tokens — as code the app owns
-pnpm exec bespoke migrate
+export NODE_ENV=development           # commands outside bespoke dev: without NODE_ENV the app counts as production (E139)
+pnpm exec bespoke migrate             # in development it also writes the table types (bootstrap/database.d.ts)
 pnpm dev                              # bespoke dev: the server with Vite, a queue worker and the scheduler
 ```
 

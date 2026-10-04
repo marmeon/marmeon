@@ -58,7 +58,8 @@ elsewhere `await app.close()` or `await using app = await createTestApp(…)`. C
 
 **The environment** is `.env`, then `.env.test` (for `NODE_ENV=test`), then the process environment, then `options.env` — and
 with `database: 'refresh'` the worker database's connection on top. A definition with its own `env` (a fixture app) skips the
-files. The devtools stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=false`), also one that runs
+files — and runs as `NODE_ENV=test` unless its `env` names another (without one it would count as protected, like production,
+E139). The devtools stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=false`), also one that runs
 as development (`env: { NODE_ENV: 'development' }`).
 
 **Always in place:** a `TestClock` as the app's `Clock`, an `EventFake` that records every dispatch, and — with

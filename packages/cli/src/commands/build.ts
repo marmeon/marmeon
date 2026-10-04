@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { runtimeConditions, writeManifest } from '@bespokecore/core';
 import { bespokeEntries, explainConfigError, importVite, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
 import { typecheckApp } from '../typecheck.ts';
@@ -12,6 +13,8 @@ import { typecheckApp } from '../typecheck.ts';
  * Then the app is type-checked against it, like `next build`: a renamed route or a missing view fails the build.
  * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too, and so does
  * client code that imports a server module (a controller, a job …) as a value (E121).
+ * Last, it writes the production discovery manifest (E160) — the one `bespoke start` reads, resolved without the monorepo's
+ * source condition — so the first start rewrites nothing and `.bespoke/` may be read-only from then on.
  */
 export class BuildCommand {
   static command = 'build';
@@ -65,6 +68,11 @@ export class BuildCommand {
       return 1;
     }
     output.success('Built dist/client and dist/server');
+    // What `bespoke start` resolves with: Node's conditions and NODE_OPTIONS' — never this process's `@bespokecore/source`.
+    if (existsSync(join(root, 'package.json'))) {
+      const manifest = writeManifest({ root, conditions: runtimeConditions([], process.env.NODE_OPTIONS ?? '') });
+      output.success(`Discovered ${manifest.packages.length} packages → ${relative(root, manifest.path)}`);
+    }
     return 0;
   }
 }

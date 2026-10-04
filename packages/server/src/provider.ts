@@ -1,4 +1,4 @@
-import { defineConfig, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, environment, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-token.ts';
 import { ServerTiming } from './server-timing.ts';
@@ -55,13 +55,13 @@ export const ServerConfig = defineConfig('server', {
     /** The liveness path of the health endpoints (readiness: `<path>/ready`), or `false` without them (E126). */
     health: env.HEALTH_PATH === 'off' ? (false as const) : env.HEALTH_PATH,
     /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
-    serverTiming: env.NODE_ENV === 'development',
+    serverTiming: environment.isDevelopment(env),
     /**
      * Development error handling (E115, E119): the error page with code, request, queries and solutions, exception details in
      * JSON errors, the Vite overlay for server-rendering errors. Only when `NODE_ENV=development` — never "not production":
      * a staging or test server shows the plain error page.
      */
-    debug: env.NODE_ENV === 'development',
+    debug: environment.isDevelopment(env),
   }),
 });
 export type ServerConfig = ConfigOf<typeof ServerConfig>;

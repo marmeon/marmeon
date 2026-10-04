@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
+import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@bespokecore/core/diagnostics';
 import {
   AfterResponse,
@@ -79,8 +79,9 @@ export interface KernelOptions {
   /** Server rendering (default: `ServerConfig.ssr`, env `SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
   ssr?: boolean;
   /**
-   * What a write in a read-only request (an island's, E52) does: throw (`true`, the default outside production — the
-   * mistake shows where it is made) or get dropped and logged (`false`, production — the island and its page stay whole).
+   * What a write in a read-only request (an island's, E52) does: throw (`true`, the default with `NODE_ENV=development` and
+   * `test` — the mistake shows where it is made) or get dropped and logged (`false`, the default everywhere else — production,
+   * staging, no `NODE_ENV` (E164): the island and its page stay whole).
    */
   strictReadOnly?: boolean;
   /** How long an island resolved in-process may take before it shows its `exception` fallback (ms, default 10 s). */
@@ -144,7 +145,7 @@ export function createHttpKernel(
     maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
-    strictReadOnly = process.env.NODE_ENV !== 'production',
+    strictReadOnly = !environment.isProtected(),
     islandTimeout = 10_000,
     health = container.has(ServerConfig) ? container.make(ServerConfig).health : '/up',
   }: KernelOptions = {},
@@ -698,7 +699,7 @@ export async function startServer({
   app,
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
-  mode = process.env.NODE_ENV === 'development' ? 'development' : 'production',
+  mode = environment.isDevelopment() ? 'development' : 'production',
   drainTimeoutMs = 8_000,
 }: ServeOptions): Promise<RunningServer> {
   const server = createServer();
@@ -755,9 +756,11 @@ export async function startServer({
     server.listen(port, () => {
       const routes = app.container.make(Router).routes.length;
       const packages = app.packages.length ? `, packages: ${app.packages.join(', ')}` : '';
+      // The environment as the framework reads it (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
+      const serving = mode === 'development' ? "Vite's dev server" : 'the build';
       app.container
         .make(Logger)
-        .info(`BespokeCore [${mode}] on http://localhost:${port} (${routes} routes, ${app.modules.length} modules${packages})`);
+        .info(`BespokeCore in ${environment.describe()} on http://localhost:${port} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
       resolve({ server, port, close });
     });
   });

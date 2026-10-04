@@ -2,8 +2,8 @@
 
 The `bespoke` command: the launcher (`bespoke dev`, `bespoke start`), the built-in commands (`build`, `route:types`,
 `route:list`, `discover`, `key:generate`, `make:*`, `tinker`) and the commands of the installed packages and the app's
-modules. The starters list it among their dev dependencies — `bespoke start`, `queue:work` and `schedule:work` need it on the
-server too. Its `CliServiceProvider` is found by `bespoke discover` like any package's and collects the modules' commands. Run
+modules. It is a **dependency** of the app, not a dev dependency (E159): `bespoke start`, `queue:work`, `schedule:work` and
+`migrate` run on the server, and `pnpm install --prod` (a Docker image) leaves dev dependencies out. Its `CliServiceProvider` is found by `bespoke discover` like any package's and collects the modules' commands. Run
 it in the app root — `bespoke list` (or plain `bespoke`) shows every command the app has.
 
 ## Commands
@@ -26,17 +26,35 @@ says so and serves the build, without workers or watchers (never "anything but p
 ```sh
 bespoke build                  # route:types, tsc --noEmit, then the client build (dist/client) and the SSR build (dist/server/ssr.js)
 bespoke build --no-typecheck   # without the type check
-bespoke start                  # NODE_ENV=production: the server on the build — no Vite, no workers
+bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless it is set
+NODE_ENV=staging bespoke start # staging: protected like production (E139)
 ```
 
 `build` runs `bespoke route:types` first (it boots the app — `.env` must be complete), type-checks the app against the
 generated route types (a renamed route or a missing view fails the build) and builds with the app's own Vite config and the
 `bespoke()` plugin ([@bespokecore/vite](../vite/README.md)). A route name the browser's manifest cannot know and client code
 that imports server code as a value fail it too, each with file and line
-([Server code in the browser](../vite/README.md#server-code-in-the-browser-e121)). `start` always runs with
-`NODE_ENV=production`; queue workers and the scheduler run as processes of their own there (`bespoke queue:work`,
-`bespoke schedule:work`, under a supervisor). `dev` and `start` stop gracefully on SIGINT/SIGTERM
+([Server code in the browser](../vite/README.md#server-code-in-the-browser-e121)). Last, `build` writes the production
+discovery manifest (`.bespoke/manifest.json`, [Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)),
+so the first `start` rewrites nothing and `.bespoke/` may be read-only on the server.
+
+`start` respects a `NODE_ENV` that is set and sets `production` only when it is missing (E139). Every `NODE_ENV` but
+`development` and `test` is **protected** — JSON logs, `migrate` asks for `--force`, no lab pages, the boot warnings — so
+staging behaves like production; the development tools still need `NODE_ENV=development` (E115,
+[@bespokecore/core](../core/README.md#the-environment-node_env)). The start line names it:
+`BespokeCore in staging (protected) on http://localhost:3000 (the build; 54 routes, …)`. Queue workers and the scheduler run as
+processes of their own there (`bespoke queue:work`, `bespoke schedule:work`, under a supervisor); each names the environment it
+assumed when it starts, and so do `migrate` and its siblings. `dev` and `start` stop gracefully on SIGINT/SIGTERM
 ([@bespokecore/server](../server/README.md#startserver-and-the-drain)).
+
+### One process (E159)
+
+`bespoke` runs a command in its own process: `bespoke start` **is** the server — PID 1 in a container — so a supervisor's SIGTERM,
+a worker's exit code (70 for a job that ignored its timeout) and `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` reach exactly
+one Node process. The injection hook is registered in that process (`module.registerHooks`) before the command loads. Node is
+started a second time only for what a running process cannot switch on: `node --watch` for `bespoke dev`, and the
+`@bespokecore/source` condition when the CLI runs inside the framework's own monorepo (its packages resolve to their TypeScript
+sources there; a published package does not carry the condition).
 
 ### Built-in commands
 
@@ -44,7 +62,7 @@ that imports server code as a value fail it too, each with file and line
 | --- | --- |
 | `route:list` | every registered route: method, path, name, group, middleware, action |
 | `route:types [--check]` | writes `bootstrap/routes.ts` (route names, parameters and views for the type checker) and `.bespoke/routes.json` (the routes the browser may learn); `--check` fails when it is out of date (CI) |
-| `discover` | writes `.bespoke/manifest.json` — the installed packages' providers and injection lists ([Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)); also runs by itself when dependencies change |
+| `discover` | writes `.bespoke/manifest.json` (`manifest.source.json` in the monorepo) — the installed packages' providers and injection lists ([Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)); also runs by itself when dependencies change |
 | `key:generate [--show] [--force]` | sets `APP_KEY` in `.env` (copied from `.env.example` when missing); `--show` prints a key only; an existing key needs `--force` — replacing it makes sessions and encrypted cookies unreadable |
 | `tinker [--sandbox] [-e "<code>"] [--no-history]` | a REPL with the booted app ([tinker](#tinker)) |
 | `make:lint-config [--boundaries] [--force]` | writes `.oxlintrc.json` ([Lint](#lint)) |
@@ -182,8 +200,9 @@ Evaluates the code like one input of the REPL and prints the value (a string as 
 
 ### Production
 
-`tinker` works in every environment: access to the server's shell is the gate (E122). In production the banner says so in
-red — `PRODUCTION — NODE_ENV=production, db pgsql (db.internal:5432/app): every change is real.` (`--execute`: on stderr).
+`tinker` works in every environment: access to the server's shell is the gate (E122). Where the app is protected (production,
+staging, no `NODE_ENV` — E139) the banner says so in red — `PRODUCTION — NODE_ENV=production, db pgsql (db.internal:5432/app):
+every change is real.`, `PROTECTED (staging) — NODE_ENV=staging, …` (`--execute`: on stderr).
 The banner names the driver, host and database, never a user or password. `--sandbox` is the safe way to look around.
 
 ### History

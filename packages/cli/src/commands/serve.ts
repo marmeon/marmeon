@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
-import { Application, Logger } from '@bespokecore/core';
+import { Application, environment, Logger } from '@bespokecore/core';
 import { startServer, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
@@ -40,7 +40,7 @@ export class ServeCommand {
     // and when a view is added or removed (Node never loads views, so that restarts nothing).
     // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
     // NODE_ENV=development only (E115; `bespoke dev` sets it), never with "anything but production" (staging, test, unset).
-    const development = process.env.NODE_ENV === 'development';
+    const development = environment.isDevelopment();
     const views = development ? await this.#watchRouteTypes(output, root) : undefined;
     let server;
     try {

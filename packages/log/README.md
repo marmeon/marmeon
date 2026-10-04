@@ -1,7 +1,7 @@
 # @bespokecore/log
 
 The app's logger: [pino](https://getpino.io) behind the framework's `Logger` contract of `@bespokecore/core` — pretty lines while
-you develop, JSON lines for log shippers in production. Every entry carries the request's id, or the job's or the scheduled
+you develop, JSON lines for log shippers everywhere else. Every entry carries the request's id, or the job's or the scheduled
 task's, and whatever the app's packages add (trace ids); secrets in the context are redacted by key before a line is written.
 
 ```ts
@@ -20,10 +20,11 @@ singleton. Without the package the core's `ConsoleLogger` is used — one line p
 
 ```sh
 LOG_LEVEL=info      # trace | debug | info | warn | error | fatal | silent — default info
-LOG_FORMAT=json     # pretty | json — default: json with NODE_ENV=production, pretty everywhere else
+LOG_FORMAT=json     # pretty | json — default: pretty with NODE_ENV=development only, json everywhere else
 ```
 
-`LogConfig` resolves them to `{ level, format }`. **`pretty`** writes colored lines through `pino-pretty` (synchronously, without
+The default is fail-closed (E139, E164): a worker started without `NODE_ENV`, a staging server and a test log JSON — only
+`NODE_ENV=development` (what `bespoke dev` sets) logs pretty lines. `LogConfig` resolves them to `{ level, format }`. **`pretty`** writes colored lines through `pino-pretty` (synchronously, without
 `pid` and `hostname`); **`json`** one JSON object per line on stdout — pino's `level` (30 = info), `time` (ms), `msg`, then the
 context, no `pid`/`hostname`. The web app's tests run with `LOG_LEVEL=silent` (`.env.test`).
 

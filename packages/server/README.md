@@ -20,7 +20,7 @@ a production server never loads it. Routes, controllers and responses are [@besp
 | `ASSET_VERSION` | the build's | the asset version a new deployment answers 409 for — e.g. the git commit; in production by default a hash of the built `index.html` |
 | `SSR_ENABLED` | `true` | `false`: no server rendering, the browser renders every page (one page: `Page.ssr = false`) |
 | `HEALTH_PATH` | `/up` | where the health endpoints answer (readiness below it); `off`: none ([Health](#health-e126)) |
-| `NODE_ENV` | — | `development` turns on the error page, `Server-Timing` and `DevDocument` — nothing else does (E115) |
+| `NODE_ENV` | — | `development` turns on the error page, `Server-Timing` and `DevDocument` — nothing else does (E115); every value but `development` and `test`, none included, is protected (E139, [The environment](../core/README.md#the-environment-node_env)) |
 
 ## The kernel
 
@@ -37,7 +37,8 @@ in-process (`createTestApp`, [@bespokecore/testing](../testing/README.md)). Per 
   unknown path still passes the global middleware first;
 - **read-only requests:** an island's, a live validation, an upload's target, an event stream and a layer's base resolved for
   its deep link change no session, cookie or work after the response; nor does any request once its headers are out (a
-  streamed page's deferred props). A write there throws outside production and is dropped and logged in production;
+  streamed page's deferred props). A write there throws with `NODE_ENV=development` and `test` (the mistake shows where it is
+  made) and is dropped and logged everywhere else — production, staging, no `NODE_ENV` (E164);
 - **after the response:** `afterResponse.defer(…)` work and `terminate` hooks run once the response is out, outside of any
   transaction (E107);
 - **islands and layers** are resolved in-process while a page renders: a GET of the island's URL through its own route's
@@ -66,6 +67,9 @@ await app.shutdown();
 - **production** (the default with any other `NODE_ENV`, also none): the built `dist/client/index.html` and
   `dist/server/ssr.js`, loaded once; without them the start fails with "No production build in dist/client — run bespoke
   build first."
+
+The start line names the environment and what is served (E139): `BespokeCore in staging (protected) on http://localhost:3000
+(the build; 54 routes, 7 modules, packages: …)` — `in development … (Vite's dev server; …)` with `bespoke dev`.
 
 `close()` stops gracefully (E102): live streams end first (a tab connects to the next server), no new connections, idle
 keep-alive connections close, requests in flight finish, then the work they deferred until after their response — at most

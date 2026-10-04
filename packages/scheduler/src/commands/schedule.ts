@@ -1,5 +1,5 @@
 import type { CommandInput } from '@bespokecore/cli';
-import { Clock, Logger } from '@bespokecore/core';
+import { Clock, environment, Logger } from '@bespokecore/core';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute } from '../time.ts';
@@ -69,7 +69,10 @@ export class ScheduleWorkCommand {
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
     const tasks = this.#scheduler.tasks;
-    output.line(`Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''}`);
+    // The environment it assumed (E139) — `.environments(…)` compares against it, a missing NODE_ENV counting as production.
+    output.line(
+      `Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''} — in ${environment.describe()}`,
+    );
     const worker = new ScheduleWorker(this.#scheduler, this.#clock, this.#logger);
     try {
       await worker.run({ signal: stop.signal });
