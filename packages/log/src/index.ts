@@ -1,7 +1,8 @@
 import { Application, currentLogContext, defineConfig, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
 import { channels, messageBase } from '@bespokecore/core/diagnostics';
+import { createRequire } from 'node:module';
 import { pino, type Logger as Pino } from 'pino';
-import pretty from 'pino-pretty';
+import type pinoPretty from 'pino-pretty';
 import * as v from 'valibot';
 
 export const LogConfig = defineConfig('log', {
@@ -80,10 +81,18 @@ function withoutBound(context: Readonly<Record<string, unknown>>, instance: unkn
   return keys.some((key) => key in bound) ? Object.fromEntries(Object.entries(context).filter(([key]) => !(key in bound))) : context;
 }
 
+/**
+ * pino-pretty, loaded when a logger is pretty (E138) — in development. JSON logs (production, staging, workers) never load
+ * its 28 modules. Synchronous (`require`), because the logger is made synchronously.
+ */
+function pretty(): typeof pinoPretty {
+  return createRequire(import.meta.url)('pino-pretty') as typeof pinoPretty;
+}
+
 /** `app`: its entries also go to the `log` channel (E118) while something listens. */
 export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
-    destination ?? (config.format === 'pretty' ? pretty({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
+    destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
   // What the app's packages add to every entry (@bespokecore/otel: `trace_id`, `span_id`) — nothing to merge without a source.
   const sources = logContextSourcesOf(app);
   const logger = pino(

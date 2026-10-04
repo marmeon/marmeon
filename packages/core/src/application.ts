@@ -9,6 +9,7 @@ import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missin
 import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
 import { HealthChecks, type HealthCheckClass } from './health.ts';
+import { takeInjectionWarning } from './injection/artifacts.ts';
 import { ConsoleLogger, LogContextSources, Logger } from './logger.ts';
 import type { ModuleDefinition } from './module.ts';
 import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
@@ -203,6 +204,9 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   await app.boot();
   // An out-of-date manifest in a read-only .bespoke/ (E160): discovered in memory — said once per process, in the app's log.
   if (discovered?.warning) container.make(Logger).warn(discovered.warning);
+  // Modules that changed since `bespoke build` (E138): their injection lists were derived at start — said once per process.
+  const staleInjections = takeInjectionWarning();
+  if (staleInjections) container.make(Logger).warn(staleInjections);
   // A queued listener in an app without a queue fails the start, not its first dispatch.
   const queued = events.all().find((binding) => isQueuedListener(binding.listener));
   if (queued && !container.has(ListenerQueue)) throw new ConfigError(missingListenerQueue(queued.listener as { name: string }));

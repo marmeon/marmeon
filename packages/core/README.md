@@ -254,6 +254,28 @@ Clock. Remove the default to have it injected, or write `static inject = [...]` 
 The log line is written in development (`NODE_ENV=development`); `container.warnings` keeps them for the development error
 page, and `container.onWarning(listener)` hears them. A tree's `parent?: Self` is no dependency and gets no warning.
 
+### Precomputed lists in production (E138)
+
+The transform parses every app module with a constructor (oxc-parser) — at each start, unless `bespoke build` did it before:
+the build writes `.bespoke/injections.json`, per module of the app the insertions the hook would make (the same analysis,
+`analyzeInjections` + `insertionsOf`, line for line) and the SHA-256 of the source they were derived from. In a protected
+environment (production, staging, no `NODE_ENV` — [The environment](#the-environment-node_env)) the hook applies them to every
+module whose source is unchanged; oxc-parser is not loaded at all (it is imported on the first parse only). The app stays `.ts`
+(no compiled copy, no second code path); the file holds no paths of the build machine (messages name a module relative to the
+app).
+
+Nothing is trusted blindly: a module that changed since the build, or that the file does not know, is analysed as in
+development, and the app logs once, after booting:
+
+```text
+[warn] Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since bespoke build, so their
+injection lists were derived at start, with oxc-parser — run bespoke build again.
+```
+
+Without the file the message says `Build artifacts are missing (.bespoke/injections.json): …`. In development and in tests the
+hook always analyses (the file may be old there). `computeInjectionArtifacts(root)` returns what `writeInjectionArtifacts({ root })`
+writes; `PrecomputedInjections` is the hook's side.
+
 ## The container's errors
 
 A `ContainerError` says why (`reason`), what (`key`) and who asked (`path`, `neededBy`):

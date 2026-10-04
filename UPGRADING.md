@@ -75,6 +75,36 @@ to the app (a manifest written in a build stage works where the app is copied to
 a server whose `.bespoke/` is read-only starts with one warning (discovered in memory) instead of failing with `EACCES` (E160).
 The old `manifest.json` is rewritten once (format version 3). `.bespoke/` stays out of git.
 
+#### Low: `bespoke build` precomputes the injection lists — deploy what you built
+
+*Likelihood of impact: low — deployments that change app code on the server without running `bespoke build` again.* `bespoke
+build` now writes `.bespoke/injections.json` first: the constructor-injection lists of every app module, with the SHA-256 of the
+source they came from (E138). In a protected environment (production, staging, no `NODE_ENV`) the start applies them and does
+not load oxc-parser — the web app starts in ≈ 270 instead of ≈ 385 ms, together with the compile cache below. Nothing is trusted
+blindly: a module changed after the build (or missing from the file) is analysed as before, and the app logs once
+`Build artifacts are stale (N files: …) … run bespoke build again.` (`Build artifacts are missing (.bespoke/injections.json)` without
+the file). Build where you deploy, as for `dist/` — a Docker image's build stage does. `.bespoke/` stays out of git. Development
+and tests analyse every module as before. Messages of a class that cannot be injected name the module relative to the app in
+production (`modules/users/X.ts:12`), the absolute path in development.
+
+#### Low: `bespoke start` writes Node's compile cache to `storage/framework/compile-cache`
+
+*Likelihood of impact: low — servers whose app directory is read-only, or apps whose `storage/` is not ignored by git.* `bespoke
+start` turns on Node's compile cache (type-stripped sources and V8 code cache) in `storage/framework/compile-cache` before the app
+loads, and writes it once the server listens (E138; ≈ 60 ms of the web app's start). A changed module is never served from it —
+Node checks every entry against the source after the injection hook. A directory that cannot be written leaves the start
+uncached, without an error. To put it elsewhere: `NODE_COMPILE_CACHE=/path`; to turn it off: `NODE_DISABLE_COMPILE_CACHE=1`.
+The blank app's `storage/framework/.gitignore` ignores it already; an app that keeps `storage/` in git ignores
+`storage/framework/compile-cache/`.
+
+#### Low: oxc-parser, pino-pretty and the tinker REPL load only when used
+
+*Likelihood of impact: low — code that relied on a side effect of importing them.* `@bespokecore/core` loads oxc-parser on the
+first parse (the injection analysis, discovering a package's declarations), `@bespokecore/log` loads pino-pretty for a pretty
+logger only, and `bespoke tinker` loads `node:repl` when it runs — a production start loads 940 instead of 997 modules in the web
+app. The APIs are unchanged; `insertionsOf`, `applyInsertions`, `computeInjectionArtifacts`, `writeInjectionArtifacts` and
+`PrecomputedInjections` are new exports of `@bespokecore/core`.
+
 #### Low: `environments(…)` of the scheduler counts a missing `NODE_ENV` as `production`
 
 *Likelihood of impact: low — schedules with `.environments(…)` on servers without `NODE_ENV`.* Before, a missing `NODE_ENV`

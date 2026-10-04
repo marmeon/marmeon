@@ -24,13 +24,14 @@ says so and serves the build, without workers or watchers (never "anything but p
 ### `bespoke build` and `bespoke start`
 
 ```sh
-bespoke build                  # route:types, tsc --noEmit, then the client build (dist/client) and the SSR build (dist/server/ssr.js)
+bespoke build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), the manifest
 bespoke build --no-typecheck   # without the type check
 bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless it is set
 NODE_ENV=staging bespoke start # staging: protected like production (E139)
 ```
 
-`build` runs `bespoke route:types` first (it boots the app — `.env` must be complete), type-checks the app against the
+`build` precomputes the app's injection lists (`.bespoke/injections.json`, [A fast start](#a-fast-start-e138)), runs
+`bespoke route:types` (it boots the app — `.env` must be complete), type-checks the app against the
 generated route types (a renamed route or a missing view fails the build) and builds with the app's own Vite config and the
 `bespoke()` plugin ([@bespokecore/vite](../vite/README.md)). A route name the browser's manifest cannot know and client code
 that imports server code as a value fail it too, each with file and line
@@ -55,6 +56,15 @@ one Node process. The injection hook is registered in that process (`module.regi
 started a second time only for what a running process cannot switch on: `node --watch` for `bespoke dev`, and the
 `@bespokecore/source` condition when the CLI runs inside the framework's own monorepo (its packages resolve to their TypeScript
 sources there; a published package does not carry the condition).
+
+### A fast start (E138)
+
+`bespoke build` precomputes the app's injection lists first (`.bespoke/injections.json`,
+[@bespokecore/core](../core/README.md#precomputed-lists-in-production-e138)) and writes the production discovery manifest last;
+`bespoke start` applies the lists without loading oxc-parser and turns on Node's compile cache before anything loads —
+`storage/framework/compile-cache`, or Node's own `NODE_COMPILE_CACHE`; `NODE_DISABLE_COMPILE_CACHE=1` turns it off. The cache
+is written once the server listens. What it does with the injection hook, the numbers and what is deliberately not cached:
+[Start in production](../server/README.md#start-in-production-e138-e161). The tinker REPL loads with `bespoke tinker` only.
 
 ### Built-in commands
 

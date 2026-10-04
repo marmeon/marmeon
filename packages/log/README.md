@@ -25,7 +25,7 @@ LOG_FORMAT=json     # pretty | json — default: pretty with NODE_ENV=developmen
 
 The default is fail-closed (E139, E164): a worker started without `NODE_ENV`, a staging server and a test log JSON — only
 `NODE_ENV=development` (what `bespoke dev` sets) logs pretty lines. `LogConfig` resolves them to `{ level, format }`. **`pretty`** writes colored lines through `pino-pretty` (synchronously, without
-`pid` and `hostname`); **`json`** one JSON object per line on stdout — pino's `level` (30 = info), `time` (ms), `msg`, then the
+`pid` and `hostname`; loaded only for a pretty logger — JSON logs never import it, E138); **`json`** one JSON object per line on stdout — pino's `level` (30 = info), `time` (ms), `msg`, then the
 context, no `pid`/`hostname`. The web app's tests run with `LOG_LEVEL=silent` (`.env.test`).
 
 ```json

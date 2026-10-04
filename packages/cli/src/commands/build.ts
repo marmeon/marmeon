@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { runtimeConditions, writeManifest } from '@bespokecore/core';
+import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@bespokecore/core';
 import { bespokeEntries, explainConfigError, importVite, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
 import { typecheckApp } from '../typecheck.ts';
@@ -13,6 +13,9 @@ import { typecheckApp } from '../typecheck.ts';
  * Then the app is type-checked against it, like `next build`: a renamed route or a missing view fails the build.
  * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too, and so does
  * client code that imports a server module (a controller, a job …) as a value (E121).
+ * Before anything else it precomputes the app's injection lists (`.bespoke/injections.json`, E138): the analysis the load
+ * hook runs, kept per module with the hash of its source — a production start applies them instead of parsing the app
+ * with oxc (and so does the `route:types` process this command starts, which boots the app).
  * Last, it writes the production discovery manifest (E160) — the one `bespoke start` reads, resolved without the monorepo's
  * source condition — so the first start rewrites nothing and `.bespoke/` may be read-only from then on.
  */
@@ -24,6 +27,10 @@ export class BuildCommand {
   static boots = false;
 
   async handle({ options, output, root, spawn }: CommandInput): Promise<number> {
+    if (existsSync(join(root, 'bootstrap', 'app.ts'))) {
+      const injections = writeInjectionArtifacts({ root });
+      output.success(`Precomputed the injection lists of ${injections.modules} module${injections.modules === 1 ? '' : 's'} → ${relative(root, injections.path)}`);
+    }
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('route:types')) !== 0) {
       output.error('Not built: bespoke route:types failed (it boots the app — is .env complete?).');
       return 1;

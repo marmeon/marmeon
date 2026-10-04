@@ -1,8 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@bespokecore/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
@@ -289,7 +290,29 @@ describe('bespoke start', () => {
       symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@bespokecore', name), 'dir');
     }
     mkdirSync(join(app, 'bootstrap'));
-    writeFileSync(join(app, 'bootstrap/app.ts'), "import { join } from 'node:path';\nimport { defineApplication } from '@bespokecore/core';\nexport default defineApplication({ root: join(import.meta.dirname, '..') });\n");
+    mkdirSync(join(app, 'services'));
+    // A class built by the container at boot: what it was injected with is in the output (E138).
+    writeFileSync(join(app, 'services/Greeter.ts'), greeter(['clock: Clock']));
+    writeFileSync(
+      join(app, 'bootstrap/app.ts'),
+      [
+        "import { join } from 'node:path';",
+        "import { defineApplication, type Application } from '@bespokecore/core';",
+        "import { Greeter } from '../services/Greeter.ts';",
+        'class GreeterProvider {',
+        '  boot(app: Application) {',
+        '    console.log(`greeter: ${app.container.make(Greeter).describe()}`);',
+        '  }',
+        '}',
+        "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider] });",
+        '',
+      ].join('\n'),
+    );
+    // Which modules the start loaded — written when it exits.
+    writeFileSync(
+      join(app, 'loads.mjs'),
+      "import { registerHooks } from 'node:module';\nimport { writeFileSync } from 'node:fs';\nconst urls = [];\nregisterHooks({ load(url, context, next) { urls.push(url); return next(url, context); } });\nprocess.on('exit', () => writeFileSync(new URL('./loaded.json', import.meta.url), JSON.stringify(urls)));\n",
+    );
     // What `bespoke build` leaves for the production renderer.
     mkdirSync(join(app, 'dist/client'), { recursive: true });
     mkdirSync(join(app, 'dist/server'), { recursive: true });
@@ -335,4 +358,83 @@ describe('bespoke start', () => {
     expect(await server.exited).toBe(0);
     expect(server.output()).toContain('BespokeCore in production (protected) on http://localhost:');
   }, 30_000);
+
+  /** One start until it listens, then SIGTERM: its output and the modules it loaded. */
+  async function startOnce(env: Record<string, string> = {}) {
+    rmSync(join(app, 'loaded.json'), { force: true });
+    const server = await start({ NODE_OPTIONS: `--import=${join(app, 'loads.mjs')}`, ...env });
+    server.child.kill('SIGTERM');
+    expect(await server.exited).toBe(0);
+    const loaded = JSON.parse(readFileSync(join(app, 'loaded.json'), 'utf8')) as string[];
+    return { output: server.output(), loaded: (name: string) => loaded.some((url) => url.includes(`/node_modules/${name}/`) || url.includes(`/${name}@`)) };
+  }
+
+  it('applies the injection lists of bespoke build: no oxc-parser, no pino-pretty for JSON logs, and a compile cache (E138)', async () => {
+    rmSync(join(app, 'storage'), { recursive: true, force: true });
+    // What `bespoke build` leaves: the injection lists and the discovery manifest (discovering would parse .d.ts files with oxc).
+    writeInjectionArtifacts({ root: app });
+    writeManifest({ root: app, conditions: runtimeConditions([], '') });
+    const { output, loaded } = await startOnce();
+    expect(output).toContain('greeter: SystemClock');
+    expect(output).not.toContain('Build artifacts');
+    expect(loaded('oxc-parser')).toBe(false);
+    expect(loaded('pino-pretty')).toBe(false);
+    // Node's compile cache, written once the server listens.
+    const cache = join(app, 'storage/framework/compile-cache');
+    expect(readdirSync(cache).flatMap((version) => readdirSync(join(cache, version))).length).toBeGreaterThan(50);
+  }, 30_000);
+
+  it('derives the lists of a module changed after the build — on every start, with the compile cache warm — and says so once (E138)', async () => {
+    writeInjectionArtifacts({ root: app });
+    await startOnce(); // warms the compile cache with the module as built
+    writeFileSync(join(app, 'services/Greeter.ts'), greeter(['clock: Clock', 'redactor: Redactor']));
+    try {
+      for (let run = 0; run < 2; run++) {
+        const { output, loaded } = await startOnce();
+        expect(output).toContain('greeter: SystemClock+Redactor');
+        expect(output.split('Build artifacts are stale (1 file: services/Greeter.ts)').length - 1).toBe(1);
+        expect(loaded('oxc-parser')).toBe(true);
+      }
+    } finally {
+      writeFileSync(join(app, 'services/Greeter.ts'), greeter(['clock: Clock']));
+    }
+  }, 60_000);
+
+  it('analyses what bespoke build never saw — a missing file, a module not in it — instead of failing (E138)', async () => {
+    rmSync(join(app, '.bespoke/injections.json'), { force: true });
+    const { output } = await startOnce();
+    expect(output).toContain('greeter: SystemClock');
+    expect(output).toContain('Build artifacts are missing (.bespoke/injections.json): the injection lists of 1 file (services/Greeter.ts)');
+  }, 30_000);
+
+  it('starts without the compile cache when its directory cannot be written', async () => {
+    rmSync(join(app, 'storage'), { recursive: true, force: true });
+    mkdirSync(join(app, 'storage'));
+    chmodSync(join(app, 'storage'), 0o555);
+    try {
+      const { output } = await startOnce();
+      expect(output).toContain('greeter: SystemClock');
+      expect(existsSync(join(app, 'storage/framework'))).toBe(false);
+    } finally {
+      chmodSync(join(app, 'storage'), 0o755);
+    }
+  }, 30_000);
 });
+
+/** The fixture's `services/Greeter.ts`, whose constructor takes `parameters` (a `Clock`, maybe a `Redactor`). */
+function greeter(parameters: string[]): string {
+  return [
+    "import { Clock, Redactor } from '@bespokecore/core';",
+    'export class Greeter {',
+    '  readonly #parts: object[];',
+    `  constructor(${parameters.join(', ')}) {`,
+    `    this.#parts = [${parameters.map((parameter) => parameter.split(':')[0]).join(', ')}];`,
+    '  }',
+    '  describe(): string {',
+    "    return this.#parts.map((part) => part.constructor.name).join('+');",
+    '  }',
+    '}',
+    "export type Unused = Redactor;",
+    '',
+  ].join('\n');
+}

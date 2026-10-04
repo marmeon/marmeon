@@ -1,4 +1,4 @@
-import { parseSync } from 'oxc-parser';
+import { parseSync } from '../oxc.ts';
 
 type Node = { type: string; start: number; end: number; [key: string]: any };
 
@@ -102,22 +102,39 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
   return sites;
 }
 
+/** What the transform adds to a module: a text at an offset of the TypeScript source (right after a class body's `{`). */
+export type Insertion = readonly [offset: number, text: string];
+
 /**
- * Inserts `static inject = [...]` (or the unresolvable reason) into each site —
- * on the line of the class body's `{`, so line numbers never shift.
+ * The text each site gets — `static inject = [...]` (or the unresolvable reason, the warnings) — at the offset of its class
+ * body's `{`, so line numbers never shift. `bespoke build` keeps these per file (`.bespoke/injections.json`, E138).
  */
-export function insertInjections(source: string, sites: readonly InjectionSite[]): string {
-  let output = source;
-  for (const site of [...sites].sort((a, b) => b.bodyStart - a.bodyStart)) {
-    const at = site.bodyStart + 1;
+export function insertionsOf(sites: readonly InjectionSite[]): Insertion[] {
+  return sites.map((site) => {
     const field =
       'dependencies' in site
         ? (site.dependencies.length > 0 ? ` static inject = [${site.dependencies.join(', ')}];` : '') +
           (site.warnings?.length ? ` static [Symbol.for(${JSON.stringify(WARNINGS)})] = ${JSON.stringify(site.warnings)};` : '')
         : ` static [Symbol.for(${JSON.stringify(UNRESOLVABLE)})] = ${JSON.stringify(site.unresolvable)};`;
-    output = `${output.slice(0, at)}${field}${output.slice(at)}`;
+    return [site.bodyStart + 1, field] as const;
+  });
+}
+
+/** Applies {@link insertionsOf}'s result — from the back, so earlier offsets stay valid. */
+export function applyInsertions(source: string, insertions: readonly Insertion[]): string {
+  let output = source;
+  for (const [at, text] of [...insertions].sort((a, b) => b[0] - a[0])) {
+    if (text !== '') output = `${output.slice(0, at)}${text}${output.slice(at)}`;
   }
   return output;
+}
+
+/**
+ * Inserts `static inject = [...]` (or the unresolvable reason) into each site —
+ * on the line of the class body's `{`, so line numbers never shift.
+ */
+export function insertInjections(source: string, sites: readonly InjectionSite[]): string {
+  return applyInsertions(source, insertionsOf(sites));
 }
 
 /** Source transform for app code: derive and insert the injection lists. */

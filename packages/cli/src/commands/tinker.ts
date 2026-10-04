@@ -2,8 +2,10 @@ import { join } from 'node:path';
 import { Application, environment } from '@bespokecore/core';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
-import { evaluateOnce, formatValue, interactive, sandboxHint } from '../tinker/repl.ts';
-import { TinkerSession } from '../tinker/session.ts';
+import type { TinkerSession } from '../tinker/session.ts';
+
+/** The REPL (`node:repl`, the TypeScript transform) and the session, loaded when tinker runs — never on `bespoke start` (E138). */
+type Repl = typeof import('../tinker/repl.ts');
 
 /** Where the history of `bespoke tinker` is kept (plain text), relative to the app root. */
 export const TINKER_HISTORY = 'storage/framework/tinker_history';
@@ -35,6 +37,7 @@ export class TinkerCommand {
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
     const execute = typeof options.execute === 'string' ? options.execute : undefined;
+    const [repl, { TinkerSession }] = await Promise.all([import('../tinker/repl.ts'), import('../tinker/session.ts')]);
     const session = new TinkerSession(this.#app, { sandbox: options.sandbox === true });
     try {
       await session.open();
@@ -56,11 +59,11 @@ export class TinkerCommand {
         // Scripts read stdout: the value goes there, everything else to stderr.
         if (environment.isProtected()) output.warn(this.#productionLine(session));
         const aborted = new Promise<number>((resolve) => stop.signal.addEventListener('abort', () => resolve(130), { once: true }));
-        return await Promise.race([this.#execute(session, execute, output), aborted]);
+        return await Promise.race([this.#execute(repl, session, execute, output), aborted]);
       }
       const history = options['no-history'] === true ? undefined : join(root, TINKER_HISTORY);
       this.#banner(session, output, history);
-      await interactive(session, { history, signal: stop.signal });
+      await repl.interactive(session, { history, signal: stop.signal });
       return signalled ? 130 : 0;
     } finally {
       process.off('SIGINT', onSignal);
@@ -74,14 +77,14 @@ export class TinkerCommand {
     }
   }
 
-  async #execute(session: TinkerSession, code: string, output: CommandInput['output']): Promise<number> {
+  async #execute(repl: Repl, session: TinkerSession, code: string, output: CommandInput['output']): Promise<number> {
     try {
-      const text = formatValue(await evaluateOnce(session, code), process.stdout.isTTY === true);
+      const text = repl.formatValue(await repl.evaluateOnce(session, code), process.stdout.isTTY === true);
       if (text !== undefined) output.line(text);
       return 0;
     } catch (error) {
       output.error(describe(error));
-      const hint = sandboxHint(session, error);
+      const hint = repl.sandboxHint(session, error);
       if (hint) output.warn(hint);
       return 1;
     }

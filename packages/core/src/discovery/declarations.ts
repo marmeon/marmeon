@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { parseSync } from 'oxc-parser';
+import { parseSync } from '../oxc.ts';
 
 type Node = { type: string; start: number; end: number; [key: string]: any };
 

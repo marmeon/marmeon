@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { parseSync } from 'oxc-parser';
+import { parseSync } from '../oxc.ts';
 import { analyzeInjections, classesOf, InjectionError, insertInjections, UNRESOLVABLE, WARNINGS, type InjectionSite } from './analyze.ts';
 import { matchesBrowserSource } from './browser.ts';
 

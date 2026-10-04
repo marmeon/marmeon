@@ -76,6 +76,55 @@ keep-alive connections close, requests in flight finish, then the work they defe
 `drainTimeoutMs` (8 s) — before the caller shuts the app down and its pools close. `bespoke` exits after 10 s at the latest.
 From the moment it closes, `/up` and `/up/ready` answer 503.
 
+## Start in production (E138, E161)
+
+`bespoke start` until the first `GET /up` answers 200 — the web app (54 routes, 7 modules, 20 packages), Node 26.10 on an Apple
+laptop, measured with `pnpm bench boot --app apps/web-app` (median of 7, alternating with the build before Wave 8 step 3):
+
+| | Start → `/up` 200 | Modules loaded |
+| --- | --- | --- |
+| before (every app module parsed by oxc at start, pino-pretty and tinker always loaded, no compile cache) | 382 ms | 997 |
+| injection lists from `bespoke build`, lazy imports, no compile cache (`NODE_DISABLE_COMPILE_CACHE=1`) | ≈ 333 ms | 940 |
+| **with Node's compile cache (the default)** | **271 ms** | 940 |
+
+Where the time goes now (CPU samples of one profiled start, 324 ms with the profiler's overhead):
+
+| Part | Share | What |
+| --- | --- | --- |
+| module loader | 48 % | resolving ~940 imports: `stat`, the search for `package.json` scopes, `realpath`, builtins, the loader's jobs |
+| compile | 18 % | V8 compiling the modules — from the compile cache's code cache where it is valid |
+| reading sources | 12 % | the files of the modules (kysely alone has 257) |
+| type stripping | 10 % | the app's ~120 `.ts` modules (the app stays TypeScript, E138); served from the compile cache when unchanged |
+| module evaluation, other | 7 % | top-level code of the modules |
+| injection lists | 1 % | the SHA-256 of each app module and the precomputed insertions — before: 5–16 %, the oxc analysis |
+| boot, routes, server, discovery | 2 % | `createApplication` with every provider (3 ms), the route registration (≈ 1 ms), the renderer and the listener (3 ms), the discovery manifest (1.5 ms) |
+
+**What is precomputed or cached:**
+
+- **The injection lists** (`.bespoke/injections.json`, written by `bespoke build`): the start applies them to every unchanged
+  module and never loads oxc-parser; a changed or unknown module is analysed and the app logs "Build artifacts are stale"
+  once ([@bespokecore/core](../core/README.md#precomputed-lists-in-production-e138)).
+- **The discovery manifest** (`.bespoke/manifest.json`, E160).
+- **Node's compile cache** — `storage/framework/compile-cache` of the app (Node's `NODE_COMPILE_CACHE` instead, when set;
+  `NODE_DISABLE_COMPILE_CACHE=1`: off). It holds the type-stripped source and V8's code cache of every module. With the injection
+  hook in front, Node keys an entry by the module's URL and accepts it only when a checksum of the source it is about to compile
+  matches — the source **after** the hook. A module that changed (its list with it) misses, is compiled afresh and its entry
+  rewritten; an old list can never come back from the cache (a test changes a constructor without building and starts twice).
+  The cache is written once the server listens (and again at exit). A directory that cannot be created or written is no error:
+  Node reports it and the start runs uncached. The first start after a deployment fills it — the Docker template of Wave 8
+  step 5 warms it in the image.
+- **Lazy imports:** oxc-parser (only when a module must be analysed), pino-pretty (only for pretty logs), the tinker REPL.
+
+**What is deliberately not cached:**
+
+- **The configuration** (E161): every start resolves it from the environment and `.env` — secrets never end up in a build
+  artifact, and a changed variable needs a restart, not a rebuild. It costs well under the 3 ms of `createApplication`.
+- **The routes** (E161): registering the web app's 54 routes takes about 1 ms — a route manifest would pay off only above 20 ms.
+- **The app as JavaScript** (E138): no compiled copy of the app, one code path; type stripping stays and is mostly served from
+  the compile cache.
+- **The modules themselves:** loading them (resolve, read, compile) is now most of the start; kysely brings 257 of the 940. Only a
+  bundle would cut that, and bundling was rejected (E138: discovery, dynamic imports and native packages break too easily).
+
 ## Health (E126)
 
 Two endpoints for load balancers and orchestrators, answered by the kernel **before anything else** runs for a request: no

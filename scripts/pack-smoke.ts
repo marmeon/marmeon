@@ -6,7 +6,9 @@
  *   → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
  *
  * Every `bespoke start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
- * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group.
+ * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group — and must load neither oxc-parser (the
+ * injection lists come from `bespoke build`, E138) nor pino-pretty (JSON logs), with no "build artifacts" warning: a preloaded
+ * hook records every module the start loads.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the app in $TMPDIR (the path is printed); a red run always keeps it
@@ -27,7 +29,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { packAll, type PackedPackage } from './packages.ts';
 
@@ -200,9 +202,18 @@ class Smoke {
    */
   async serve(path: string): Promise<void> {
     const port = await freePort();
+    const loads = join(dirname(this.app), 'loads.mjs');
+    const loaded = join(dirname(this.app), 'loaded.json');
+    writeFileSync(
+      loads,
+      "import { registerHooks } from 'node:module';\nimport { writeFileSync } from 'node:fs';\nconst urls = [];\n" +
+        'registerHooks({ load(url, context, next) { urls.push(url); return next(url, context); } });\n' +
+        `process.on('exit', () => writeFileSync(${JSON.stringify(loaded)}, JSON.stringify(urls)));\n`,
+    );
+    rmSync(loaded, { force: true });
     const child = spawn(join(this.app, 'node_modules/.bin/bespoke'), ['start'], {
       cwd: this.app,
-      env: { ...this.env, PORT: String(port) },
+      env: { ...this.env, PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}` },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -227,10 +238,12 @@ class Smoke {
             if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node$/.test(group[0]![2] ?? '')) {
               throw new SmokeError(`bespoke start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
             }
+            await this.#checkLoads(child, exited, loaded, () => output);
             return;
           }
           last = `${response.status}`;
         } catch (error) {
+          if (error instanceof SmokeError) throw error; // a failed check, not a server that is not up yet
           last = (error as Error).message;
         }
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -242,6 +255,17 @@ class Smoke {
       if (child.exitCode === null && child.signalCode === null) this.#stop(child, 'SIGKILL');
       this.#children.delete(child);
     }
+  }
+
+  /** After SIGTERM: what the start loaded (E138) — no oxc-parser, no pino-pretty — and no "build artifacts" warning. */
+  async #checkLoads(child: ChildProcess, exited: Promise<void>, loaded: string, output: () => string): Promise<void> {
+    this.#stop(child);
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
+    if (!existsSync(loaded)) throw new SmokeError(`bespoke start wrote no module list (did it exit cleanly?):\n${output()}`);
+    const urls = JSON.parse(readFileSync(loaded, 'utf8')) as string[];
+    const unwanted = ['oxc-parser', 'pino-pretty'].filter((name) => urls.some((url) => url.includes(`/node_modules/${name}/`)));
+    if (unwanted.length > 0) throw new SmokeError(`bespoke start loaded ${unwanted.join(' and ')} (${urls.length} modules) — the injection lists of bespoke build and JSON logs should keep them out.`);
+    if (output().includes('Build artifacts are')) throw new SmokeError(`bespoke start found the build artifacts stale or missing:\n${output()}`);
   }
 
   #stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
@@ -304,7 +328,13 @@ async function main(): Promise<number> {
       const output = smoke.run(join(app, 'node_modules/.bin/vitest'), ['run']);
       return /Tests\s+(\d+ passed[^\n]*)/.exec(output)?.[1] ?? '?';
     });
-    await smoke.step('bespoke build (with the auth module)', () => smoke.bespoke('build'));
+    await smoke.step('bespoke build (with the auth module)', () => {
+      smoke.bespoke('build');
+      // The injection lists of the app (E138): the auth module's controllers take their services through the constructor.
+      const injections = JSON.parse(readFileSync(join(app, '.bespoke/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
+      const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
+      if (listed.length < 5) throw new SmokeError(`bespoke build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
+    });
     await smoke.step('bespoke start → GET /login 200', () => smoke.serve('/login'));
     // Production installs without the dev dependencies (E159): `bespoke` is a dependency, and the app starts without the rest.
     await smoke.step('pnpm install --prod → node_modules/.bin/bespoke', () => {

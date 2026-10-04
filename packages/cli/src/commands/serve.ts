@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
+import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
 import { Application, environment, Logger } from '@bespokecore/core';
 import { startServer, ViteSetupError } from '@bespokecore/server';
@@ -52,9 +53,14 @@ export class ServeCommand {
       return 1;
     }
     const companions = development ? this.#devProcesses.all().map((definition) => this.#companion(definition, root)) : [];
-    const signal = await new Promise<string>((resolve) => {
+    const signalled = new Promise<string>((resolve) => {
       process.once('SIGINT', resolve).once('SIGTERM', resolve);
     });
+    // Everything the server needs is loaded now: write the compile cache (`bespoke start`, E138) instead of waiting for the
+    // process to exit — a container that is killed never gets there. Does nothing without a cache. After the signal handlers:
+    // a SIGTERM while it writes still drains.
+    flushCompileCache();
+    const signal = await signalled;
     // Ctrl+C reaches this process twice (from the terminal and forwarded by the launcher): later
     // signals must not cut the shutdown short. A shutdown that hangs still ends after 10 seconds.
     const ignore = () => {};

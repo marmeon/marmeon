@@ -9,11 +9,18 @@
  * `@bespokecore/source` condition inside the framework's monorepo (its packages resolve to their TypeScript sources; a
  * published package does not carry the condition — `pnpm pack` writes the `publishConfig.exports` without it).
  *
+ * `bespoke start` turns on Node's compile cache (E138) before anything else loads — `storage/framework/compile-cache` of the
+ * app, or Node's own `NODE_COMPILE_CACHE` (`NODE_DISABLE_COMPILE_CACHE=1` turns it off). Node keys an entry by the module's
+ * URL and checks it against a hash of the source it compiles — the source after the injection hook — so a changed module
+ * is compiled afresh, never served from an old entry. A directory that cannot be written leaves the start uncached.
+ *
  * `NODE_ENV` (E139): `bespoke start` sets `production` only when it is missing — `NODE_ENV=staging bespoke start` stays staging
  * (protected like production); `bespoke dev` sets `development` when it is missing.
  */
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { enableCompileCache, getCompileCacheDir } from 'node:module';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SOURCE_CONDITION = '@bespokecore/source';
@@ -47,8 +54,16 @@ if (process.env.BESPOKE_CHILD === '1') {
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
     child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
   } else {
+    if (command === 'start') compileCache();
     await runHere(args);
   }
+}
+
+/** Node's compile cache for `bespoke start`, unless Node runs one already (`NODE_COMPILE_CACHE`) or it is turned off. */
+function compileCache() {
+  if (process.env.NODE_DISABLE_COMPILE_CACHE || getCompileCacheDir() !== undefined) return;
+  // A directory that cannot be created or written is no error: Node reports it in the returned status and runs uncached.
+  enableCompileCache(join(process.cwd(), 'storage', 'framework', 'compile-cache'));
 }
 
 /** Registers the injection hook (`module.registerHooks`), then runs the command — in this process. */

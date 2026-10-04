@@ -7,8 +7,10 @@ export type { Solution, SolutionContext, SolutionDefinition } from './solutions.
 export { coreSolutions } from './core-solutions.ts';
 export { token } from './token.ts';
 export type { Concrete, Constructor, InjectCheck, Key, Resolve, Token } from './token.ts';
-export { analyzeInjections, injectConstructorDependencies, insertInjections, InjectionError } from './injection/analyze.ts';
-export type { InjectionSite } from './injection/analyze.ts';
+export { analyzeInjections, applyInsertions, injectConstructorDependencies, insertInjections, insertionsOf, InjectionError } from './injection/analyze.ts';
+export type { InjectionSite, Insertion } from './injection/analyze.ts';
+export { computeInjectionArtifacts, INJECTIONS_FILE, PrecomputedInjections, writeInjectionArtifacts } from './injection/artifacts.ts';
+export type { InjectionsFile } from './injection/artifacts.ts';
 export { browserSources, isBrowserSource } from './injection/browser.ts';
 export { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './injection/embed.ts';
 export type { EmbedPackageOptions } from './injection/embed.ts';
