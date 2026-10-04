@@ -220,6 +220,21 @@ describe('registration', () => {
     }
   });
 
+  it('opens the app only for a confirmed address (E146): signed in, a new account reaches the notice, the link and sign-out — nothing else', async () => {
+    await register({ email: 'grace@example.com' }).assertRedirect('/register/sent');
+    const login = await app.post('/login', { form: { email: 'grace@example.com', password: 'correct horse' } }).assertRedirect('/users/me');
+    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    for (const path of ['/users/me', '/people', '/dashboard', '/notifications', '/settings/security', '/settings/tokens']) await session.get(path).assertRedirect('/email/verify');
+    await session.expectingJson().get('/people').assertForbidden();
+    await session.navigating().get('/email/verify').assertPage('auth/VerifyEmail');
+    await app.queue.work();
+    const sent = app.mail.queued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'grace@example.com').at(-1)!;
+    const link = new URL(/https?:\/\/\S+\/email\/verify\/\S+(?=\))/.exec(sent.message.text)![0]);
+    await session.get(link.pathname + link.search).assertRedirect('/users/me');
+    await session.navigating().get('/people').assertOk();
+    await session.post('/logout').assertRedirect('/login');
+  });
+
   it('takes as long for a known address as for a new one — the password is hashed either way (E146, the configured costs)', async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
@@ -603,6 +618,8 @@ describe('e-mail verification', () => {
     await register('kj@example.com');
     const kj = await userBy('kj@example.com');
     const oldLink = verificationLink('kj@example.com');
+    await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertForbidden(); // unconfirmed (E146)
+    await app.actingAs(kj).get(oldLink).assertRedirect('/users/me'); // confirmed: the app opens
     await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
     const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
     const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);

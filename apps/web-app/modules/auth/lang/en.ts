@@ -64,7 +64,7 @@ const en = {
   },
   verify: {
     title: 'Confirm your e-mail address',
-    intro: 'We sent a link to {email}. Click it to confirm the address — then you can publish links on your profile.',
+    intro: 'We sent a link to {email}. Click it to confirm the address — then the app is open to you.',
     resend: 'Send the link again',
     back: 'Back to your profile',
     sent: 'A new verification link is on its way.',
@@ -167,7 +167,7 @@ const en = {
       preview: 'Your account is ready',
       intro: 'welcome to {app} — your account is ready.',
       button: 'Open your profile',
-      outro: 'Confirm your e-mail address with the link from our other mail, then you can publish links on your profile.',
+      outro: 'Confirm your e-mail address with the link from our other mail — then the app is open to you.',
     },
     // Private registration (E146): a sign-up with the address of an existing account.
     account_exists: {

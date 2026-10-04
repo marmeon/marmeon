@@ -53,8 +53,10 @@ What the module holds:
 | `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
 | `auth.test.ts`, `registration.test.ts` | the module's own tests (SQLite and Postgres) |
 
-Forms without JavaScript post the page's token (`usePage().csrf`) only when there is a session: a guest's pages hand out none and
-keep no session (E143) — their forms pass by the browser's word (Fetch Metadata, `Origin`; [CSRF](../session/README.md#csrf-protection)).
+The generated forms carry no `_token` field: with JavaScript the client core sends `X-XSRF-TOKEN` when the session has one, and a
+plain form post (no JavaScript) passes by the browser's word — Fetch Metadata, or `Origin` over plain HTTP (E143,
+[CSRF](../session/README.md#csrf-protection)). A guest's pages hand out no token and keep no session. Only a browser that sends
+neither header needs the token — `<Form>` renders `page.csrf` for that when there is a session.
 
 ### Private registration (`--private-registration`, E146)
 
@@ -76,8 +78,7 @@ It writes `controllers/RegisterController.ts`, `controllers/ShowRegistrationSent
 `views/RegistrationSent.tsx`, `jobs/SendAccountExistsMailJob.ts`, `mail/AccountExistsMail.ts`, `routes.ts`, `index.ts` and
 `registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`); the texts are in the default `lang/en.ts`.
 The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
-queue worker run. The web app runs it — with `verified()` where it matters (its member numbers, links on a profile), not on every
-page, because it also shows what an unconfirmed account sees.
+queue worker run. The web app runs it — `verified()` on every page of its modules; an unconfirmed account sees the notice.
 
 From then on the app owns all of it: change the pages, the routes, the user table, the rules. What stays in the package — and
 what updates bring — is the mechanics below. `apps/web-app/modules/auth/` is such a module, grown further (private registration,

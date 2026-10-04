@@ -1,9 +1,6 @@
-import { Head, Link, useForm, usePage, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
 
 export default function ForgotPassword() {
-  // Without JavaScript the form posts itself: with the session's token when there is a session (a guest has none — the
-  // browser's word suffices, E143).
-  const { csrf } = usePage();
   const route = useRoute();
   const t = useTranslation('auth');
   // Method, URL and fields from the route: auth.password.email → SendPasswordResetLinkController's request.
@@ -23,7 +20,6 @@ export default function ForgotPassword() {
           void form.submit({ onSuccess: () => form.reset() });
         }}
       >
-        {csrf !== undefined && <input type="hidden" name="_token" value={csrf} />}
         <p>
           <label htmlFor="email">{t('forgot.email')}</label>
           <br />

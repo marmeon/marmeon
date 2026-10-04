@@ -25,8 +25,8 @@ export const RegisterRequest = defineRequest({
 /**
  * Private registration (`bespoke make:auth --private-registration`, E146): a new address and one that has an account get the
  * same answer, in the same time — "check your inbox". A new account gets the verification mail; the owner of an existing one
- * a note that someone tried to sign up with it. Nobody is signed in here: the new account signs in like any other; what
- * needs a confirmed address asks for it (`verified()` — the members island, links on the profile).
+ * a note that someone tried to sign up with it. Nobody is signed in here: the new account signs in like any other, and the
+ * app's pages ask for a confirmed address (`verified()` in every module's routes).
  */
 export class RegisterController extends Controller {
   static request = RegisterRequest;

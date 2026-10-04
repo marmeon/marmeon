@@ -16,9 +16,11 @@ import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
 
 export default defineRoutes((Route) => {
   // Everyone, filtered and sorted by the query string (`ListPeopleRequest`) — state that lives in the URL.
-  Route.middleware(authenticate()).get('/people', ListPeopleController).name('user-profile.people');
+  // A confirmed address first (private registration, E146): an unconfirmed account sees the verification notice instead.
+  const confirmed = Route.middleware(authenticate()).middleware(verified());
+  confirmed.get('/people', ListPeopleController).name('user-profile.people');
 
-  const users = Route.prefix('/users').middleware(authenticate()).name('user-profile.');
+  const users = confirmed.prefix('/users').name('user-profile.');
   users.get('/me', RedirectToOwnProfileController).name('me');
   // "Download my data" (security page): a file on the private disk, handed out by a signed URL for five minutes.
   users.middleware(confirmedPassword()).post('/me/export', ExportMyDataController).name('export');
@@ -33,8 +35,7 @@ export default defineRoutes((Route) => {
   user.put('/:user/avatar', UpdateAvatarController).name('avatar.update');
 
   // A link is looked up *within* its user: another user's link id under this user is a 404 (no IDOR).
-  // Publishing links needs a confirmed address.
-  user.middleware(verified()).post('/:user/links', AddProfileLinkController).name('links.store');
+  user.post('/:user/links', AddProfileLinkController).name('links.store');
   const link = user.bind('link', ProfileLinkRepository, { scopedBy: 'user' });
   link.get('/:user/links/:link/remove', ConfirmRemoveLinkController).name('links.remove'); // the confirmation, a layer
   link.delete('/:user/links/:link', DeleteProfileLinkController).name('links.destroy');

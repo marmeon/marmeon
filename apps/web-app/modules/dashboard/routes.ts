@@ -6,13 +6,14 @@ import { ShowMyActivityController } from './controllers/ShowMyActivityController
 import { ShowRecentSignInsController } from './controllers/ShowRecentSignInsController.ts';
 
 export default defineRoutes((Route) => {
-  const dashboard = Route.prefix('/dashboard').middleware(authenticate()).name('dashboard.');
+  // A confirmed address first (private registration, E146): an unconfirmed account sees the verification notice instead.
+  const dashboard = Route.prefix('/dashboard').middleware(authenticate()).middleware(verified()).name('dashboard.');
   dashboard.get('/', ShowDashboardController).name('show');
 
   // Islands (E48): GET routes of their own, each with its own middleware, authorization and query — embedded with
   // `<Island route>`, never visited (a direct hit is a 404), read-only (E52).
   dashboard.get('/islands/sign-ins', ShowRecentSignInsController).name('sign-ins');
   dashboard.get('/islands/activity', ShowMyActivityController).name('activity');
-  // Unverified → its redirect becomes the island's `unauthorized` fallback; not an administrator → 403, the same.
-  dashboard.middleware(verified()).get('/islands/members', ShowMemberStatsController).name('members');
+  // Not an administrator → 403, its `unauthorized` fallback (an unverified account never gets this far: the page asks first).
+  dashboard.get('/islands/members', ShowMemberStatsController).name('members');
 });

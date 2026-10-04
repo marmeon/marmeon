@@ -64,7 +64,7 @@ export default {
   },
   verify: {
     title: 'E-Mail-Adresse bestätigen',
-    intro: 'Wir haben einen Link an {email} geschickt. Klicke ihn an, um die Adresse zu bestätigen — dann kannst du Links in deinem Profil veröffentlichen.',
+    intro: 'Wir haben einen Link an {email} geschickt. Klicke ihn an, um die Adresse zu bestätigen — dann steht dir die App offen.',
     resend: 'Link noch einmal schicken',
     back: 'Zurück zu deinem Profil',
     sent: 'Ein neuer Bestätigungslink ist unterwegs.',
@@ -167,7 +167,7 @@ export default {
       preview: 'Dein Konto ist bereit',
       intro: 'willkommen bei {app} — dein Konto ist bereit.',
       button: 'Zu deinem Profil',
-      outro: 'Bestätige deine E-Mail-Adresse mit dem Link aus unserer anderen Mail, dann kannst du Links in deinem Profil veröffentlichen.',
+      outro: 'Bestätige deine E-Mail-Adresse mit dem Link aus unserer anderen Mail — dann steht dir die App offen.',
     },
     // Private Registrierung (E146): eine Registrierung mit der Adresse eines bestehenden Kontos.
     account_exists: {

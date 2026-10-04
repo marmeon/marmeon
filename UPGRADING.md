@@ -116,8 +116,8 @@ session anyway; a guest's forms pass by the browser's word (above). A session st
 data, the errors of a failed form, `session.put()`.
 
 - Views that rendered `<input name="_token" value={csrfToken}>` from a controller's `session.token()` keep working — but that
-  call keeps a session for every visitor. Read `usePage().csrf` instead and render the field only when it is there (what
-  `bespoke make:auth` writes now; `<Form>` does it by itself).
+  call keeps a session for every visitor. Drop the field (what `bespoke make:auth` writes now: a plain form post passes by Fetch
+  Metadata or `Origin`), or render `usePage().csrf` only when it is there (`<Form>` does that by itself).
 - A guest's page with an upload field calls `session.persist()` in its controller: an upload belongs to a session, and an upload
   request (read-only, W6.9) cannot start one. A page that signs a live channel keeps the session by itself.
 - `PageSession.scope()` is `undefined` without a kept session (it was a hash of an id nobody would see again); a live stream
@@ -135,10 +135,10 @@ the generated `LoginController` passed nothing, so they were `null` (a remember-
 `RequestInfo` (http, E169: the address through `TRUSTED_PROXIES`, like `ctx.ip`); passing them still overrides. `RequestInfo` is
 injectable wherever a service needs to know who sent the request.
 
-#### Low: `bespoke make:auth --private-registration`; the generated views read the token from the page
+#### Low: `bespoke make:auth --private-registration`; the generated forms carry no `_token`
 
-*Likelihood of impact: low — new; existing modules belong to their app.* `make:auth` writes views that render `_token` from
-`usePage().csrf` (no `csrfToken` props, no `Session` in the page controllers), its registration tests in `registration.test.ts`,
+*Likelihood of impact: low — new; existing modules belong to their app.* `make:auth` writes forms without a `_token` field (no
+`csrfToken` props, no `Session` in the page controllers — Fetch Metadata and `Origin` vouch for a plain post), its registration tests in `registration.test.ts`,
 and with `--private-registration` the variant that never tells whether an address has an account (E146,
 [Private registration](packages/auth/README.md#private-registration---private-registration-e146)): the same answer in the same time
 for new and known addresses, `AccountExistsMail` to the owner, no live check of the address, a confirmed address before the app

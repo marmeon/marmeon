@@ -1,4 +1,4 @@
-import { authenticate, confirmedPassword, guest } from '@bespokecore/auth';
+import { authenticate, confirmedPassword, guest, verified } from '@bespokecore/auth';
 import { throttle } from '@bespokecore/cache';
 import { defineRoutes, signed } from '@bespokecore/http';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
@@ -43,15 +43,18 @@ export default defineRoutes((Route) => {
 
   const signedIn = Route.middleware(authenticate());
   signedIn.post('/logout', LogoutController).name('auth.logout');
-  signedIn.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
-  signedIn.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
+  // Private registration (E146): the app is for confirmed addresses only — whoever signed up with somebody else's address (it
+  // was free then) signs in, but sees nothing but the notice until the link from that inbox is clicked while signed in.
+  const confirmed = signedIn.middleware(verified());
+  confirmed.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
+  confirmed.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
   // "Sudo mode": the security page asks for the password again unless it was typed within 15 minutes.
-  signedIn.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
-  signedIn.put('/settings/password', UpdatePasswordController).name('auth.password.update');
-  signedIn.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout');
-  signedIn.middleware(confirmedPassword()).put('/settings/email', UpdateEmailController).name('auth.email.update');
+  confirmed.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
+  confirmed.put('/settings/password', UpdatePasswordController).name('auth.password.update');
+  confirmed.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout');
+  confirmed.middleware(confirmedPassword()).put('/settings/email', UpdateEmailController).name('auth.email.update');
   // API tokens: as good as a session — sudo mode for all of it.
-  const sudo = signedIn.middleware(confirmedPassword());
+  const sudo = confirmed.middleware(confirmedPassword());
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // Creating one is a layer over the list (E53); its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');

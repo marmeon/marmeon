@@ -39,7 +39,7 @@ describe('bespoke (in the web app)', () => {
     expect(code).toBe(0);
     // Execution order: global first, then the web group (cookies before the session), the route's own last.
     expect(stdout).toMatch(
-      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate\s+ShowUserProfileController/,
+      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+ShowUserProfileController/,
     );
     expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, authenticate:api, abilities:users:read\s+ListUsersController/);
     expect(stdout).toMatch(/\n\d+ routes\n$/); // the count grows with the app

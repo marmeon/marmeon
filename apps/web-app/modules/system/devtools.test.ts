@@ -6,6 +6,7 @@ import { DevtoolsStore, FileStore } from '@bespokecore/devtools';
 import { createTestApp } from '@bespokecore/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { UserRepository } from '../auth/index.ts';
 import { ResetPasswordMail } from '../auth/mail/ResetPasswordMail.ts';
 
 // The devtools (W7, E115–E116, E131): what a registration does — the request, its queries, the jobs it queued, the mails a
@@ -59,11 +60,14 @@ describe('the devtools', () => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true, env: { SESSION_DRIVER: driver } });
     const email = 'ada@example.com';
     const [password, newPassword] = ['correct horse battery', 'brand new staple 42'];
-    const csrf = (await app.navigating().get('/register').assertOk()).page()!.csrf!;
-    const registered = await app
-      .post('/register', { form: { name: 'Ada Lovelace', email, password, password_confirmation: password, _token: csrf }, headers: { referer: 'http://localhost/register', 'x-xsrf-token': csrf } })
-      .assertRedirect('/register/sent');
-    const sessions = [registered.cookie('bespoke_session')!];
+    const registered = await app.post('/register', { form: { name: 'Ada Lovelace', email, password, password_confirmation: password }, headers: { referer: 'http://localhost/register' } }).assertRedirect('/register/sent');
+    expect(registered.headers.getSetCookie()).toEqual([]); // private registration (E146): no session
+    // The app opens for a confirmed address only (E146) — confirmed here directly; the link's own path is tested in the auth module.
+    const users = app.make(UserRepository);
+    await users.markEmailVerified((await users.findByEmail(email))!.id);
+    const first = await app.post('/login', { form: { email, password } }).assertRedirect('/users/me');
+    const sessions = [first.cookie('bespoke_session')!];
+    const csrf = decodeURIComponent(first.cookie('XSRF-TOKEN')!);
     await app.withCookie('bespoke_session', sessions[0]!).post('/logout', { form: {} }).assertRedirect();
     sessions.push((await app.post('/login', { form: { email, password } }).assertRedirect('/users/me')).cookie('bespoke_session')!);
 

@@ -1,14 +1,11 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, usePage, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
 type Props = PageProps<ShowLoginController>;
 
 export default function Login({ appName, old }: Props) {
-  // Without JavaScript the form posts itself: with the session's token when there is a session (a guest has none — the
-  // browser's word suffices, E143).
-  const { csrf } = usePage();
   const route = useRoute();
   const t = useTranslation('auth');
   // Method, URL, fields and errors come from the route (auth.login.store → LoginController's LoginRequest).
@@ -19,7 +16,7 @@ export default function Login({ appName, old }: Props) {
     <main>
       <Head title={t('login.title')} />
       <h1>{t('login.heading', { app: appName })}</h1>
-      {/* Works without JavaScript too: a plain form post with the CSRF token. */}
+      {/* Works without JavaScript too: a plain form post — the browser's Fetch Metadata and Origin vouch for it (E143). */}
       <form
         method="post"
         action={route('auth.login.store')}
@@ -29,7 +26,6 @@ export default function Login({ appName, old }: Props) {
           void form.submit({ onFinish: () => form.set('password', '') });
         }}
       >
-        {csrf !== undefined && <input type="hidden" name="_token" value={csrf} />}
         <p>
           <label htmlFor="email">{t('login.email')}</label>
           <br />

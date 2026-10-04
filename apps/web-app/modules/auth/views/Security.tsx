@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, usePage, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
 import { AppLayout } from '../../../layouts/AppLayout.tsx';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
@@ -7,9 +7,6 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 type Props = PageProps<ShowSecurityController>;
 
 export default function Security({ viaRemember, email, auth }: Props) {
-  // Without JavaScript the form posts itself: with the session's token when there is a session (a guest has none — the
-  // browser's word suffices, E143).
-  const { csrf } = usePage();
   const t = useTranslation('auth');
   const route = useRoute();
   // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
@@ -122,7 +119,6 @@ export default function Security({ viaRemember, email, auth }: Props) {
         <p>{t('security.export_intro')}</p>
         {/* A plain form on purpose: the answer is a redirect to a download (a signed, five-minute URL), not a page. */}
         <form method="post" action={route('user-profile.export')}>
-          {csrf !== undefined && <input type="hidden" name="_token" value={csrf} />}
           <button type="submit">{t('security.export_submit')}</button>
         </form>
       </section>
