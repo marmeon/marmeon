@@ -45,7 +45,8 @@ is a sane one, else generated); every log entry of the request carries it — an
 ## Observation (E118)
 
 The kernel traces each request on the `http.request` channel of `@bespokecore/core/diagnostics` — method, path, URL and
-headers (raw), route name and pattern, controller, status, duration — and sends the error a request ends in to `exception`;
+headers (raw), route name and pattern, controller, status, duration, where the response sends the browser (`location`: a
+redirect's target or the protocol's 409 reload, with its `reload` reason) — and sends the error a request ends in to `exception`;
 server rendering goes to `render.ssr`. Without a subscriber none of it is built. See the core README for the channels, their
 messages and the spans `@bespokecore/otel` makes of them. The health endpoints are not traced.
 
@@ -63,6 +64,19 @@ per request (Timing tab). It is **only** on with `NODE_ENV=development` — not 
 (E115: development tools check for development, never for "not production"). Its provider (`ServerServiceProvider`)
 listens to `db.query` and `render.ssr` from its boot to its shutdown; elsewhere the channels keep no subscriber and no
 header is set.
+
+## The development document (`DevDocument`) — development only
+
+With `NODE_ENV=development` the `ServerServiceProvider` binds a `DevDocument`: HTML that packages add to the end of every
+document the Vite dev renderer serves (before `</body>`, outside the app's root — hydration never sees it, and no client chunk
+carries it). The devtools add their link to `/_bespoke/devtools` this way (W7 step 8; the in-page bar of step 9 hangs here too).
+
+```ts
+if (app.container.has(DevDocument)) app.container.make(DevDocument).add('<a href="/_bespoke/devtools">Devtools</a>');
+```
+
+The production renderer never reads it, and it is not bound elsewhere. Only trusted markup of a package — never anything from
+a request.
 
 ## Error page (E119) — development only
 

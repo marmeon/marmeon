@@ -20,6 +20,7 @@ import {
   ReadOnly,
   REGION_HEADER,
   REGION_STATUS_HEADER,
+  RELOAD_HEADER,
   regionOf,
   ResponseLifecycle,
   ServerClosing,
@@ -51,6 +52,7 @@ import { Hono } from 'hono';
 import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
+import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { checkHealthPaths, createHealthEndpoints } from './health.ts';
 import { ServerConfig } from './provider.ts';
@@ -396,7 +398,7 @@ export function createHttpKernel(
         logger.info(`${c.req.method} ${c.req.path} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
       };
       // Traced only while something listens (E118): otherwise no message is built at all.
-      if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, run, () => c.res.status);
+      if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, run, () => c.res);
       else await run();
     });
 
@@ -408,7 +410,7 @@ export function createHttpKernel(
   });
 
   /** One request on the `http.request` channel — with the route and controller it matched, and its status. */
-  const traceRequest = (request: Request, requestId: string, env: unknown, next: () => Promise<void>, status: () => number): Promise<void> => {
+  const traceRequest = (request: Request, requestId: string, env: unknown, next: () => Promise<void>, response: () => Response): Promise<void> => {
     const region = regionOf(request);
     const message: HttpRequestMessage = {
       ...messageBase(application),
@@ -429,7 +431,13 @@ export function createHttpKernel(
         ended.routePath = route.path;
         if (controller !== undefined) ended.controller = controller;
       }
-      ended.status = status();
+      const answer = response();
+      ended.status = answer.status;
+      // Where it sends the browser: a redirect, or the protocol's full reload (409 + x-bespoke-location) — not a failure.
+      const location = answer.status === 409 ? answer.headers.get(LOCATION_HEADER) : answer.status >= 300 && answer.status < 400 ? answer.headers.get('location') : null;
+      if (location) ended.location = location;
+      const reload = answer.status === 409 && location ? answer.headers.get(RELOAD_HEADER) : null;
+      if (reload) ended.reload = reload;
       const page = pages.get(request);
       if (page) ended.page = page;
       const input = states.get(request)?.inputRead?.();
@@ -689,7 +697,13 @@ export async function startServer({
   let kernel: HttpKernel;
 
   if (mode === 'development') {
-    const { vite, renderer } = await createViteDevRenderer({ root, ssrEntry, httpServer: server });
+    const { vite, renderer } = await createViteDevRenderer({
+      root,
+      ssrEntry,
+      httpServer: server,
+      // Bound only with NODE_ENV=development (E115): a Vite dev server on a staging box adds nothing.
+      devBody: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).body : ''),
+    });
     // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development` (E115), not this mode: Vite on a staging box shows no stack.
     kernel = createHttpKernel(app, { renderer });
     const handle = getRequestListener(kernel.fetch);

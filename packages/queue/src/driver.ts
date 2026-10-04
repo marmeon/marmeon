@@ -25,6 +25,13 @@ export interface QueuedPush {
   readonly delay: number;
 }
 
+/** A queue's jobs by state — see {@link QueueDriver.counts}. */
+export interface QueueCounts {
+  readonly ready: number;
+  readonly delayed: number;
+  readonly reserved: number;
+}
+
 /**
  * The contract of a queue driver (E83): `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
  * lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts the
@@ -51,6 +58,11 @@ export interface QueueDriver {
   fail(job: ReservedJob): Promise<boolean>;
   /** Jobs waiting, delayed or running on `queue`. */
   size(queue: string): Promise<number>;
+  /**
+   * What `size` counts, split up — jobs ready to be claimed, delayed (not yet due, or released for a later retry) and reserved
+   * (claimed by a worker: running, or an expired claim of a worker that died). Optional: for the devtools' queue view (W7).
+   */
+  counts?(queue: string): Promise<QueueCounts>;
   /** The queues that hold jobs (or held some — a driver may remember a queue after it ran empty), sorted — `--queue=*`, `queue:size`. */
   queues(): Promise<string[]>;
   /** Drivers that keep jobs in the database: the same driver writing through a transaction (E85). */

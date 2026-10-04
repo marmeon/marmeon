@@ -52,7 +52,7 @@ export async function findMailPreviews(root: string): Promise<Map<string, Previe
 const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,3}$/;
 
 /**
- * The preview pages (E106) — only ever registered outside production. `GET /_bespoke/mail` lists the previewable mails,
+ * The preview pages (E106) — only ever registered with `NODE_ENV=development` (E115). `GET /_bespoke/mail` lists the previewable mails,
  * `GET /_bespoke/mail/<module>/<Class>` shows one: subject, sender, recipients and attachments above the HTML (in a
  * sandboxed frame — no script of a template runs), `?text` the text version, `?raw` the HTML alone, `?locale=de` another
  * language. A name finds a mail in the list found at startup — never a file path from the URL.
@@ -88,7 +88,8 @@ export class MailPreviews {
     const locale = wanted !== null && LOCALE.test(wanted) ? wanted : undefined;
     const scope = this.#container.createScope();
     const message = await compose(await Mail.preview({ make: (key) => scope.make(key), locale }), this.#from);
-    if (url.searchParams.has('raw')) return new Response(message.html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    // The HTML alone, in a tab of its own: sandboxed by its CSP like the frame — no script of the template runs on this origin.
+    if (url.searchParams.has('raw')) return new Response(message.html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': 'sandbox' } });
     if (url.searchParams.has('text')) return new Response(message.text, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
     return page(`${name} — mail preview`, header(name, message, locale) + `<iframe sandbox title="${escapeHtml(message.subject)}" srcdoc="${escapeHtml(message.html)}"></iframe>`);
   }

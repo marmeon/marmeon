@@ -54,6 +54,21 @@ async function start(root: string) {
 }
 
 describe('createViteDevRenderer', () => {
+  it('adds the development HTML (DevDocument: the devtools\' link) before </body> — outside the app\'s root, read per request', async () => {
+    let body = '<a href="/_bespoke/devtools" data-bespoke-devtools>Devtools</a>';
+    const httpServer = createServer();
+    const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer, devBody: () => body });
+    try {
+      const render = () => renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} });
+      expect(await render()).toContain('<a href="/_bespoke/devtools" data-bespoke-devtools>Devtools</a>\n</body>');
+      body = '';
+      expect(await render()).not.toContain('data-bespoke-devtools');
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
   it('takes the SSR entry from bespoke(), serves virtual:bespoke/pages to SSR, and adds the client entry', async () => {
     const { vite, renderer } = await start(app());
     try {

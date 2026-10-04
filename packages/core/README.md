@@ -44,7 +44,7 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
 
 | Channel | Where | Message (besides `app`, `startedAt`, `requestId?`, `jobId?`, `task?`, `durationMs`, `error`) |
 |---|---|---|
-| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status`; while something listens also `page` (`PageSummary`: view, kind, the bytes of each prop, `only`/`except`, deferred groups) and `input` (the body as the app read it — raw; never read for this) |
+| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status`, `location` (raw: a redirect's target, or with a 409 the protocol's `x-bespoke-location`) and `reload` (its reason); while something listens also `page` (`PageSummary`: view, kind, the bytes of each prop, `only`/`except`, deferred groups) and `input` (the body as the app read it — raw; never read for this) |
 | `db.query` | every statement of every connection | `DbQueryMessage`: `connection`, `driver` (`sqlite`/`pgsql`), `sql`, `parameters` (raw), `secret` |
 | `queue.dispatch` | `queue.dispatch()`, `bulk()`, `chain()` | `QueueDispatchMessage`: `kind`, `jobs`, `jobIds`, `connection`, `queue`, `delay`, `unique`, `traceparent` (a tracer sets it), `payloads` (raw) and `encrypted` (per job) |
 | `queue.job` | each attempt (worker, `sync`, `app.queue.work()`) | `QueueJobMessage`: `job`, `jobId`, `queue`, `connection`, `attempt`, `originRequestId`, `traceparent`, `payload` (raw), `encrypted`, `outcome` |
@@ -115,6 +115,18 @@ defineModule({ name: 'system', health: [StorageWritable] });
 
 A class without `static check` or `handle()` does not compile (`Property 'check' is missing in type 'typeof NoName' but required
 in type '{ readonly check: string; readonly timeout?: number | undefined; }'.`); two classes with one name fail the start.
+
+## HTML: the escaping `html` template
+
+```ts
+import { html, raw } from '@bespokecore/core';
+
+html`<p>Hello ${user.name}</p><ul>${items.map((item) => html`<li>${item}</li>`)}</ul>`;   // every value escaped; nested html kept
+```
+
+For HTML the server writes itself — mails (`@bespokecore/mail` re-exports it) and the devtools' pages. Values are escaped as
+text and inside quoted attributes (`& < > " ' \``); `raw()` is markup you trust, never input. It does not judge URLs: put only
+links you built into `href`.
 
 ## Configuration
 

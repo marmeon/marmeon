@@ -141,6 +141,8 @@ export const DevtoolsConfig = defineConfig('devtools', {
   env: v.object({
     NODE_ENV: v.optional(v.string()),
     DEVTOOLS_ENABLED: v.optional(v.pipe(v.string(), v.toLowerCase(), v.picklist(['true', 'false']))),
+    /** The app's own address: its host may open the pages too (besides `localhost`, `127.0.0.1` and `[::1]`). */
+    APP_URL: v.optional(v.string()),
   }),
   resolve: (env) => {
     if (env.DEVTOOLS_ENABLED === 'true' && env.NODE_ENV === 'production') {
@@ -154,7 +156,25 @@ export const DevtoolsConfig = defineConfig('devtools', {
       environment: env.NODE_ENV,
       /** `DEVTOOLS_ENABLED=true` outside development: it has no effect (said once, at the start). */
       ineffective: env.DEVTOOLS_ENABLED === 'true' && env.NODE_ENV !== 'development',
+      /** The hosts the pages answer (a request for any other gets 403 — DNS rebinding): loopback names and `APP_URL`'s host. */
+      hosts: allowedHosts(env.APP_URL),
     };
   },
 });
 export type DevtoolsConfig = ConfigOf<typeof DevtoolsConfig>;
+
+/** The loopback names — always allowed. */
+export const LOOPBACK_HOSTS: readonly string[] = ['localhost', '127.0.0.1', '[::1]'];
+
+/** The host names the devtools' pages answer: the loopback ones and the host of `appUrl` (lower case, no port). */
+export function allowedHosts(appUrl: string | undefined): ReadonlySet<string> {
+  const hosts = new Set(LOOPBACK_HOSTS);
+  if (appUrl) {
+    try {
+      hosts.add(new URL(appUrl).hostname.toLowerCase());
+    } catch {
+      // Not a URL: only the loopback names (the app's own config reports a broken APP_URL).
+    }
+  }
+  return hosts;
+}

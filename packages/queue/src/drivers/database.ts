@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
-import type { FailedJob, FailedJobStore, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
+import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 /** The tables `bespoke make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
 export const JOBS_TABLE = 'jobs';
@@ -132,6 +132,18 @@ export class DatabaseQueueDriver implements QueueDriver {
     const { db, sql } = await use(this.#connection, this.#cache);
     const { rows } = await sql<{ count: number | string }>`select count(*) as count from jobs where queue = ${queue}`.execute(db);
     return Number(rows[0]?.count ?? 0);
+  }
+
+  async counts(queue: string): Promise<QueueCounts> {
+    const { db, sql } = await use(this.#connection, this.#cache);
+    const now = this.#clock.now();
+    const { rows } = await sql<{ ready: number | string | null; delayed: number | string | null; reserved: number | string | null }>`select
+        sum(case when reserved_at is null and available_at <= cast(${now} as bigint) then 1 else 0 end) as ready,
+        sum(case when reserved_at is null and available_at > cast(${now} as bigint) then 1 else 0 end) as delayed,
+        sum(case when reserved_at is not null then 1 else 0 end) as reserved
+      from jobs where queue = ${queue}`.execute(db);
+    const row = rows[0];
+    return { ready: Number(row?.ready ?? 0), delayed: Number(row?.delayed ?? 0), reserved: Number(row?.reserved ?? 0) };
   }
 
   async queues(): Promise<string[]> {

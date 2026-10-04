@@ -35,10 +35,30 @@
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
-    "@bespokecore/cli": "workspace:*"
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/queue": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
+    "@bespokecore/server": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@bespokecore/cli": {
+      "optional": true
+    },
+    "@bespokecore/http": {
+      "optional": true
+    },
+    "@bespokecore/queue": {
+      "optional": true
+    },
+    "@bespokecore/router": {
+      "optional": true
+    },
+    "@bespokecore/scheduler": {
+      "optional": true
+    },
+    "@bespokecore/server": {
       "optional": true
     }
   },

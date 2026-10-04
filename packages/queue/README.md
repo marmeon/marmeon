@@ -58,6 +58,8 @@ QUEUE_FAILED_CONNECTION=…       # the database connection of failed_jobs (defa
 
 Workers never decide by reading first: a job is claimed by exactly one worker (2 workers × 200 jobs, Postgres and Redis: none
 twice — a test of the package). `queue:size` counts per queue; `--queue=*` finds every queue that holds jobs (at most once a second).
+A driver may also split its count (`counts(queue)` → `{ ready, delayed, reserved }`: due, not yet due or released for later,
+claimed by a worker) — all three drivers do; the devtools' queue view (`/_bespoke/devtools/queue`, development only) shows it.
 
 ## At-least-once: what the queue promises (E85)
 

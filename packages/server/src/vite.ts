@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { SsrRender } from '@bespokecore/http';
 import type { ResolvedConfig, ViteDevServer } from 'vite';
+import { withDevBody } from './dev-document.ts';
 import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
 /** The app's Vite setup is incomplete: no `vite`, no `@bespokecore/vite`, or no `bespoke()` plugin. The message says what to do. */
@@ -77,13 +78,15 @@ export interface ViteDevOptions {
   ssrEntry?: string;
   /** Share the HTTP server so HMR runs on the app's port instead of a second one. Without one, no HMR (tests). */
   httpServer?: Server;
+  /** Development HTML for the end of every document's body (`DevDocument`: the devtools' link) — read per request. */
+  devBody?: () => string;
 }
 
 /**
  * Starts Vite in middleware mode. SSR modules run in Vite's module runner, so
  * view edits hot-reload without restarting the Node process.
  */
-export async function createViteDevRenderer({ root, ssrEntry, httpServer }: ViteDevOptions): Promise<{
+export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody }: ViteDevOptions): Promise<{
   vite: ViteDevServer;
   renderer: PageRenderer;
 }> {
@@ -119,7 +122,7 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer }: Vite
   }
 
   const renderer = createDocumentRenderer({
-    template: async (request) => vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')),
+    template: async (request) => withDevBody(await vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')), devBody?.() ?? ''),
     // Through Vite's module runner on every request: an edited view renders without a restart.
     ssr: async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render,
     // Stack traces of SSR errors point into the sources, not into Vite's transformed modules.

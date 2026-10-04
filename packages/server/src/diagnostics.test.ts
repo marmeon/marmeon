@@ -4,6 +4,7 @@ import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption'
 import { abort, Controller, HttpServiceProvider, view } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
+import { DevDocument, withDevBody } from './dev-document.ts';
 import { createHttpKernel } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
 
@@ -29,6 +30,8 @@ const routes = defineRoutes((Route) => {
   });
   Route.get('/forbidden', () => abort(403, 'Only admins.'));
   Route.get('/home', () => view('Home', { greeting: 'hi' }));
+  Route.get('/away', () => Response.redirect('http://localhost/users/7?token=secret-value', 302));
+  Route.get('/reload', () => new Response(null, { status: 409, headers: { 'x-bespoke-location': '/users/me', 'x-bespoke-reload': 'history' } }));
 });
 
 const lines: { message: string; context: LogContext }[] = [];
@@ -80,6 +83,23 @@ describe('the http.request channel (E118)', () => {
     expect(ended[2]).toMatchObject({ path: '/nowhere', status: 404 });
     expect(ended[2]).not.toHaveProperty('routePath');
     await application.shutdown();
+  });
+
+  it('says where a response sends the browser: a redirect\'s Location, the protocol\'s 409 reload with its reason (W7 step 8)', async () => {
+    const { application, kernel } = await boot();
+    const ended: HttpRequestMessage[] = [];
+    const off = channels.subscribe(application, 'http.request', { end: (message) => void ended.push(message) });
+    try {
+      await kernel.request('/away');
+      await kernel.request('/reload', { headers: { 'x-bespoke': 'true' } });
+      await kernel.request('/ping');
+    } finally {
+      off();
+    }
+    expect(ended[0]).toMatchObject({ status: 302, location: 'http://localhost/users/7?token=secret-value' }); // raw: the recorder redacts
+    expect(ended[0]!.reload).toBeUndefined();
+    expect(ended[1]).toMatchObject({ status: 409, location: '/users/me', reload: 'history' });
+    expect(ended[2]!.location).toBeUndefined();
   });
 
   it('builds no message while nobody listens — not one, for any channel', async () => {
@@ -175,6 +195,12 @@ describe('Server-Timing (E129)', () => {
     await application.shutdown();
   });
 
+  it.each([['development', true], ['production', false], ['test', false], ['staging', false]])('binds the development document (DevDocument) with NODE_ENV=%s: %s', async (mode, bound) => {
+    const { application } = await boot({ NODE_ENV: mode });
+    expect(application.container.has(DevDocument)).toBe(bound);
+    await application.shutdown();
+  });
+
   it('its subscriptions end with the app (the provider\'s shutdown)', async () => {
     const { application } = await boot({ NODE_ENV: 'development' });
     expect(channels.tracing('db.query').hasSubscribers).toBe(true);
@@ -182,5 +208,13 @@ describe('Server-Timing (E129)', () => {
     await application.shutdown();
     expect(channels.tracing('db.query').hasSubscribers).toBe(false);
     expect(channels.tracing('render.ssr').hasSubscribers).toBe(false);
+  });
+});
+
+describe('withDevBody', () => {
+  it('puts development HTML before the last </body> — or at the end of a template without one; nothing for nothing', () => {
+    expect(withDevBody('<html><body><div id="app"></div></body></html>', '<a>x</a>')).toBe('<html><body><div id="app"></div><a>x</a>\n</body></html>');
+    expect(withDevBody('<div id="app"></div>', '<a>x</a>')).toBe('<div id="app"></div><a>x</a>');
+    expect(withDevBody('<body></body>', '')).toBe('<body></body>');
   });
 });

@@ -103,6 +103,51 @@ describe('the devtools', () => {
     }
   });
 
+  // The pages (W7 step 8): the registration as a visit — the protocol's 409 reload across the sign-in boundary, no failure —
+  // its queries, the jobs it queued, then what the worker did for it; the scheduler's lock warning (E123) on the overview.
+  it('show a registration in /_bespoke/devtools: the request, its queries, then the jobs and mails a worker ran for it', async () => {
+    const app = await createTestApp(application, { database: 'refresh', devtools: true });
+    const password = 'correct horse battery';
+    const csrf = (await app.navigating().get('/register').assertOk()).page()!.csrf!;
+    const response = await app
+      .navigating()
+      .post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password, _token: csrf }, headers: { referer: 'http://localhost/register', 'x-xsrf-token': csrf } });
+    expect(response.status).toBe(409);
+    await app.queue.work();
+    await app.devtools.settled();
+    const request = app.devtools.assertRecorded('request', (content) => content.route === 'auth.register.store');
+    expect(request.content).toMatchObject({ status: 409, location: '/users/me', reload: 'history' });
+    expect(request.tags).toContain('reload');
+
+    // Opened in the browser that is signed in to the app: the pages neither read nor write its session — no cookie comes back.
+    const session = response.cookie('bespoke_session')!;
+    expect(session).toBeTruthy();
+    const list = await app.withCookie('bespoke_session', session).get('/_bespoke/devtools/requests').assertOk();
+    expect(list.body).toContain('409 reload (history)');
+    expect(list.headers.get('set-cookie')).toBeNull();
+    const page = (await app.get(`/_bespoke/devtools/requests/${request.id}`).assertOk()).body;
+    expect(page).toContain("409 is the protocol's full reload, not a failure");
+    expect(page).toContain('RegisterController');
+    expect(page).toMatch(/Queries \(\d+,/);
+    expect(page).toMatch(/Job bespoke\.listener — attempt 1, done/);
+    expect(page).toContain('VerifyEmailMail');
+    expect(page).not.toContain(password);
+
+    const mail = app.devtools.assertRecorded('mail', (content) => content.mailable === 'VerifyEmailMail');
+    const mailPage = (await app.get(`/_bespoke/devtools/mails/${mail.id}`).assertOk()).body;
+    expect(mailPage).toMatch(/<iframe class="mail" sandbox src="\/_bespoke\/devtools\/mails\/[^"]+\/html"/);
+    expect((await app.get(`/_bespoke/devtools/mails/${mail.id}/html`).assertOk()).body).toMatch(/signature=\[redacted\]/);
+
+    const overview = (await app.get('/_bespoke/devtools').assertOk()).body;
+    expect(overview).toContain('Scheduler (E123): onOneServer()');
+    expect(overview).toContain('CACHE_DRIVER=memory');
+    expect((await app.get('/_bespoke/devtools/schedule').assertOk()).body).toContain('bespoke schedule:test session:prune');
+    await app.get('/_bespoke/devtools/queue').assertOk();
+    await app.close();
+    // A test without the opt-in has no such pages (E115).
+    await (await createTestApp(application)).get('/_bespoke/devtools').assertNotFound();
+  });
+
   it('record nothing in a test that does not opt in — also one running as development (never into storage/framework/devtools)', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await app.get('/login').assertOk();

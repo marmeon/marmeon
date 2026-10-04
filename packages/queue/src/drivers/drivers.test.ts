@@ -129,6 +129,10 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
       await driver.reserve(['mail']);
       expect(await driver.size('mail')).toBe(2);
       expect(await driver.queues()).toEqual(['default', 'mail']);
+      // Split up (the devtools' queue view): one running, one delayed — and the default queue's one ready.
+      expect(await driver.counts!('mail')).toEqual({ ready: 0, delayed: 1, reserved: 1 });
+      expect(await driver.counts!('default')).toEqual({ ready: 1, delayed: 0, reserved: 0 });
+      expect(await driver.counts!('nothing')).toEqual({ ready: 0, delayed: 0, reserved: 0 });
     });
   });
 

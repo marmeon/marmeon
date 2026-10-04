@@ -56,5 +56,12 @@ with their queries, jobs, mails, log entries, exceptions, events — redacted, i
 records nothing (and does not have the package). `bespoke devtools:clear` empties the directory; `devtools:prune` runs hourly in
 development (`modules/system/schedule.ts`).
 
+**`http://localhost:3960/_bespoke/devtools`** shows it — the **Devtools** link at the bottom right of every page under
+`bespoke dev` leads there (HTML the dev server adds, no client code): requests with their queries, props' sizes and what they set
+off in the worker, the queue (with failed jobs and `bespoke queue:retry <id>` to copy), the schedule with the lock warning
+(E123: `CACHE_DRIVER=file` locks only on this machine), a live tail, and the mail previews (`/_bespoke/mail`). Signing in, up or
+out as a visit answers `409 reload` — the protocol's full reload, shown as such, not as an error.
+
 `modules/system/devtools.test.ts` shows what a registration records — the request, its queries (the insert into `users`
-without parameters), the jobs it queued, and the mails the worker sent for it, all tied by the request id.
+without parameters), the jobs it queued, and the mails the worker sent for it, all tied by the request id — and how the pages
+show it.

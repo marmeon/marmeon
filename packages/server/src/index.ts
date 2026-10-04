@@ -2,6 +2,7 @@ export { createHttpKernel, startServer } from './kernel.ts';
 export type { HttpKernel, KernelOptions, RunningServer, ServeOptions } from './kernel.ts';
 export { createDocumentRenderer, createResponseFactory, isBot, shellRenderer } from './render.ts';
 export type { DocumentRendererOptions, LayerBaseResult, PageRenderer, PageRenderOptions, RenderFailureDetails, ResponseFactoryOptions, ScopedResponseFactory } from './render.ts';
+export { DevDocument, withDevBody } from './dev-document.ts';
 export { DevRequestRecorder, MAX_RECORDED } from './error-page/recorder-token.ts';
 export type { RequestRecorder, RequestRecording } from './error-page/recorder-token.ts';
 export { documentOf, renderDocument, HEAD_OUTLET, HTML_OUTLET } from './html.ts';

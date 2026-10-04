@@ -67,9 +67,16 @@ in (nor should a `Host` header ever decide where a link points). `compose()` ref
 
 `GET /_bespoke/mail` lists every mail class with a `static preview(context)` (in `modules/*/mail/*.ts`); `/_bespoke/mail/<module>/<Class>`
 shows one — subject, sender, recipients, attachments above the HTML in a sandboxed frame (no script of a template runs);
-`?locale=de`, `?text`, `?raw`. Previews build their mail from factory data (`make()`, never `create()`). The routes are **never
-registered when `NODE_ENV=production`** and have no middleware group (no session, no cookies). A name finds a mail in the list made
-at startup — never a file path from the URL.
+`?locale=de`, `?text`, `?raw` (the HTML alone, sandboxed by its CSP too: no script of it runs on the app's origin). Previews build
+their mail from factory data (`make()`, never `create()`). The routes are **registered only with `NODE_ENV=development`** (E115,
+the devtools' gate — `bespoke dev` sets it) and have no middleware group (no session, no cookies); the devtools
+(`/_bespoke/devtools`, `@bespokecore/devtools`) link to them. A name finds a mail in the list made at startup — never a file path
+from the URL. A test that wants them runs as development: `createTestApp(App, { env: { NODE_ENV: 'development' } })`.
+
+> **Upgrading from before Wave 7:** the previews were registered for every `NODE_ENV` but `production` ("not production"); since
+> W7 step 8 only with `NODE_ENV=development`. A staging server, a test or a server without `NODE_ENV` has no `/_bespoke/mail` any
+> more. The escaping `html` template moved to `@bespokecore/core` (`import { html } from '@bespokecore/core'`); this package
+> re-exports it unchanged.
 
 ## Testing
 

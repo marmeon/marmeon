@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
 import type { RedisConnection, RedisScript } from '@bespokecore/redis';
-import type { QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
+import type { QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 /**
  * Moves the due members of the sorted set `from` (score ≤ now) to the end of the list `to` — delayed jobs whose time has
@@ -169,6 +169,17 @@ export class RedisQueueDriver implements QueueDriver {
     const [redis, { size }] = await Promise.all([this.#connection(), loadScripts()]);
     const keys = this.#keys(redis, queue);
     return Number(await redis.run(size, [keys.list, keys.delayed, keys.reserved]));
+  }
+
+  async counts(queue: string): Promise<QueueCounts> {
+    const redis = await this.#connection();
+    const keys = this.#keys(redis, queue);
+    const [ready, delayed, reserved] = await Promise.all([
+      redis.command<number>(['LLEN', keys.list]),
+      redis.command<number>(['ZCARD', keys.delayed]),
+      redis.command<number>(['ZCARD', keys.reserved]),
+    ]);
+    return { ready: Number(ready), delayed: Number(delayed), reserved: Number(reserved) };
   }
 
   async queues(): Promise<string[]> {

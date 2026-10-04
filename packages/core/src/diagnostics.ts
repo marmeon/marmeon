@@ -69,6 +69,13 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   controller?: string;
   /** The response's status. */
   status?: number;
+  /**
+   * Where the response sends the browser — a redirect's `Location`, or with a 409 the protocol's `x-bespoke-location` (a full
+   * reload: a new build, or crossing the sign-in boundary) — raw: redact before recording (E125).
+   */
+  location?: string;
+  /** With a 409 and a location: why the browser reloads (`x-bespoke-reload`: `version`, `history`). */
+  reload?: string;
   /** The page or island it answered with — set only while something listens (the devtools, E118). */
   page?: PageSummary;
   /** The body, as the app read it (never read for this — unset when nothing read it) — raw: redact before recording (E125). */

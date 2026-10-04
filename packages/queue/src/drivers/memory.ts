@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
-import type { FailedJob, FailedJobStore, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
+import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 interface Entry {
   readonly id: string;
@@ -67,6 +67,14 @@ export class MemoryQueueDriver implements QueueDriver {
 
   async size(queue: string): Promise<number> {
     return this.#entries.filter((entry) => entry.queue === queue).length;
+  }
+
+  async counts(queue: string): Promise<QueueCounts> {
+    const now = this.#clock.now();
+    const entries = this.#entries.filter((entry) => entry.queue === queue);
+    const reserved = entries.filter((entry) => entry.reservedAt !== undefined).length;
+    const ready = entries.filter((entry) => entry.reservedAt === undefined && entry.availableAt <= now).length;
+    return { ready, delayed: entries.length - reserved - ready, reserved };
   }
 
   async queues(): Promise<string[]> {

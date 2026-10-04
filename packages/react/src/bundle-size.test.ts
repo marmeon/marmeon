@@ -98,6 +98,19 @@ function featuresIn({ modules, lazyModules, code }: AppBundle, lazy = false): st
   return sorted(FEATURE_NAMES.filter((feature) => markers[feature]!.some((marker) => (typeof marker === 'string' ? keys.has(marker) : marker.test(code)))));
 }
 
+/**
+ * The leak test's `devtools` marker (W7 step 8, E115): a module of @bespokecore/devtools, or the devtools' paths and markup in
+ * the code (`/_bespoke/devtools`, `@bespokecore/devtools`, the link's `data-bespoke-devtools`). Not the bare word — react-dom's
+ * production build names `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
+ */
+const DEVTOOLS_MARKERS = /_bespoke\/devtools|@bespokecore\/devtools|data-bespoke-devtools/;
+
+function devtoolsIn({ modules, lazyModules, code, lazyCode }: AppBundle): string[] {
+  const found = [...modules, ...lazyModules].filter((id) => id.startsWith('devtools/'));
+  const text = DEVTOOLS_MARKERS.exec(`${code}\n${lazyCode}`)?.[0];
+  return text ? [...found, text] : found;
+}
+
 const bundles = new Map<string, AppBundle>();
 const lowered: Partial<Record<Scenario, number>> = {};
 const update = process.env.BESPOKE_SIZE_BUDGET === 'update';
@@ -187,16 +200,22 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect(built.modules).toEqual(expect.arrayContaining(['react/dist/layer.js', 'react/dist/layer-dialog.js']));
   });
 
-  it('the web app opens its layers from a chunk of their own: the core’s layers and the React layer stack', async () => {
+  it('the web app opens its layers from a chunk of their own: the core’s layers and the React layer stack — and carries no devtools', async () => {
     const node = process.env.NODE_ENV;
     try {
       const built = await appClientBuild(join(PACKAGES, '../apps/web-app'));
       expect(featuresIn(built)).not.toContain('layers');
       expect(built.lazyModules).toEqual(expect.arrayContaining(['http/dist/client/features/layers.js', 'http/dist/client/layer.js', 'react/dist/layer-stack.js']));
+      // E115 (W7 step 8): the devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
+      expect(devtoolsIn(built), 'web-app').toEqual([]);
     } finally {
       process.env.NODE_ENV = node;
     }
   }, 60_000);
+
+  it('no scenario carries devtools code (E115: development only, never in a build)', () => {
+    for (const [name, built] of bundles) expect(devtoolsIn(built), name).toEqual([]);
+  });
 
   it.each(FEATURE_NAMES)('%s comes with its own import — and recognisably so', (feature) => {
     const { use, brings = [], lazy = false }: { use: { base: LeakScenario }; brings?: readonly string[]; lazy?: boolean } = FEATURES[feature];

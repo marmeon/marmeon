@@ -33,11 +33,17 @@ export const MailConfig = defineConfig('mail', {
     MAIL_SECURE: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'false'),
     MAIL_USERNAME: v.optional(v.string(), ''),
     MAIL_PASSWORD: v.optional(v.string(), ''),
+    NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
     mailer: env.MAIL_MAILER,
     from: env.MAIL_FROM_NAME ? { address: env.MAIL_FROM_ADDRESS, name: env.MAIL_FROM_NAME } : env.MAIL_FROM_ADDRESS,
     smtp: { host: env.MAIL_HOST, port: env.MAIL_PORT, secure: env.MAIL_SECURE, username: env.MAIL_USERNAME, password: env.MAIL_PASSWORD },
+    /**
+     * The mail previews under `/_bespoke/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
+     * a test, staging or a server without `NODE_ENV` has no such routes.
+     */
+    previews: env.NODE_ENV === 'development',
   }),
 });
 export type MailConfig = ConfigOf<typeof MailConfig>;
@@ -56,8 +62,8 @@ async function importQueue(): Promise<QueueModule | undefined> {
 
 /**
  * Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`) — built on first use —, the `bespoke.mail` job for
- * `mailer.queue()` when the app has @bespokecore/queue, and outside production the mail previews (`/_bespoke/mail`,
- * E106). Found by `bespoke discover`.
+ * `mailer.queue()` when the app has @bespokecore/queue, and with `NODE_ENV=development` only the mail previews
+ * (`/_bespoke/mail`, E106, E115). Found by `bespoke discover`.
  */
 export class MailServiceProvider implements ServiceProvider {
   static config = [MailConfig];
@@ -89,8 +95,8 @@ export class MailServiceProvider implements ServiceProvider {
     const queue = await importQueue();
     if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@bespokecore/mail', { framework: true });
 
-    // Mail previews (E106): never registered in production.
-    if (process.env.NODE_ENV !== 'production') await registerPreviews(app);
+    // Mail previews (E106): only in development (E115) — the devtools link to them.
+    if (app.container.make(MailConfig).previews) await registerPreviews(app);
   }
 
   async shutdown(): Promise<void> {

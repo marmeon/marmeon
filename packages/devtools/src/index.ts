@@ -8,7 +8,9 @@ export {
   defineDevtools,
   DevtoolsConfig,
   DevtoolsConfigError,
+  allowedHosts,
   ignoresPath,
+  LOOPBACK_HOSTS,
   loadDevtoolsOptions,
   resolveOptions,
   WATCHERS,
@@ -35,9 +37,12 @@ export type {
 } from './entry.ts';
 export { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES, FileStore } from './file-store.ts';
 export type { FileStoreOptions } from './file-store.ts';
-export { DevtoolsServiceProvider, DevtoolsSettings } from './provider.ts';
+export { DEV_LINK, DevtoolsServiceProvider, DevtoolsSettings } from './provider.ts';
+export { API_VERSION, BASE, hostAllowed, MAIL_CSP, PAGE_CSP, registerDevtoolsPages } from './pages/index.ts';
+export type { PagesOptions } from './pages/index.ts';
+export type { FailedJobView, QueueSnapshot, QueueView, ScheduleSnapshot, TaskView } from './pages/infra.ts';
 export { MAX_BATCH_ENTRIES, Recorder } from './recorder.ts';
 export type { RecorderOptions } from './recorder.ts';
-export { DEFAULT_LIMIT, DevtoolsStore, MAX_LIMIT, MemoryStore } from './store.ts';
+export { DEFAULT_LIMIT, DevtoolsStore, matchesEntry, MAX_LIMIT, MemoryStore } from './store.ts';
 export type { EntryQuery, EntryTail, PruneResult, StoreUsage } from './store.ts';
 export { DevtoolsTester, DevtoolsTestOptIn, enableDevtoolsForTests } from './testing.ts';

@@ -61,6 +61,13 @@ export interface RequestContent {
   readonly controller?: string;
   readonly status?: number;
   readonly durationMs?: number;
+  /**
+   * Where the response sent the browser (redacted like the URL): a redirect's target, or — with a 409 — where a visit reloads
+   * fully (the protocol's answer after a new build or across the sign-in boundary: no failure).
+   */
+  readonly location?: string;
+  /** With a 409 and a location: why the browser reloads — `version` (a new build) or `history` (signed in or out). */
+  readonly reload?: string;
   /** `island` or `layer`: a region's request. */
   readonly region?: string;
   /** Resolved in-process for another request (an island while its page renders, a layer's base). */

@@ -6,6 +6,10 @@ import { Recorder } from './recorder.ts';
 import { DevtoolsStore, MemoryStore } from './store.ts';
 import { DevtoolsTestOptIn } from './testing.ts';
 
+/** The link to the devtools in development documents — plain HTML outside the app's root, no script. */
+export const DEV_LINK =
+  '<a href="/_bespoke/devtools" data-bespoke-devtools title="BespokeCore devtools — development only" style="position:fixed;right:12px;bottom:12px;z-index:2147483646;padding:5px 10px;border-radius:999px;background:#1c1f24;color:#fff;font:600 12px/1.2 system-ui,sans-serif;text-decoration:none;opacity:.7">Devtools</a>';
+
 /** The settings the recorder runs with — bound only where it runs. */
 export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings');
 
@@ -75,6 +79,20 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       ...(app.container.has(ErrorSolutions) ? { solutions: app.container.make(ErrorSolutions) } : {}),
     }).start();
     app.container.instance(Recorder, this.#recorder);
+
+    // The pages under /_bespoke/devtools (W7 step 8): registered only here — in production the routes do not exist (E115).
+    const { registerDevtoolsPages } = await import('./pages/index.ts');
+    await registerDevtoolsPages({
+      app,
+      store,
+      redactor: app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor(),
+      hosts: config.hosts,
+      ...(store instanceof FileStore ? { maxBytes: options.storage.maxBytes } : {}),
+    });
+    // A link to them at the bottom of every page `bespoke dev` renders — HTML the dev renderer adds to the document (never a
+    // client chunk; the in-page bar of step 9 takes its place). Bound by @bespokecore/server only with NODE_ENV=development.
+    const server = await import('@bespokecore/server').catch(() => undefined);
+    if (server && app.container.has(server.DevDocument)) app.container.make(server.DevDocument).add(DEV_LINK);
   }
 
   async shutdown(): Promise<void> {

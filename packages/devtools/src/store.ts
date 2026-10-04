@@ -11,8 +11,8 @@ export interface EntryQuery {
   /** Entries of a request — and of the jobs it dispatched (their entries carry it, E131). */
   readonly requestId?: string;
   readonly jobId?: string;
-  /** One of the entry's tags: `status:500`, `slow`, `failed`, `route:users.show`. */
-  readonly tag?: string;
+  /** One of the entry's tags (`status:500`, `status:5xx`, `slow`, `failed`, `route:users.show`) — or several, all of which it has. */
+  readonly tag?: string | readonly string[];
   /** Text anywhere in the entry (case-insensitive) — reads entries one by one: narrow by type first. */
   readonly search?: string;
   /** Older than this entry (its id) — the next page after the last entry shown. */
@@ -82,8 +82,14 @@ export function matchesHead(head: EntryHead, query: EntryQuery): boolean {
   if (query.batch !== undefined && head.batch !== query.batch) return false;
   if (query.requestId !== undefined && head.requestId !== query.requestId) return false;
   if (query.jobId !== undefined && head.jobId !== query.jobId) return false;
-  if (query.tag !== undefined && !head.tags.includes(query.tag)) return false;
+  if (query.tag !== undefined && !(typeof query.tag === 'string' ? [query.tag] : query.tag).every((tag) => head.tags.includes(tag))) return false;
   return true;
+}
+
+/** Whether an entry matches every field of `query` but `before` and `limit` — `search` too (case-insensitive, anywhere in it). */
+export function matchesEntry(entry: AnyEntry, query: EntryQuery): boolean {
+  if (!matchesHead(entry, query)) return false;
+  return query.search === undefined || query.search === '' || JSON.stringify(entry).toLowerCase().includes(query.search.toLowerCase());
 }
 
 export function limitOf(query: EntryQuery): number {

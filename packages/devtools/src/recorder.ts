@@ -262,7 +262,7 @@ export class Recorder {
     const batch = this.#requests.get(message.requestId);
     if (!batch) return;
     if (this.#options.record.has('requests') && !(message.inProcess && ignoresPath(this.#options.ignore.paths, message.path))) {
-      this.#add('request', message, this.#requestContent(message, batch), [`status:${message.status ?? 0}`, message.route ? `route:${message.route}` : '', message.method, ...(message.error ? ['failed'] : [])], batch);
+      this.#add('request', message, this.#requestContent(message, batch), [`status:${message.status ?? 0}`, `status:${Math.floor((message.status ?? 0) / 100)}xx`, message.route ? `route:${message.route}` : '', message.method, message.reload ? 'reload' : '', ...(message.error ? ['failed'] : [])], batch);
     }
     if (--batch.open > 0) return;
     this.#requests.delete(message.requestId);
@@ -290,6 +290,8 @@ export class Recorder {
       ...(message.controller === undefined ? {} : { controller: message.controller }),
       ...(message.status === undefined ? {} : { status: message.status }),
       ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),
+      ...(message.location === undefined ? {} : { location: redactor.url(message.location) }),
+      ...(message.reload === undefined ? {} : { reload: message.reload }),
       ...(message.region === undefined ? {} : { region: message.region }),
       inProcess: message.inProcess,
       headers: redactor.headers(message.headers),

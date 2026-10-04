@@ -212,8 +212,8 @@ describe('calendarEvent() (.ics)', () => {
 
 describe('mail previews (E106)', () => {
   const root = join(import.meta.dirname, '__fixtures__', 'preview-app');
-  const previewApp = (override: (c: import('@bespokecore/core').Container) => void = () => {}) =>
-    createApplication({ root, discover: false, env: {}, providers: [MailServiceProvider], override: (c) => (c.instance(Router, new Router()), override(c)) });
+  const previewApp = (environment = 'development', override: (c: import('@bespokecore/core').Container) => void = () => {}) =>
+    createApplication({ root, discover: false, env: environment ? { NODE_ENV: environment } : {}, providers: [MailServiceProvider], override: (c) => (c.instance(Router, new Router()), override(c)) });
 
   it('lists the mails with static preview() and shows one — header, the HTML in a sandboxed frame, ?text, ?raw, ?locale', async () => {
     const application = await previewApp();
@@ -229,7 +229,9 @@ describe('mail previews (E106)', () => {
     expect(body).not.toContain('<script>alert(1)</script>'); // the template's markup only inside srcdoc, escaped
     expect(body).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(await (await previews.show('shop/OrderShippedMail', new URL('http://localhost/x?text'))).text()).toContain('Hello Ada <script>');
-    expect((await previews.show('shop/OrderShippedMail', new URL('http://localhost/x?raw'))).headers.get('content-type')).toBe('text/html; charset=utf-8');
+    const raw = await previews.show('shop/OrderShippedMail', new URL('http://localhost/x?raw'));
+    expect(raw.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(raw.headers.get('content-security-policy')).toBe('sandbox'); // opened alone: still no script of the template
     expect((await previews.show('../../package.json', new URL('http://localhost/x'))).status).toBe(404);
     expect((await previews.show('shop/InternalMail', new URL('http://localhost/x'))).status).toBe(404);
 
@@ -237,16 +239,11 @@ describe('mail previews (E106)', () => {
     expect(paths).toEqual(expect.arrayContaining(['/_bespoke/mail', '/_bespoke/mail/:module/:mail']));
   });
 
-  it('is never registered in production', async () => {
-    const before = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-      const application = await previewApp();
-      expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_bespoke/mail');
-      expect(application.container.has(MailPreviews)).toBe(false);
-    } finally {
-      process.env.NODE_ENV = before;
-    }
+  // E115 (W7 step 8): development only — not "anything but production" (a test, staging or a server without NODE_ENV).
+  it.each([['production'], ['test'], ['staging'], ['']])('is not registered with NODE_ENV=%j (empty: unset)', async (environment) => {
+    const application = await previewApp(environment);
+    expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_bespoke/mail');
+    expect(application.container.has(MailPreviews)).toBe(false);
   });
 });
 

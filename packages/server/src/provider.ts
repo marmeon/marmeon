@@ -1,4 +1,5 @@
-import { defineConfig, type Application, type ConfigOf, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-token.ts';
 import { ServerTiming } from './server-timing.ts';
 import * as v from 'valibot';
@@ -75,6 +76,11 @@ export class ServerServiceProvider implements ServiceProvider {
 
   #timing: ServerTiming | undefined;
   #recorder: RequestRecorder | undefined;
+
+  register(container: Container): void {
+    // What packages add to the development documents (the devtools' link) — bound before any provider boots, never in production.
+    if (container.make(ServerConfig).debug) container.instance(DevDocument, new DevDocument());
+  }
 
   async boot(app: Application): Promise<void> {
     const config = app.container.make(ServerConfig);

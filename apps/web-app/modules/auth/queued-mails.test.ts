@@ -182,7 +182,9 @@ describe('mails without a request', () => {
   });
 
   it('show in the development preview (E106): /_bespoke/mail lists them, a preview renders sample data in a language', async () => {
-    const app = await createTestApp(application, { database: 'refresh' });
+    // Development only (E115): a test app (NODE_ENV=test) has no previews unless it runs as development.
+    await (await createTestApp(application)).get('/_bespoke/mail').assertNotFound();
+    const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development' } });
     const index = await app.get('/_bespoke/mail').assertOk();
     for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail']) expect(index.body).toContain(`/_bespoke/mail/${name}`);
     const preview = await app.get('/_bespoke/mail/auth/VerifyEmailMail?locale=de').assertOk();
