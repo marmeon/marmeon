@@ -1,10 +1,11 @@
 import type { ChildProcess } from 'node:child_process';
+import cluster, { type Worker } from 'node:cluster';
 import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
 import { Application, environment, Logger } from '@bespokecore/core';
-import { startServer, ViteSetupError } from '@bespokecore/server';
+import { ServerConfig, startServer, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startBespoke } from '../spawn.ts';
@@ -16,6 +17,16 @@ import { writeRouteTypes } from './route-types.ts';
  * It returns on SIGINT/SIGTERM (Ctrl+C, `node --watch` restarting, a deployment): the server stops
  * accepting requests, open keep-alive connections close, and then the CLI shuts the app down.
  *
+ * SIGTERM — a deployment, `docker stop`, Kubernetes, systemd — first takes the server out of readiness (`/up/ready` 503) and
+ * keeps answering for `SHUTDOWN_DELAY` seconds (E163), so a load balancer that learns from its probes stops sending requests
+ * before the server stops listening; SIGINT (Ctrl+C) skips that. The handlers are in place before the server listens: a
+ * supervisor's SIGTERM right after the start line still drains.
+ *
+ * `bespoke start --workers=N` (E140) runs N servers in worker processes of `node:cluster` that share the port: this process
+ * (the primary) passes SIGTERM/SIGINT on to each of them — each drains as one server would — and ends with 0 once all ended
+ * with 0 (else with the first worker's code). A worker that ends while the cluster runs is started again; one that ends
+ * before it listened stops the cluster (a broken start would only repeat).
+ *
  * `bespoke dev` also runs what packages add to {@link DevProcesses} (a queue worker, E101) — started with the server,
  * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own.
  */
@@ -23,6 +34,8 @@ export class ServeCommand {
   static command = 'serve';
   static description = 'Run the HTTP server';
   static hidden = true;
+  static usage = '[--workers=N]';
+  static options = { workers: { type: 'string' } } as const;
 
   readonly #app: Application;
   readonly #logger: Logger;
@@ -36,21 +49,35 @@ export class ServeCommand {
     this.#devProcesses = devProcesses;
   }
 
-  async handle({ output, root }: CommandInput): Promise<number> {
-    // `bespoke dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
-    // and when a view is added or removed (Node never loads views, so that restarts nothing).
+  async handle({ options, output, root }: CommandInput): Promise<number> {
     // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
     // NODE_ENV=development only (E115; `bespoke dev` sets it), never with "anything but production" (staging, test, unset).
     const development = environment.isDevelopment();
+    const workers = workerCount(options.workers);
+    if (typeof workers === 'string') {
+      output.error(workers);
+      return 1;
+    }
+    if (workers !== undefined && development) {
+      output.error('--workers is for bespoke start (the build): bespoke dev runs one server, with Vite in front of it.');
+      return 1;
+    }
     // `bespoke start` as development because a .env says so (E170): allowed (Max, 04.10.), but never quietly — a developer's
-    // .env on a server. (`bespoke dev` clears the mark: it is development by itself.)
-    const fromDotEnv = environment.dotEnvDevelopmentWarning('start');
+    // .env on a server. (`bespoke dev` clears the mark: it is development by itself.) Said once, by the primary of a cluster.
+    const fromDotEnv = cluster.isPrimary ? environment.dotEnvDevelopmentWarning('start') : undefined;
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
+    if (workers !== undefined && cluster.isPrimary) return this.#primary(workers);
+    // From here on a signal is ours (E102): one that comes while the server starts is answered once it listens — Node's
+    // default would end the process without a drain (and PID 1 in a container would not end at all).
+    const signals = listenForSignals();
+    // `bespoke dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
+    // and when a view is added or removed (Node never loads views, so that restarts nothing).
     const views = development ? await this.#watchRouteTypes(output, root) : undefined;
     let server;
     try {
       server = await startServer({ app: this.#app, mode: development ? 'development' : 'production' });
     } catch (error) {
+      signals.remove();
       // The route-types watcher would keep the process alive after the failed start (it hung until killed).
       views?.close();
       // A setup problem (no Vite, no bespoke() plugin) is a message, not a stack trace.
@@ -59,23 +86,95 @@ export class ServeCommand {
       return 1;
     }
     const companions = development ? this.#devProcesses.all().map((definition) => this.#companion(definition, root)) : [];
-    const signalled = new Promise<string>((resolve) => {
-      process.once('SIGINT', resolve).once('SIGTERM', resolve);
-    });
     // Everything the server needs is loaded now: write the compile cache (`bespoke start`, E138) instead of waiting for the
-    // process to exit — a container that is killed never gets there. Does nothing without a cache. After the signal handlers:
-    // a SIGTERM while it writes still drains.
+    // process to exit — a container that is killed never gets there. Does nothing without a cache.
     flushCompileCache();
-    const signal = await signalled;
-    // Ctrl+C reaches this process twice (from the terminal and forwarded by the launcher): later
-    // signals must not cut the shutdown short. A shutdown that hangs still ends after 10 seconds.
+    const signal = await signals.received;
+    // Ctrl+C reaches this process twice (from the terminal and forwarded by the launcher or a cluster's primary): later
+    // signals must not cut the shutdown short. A shutdown that hangs still ends after 10 seconds (plus the shutdown delay).
     const ignore = () => {};
     process.on('SIGINT', ignore).on('SIGTERM', ignore);
-    setTimeout(() => process.exit(1), 10_000).unref();
-    this.#logger.info(`${signal} received, shutting down`);
+    const delay = signal === 'SIGTERM' ? this.#shutdownDelayMs() : 0;
+    setTimeout(() => process.exit(1), 10_000 + delay).unref();
+    this.#logger.info(
+      delay > 0
+        ? `${signal} received, shutting down — not ready any more, still answering for ${delay / 1000} s (SHUTDOWN_DELAY)`
+        : `${signal} received, shutting down`,
+    );
     views?.close();
-    await Promise.all([server.close(), ...companions.map((companion) => companion.stop())]);
+    await Promise.all([server.close({ immediately: signal !== 'SIGTERM' }), ...companions.map((companion) => companion.stop())]);
+    // A cluster worker: the channel to the primary would keep it alive after the app shut down.
+    if (cluster.isWorker) process.disconnect?.();
     return 0;
+  }
+
+  #shutdownDelayMs(): number {
+    return this.#app.container.has(ServerConfig) ? this.#app.container.make(ServerConfig).shutdownDelayMs : 0;
+  }
+
+  /**
+   * The primary of `bespoke start --workers=N` (E140): forks the workers — this command again, in processes of `node:cluster`
+   * that share the port — passes SIGTERM/SIGINT on to each, and ends when they ended: 0 when all ended with 0.
+   */
+  async #primary(count: number): Promise<number> {
+    const logger = this.#logger;
+    const workers = new Set<Worker>();
+    let stopping: NodeJS.Signals | undefined;
+    let code = 0;
+    let done: () => void = () => {};
+    const finished = new Promise<void>((resolve) => (done = resolve));
+    const reason = (exitCode: number | null, signal: string | null) => (signal ? `signal ${signal}` : `code ${exitCode}`);
+
+    const stop = (signal: NodeJS.Signals) => {
+      if (stopping) return;
+      stopping = signal;
+      logger.info(`${signal} received, stopping ${workers.size} worker${workers.size === 1 ? '' : 's'}`);
+      for (const worker of workers) worker.process.kill(signal);
+      if (workers.size === 0) done();
+      // Each worker ends by itself within 10 s (plus the shutdown delay); one that does not is ended here.
+      const limit = 12_000 + (signal === 'SIGTERM' ? this.#shutdownDelayMs() : 0);
+      setTimeout(() => {
+        for (const worker of workers) {
+          logger.error(`Worker ${worker.process.pid} did not end within ${limit / 1000} s; killing it`);
+          worker.process.kill('SIGKILL');
+        }
+      }, limit).unref();
+    };
+
+    const fork = () => {
+      const worker = cluster.fork();
+      workers.add(worker);
+      let listening = false;
+      worker.once('listening', () => (listening = true));
+      worker.once('exit', (exitCode, signal) => {
+        workers.delete(worker);
+        const ended = exitCode ?? (signal ? 1 : 0);
+        if (stopping) {
+          if (ended !== 0) {
+            logger.warn(`Worker ${worker.process.pid} ended with ${reason(exitCode, signal)}`);
+            if (code === 0) code = ended;
+          }
+          if (workers.size === 0) done();
+          return;
+        }
+        if (!listening) {
+          // A start that fails (configuration, a missing build) would only fail again: the cluster ends with its code.
+          logger.error(`Worker ${worker.process.pid} ended before it listened (${reason(exitCode, signal)}); stopping the cluster`);
+          code = ended || 1;
+          stop('SIGTERM');
+          return;
+        }
+        logger.warn(`Worker ${worker.process.pid} ended (${reason(exitCode, signal)}); starting another`);
+        setTimeout(() => !stopping && fork(), 1000).unref();
+      });
+    };
+
+    // Kept until the process ends: Ctrl+C reaches the primary again (the terminal signals every process of the group).
+    process.on('SIGINT', () => stop('SIGINT')).on('SIGTERM', () => stop('SIGTERM'));
+    logger.info(`Starting ${count} worker${count === 1 ? '' : 's'} (node:cluster, primary ${process.pid})`);
+    for (let n = 0; n < count; n++) fork();
+    await finished;
+    return code;
   }
 
   /** Runs `bespoke <args>` next to the server until `stop()`; one that ends on its own is started again (unless it fails right away). */
@@ -130,4 +229,27 @@ export class ServeCommand {
       return undefined; // no modules/ directory yet
     }
   }
+}
+
+/** `--workers=N` (E140): a whole number from 1; undefined without the option; a message for anything else. */
+function workerCount(value: unknown): number | undefined | string {
+  if (value === undefined) return undefined;
+  const count = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isInteger(count) || count < 1 || count > 256) return `--workers expects a number of processes from 1, like --workers=4 (got ${String(value)}).`;
+  return count;
+}
+
+/** SIGINT and SIGTERM from now on: which came first (later ones are the caller's to handle). */
+function listenForSignals(): { received: Promise<NodeJS.Signals>; remove(): void } {
+  let resolve: (signal: NodeJS.Signals) => void = () => {};
+  const received = new Promise<NodeJS.Signals>((settle) => (resolve = settle));
+  const onInt = () => resolve('SIGINT');
+  const onTerm = () => resolve('SIGTERM');
+  process.once('SIGINT', onInt).once('SIGTERM', onTerm);
+  return {
+    received,
+    remove: () => {
+      process.off('SIGINT', onInt).off('SIGTERM', onTerm);
+    },
+  };
 }

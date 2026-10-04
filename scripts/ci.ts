@@ -54,6 +54,9 @@ export const parts: readonly Part[] = [
   // The tarballs installed into a copy of the blank app outside the monorepo: build, start, make:auth, migrate, its tests.
   // Without pnpm's store and the registry it is skipped (exit 75) — reported as such, never as green.
   { name: 'pack:smoke', command: pnpm('pack:smoke'), after: ['build', 'pack:check'] },
+  // The smoke app as a Docker image (bespoke make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
+  // --workers, a worker's exit 70, the image's size. Without Docker (or the registry) it is skipped (exit 75), never green.
+  { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
 ];
 
 /** The exit code of a part that could not run here (no network, no store): skipped, not green (`scripts/pack-smoke.ts`). */
@@ -170,7 +173,7 @@ async function main(): Promise<number> {
     if (problem) console.error(`ci: ${problem}`);
     const status: Status = code === 0 ? 'passed' : !problem && code === SKIPPED_EXIT ? 'skipped' : 'failed';
     if (status !== 'passed') red.add(part.name);
-    const note = problem ?? (status === 'skipped' ? 'could not run here (no network or store)' : code === 0 ? undefined : `exit ${code}`);
+    const note = problem ?? (status === 'skipped' ? 'could not run here (no network, store or Docker)' : code === 0 ? undefined : `exit ${code}`);
     results.push({ part, status, ms, note });
     console.log(`${{ passed: '✓', failed: '✗', skipped: '–' }[status]} ci: ${part.name} ${seconds(ms)}${note ? ` (${note})` : ''}`);
     if (github && status === 'failed') console.log(`::error title=ci: ${part.name}::${part.command.join(' ')} — ${problem ?? `exit ${code}`}`);

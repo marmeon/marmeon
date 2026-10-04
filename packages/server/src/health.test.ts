@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { createApplication, defineModule, Logger, type HealthCheck } from '@bespokecore/core';
+import { Clock, createApplication, defineModule, Logger, TestClock, type HealthCheck } from '@bespokecore/core';
 import { channels } from '@bespokecore/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { HttpServiceProvider, ServerClosing } from '@bespokecore/http';
@@ -49,6 +49,9 @@ class Recording implements Logger {
 
 async function boot({ env = {}, routes }: { env?: Record<string, string>; routes?: ReturnType<typeof defineRoutes> } = {}) {
   const logger = new Recording();
+  // `/up/ready` keeps a result for a second (E163): the tests move this clock past it.
+  const clock = new TestClock();
+  clock.freeze();
   const application = await createApplication({
     root: fileURLToPath(new URL('../../../', import.meta.url)),
     discover: false,
@@ -56,9 +59,14 @@ async function boot({ env = {}, routes }: { env?: Record<string, string>; routes
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     health: [FakeDatabaseCheck],
     modules: [defineModule({ name: 'app', health: [StorageCheck], routes: routes ?? defineRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
-    override: (container) => container.instance(Logger, logger),
+    override: (container) => {
+      container.instance(Logger, logger);
+      container.instance(Clock, clock);
+    },
   });
-  return { application, logger };
+  /** Past the second `/up/ready` keeps its last result. */
+  const later = () => clock.travel({ seconds: 1 });
+  return { application, logger, later };
 }
 
 describe('health endpoints (E126)', () => {
@@ -89,7 +97,7 @@ describe('health endpoints (E126)', () => {
   });
 
   it('/up/ready: every check — 200 {"status":"ok"}; a failing one → 503 {"status":"failing"}, while /up stays 200', async () => {
-    const { application } = await boot();
+    const { application, later } = await boot();
     const kernel = createHttpKernel(application);
     try {
       state.database = 'ok';
@@ -99,6 +107,7 @@ describe('health endpoints (E126)', () => {
       expect(response.headers.get('cache-control')).toBe('no-store');
 
       state.database = 'down';
+      later();
       response = await kernel.request('/up/ready');
       expect(response.status).toBe(503);
       // Outside development: no names, no times, no errors.
@@ -106,6 +115,7 @@ describe('health endpoints (E126)', () => {
       expect((await kernel.request('/up')).status).toBe(200);
 
       state.database = 'hang';
+      later();
       response = await kernel.request('/up/ready');
       expect(response.status).toBe(503);
       expect(await response.json()).toEqual({ status: 'failing' });
@@ -115,7 +125,7 @@ describe('health endpoints (E126)', () => {
   });
 
   it('in development the answer names each check with its time, note and (redacted) error', async () => {
-    const { application } = await boot({ env: { NODE_ENV: 'development' } });
+    const { application, later } = await boot({ env: { NODE_ENV: 'development' } });
     const kernel = createHttpKernel(application);
     try {
       state.database = 'down';
@@ -131,6 +141,7 @@ describe('health endpoints (E126)', () => {
       expect(body.checks[1]!.ms).toBeTypeOf('number');
 
       state.database = 'ok';
+      later();
       const ok = (await (await kernel.request('/up/ready')).json()) as typeof body;
       expect(ok.checks[0]).toMatchObject({ name: 'database', status: 'ok', note: 'default' });
     } finally {
@@ -138,34 +149,53 @@ describe('health endpoints (E126)', () => {
     }
   });
 
-  it('while the server closes (the drain, E102): /up and /up/ready answer 503', async () => {
+  it('from the stop signal on /up/ready answers 503 "draining" while /up stays 200 (SHUTDOWN_DELAY, E163); both 503 once it closes (E102)', async () => {
     state.database = 'ok';
     const { application } = await boot();
     const kernel = createHttpKernel(application);
     try {
       expect((await kernel.request('/up')).status).toBe(200);
-      application.container.make(ServerClosing).close();
-      const live = await kernel.request('/up');
-      expect(live.status).toBe(503);
+      expect((await kernel.request('/up/ready')).status).toBe(200);
+      // SIGTERM: not ready any more — the cached "ok" of a moment ago does not count — but alive and answering.
+      application.container.make(ServerClosing).drain();
       const ready = await kernel.request('/up/ready');
       expect(ready.status).toBe(503);
       expect(await ready.json()).toEqual({ status: 'draining' });
+      expect((await kernel.request('/up')).status).toBe(200);
+      expect((await kernel.request('/hello')).status).toBe(200);
+      application.container.make(ServerClosing).close();
+      expect((await kernel.request('/up')).status).toBe(503);
+      const closed = await kernel.request('/up/ready');
+      expect(closed.status).toBe(503);
+      expect(await closed.json()).toEqual({ status: 'draining' });
     } finally {
       await application.shutdown();
     }
   });
 
-  it('probes at the same time share one run of the checks', async () => {
+  it('probes at the same time share one run of the checks — and the result serves every probe for a second (E163)', async () => {
     state.database = 'ok';
     state.runs = 0;
-    const { application } = await boot();
+    const { application, later } = await boot();
     const kernel = createHttpKernel(application);
     try {
       const answers = await Promise.all([kernel.request('/up/ready'), kernel.request('/up/ready'), kernel.request('/up/ready')]);
       expect(answers.map((answer) => answer.status)).toEqual([200, 200, 200]);
       expect(state.runs).toBe(1);
-      await kernel.request('/up/ready');
+      // A flood of probes one after the other: one run a second, not one each.
+      for (let n = 0; n < 5; n++) expect((await kernel.request('/up/ready')).status).toBe(200);
+      expect(state.runs).toBe(1);
+      // A failing result is kept just as long — then the next probe runs the checks again.
+      later();
+      state.database = 'down';
+      expect((await kernel.request('/up/ready')).status).toBe(503);
       expect(state.runs).toBe(2);
+      state.database = 'ok';
+      expect((await kernel.request('/up/ready')).status).toBe(503);
+      expect(state.runs).toBe(2);
+      later();
+      expect((await kernel.request('/up/ready')).status).toBe(200);
+      expect(state.runs).toBe(3);
     } finally {
       await application.shutdown();
     }

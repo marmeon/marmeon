@@ -701,17 +701,29 @@ export interface ServeOptions {
    * it gives up on them (default 8 s; `bespoke serve` exits after 10 s at the latest).
    */
   drainTimeoutMs?: number;
+  /**
+   * How long `close()` keeps taking requests first, with `/up/ready` at 503 (E163) — so a load balancer that learns from its
+   * probes sends the next requests elsewhere before this server stops listening. Defaults to `ServerConfig.shutdownDelayMs`
+   * (env `SHUTDOWN_DELAY`, seconds; default 0).
+   */
+  shutdownDelayMs?: number;
+}
+
+export interface CloseOptions {
+  /** Skip the shutdown delay (`SHUTDOWN_DELAY`) — `bespoke serve` on Ctrl+C (SIGINT): nobody routes to a terminal. */
+  readonly immediately?: boolean;
 }
 
 /**
- * A listening server. `close()` stops it gracefully: no new connections, requests in flight finish, and then the work
+ * A listening server. `close()` stops it gracefully: readiness (`/up/ready`) answers 503 at once and, for `SHUTDOWN_DELAY`
+ * seconds, requests are still answered (E163); then no new connections, requests in flight finish, and then the work
  * they deferred until after their response (a reset mail sent by `afterResponse.defer`) finishes too — before the app
  * shuts down and closes its pools (E102).
  */
 export interface RunningServer {
   readonly server: Server;
   readonly port: number;
-  close(): Promise<void>;
+  close(options?: CloseOptions): Promise<void>;
 }
 
 export async function startServer({
@@ -721,8 +733,15 @@ export async function startServer({
   host = app.container.has(ServerConfig) ? app.container.make(ServerConfig).host : undefined,
   mode = environment.isDevelopment() ? 'development' : 'production',
   drainTimeoutMs = 8_000,
+  shutdownDelayMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).shutdownDelayMs : 0,
 }: ServeOptions): Promise<RunningServer> {
   const server = createServer();
+  const closing = app.container.has(ServerClosing) ? app.container.make(ServerClosing) : undefined;
+  // While the server drains (SHUTDOWN_DELAY, E163) a keep-alive connection ends after its response: the client's next
+  // request opens a new one — which the load balancer, told by the failing readiness, gives to another instance.
+  server.prependListener('request', (_req, res) => {
+    if (closing?.draining.aborted) res.setHeader('connection', 'close');
+  });
   const { root } = app;
   let closeVite: (() => Promise<void>) | undefined;
   let kernel: HttpKernel;
@@ -748,18 +767,23 @@ export async function startServer({
     server.on('request', getRequestListener(kernel.fetch));
   }
 
-  const close = async () => {
+  let closed: Promise<void> | undefined;
+  const close = ({ immediately = false }: CloseOptions = {}) => (closed ??= shutdown(immediately));
+  const shutdown = async (immediately: boolean) => {
+    // Not ready from now on (E163) — and, for SHUTDOWN_DELAY, still answering what the load balancer sends until it notices.
+    closing?.drain();
+    if (shutdownDelayMs > 0 && !immediately) await new Promise((resolve) => setTimeout(resolve, shutdownDelayMs));
     // Responses that stay open (live streams, W6.10) end first: `server.close()` waits for every connection, and a tab never
     // closes its stream by itself — it connects to the next server instead.
-    if (app.container.has(ServerClosing)) app.container.make(ServerClosing).close();
-    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+    closing?.close();
+    const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
     server.closeIdleConnections();
     // A connection whose response is ending now (a live stream just closed) turns idle only afterwards — sweep those up too.
     const sweep = setInterval(() => server.closeIdleConnections(), 50);
     // Vite's HMR WebSocket is an upgraded socket: neither `close()` nor `closeAllConnections()` ends it,
     // so the server would wait forever for an open browser tab. Closing Vite closes its clients.
     await closeVite?.();
-    await closed;
+    await stopped;
     clearInterval(sweep);
     // The requests are answered; what they deferred until after their response (a mail, a terminate hook) still runs —
     // and needs the app's pools, which the caller closes next (E102). Bounded: a hanging task must not block the exit.

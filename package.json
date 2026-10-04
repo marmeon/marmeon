@@ -24,6 +24,7 @@
     "license:sync": "node scripts/sync-license.ts",
     "pack:check": "node scripts/pack-check.ts",
     "pack:smoke": "node scripts/pack-smoke.ts",
+    "image:smoke": "node scripts/image-smoke.ts",
     "bench": "node scripts/bench/index.ts",
     "ci": "node scripts/ci.ts"
   },

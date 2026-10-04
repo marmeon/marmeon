@@ -55,6 +55,15 @@ export const ServerConfig = defineConfig('server', {
       v.union([v.literal('off'), v.pipe(v.string(), v.regex(/^\/[\w./-]*[\w-]$/, 'Expected a path like /up or /healthz (no trailing slash), or off'))]),
       '/up',
     ),
+    /**
+     * Seconds the server keeps taking requests after SIGTERM (E163): `/up/ready` answers 503 at once, so a load balancer stops
+     * sending new ones, and only then the server closes and drains (E102). Default 0 — set it (5 is typical) behind a load
+     * balancer that learns about a stopping instance only from its probes (kamal-proxy, Traefik, a cloud load balancer).
+     */
+    SHUTDOWN_DELAY: v.optional(
+      v.pipe(v.string(), v.regex(/^\d+(\.\d+)?$/, 'Expected seconds, like 5 or 0.5'), v.transform(Number), v.maxValue(300, 'Expected at most 300 seconds')),
+      '0',
+    ),
     NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
@@ -67,6 +76,8 @@ export const ServerConfig = defineConfig('server', {
     ssr: env.SSR_ENABLED === 'true',
     /** The liveness path of the health endpoints (readiness: `<path>/ready`), or `false` without them (E126). */
     health: env.HEALTH_PATH === 'off' ? (false as const) : env.HEALTH_PATH,
+    /** How long the server keeps taking requests after SIGTERM, not ready any more (E163), in milliseconds. */
+    shutdownDelayMs: Math.round(env.SHUTDOWN_DELAY * 1000),
     /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
     serverTiming: environment.isDevelopment(env),
     /**

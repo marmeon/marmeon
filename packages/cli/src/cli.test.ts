@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -295,14 +296,18 @@ describe('bespoke start', () => {
       join(app, 'bootstrap/app.ts'),
       [
         "import { join } from 'node:path';",
-        "import { defineApplication, type Application } from '@bespokecore/core';",
+        "import { setTimeout as sleep } from 'node:timers/promises';",
+        "import { defineApplication, defineModule, type Application } from '@bespokecore/core';",
+        "import { defineRoutes } from '@bespokecore/http';",
         "import { Greeter } from '../services/Greeter.ts';",
         'class GreeterProvider {',
         '  boot(app: Application) {',
         '    console.log(`greeter: ${app.container.make(Greeter).describe()}`);',
         '  }',
         '}',
-        "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider] });",
+        '// A request that takes a while — in flight when SIGTERM comes, it must still be answered (E102).',
+        "const slow = defineModule({ name: 'slow', apiRoutes: defineRoutes((Route) => void Route.get('/slow', async () => { await sleep(600); return { pid: process.pid }; })) });",
+        "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider], modules: [slow] });",
         '',
       ].join('\n'),
     );
@@ -319,16 +324,16 @@ describe('bespoke start', () => {
   });
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
-  async function start(env: Record<string, string>) {
+  async function start(env: Record<string, string>, args: string[] = [], servers = 1) {
     const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
     const port = 39_000 + Math.floor(Math.random() * 1000);
-    const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [bin, 'start', ...args], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
     const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
     const deadline = Date.now() + 20_000;
-    while (!output.includes(`on http://localhost:${port}`)) {
+    while (output.split(`on http://localhost:${port}`).length - 1 < servers) {
       if (child.exitCode !== null || Date.now() > deadline) throw new Error(`bespoke start did not start:\n${output}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
@@ -348,6 +353,101 @@ describe('bespoke start', () => {
     }
     expect(await server.exited).toBe(0);
     expect(server.output()).toContain('SIGTERM received, shutting down');
+  }, 30_000);
+
+  it('a SIGTERM while the server starts is answered once it listens: drained, exit 0 — not the end of the process', async () => {
+    // The SSR bundle loads while startServer() runs, before the server listens: a supervisor's SIGTERM lands in that window.
+    const ssr = join(app, 'dist/server/ssr.js');
+    const original = readFileSync(ssr, 'utf8');
+    writeFileSync(ssr, "console.log('ssr: loading');\nawait new Promise((resolve) => setTimeout(resolve, 800));\nexport const render = async () => ({ html: '' });\n");
+    try {
+      const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+      const port = 39_000 + Math.floor(Math.random() * 1000);
+      const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), LOG_LEVEL: 'info', NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let output = '';
+      child.stdout.on('data', (chunk) => (output += chunk));
+      child.stderr.on('data', (chunk) => (output += chunk));
+      const exited = new Promise<{ code: number | null; signal: string | null }>((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));
+      const deadline = Date.now() + 20_000;
+      while (!output.includes('ssr: loading')) {
+        if (child.exitCode !== null || Date.now() > deadline) throw new Error(`bespoke start did not load the SSR bundle:\n${output}`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      child.kill('SIGTERM');
+      expect(await exited).toEqual({ code: 0, signal: null });
+      expect(output).toContain(`on http://localhost:${port}`);
+      expect(output).toContain('SIGTERM received, shutting down');
+    } finally {
+      writeFileSync(ssr, original);
+    }
+  }, 30_000);
+
+  it('--workers=2 (E140): a primary and two servers on one port; SIGTERM reaches both, each drains its request, exit 0', async () => {
+    const server = await start({ NODE_ENV: 'production' }, ['--workers=2'], 2);
+    let slow: Promise<Response> | undefined;
+    try {
+      // The primary forked two workers (node:cluster) — no launcher, no other process.
+      const workers = spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
+      expect(workers).toHaveLength(2);
+      expect((await fetch(`http://127.0.0.1:${server.port}/up`)).status).toBe(200);
+      // A request in flight in each worker (round-robin), then SIGTERM to the primary only — as `docker stop` sends it.
+      slow = Promise.all([fetch(`http://127.0.0.1:${server.port}/api/slow`), fetch(`http://127.0.0.1:${server.port}/api/slow`)]).then(([a]) => a);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    } finally {
+      server.child.kill('SIGTERM');
+    }
+    expect((await slow!).status).toBe(200);
+    expect(await server.exited).toBe(0);
+    const output = server.output();
+    expect(output).toContain('Starting 2 workers (node:cluster, primary');
+    expect(output).toContain('SIGTERM received, stopping 2 workers');
+    // Each worker drained as one server does.
+    expect(output.split('SIGTERM received, shutting down').length - 1).toBe(2);
+    expect(output).not.toContain('ended with');
+  }, 30_000);
+
+  it('a worker that cannot start stops the cluster with its exit code; --workers needs a number', async () => {
+    const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    // The port is taken: every worker fails to listen — the cluster must end, not fork them forever.
+    const busy = createServer();
+    await new Promise<void>((resolve) => busy.listen(0, resolve));
+    try {
+      const port = (busy.address() as AddressInfo).port;
+      const failed = await new Promise<{ code: number | null; output: string }>((resolve) => {
+        const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), NODE_ENV: 'production' } });
+        let output = '';
+        child.stdout.on('data', (chunk) => (output += chunk));
+        child.stderr.on('data', (chunk) => (output += chunk));
+        child.once('exit', (code) => resolve({ code, output }));
+      });
+      expect(failed.output).toContain('ended before it listened');
+      expect(failed.code).not.toBe(0);
+    } finally {
+      busy.close();
+    }
+    const wrong = spawnSync(process.execPath, [bin, 'start', '--workers=0'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, NODE_ENV: 'production' } });
+    expect(wrong.status).toBe(1);
+    expect(wrong.stderr).toContain('--workers expects a number of processes from 1, like --workers=4 (got 0).');
+  }, 30_000);
+
+  it('SHUTDOWN_DELAY=1 (E163): after SIGTERM /up/ready 503 and requests answered for a second, then the drain; SIGINT skips it', async () => {
+    const server = await start({ NODE_ENV: 'production', SHUTDOWN_DELAY: '1' });
+    const base = `http://127.0.0.1:${server.port}`;
+    const signalled = performance.now();
+    server.child.kill('SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await fetch(`${base}/up/ready`)).status).toBe(503);
+    expect((await fetch(`${base}/up`)).status).toBe(200);
+    expect((await fetch(`${base}/api/slow`)).status).toBe(200);
+    expect(await server.exited).toBe(0);
+    expect(performance.now() - signalled).toBeGreaterThanOrEqual(1000);
+    expect(server.output()).toContain('SIGTERM received, shutting down — not ready any more, still answering for 1 s (SHUTDOWN_DELAY)');
+
+    const interrupted = await start({ NODE_ENV: 'production', SHUTDOWN_DELAY: '5' });
+    const stopped = performance.now();
+    interrupted.child.kill('SIGINT');
+    expect(await interrupted.exited).toBe(0);
+    expect(performance.now() - stopped).toBeLessThan(3000);
   }, 30_000);
 
   it('takes NODE_ENV=development from .env when the process has none — and says loudly that start runs as development (E170)', () => {

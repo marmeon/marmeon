@@ -1,4 +1,4 @@
-# The same parts as `pnpm run ci` (scripts/ci.ts, E111) — one job per suite that needs a database and one for the tarballs,
+# The same parts as `pnpm run ci` (scripts/ci.ts, E111) — one job per suite that needs a database, one for the tarballs, one for the image,
 # so they run side by side on their own runners. Locally `pnpm run ci` runs them all, one after the other.
 name: CI
 
@@ -45,6 +45,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run ci --only pack:check,pack:smoke
+
+  image:
+    # The smoke app as a Docker image (E158): bespoke make:docker → docker build → docker run (non-root, no .env, /up, the health
+    # check, SIGTERM with SHUTDOWN_DELAY → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size.
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci --only build,image
 
   pgsql:
     name: test:pgsql

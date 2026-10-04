@@ -8,6 +8,7 @@ import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { printCommandList } from './commands/list.ts';
+import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
 import {
   MakeControllerCommand,
@@ -47,6 +48,7 @@ const BUILT_IN: readonly CommandClass[] = [
   MakeMiddlewareCommand,
   MakeMigrationCommand,
   MakeLintConfigCommand,
+  MakeDockerCommand,
 ];
 
 const commands = channels.tracing('command.run');

@@ -38,13 +38,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const blankApp = join(root, 'apps/blank-app');
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
 export const SKIPPED = 75;
-const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode/;
+export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode/;
 
-class SmokeError extends Error {}
-class Offline extends Error {}
+export class SmokeError extends Error {}
+export class Offline extends Error {}
 
 /** The environment of every command: nothing of this repository's run (source condition, test databases, pnpm's script variables). */
-function cleanEnvironment(): NodeJS.ProcessEnv {
+export function cleanEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (/^(npm_|PNPM_|BESPOKE_|DB_|REDIS_|S3_|VITEST|INIT_CWD$|NODE_OPTIONS$|NODE_ENV$|NODE_PATH$)/.test(key)) continue;
@@ -83,7 +83,7 @@ function standaloneTsconfig(): object {
 }
 
 /** The blank app's files as a fresh checkout has them (tracked and new, never ignored ones like .env or node_modules). */
-function copyBlankApp(target: string): void {
+export function copyBlankApp(target: string): void {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'apps/blank-app'], { cwd: root, encoding: 'utf8' });
   if (listed.status !== 0) throw new SmokeError(`git ls-files failed: ${listed.stderr}`);
   for (const file of listed.stdout.split('\0').filter(Boolean)) {
@@ -96,7 +96,7 @@ function copyBlankApp(target: string): void {
 }
 
 /** Throws when anything above `dir` could hand the app the repository's packages or make it part of a workspace. */
-function assertIsolated(dir: string): void {
+export function assertIsolated(dir: string): void {
   if (!relative(root, dir).startsWith('..')) throw new SmokeError(`${dir} is inside the repository.`);
   for (let parent = dirname(dir); ; parent = dirname(parent)) {
     for (const leak of ['node_modules/@bespokecore', 'pnpm-workspace.yaml']) {
@@ -106,7 +106,11 @@ function assertIsolated(dir: string): void {
   }
 }
 
-function writeManifest(app: string, tarballs: Map<string, PackedPackage>): void {
+/**
+ * The copy's package.json, pnpm-workspace.yaml and tsconfig.json: every `@bespokecore/*` from its tarball. `spec` says how a
+ * tarball is named — an absolute `file:` path here, one relative to the app where the app is a Docker build context (`image`).
+ */
+export function writeManifest(app: string, tarballs: Map<string, PackedPackage>, spec: (tarball: PackedPackage) => string = (tarball) => `file:${tarball.tarball}`): void {
   const file = join(app, 'package.json');
   const manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, any>;
   manifest.name = 'bespoke-pack-smoke';
@@ -116,14 +120,14 @@ function writeManifest(app: string, tarballs: Map<string, PackedPackage>): void 
       if (!name.startsWith('@bespokecore/')) continue;
       const tarball = tarballs.get(name);
       if (!tarball) throw new SmokeError(`the blank app depends on ${name}, which pnpm pack did not produce.`);
-      manifest[field][name] = `file:${tarball.tarball}`;
+      manifest[field][name] = spec(tarball);
     }
   }
   if (!manifest.devDependencies?.['@types/node']) {
     throw new SmokeError('the blank app has no @types/node devDependency — outside the monorepo nothing else brings it.');
   }
   writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
-  const overrides = [...tarballs.values()].map((tarball) => `  ${JSON.stringify(tarball.name)}: ${JSON.stringify(`file:${tarball.tarball}`)}`);
+  const overrides = [...tarballs.values()].map((tarball) => `  ${JSON.stringify(tarball.name)}: ${JSON.stringify(spec(tarball))}`);
   writeFileSync(
     join(app, 'pnpm-workspace.yaml'),
     [
@@ -138,7 +142,7 @@ function writeManifest(app: string, tarballs: Map<string, PackedPackage>): void 
   writeFileSync(join(app, 'tsconfig.json'), `${JSON.stringify(standaloneTsconfig(), null, 2)}\n`);
 }
 
-function freePort(): Promise<number> {
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
     server.unref();

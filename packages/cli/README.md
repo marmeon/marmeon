@@ -28,6 +28,8 @@ bespoke build                  # injection lists, route:types, tsc --noEmit, the
 bespoke build --no-typecheck   # without the type check
 bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless set (environment, then .env)
 NODE_ENV=staging bespoke start # staging: protected like production (E139) — the environment wins over .env (E170)
+bespoke start --workers=4      # four servers on one port (node:cluster, E140) — each drains on SIGTERM
+SHUTDOWN_DELAY=5 bespoke start # SIGTERM: /up/ready 503 at once, 5 more seconds of requests, then the drain (E163)
 ```
 
 `build` precomputes the app's injection lists (`.bespoke/injections.json`, [A fast start](#a-fast-start-e138)), runs
@@ -49,7 +51,52 @@ staging behaves like production; the development tools still need `NODE_ENV=deve
 `BespokeCore in staging (protected) on http://localhost:3000 (the build; 54 routes, …)`. Queue workers and the scheduler run as
 processes of their own there (`bespoke queue:work`, `bespoke schedule:work`, under a supervisor); each names the environment it
 assumed when it starts, and so do `migrate` and its siblings. `dev` and `start` stop gracefully on SIGINT/SIGTERM
-([@bespokecore/server](../server/README.md#startserver-and-the-drain)).
+([@bespokecore/server](../server/README.md#startserver-and-the-drain)) — the handlers are in place before the server listens, so
+a SIGTERM that comes while it starts still drains once it listens. **SIGTERM** (a deployment, `docker stop`, Kubernetes,
+systemd) first waits `SHUTDOWN_DELAY` seconds with `/up/ready` at 503 (E163, default 0); **SIGINT** (Ctrl+C) skips the delay.
+
+### Several processes: `--workers` (E140)
+
+`bespoke start --workers=N` runs N servers in worker processes of `node:cluster`, sharing the port; the process you started is
+the primary. It passes SIGTERM/SIGINT on to every worker — each drains like a single server (readiness, `SHUTDOWN_DELAY`, the
+requests in flight, the work after the response) — and exits with 0 once all exited with 0, else with the first worker's code
+(after 10 s plus the delay a worker that hangs is killed). A worker that ends while the cluster runs is started again after a
+second; one that ends before it listened (a taken port, a missing build) stops the cluster with its code instead of failing
+forever. Each worker has its own readiness, rate-limit memory and `memory` stores — use `redis` or `database` drivers for
+sessions, cache, locks and live (as with several containers). One process per container (more containers) is the default
+model; `--workers` is for a machine with several cores and one service. `bespoke dev` refuses it.
+
+### Production files: `make:docker` (E141)
+
+```sh
+bespoke make:docker                    # Dockerfile, .dockerignore, compose.production.yaml (web, worker, scheduler)
+bespoke make:docker --caddy            # … with Caddy in front (TLS, HTTP/2 + 3) — deploy/Caddyfile
+bespoke make:docker --nginx --systemd  # … nginx on the host (deploy/nginx.conf) and systemd units (deploy/systemd/*.service)
+```
+
+- **Dockerfile** — multi-stage on `node:26-slim`: the app's package manager (`pnpm` pinned from `packageManager`, else
+  `pnpm@12.9.0`, installed with `npm i -g` — Node ships no Corepack; `npm ci` for an app with `package-lock.json`), a frozen
+  install with a cache mount, `bespoke build` (with `.env.example`'s defaults and a throwaway `APP_KEY`, both removed in the same
+  step), a fresh production install, `bespoke discover`; the final stage has Node and the app only, the code owned by root and
+  readable for everyone, `storage/` owned by `node`, `USER node`, `NODE_ENV=production`, `HOST=0.0.0.0`, a `HEALTHCHECK` with
+  Node's `fetch` on `/up` (no curl in the image), `ENTRYPOINT ["bespoke"]`, `CMD ["start"]`. Local packages the lockfile points
+  to (`file:./vendor/…`) are copied before the install.
+- **`.dockerignore`** — every `.env*` (only `.env.example` comes in, for the build), `node_modules`, `dist`, `.bespoke`,
+  `storage`.
+- **`compose.production.yaml`** — one image, a role per container: `web` (`start`), `worker` (`queue:work --queue=mail,default`;
+  a stuck job's exit 70 is restarted by `restart: unless-stopped`), `scheduler` (`schedule:work`); `init: true`, `env_file:
+  .env.production`, a `storage` volume, the health check off for worker and scheduler, `stop_grace_period` longer than the drain.
+- **Proxies** — `--caddy` adds a Caddy service (certificates, HTTP/2 and 3; live streams unbuffered) and `TRUSTED_PROXIES: '*'`
+  for the unpublished web container; `--nginx` the same with nginx (`http2 on`, `X-Forwarded-*` set, `proxy_read_timeout` above
+  the live heartbeat). With `--systemd` the proxy is for the host, in front of `127.0.0.1:3000`.
+- **systemd** — `deploy/systemd/{web,worker,scheduler}.service`: `Restart=always`, `KillSignal=SIGTERM`, `TimeoutStopSec`
+  longer than the drain or the worker's `--stop-timeout`, `ProtectSystem=strict` with `storage/` writable, the web server on
+  `127.0.0.1` trusting the local proxy.
+
+The files are the app's afterwards; an existing one is overwritten only with `--force`. The image of the blank app with
+`make:auth` is about 320 MB (`node:26-slim` alone 271 MB; its production `node_modules` 97 MB) — `pnpm run ci` builds and runs it
+(`image`). The whole story — roles, Kubernetes, proxies, mail, drivers with more than one instance, keys — is the deployment guide
+(`docs/deployment.md` in the repository).
 
 ### One process (E159)
 
@@ -79,6 +126,7 @@ is written once the server listens. What it does with the injection hook, the nu
 | `key:generate [--show] [--force]` | sets `APP_KEY` in `.env` (copied from `.env.example` when missing); `--show` prints a key only; an existing key needs `--force` — replacing it makes sessions and encrypted cookies unreadable |
 | `tinker [--sandbox] [-e "<code>"] [--no-history]` | a REPL with the booted app ([tinker](#tinker)) |
 | `make:lint-config [--boundaries] [--force]` | writes `.oxlintrc.json` ([Lint](#lint)) |
+| `make:docker [--caddy\|--nginx] [--systemd] [--force]` | writes a Dockerfile, `.dockerignore`, `compose.production.yaml` and, on request, a proxy configuration and systemd units ([Production files](#production-files-makedocker-e141)) |
 | `package:build [dirs…] [--clean]` | builds framework packages and embeds their injection lists (for publishing); `--clean` empties `dist/` and the build info first — `tsc -b` never deletes what a removed source left behind |
 
 Generators write files into a module and say where to register them; they run without booting the app and never overwrite a

@@ -21,6 +21,7 @@ a production server never loads it. Routes, controllers and responses are [@besp
 | `ASSET_VERSION` | the build's | the asset version a new deployment answers 409 for — e.g. the git commit; in production by default a hash of the built `index.html` |
 | `SSR_ENABLED` | `true` | `false`: no server rendering, the browser renders every page (one page: `Page.ssr = false`) |
 | `HEALTH_PATH` | `/up` | where the health endpoints answer (readiness below it); `off`: none ([Health](#health-e126)) |
+| `SHUTDOWN_DELAY` | `0` | seconds the server keeps answering after SIGTERM with `/up/ready` at 503, before it closes (E163, [the drain](#startserver-and-the-drain)) — 5 behind a load balancer that learns from its probes; at most 300 |
 | `NODE_ENV` | — | `development` turns on the error page, `Server-Timing` and `DevDocument` — nothing else does (E115); every value but `development` and `test`, none included, is protected (E139, [The environment](../core/README.md#the-environment-node_env)) |
 
 ## The kernel
@@ -64,7 +65,8 @@ without markup and the browser renders the page — what an adapter's SSR entry 
 ```ts
 const server = await startServer({ app });   // port: ServerConfig.port; mode: development only when NODE_ENV=development
 // …
-await server.close();                         // on SIGINT/SIGTERM — bespoke dev and start do this themselves
+await server.close();                         // on SIGTERM — bespoke dev and start do this themselves
+await server.close({ immediately: true });    // without SHUTDOWN_DELAY (bespoke does this on SIGINT, Ctrl+C)
 await app.shutdown();
 ```
 
@@ -79,10 +81,22 @@ await app.shutdown();
 The start line names the environment and what is served (E139): `BespokeCore in staging (protected) on http://localhost:3000
 (the build; 54 routes, 7 modules, packages: …)` — `in development … (Vite's dev server; …)` with `bespoke dev`.
 
-`close()` stops gracefully (E102): live streams end first (a tab connects to the next server), no new connections, idle
-keep-alive connections close, requests in flight finish, then the work they deferred until after their response — at most
-`drainTimeoutMs` (8 s) — before the caller shuts the app down and its pools close. `bespoke` exits after 10 s at the latest.
-From the moment it closes, `/up` and `/up/ready` answer 503.
+`close()` stops gracefully. First, **readiness falls** (E163): `/up/ready` answers `503 {"status":"draining"}` at once, and for
+`SHUTDOWN_DELAY` seconds (`shutdownDelayMs`, default 0) the server keeps answering every request — each response with `Connection:
+close`, so a client's next request opens a new connection, which the load balancer, told by the failing probe, gives to another
+instance; `/up` stays 200. Then the drain (E102): live streams end first (a tab connects to the next server), no new
+connections, idle keep-alive connections close, requests in flight finish, then the work they deferred until after their
+response — at most `drainTimeoutMs` (8 s) — before the caller shuts the app down and its pools close. From then on `/up`
+answers 503 too. `bespoke` exits after 10 s (plus the delay) at the latest; it installs its signal handlers before the server
+listens, so a SIGTERM during the start is answered once it listens (Node's default would end the process without a drain — and
+Node as PID 1 would ignore it).
+
+Why a delay, when Kubernetes takes a terminating pod out of its endpoints by itself: that happens **at the same time** as the
+SIGTERM, and kube-proxies, ingress controllers and external load balancers learn about it a moment later — requests keep coming
+for a few seconds. A load balancer that knows only its probes (kamal-proxy, Traefik, a cloud load balancer polling `/up/ready`)
+needs at least one probe interval. `SHUTDOWN_DELAY` covers both without a `preStop` hook; Kubernetes' `terminationGracePeriodSeconds`
+(30 s) must exceed the delay plus the drain (≈ 10 s). `bespoke start --workers=N` (E140, [@bespokecore/cli](../cli/README.md#several-processes---workers-e140))
+runs one such server per worker process; each drains on its own.
 
 ## Start in production (E138, E161)
 
@@ -119,8 +133,11 @@ Where the time goes now (CPU samples of one profiled start, 324 ms with the prof
   matches — the source **after** the hook. A module that changed (its list with it) misses, is compiled afresh and its entry
   rewritten; an old list can never come back from the cache (a test changes a constructor without building and starts twice).
   The cache is written once the server listens (and again at exit). A directory that cannot be created or written is no error:
-  Node reports it and the start runs uncached. The first start after a deployment fills it — the Docker template of Wave 8
-  step 5 warms it in the image.
+  Node reports it and the start runs uncached. The first start fills it. In the Docker image of `bespoke make:docker` it lives in
+  the `storage/` volume: the first container on a fresh volume starts ≈ 90 ms slower (measured: ≈ 490 vs ≈ 400 ms from the
+  container's start to the start line), every later one is warm — also after a deployment, for every module that did not change.
+  A cache baked into the image would not help: Node uses a cache directory only when it can write it (a read-only one ran
+  slower than none), and the root file system may be read-only.
 - **Lazy imports:** oxc-parser (only when a module must be analysed), pino-pretty (only for pretty logs), the tinker REPL.
 
 **What is deliberately not cached:**
@@ -160,20 +177,24 @@ span (`@bespokecore/otel`) nor a devtools entry. Responses are `Cache-Control: n
 | | Answers | Checks |
 |---|---|---|
 | `GET /up` — liveness | `200 OK` once the app booted; `503` from the moment the server closes (the drain of E102) | nothing else — a database outage must not get a healthy process restarted |
-| `GET /up/ready` — readiness | `200 {"status":"ok"}`; `503 {"status":"failing"}`; `503 {"status":"draining"}` while the server closes | every `HealthCheck` ([core](../core/README.md#health-checks-e126): database, redis, cache, queue and the app's own), at once, each with its time limit (2 s) |
+| `GET /up/ready` — readiness | `200 {"status":"ok"}`; `503 {"status":"failing"}`; `503 {"status":"draining"}` from SIGTERM on (also during `SHUTDOWN_DELAY`) | every `HealthCheck` ([core](../core/README.md#health-checks-e126): database, redis, cache, queue and the app's own), at once, each with its time limit (2 s); the result is kept for 1 s |
 
 ```yaml
 # Kubernetes
 livenessProbe:  { httpGet: { path: /up, port: 3000 } }
-readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 10 }
+readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 5 }
+env: [{ name: SHUTDOWN_DELAY, value: '5' }]     # instead of a preStop sleep; terminationGracePeriodSeconds (30) > 5 + 10
 ```
 
 - **Details only in development** (`ServerConfig.debug`, `NODE_ENV=development`): then `/up/ready` names each check with its
   status (`ok`, `failing`, `timeout`), time in ms, note (`default, system`, `database, 3 waiting`) and error — redacted (E125).
   Elsewhere the answer is the status only: what an app depends on and how it fails is nobody's business outside.
-- **One run at a time:** probes arriving while the checks run share that run — a burst of probes is one `select 1`.
-- **Readiness falls first:** a deployment's `SIGTERM` closes the server — from then on both answer 503 on connections still
-  open, while requests in flight finish and work after the response drains.
+- **One run a second** (E163): probes arriving while the checks run share that run, and its result answers every probe for one
+  second after it — failing results too (the app's `Clock`). The path is public: a flood of probes costs one `select 1` a
+  second, not one each.
+- **Readiness falls first:** a deployment's `SIGTERM` takes `/up/ready` to 503 at once — the cached "ok" of a moment ago does
+  not count — while `/up` stays 200 and requests are answered for `SHUTDOWN_DELAY` seconds; then the server closes, and both
+  answer 503 on connections still open while requests in flight finish and work after the response drains.
 - **The checks' own queries leave no span** (a statement outside every span is not traced) — the probes do not flood a trace
   backend.
 - **Where:** `HEALTH_PATH` moves them (`/healthz` → `/healthz`, `/healthz/ready`); `HEALTH_PATH=off` turns them off. A route of

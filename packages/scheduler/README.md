@@ -116,4 +116,6 @@ In production run **one `schedule:work` per server** under a supervisor (or `sch
 `* * * * * cd /app && bespoke schedule:run` — it waits for the runs and exits 1 if one failed), next to the web processes and
 `queue:work`; `onOneServer()` tasks then run once across them. **SIGTERM/SIGINT:** no new tick; runs still going get
 `--stop-timeout` seconds, then the process ends and frees their overlap locks. `bespoke dev` starts it with the server when a
-module has a schedule (E101).
+module has a schedule (E101). `bespoke make:docker` writes the role as a `scheduler` container next to `web` and `worker` (one
+image, `init: true`, no health check) and as `deploy/systemd/scheduler.service`
+([@bespokecore/cli](../cli/README.md#production-files-makedocker-e141)).

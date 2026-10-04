@@ -97,6 +97,52 @@ describe('stopping the server', () => {
     await app.shutdown();
   });
 
+  it('SHUTDOWN_DELAY (E163): /up/ready 503 at once, requests still answered for the delay (connection: close), then the drain', async () => {
+    const app = await createApplication({
+      root,
+      discover: false,
+      env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '0.6' },
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+      modules: [defineModule({ name: 'hello', apiRoutes: defineRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
+    });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const { port } = running.server.address() as AddressInfo;
+    const base = `http://127.0.0.1:${port}`;
+    expect((await fetch(`${base}/up/ready`)).status).toBe(200);
+    const started = performance.now();
+    const closed = running.close();
+    // Not ready from the signal on — the load balancer's next probe sends traffic elsewhere — but still answering.
+    const ready = await fetch(`${base}/up/ready`);
+    expect(ready.status).toBe(503);
+    expect(await ready.json()).toEqual({ status: 'draining' });
+    expect((await fetch(`${base}/up`)).status).toBe(200);
+    await sleep(300);
+    const late = await fetch(`${base}/api/hello`);
+    expect(late.status).toBe(200);
+    expect(late.headers.get('connection')).toBe('close');
+    await closed;
+    expect(performance.now() - started).toBeGreaterThanOrEqual(590);
+    await expect(fetch(`${base}/up`)).rejects.toThrow();
+    await app.shutdown();
+  });
+
+  it('close({ immediately: true }) skips the delay (Ctrl+C)', async () => {
+    const app = await createApplication({
+      root,
+      discover: false,
+      env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5' },
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+    });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const started = performance.now();
+    await running.close({ immediately: true });
+    expect(performance.now() - started).toBeLessThan(2_000);
+    await app.shutdown();
+    await expect(
+      createApplication({ root, discover: false, env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5s' }, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }),
+    ).rejects.toThrow('Expected seconds, like 5 or 0.5');
+  });
+
   it('sends the mail of a request answered just before SIGTERM, then exits (as `bespoke serve` stops)', { timeout: 20_000 }, async () => {
     const child = spawn(process.execPath, ['--conditions=@bespokecore/source', FIXTURE, root], { cwd: PACKAGE, stdio: ['ignore', 'pipe', 'pipe'] });
     const lines: string[] = [];

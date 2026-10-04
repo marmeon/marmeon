@@ -110,7 +110,11 @@ Node cannot stop a promise from outside. So a timeout is two lines of defence:
 still running (Laravel's classic trap). `queue:work` checks every registered job at start and refuses with an explanation.
 
 **SIGTERM/SIGINT:** no new claim; the running job may finish within `--stop-timeout` (default 10 s), else it is released for
-another worker; exit 0. Later signals do not cut that short.
+another worker; exit 0. Later signals do not cut that short. The supervisor's grace period (Docker's `stop_grace_period`,
+systemd's `TimeoutStopSec`, Kubernetes' `terminationGracePeriodSeconds`) must be longer than `--stop-timeout` — raise both
+together for long jobs. `bespoke make:docker` writes both roles that way: a `worker` container with `restart: unless-stopped`
+(exit 70 → a fresh worker, proved by `pnpm run ci`'s `image` part) and `deploy/systemd/worker.service` with `Restart=always`
+([@bespokecore/cli](../cli/README.md#production-files-makedocker-e141)).
 
 ## Transactions (E107, E109)
 

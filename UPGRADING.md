@@ -197,6 +197,28 @@ actually got (with `PORT=0` the system's choice, before `0`).
 script by hash, the mail preview no script at all), which an app's `contentSecurityPolicy()` leaves alone; a script in a mail
 preview's `srcdoc` frame never ran (sandbox) and still does not.
 
+#### Low: `/up/ready` answers 503 from SIGTERM on and keeps a result for a second; `SHUTDOWN_DELAY`
+
+*Likelihood of impact: low — apps whose monitoring expects a fresh readiness run on every probe, or that call `startServer()`
+themselves.* Readiness falls at the stop signal now, not when the server closes: `503 {"status":"draining"}` at once, while `/up`
+stays 200 until the server closes (E163). A result of the checks answers every probe for one second (failing results too) — a
+probe right after a database came back may still see `failing` for up to a second. New and off by default: `SHUTDOWN_DELAY`
+(seconds) keeps the server answering after SIGTERM before it closes (responses then carry `Connection: close`) — set it to about 5
+behind a load balancer that learns from its probes (kamal-proxy, Traefik, cloud load balancers, Kubernetes ingresses) instead of a
+`preStop` sleep; SIGINT (Ctrl+C) skips it. `RunningServer.close()` applies the delay; `close({ immediately: true })` does not.
+`ServerClosing` (http) has a second signal, `draining`, aborted at the stop signal (`signal` still aborts when the server
+closes). `bespoke dev`/`start` install their signal handlers before the server listens: a SIGTERM during the start drains once it
+listens instead of ending the process.
+
+#### Low: `bespoke start --workers=N` and `bespoke make:docker`
+
+*Likelihood of impact: low — nothing to do; new.* `bespoke start --workers=N` runs N servers on one port with `node:cluster` (E140)
+— the primary passes signals on, each worker drains, the exit code is 0 when all ended with 0
+([Several processes](packages/cli/README.md#several-processes---workers-e140)). `bespoke make:docker [--caddy|--nginx]
+[--systemd]` writes a Dockerfile (`node:26-slim`, non-root, health check, `bespoke` as the process), `.dockerignore`,
+`compose.production.yaml` with one role per container and, on request, a proxy configuration and systemd units (E141,
+[Production files](packages/cli/README.md#production-files-makedocker-e141)). The deployment guide is `docs/deployment.md`.
+
 #### Low (contributors): the monorepo needs pnpm 12
 
 *Likelihood of impact: low — only for work on BespokeCore itself.* The repository pins pnpm 12 (`packageManager`), its root
