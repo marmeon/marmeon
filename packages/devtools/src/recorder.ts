@@ -307,6 +307,8 @@ export class Recorder {
               ...(page.only ? { only: [...page.only] } : {}),
               ...(page.except ? { except: [...page.except] } : {}),
               ...(page.deferred ? { deferred: page.deferred } : {}),
+              ...(page.shared ? { shared: [...page.shared] } : {}),
+              ...(page.optional ? { optional: [...page.optional] } : {}),
             },
           }
         : {}),

@@ -3,8 +3,8 @@
 What the app does, recorded while you develop — requests, queries, jobs, mails, notifications, log entries, exceptions,
 scheduled runs, live hints, events and commands — as **redacted** entries in `storage/framework/devtools/` (Telescope's idea,
 files instead of a table). The recorder listens to the framework's observation points (`@bespokecore/core/diagnostics`, E118);
-the pages under [`/_bespoke/devtools`](#the-pages-_bespokedevtools) (W7 step 8) and the in-page bar (step 9) read the entries
-through the store.
+the pages under [`/_bespoke/devtools`](#the-pages-_bespokedevtools) (W7 step 8) and the [in-page bar](#the-in-page-bar) (step 9)
+read the entries through the store.
 
 ```sh
 pnpm add -D @bespokecore/devtools     # a dev dependency: production installs do not even have it
@@ -126,9 +126,8 @@ await store.usage();                                   // { bytes, files, entrie
 
 Served by the app itself, rendered on the server (E117) with the escaping `html` template (`@bespokecore/core`) — own CSS, light
 and dark, one small inline script for the live tail, filters and copy buttons; no client framework, **nothing of it in the
-app's Vite bundle** (the leak test looks for the devtools in every client chunk). `bespoke dev` adds a small **Devtools** link at
-the bottom of every page — HTML the dev renderer puts into the document (`DevDocument` of `@bespokecore/server`), not client
-code; the in-page bar of step 9 will take its place.
+app's Vite bundle** (the leak test looks for the devtools in every client chunk). Every page `bespoke dev` renders carries the
+[in-page bar](#the-in-page-bar), which links here.
 
 | Path | What it shows |
 |---|---|
@@ -140,7 +139,7 @@ code; the in-page bar of step 9 will take its place.
 | `/queue` | Horizon's idea, development only (E113): every connection's queues with their jobs (ready, delayed, running), the failed jobs (error and payload redacted) with `bespoke queue:retry <id>` / `queue:forget <id>` **to copy**, the latest attempts — read through the queue's own connections, outside any transaction |
 | `/batches/:batch` | Everything one request, job attempt, run or command recorded, in order |
 | `/stream` | Server-Sent Events: the live tail (see below) |
-| `/api/*` | JSON for the in-page bar and other tools (see below) |
+| `/api/*` | JSON for the in-page bar and other tools (see below) — `/api/source` too: where a controller or a view is, for "open in editor" |
 | `/_bespoke/mail` | The mail previews (`@bespokecore/mail`, E106), linked in the navigation — same gate: development only |
 
 Filters (`?status=4xx&route=auth.login&tag=failed&requestId=…&search=…`) are plain links and forms; `/` focuses the search.
@@ -178,7 +177,55 @@ Same gate, host check and headers as the pages. Every entry is the `Entry` above
 | `GET /_bespoke/devtools/api/batches/:batch` | `{ batch, entries }` — oldest first |
 | `GET /_bespoke/devtools/api/queue` | `{ available: true, default, connections: [{ connection, driver, queues: [{ name, size, ready, delayed, reserved }], error? }], failed: [{ id, job, connection, queue, failedAt, exception, payload, requestId?, retry, forget }], failedTotal }` — or `{ available: false, reason }` |
 | `GET /_bespoke/devtools/api/schedule` | `{ available: true, tasks: [{ name, expression, timeZone, summary, next?, options, test }], warning?, runs }` — or `{ available: false, reason }` |
+| `GET /_bespoke/devtools/api/source?controller=<Class>` · `?view=<module/Page>` | `{ file, display, line, editor }` or 404 — where `export class <Class>` is in the app's `modules/**` (`app/**`), or the view's file (`modules/<module>/views/<Page>.tsx`); `editor` is Vite's `/__open-in-editor?file=<file>:<line>`. Read only, inside the app's root only (a class name, a view name of word characters — nothing else is looked for) |
 | `GET /_bespoke/devtools/stream?type=&tag=&requestId=&jobId=&batch=&search=` | `text/event-stream`: `retry: 2000`, `event: ready` (`{ version }`), then `event: entry` with `data: { "entry": … }` for each new entry of **any process** (server, worker, scheduler — the store is polled every 250 ms), comment heartbeats every 15 s; `rows=1` adds `row`, the list row the pages insert. It starts with what arrives from now on and ends when the server closes. |
+
+## The in-page bar
+
+Every page `bespoke dev` renders gets a pill at the bottom right — **BespokeCore**, the last request's kind, status and time, a
+red dot after a hydration error or a failed request. A click or **`Alt+Shift+D`** opens the panel (W7 step 9, E117):
+
+| Tab | What it shows |
+|---|---|
+| **Visits** | Every request of the client core, newest first — visits, reloads, partial reloads (`only`/`except`), background visits (polls, `WhenVisible`, a live hint's reload), deferred props, prefetches, Back/Forward to a page memory let go of, layers, islands, actions, live validations, uploads — and the **live hints** that came: kind, status (`409 reload` for the protocol's full loads), time, the view it answered with, validation errors, optimistic patches; **server** shows what the server recorded for it |
+| **Page** | The page on screen and each layer: component (**open in editor**), route, pattern, controller (**open in editor**), the answer that showed it, the query raw and parsed (with its defaults), and every prop with its size and badges: `deferred`, `streamed`, `optional` (left out — not sent), `merged`, `once`, `live`, `shared` |
+| **Layers & regions** | The stack — the page, then each layer (key, `once`) — and the islands of each with their status (`loading`, `ready`, `unauthorized`, `forbidden`, `exception`) |
+| **Optimistic** | Each optimistic patch (E59): the action or form it went with, the props it changed — before and as shown — and how it ended (`committed`, replaced by the server's props, rolled back) |
+| **Server** | What the server recorded for a request (E131, by its `x-request-id`): route, controller, status, time, server rendering, queries, log, events, jobs — in the worker too — mails, notifications, live hints, exceptions; a link to its page here |
+| **SSR** | The document's server rendering, and every hydration error React recovered from (a mismatch, or a part that failed on the server) |
+
+**Only in development, never in a build (E115).** The provider adds two tags to the head of every document the **Vite dev
+server** renders (`DevDocument` of `@bespokecore/server`, bound with `NODE_ENV=development` only): `<meta name="bespoke-devtools">`
+with the document's request id, and `<script type="module" src="/@id/@bespokecore/devtools/client">` — served by Vite from this
+package's `./client` export. Nothing of the app imports it, so no build has it; the production renderer never reads `DevDocument`.
+In the head, it runs before the app's entry and sets the **dev hook** `__BESPOKE_DEVTOOLS_HOOK__`. The client core calls the hook
+only under `process.env.NODE_ENV !== 'production'` — a production build drops every call, and the leak test checks that no chunk
+names it:
+
+- `Navigator` (made): the bar attaches its data feature — `devtools` of `@bespokecore/http/client` — and draws itself once that
+  navigator takes over the history;
+- `applyPatches`, the patch queue: which patches an action applied, what each changed, when it was folded in or taken out;
+- the React adapter's `onRecoverableError` default: hydration errors.
+
+**What it keeps (E36).** The data feature wraps the window's `fetch` and `EventSource` to see every request and hint; what it
+records — and what the bar fetched from the API — lives **only in slots of the document**: when the document is left (a 409:
+signed in or out, a new build) the core empties them and the panel shows nothing of it (`security-matrix.test.ts` holds it to that,
+`client/bar.test.ts` checks its DOM). The panel reads the page's props from the navigator when it draws, never stores them;
+`sessionStorage` holds `{ open, tab }` only. While a modal layer is open the bar moves into that dialog (everything outside a
+modal dialog is inert).
+
+### The protocol — for other tools
+
+What the bar uses is documented, so a TanStack Devtools plugin, a Vite DevTools dock or a browser extension can be an adapter
+later (E117): the JSON API and the stream above, and on the client:
+
+| Part | Shape |
+|---|---|
+| Dev hook | `globalThis.__BESPOKE_DEVTOOLS_HOOK__: Partial<DevtoolsHook>` — `navigator(navigator)`, `patches(ids)`, `patched(id, beneath, changed)`, `committed(ids)`, `removed(ids)`, `recoverable(error, component, server)` (`DevtoolsHook` of `@bespokecore/http/client`); development builds only |
+| Data feature | `navigator.use(devtools)` → `{ timeline, snapshots, hydration, cache, left, answerFor(url), subscribe(listener), onStarted(listener), stop(), record }` — the hook attaches it to every navigator made; the one that takes over the history (`start()`) is the app's, the others stop (React makes a new one when it renders the tree again after a hydration error) |
+| Timeline entry | `{ id, kind, method, url, at, end?, status?, requestId?, answered?, outcome?, location?, reload?, only?, except?, name?, component?, errors?, patches?, channel?, hinted? }` — `kind`: `document`, `visit`, `reload`, `partial`, `background`, `deferred`, `prefetch`, `restore`, `layer`, `island`, `action`, `validation`, `upload`, `live`; `outcome`: `ok`, `invalid`, `reload` (409), `redirect`, `failed`, `cancelled`, `prefetched` |
+| Request id | `x-request-id` of every answer; the document's in `<meta name="bespoke-devtools" content="…">` — `GET /_bespoke/devtools/api/requests/:requestId` (E131) |
+| Visit events | `navigator.on('start' \| 'success' \| 'error' \| 'exception' \| 'cancel' \| 'finish' \| 'flash' \| 'version')` and the hook API `navigator.use(hooks).on('before' \| 'invalid')` (E132, `@bespokecore/http`) |
 
 ## Tests
 

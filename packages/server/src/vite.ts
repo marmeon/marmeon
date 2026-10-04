@@ -78,15 +78,17 @@ export interface ViteDevOptions {
   ssrEntry?: string;
   /** Share the HTTP server so HMR runs on the app's port instead of a second one. Without one, no HMR (tests). */
   httpServer?: Server;
-  /** Development HTML for the end of every document's body (`DevDocument`: the devtools' link) — read per request. */
+  /** Development HTML for the end of every document's body (`DevDocument`) — read per request. */
   devBody?: () => string;
+  /** Development HTML for the end of every document's head (`DevDocument`: the devtools' bar, before the app's entry) — read per request. */
+  devHead?: () => string;
 }
 
 /**
  * Starts Vite in middleware mode. SSR modules run in Vite's module runner, so
  * view edits hot-reload without restarting the Node process.
  */
-export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody }: ViteDevOptions): Promise<{
+export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody, devHead }: ViteDevOptions): Promise<{
   vite: ViteDevServer;
   renderer: PageRenderer;
 }> {
@@ -122,7 +124,8 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
   }
 
   const renderer = createDocumentRenderer({
-    template: async (request) => withDevBody(await vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')), devBody?.() ?? ''),
+    template: async (request) =>
+      withDevBody(await vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')), devBody?.() ?? '', devHead?.() ?? ''),
     // Through Vite's module runner on every request: an edited view renders without a restart.
     ssr: async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render,
     // Stack traces of SSR errors point into the sources, not into Vite's transformed modules.

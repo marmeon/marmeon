@@ -69,6 +69,21 @@ describe('createViteDevRenderer', () => {
     }
   });
 
+  it('adds development head HTML (DevDocument: the devtools\' bar, W7 step 9) before </head> — ahead of the app\'s entry', async () => {
+    const httpServer = createServer();
+    const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer, devHead: () => '<script type="module" src="/@id/@bespokecore/devtools/client" data-bespoke-devtools></script>' });
+    try {
+      const html = String(await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} }));
+      const bar = html.indexOf('/@id/@bespokecore/devtools/client');
+      expect(bar).toBeGreaterThan(-1);
+      expect(bar).toBeLessThan(html.indexOf('</head>'));
+      expect(bar).toBeLessThan(html.indexOf('/bootstrap/client.ts'));
+    } finally {
+      await vite.close();
+      httpServer.close();
+    }
+  });
+
   it('takes the SSR entry from bespoke(), serves virtual:bespoke/pages to SSR, and adds the client entry', async () => {
     const { vite, renderer } = await start(app());
     try {

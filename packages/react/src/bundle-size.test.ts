@@ -78,12 +78,14 @@ const FEATURES = {
   // W6.10: server-driven like the layers — the core loads it when an answer follows a channel (`PageObject.live`); an app that
   // asks for the waiting updates (`useLiveUpdates`) loads it too. The stream, sequences and hints: its document slot only.
   live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
+  // The client hook API (E132, W7 step 9): a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
+  hooks: { markers: ['http/client/features/hooks'], use: { base: 'emptyApp' as const, entry: `${appEntry()}import { hooks } from '@bespokecore/http/client';\nglobalThis.__hooks = hooks;\n` } },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -99,14 +101,15 @@ function featuresIn({ modules, lazyModules, code }: AppBundle, lazy = false): st
 }
 
 /**
- * The leak test's `devtools` marker (W7 step 8, E115): a module of @bespokecore/devtools, or the devtools' paths and markup in
- * the code (`/_bespoke/devtools`, `@bespokecore/devtools`, the link's `data-bespoke-devtools`). Not the bare word — react-dom's
- * production build names `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
+ * The leak test's `devtools` marker (W7 steps 8 and 9, E115): a module of @bespokecore/devtools or the bar's data feature of the
+ * client core (`http/client/features/devtools`), or the devtools' paths, markup and dev hook in the code (`/_bespoke/devtools`,
+ * `@bespokecore/devtools`, `data-bespoke-devtools`, `__BESPOKE_DEVTOOLS_HOOK__` — the core calls it only under
+ * `process.env.NODE_ENV !== 'production'`). Not the bare word — react-dom's production build names `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
  */
-const DEVTOOLS_MARKERS = /_bespoke\/devtools|@bespokecore\/devtools|data-bespoke-devtools/;
+const DEVTOOLS_MARKERS = /_bespoke\/devtools|@bespokecore\/devtools|data-bespoke-devtools|__BESPOKE_DEVTOOLS_HOOK__/;
 
 function devtoolsIn({ modules, lazyModules, code, lazyCode }: AppBundle): string[] {
-  const found = [...modules, ...lazyModules].filter((id) => id.startsWith('devtools/'));
+  const found = [...modules, ...lazyModules].filter((id) => id.startsWith('devtools/') || moduleKey(id) === 'http/client/features/devtools');
   const text = DEVTOOLS_MARKERS.exec(`${code}\n${lazyCode}`)?.[0];
   return text ? [...found, text] : found;
 }

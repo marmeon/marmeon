@@ -7,6 +7,7 @@ import {
   ShowStreamingLabController,
   TriggerErrorLabController,
 } from './controllers/ShowLabPageController.ts';
+import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
 // manifest) and answer 404 unless the lab is on.
@@ -19,4 +20,7 @@ export default defineRoutes((Route) => {
   // Errors on purpose, one per kind — the development error page with its solutions (E119, E130).
   lab.get('/errors', ShowErrorsLabController);
   lab.get('/errors/:kind', TriggerErrorLabController);
+  // The devtools' bar (W7 step 9): the client hook API (E132), and a hydration mismatch on purpose (`?mismatch=1`).
+  lab.get('/devtools', ShowDevtoolsLabController);
+  lab.post('/devtools', SendDevtoolsLabController);
 });

@@ -3,6 +3,7 @@
  * a history entry, a layer, an island): a module of its own, so the core can apply a visit's patches without carrying the
  * patch queues of the targets (`optimistic.ts`), which come with the features that make them.
  */
+import type { DevtoolsGlobal } from './features/devtools.ts';
 import type { OptimisticUpdate, PatchTarget } from './optimistic.ts';
 
 /** One or several (`optimistic`, `reload` of a visit or an action) as a list. */
@@ -19,6 +20,8 @@ export function applyPatches(updates: readonly OptimisticUpdate[]): Map<PatchTar
     ids.push(target.add(patch));
     applied.set(target, ids);
   }
+  // Development only (W7 step 9): the devtools' bar shows them with the request they go with — gone from a production build.
+  if (process.env.NODE_ENV !== 'production' && applied.size > 0) (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.patches?.([...applied.values()].flat());
   return applied;
 }
 

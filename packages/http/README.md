@@ -157,7 +157,7 @@ Nothing is attached by default (`NavigatorOptions.features` is empty). A feature
 
 | How | Features | Attached by (React) |
 | --- | --- | --- |
-| **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack`, the progress bar (E82) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })` |
+| **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack`, the progress bar (E82), the client hook API (E132) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })`; `useFeature(hooks)` |
 | **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open, uploads (W6.9) | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders; a `<FileInput>` when it renders (`loadUploads`) |
 | **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers, live props (W6.10) | layers: an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry); live props: a page, a layer or an island that follows a channel (`PageObject.live`) — and `useLiveUpdates()` where it renders |
 
@@ -188,6 +188,28 @@ connected, except a page loaded over HTTP/1.1 or an unknown protocol (`nextHopPr
 whenever a stream comes back, `hello` compares each channel's sequence with the last one seen and what moved reloads once. The
 stream, the sequences and the hints waiting live **only in the feature's slot of the document**: a 409 closes the stream and
 forgets them.
+
+**The client hook API (E132)** is a feature too — the core's budget does not hold even two events, and no limit is raised for
+them: `navigator.use(hooks)` (React: `useFeature(hooks)`, in a component that renders in the browser). Typed events across every
+visit, for analytics, an error tracker or a rule of the app's own:
+
+```ts
+const api = navigator.use(hooks);
+const stop = api.on('before', (event) => {               // every visit (visit, reload, a link, a form, a poll, a layer's) —
+  if (new URL(event.url).pathname.startsWith('/admin')) event.cancel();   // after its own `confirm`, before the guard asks and
+});                                                       // before its request: cancelled, nothing is sent, no event fires
+api.on('invalid', (event) => console.table(event.errors)); // a visit's answer with validation errors: { errors, url, method, name }
+```
+
+`before` gets `{ url, method, options, layer, cancel(), cancelled }` (the options are read-only); Back/Forward, prefetches, deferred
+props, islands and actions are no visits and pass no `before`. `invalid` is the visits' `error` event as an object; an action's 422
+comes with its outcome (`useAction`). Listeners are wiring, never data — the feature keeps nothing an event carried.
+
+**Development hooks (W7 step 9).** The in-page bar of `@bespokecore/devtools` attaches the `devtools` feature (exported here, used by
+nothing else) through `globalThis.__BESPOKE_DEVTOOLS_HOOK__`, which its client sets before the app starts. The core and the React
+adapter call that hook only under an inline `process.env.NODE_ENV !== 'production'` — when a navigator is made, when optimistic
+patches are applied, shown, folded in or taken out, and for hydration errors — so a production build drops the calls (the leak test
+checks no chunk names the hook, and the budgets are unchanged). What the feature records stays in slots of the document (E36).
 
 **The progress bar is opt-in (E82):** `createBespokeApp({ progress: progressBar({ delay: 250 }) })` — the starters (blank-app,
 web-app, and so `make:auth`) pass it; an app that leaves it out carries none of its code. Without it, what every app has says

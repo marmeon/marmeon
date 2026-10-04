@@ -60,7 +60,8 @@ export type {
   SharedValue,
   WrappedProp,
 } from './props.ts';
-export { heldOnceProps, partialReloadOf, resolvePageProps } from './page-props.ts';
+export { heldOnceProps, partialReloadOf, propOrigins, resolvePageProps } from './page-props.ts';
+export type { PropOrigins } from './page-props.ts';
 export type { OnceContext, PartialReload, ResolvedPage } from './page-props.ts';
 export { PageSession } from './page-session.ts';
 export { AssetVersion, CheckAssetVersion } from './asset-version.ts';

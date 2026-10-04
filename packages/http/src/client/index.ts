@@ -92,6 +92,11 @@ export { prefetch, Prefetches } from './features/prefetch.ts';
 export { BackRevalidation, revalidateOnBack } from './features/revalidate-on-back.ts';
 export { instant, InstantVisits } from './features/instant.ts';
 export { guard, Guards } from './features/guard.ts';
+export { hooks } from './features/hooks.ts';
+export type { BeforeVisit, ClientHooks, HookEvent, HookEvents, InvalidAnswer } from './features/hooks.ts';
+// Development only (W7 step 9): what the devtools' in-page bar records — attached by its client alone, never by an app (E115).
+export { devtools, devtoolsReports, TIMELINE_LIMIT } from './features/devtools.ts';
+export type { DevtoolsFeature, DevtoolsGlobal, DevtoolsHook, HydrationIssue, PatchSnapshot, TimelineEntry, TimelineKind, TimelineOutcome } from './features/devtools.ts';
 export { liveValidationOnFirstUse, loadInstant, loadLayers, loadLiveValidation, loadPrefetch, prefetchWith } from './lazy.ts';
 export { loadUploads } from './load-uploads.ts';
 export { uploads } from './features/uploads.ts';

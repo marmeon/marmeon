@@ -2,12 +2,20 @@
   "name": "@bespokecore/devtools",
   "version": "0.0.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/client/index.ts",
+    "./dist/client/index.js"
+  ],
   "exports": {
     ".": {
       "@bespokecore/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./client": {
+      "@bespokecore/source": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
     }
   },
   "publishConfig": {
@@ -15,6 +23,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./client": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.js"
       }
     }
   },
@@ -28,6 +40,9 @@
   "bespoke": {
     "providers": [
       "DevtoolsServiceProvider"
+    ],
+    "browser": [
+      "src/client/**"
     ]
   },
   "dependencies": {
@@ -72,6 +87,8 @@
     "@bespokecore/queue": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "@bespokecore/server": "workspace:*",
+    "happy-dom": "^20.14.5",
+    "vite": "^8.3.1"
   }
 }

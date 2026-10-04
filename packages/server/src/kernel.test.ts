@@ -314,9 +314,8 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
   it('runs afterResponse.defer() work after the response — in order, a failure logged, settle() waits', async () => {
     await app.settle();
     events.length = 0;
-    const started = performance.now();
     const response = await app.request('/defer');
-    expect(performance.now() - started).toBeLessThan(15); // the 20 ms of work did not hold the response
+    // The 20 ms of work did not hold the response: it answered before the work ran (the order below) — no time window.
     events.push(`responded ${response.status}`);
     await app.settle();
     expect(events.filter((event) => !event.startsWith('terminated'))).toEqual(['responded 200', 'deferred work', 'after the failure']);

@@ -8,6 +8,7 @@
  * only them (the page cache never holds a patch, nor does `history.state` — it holds no props at all, E36), so Back/Forward
  * after a rollback shows nothing of it.
  */
+import type { DevtoolsGlobal } from './features/devtools.ts';
 import { rethrowLater } from './notify.ts';
 
 /**
@@ -89,6 +90,8 @@ export class PatchQueue {
   /** Takes these out; whether any was here. */
   remove(ids: Iterable<number>): boolean {
     const gone = new Set(ids);
+    // Development only (W7 step 9): the devtools' bar marks them settled — gone from a production build.
+    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.removed?.(gone);
     const before = this.#patches.length;
     this.#patches = this.#patches.filter((entry) => !gone.has(entry.id));
     if (this.#patches.length === before) return false;
@@ -113,21 +116,31 @@ export class PatchQueue {
   /** `base` with only these patches over it (in their order) — what committing them makes the state. */
   fold<T extends Props>(base: T, ids: Iterable<number>): T {
     const chosen = new Set(ids);
+    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.committed?.(chosen);
     return run(base, this.#patches.filter((entry) => chosen.has(entry.id)));
   }
 }
 
-function run<T extends Props>(base: T, patches: readonly { readonly patch: PropsPatch }[]): T {
+function run<T extends Props>(base: T, patches: readonly { readonly id: number; readonly patch: PropsPatch }[]): T {
   let props = base.props;
   for (const { patch } of patches) {
     try {
-      props = { ...props, ...patch(props) };
+      // Development only (W7 step 9): what each patch changed, for the devtools' bar — a production build calls the patch alone.
+      props = { ...props, ...(process.env.NODE_ENV !== 'production' ? observed(patches, patch, props) : patch(props)) };
     } catch (error) {
       // A patch's bug shows nothing of it — and breaks neither the page nor the other patches.
       rethrowLater(error);
     }
   }
   return props === base.props ? base : { ...base, props };
+}
+
+/** Development only: `patch` over `props` — reported to the devtools' dev hook (W7 step 9). */
+function observed(patches: readonly { readonly id: number; readonly patch: PropsPatch }[], patch: PropsPatch, props: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  const changed = patch(props);
+  const id = patches.find((entry) => entry.patch === patch)?.id;
+  if (id !== undefined) (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.patched?.(id, props, changed);
+  return changed;
 }
 
 /** Two reloads as one: `only` lists united, else everything. */

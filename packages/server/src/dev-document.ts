@@ -1,33 +1,61 @@
+import { currentRequest } from '@bespokecore/core';
+
+/** The request a development document is rendered for — what markup made per request may use. */
+export interface DevRequest {
+  /** Its id (`x-request-id`) — as the client sent it, or made by the kernel: escape it before it goes into HTML. */
+  readonly requestId: string | undefined;
+}
+
+/** Markup — fixed, or made for each document (`(request) => …`). */
+export type DevMarkup = string | ((request: DevRequest) => string);
+
 /**
- * Development only (E115): HTML the Vite dev renderer adds to every document it renders, just before `</body>` — outside
- * the app's root element, so hydration never sees it, and never in a client chunk: the devtools' link to
- * `/_bespoke/devtools` (W7 step 8; the in-page bar of step 9 hangs here too). Bound by the `ServerServiceProvider` only
- * with `NODE_ENV=development`; the production renderer never reads it.
+ * Development only (E115): HTML the Vite dev renderer adds to every document it renders — before `</body>` (outside the app's
+ * root element, so hydration never sees it) or, `at: 'head'`, before `</head>` (before the app's entry: a module script there
+ * runs first). Never in a client chunk. The devtools hang their in-page bar here (W7 step 9: a module script the Vite dev server
+ * serves, and the document's request id). Bound by the `ServerServiceProvider` only with `NODE_ENV=development`; the production
+ * renderer never reads it.
  *
  * ```ts
  * if (app.container.has(DevDocument)) app.container.make(DevDocument).add('<a href="/_bespoke/devtools">Devtools</a>');
  * ```
  *
- * What is added is trusted markup (a package's own, never anything from a request).
+ * What is added is trusted markup (a package's own) — a function that puts anything of the request into it escapes it.
  */
 export class DevDocument {
-  readonly #body: string[] = [];
+  readonly #body: DevMarkup[] = [];
+  readonly #head: DevMarkup[] = [];
 
-  /** Adds `markup` to the end of every development document's body. */
-  add(markup: string): this {
-    this.#body.push(markup);
+  /** Adds `markup` to the end of every development document's body — or of its head (`at: 'head'`). */
+  add(markup: DevMarkup, { at = 'body' }: { readonly at?: 'head' | 'body' } = {}): this {
+    (at === 'head' ? this.#head : this.#body).push(markup);
     return this;
   }
 
-  /** What goes before `</body>`. */
+  /** What goes before `</body>` — for the request being handled. */
   get body(): string {
-    return this.#body.join('\n');
+    return render(this.#body);
+  }
+
+  /** What goes before `</head>` — for the request being handled. */
+  get head(): string {
+    return render(this.#head);
   }
 }
 
-/** The template with `body` before its `</body>` (or at its end without one). */
-export function withDevBody(template: string, body: string): string {
-  if (body === '') return template;
-  const at = template.lastIndexOf('</body>');
-  return at === -1 ? `${template}${body}` : `${template.slice(0, at)}${body}\n${template.slice(at)}`;
+function render(markup: readonly DevMarkup[]): string {
+  const request: DevRequest = { requestId: currentRequest()?.requestId };
+  return markup.map((part) => (typeof part === 'string' ? part : part(request))).join('\n');
+}
+
+/** The template with `body` before its `</body>` (or at its end without one) — and `head` before its `</head>` (or at its start). */
+export function withDevBody(template: string, body: string, head = ''): string {
+  let html = template;
+  if (head !== '') {
+    const at = html.indexOf('</head>');
+    html = at === -1 ? `${head}${html}` : `${html.slice(0, at)}${head}\n${html.slice(at)}`;
+  }
+  if (body === '') return html;
+  const at = html.lastIndexOf('</body>');
+  return at === -1 ? `${html}${body}` : `${html.slice(0, at)}${body}\n${html.slice(at)}`;
 }

@@ -1,4 +1,4 @@
-import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type TitleTemplate } from '@bespokecore/http/client';
+import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type DevtoolsGlobal, type TitleTemplate } from '@bespokecore/http/client';
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
@@ -105,6 +105,8 @@ function reportRecoverable(error: unknown, component: string): void {
       'locale formatting, `typeof window` branches) — render those in an effect, or set the page’s ssr = false.';
   console.error(message, error);
   showNotice(message);
+  // The devtools' bar (W7 step 9) lists it in its SSR tab — `__BESPOKE_DEVTOOLS_HOOK__` exists only where its client was served.
+  (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.recoverable?.(error, component, server);
 }
 
 const NOTICE_ATTRIBUTE = 'data-bespoke-hydration';

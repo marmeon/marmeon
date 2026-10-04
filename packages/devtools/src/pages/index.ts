@@ -6,6 +6,7 @@ import { queueSnapshot, scheduleSnapshot } from './infra.ts';
 import { BASE, entryHref, SLUGS } from './layout.ts';
 import { row } from './rows.ts';
 import { forbiddenHost, hostAllowed, htmlResponse, jsonResponse, secured } from './security.ts';
+import { findController, findView } from './source.ts';
 import { batchPage, entryPage, listPage, listQuery, overviewPage, queuePage, schedulePage, type Frame, type ListFilters } from './views.ts';
 
 export { BASE } from './layout.ts';
@@ -81,6 +82,7 @@ export async function registerDevtoolsPages(options: PagesOptions): Promise<bool
           Route.get('/api/batches/:batch', (ctx) => pages.apiBatch(ctx.params.batch));
           Route.get('/api/queue', () => pages.apiQueue());
           Route.get('/api/schedule', () => pages.apiSchedule());
+          Route.get('/api/source', (ctx) => pages.apiSource(new URL(ctx.request.url)));
         });
     }),
   );
@@ -286,6 +288,7 @@ class DevtoolsPages {
         batch: `${BASE}/api/batches/:batch`,
         queue: `${BASE}/api/queue`,
         schedule: `${BASE}/api/schedule`,
+        source: `${BASE}/api/source?controller=|view=`,
         stream: `${BASE}/stream?type=&tag=&requestId=&jobId=&batch=&search=`,
       },
     });
@@ -319,6 +322,14 @@ class DevtoolsPages {
 
   async apiQueue(): Promise<Response> {
     return jsonResponse(await queueSnapshot(this.#app, this.#redactor));
+  }
+
+  /** Where a controller (`?controller=ShowUserController`) or a view (`?view=users/Show`) is — for "open in editor" (W7 step 9). */
+  async apiSource(url: URL): Promise<Response> {
+    const controller = url.searchParams.get('controller');
+    const view = url.searchParams.get('view');
+    const found = controller ? await findController(this.#app.root, controller) : view ? findView(this.#app.root, view) : undefined;
+    return found ? jsonResponse(found) : jsonResponse({ error: 'not found' }, 404);
   }
 
   async apiSchedule(): Promise<Response> {

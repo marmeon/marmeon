@@ -56,8 +56,14 @@ with their queries, jobs, mails, log entries, exceptions, events — redacted, i
 records nothing (and does not have the package). `bespoke devtools:clear` empties the directory; `devtools:prune` runs hourly in
 development (`modules/system/schedule.ts`).
 
-**`http://localhost:3960/_bespoke/devtools`** shows it — the **Devtools** link at the bottom right of every page under
-`bespoke dev` leads there (HTML the dev server adds, no client code): requests with their queries, props' sizes and what they set
+Every page under `bespoke dev` shows the **in-page bar** — a pill at the bottom right, `Alt+Shift+D` (W7 step 9): the visits and
+other requests as they happen, the page's props with their sizes and badges (deferred, optional, merged, once, live, shared,
+streamed), layers and islands, optimistic patches, what the server recorded for a request (queries, jobs in the worker), and
+hydration errors — `/lab/devtools?mismatch=1` makes one on purpose; `/lab/devtools` shows the client hook API (E132: a link
+`before` cancels, a form whose errors `invalid` reports). "Open in editor" goes through Vite (`LAUNCH_EDITOR`). Served by the Vite dev server only:
+no build has it.
+
+**`http://localhost:3960/_bespoke/devtools`** shows everything recorded — the bar links there: requests with their queries, props' sizes and what they set
 off in the worker, the queue (with failed jobs and `bespoke queue:retry <id>` to copy), the schedule with the lock warning
 (E123: `CACHE_DRIVER=file` locks only on this machine), a live tail, and the mail previews (`/_bespoke/mail`). Signing in, up or
 out as a visit answers `409 reload` — the protocol's full reload, shown as such, not as an error.

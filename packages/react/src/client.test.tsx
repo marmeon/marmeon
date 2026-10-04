@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/" }
+import { Navigator, type DevtoolsGlobal } from '@bespokecore/http/client';
 import { PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
 import { act, Suspense } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -90,6 +91,22 @@ describe('createBespokeApp — hydration', () => {
     expect(notice()?.textContent).toContain('Hydration mismatch in [users/Profile]');
     // React rendered it again in the browser — from the page object.
     expect(document.querySelector('time')?.textContent).toBe('2026-10-01T12:00:00.600Z');
+  });
+
+  it('hands the mismatch to the devtools\' dev hook (W7 step 9) — and the navigator when it is made — where the bar set one', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const hook = { navigator: vi.fn(), recoverable: vi.fn() };
+    (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__ = hook;
+    try {
+      serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), await ssr(page({ name: 'Ada', lastLoginAt: at as unknown as string })));
+      await start();
+      // React renders the tree again after the mismatch — with a navigator of its own each time.
+      expect(hook.navigator).toHaveBeenCalled();
+      expect(hook.navigator.mock.calls.at(-1)![0]).toBeInstanceOf(Navigator);
+      expect(hook.recoverable).toHaveBeenCalledWith(expect.any(Error), 'users/Profile', false);
+    } finally {
+      delete (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__;
+    }
   });
 
   it('renders the page itself when the server sent no markup (SSR failed or is off) — no hydration, no mismatch', async () => {

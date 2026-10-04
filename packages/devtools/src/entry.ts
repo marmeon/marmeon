@@ -87,6 +87,10 @@ export interface RequestContent {
     readonly only?: readonly string[];
     readonly except?: readonly string[];
     readonly deferred?: Readonly<Record<string, readonly string[]>>;
+    /** Sent props that are shared (`SharedData`), not the controller's own. */
+    readonly shared?: readonly string[];
+    /** `optional()` props left out (sent only when a partial reload names them). */
+    readonly optional?: readonly string[];
   };
   /** Server rendering of its page. */
   readonly ssr?: { readonly component: string; readonly durationMs?: number; readonly streamed?: boolean; readonly complete: boolean; readonly failed?: boolean };

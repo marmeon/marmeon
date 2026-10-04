@@ -67,16 +67,20 @@ header is set.
 
 ## The development document (`DevDocument`) — development only
 
-With `NODE_ENV=development` the `ServerServiceProvider` binds a `DevDocument`: HTML that packages add to the end of every
-document the Vite dev renderer serves (before `</body>`, outside the app's root — hydration never sees it, and no client chunk
-carries it). The devtools add their link to `/_bespoke/devtools` this way (W7 step 8; the in-page bar of step 9 hangs here too).
+With `NODE_ENV=development` the `ServerServiceProvider` binds a `DevDocument`: HTML that packages add to every document the Vite
+dev renderer serves — before `</body>` (outside the app's root: hydration never sees it), or with `at: 'head'` before `</head>`
+(ahead of the app's entry: a module script there runs first). No client chunk carries it. Markup may be made per document: a
+function gets the request it renders for (`{ requestId }`). The devtools hang their in-page bar here (W7 step 9): the module script
+of the bar, served by Vite, and the document's request id.
 
 ```ts
-if (app.container.has(DevDocument)) app.container.make(DevDocument).add('<a href="/_bespoke/devtools">Devtools</a>');
+if (app.container.has(DevDocument)) {
+  app.container.make(DevDocument).add(({ requestId }) => `<meta name="x-dev" content="${escapeHtml(requestId ?? '')}">`, { at: 'head' });
+}
 ```
 
-The production renderer never reads it, and it is not bound elsewhere. Only trusted markup of a package — never anything from
-a request.
+The production renderer never reads it, and it is not bound elsewhere. Only trusted markup of a package — what comes from the
+request (its id may be the client's own `x-request-id`) is escaped.
 
 ## Error page (E119) — development only
 

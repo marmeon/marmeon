@@ -29,6 +29,7 @@ import {
   isPageObject,
   partialReloadOf,
   type PageObject,
+  type PropOrigins,
   type RegionObject,
   type RegionResult,
 } from '@bespokecore/http';
@@ -245,8 +246,8 @@ export function createHttpKernel(
   const toResponse = createResponseFactory(renderer, router, version, {
     app: application,
     // Prop sizes for the `http.request` message (E118) — measured only while something listens.
-    onPage: (request, page, kind) => {
-      if (requests.hasSubscribers) pages.set(request, pageSummary(request, page, kind));
+    onPage: (request, page, kind, origins) => {
+      if (requests.hasSubscribers) pages.set(request, pageSummary(request, page, kind, origins()));
     },
     logger: container.make(Logger).child({ channel: 'ssr' }),
     ssr,
@@ -612,7 +613,7 @@ export function createHttpKernel(
 
 
 /** A page object's view, the bytes of each prop's JSON, and what a partial reload asked for — for the `http.request` message. */
-function pageSummary(request: Request, page: PageObject | RegionObject, kind: PageSummary['kind']): PageSummary {
+function pageSummary(request: Request, page: PageObject | RegionObject, kind: PageSummary['kind'], { shared, optional }: PropOrigins): PageSummary {
   const props: Record<string, number> = {};
   for (const [key, value] of Object.entries(page.props ?? {})) props[key] = Buffer.byteLength(JSON.stringify(value) ?? '');
   const partial = partialReloadOf(request, page.component);
@@ -623,6 +624,8 @@ function pageSummary(request: Request, page: PageObject | RegionObject, kind: Pa
     ...(partial?.only ? { only: partial.only } : {}),
     ...(partial && partial.except.length > 0 ? { except: partial.except } : {}),
     ...(page.deferredProps ? { deferred: page.deferredProps } : {}),
+    ...(shared.length > 0 ? { shared } : {}),
+    ...(optional.length > 0 ? { optional } : {}),
   };
 }
 
@@ -703,6 +706,7 @@ export async function startServer({
       httpServer: server,
       // Bound only with NODE_ENV=development (E115): a Vite dev server on a staging box adds nothing.
       devBody: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).body : ''),
+      devHead: () => (app.container.has(DevDocument) ? app.container.make(DevDocument).head : ''),
     });
     // Debug mode follows `ServerConfig.debug` — `NODE_ENV=development` (E115), not this mode: Vite on a staging box shows no stack.
     kernel = createHttpKernel(app, { renderer });

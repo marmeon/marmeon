@@ -124,6 +124,24 @@ export async function resolvePageProps(
   };
 }
 
+/** Where a page's props came from — what the devtools show beside each (W7 step 9). */
+export interface PropOrigins {
+  /** Sent props that are shared (`SharedData`), not the controller's own. */
+  readonly shared: readonly string[];
+  /** `optional()` props the response left out — sent only when a partial reload names them. */
+  readonly optional: readonly string[];
+}
+
+/** Which of the props `sent` are shared, and which `optional()` props were left out — from the props given, never resolved. */
+export function propOrigins(props: Readonly<Record<string, unknown>>, shared: SharedData | undefined, sent: readonly string[]): PropOrigins {
+  const all = new Map<string, unknown>(shared?.entries() ?? []);
+  for (const [key, value] of Object.entries(props)) all.set(key, value);
+  return {
+    shared: sent.filter((key) => !Object.hasOwn(props, key) && all.has(key)),
+    optional: [...all].filter(([key, value]) => propKind(value) === 'optional' && !sent.includes(key)).map(([key]) => key),
+  };
+}
+
 function included(key: string, kind: ReturnType<typeof propKind>, partial: PartialReload | undefined): boolean {
   if (kind === 'always') return true;
   const lazy = kind === 'optional' || kind === 'defer';

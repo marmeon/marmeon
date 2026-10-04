@@ -1,4 +1,4 @@
-import { createApplication, defineModule, Logger, type Application, type LogContext } from '@bespokecore/core';
+import { createApplication, defineModule, Logger, runWithRequest, type Application, type LogContext } from '@bespokecore/core';
 import { channels, messageBase, publishEnded, type ExceptionMessage, type HttpRequestMessage, type SsrRenderMessage } from '@bespokecore/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { abort, Controller, HttpServiceProvider, view } from '@bespokecore/http';
@@ -216,5 +216,18 @@ describe('withDevBody', () => {
     expect(withDevBody('<html><body><div id="app"></div></body></html>', '<a>x</a>')).toBe('<html><body><div id="app"></div><a>x</a>\n</body></html>');
     expect(withDevBody('<div id="app"></div>', '<a>x</a>')).toBe('<div id="app"></div><a>x</a>');
     expect(withDevBody('<body></body>', '')).toBe('<body></body>');
+  });
+
+  it('puts development head HTML before </head> — before the app entry the body ends with (W7 step 9)', () => {
+    expect(withDevBody('<html><head><title>x</title></head><body><script type="module" src="/entry.ts"></script></body></html>', '', '<script src="/bar"></script>')).toBe(
+      '<html><head><title>x</title><script src="/bar"></script>\n</head><body><script type="module" src="/entry.ts"></script></body></html>',
+    );
+    expect(withDevBody('<div id="app"></div>', '<a>x</a>', '<meta>')).toBe('<meta><div id="app"></div><a>x</a>');
+  });
+
+  it('DevDocument: markup made per document gets the request it renders for (its id)', () => {
+    const document = new DevDocument().add(({ requestId }) => `<meta content="${requestId ?? 'none'}">`, { at: 'head' }).add('<a>x</a>');
+    expect(runWithRequest({ requestId: 'req-1' }, () => [document.head, document.body])).toEqual(['<meta content="req-1">', '<a>x</a>']);
+    expect(document.head).toBe('<meta content="none">');
   });
 });

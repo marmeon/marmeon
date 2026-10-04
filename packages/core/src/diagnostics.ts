@@ -94,6 +94,10 @@ export interface PageSummary {
   readonly except?: readonly string[];
   /** The props deferred to later requests (E49), by group. */
   readonly deferred?: Readonly<Record<string, readonly string[]>>;
+  /** Sent props that are shared (`SharedData`), not the controller's own. */
+  readonly shared?: readonly string[];
+  /** `optional()` props left out — sent only when a partial reload names them. */
+  readonly optional?: readonly string[];
   /** `page`, `layer` (E53) or `island` (E48). */
   readonly kind: 'page' | 'layer' | 'island';
 }

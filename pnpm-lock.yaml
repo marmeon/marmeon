@@ -396,6 +396,12 @@ importers:
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../server
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
+      vite:
+        specifier: ^8.3.1
+        version: 8.3.1(@types/node@26.6.3)(yaml@2.9.1)
 
   packages/encryption:
     dependencies:

@@ -1,14 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { createApplication, defineModule, Logger, type Application } from '@bespokecore/core';
+import { basename, join } from 'node:path';
+import { createApplication, defineModule, Logger, runWithRequest, type Application } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@bespokecore/database';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { HttpServiceProvider, view } from '@bespokecore/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@bespokecore/mail';
 import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@bespokecore/queue';
 import { defineRoutes, Router, type HttpContext } from '@bespokecore/router';
-import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
+import { createHttpKernel, DevDocument, ServerServiceProvider } from '@bespokecore/server';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
 import { BASE, DevtoolsServiceProvider, DevtoolsStore, enableDevtoolsForTests, MAIL_CSP, type AnyEntry, type DevtoolsTester } from './index.ts';
@@ -353,6 +353,49 @@ describe('what the pages show', () => {
       // Still there: nothing was retried, forgotten or worked by looking.
       expect(await connections.failed().all()).toHaveLength(1);
       expect(await connections.driver('database').size('default')).toBe(2);
+    } finally {
+      await app.shutdown();
+    }
+  });
+});
+
+describe('the in-page bar’s side on the server (W7 step 9)', () => {
+  it('/api/source: where a controller or a view is, for "open in editor" — inside the app only, nothing else', async () => {
+    const { app, kernel } = await boot();
+    try {
+      mkdirSync(join(app.root, 'modules/people/controllers'), { recursive: true });
+      mkdirSync(join(app.root, 'modules/people/views'), { recursive: true });
+      writeFileSync(join(app.root, 'modules/people/controllers/People.ts'), `import { Controller } from '@bespokecore/http';\n\nexport class ListPeopleController extends Controller {}\n\nexport class ShowPersonController extends Controller {}\n`);
+      writeFileSync(join(app.root, 'modules/people/views/Show.tsx'), 'export default function Show() { return null; }\n');
+      const source = async (query: string) => {
+        const response = await kernel.request(`${BASE}/api/source?${query}`, { headers: { host: 'localhost' } });
+        return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+      };
+      expect(await source('controller=ShowPersonController')).toEqual({
+        status: 200,
+        body: { file: join(app.root, 'modules/people/controllers/People.ts'), display: 'modules/people/controllers/People.ts', line: 5, editor: `/__open-in-editor?file=${encodeURIComponent(`${join(app.root, 'modules/people/controllers/People.ts')}:5`)}` },
+      });
+      expect(await source('view=people/Show')).toMatchObject({ status: 200, body: { display: 'modules/people/views/Show.tsx', line: 1 } });
+      // A view's file outside the app (a sibling directory): never found, whatever the name says.
+      mkdirSync(join(app.root, '..', `${basename(app.root)}-sibling`), { recursive: true });
+      writeFileSync(join(app.root, '..', `${basename(app.root)}-sibling`, 'Leak.tsx'), 'export default null;\n');
+      roots.push(join(app.root, '..', `${basename(app.root)}-sibling`));
+      for (const query of ['controller=Missing', 'controller=a.b', 'controller=', 'view=../../etc/passwd', 'view=people/../../x', 'view=people', 'nothing=1', `view=x/../../../../${basename(app.root)}-sibling/Leak`]) {
+        expect((await source(query)).status, query).toBe(404);
+      }
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('puts the bar into the head of every development document: its script (served by Vite) and the request id, escaped', async () => {
+    const { app } = await boot({ NODE_ENV: 'development' });
+    try {
+      const head = runWithRequest({ requestId: '"><script>alert(1)</script>' }, () => app.container.make(DevDocument).head);
+      expect(head).toBe(
+        '<meta name="bespoke-devtools" content="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" data-bespoke-devtools>\n<script type="module" src="/@id/@bespokecore/devtools/client" data-bespoke-devtools></script>',
+      );
+      expect(app.container.make(DevDocument).body).toBe(''); // no link any more: the bar's pill is the way in
     } finally {
       await app.shutdown();
     }

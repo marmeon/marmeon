@@ -17,6 +17,7 @@ import { VisitEmitter, type Visit, type VisitCallbacks, type VisitEvent, type Vi
 import { emptySlot, emptySlots, type EntryStack, type Feature, type FeatureHook, type FeatureHooks, type PendingVisit, type Slot, type VisitPart } from './feature.ts';
 import type { NavigationGuard } from './features/guard.ts';
 import type { InstantVisit } from './features/instant.ts';
+import type { DevtoolsGlobal } from './features/devtools.ts';
 import type { LayerStack } from './features/layers.ts';
 import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
 import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
@@ -378,6 +379,9 @@ export class Navigator {
     const page = this.#collect(withFlash);
     core.page = page;
     core.props = new PropLoader(core, page, initialPage.streamedProps ?? []);
+    // Development only (W7 step 9): the devtools' bar attaches to the navigator (`__BESPOKE_DEVTOOLS_HOOK__`, set by its client,
+    // which the Vite dev server alone serves) — a production build drops this line.
+    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.navigator?.(this);
   }
 
   /**

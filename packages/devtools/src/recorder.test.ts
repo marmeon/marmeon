@@ -7,7 +7,7 @@ import { Application, coreSolutions, createApplication, defineModule, ErrorSolut
 import { channels, messageBase, trace } from '@bespokecore/core/diagnostics';
 import { Connections, Database, DatabaseServiceProvider, Migrator, sql } from '@bespokecore/database';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider, view } from '@bespokecore/http';
+import { HttpServiceProvider, optional, SharedData, view } from '@bespokecore/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@bespokecore/mail';
 import { Queue, QueueServiceProvider } from '@bespokecore/queue';
 import { defineRoutes, type HttpContext } from '@bespokecore/router';
@@ -127,8 +127,21 @@ class TransactionController {
   }
 }
 
+/** A page with a shared prop and an optional one it leaves out — the badges of the in-page bar (W7 step 9). */
+class ShowOriginsController {
+  readonly #shared: SharedData;
+  constructor(shared: SharedData) {
+    this.#shared = shared;
+  }
+  handle() {
+    (this.#shared as unknown as { share(key: string, value: unknown): void }).share('auth', { user: 'ada' });
+    return view('people/Origins', { own: 1, stats: optional(() => ({ links: 3 })) });
+  }
+}
+
 const routes = defineRoutes((Route) => {
   Route.get('/people/:person', ShowPersonController).name('people.show');
+  Route.get('/origins', ShowOriginsController).name('origins');
   Route.post('/login', LoginController).name('login');
   Route.get('/reset-password/:token', ResetController).name('password.reset');
   Route.get('/transaction', TransactionController).name('transaction');
@@ -266,6 +279,9 @@ describe('what the recorder keeps', () => {
       // Prop sizes per key, never the values.
       expect(request.content.page).toMatchObject({ kind: 'page', component: 'people/Show', props: { person: JSON.stringify({ id: 7, name: 'Ada' }).length, list: JSON.stringify(Array.from({ length: 50 }, (_, i) => i)).length } });
       expect(JSON.stringify(request.content.page)).not.toContain('Ada');
+      // Where the props came from (W7 step 9): shared and left-out optional props, by name.
+      await kernel.request('/origins', { headers: { 'x-bespoke': 'true' } });
+      expect(tester!.assertRecorded('request', (content) => content.route === 'origins').content.page).toMatchObject({ component: 'people/Origins', shared: ['auth'], optional: ['stats'] });
 
       const batch = tester!.batch(request.batch);
       expect(batch.map((entry) => entry.type)).toEqual(expect.arrayContaining(['request', 'query', 'job', 'log', 'event']));

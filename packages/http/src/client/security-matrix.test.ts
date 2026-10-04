@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
@@ -13,6 +13,8 @@ import { remember, type RememberFeature } from './features/remember.ts';
 import { revalidateOnBack } from './features/revalidate-on-back.ts';
 import { uploads, type UploadsFeature } from './features/uploads.ts';
 import { live } from './features/live.ts';
+import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal } from './features/devtools.ts';
+import { hooks, type ClientHooks } from './features/hooks.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
@@ -193,7 +195,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, hooks, devtools];
 
 /**
  * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
@@ -249,10 +251,17 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   const submissions = () => api<ActionsFeature>('actions').submissions().list;
   api<RememberFeature>('remember').of(pageKey).set('draft', { note: CANARY });
   const liking = new AbortController();
+  (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__ = devtoolsReports(() => api<DevtoolsFeature>('devtools'));
   const action = api<ActionsFeature>('actions').run('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: { target: api<PagePatches>('optimistic').target(pageKey), patch: (props) => ({ ...props, liked: CANARY }) } });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   if (!lazyLayers) await navigator.visit('/users/1/edit', { layer: true });
   api<Guards>('guard').add({ message: 'Unsaved', active: () => false });
+  // The hook API keeps listeners only (E132); the devtools' bar (W7 step 9) records every request above — and, through its dev
+  // hook, the action's optimistic patch and a hydration error with the page's text.
+  api<ClientHooks>('hooks').on('before', () => {});
+  const recorder = api<DevtoolsFeature>('devtools');
+  recorder.record.recoverable(new Error(`Text content does not match: ${CANARY}`), 'users/Show', false);
+  recorder.cache.set('request:1', { entries: [CANARY] });
   // An upload under way (W6.9): its target answered with the token, its bytes still going (the XHR never answers).
   const uploaded: (Upload | null)[] = [];
   api<UploadsFeature>('uploads').start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: new File(['png'], 'me.png', { type: 'image/png' }), onChange: (upload) => uploaded.push(upload) });
@@ -264,6 +273,16 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   const prefetched = () => api<Prefetches>('prefetch').size;
   return { win, tab, navigator, host, records, core, action, liking, pageKey, layerKey, submissions, prefetched, uploaded, stream };
 }
+
+afterEach(() => {
+  delete (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__;
+});
+
+/**
+ * The records held to what memory lets go of, entry by entry: all but the devtools' bar (W7 step 9, development only) — it records
+ * the document's requests across its entries (a timeline), and lets go of all of it when the document is left (the 409 rows).
+ */
+const perEntry = (records: readonly Recorded[]) => records.filter((record) => record.feature !== 'devtools');
 
 /** What the core still keeps of the signed-in user after the document was left. */
 function coreLeftovers({ core, navigator, host, submissions, prefetched }: Awaited<ReturnType<typeof stocked>>): string[] {
@@ -306,6 +325,11 @@ describe('the security matrix — every feature × every event that must forget 
         expect.stringMatching(/^prefetch: its hook "start" hands out/),
         expect.stringMatching(/^uploads: its slot "uploads"/),
         expect.stringMatching(/^live: its slot "live"/),
+        expect.stringMatching(/^devtools: its slot "devtools-timeline"/),
+        expect.stringMatching(/^devtools: its slot "devtools-snapshots"/),
+        expect.stringMatching(/^devtools: its slot "devtools-hydration"/),
+        expect.stringMatching(/^devtools: its slot "devtools-cache"/),
+        expect.stringMatching(/^devtools: its API still shows/),
       ]),
     );
     // The live stream is open (W6.10), its URL holds the signed-in user's token.
@@ -392,7 +416,7 @@ describe('the security matrix — every feature × every event that must forget 
     for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
     expect(tab.navigator.cachedPages).toBe(3);
     const gone = new Set([tab.pageKey, tab.layerKey]);
-    expect(await leftovers(tab.records, [...gone], [], (key) => key !== undefined && gone.has(key))).toEqual([]);
+    expect(await leftovers(perEntry(tab.records), [...gone], [], (key) => key !== undefined && gone.has(key))).toEqual([]);
     expect(tab.core.regions.size).toBe(0);
     expect(tab.core.remembered.size).toBe(0);
     for (const key of gone) expect([tab.host.peek(REGIONS, key), tab.host.peek(REMEMBERED, key)]).toEqual([undefined, undefined]);
@@ -412,10 +436,10 @@ describe('the security matrix — every feature × every event that must forget 
     for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
     // Per document, not per entry (the action settles it on the entry whether it is in memory or not): Back to the entry while
     // the action is under way shows it over the server's page again.
-    expect(await leftovers(tab.records, [tab.pageKey], [], () => false)).toEqual(['optimistic: its hook "paint" hands out signed-in data']);
+    expect(await leftovers(perEntry(tab.records), [tab.pageKey], [], () => false)).toEqual(['optimistic: its hook "paint" hands out signed-in data']);
     tab.liking.abort();
     await tab.action;
-    expect(await leftovers(tab.records, [tab.pageKey], [], () => false)).toEqual([]);
+    expect(await leftovers(perEntry(tab.records), [tab.pageKey], [], () => false)).toEqual([]);
   });
 
   it('a page of another scope (someone else signed in, in another tab) drops every once prop kept — never put back', async () => {

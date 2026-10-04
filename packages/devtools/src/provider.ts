@@ -1,4 +1,4 @@
-import { defineSolutions, ErrorSolutions, Logger, Redactor, token, type Application, type ServiceProvider } from '@bespokecore/core';
+import { defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@bespokecore/core';
 import { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
 import { DevtoolsConfig, DevtoolsConfigError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
 import { FileStore } from './file-store.ts';
@@ -6,9 +6,17 @@ import { Recorder } from './recorder.ts';
 import { DevtoolsStore, MemoryStore } from './store.ts';
 import { DevtoolsTestOptIn } from './testing.ts';
 
-/** The link to the devtools in development documents — plain HTML outside the app's root, no script. */
-export const DEV_LINK =
-  '<a href="/_bespoke/devtools" data-bespoke-devtools title="BespokeCore devtools — development only" style="position:fixed;right:12px;bottom:12px;z-index:2147483646;padding:5px 10px;border-radius:999px;background:#1c1f24;color:#fff;font:600 12px/1.2 system-ui,sans-serif;text-decoration:none;opacity:.7">Devtools</a>';
+/** Where the Vite dev server serves the in-page bar's client (W7 step 9) — never part of a build (E115). */
+export const BAR_SCRIPT = '/@id/@bespokecore/devtools/client';
+
+/**
+ * The in-page bar (W7 step 9, E117) in every development document's head: the document's request id (E131 — the bar asks the
+ * server's record of it; escaped, a client may send its own `x-request-id`) and the module script of the bar, served by the Vite
+ * dev server. In the head, it runs before the app's entry: its dev hook is there when the navigator is made.
+ */
+export function barMarkup({ requestId }: { readonly requestId: string | undefined }): string {
+  return `<meta name="bespoke-devtools" content="${escapeHtml(requestId ?? '')}" data-bespoke-devtools>\n<script type="module" src="${BAR_SCRIPT}" data-bespoke-devtools></script>`;
+}
 
 /** The settings the recorder runs with — bound only where it runs. */
 export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings');
@@ -89,10 +97,10 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       hosts: config.hosts,
       ...(store instanceof FileStore ? { maxBytes: options.storage.maxBytes } : {}),
     });
-    // A link to them at the bottom of every page `bespoke dev` renders — HTML the dev renderer adds to the document (never a
-    // client chunk; the in-page bar of step 9 takes its place). Bound by @bespokecore/server only with NODE_ENV=development.
+    // The in-page bar in every document `bespoke dev` renders (W7 step 9): HTML the dev renderer adds to the document's head —
+    // its client comes from the Vite dev server, never from a client chunk. Bound by @bespokecore/server only with NODE_ENV=development.
     const server = await import('@bespokecore/server').catch(() => undefined);
-    if (server && app.container.has(server.DevDocument)) app.container.make(server.DevDocument).add(DEV_LINK);
+    if (server && app.container.has(server.DevDocument)) app.container.make(server.DevDocument).add(barMarkup, { at: 'head' });
   }
 
   async shutdown(): Promise<void> {

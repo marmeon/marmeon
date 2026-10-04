@@ -7,7 +7,7 @@ import { LabConfig } from '../config.ts';
 import { CheckoutService, LabReport, Money, Orders, ReminderSchedule } from '../errors.ts';
 
 /** The lab's pages, each one view: a 404 unless the lab is on (`LabConfig`). */
-abstract class LabController extends Controller {
+export abstract class LabController extends Controller {
   protected readonly config: LabConfig;
 
   constructor(config: LabConfig) {

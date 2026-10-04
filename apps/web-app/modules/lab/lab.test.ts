@@ -3,6 +3,7 @@ import { createTestApp } from '@bespokecore/testing';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import type { SendDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
 
 /** Keeps what the app logs, to look for the SSR errors. */
 function recordingLogger(entries: { level: string; message: string; context: LogContext }[], bindings: LogContext = {}): Logger {
@@ -70,5 +71,19 @@ describe('the SSR lab (W5 step 7)', () => {
   it('is off unless enabled: 404 with LAB_PAGES=false (the default in production)', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
     await app.get('/lab/streaming', page).assertNotFound();
+  });
+});
+
+describe('the devtools lab (W7 step 9)', () => {
+  it('a hydration mismatch on purpose (?mismatch=1): the server renders its own text — the browser renders another (React recovers)', async () => {
+    const { app } = await lab();
+    await app.get('/lab/devtools?mismatch=1', page).assertOk().assertPage('lab/Devtools').assertSee('Rendered by <!-- -->the server<!-- -->.');
+    await app.get('/lab/devtools', page).assertOk().assertDontSee('Rendered by');
+  });
+
+  it('the client hooks part renders in the browser (a feature: no navigator on the server) — its form is sent back with errors', async () => {
+    const { app } = await lab();
+    await app.get('/lab/devtools', page).assertOk().assertServerRendered().assertDontSee('Client hooks');
+    await app.post('/lab/devtools', { form: { name: 'x' }, headers: { referer: 'http://localhost/lab/devtools' } }).assertRedirect('/lab/devtools').assertInvalid<SendDevtoolsLabController>({ name: 'At least two characters.' });
   });
 });

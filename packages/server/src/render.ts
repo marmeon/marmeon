@@ -35,6 +35,7 @@ import {
   REGION_HEADER,
   REGION_STATUS_HEADER,
   regionOf,
+  propOrigins,
   resolvePageProps,
   ResponseLifecycle,
   serializedFlash,
@@ -47,6 +48,7 @@ import {
   type IslandResult,
   type LayerResult,
   type PageObject,
+  type PropOrigins,
   type RegionObject,
   type RegionOutcomeStatus,
   type RegionResult,
@@ -193,7 +195,7 @@ export interface ResponseFactoryOptions {
    * Hears each page, layer or island object a response carries, before it is sent — the kernel's, for the `http.request`
    * message's prop sizes (E118; it computes nothing unless something listens).
    */
-  onPage?: (request: Request, page: PageObject | RegionObject, kind: 'page' | 'layer' | 'island') => void;
+  onPage?: (request: Request, page: PageObject | RegionObject, kind: 'page' | 'layer' | 'island', origins: () => PropOrigins) => void;
   /** Where server-rendering errors go. */
   logger?: Logger;
   /** Server rendering at all (`SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
@@ -456,7 +458,7 @@ export function createResponseFactory(
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));
     if (flash.length > 0) page.flash = flash;
-    onPage?.(ctx.request, page, layer ? 'layer' : 'page');
+    onPage?.(ctx.request, page, layer ? 'layer' : 'page', () => propOrigins(result.props, shared, Object.keys(resolved.props)));
     // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it (E60).
     const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash()));
     const headers = {
@@ -540,7 +542,7 @@ async function islandResponse(
   // The channels it follows (W6.10), signed for the session of the page around it (an island's request carries its cookie).
   const live = await liveSubscriptions(liveOf(result), scope, result.component);
   const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query, ...live };
-  onPage?.(request, region, 'island');
+  onPage?.(request, region, 'island', () => propOrigins(result.props, undefined, Object.keys(resolved.props)));
   return new Response(JSON.stringify(region), {
     status: 200,
     headers: { vary: PAGE_VARY, 'content-type': 'application/json', [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' },
