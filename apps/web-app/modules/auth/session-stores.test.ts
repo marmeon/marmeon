@@ -64,6 +64,34 @@ describe('sessions in the database (SESSION_DRIVER=database)', () => {
   });
 });
 
+// E144: what the sessions table holds signs nobody in — keys are the ids' hashes, payloads encrypted (this app: SESSION_ENCRYPT).
+describe('a leaked sessions table (E144)', () => {
+  let app: TestApp;
+  const open = async () => (app = await createTestApp(application, { database: 'refresh', env: { SESSION_DRIVER: 'database' } }));
+  const table = async () => (await sql<{ id: string; payload: string }>`select id, payload from sessions`.execute(app.make(Connections).get())).rows;
+
+  it('holds no session cookie: its keys, sent as the cookie, are guests', async () => {
+    await open();
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertAuthenticated(ada);
+    const id = login.cookie('bespoke_session')!;
+    const [row] = await table();
+    expect(row!.id).toMatch(/^[0-9a-f]{64}$/);
+    expect(row!.id).not.toBe(id);
+    // Someone with the table — and the app's key, to encrypt a cookie — replays the key: a guest.
+    await app.withCookie('bespoke_session', row!.id).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie('bespoke_session', id).get('/users/me').assertRedirect(`/users/${ada.id}`);
+  });
+
+  it('holds no readable payload with SESSION_ENCRYPT — no flash text, no user id, no token', async () => {
+    await open();
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com', name: 'Ada Lovelace' });
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertAuthenticated(ada);
+    const [row] = await table();
+    for (const secret of ['_auth_id', '_token', 'toast', 'Ada', String(login.cookie('XSRF-TOKEN') ?? '_token')]) expect(row!.payload).not.toContain(secret);
+  });
+});
+
 describe.runIf(REDIS_URL)('sessions in Redis (SESSION_DRIVER=redis)', () => {
   let app: TestApp | undefined;
   afterEach(async () => {

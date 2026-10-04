@@ -236,6 +236,7 @@ that ignores its signal, two workers × 200 jobs — on SQLite, Postgres and Red
 - **Mails need absolute links** (`compose()` refuses `href="/…"`): a mail composed in a worker has no request to resolve
   them against — build them from `APP_URL` (the starters' `AppConfig` requires it).
 - **Store contracts grew:** a custom `CacheStore` implements `add`, `increment`, `lock`, `unlock`, `forceUnlock`, `lockOwner`
-  (and optionally `prune`); a custom `SessionStore` implements `writeIfExists`.
+  (and optionally `prune`); a custom `SessionStore` implemented `writeIfExists` (W6) — since W8 its `write` compares versions
+  instead ([session README](../session/README.md#your-own-store)).
 - **Constructors that take a `Clock`** (the token stores of auth, `UrlSigner`) take it as a required parameter — the container
   injects it; code that builds them by hand passes `new SystemClock()`.

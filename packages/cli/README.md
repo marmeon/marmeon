@@ -123,7 +123,7 @@ is written once the server listens. What it does with the injection hook, the nu
 | `route:list` | every registered route: method, path, name, group, middleware, action |
 | `route:types [--check]` | writes `bootstrap/routes.ts` (route names, parameters and views for the type checker) and `.bespoke/routes.json` (the routes the browser may learn); `--check` fails when it is out of date (CI) |
 | `discover` | writes `.bespoke/manifest.json` (`manifest.source.json` in the monorepo) — the installed packages' providers and injection lists ([Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)); also runs by itself when dependencies change |
-| `key:generate [--show] [--force]` | sets `APP_KEY` in `.env` (copied from `.env.example` when missing); `--show` prints a key only; an existing key needs `--force` — replacing it makes sessions and encrypted cookies unreadable |
+| `key:generate [--show] [--force]` | sets `APP_KEY` in `.env` (copied from `.env.example` when missing); `--show` prints a key only; an existing key needs `--force`, which moves it to the front of `APP_PREVIOUS_KEYS` (E169) — sessions, encrypted cookies and signed links stay valid ([Key rotation](../encryption/README.md#key-rotation)) |
 | `tinker [--sandbox] [-e "<code>"] [--no-history]` | a REPL with the booted app ([tinker](#tinker)) |
 | `make:lint-config [--boundaries] [--force]` | writes `.oxlintrc.json` ([Lint](#lint)) |
 | `make:docker [--caddy\|--nginx] [--systemd] [--force]` | writes a Dockerfile, `.dockerignore`, `compose.production.yaml` and, on request, a proxy configuration and systemd units ([Production files](#production-files-makedocker-e141)) |

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
 import { RedisConnections, RedisServiceProvider } from '@bespokecore/redis';
 import { createHttpKernel } from '@bespokecore/server';
@@ -14,7 +14,8 @@ import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionConfig } from './config.ts';
 import { SessionServiceProvider, sessionTableConnection } from './provider.ts';
 import { Session } from './session.ts';
-import { SessionStore } from './store.ts';
+import { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
+import { sessionKey, SessionStore } from './store.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
 import { RedisSessionStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
@@ -70,6 +71,9 @@ function boot(env: Record<string, string>, providers: ServiceProviderClass[], co
 }
 
 const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
+/** The session id a `Set-Cookie` header carries (encrypted like every cookie). */
+const cookieValue = (app: Awaited<ReturnType<typeof boot>>, header: string) =>
+  app.container.make(Encrypter).decrypt(decodeURIComponent(header.split(';')[0]!.split('=')[1]!), 'cookie:bespoke_session');
 
 describe('SESSION_DRIVER', () => {
   it('database: sessions live in the app database — and bots leave no rows behind', async () => {
@@ -105,6 +109,57 @@ describe('SESSION_DRIVER', () => {
     const again = await kernel.request('/count', { headers: { accept: 'application/json', cookie: sessionCookie(counted)!.split(';')[0]! } });
     expect(await again.json()).toEqual({ visits: 2 });
     expect(await rows()).toHaveLength(2);
+    // Each row is keyed by the SHA-256 of the id its cookie carries (E144) — no id in the table.
+    const id = await cookieValue(app, sessionCookie(counted)!);
+    expect((await rows()).map((row) => row.id)).toContain(sessionKey(id));
+    expect((await rows()).map((row) => row.id)).not.toContain(id);
+    await app.shutdown();
+  });
+
+  it('SESSION_ENCRYPT=true: the payload column holds ciphertext bound to the session — the app reads it as before (E144)', async () => {
+    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:', SESSION_ENCRYPT: 'true' }, [DatabaseServiceProvider]);
+    await migrate(app.container.make(Connections));
+    expect(app.container.make(SessionCodec)).toBeInstanceOf(EncryptedSessionCodec);
+    const kernel = createHttpKernel(app);
+    const counted = await kernel.request('/count', { headers: { accept: 'application/json' } });
+    const again = await kernel.request('/count', { headers: { accept: 'application/json', cookie: sessionCookie(counted)!.split(';')[0]! } });
+    expect(await again.json()).toEqual({ visits: 2 });
+    const [row] = (await sql<{ payload: string }>`select payload from sessions`.execute(app.container.make(Connections).get())).rows;
+    expect(row!.payload).not.toMatch(/visits|_token|\{/);
+    const id = await cookieValue(app, sessionCookie(counted)!);
+    expect(JSON.parse(await app.container.make(Encrypter).decrypt(row!.payload, `session:${sessionKey(id)}`))).toMatchObject({ visits: 2 });
+    await app.shutdown();
+  });
+
+  it('a new APP_KEY with the old one in APP_PREVIOUS_KEYS keeps encrypted sessions — without it, everybody starts afresh (E169)', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'bespoke-session-rotation-'));
+    temporary.push(directory);
+    const [oldKey, newKey] = [generateKey(), generateKey()];
+    const files = { SESSION_DRIVER: 'file', SESSION_FILES: directory, SESSION_ENCRYPT: 'true' };
+    const before = await boot({ ...files, APP_KEY: oldKey }, []);
+    const first = await createHttpKernel(before).request('/count', { headers: { accept: 'application/json' } });
+    const cookie = sessionCookie(first)!.split(';')[0]!;
+    const visit = async (env: Record<string, string>) =>
+      (await (await createHttpKernel(await boot({ ...files, ...env }, [])).request('/count', { headers: { accept: 'application/json', cookie } })).json()) as { visits: number };
+    expect(await visit({ APP_KEY: newKey, APP_PREVIOUS_KEYS: oldKey })).toEqual({ visits: 2 });
+    expect(await visit({ APP_KEY: newKey })).toEqual({ visits: 1 });
+  });
+
+  it('SESSION_ENCRYPT stays off by default — and the cookie driver never encrypts twice (its data is a cookie)', async () => {
+    const plain = await boot({ SESSION_DRIVER: 'memory' }, []);
+    expect(plain.container.make(SessionCodec)).toBe(plainSessionCodec);
+    const cookie = await boot({ SESSION_DRIVER: 'cookie', SESSION_ENCRYPT: 'true' }, []);
+    expect(cookie.container.make(SessionCodec)).toBe(plainSessionCodec);
+    await expect(boot({ SESSION_DRIVER: 'memory', SESSION_ENCRYPT: 'yes' }, [])).rejects.toThrow(/SESSION_ENCRYPT/);
+  });
+
+  it('database: a sessions table made before hashed ids and versions names the upgrade', async () => {
+    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const db = app.container.make(Connections).get();
+    await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
+    const response = await createHttpKernel(app).request('/count', { headers: { accept: 'application/json' } });
+    expect(response.status).toBe(500);
+    await expect(app.container.make(SessionStore).read('a'.repeat(64))).rejects.toThrow('Run `bespoke make:session-table --upgrade` and `bespoke migrate`');
     await app.shutdown();
   });
 
@@ -133,7 +188,7 @@ describe('SESSION_DRIVER', () => {
     expect(await redis.command<string[]>(['KEYS', `${prefix}session:*`])).toEqual([]);
     await kernel.request('/count', { headers: { accept: 'application/json' } });
     const [key] = await redis.command<string[]>(['KEYS', `${prefix}session:*`]);
-    expect(key).toMatch(new RegExp(`^${prefix}session:[\\w-]{40}$`));
+    expect(key).toMatch(new RegExp(`^${prefix}session:[0-9a-f]{64}$`)); // the hash of the id (E144)
     const ttl = await redis.command<number>(['TTL', key!]);
     expect(ttl).toBeGreaterThan(1790);
     expect(ttl).toBeLessThanOrEqual(1800);
@@ -145,7 +200,8 @@ describe('SESSION_DRIVER', () => {
 describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', () => {
   class Rollback extends Error {}
   const System = (file: string) => defineConnection('system', { env: v.object({}), resolve: () => ({ driver: 'sqlite', database: file }) });
-  const DATA = { _token: 'x'.repeat(40), visits: 1 };
+  const DATA = JSON.stringify({ _token: 'x'.repeat(40), visits: 1 });
+  const NEW = { expectedVersion: undefined, lifetimeSeconds: 60 };
   const ids = async (connections: Connections, name = 'default') =>
     (await sql<{ id: string }>`select id from sessions`.execute(connections.get(name))).rows.map((row) => row.id);
 
@@ -155,13 +211,13 @@ describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', 
     await migrate(connections);
     const store = app.container.make(SessionStore);
     await connections.transaction(async () => {
-      await expect(store.write('a'.repeat(40), DATA, 60)).rejects.toThrow(InfrastructureTransactionError);
-      await expect(store.writeIfExists('a'.repeat(40), DATA, 60)).rejects.toThrow(
+      await expect(store.write('a'.repeat(64), DATA, NEW)).rejects.toThrow(InfrastructureTransactionError);
+      await expect(store.write('a'.repeat(64), DATA, { ...NEW, expectedVersion: 1 })).rejects.toThrow(
         'The session store (SESSION_DRIVER=database) cannot work inside the open transaction on the database connection "default" (E108)',
       );
     });
-    await store.write('a'.repeat(40), DATA, 60); // outside: the shared file works
-    expect(await ids(connections)).toEqual(['a'.repeat(40)]);
+    await store.write('a'.repeat(64), DATA, NEW); // outside: the shared file works
+    expect(await ids(connections)).toEqual(['a'.repeat(64)]);
     await app.shutdown();
   });
 
@@ -179,11 +235,11 @@ describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', 
     const store = app.container.make(SessionStore);
     await expect(
       connections.transaction(async () => {
-        await store.write('b'.repeat(40), DATA, 60);
+        await store.write('b'.repeat(64), DATA, NEW);
         throw new Rollback();
       }),
     ).rejects.toBeInstanceOf(Rollback);
-    expect(await ids(connections, 'system')).toEqual(['b'.repeat(40)]);
+    expect(await ids(connections, 'system')).toEqual(['b'.repeat(64)]);
     await app.shutdown();
   });
 
@@ -195,13 +251,13 @@ describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', 
       const store = app.container.make(SessionStore);
       await expect(
         connections.transaction(async () => {
-          await store.write('c'.repeat(40), DATA, 60);
-          expect(await store.writeIfExists('c'.repeat(40), { ...DATA, visits: 2 }, 60)).toBe(true);
+          await store.write('c'.repeat(64), DATA, NEW);
+          expect(await store.write('c'.repeat(64), '{"visits":2}', { ...NEW, expectedVersion: 1 })).toBe('written');
           throw new Rollback();
         }),
       ).rejects.toBeInstanceOf(Rollback);
-      expect(await ids(connections)).toEqual(['c'.repeat(40)]);
-      expect(await store.read('c'.repeat(40))).toEqual({ ...DATA, visits: 2 });
+      expect(await ids(connections)).toEqual(['c'.repeat(64)]);
+      expect(await store.read('c'.repeat(64))).toEqual({ data: '{"visits":2}', version: 2 });
       await app.shutdown();
     } finally {
       await fresh.drop();
@@ -220,13 +276,13 @@ describe('session:prune', () => {
     const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:', SESSION_LIFETIME: '1' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     const store = app.container.make(SessionStore);
-    await store.write('a'.repeat(40), { x: 1 }, 60);
-    await store.write('b'.repeat(40), { x: 1 }, 60);
-    await sql`update sessions set last_activity = last_activity - 120000 where id = ${'a'.repeat(40)}`.execute(app.container.make(Connections).get());
+    await store.write('a'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
+    await store.write('b'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
+    await sql`update sessions set last_activity = last_activity - 120000 where id = ${'a'.repeat(64)}`.execute(app.container.make(Connections).get());
     const { input: run, lines } = input();
     expect(await app.container.make(PruneSessionsCommand).handle(run)).toBe(0);
     expect(lines).toEqual(['✓ Pruned 1 expired session (database).']);
-    expect(await store.read('b'.repeat(40))).toEqual({ x: 1 });
+    expect(await store.read('b'.repeat(64))).toEqual({ data: '{"x":1}', version: 1 });
     await app.shutdown();
   });
 
@@ -266,5 +322,28 @@ describe('make:session-table', () => {
     lines.length = 0;
     expect(await new MakeSessionTableCommand().handle(run)).toBe(1);
     expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sessions table has its migration.`]);
+    // An app made before W8: --upgrade writes the migration that makes the table anew (hashed keys, version).
+    lines.length = 0;
+    expect(await new MakeSessionTableCommand().handle({ ...(run as object), options: { upgrade: true } } as never)).toBe(0);
+    const upgrade = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_upgrade_sessions_table.ts'))!;
+    expect(readFileSync(join(root, 'modules/system/migrations', upgrade), 'utf8')).toContain("table.integer('version').default(1)");
+    expect(lines).toEqual([`✓ Created modules/system/migrations/${upgrade}`, 'Then: bespoke migrate']);
+  });
+
+  it('the upgrade migration turns an old table into one the store writes — every old row gone', async () => {
+    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const connections = app.container.make(Connections);
+    const db = connections.get();
+    await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
+    await sql`insert into sessions values (${'r'.repeat(40)}, '1', '{"_auth_id":"1"}', ${Date.now()})`.execute(db);
+    const { Schema } = await import('@bespokecore/database');
+    const { SESSIONS_UPGRADE_MIGRATION } = await import('./commands/make-session-table.ts');
+    const upgrade = ((await import(SESSIONS_UPGRADE_MIGRATION.href)) as { default: { up(schema: InstanceType<typeof Schema>): Promise<void> } }).default;
+    await upgrade.up(new Schema(db, connections.options().driver));
+    expect((await sql`select * from sessions`.execute(db)).rows).toEqual([]);
+    const counted = await createHttpKernel(app).request('/count', { headers: { accept: 'application/json' } });
+    expect(await counted.json()).toEqual({ visits: 1 });
+    expect((await sql<{ version: number }>`select version from sessions`.execute(db)).rows).toEqual([{ version: 1 }]);
+    await app.shutdown();
   });
 });

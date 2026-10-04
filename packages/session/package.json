@@ -62,17 +62,22 @@
   },
   "dependencies": {
     "@bespokecore/core": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/router": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
+    "@bespokecore/cache": "workspace:*",
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/database": "workspace:*",
     "@bespokecore/redis": "workspace:*",
     "@bespokecore/scheduler": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "@bespokecore/cache": {
+      "optional": true
+    },
     "@bespokecore/cli": {
       "optional": true
     },
@@ -90,7 +95,6 @@
     "@bespokecore/cache": "workspace:*",
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
     "@bespokecore/redis": "workspace:*",
     "@bespokecore/scheduler": "workspace:*",
     "@bespokecore/server": "workspace:*"

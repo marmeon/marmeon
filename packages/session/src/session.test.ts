@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CookieJar } from '@bespokecore/router';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
+import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
-import type { SessionStore } from './store.ts';
+import { sessionKey, type SessionPayload, type SessionStore } from './store.ts';
 import { CookieSessionStore } from './stores/cookie.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
@@ -21,11 +22,17 @@ const config = { lifetime: 120 } as SessionConfig;
 
 /** One request: start the session from `id`, run `use`, save. Returns the id for the next request. */
 async function request(store: SessionStore, id: string | undefined, use: (session: Session) => void = () => {}): Promise<Session> {
-  const session = new Session(store, config);
+  const session = new Session(store, config, plainSessionCodec);
   await session.start(id);
   use(session);
   await session.save();
   return session;
+}
+
+/** The payload stored for the session `id` (under its key, E144), as JSON. */
+async function stored(store: SessionStore, id: string): Promise<SessionPayload | undefined> {
+  const record = await store.read(sessionKey(id));
+  return record ? (JSON.parse(record.data) as SessionPayload) : undefined;
 }
 
 describe('Session', () => {
@@ -81,7 +88,7 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.hasFlash()).toBe(false));
     // A read-only request (an island) takes none.
     const { id: second } = await request(store, undefined, (session) => session.queueFlash(message('2')));
-    const island = new Session(store, config);
+    const island = new Session(store, config, plainSessionCodec);
     await island.start(second);
     island.lock(() => false);
     expect(island.takeFlash()).toEqual([]);
@@ -118,7 +125,7 @@ describe('Session', () => {
 
     expect(login.id).not.toBe(planted.id);
     expect(login.token()).not.toBe(token);
-    expect(await store.read(planted.id)).toBeUndefined();
+    expect(await stored(store, planted.id)).toBeUndefined();
     await request(store, login.id, (session) => expect(session.all()).toEqual({ visits: 3, user_id: '1' }));
   });
 
@@ -135,15 +142,15 @@ describe('Session', () => {
     const signedIn = await request(store, undefined, (session) => session.put('user_id', '1'));
 
     // A slow request (a page's deferred props) starts with the signed-in session …
-    const slow = new Session(store, config);
+    const slow = new Session(store, config, plainSessionCodec);
     await slow.start(signedIn.id);
     // … the sign-out overtakes it …
     const signedOut = await request(store, signedIn.id, (session) => session.invalidate());
     // … and then the slow one finishes: nothing written, the old id stays gone.
     expect(await slow.save()).toBe(false);
-    expect(await store.read(signedIn.id)).toBeUndefined();
+    expect(await stored(store, signedIn.id)).toBeUndefined();
     expect((await request(store, signedIn.id)).get('user_id')).toBeUndefined();
-    expect(await store.read(signedOut.id)).toBeDefined();
+    expect(await stored(store, signedOut.id)).toBeDefined();
   });
 
   it('keeps the CSRF token stable across requests', async () => {
@@ -158,14 +165,13 @@ describe('Session', () => {
     const store = new MemorySessionStore();
     const writes: string[] = [];
     const counting: SessionStore = {
-      read: (id) => store.read(id),
-      write: async (id, data, lifetime) => (writes.push(id), store.write(id, data, lifetime)),
-      writeIfExists: (id, data, lifetime) => store.writeIfExists(id, data, lifetime),
-      destroy: (id) => store.destroy(id),
+      read: (key) => store.read(key),
+      write: async (key, data, options) => (writes.push(key), store.write(key, data, options)),
+      destroy: (key) => store.destroy(key),
       gc: () => store.gc(),
     };
     const save = async (use: (session: Session) => void = () => {}) => {
-      const session = new Session(counting, config);
+      const session = new Session(counting, config, plainSessionCodec);
       await session.start(undefined);
       use(session);
       return { saved: await session.save(), persists: session.persists };
@@ -184,31 +190,70 @@ describe('Session', () => {
     expect(writes).toHaveLength(4);
   });
 
-  it('writes a loaded session back in one atomic step (writeIfExists) — no read before it', async () => {
+  it('writes a loaded session back in one atomic step (compare-and-set on its version) — no read before it', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => session.put('visits', 1));
     const calls: string[] = [];
     const watched: SessionStore = {
       read: (key) => (calls.push('read'), store.read(key)),
-      write: (key, data, lifetime) => (calls.push('write'), store.write(key, data, lifetime)),
-      writeIfExists: (key, data, lifetime) => (calls.push('writeIfExists'), store.writeIfExists(key, data, lifetime)),
+      write: (key, data, options) => (calls.push(`write@${options.expectedVersion}`), store.write(key, data, options)),
       destroy: (key) => (calls.push('destroy'), store.destroy(key)),
       gc: () => store.gc(),
     };
     await request(watched, id, (session) => session.put('visits', 2));
-    expect(calls).toEqual(['read', 'writeIfExists']); // the load, then the write-back
+    expect(calls).toEqual(['read', 'write@1']); // the load, then the write-back over the version it loaded
     calls.length = 0;
-    // A sign-in: the old id goes, the NEW id is written with write — writeIfExists would find nothing under it.
+    // A sign-in: the old id goes, the NEW id is written as a new key (no version) — a write back would find nothing under it.
     const signedIn = await request(watched, id, (session) => {
       session.regenerate();
       session.put('user_id', '1');
     });
-    expect(calls).toEqual(['read', 'destroy', 'write']);
-    expect(await store.read(signedIn.id)).toMatchObject({ visits: 2, user_id: '1' });
+    expect(calls).toEqual(['read', 'destroy', 'write@undefined']);
+    expect(await stored(store, signedIn.id)).toMatchObject({ visits: 2, user_id: '1' });
+    expect(await store.read(sessionKey(id))).toBeUndefined();
+  });
+
+  it('a session other requests write without pause: save() gives up after a while — no endless retry, nothing written, said (E145)', async () => {
+    const store = new MemorySessionStore();
+    const { id } = await request(store, undefined, (session) => session.put('visits', 1));
+    let writes = 0;
+    // Every write meets a newer version: another request always got there first.
+    const busy: SessionStore = {
+      read: async (key) => {
+        const current = await store.read(key);
+        return current && { data: JSON.stringify({ ...JSON.parse(current.data), elsewhere: writes }), version: current.version + writes };
+      },
+      write: async () => (writes++, 'conflict'),
+      destroy: (key) => store.destroy(key),
+      gc: () => store.gc(),
+    };
+    const session = new Session(busy, config, plainSessionCodec);
+    await session.start(id);
+    session.put('visits', 2);
+    const started = performance.now();
+    expect(await session.save()).toBe(false);
+    expect(session.abandoned).toBe(true);
+    expect(performance.now() - started).toBeLessThan(3_000);
+    expect(writes).toBeGreaterThan(3);
+    expect(JSON.parse((await store.read(sessionKey(id)))!.data)).toMatchObject({ visits: 1 });
+  });
+
+  it('stores a session under the SHA-256 of its id — never the id (E144)', async () => {
+    const store = new MemorySessionStore();
+    const keys: string[] = [];
+    const watched: SessionStore = { read: (key) => store.read(key), write: (key, data, options) => (keys.push(key), store.write(key, data, options)), destroy: (key) => store.destroy(key), gc: () => store.gc() };
+    const { id } = await request(watched, undefined, (session) => session.put('visits', 1));
+    expect(keys).toEqual([sessionKey(id)]);
+    expect(sessionKey(id)).toMatch(/^[0-9a-f]{64}$/);
+    expect(await store.read(id)).toBeUndefined();
+    // The key as a cookie value is no session: a store's keys sign nobody in.
+    const replayed = await request(store, sessionKey(id));
+    expect(replayed.id).not.toBe(sessionKey(id));
+    expect(replayed.get('visits')).toBeUndefined();
   });
 
   it('explains a missing StartSession', () => {
-    expect(() => new Session(new MemorySessionStore(), config).get('user_id')).toThrow('add the StartSession middleware');
+    expect(() => new Session(new MemorySessionStore(), config, plainSessionCodec).get('user_id')).toThrow('add the StartSession middleware');
   });
 
   it('types declared keys and leaves the rest unknown', async () => {
@@ -238,62 +283,69 @@ describe('session stores', () => {
 
     const restarted = new FileSessionStore(join(dir)); // like a new process
     await request(restarted, id, (session) => expect(session.get('user_id')).toBe('7'));
-    expect(readdirSync(dir)).toEqual([id]); // no temporary files left
-    expect(statSync(join(dir, id)).mode & 0o777).toBe(0o600);
+    expect(readdirSync(dir)).toEqual([sessionKey(id)]); // named by the key, no temporary files or guards left
+    expect(statSync(join(dir, sessionKey(id))).mode & 0o777).toBe(0o600);
   });
 
   it('file: expires by lifetime and garbage-collects old files', async () => {
     const dir = tempDir();
     const store = new FileSessionStore(dir);
-    await store.write('a'.repeat(40), { x: 1 }, -1);
-    expect(await store.read('a'.repeat(40))).toBeUndefined();
+    await store.write('a'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: -1 });
+    expect(await store.read('a'.repeat(64))).toBeUndefined();
 
-    await store.write('b'.repeat(40), { x: 1 }, 60);
+    await store.write('b'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
     const past = new Date(Date.now() - 3_600_000);
-    utimesSync(join(dir, 'b'.repeat(40)), past, past);
+    utimesSync(join(dir, 'b'.repeat(64)), past, past);
     expect(await store.gc(60)).toBe(1); // by modification time, like Laravel's file handler
-    expect(existsSync(join(dir, 'a'.repeat(40)))).toBe(true); // expired by its data, collected once it is old
-    expect(existsSync(join(dir, 'b'.repeat(40)))).toBe(false);
+    expect(existsSync(join(dir, 'a'.repeat(64)))).toBe(true); // expired by its data, collected once it is old
+    expect(existsSync(join(dir, 'b'.repeat(64)))).toBe(false);
   });
 
   it('file: writes back in place without ever losing the session — racing writes and reads of long and short records', async () => {
     const store = new FileSessionStore(tempDir());
-    const id = 'd'.repeat(40);
-    await store.write(id, { note: '' }, 60);
-    const records = Array.from({ length: 60 }, (_, i) => ({ round: i, note: (i % 2 === 0 ? 'long ' : 's').repeat(i % 2 === 0 ? 100_000 : 1) }));
-    const [written, read] = await Promise.all([
-      Promise.all(records.map((record) => store.writeIfExists(id, record, 60))),
-      Promise.all(records.map(() => store.read(id))),
-    ]);
+    const key = 'd'.repeat(64);
+    await store.write(key, '', { expectedVersion: undefined, lifetimeSeconds: 60 });
+    const records = Array.from({ length: 60 }, (_, i) => JSON.stringify({ round: i, note: (i % 2 === 0 ? 'long ' : 's').repeat(i % 2 === 0 ? 100_000 : 1) }));
+    // Each writer writes over the version it read, again until it lands: in place, under the guard.
+    const writeUntilWritten = async (data: string) => {
+      for (;;) {
+        const current = await store.read(key);
+        if ((await store.write(key, data, { expectedVersion: current!.version, lifetimeSeconds: 60 })) === 'written') return true;
+      }
+    };
+    const [written, read] = await Promise.all([Promise.all(records.map(writeUntilWritten)), Promise.all(records.map(() => store.read(key)))]);
     expect(written.every(Boolean)).toBe(true);
     // A reader that meets a write in progress reads again; whatever order the writes landed in, one whole record is left.
     expect(read.filter((data) => data === undefined)).toEqual([]);
-    expect(records).toContainEqual(await store.read(id));
+    const last = await store.read(key);
+    expect(records).toContain(last!.data);
+    expect(last!.version).toBe(61);
   });
 
-  it('file: refuses ids that are not session ids', async () => {
-    await expect(new FileSessionStore(tempDir()).destroy('../escape')).rejects.toThrow('Invalid session id');
+  it('file: refuses keys that are not session keys (SHA-256 hex) — a raw session id included', async () => {
+    await expect(new FileSessionStore(tempDir()).destroy('../escape')).rejects.toThrow('Invalid session key');
+    await expect(new FileSessionStore(tempDir()).read('A'.repeat(40))).rejects.toThrow('Invalid session key');
   });
 
   it('memory: expires by lifetime', async () => {
     const store = new MemorySessionStore();
-    await store.write('c'.repeat(40), { x: 1 }, -1);
-    expect(await store.read('c'.repeat(40))).toBeUndefined();
+    await store.write('c'.repeat(64), '{}', { expectedVersion: undefined, lifetimeSeconds: -1 });
+    expect(await store.read('c'.repeat(64))).toBeUndefined();
     expect(await store.gc()).toBe(1);
   });
 
   it('cookie: keeps the data in a cookie next to the id — and refuses oversized sessions', async () => {
     const jar = new CookieJar(null);
     const store = new CookieSessionStore(jar, 'app_session');
-    await store.write('ignored', { user_id: '1' }, 60);
+    await store.write('ignored', '{"user_id":"1"}', { expectedVersion: undefined, lifetimeSeconds: 60 });
     const [cookie] = await jar.queued();
     expect(cookie).toMatch(/^app_session_data=.*Max-Age=60/);
 
     const next = new CookieSessionStore(new CookieJar(cookie!.split(';')[0]!), 'app_session');
-    expect(await next.read()).toEqual({ user_id: '1' });
-    await expect(store.write('x', { big: 'x'.repeat(3000) }, 60)).rejects.toThrow('too large for the cookie driver');
-    // It cannot know what another request destroyed (E46): a write-back always writes.
-    expect(await new CookieSessionStore(new CookieJar(null), 'app_session').writeIfExists('gone', { user_id: '1' }, 60)).toBe(true);
+    expect(await next.read()).toEqual({ data: '{"user_id":"1"}', version: 0 });
+    await expect(store.write('x', JSON.stringify({ big: 'x'.repeat(3000) }), { expectedVersion: 0, lifetimeSeconds: 60 })).rejects.toThrow('too large for the cookie driver');
+    // It cannot know what another request destroyed or wrote (E46): a write back always writes.
+    expect(await new CookieSessionStore(new CookieJar(null), 'app_session').write('gone', '{}', { expectedVersion: 7, lifetimeSeconds: 60 })).toBe('written');
   });
 });
 
@@ -302,7 +354,7 @@ describe('Session — read-only (an island, E52)', () => {
     const store = new MemorySessionStore();
     const id = (await request(store, undefined, (session) => session.flash('visits', 1))).id;
     const asked: string[] = [];
-    const session = new Session(store, config);
+    const session = new Session(store, config, plainSessionCodec);
     await session.start(id);
     session.lock((what) => (asked.push(what), false));
     expect(session.readOnly).toBe(true);
@@ -322,7 +374,7 @@ describe('Session — read-only (an island, E52)', () => {
   });
 
   it('a strict lock (development) throws where the write is made', async () => {
-    const session = new Session(new MemorySessionStore(), config);
+    const session = new Session(new MemorySessionStore(), config, plainSessionCodec);
     await session.start(undefined);
     session.lock((what) => {
       throw new Error(`no: ${what}`);
@@ -331,13 +383,17 @@ describe('Session — read-only (an island, E52)', () => {
   });
 });
 
-// Type guarantees (never called — checked by the build): a store says whether it wrote a session back.
+// Type guarantees (never called — checked by the build): a store says what its compare-and-set did (E145).
 function storeContract() {
-  // @ts-expect-error -- a store without writeIfExists is not a SessionStore (E45)
-  const legacy: SessionStore = { read: async () => undefined, write: async () => {}, destroy: async () => {}, gc: async () => 0 };
+  // @ts-expect-error -- the store contract before W8 (writeIfExists, payload objects) is not a SessionStore any more
+  const legacy: SessionStore = { read: async () => undefined, write: async () => {}, writeIfExists: async () => true, destroy: async () => {}, gc: async () => 0 };
   const store: SessionStore = new MemorySessionStore();
-  // @ts-expect-error -- writeIfExists answers whether it wrote: a boolean, not void
-  const written: Promise<void> = store.writeIfExists('id', {}, 60);
+  // @ts-expect-error -- a payload is text (JSON, or encrypted) — the store never sees an object
+  void store.write('k', { user: 1 }, { expectedVersion: 1, lifetimeSeconds: 60 });
+  // @ts-expect-error -- a write says what it did: written, conflict or gone — not a boolean
+  const written: Promise<boolean> = store.write('k', '{}', { expectedVersion: 1, lifetimeSeconds: 60 });
+  // @ts-expect-error -- the expected version is required: undefined for a new key, said out loud
+  void store.write('k', '{}', { lifetimeSeconds: 60 });
   return [legacy, written];
 }
 void storeContract;

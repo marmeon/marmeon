@@ -98,6 +98,7 @@ declare module '@bespokecore/database' {
       user_id: string | null;
       payload: Secret<string>;
       last_activity: number;
+      version: Generated<number>;
     };
     /** Owned by `system`. */
     temporary_uploads: {

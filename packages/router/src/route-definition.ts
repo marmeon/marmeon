@@ -17,6 +17,7 @@ export class RouteDefinition {
   readonly #namePrefix: string;
   #name: string | undefined;
   #internal: boolean;
+  #blocking: RouteBlocking | undefined;
 
   constructor(options: {
     methods: readonly HttpMethod[];
@@ -67,4 +68,35 @@ export class RouteDefinition {
   get isInternal(): boolean {
     return this.#internal;
   }
+
+  /**
+   * Runs the route's requests one at a time per session (Laravel's `block()`, E145): `StartSession` takes an atomic lock on the
+   * session (needs `@bespokecore/cache` — locks since E103) before it loads it and frees it after saving it. A second request of
+   * the same browser waits up to `waitSeconds` (then 423); a lock a crashed request held expires after `lockSeconds`. For routes
+   * that read the session, decide on it and write it back — where merging concurrent writes (compare-and-set, the default) is
+   * not enough:
+   *
+   * ```ts
+   * Route.post('/cart/checkout', CheckoutController).name('cart.checkout').block();       // 10 s lock, waits up to 10 s
+   * Route.post('/wizard/step', WizardStepController).block(5, 2);
+   * ```
+   */
+  block(lockSeconds = 10, waitSeconds: number = lockSeconds): this {
+    for (const [what, value] of [['lockSeconds', lockSeconds], ['waitSeconds', waitSeconds]] as const) {
+      if (!Number.isFinite(value) || value <= 0) throw new TypeError(`block(): ${what} must be a positive number of seconds (got ${value}) — ${this.path}.`);
+    }
+    this.#blocking = { lockSeconds, waitSeconds };
+    return this;
+  }
+
+  /** The session lock {@link block} asks for — undefined for a route that does not block. */
+  get blocking(): RouteBlocking | undefined {
+    return this.#blocking;
+  }
+}
+
+/** What {@link RouteDefinition.block} asks for: hold the session's lock at most `lockSeconds`, wait for it at most `waitSeconds`. */
+export interface RouteBlocking {
+  readonly lockSeconds: number;
+  readonly waitSeconds: number;
 }

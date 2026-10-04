@@ -82,6 +82,10 @@ export default defineRoutes((Route) => {
   `browser: false`, naming it in client code is a compile error, and it never enters the browser's manifest. For links only
   the server builds, like the signed verification link it mails:
   `signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal()`.
+- **`.block(lockSeconds = 10, waitSeconds = lockSeconds)`** — on a route — runs its requests one at a time per session (Laravel's
+  `block()`, E145): `StartSession` of [@bespokecore/session](../session/README.md#blocking-routes-block) holds the session's lock
+  (through the cache) from before it reads the session until it saved it; a request that waits longer answers 423.
+  `RouteDefinition.blocking` says what a route asked for.
 - **What the types refuse** (and the router at boot, for code they did not check): a GET route whose controller validates a
   body (E65: validate its URL with `query`), a route of another method whose controller answers `this.island(…)` (E52:
   islands only read), a `bind('user', …)` without a `:user` in the path.

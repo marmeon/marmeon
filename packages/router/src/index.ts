@@ -1,5 +1,6 @@
 export { Route, joinPaths } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
+export type { RouteBlocking } from './route-definition.ts';
 export { Router, defineRoutes, defaultToResponse, isControllerClass } from './router.ts';
 export type { DispatchInput, DispatchOptions, LoadOptions, PageQuery, ResponseContext, ResponseFactory, RouteDefinitions, RouteInterceptor, RouterOptions } from './router.ts';
 export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';

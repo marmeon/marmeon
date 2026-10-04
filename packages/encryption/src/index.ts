@@ -120,9 +120,10 @@ export const encryptionSolutions = defineSolutions([
     solve: () => ({
       title: 'Generate an application key',
       text:
-        'APP_KEY encrypts the cookies and the session and signs URLs; without a valid one (base64: and 32 random bytes) the app ' +
-        'cannot start. "bespoke key:generate" writes a new one into .env. Never replace the key of a running production app ' +
-        'without moving the old one to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links would stop working.',
+        'APP_KEY encrypts the cookies (the session cookie, which carries the session id, among them), the session data when ' +
+        'SESSION_ENCRYPT=true, and signs URLs; without a valid one (base64: and 32 random bytes) the app cannot start. ' +
+        '"bespoke key:generate" writes a new one into .env. To replace the key of a running app use "bespoke key:generate --force": ' +
+        'it moves the old key to APP_PREVIOUS_KEYS, so sessions, encrypted cookies and signed links stay valid.',
       command: 'bespoke key:generate',
     }),
   },

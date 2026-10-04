@@ -249,7 +249,7 @@ describe('bespoke make:* (generated code compiles)', () => {
     expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: bespoke make:module cart');
   }, ciTimeout);
 
-  it('generates the application key into .env — without booting, and never silently replacing one', () => {
+  it('generates the application key into .env — without booting, never silently replacing one, rotating with --force (E169)', () => {
     writeFileSync(join(app, '.env.example'), 'APP_NAME=Shop\nAPP_KEY=\n');
     expect(bespoke(app, ['key:generate']).code).toBe(0);
     const env = readFileSync(join(app, '.env'), 'utf8');
@@ -260,8 +260,18 @@ describe('bespoke make:* (generated code compiles)', () => {
     expect(again.stderr).toContain('APP_KEY is already set');
     expect(readFileSync(join(app, '.env'), 'utf8')).toBe(env);
 
+    // --force rotates (E169): the old key moves to APP_PREVIOUS_KEYS — what it encrypted stays readable.
+    const first = /^APP_KEY=(.*)$/m.exec(env)![1]!;
+    const rotated = bespoke(app, ['key:generate', '--force']);
+    expect(rotated.code).toBe(0);
+    expect(rotated.stdout).toContain('The old key moved to APP_PREVIOUS_KEYS');
+    const second = readFileSync(join(app, '.env'), 'utf8');
+    expect(second).toMatch(new RegExp(`^APP_NAME=Shop\nAPP_KEY=base64:[A-Za-z0-9+/]{43}=\nAPP_PREVIOUS_KEYS=${first.replaceAll('+', '\\+')}\n$`));
+    expect(/^APP_KEY=(.*)$/m.exec(second)![1]).not.toBe(first);
+    // Again: the newest old key first, none twice.
+    const secondKey = /^APP_KEY=(.*)$/m.exec(second)![1]!;
     expect(bespoke(app, ['key:generate', '--force']).code).toBe(0);
-    expect(readFileSync(join(app, '.env'), 'utf8')).not.toBe(env);
+    expect(/^APP_PREVIOUS_KEYS=(.*)$/m.exec(readFileSync(join(app, '.env'), 'utf8'))![1]).toBe(`${secondKey},${first}`);
     expect(bespoke(app, ['key:generate', '--show']).stdout).toMatch(/^base64:[A-Za-z0-9+/]{43}=\n$/);
   });
 

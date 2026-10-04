@@ -989,6 +989,9 @@ importers:
       '@bespokecore/core':
         specifier: workspace:*
         version: link:../core
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http
@@ -1008,9 +1011,6 @@ importers:
       '@bespokecore/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
-        specifier: workspace:*
-        version: link:../encryption
       '@bespokecore/redis':
         specifier: workspace:*
         version: link:../redis

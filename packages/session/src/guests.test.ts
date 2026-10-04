@@ -50,10 +50,9 @@ describe.each(storeKinds)('guests and the %s session store', (kind) => {
     let writes = 0;
     const store = current.store;
     const counting: SessionStore = {
-      read: (id) => store.read(id),
-      write: (id, data, lifetime) => (writes++, store.write(id, data, lifetime)),
-      writeIfExists: (id, data, lifetime) => store.writeIfExists(id, data, lifetime),
-      destroy: (id) => store.destroy(id),
+      read: (key) => store.read(key),
+      write: (key, data, options) => (writes++, store.write(key, data, options)),
+      destroy: (key) => store.destroy(key),
       gc: (lifetime) => store.gc(lifetime),
     };
     const application = await createApplication({

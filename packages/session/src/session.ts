@@ -1,6 +1,9 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+import { isDeepStrictEqual } from 'node:util';
 import { OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@bespokecore/http';
+import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
-import { createSessionId, SESSION_ID, SessionStore, type SessionPayload } from './store.ts';
+import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
 
 /**
  * Typed session keys. Apps and packages declare what they store:
@@ -27,6 +30,13 @@ const MESSAGES = '_flash_messages';
 const MAX_MESSAGES = 20;
 const TOKEN = '_token';
 const OLD_INPUT = OLD_INPUT_KEY; // what `redirect().withInput()` flashes
+/**
+ * How long `save()` keeps writing back a session that other requests write at the same time (E145): each conflict waits a
+ * random moment (up to 2, 4, 8, … 64 ms — so writers that collided do not collide again in step), reads it again and merges.
+ * Every round lets at least one writer through, so 20 requests of one session at once all land (W5b.7) — on a slow store
+ * under load too; the bound only stops a request from waiting on a session that is written without pause.
+ */
+const SAVE_PATIENCE_MS = 2_000;
 
 interface FlashState {
   new: string[];
@@ -43,11 +53,20 @@ interface FlashState {
 export class Session {
   readonly #store: SessionStore;
   readonly #config: SessionConfig;
+  readonly #codec: SessionCodec;
   #id = '';
+  /** The store key of `#id` (its SHA-256, E144) — made when first needed. */
+  #key: string | undefined;
   #data: SessionPayload = {};
   #started = false;
   /** The session came from the store (it is not new in this request). */
   #loaded = false;
+  /** The version the store had when the session was loaded — what a write back compares (E145). */
+  #version: number | undefined;
+  /** The session's JSON as loaded: what this request changed is measured against it when a write back meets a conflict. */
+  #base = '{}';
+  /** The last `save()` met concurrent writes on every attempt and gave up (E145). */
+  #abandoned = false;
   readonly #obsolete: string[] = [];
   /** Set for a read-only request (an island, E52): asked before every write. */
   #permit: ((what: string) => boolean) | undefined;
@@ -58,9 +77,10 @@ export class Session {
   /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (W6.10: their live streams close). */
   #ended: string[] = [];
 
-  constructor(store: SessionStore, config: SessionConfig) {
+  constructor(store: SessionStore, config: SessionConfig, codec: SessionCodec) {
     this.#store = store;
     this.#config = config;
+    this.#codec = codec;
   }
 
   get started(): boolean {
@@ -91,10 +111,26 @@ export class Session {
     return this.#id;
   }
 
-  /** Loads the session `id` (from the cookie), or starts a new one if it is unknown or expired. */
+  /**
+   * Loads the session `id` (from the cookie) — looked up by its key, `sessionKey(id)` (E144) — or starts a new one if it is unknown,
+   * expired or unreadable (an encrypted payload that does not decrypt).
+   */
   async start(id?: string): Promise<void> {
-    const data = id && SESSION_ID.test(id) ? await this.#store.read(id) : undefined;
-    this.#id = data ? id! : createSessionId();
+    const key = id && SESSION_ID.test(id) ? sessionKey(id) : undefined;
+    const stored = key ? await this.#store.read(key) : undefined;
+    const json = stored ? await this.#codec.open(stored.data, key!) : undefined;
+    const data = json === undefined ? undefined : parsePayload(json);
+    if (data) {
+      this.#id = id!;
+      this.#key = key;
+      this.#version = stored!.version;
+      this.#base = json!;
+    } else {
+      this.#id = createSessionId();
+      this.#key = undefined;
+      this.#version = undefined;
+      this.#base = '{}';
+    }
     this.#data = data ?? {};
     this.#loaded = data !== undefined;
     this.#started = true;
@@ -108,6 +144,7 @@ export class Session {
    */
   adopt(page: Session): void {
     this.#id = page.id;
+    this.#key = page.#key;
     this.#data = structuredClone(page.#data);
     // The page's session exists if it came from the store — or the page keeps it (a guest's page that signed a live channel).
     this.#loaded = page.exists;
@@ -299,6 +336,7 @@ export class Session {
     if (!this.#may('session.regenerate()')) return;
     this.#obsolete.push(this.#id);
     this.#id = createSessionId();
+    this.#key = undefined;
     this.regenerateToken();
   }
 
@@ -317,12 +355,18 @@ export class Session {
    *
    * That other request was a sign-out (`invalidate()`) or a sign-in (`regenerate()`) of the same browser, which
    * overtook this one — say, while a page's deferred props were still loading. Writing the old session back would
-   * undo the sign-out (its data still has the user). So a loaded session is written back with the store's atomic
-   * `writeIfExists` (E45): a destroyed one stays destroyed, and the browser keeps the cookie it got from the faster
-   * request. (The cookie driver cannot know: its data travels with each response.)
+   * undo the sign-out (its data still has the user). So a loaded session is written back over the version it was loaded
+   * at — compare-and-set, one atomic step of the store (E45, E145): a destroyed one stays destroyed (`gone`), and the browser
+   * keeps the cookie it got from the faster request. (The cookie driver cannot know: its data travels with each response.)
+   *
+   * Another request that wrote the session meanwhile is a `conflict`: the session is read again and this request's changes
+   * are applied to it — key by key, what this request changed wins (last write wins); the flash messages are merged by their
+   * ids, so none is lost and none a faster request showed comes back (W5b.7). A request that changed nothing stops there: the
+   * newer session already holds everything.
    */
   async save(): Promise<boolean> {
     this.#ensureStarted();
+    this.#abandoned = false;
     // A read-only request never writes the session back: its flash data stays for the page it was meant for.
     if (this.#permit) return false;
     const flash = this.#flash();
@@ -332,14 +376,55 @@ export class Session {
     if (flash.old.length === 0) delete this.#data[FLASH]; // nothing to age: no bookkeeping stored
 
     const lifetime = this.#config.lifetime * 60;
-    // The session this request loaded, under its id: written back only while it still exists — one atomic step.
-    if (this.#loaded && this.#obsolete.length === 0) return this.#store.writeIfExists(this.#id, this.#data, lifetime);
+    // The session this request loaded, under its key: written back over the version it was loaded at.
+    if (this.#loaded && this.#obsolete.length === 0) return this.#writeBack(lifetime);
     // New, or regenerated (a new id): the old id goes, the new one is written — unless a new session holds nothing.
     this.#ended = this.#obsolete.splice(0);
-    for (const id of this.#ended) await this.#store.destroy(id);
+    for (const id of this.#ended) await this.#store.destroy(sessionKey(id));
     if (!this.persists) return false;
-    await this.#store.write(this.#id, this.#data, lifetime);
+    for (let attempt = 1; (await this.#write(undefined, lifetime)) !== 'written'; attempt++) {
+      // The key is taken (an expired session's, or a 240-bit id that collided): another id — never over a stored session.
+      if (attempt === 3) throw new Error('The session store keeps refusing new session keys — does its write() treat expectedVersion: undefined as "a new key"?');
+      this.#id = createSessionId();
+      this.#key = undefined;
+    }
     return true;
+  }
+
+  /** Whether the last `save()` gave up: other requests wrote the session on every attempt (E145). Nothing was written. */
+  get abandoned(): boolean {
+    return this.#abandoned;
+  }
+
+  async #writeBack(lifetime: number): Promise<boolean> {
+    const deadline = performance.now() + SAVE_PATIENCE_MS;
+    for (let attempt = 1; ; attempt++) {
+      const result = await this.#write(this.#version, lifetime);
+      if (result === 'written') return true;
+      if (result === 'gone') return false; // destroyed (signed out or in elsewhere) or expired: stays so
+      // A conflict — another request wrote the session since it was loaded. Read it again, after a random moment.
+      if (performance.now() > deadline) {
+        this.#abandoned = true;
+        return false;
+      }
+      await sleep(Math.random() * Math.min(2 ** attempt, 64));
+      const stored = await this.#store.read(this.#key!);
+      const json = stored ? await this.#codec.open(stored.data, this.#key!) : undefined;
+      const theirs = json === undefined ? undefined : parsePayload(json);
+      if (!theirs) return false; // gone meanwhile
+      const base = parsePayload(this.#base) ?? {};
+      // Nothing changed here: the newer session already is what this request would write.
+      if (isDeepStrictEqual(base, this.#data)) return true;
+      this.#data = mergeSession(base, this.#data, theirs);
+      this.#base = json!;
+      this.#version = stored!.version;
+    }
+  }
+
+  async #write(expectedVersion: number | undefined, lifetimeSeconds: number): Promise<SessionWriteResult> {
+    const key = (this.#key ??= sessionKey(this.#id));
+    const data = await this.#codec.seal(JSON.stringify(this.#data), key);
+    return this.#store.write(key, data, { expectedVersion, lifetimeSeconds, userId: userIdOf(this.#data) });
   }
 
   /** The ids the last `save()` destroyed: the session was regenerated (signed in) or invalidated (signed out). */
@@ -359,4 +444,57 @@ export class Session {
     }
     return this.#data;
   }
+}
+
+/** The payload of a session's JSON — undefined when it is not an object (a broken record starts a new session). */
+function parsePayload(json: string): SessionPayload | undefined {
+  try {
+    const data: unknown = JSON.parse(json);
+    return data !== null && typeof data === 'object' && !Array.isArray(data) ? (data as SessionPayload) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The signed-in user's id as text (ids may be numbers or strings), or null for a guest — the `database` store's `user_id`. */
+function userIdOf(data: SessionPayload): string | null {
+  const id = data[SESSION_USER_KEY];
+  return typeof id === 'string' || typeof id === 'number' || typeof id === 'bigint' ? String(id) : null;
+}
+
+/**
+ * Applies what one request changed (`ours`, against `base` — the session as it loaded it) to the session as another request
+ * left it (`theirs`), E145:
+ *
+ * - every key this request changed, added or removed: as this request has it — last write wins, key by key;
+ * - every other key: as the other request left it;
+ * - flash messages (`_flash_messages`) by their ids (W5b.7): the other request's list, minus the messages this request took
+ *   (shown), plus the messages it added — none is lost, and none a faster request showed comes back;
+ * - the flash bookkeeping (`_flash`): this request's, plus the keys the other request flashed.
+ */
+export function mergeSession(base: SessionPayload, ours: SessionPayload, theirs: SessionPayload): SessionPayload {
+  const merged: SessionPayload = { ...theirs };
+  for (const key of new Set([...Object.keys(base), ...Object.keys(ours)])) {
+    if (key === MESSAGES || key === FLASH || isDeepStrictEqual(base[key], ours[key])) continue;
+    if (Object.hasOwn(ours, key)) merged[key] = ours[key];
+    else delete merged[key];
+  }
+
+  const messages = (data: SessionPayload) => (Array.isArray(data[MESSAGES]) ? (data[MESSAGES] as FlashEntry[]) : []);
+  const before = new Set(messages(base).map((message) => message.id));
+  const kept = new Set(messages(ours).map((message) => message.id));
+  const taken = new Set([...before].filter((id) => !kept.has(id)));
+  const list = messages(theirs).filter((message) => !taken.has(message.id));
+  const present = new Set(list.map((message) => message.id));
+  for (const message of messages(ours)) if (!before.has(message.id) && !present.has(message.id)) list.push(message);
+  if (list.length > 0) merged[MESSAGES] = list.slice(-MAX_MESSAGES);
+  else delete merged[MESSAGES];
+
+  const flash = (data: SessionPayload): FlashState => (data[FLASH] as FlashState | undefined) ?? { new: [], old: [] };
+  const added = (side: 'new' | 'old') => flash(theirs)[side].filter((key) => !flash(base)[side].includes(key));
+  const next = [...new Set([...flash(ours).new, ...added('new')])];
+  const old = [...new Set([...flash(ours).old, ...added('old')])].filter((key) => !next.includes(key));
+  if (next.length > 0 || old.length > 0) merged[FLASH] = { new: next, old } satisfies FlashState;
+  else delete merged[FLASH];
+  return merged;
 }

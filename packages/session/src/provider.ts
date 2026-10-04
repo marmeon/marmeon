@@ -1,7 +1,9 @@
 import { isAbsolute, join } from 'node:path';
 import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
+import { Encrypter } from '@bespokecore/encryption';
 import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
 import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
+import { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
 import { insecureCookieWarning, SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 import { Session } from './session.ts';
@@ -45,6 +47,8 @@ export class SessionServiceProvider implements ServiceProvider {
     // unless its `set` says otherwise (Laravel's cookie jar defaults).
     container.instance(CookieDefaults, { secure: config.secure });
     container.singleton(SessionLottery, () => new SessionLottery(config.lottery));
+    // SESSION_ENCRYPT (E144): payloads encrypted in the store — the cookie driver's are encrypted as a cookie already.
+    container.singleton(SessionCodec, (c) => (config.encrypt && config.driver !== 'cookie' ? new EncryptedSessionCodec(c.make(Encrypter)) : plainSessionCodec));
     // The cookie store works on the request's cookie jar: one per request. The others are shared.
     if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
     else container.singleton(SessionStore, (c) => storeFor(config, c));

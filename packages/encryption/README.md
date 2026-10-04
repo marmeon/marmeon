@@ -23,7 +23,7 @@ storage take it as an optional peer: only an encrypted job or uploads need it.
 ```sh
 bespoke key:generate          # writes APP_KEY=base64:… into .env (copied from .env.example first when there is no .env)
 bespoke key:generate --show   # prints a new key, writes nothing
-bespoke key:generate --force  # replaces a key that is set — see "Key rotation" first
+bespoke key:generate --force  # replaces a key that is set — the old one moves to APP_PREVIOUS_KEYS ("Key rotation")
 ```
 
 `key:generate` runs without booting the app (a missing key is exactly why it cannot boot), and refuses to replace a key that is
@@ -55,7 +55,7 @@ A broken entry in `APP_PREVIOUS_KEYS` fails the same way.
 - **Authenticated:** a payload cannot be read or changed without the key. Tampered bytes, another key, garbage or an empty
   string all end in the same `DecryptError` (`The payload is invalid.`) — it never says which.
 - **`context` binds a payload to its use** (additional authenticated data, default `''`): a value encrypted for the cookie
-  `session` does not decrypt as the cookie `remember`. The framework's contexts are `cookie:<name>` and `queue:<job name>`;
+  `session` does not decrypt as the cookie `remember`. The framework's contexts are `cookie:<name>`, `queue:<job name>` and `session:<key>`;
   pick your own for your own payloads (`exports:download`).
 - **Strings in, strings out:** serialize yourself (`JSON.stringify`) — there is no implicit serialization like Laravel's.
 - **Outside the container:** `new AesGcmEncrypter(key, previousKeys)` takes raw 32-byte keys (anything else is a `TypeError`),
@@ -66,10 +66,13 @@ A broken entry in `APP_PREVIOUS_KEYS` fails the same way.
 `encrypt()` always uses `APP_KEY`; `decrypt()` tries `APP_KEY`, then each of `APP_PREVIOUS_KEYS` in order. The keys derived from
 `APP_KEY` (below) accept the previous keys too — signed links, live tokens and upload tokens survive a rotation.
 
-1. Put the current key into `APP_PREVIOUS_KEYS` (`key:generate --force` overwrites it and keeps nothing).
-2. Write a new key: `bespoke key:generate --force` — or set `APP_KEY` where the environment comes from.
-3. Deploy. Remove the old key once nothing encrypted or signed with it is still around: sessions and remember-me cookies
-   (their lifetime), queued and failed jobs, signed links (their expiry).
+1. `bespoke key:generate --force` writes a new `APP_KEY` into `.env` and moves the old one to the front of `APP_PREVIOUS_KEYS`
+   (E169: `The old key moved to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links stay valid.`) — where the
+   environment comes from elsewhere, do the same there: the current key into `APP_PREVIOUS_KEYS`, a new one (`--show`) into `APP_KEY`.
+2. Deploy, with both variables on every server.
+3. Remove the old key once nothing encrypted or signed with it is still around: sessions and remember-me cookies (their
+   lifetime; encrypted session data, `SESSION_ENCRYPT`, is re-encrypted with the new key at the session's next write), queued and
+   failed jobs, signed links (their expiry).
 
 Replacing `APP_KEY` **without** keeping the old one signs everybody out (the session cookie no longer decrypts — it counts as
 absent), invalidates every signed link and turns encrypted jobs still waiting into poison (failed at once:
@@ -81,6 +84,7 @@ absent), invalidates every signed link and turns encrypted jobs still waiting in
 |---|---|---|
 | [@bespokecore/http](../http/README.md) | `EncryptCookies` in the `web` group: every cookie the app sets and reads | the `Encrypter`, context `cookie:<name>` |
 | [@bespokecore/queue](../queue/README.md#secrets-in-payloads-e105) | jobs with `static encrypted = true`, the framework's own jobs | the `Encrypter`, context `queue:<job name>` |
+| [@bespokecore/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145) | the session data in its store with `SESSION_ENCRYPT=true` (off by default) | the `Encrypter`, context `session:<key>` (the session's store key) |
 | [@bespokecore/http](../http/README.md) | `UrlSigner` — signed URLs, HMAC-SHA-256 | HKDF-SHA-256 of each key, info `bespokecore:signed-url` |
 | [@bespokecore/live](../live/README.md#the-guarantees) | the tokens of the channels a page follows | HKDF-SHA-256, info `bespokecore:live` |
 | [@bespokecore/storage](../storage/README.md#uploads) | upload tokens | HKDF-SHA-256, info `bespokecore:upload-token` |

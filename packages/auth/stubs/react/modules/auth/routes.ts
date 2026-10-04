@@ -46,8 +46,10 @@ export default defineRoutes((Route) => {
   signedIn.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
   // "Sudo mode": the security page asks for the password again unless it was typed within 15 minutes.
   signedIn.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
-  signedIn.put('/settings/password', UpdatePasswordController).name('auth.password.update');
-  signedIn.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout');
+  // A new hash in the database and its fingerprint in the session must stay a pair: one of these requests per session at a
+  // time (block(), E145) — two at once could leave the session with the other's fingerprint, and sign it out.
+  signedIn.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
+  signedIn.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();
   signedIn.middleware(confirmedPassword()).put('/settings/email', UpdateEmailController).name('auth.email.update');
   // API tokens: as good as a session — sudo mode for all of it.
   const sudo = signedIn.middleware(confirmedPassword());

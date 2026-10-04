@@ -369,6 +369,20 @@ describe('security settings', () => {
     await app.post('/login', { form: { email: ada.email, password: 'a new password' } }).assertAuthenticated(ada);
   });
 
+  it('two password changes of one session at once run one after the other (block(), E145): the second finds the password changed', async () => {
+    const ada = await app.factory(UserFactory).create();
+    const laptop = await app.post('/login', credentialsOf(ada));
+    const here = app.withCookie('bespoke_session', laptop.cookie('bespoke_session')!).expectingJson();
+    const change = (password: string) => here.put('/settings/password', { form: { current_password: 'password', password, password_confirmation: password } });
+    const responses = await Promise.all([change('the first new one'), change('the second new one')]);
+    // Without the lock both would check the old password and both would write — the session then keeps whichever fingerprint saved
+    // last, the database whichever hash it got last: a mismatch signs the session out.
+    expect(responses.map((response) => response.status).toSorted()).toEqual([303, 422]);
+    await here.get('/users/me').assertRedirect(`/users/${ada.id}`); // still signed in: hash and fingerprint are a pair
+    const winner = responses[0]!.status === 303 ? 'the first new one' : 'the second new one';
+    await app.post('/login', { form: { email: ada.email, password: winner } }).assertAuthenticated(ada);
+  });
+
   it('signs out the other devices with the password', async () => {
     const ada = await app.factory(UserFactory).create();
     const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });

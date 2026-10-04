@@ -26,6 +26,7 @@ SESSION_COOKIE=bespoke_session          # the cookie's name (default)
 SESSION_FILES=storage/framework/sessions   # file: where sessions live, relative to the app root (default)
 SESSION_SECURE_COOKIE=                  # unset: follows APP_URL — https:// → Secure, http:// → not (E162); true/false decide
 SESSION_SAME_SITE=lax                   # lax (default) | strict | none
+SESSION_ENCRYPT=false                   # true: the session data is encrypted in its store with APP_KEY (E144) — off by default
 SESSION_LOTTERY=2/100                   # chance that a request prunes expired sessions after its response; 0/1 turns it off
 CSRF_TRUSTED_ORIGINS=                   # other origins that may post to the app, comma-separated (https://admin.example.com)
 ```
@@ -61,6 +62,8 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
   `{}` when there are none, also on partial reloads — what `useForm` shows next to the fields.
 - **Sign-in and sign-out:** `regenerate()` gives the session a new id and CSRF token (against session fixation),
   `invalidate()` also drops all data — `@bespokecore/auth` calls them. The old id is destroyed when the request saves it.
+- **Requests that must not overlap:** `Route.post(…).block()` runs a route's requests one at a time per session
+  ([below](#blocking-routes-block)).
 - **Read-only requests:** an island (E52) or a live stream reads the session but never writes it — no save, no cookie, flash
   data stays for the page.
 
@@ -113,9 +116,12 @@ Chosen with `SESSION_DRIVER` (see `SessionConfig`):
 | ---------- | ------------------------------------------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
 | `file`     | one file per session (`SESSION_FILES`) — the default                     | lottery / `session:prune` (by mtime)     | apps with login on one server                       |
 | `database` | a row in `sessions` (`bespoke make:session-table`, `SESSION_CONNECTION`) | lottery / `session:prune` (`last_activity`) | apps with login, several processes or servers    |
-| `redis`    | `<REDIS_PREFIX>session:<id>` ([@bespokecore/redis](../redis/README.md) + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
+| `redis`    | `<REDIS_PREFIX>session:<key>` ([@bespokecore/redis](../redis/README.md) + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
 | `memory`   | the process                                                              | on read                                  | tests (gone with the process)                       |
 | `cookie`   | an encrypted cookie next to the session id                               | the cookie's `Max-Age`                   | apps **without** login (≈ 2.8 KB of JSON at most)   |
+
+Every server-side store keeps a session under its **key** — the SHA-256 of the session id, never the id
+([hashed keys](#hashed-keys-versions-and-encryption-e144-e145)): a file's name, a row's `id`, a Redis key's last part.
 
 ### `database`
 
@@ -124,9 +130,12 @@ bespoke make:session-table   # writes modules/system/migrations/…_create_sessi
 bespoke migrate
 ```
 
-The table: `id` (primary key), `user_id` (nullable, indexed — the signed-in user's id, copied from the session's
-`_auth_id`; `null` for guests), `payload` (the session as JSON — a `.secret()` column, so `selectAll()` never returns it)
-and `last_activity` (epoch milliseconds of the last write, indexed). A session expires `SESSION_LIFETIME` minutes after
+The table: `id` (primary key — the session's key, the SHA-256 of its id), `user_id` (nullable, indexed — the signed-in user's
+id, copied from the session's `_auth_id`; `null` for guests), `payload` (the session as JSON, or encrypted with
+`SESSION_ENCRYPT` — a `.secret()` column, so `selectAll()` never returns it), `last_activity` (epoch milliseconds of the last
+write, indexed) and `version` (raised by every write, compared by the next — [compare-and-set](#hashed-keys-versions-and-encryption-e144-e145)).
+A table made before W8 has no `version` and raw ids: `bespoke make:session-table --upgrade` writes the migration that makes it
+anew — every user is signed out once ([UPGRADING](../../UPGRADING.md)); until then the store says so. A session expires `SESSION_LIFETIME` minutes after
 its last activity. Expired rows are deleted by the lottery (`SESSION_LOTTERY`, default 2 in 100 requests, after the
 response) or by `bespoke session:prune` — from cron (then set `SESSION_LOTTERY=0/1`) or from the app's scheduler
 (`s.command('session:prune').everyFifteenMinutes()`, [@bespokecore/scheduler](../scheduler/README.md)): then requests draw no
@@ -145,30 +154,78 @@ is open — an in-process request inside `connections.transaction()`, a test —
 The migration `make:session-table` writes follows the connection: `connection: sessionTableConnection` puts the table on
 `SESSION_CONNECTION` (with the database driver; otherwise on `default`), and `bespoke migrate` creates it there.
 
-**The payload is not encrypted** in a file, a row or Redis (like Laravel without `SESSION_ENCRYPT`): it holds the CSRF token, the
-signed-in user's id and their password fingerprint. Protect the store like the database; encryption as an option is a
-candidate for later.
+### Hashed keys, versions and encryption (E144, E145)
 
-### What `writeIfExists` guarantees
+**Hashed keys.** The cookie carries the session id (240 random bits, encrypted like every cookie); the store only ever sees its
+**key**, `sessionKey(id)` — the SHA-256 of the id, hex (like Rack's `private_id`). Whoever reads the store — a leaked backup, a
+replica, a shared Redis — gets keys, and a key sent as the cookie is no session. The once scope and live tokens are derived from
+the id as before (`sessionScope(id)`, unchanged), `block()`'s lock is keyed by the key.
 
-Every store implements `SessionStore.writeIfExists(id, data, lifetime) → boolean`: it writes a session back **only while
-it still exists, in one atomic step of the store** — there is no moment between "it is there" and "write it" in which
-another request's `destroy()` could slip:
+**`SESSION_ENCRYPT=true`** encrypts the payload in the store — the file, the `payload` column, the Redis value — with the app's
+`Encrypter` (AES-256-GCM, `APP_KEY`; payloads under a key in `APP_PREVIOUS_KEYS` still decrypt, the next write re-encrypts them
+with `APP_KEY`), bound to the session's key as authenticated data: a payload copied into another session's place does not open
+there. Off by default (like Laravel): the payload holds the CSRF token, the signed-in user's id, their password fingerprint and
+flash messages — with hashed keys none of it signs anybody in, but turn it on when the store is shared or backed up where the
+data should not be read. The database's `user_id` column stays readable (it is what lists a user's sessions). Turning it on or
+off signs everybody out once (the other format does not open — a new session starts). The `cookie` driver's data is encrypted
+anyway (it is a cookie); `SESSION_ENCRYPT` changes nothing there.
+
+**Compare-and-set.** Every write is one atomic step of the store that compares the version the request read:
 
 | Store      | How                                                                                                     |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
 | `memory`   | synchronous: no `await` between the lookup and the write                                                |
-| `file`     | `open(path, 'r+')` and an in-place write — a deleted file fails the open (ENOENT) or takes the write with it |
-| `database` | `UPDATE sessions … WHERE id = ? AND last_activity > ?` — the row count says whether it wrote            |
-| `redis`    | `SET <key> <payload> XX EX <ttl>` — `XX` only replaces a key that exists                                |
+| `file`     | under a per-session guard file (`open(…, 'wx')`): compare the version, then write in place through a handle opened before — a deleted file fails the open (ENOENT) or takes the write with it; new keys are hard-linked into place (never over a session) |
+| `database` | `UPDATE sessions … WHERE id = ? AND version = ? AND last_activity > ?` — the row count says whether it wrote; a new key is `INSERT … ON CONFLICT DO NOTHING` |
+| `redis`    | a Lua script: compare `v`, write `d` with `v + 1`, renew the TTL                                        |
 | `cookie`   | **cannot**: always writes (see below)                                                                   |
 
-It returns `false` — and writes nothing — for an id that was destroyed, has expired or was never written. A new session,
-and a session regenerated at sign-in/sign-out (a new id), go through `write`.
+A write answers `written`, `conflict` (another request wrote the session since it was read — nothing written) or `gone` (destroyed
+or expired — nothing written, and nothing ever brings it back). `Session.save()` turns these into what happens:
 
-What it does **not** guarantee: two requests of the same session that both write it back — the later one wins with its
-copy (*last write wins*). A flash message one request took can come back when a slower request that loaded it, but did not
-take it (a prefetch), saves afterwards. That needs versions (compare-and-set), not existence.
+- `gone` — a sign-out or sign-in of the same browser overtook this request: the session stays destroyed, no cookie
+  ([below](#concurrent-requests-and-signing-out)).
+- `conflict` — the session is read again and this request's changes are applied to it: **key by key, what this request changed
+  wins** (last write wins), everything else stays as the other request left it; **flash messages are merged by their ids** — none
+  is lost, and none a faster request showed comes back (W5b.7: before, 20 of 20 came back). A request that changed nothing stops
+  there. After a random moment it writes again — for up to 2 s; every round lets one writer through, so 20 requests of one
+  session at once all land. A request that still meets a newer version every time saves nothing and logs a warning
+  (`session.abandoned`).
+
+What it does not do: add up. Two requests that read a counter and write it back + 1 both write 2 — the later wins. Routes that
+read, decide and write back need [`block()`](#blocking-routes-block).
+
+### Blocking routes (`block()`)
+
+```ts
+// The new password's hash and its fingerprint in the session stay a pair — one such request per session at a time:
+signedIn.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
+Route.post('/wizard/step', WizardStepController).block(5, 2);   // hold the lock at most 5 s, wait for it at most 2 s
+```
+
+`block(lockSeconds = 10, waitSeconds = lockSeconds)` (Laravel's) makes `StartSession` take an atomic lock on the session before it
+reads it and free it after saving it — through the app's cache ([@bespokecore/cache](../cache/README.md), locks since E103; without
+it the route answers 500 saying so). A second request of the same browser waits; longer than `waitSeconds` → **423 Locked** with
+`Retry-After`. A request without a session cookie locks nothing (a new session is nobody else's). The web app and `make:auth`
+block the password change and "sign out other devices".
+
+### Your own store
+
+A store implements `SessionStore` (the contract changed in W8 — [UPGRADING](../../UPGRADING.md)):
+
+```ts
+interface SessionStore {
+  read(key: string): Promise<{ data: string; version: number } | undefined>;
+  write(key: string, data: string, options: { expectedVersion: number | undefined; lifetimeSeconds: number; userId?: string | null }): Promise<'written' | 'conflict' | 'gone'>;
+  destroy(key: string): Promise<void>;
+  gc(lifetimeSeconds: number): Promise<number>;
+}
+```
+
+`key` is the SHA-256 of the session id (hex, `SESSION_KEY`), `data` opaque text (JSON, or ciphertext) — keep both as they are.
+`expectedVersion: undefined` writes a **new** key (version 1) and is a `conflict` when something is stored under it; a number
+writes over that version (version + 1) — `conflict` when the stored one differs, `gone` when there is none (destroyed or
+expired). Compare and write in **one atomic step**; the shared suite in `src/stores/stores.test.ts` is the contract's test.
 
 ### New sessions are only kept when used
 
@@ -190,10 +247,10 @@ A browser often has more than one request of the same session in flight — sinc
 page load is followed by one that loads them. If the user signs out meanwhile, the slower request finishes *after*
 the sign-out, with the session as it was when it started: still signed in.
 
-- **Server-side drivers (`file`, `database`, `redis`, `memory`):** `Session.save()` writes a loaded session back with
-  `writeIfExists` (E45): a session another request destroyed meanwhile (a sign-out's `invalidate()`, a sign-in's
-  `regenerate()`) stays destroyed, and `StartSession` then sends no session cookie — the browser keeps the one the
-  sign-out sent.
+- **Server-side drivers (`file`, `database`, `redis`, `memory`):** `Session.save()` writes a loaded session back over the
+  version it loaded (E45, E145): a session another request destroyed meanwhile (a sign-out's `invalidate()`, a sign-in's
+  `regenerate()`) is `gone` and stays destroyed — a conflict's re-read finds nothing either — and `StartSession` then sends
+  no session cookie: the browser keeps the one the sign-out sent.
 - **`cookie` driver:** cannot be protected. The whole session travels in the cookie, so the slower response brings
   the signed-in cookie back and the sign-out is undone. With `@bespokecore/auth` registered, the app logs a warning
   at boot (E46). **Use `file`, `database` or `redis` for apps with login.**

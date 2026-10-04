@@ -471,15 +471,35 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
     if (config.driver === 'cookie') throw new Error('Session helpers in tests need a server-side session driver — memory, file, database or redis (set SESSION_DRIVER=memory in .env.test).');
     return container.make(session.SessionStore);
   };
+  // Like the session itself: stored under the id's hash (E144), the payload through the app's codec (SESSION_ENCRYPT).
+  const codec = () => container.make(session.SessionCodec);
   return {
     cookie: config.cookie,
     create: async (data, given) => {
       const id = given ?? session.createSessionId();
+      const key = session.sessionKey(id);
       const token = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
-      await store().write(id, { _token: token, ...data }, config.lifetime * 60);
+      const json = JSON.stringify({ _token: token, ...data });
+      const user = data[session.SESSION_USER_KEY];
+      const userId = typeof user === 'string' || typeof user === 'number' ? String(user) : null;
+      const sealed = await codec().seal(json, key);
+      // The same id again (one browser): written over what is there — never removed first (a request of the same view may be
+      // reading it right now).
+      for (;;) {
+        const current = await store().read(key);
+        const written = await store().write(key, sealed, { expectedVersion: current?.version, lifetimeSeconds: config.lifetime * 60, userId });
+        if (written === 'written') break;
+        if (!current && written === 'conflict') await store().destroy(key); // an expired session under the key
+      }
       return id;
     },
-    read: (id) => store().read(id),
+    read: async (id) => {
+      if (!session.SESSION_ID.test(id)) return undefined;
+      const key = session.sessionKey(id);
+      const stored = await store().read(key);
+      const json = stored ? await codec().open(stored.data, key) : undefined;
+      return json === undefined ? undefined : (JSON.parse(json) as Record<string, unknown>);
+    },
   };
 }
 

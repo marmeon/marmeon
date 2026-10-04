@@ -9,7 +9,7 @@ export const COOKIE_SESSION_WARNING =
 
 /**
  * Warns once, at boot, when auth meets the cookie session driver. The server-side drivers refuse to write back a session
- * a sign-out destroyed meanwhile (`SessionStore.writeIfExists`, E45); the cookie driver cannot know — its data travels with
+ * a sign-out destroyed meanwhile (`SessionStore.write` compares versions: `gone`, E45, E145); the cookie driver cannot know — its data travels with
  * each response.
  */
 export function warnAboutCookieSessions(container: Container): void {

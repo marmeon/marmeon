@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
 import type { Kysely } from '@bespokecore/database';
-import { SESSION_USER_KEY, type SessionPayload, type SessionStore } from '../store.ts';
+import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
 /** The table `bespoke make:session-table` creates (E96: the app owns the migration; the store types it itself). */
 export const SESSIONS_TABLE = 'sessions';
@@ -12,14 +12,21 @@ export interface DatabaseSessionConnection {
 
 type Sql = (typeof import('@bespokecore/database'))['sql'];
 
+/** What a table without the `version` column (made before W8 step 7) needs. */
+const UPGRADE =
+  'The sessions table has no version column: it was made before session keys were hashed (E144) and writes compare versions ' +
+  '(E145). Run `bespoke make:session-table --upgrade` and `bespoke migrate` — every user is signed out once.';
+
 /**
- * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — the data as JSON in
- * `payload`, the signed-in user's id in `user_id` (null for guests), the time of the last write in `last_activity`
- * (epoch milliseconds). A session lives for the store's lifetime (`SESSION_LIFETIME`) after its last activity, like
+ * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
+ * session id (`id`, E144), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's
+ * id in `user_id` (null for guests), the time of the last write in `last_activity` (epoch milliseconds) and a `version` that
+ * goes up with every write. A session lives for the store's lifetime (`SESSION_LIFETIME`) after its last activity, like
  * Laravel's database handler.
  *
- * Writing back is ONE statement, `UPDATE … WHERE id = ? AND last_activity > ?`: a row a sign-out deleted meanwhile
- * matches nothing, on Postgres and SQLite alike, across any number of processes.
+ * Writing back is ONE statement, `UPDATE … WHERE id = ? AND version = ? AND last_activity > ?` (compare-and-set, E145): a row a
+ * sign-out deleted meanwhile — or another request wrote meanwhile — matches nothing, on Postgres and SQLite alike, across any
+ * number of processes. A new session is `INSERT … ON CONFLICT DO NOTHING`: it never replaces a row.
  */
 export class DatabaseSessionStore implements SessionStore {
   readonly #connection: () => Promise<DatabaseSessionConnection>;
@@ -41,28 +48,37 @@ export class DatabaseSessionStore implements SessionStore {
     this.#clock = clock;
   }
 
-  async read(id: string): Promise<SessionPayload | undefined> {
+  async read(key: string): Promise<StoredSession | undefined> {
     const { db, sql } = await this.#use();
-    const { rows } = await sql<{ payload: string }>`select payload from sessions where id = ${id} and last_activity > ${this.#oldest()}`.execute(db);
-    return rows[0] ? (JSON.parse(rows[0].payload) as SessionPayload) : undefined;
+    const { rows } = await upgradeHint(
+      sql<{ payload: string; version: number | string }>`select payload, version from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db),
+    );
+    return rows[0] ? { data: rows[0].payload, version: Number(rows[0].version) } : undefined;
   }
 
-  async write(id: string, data: SessionPayload): Promise<void> {
+  async write(key: string, data: string, { expectedVersion, userId = null }: SessionWrite): Promise<SessionWriteResult> {
     const { db, sql } = await this.#use();
-    await sql`insert into sessions (id, user_id, payload, last_activity) values (${id}, ${userIdOf(data)}, ${JSON.stringify(data)}, ${this.#clock.now()})
-      on conflict (id) do update set user_id = excluded.user_id, payload = excluded.payload, last_activity = excluded.last_activity`.execute(db);
+    const now = this.#clock.now();
+    if (expectedVersion === undefined) {
+      const inserted = await upgradeHint(
+        sql`insert into sessions (id, user_id, payload, last_activity, version) values (${key}, ${userId}, ${data}, ${now}, 1)
+          on conflict (id) do nothing`.execute(db),
+      );
+      return inserted.numAffectedRows === 1n ? 'written' : 'conflict';
+    }
+    const updated = await upgradeHint(
+      sql`update sessions set user_id = ${userId}, payload = ${data}, last_activity = ${now}, version = version + 1
+        where id = ${key} and version = ${expectedVersion} and last_activity > ${this.#oldest()}`.execute(db),
+    );
+    if (updated.numAffectedRows === 1n) return 'written';
+    // Nothing matched: written by another request since (conflict) — or destroyed, or expired (gone).
+    const { rows } = await sql`select 1 as found from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
+    return rows.length > 0 ? 'conflict' : 'gone';
   }
 
-  async writeIfExists(id: string, data: SessionPayload): Promise<boolean> {
+  async destroy(key: string): Promise<void> {
     const { db, sql } = await this.#use();
-    const result = await sql`update sessions set user_id = ${userIdOf(data)}, payload = ${JSON.stringify(data)}, last_activity = ${this.#clock.now()}
-      where id = ${id} and last_activity > ${this.#oldest()}`.execute(db);
-    return result.numAffectedRows === 1n;
-  }
-
-  async destroy(id: string): Promise<void> {
-    const { db, sql } = await this.#use();
-    await sql`delete from sessions where id = ${id}`.execute(db);
+    await sql`delete from sessions where id = ${key}`.execute(db);
   }
 
   async gc(lifetimeSeconds: number): Promise<number> {
@@ -84,8 +100,13 @@ export class DatabaseSessionStore implements SessionStore {
   }
 }
 
-/** The signed-in user's id as text (ids may be numbers or strings), or null for a guest. */
-function userIdOf(data: SessionPayload): string | null {
-  const id = data[SESSION_USER_KEY];
-  return typeof id === 'string' || typeof id === 'number' || typeof id === 'bigint' ? String(id) : null;
+/** A query on a table without `version` fails with what to run (SQLite: "no such column", Postgres: "column … does not exist"). */
+async function upgradeHint<T>(query: Promise<T>): Promise<T> {
+  try {
+    return await query;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (/\bversion\b/.test(message) && /column/i.test(message)) throw new Error(UPGRADE, { cause: error });
+    throw error;
+  }
 }

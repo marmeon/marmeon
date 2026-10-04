@@ -42,7 +42,7 @@ describe('SESSION_SECURE_COOKIE follows APP_URL (E162)', () => {
 
   it('the cookie store\'s cookie follows the jar\'s defaults (it sets no secure itself)', async () => {
     const jar = new CookieJar(null, { secure: true });
-    await new CookieSessionStore(jar, 'app_session').write('id', { a: '1' }, 60);
+    await new CookieSessionStore(jar, 'app_session').write('id', '{"a":"1"}', { expectedVersion: undefined, lifetimeSeconds: 60 });
     expect(await jar.queued()).toEqual([expect.stringMatching(/^app_session_data=.*; Secure; SameSite=Lax$/)]);
   });
 });

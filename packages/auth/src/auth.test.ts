@@ -3,7 +3,7 @@ import { DatabaseServiceProvider, Migrator } from '@bespokecore/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
 import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
-import { CsrfProtection, Session, SessionServiceProvider, SessionStore } from '@bespokecore/session';
+import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@bespokecore/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   Auth,
@@ -243,8 +243,9 @@ describe('Auth (session guard)', () => {
     // The planted id is gone from the store: an attacker who set it holds nothing.
     const plantedId = await sessionId(planted);
     expect(plantedId).toMatch(/^[\w-]{40}$/);
-    expect(await store.read(plantedId)).toBeUndefined();
-    expect(await store.read(await sessionId(cookie()))).toMatchObject({ [AUTH_SESSION_KEYS.id]: 1 });
+    expect(await store.read(sessionKey(plantedId))).toBeUndefined();
+    const current = await store.read(sessionKey(await sessionId(cookie())));
+    expect(JSON.parse(current!.data)).toMatchObject({ [AUTH_SESSION_KEYS.id]: 1 });
   });
 
   it('the Login event carries the request\'s address (through TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo, E169)', async () => {

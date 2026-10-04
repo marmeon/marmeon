@@ -1,14 +1,13 @@
 import { SystemClock, type Clock } from '@bespokecore/core';
 import type { CookieJar } from '@bespokecore/router';
-import type { SessionPayload, SessionStore } from '../store.ts';
+import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
 /**
- * Keeps the whole session in a cookie next to the id cookie — no server storage.
- * Encrypted like every cookie, but limited to ~4 KB. Scoped: it works on the
- * request's cookie jar.
+ * Keeps the whole session in a cookie next to the id cookie — no server storage. Encrypted like every cookie, but limited to
+ * ~4 KB. Scoped: it works on the request's cookie jar, so the key it is given does not matter.
  *
- * It cannot know whether another request destroyed the session meanwhile — the data travels with each response, so
- * `writeIfExists` always writes (E46: apps with sign-in log a warning at boot).
+ * It cannot know whether another request destroyed or wrote the session meanwhile — the data travels with each response, so
+ * every write is `written` (E46: apps with sign-in log a warning at boot), and every read is version 0.
  */
 export class CookieSessionStore implements SessionStore {
   readonly #cookies: CookieJar;
@@ -21,29 +20,23 @@ export class CookieSessionStore implements SessionStore {
     this.#clock = clock;
   }
 
-  async read(): Promise<SessionPayload | undefined> {
+  async read(): Promise<StoredSession | undefined> {
     const raw = this.#cookies.get(this.#name);
-    if (raw === undefined) return undefined;
-    try {
-      const { expires, data } = JSON.parse(raw) as { expires: number; data: SessionPayload };
-      return expires > this.#clock.now() ? data : undefined;
-    } catch {
-      return undefined;
-    }
+    // `<expires>.<payload>` — the payload as the session wrote it.
+    const dot = raw?.indexOf('.') ?? -1;
+    if (raw === undefined || dot === -1) return undefined;
+    const expires = Number(raw.slice(0, dot));
+    return Number.isFinite(expires) && expires > this.#clock.now() ? { data: raw.slice(dot + 1), version: 0 } : undefined;
   }
 
-  async write(_id: string, data: SessionPayload, lifetimeSeconds: number): Promise<void> {
-    const value = JSON.stringify({ expires: this.#clock.now() + lifetimeSeconds * 1000, data });
+  async write(_key: string, data: string, { lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult> {
+    const value = `${this.#clock.now() + lifetimeSeconds * 1000}.${data}`;
     // Encryption and URI-encoding add roughly a third; browsers drop cookies over 4096 bytes.
     if (value.length > 2800) {
-      throw new Error(`The session is too large for the cookie driver (${value.length} bytes of JSON) — use SESSION_DRIVER=file.`);
+      throw new Error(`The session is too large for the cookie driver (${value.length} bytes) — use SESSION_DRIVER=file.`);
     }
     this.#cookies.set(this.#name, value, { maxAge: lifetimeSeconds });
-  }
-
-  async writeIfExists(id: string, data: SessionPayload, lifetimeSeconds: number): Promise<boolean> {
-    await this.write(id, data, lifetimeSeconds);
-    return true;
+    return 'written';
   }
 
   async destroy(): Promise<void> {

@@ -1,3 +1,4 @@
+export { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
 export { insecureCookieWarning, SessionConfig } from './config.ts';
 export { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 export { MakeSessionTableCommand } from './commands/make-session-table.ts';
@@ -9,8 +10,8 @@ export type { SessionEndedListener } from './ended.ts';
 export type { SessionData } from './session.ts';
 export { ShareErrorsFromSession } from './share-errors.ts';
 export { SessionLottery, StartSession } from './start-session.ts';
-export { createSessionId, SESSION_ID, SESSION_USER_KEY, SessionStore } from './store.ts';
-export type { SessionPayload } from './store.ts';
+export { createSessionId, SESSION_ID, SESSION_KEY, SESSION_USER_KEY, sessionKey, SessionStore } from './store.ts';
+export type { SessionPayload, SessionWrite, SessionWriteResult, StoredSession } from './store.ts';
 export { CookieSessionStore } from './stores/cookie.ts';
 export { DatabaseSessionStore, SESSIONS_TABLE } from './stores/database.ts';
 export type { DatabaseSessionConnection } from './stores/database.ts';

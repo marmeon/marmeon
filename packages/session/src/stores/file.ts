@@ -1,26 +1,33 @@
 import { mkdirSync } from 'node:fs';
-import { open, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { link, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { SystemClock, type Clock } from '@bespokecore/core';
-import { SESSION_ID, type SessionPayload, type SessionStore } from '../store.ts';
+import { SESSION_KEY, type SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Stored {
   expires: number;
-  data: SessionPayload;
+  version: number;
+  data: string;
 }
 
+/** A guard older than this was left by a process that died inside its few-millisecond critical section. */
+const STALE_GUARD_MS = 2_000;
+/** Longer than this waiting for one session's guard is a bug (or a dead disk), not contention. */
+const GUARD_TIMEOUT_MS = 10_000;
+
 /**
- * One file per session (Laravel's default). Survives restarts.
+ * One file per session (Laravel's default), named by the session's key (the SHA-256 of its id, E144). Survives restarts.
  *
- * - **New ids** (`write`) go to a temporary file renamed into place — a reader sees all of a session or none.
- * - **Writing back** (`writeIfExists`) opens the existing file (`r+`) and overwrites it in place: a session deleted
- *   meanwhile fails the `open` (ENOENT) — or, deleted after it, takes the write with it (the open handle writes to the
- *   unlinked file). Nothing ever brings a destroyed session back, without a lock.
+ * - **New keys** go to a temporary file hard-linked into place: a reader sees all of a session or none, and `link` fails when
+ *   the name is taken — a new session never replaces one.
+ * - **Writing back** compares the version (E145) under a per-session guard (`<key>.guard`, created with `open(…, 'wx')`, which
+ *   the file system grants to one process at a time), then overwrites the file in place through a handle opened before the
+ *   check: a session deleted meanwhile fails the `open` (ENOENT) — or, deleted after it, takes the write with it (the open
+ *   handle writes to the unlinked file). Nothing ever brings a destroyed session back; `destroy` needs no guard.
  *
- * The record is ONE line of JSON; what follows the first line break is ignored. An in-place write never truncates, so
- * writes racing each other leave one whole record in front (the file keeps its largest size until the id changes), and
- * a reader that meets a write in progress (a torn line) reads again.
+ * The record is ONE line of JSON; what follows the first line break is ignored. An in-place write never truncates (the file
+ * keeps its largest size until the key changes), and a reader that meets a write in progress (a torn line) reads again.
  */
 export class FileSessionStore implements SessionStore {
   readonly #directory: string;
@@ -32,8 +39,8 @@ export class FileSessionStore implements SessionStore {
     mkdirSync(directory, { recursive: true });
   }
 
-  async read(id: string): Promise<SessionPayload | undefined> {
-    const file = this.#path(id);
+  async read(key: string): Promise<StoredSession | undefined> {
+    const file = this.#path(key);
     for (let attempt = 0; ; attempt++) {
       let text: string;
       try {
@@ -42,50 +49,47 @@ export class FileSessionStore implements SessionStore {
         return undefined; // missing: a new session starts
       }
       const stored = parse(text);
-      if (stored) return stored.expires > this.#clock.now() ? stored.data : undefined;
+      if (stored) return stored.expires > this.#clock.now() ? { data: stored.data, version: stored.version } : undefined;
       // Torn by a write in progress — or broken for good, then a new session starts.
       if (attempt === 3) return undefined;
       await sleep(2 ** attempt);
     }
   }
 
-  async write(id: string, data: SessionPayload, lifetimeSeconds: number): Promise<void> {
-    const file = this.#path(id);
-    const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-    await writeFile(temporary, this.#record(data, lifetimeSeconds), { mode: 0o600 });
-    const now = new Date(this.#clock.now());
-    await utimes(temporary, now, now); // the last activity, on the store's clock — what `gc` goes by
-    await rename(temporary, file);
+  async write(key: string, data: string, { expectedVersion, lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult> {
+    const file = this.#path(key);
+    if (expectedVersion === undefined) return this.#create(file, data, lifetimeSeconds);
+    return this.#guarded(file, async () => {
+      let handle;
+      try {
+        handle = await open(file, 'r+');
+      } catch (error) {
+        if ((error as { code?: unknown }).code === 'ENOENT') return 'gone'; // destroyed meanwhile
+        throw error;
+      }
+      try {
+        const current = parse(await handle.readFile('utf8'));
+        if (!current || current.expires <= this.#clock.now()) return 'gone'; // expired (or broken): not brought back
+        if (current.version !== expectedVersion) return 'conflict';
+        await handle.write(this.#record(data, current.version + 1, lifetimeSeconds), 0, 'utf8');
+        const now = new Date(this.#clock.now());
+        await handle.utimes(now, now); // the last activity, on the store's clock — what `gc` goes by
+        return 'written';
+      } finally {
+        await handle.close();
+      }
+    });
   }
 
-  async writeIfExists(id: string, data: SessionPayload, lifetimeSeconds: number): Promise<boolean> {
-    let handle;
-    try {
-      handle = await open(this.#path(id), 'r+');
-    } catch (error) {
-      if ((error as { code?: unknown }).code === 'ENOENT') return false; // destroyed meanwhile
-      throw error;
-    }
-    try {
-      const current = parse(await handle.readFile('utf8'));
-      if (current && current.expires <= this.#clock.now()) return false; // expired: not brought back
-      await handle.write(this.#record(data, lifetimeSeconds), 0, 'utf8');
-      const now = new Date(this.#clock.now());
-      await handle.utimes(now, now);
-      return true;
-    } finally {
-      await handle.close();
-    }
-  }
-
-  async destroy(id: string): Promise<void> {
-    await rm(this.#path(id), { force: true });
+  async destroy(key: string): Promise<void> {
+    await rm(this.#path(key), { force: true });
   }
 
   /** By modification time (the last write, on the store's clock), like Laravel's file handler: no file is read. */
   async gc(lifetimeSeconds: number): Promise<number> {
     let removed = 0;
     for (const name of await readdir(this.#directory)) {
+      if (name.endsWith('.guard')) continue; // held right now — or left by a crash, cleared by the next writer
       const file = join(this.#directory, name);
       try {
         if ((await stat(file)).mtimeMs + lifetimeSeconds * 1000 < this.#clock.now()) {
@@ -99,14 +103,55 @@ export class FileSessionStore implements SessionStore {
     return removed;
   }
 
-  #record(data: SessionPayload, lifetimeSeconds: number): string {
-    // JSON.stringify never writes a raw line break: the record is exactly the first line.
-    return `${JSON.stringify({ expires: this.#clock.now() + lifetimeSeconds * 1000, data } satisfies Stored)}\n`;
+  /** A new key: written whole to a temporary file, then linked into place — never over an existing session. */
+  async #create(file: string, data: string, lifetimeSeconds: number): Promise<SessionWriteResult> {
+    const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+    await writeFile(temporary, this.#record(data, 1, lifetimeSeconds), { mode: 0o600 });
+    try {
+      const now = new Date(this.#clock.now());
+      await utimes(temporary, now, now);
+      await link(temporary, file);
+      return 'written';
+    } catch (error) {
+      if ((error as { code?: unknown }).code === 'EEXIST') return 'conflict';
+      throw error;
+    } finally {
+      await rm(temporary, { force: true });
+    }
   }
 
-  #path(id: string): string {
-    if (!SESSION_ID.test(id)) throw new Error(`Invalid session id "${id}".`);
-    return join(this.#directory, id);
+  /** Runs `work` while holding the guard of `file` — one writer (process or call) at a time per session. */
+  async #guarded<T>(file: string, work: () => Promise<T>): Promise<T> {
+    const guard = `${file}.guard`;
+    const started = performance.now();
+    for (;;) {
+      try {
+        await (await open(guard, 'wx', 0o600)).close();
+        break;
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'EEXIST') throw error;
+      }
+      // Held by another: wait a moment — or clear a guard a crashed process left behind.
+      const held = await stat(guard).catch(() => undefined);
+      if (held && Date.now() - held.mtimeMs > STALE_GUARD_MS) await rm(guard, { force: true });
+      else if (performance.now() - started > GUARD_TIMEOUT_MS) throw new Error(`The session file ${file} stayed busy for ${GUARD_TIMEOUT_MS / 1000} s.`);
+      else await sleep(1 + Math.random() * 4);
+    }
+    try {
+      return await work();
+    } finally {
+      await rm(guard, { force: true });
+    }
+  }
+
+  #record(data: string, version: number, lifetimeSeconds: number): string {
+    // JSON.stringify never writes a raw line break: the record is exactly the first line.
+    return `${JSON.stringify({ expires: this.#clock.now() + lifetimeSeconds * 1000, version, data } satisfies Stored)}\n`;
+  }
+
+  #path(key: string): string {
+    if (!SESSION_KEY.test(key)) throw new Error(`Invalid session key "${key}".`);
+    return join(this.#directory, key);
   }
 }
 
@@ -115,7 +160,7 @@ function parse(text: string): Stored | undefined {
   const end = text.indexOf('\n');
   try {
     const stored = JSON.parse(end === -1 ? text : text.slice(0, end)) as Stored;
-    return typeof stored?.expires === 'number' ? stored : undefined;
+    return typeof stored?.expires === 'number' && typeof stored.version === 'number' && typeof stored.data === 'string' ? stored : undefined;
   } catch {
     return undefined;
   }

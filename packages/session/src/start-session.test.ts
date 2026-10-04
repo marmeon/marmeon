@@ -5,6 +5,7 @@ import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption'
 import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
 import { defineSchedule, SchedulerServiceProvider } from '@bespokecore/scheduler';
 import { createHttpKernel } from '@bespokecore/server';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { CsrfProtection } from './csrf.ts';
 import { SessionServiceProvider } from './provider.ts';
@@ -42,9 +43,27 @@ class FailingController extends Controller {
   }
 }
 
+/** Reads the counter, takes its time, writes it back + 1 — a read-modify-write that concurrent requests break. */
+class SlowCountController extends Controller {
+  readonly #session: Session;
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+  async handle() {
+    const visits = Number(this.#session.get('visits') ?? 0);
+    await sleep(15);
+    this.#session.put('visits', visits + 1);
+    return { visits: visits + 1 };
+  }
+}
+
 // Module routes join the `web` group, where the session provider put StartSession.
 const routes = defineRoutes((Route) => {
   Route.get('/count', CountVisitsController);
+  Route.post('/slow', SlowCountController);
+  Route.post('/slow/blocked', SlowCountController).block(2, 2);
+  Route.post('/slow/impatient', SlowCountController).block(2, 0.01);
   Route.post('/save', SaveController);
   Route.post('/fail', FailingController);
 });
@@ -109,7 +128,7 @@ describe('StartSession', () => {
   it('cleans up expired sessions after the response, by lottery (SESSION_LOTTERY)', async () => {
     const { send, application } = await boot({ SESSION_LOTTERY: '1/1' });
     const store = application.container.make(SessionStore);
-    await store.write('e'.repeat(40), {}, -1);
+    await store.write('e'.repeat(64), '{}', { expectedVersion: undefined, lifetimeSeconds: -1 });
     await send('/count');
     await application.kernel.settle();
     expect(await store.gc(0)).toBe(0); // the expired session was already collected by terminate()
@@ -119,14 +138,14 @@ describe('StartSession', () => {
     const providers = [CliServiceProvider, CacheServiceProvider, SchedulerServiceProvider];
     const scheduled = await boot({ SESSION_LOTTERY: '1/1' }, {}, { providers, schedule: defineSchedule((s) => void s.command('session:prune').everyFifteenMinutes()) });
     const store = scheduled.application.container.make(SessionStore);
-    await store.write('e'.repeat(40), {}, -1);
+    await store.write('e'.repeat(64), '{}', { expectedVersion: undefined, lifetimeSeconds: -1 });
     await scheduled.send('/count');
     await scheduled.application.kernel.settle();
     expect(await store.gc(0)).toBe(1); // still there for session:prune
     // A schedule without it: the lottery as configured.
     const other = await boot({ SESSION_LOTTERY: '1/1' }, {}, { providers, schedule: defineSchedule((s) => void s.command('cache:prune').hourly()) });
     const otherStore = other.application.container.make(SessionStore);
-    await otherStore.write('e'.repeat(40), {}, -1);
+    await otherStore.write('e'.repeat(64), '{}', { expectedVersion: undefined, lifetimeSeconds: -1 });
     await other.send('/count');
     await other.application.kernel.settle();
     expect(await otherStore.gc(0)).toBe(0);
@@ -138,6 +157,41 @@ describe('StartSession', () => {
     const stale = await send('/count', { headers: { 'x-bespoke': 'true', 'x-bespoke-version': 'v1' } });
     expect(stale.status).toBe(409);
     expect(await (await send('/count')).json()).toMatchObject({ status: 'Saved.' }); // still there after the reload
+  });
+
+  it('block(): requests of one session run one at a time — a read-modify-write keeps every increment (E145)', async () => {
+    const { send } = await boot({}, {}, { providers: [CacheServiceProvider] });
+    await send('/count'); // the session exists: visits 1
+    const responses = await Promise.all(Array.from({ length: 5 }, () => send('/slow/blocked', { method: 'POST' })));
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(await (await send('/count')).json()).toMatchObject({ visits: 7 }); // 1 + 5 + this one
+  });
+
+  it('without block(): concurrent read-modify-writes of one key — the last write wins (the compare-and-set merges, it cannot add)', async () => {
+    const { send } = await boot({}, {}, { providers: [CacheServiceProvider] });
+    await send('/count');
+    await Promise.all(Array.from({ length: 5 }, () => send('/slow', { method: 'POST' })));
+    expect(((await (await send('/count')).json()) as { visits: number }).visits).toBeLessThan(7);
+  });
+
+  it('block(): busy longer than the route waits → 423 Locked; no cache → says what to install', async () => {
+    const { send } = await boot({ LOG_LEVEL: 'silent' }, {}, { providers: [CacheServiceProvider] });
+    await send('/count');
+    const [held, refused] = await Promise.all([send('/slow/blocked', { method: 'POST' }), sleep(2).then(() => send('/slow/impatient', { method: 'POST' }))]);
+    expect(held.status).toBe(200);
+    expect(refused.status).toBe(423);
+    expect(refused.headers.get('retry-after')).toBe('2');
+    // A page request gets the error page — the session readable, never written.
+    const [, page] = await Promise.all([send('/slow/blocked', { method: 'POST' }), sleep(2).then(() => send('/slow/impatient', { method: 'POST', headers: { accept: 'text/html' } }))]);
+    expect(page.status).toBe(423);
+    expect(page.headers.getSetCookie().filter((header) => header.startsWith('bespoke_session='))).toEqual([]);
+    // Without a session cookie there is nothing to lock: a new session is nobody else's.
+    const fresh = await boot({ LOG_LEVEL: 'silent' });
+    expect((await fresh.send('/slow/blocked', { method: 'POST' })).status).toBe(200);
+    const uncached = await boot({ LOG_LEVEL: 'silent' });
+    await uncached.send('/count');
+    const failed = await uncached.send('/slow/blocked', { method: 'POST' });
+    expect(failed.status).toBe(500);
   });
 
   it('reads the cookie settings from the config', async () => {

@@ -35,6 +35,13 @@ export const SessionConfig = defineConfig('session', {
     NODE_ENV: v.optional(v.string()),
     SESSION_SAME_SITE: v.optional(v.picklist(['lax', 'strict', 'none']), 'lax'),
     /**
+     * Encrypt the session data in its store (E144) — the file, the `payload` column, the Redis value — with the app's key
+     * (`APP_KEY`; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Off by default (like Laravel); the store's keys are
+     * hashes of the session ids either way. Turning it on or off signs everybody out once. The `cookie` driver's data is always
+     * encrypted (it is a cookie).
+     */
+    SESSION_ENCRYPT: v.optional(BOOLEAN, 'false'),
+    /**
      * Chance that a request also cleans up expired sessions, after the response (Laravel's lottery). `0/1` turns it off —
      * for apps that run `bespoke session:prune` from a scheduler or cron instead.
      */
@@ -62,6 +69,7 @@ export const SessionConfig = defineConfig('session', {
     files: env.SESSION_FILES,
     secure: env.SESSION_SECURE_COOKIE === '' ? isHttps(env.APP_URL) : env.SESSION_SECURE_COOKIE,
     sameSite: env.SESSION_SAME_SITE,
+    encrypt: env.SESSION_ENCRYPT,
     lottery: env.SESSION_LOTTERY,
   }),
 });

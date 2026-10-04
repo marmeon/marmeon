@@ -22,6 +22,19 @@ production install (`pnpm install --prod`, a Docker image) leaves dev dependenci
 [@bespokecore/otel](packages/otel/README.md) belong in `dependencies`. `bespoke make:auth` names a runtime package it finds only
 among the dev dependencies.
 
+#### High: session keys are hashed — every user is signed out once; a `database` sessions table needs its upgrade migration
+
+*Likelihood of impact: high — every app with sessions (once, at the deployment).* The stores keep a session under the SHA-256 of
+its id now, never the id (E144): a leaked backup, replica or Redis yields no cookie that works. Sessions stored before are not
+found any more — **every user is signed out once** (remember-me cookies sign them back in where the app has them). With
+`SESSION_DRIVER=database` the `sessions` table also needs a `version` column (writes compare it, E145): run
+`bespoke make:session-table --upgrade` and `bespoke migrate` before the new code serves requests — the migration makes the table
+anew (its rows are keyed by raw ids, which nothing should keep). Without it every request fails with "The sessions table has no
+version column … Run `bespoke make:session-table --upgrade`". New apps get the new table from `bespoke make:session-table`. The
+`file` driver's old files (named by raw ids) and Redis' old `session:<id>` keys are no longer read; they go with
+`session:prune` (files, by age) and their own TTL (Redis) — delete them right away if you like. There is no way to keep the old
+keys.
+
 #### Medium: protections apply to every `NODE_ENV` but `development` and `test` — staging and a missing `NODE_ENV` included
 
 *Likelihood of impact: medium — apps that deploy with `NODE_ENV=staging`, another custom value, or none at all.* Before, a
@@ -122,6 +135,49 @@ data, the errors of a failed form, `session.put()`.
   request (read-only, W6.9) cannot start one. A page that signs a live channel keeps the session by itself.
 - `PageSession.scope()` is `undefined` without a kept session (it was a hash of an id nobody would see again); a live stream
   without a session answers 401 (was 403).
+
+#### Medium: a session written by two requests at once is merged, not overwritten — and custom stores compare versions
+
+*Likelihood of impact: medium — apps with a `SessionStore` of their own; low for the others (behaviour gets better).* Before, a
+loaded session was written back whole (`writeIfExists`) and the later of two requests won with its copy — a flash message one
+request showed could come back with a prefetch's copy (W5b.7), messages of parallel requests were lost. Now every write compares
+the version it read (E145): on a conflict the session is read again and this request's changes are applied — what it changed wins
+key by key, flash messages are merged by id ([Hashed keys, versions and encryption](packages/session/README.md#hashed-keys-versions-and-encryption-e144-e145)).
+A request whose session keeps being written by others for 2 s saves nothing and logs a warning; read-modify-write
+routes declare `block()` (next entries). **The store contract changed** — before → after:
+
+```ts
+read(id): Promise<SessionPayload | undefined>                     →  read(key): Promise<{ data: string; version: number } | undefined>
+write(id, data, lifetime): Promise<void>                          →  write(key, data, { expectedVersion, lifetimeSeconds, userId }):
+writeIfExists(id, data, lifetime): Promise<boolean>                    Promise<'written' | 'conflict' | 'gone'>
+```
+
+`key` is the SHA-256 of the session id (hex), `data` text the store keeps as it is (JSON, or ciphertext with `SESSION_ENCRYPT`);
+`expectedVersion: undefined` writes a new key, a number writes over that version — in one atomic step
+([Your own store](packages/session/README.md#your-own-store)). `Session`'s constructor takes the `SessionCodec` as a third
+argument (the container passes it); code that builds a `Session` by hand passes `plainSessionCodec`. Test code that read a store
+by the session id reads `store.read(sessionKey(id))` and parses `data`.
+
+#### Low: `SESSION_ENCRYPT` encrypts the session data in its store
+
+*Likelihood of impact: low — new, off by default.* `SESSION_ENCRYPT=true` (E144) encrypts the payload in the file, the `payload`
+column or the Redis value with `APP_KEY` (AES-256-GCM; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Turning it on or
+off signs everybody out once. The `cookie` driver's data is a cookie and encrypted anyway. The web app turns it on.
+
+#### Low: `Route.….block()` runs a route's requests one at a time per session
+
+*Likelihood of impact: low — new.* `RouteDefinition.block(lockSeconds = 10, waitSeconds = lockSeconds)` (Laravel's, E145) takes an
+atomic lock on the session — through `@bespokecore/cache`, which the app then needs — before `StartSession` reads it and frees it
+after saving; a request that waits longer gets 423 ([Blocking routes](packages/session/README.md#blocking-routes-block)). The web app
+and `make:auth` (both variants) block `PUT /settings/password` and `POST /settings/devices/logout`: a password hash and its
+fingerprint in the session must stay a pair. Apps generated before can add `.block()` to those two routes.
+
+#### Low: `bespoke key:generate --force` keeps the old key in `APP_PREVIOUS_KEYS`
+
+*Likelihood of impact: low — apps that rotate their key.* `--force` replaced `APP_KEY` and left nothing behind — every session,
+encrypted cookie and signed link died. Now the old key moves to the front of `APP_PREVIOUS_KEYS` in `.env` (E169), so all of it
+stays valid; drop old keys from the list once nothing needs them, and set both variables on every server. To start without the
+old key, remove it from `APP_PREVIOUS_KEYS` by hand.
 
 #### Low: `CSRF_TRUSTED_ORIGINS` lists origins — the scheme counts
 

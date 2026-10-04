@@ -1,10 +1,10 @@
-import { Logger } from '@bespokecore/core';
+import { Container, Logger } from '@bespokecore/core';
 import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@bespokecore/http';
-import type { HttpContext, Next } from '@bespokecore/router';
+import { HttpError, type HttpContext, type Next } from '@bespokecore/router';
 import { SessionConfig } from './config.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
 import { Session } from './session.ts';
-import { SessionStore } from './store.ts';
+import { SESSION_ID, sessionKey, SessionStore } from './store.ts';
 
 /**
  * The chance that a request cleans up expired sessions after its response (Laravel's lottery): `SESSION_LOTTERY` — or 0
@@ -32,6 +32,7 @@ export class StartSession {
   readonly #parent: ParentRequest;
   readonly #lottery: SessionLottery;
   readonly #endings: SessionEndings;
+  readonly #container: Container;
 
   constructor(
     session: Session,
@@ -42,6 +43,7 @@ export class StartSession {
     parent: ParentRequest,
     lottery: SessionLottery,
     endings: SessionEndings,
+    container: Container,
   ) {
     this.#session = session;
     this.#config = config;
@@ -51,6 +53,7 @@ export class StartSession {
     this.#parent = parent;
     this.#lottery = lottery;
     this.#endings = endings;
+    this.#container = container;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
@@ -65,22 +68,60 @@ export class StartSession {
       this.#session.lock((what) => this.#readOnly.permit(what));
       return next();
     }
-    await this.#session.start(ctx.cookies.get(cookie));
+    const id = ctx.cookies.get(cookie);
+    // A route that blocks (E145): one request of this session at a time — from before it is read until it is saved.
+    const lock = ctx.route?.blocking ? await this.#block(ctx, id) : undefined;
     try {
-      const response = await next();
-      // An asset-version reload (409): the page is requested again, so flash data must survive it.
-      if (response.status === 409 && response.headers.has(LOCATION_HEADER)) this.#session.reflash();
-      return response;
+      await this.#session.start(id);
+      try {
+        const response = await next();
+        // An asset-version reload (409): the page is requested again, so flash data must survive it.
+        if (response.status === 409 && response.headers.has(LOCATION_HEADER)) this.#session.reflash();
+        return response;
+      } finally {
+        // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
+        // keeps the one the sign-out sent.
+        if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
+        else if (this.#session.abandoned) {
+          this.#logger.warn('The session was not saved: other requests of the same session wrote it on every attempt (E145) — Route.block() serialises such a route', {
+            route: ctx.route?.routeName ?? ctx.route?.path,
+          });
+        }
+        // Signed in or out: the old session is gone — whoever listened through it stops (W6.10: its live streams, everywhere).
+        for (const ended of this.#session.ended) await this.#endings.ended(sessionScope(ended));
+        // Saved: nothing that still runs in this request — a streamed page's deferred props (E49) — reaches the store any
+        // more. Once the headers are out, the kernel makes the request read-only, and a write throws (or is dropped).
+        this.#session.lock((what) => this.#readOnly.permit(what));
+      }
     } finally {
-      // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
-      // keeps the one the sign-out sent.
-      if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { maxAge: lifetime * 60, secure, sameSite });
-      // Signed in or out: the old session is gone — whoever listened through it stops (W6.10: its live streams, everywhere).
-      for (const id of this.#session.ended) await this.#endings.ended(sessionScope(id));
-      // Saved: nothing that still runs in this request — a streamed page's deferred props (E49) — reaches the store any
-      // more. Once the headers are out, the kernel makes the request read-only, and a write throws (or is dropped).
-      this.#session.lock((what) => this.#readOnly.permit(what));
+      await lock?.release();
     }
+  }
+
+  /**
+   * The session's lock for a route that `block()`s (E145) — taken before the session is read, through the app's cache (atomic
+   * locks, E103), keyed by the session's store key (never its id). Nothing to lock without a session cookie: a new session is
+   * nobody else's.
+   */
+  async #block(ctx: HttpContext, id: string | undefined): Promise<{ release(): Promise<boolean> } | undefined> {
+    const blocking = ctx.route?.blocking;
+    if (!blocking || !id || !SESSION_ID.test(id)) return undefined;
+    const cache = await import('@bespokecore/cache').catch(() => undefined);
+    if (!cache || !this.#container.has(cache.Cache)) {
+      throw new Error(`Route ${ctx.route.path} uses block(): that needs the cache's atomic locks — install @bespokecore/cache (pnpm add @bespokecore/cache).`);
+    }
+    const lock = this.#container.make(cache.Cache).lock(`session:${sessionKey(id)}`, blocking.lockSeconds);
+    try {
+      await lock.block(blocking.waitSeconds);
+    } catch (error) {
+      if (!(error instanceof cache.LockTimeoutError)) throw error;
+      // Busy longer than the route waits: 423 Locked — the browser may try again. The error page may read the session (who is
+      // signed in), never write it.
+      await this.#session.start(id);
+      this.#session.lock((what) => this.#readOnly.permit(what));
+      throw new HttpError(423, undefined, { 'retry-after': String(Math.ceil(blocking.lockSeconds)) });
+    }
+    return lock;
   }
 
   /** After the response: now and then, clean up expired sessions — the client does not wait for it. */

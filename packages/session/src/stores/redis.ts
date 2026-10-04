@@ -1,13 +1,40 @@
-import type { RedisConnection } from '@bespokecore/redis';
-import type { SessionPayload, SessionStore } from '../store.ts';
+import { createHash } from 'node:crypto';
+import type { RedisConnection, RedisScript } from '@bespokecore/redis';
+import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
+
+/** A named Lua script (the shape of `defineRedisScript` — built here, as @bespokecore/redis is an optional peer). */
+function script(name: string, lua: string): RedisScript {
+  return Object.freeze({ name, lua, sha: createHash('sha1').update(lua).digest('hex') });
+}
+
+/**
+ * KEYS[1] session hash; ARGV[1] expected version ('' = a new key), ARGV[2] payload, ARGV[3] seconds to live. One atomic step:
+ * compare the version, write the payload with version + 1, renew the expiry.
+ */
+const WRITE = script(
+  'session.write',
+  `local current = redis.call('hget', KEYS[1], 'v')
+if ARGV[1] == '' then
+  if current then return 'conflict' end
+  current = '0'
+elseif not current then
+  return 'gone'
+elseif current ~= ARGV[1] then
+  return 'conflict'
+end
+redis.call('hset', KEYS[1], 'v', tostring(tonumber(current) + 1), 'd', ARGV[2])
+redis.call('expire', KEYS[1], ARGV[3])
+return 'written'`,
+);
 
 /** The connection, now or on first use (the store is built before the Redis package's provider boots). */
 export type RedisSessionConnection = RedisConnection | (() => Promise<RedisConnection>);
 
 /**
- * Sessions in Redis (`SESSION_DRIVER=redis`): `<prefix>session:<id>` holds the data as JSON and expires on its own
- * (`EX`, Redis' clock — `app.travel()` does not move it), so `gc` has nothing to do. Writing back is `SET … XX`: it
- * only replaces a key that still exists — a session a sign-out deleted meanwhile stays deleted.
+ * Sessions in Redis (`SESSION_DRIVER=redis`): `<prefix>session:<key>` (the SHA-256 of the session id, E144) is a hash holding
+ * the payload (`d`) and its version (`v`) and expires on its own (`EXPIRE`, Redis' clock — `app.travel()` does not move it),
+ * so `gc` has nothing to do. Writing is a Lua script — compare the version, write, renew — one atomic step (E145): a session a
+ * sign-out deleted meanwhile stays deleted, one another request wrote meanwhile is a conflict.
  */
 export class RedisSessionStore implements SessionStore {
   readonly #connection: () => Promise<RedisConnection>;
@@ -16,32 +43,25 @@ export class RedisSessionStore implements SessionStore {
     this.#connection = typeof connection === 'function' ? connection : async () => connection;
   }
 
-  async read(id: string): Promise<SessionPayload | undefined> {
+  async read(key: string): Promise<StoredSession | undefined> {
     const redis = await this.#connection();
-    const value = await redis.command<string | null>(['GET', redis.key(`session:${id}`)]);
-    return value === null ? undefined : (JSON.parse(value) as SessionPayload);
+    const [version, data] = await redis.command<[string | null, string | null]>(['HMGET', redis.key(`session:${key}`), 'v', 'd']);
+    return version === null || data === null ? undefined : { data, version: Number(version) };
   }
 
-  async write(id: string, data: SessionPayload, lifetimeSeconds: number): Promise<void> {
+  async write(key: string, data: string, { expectedVersion, lifetimeSeconds }: SessionWrite): Promise<SessionWriteResult> {
     const redis = await this.#connection();
-    const key = redis.key(`session:${id}`);
-    if (lifetimeSeconds <= 0) await redis.command(['DEL', key]); // already expired
-    else await redis.command(['SET', key, JSON.stringify(data), 'EX', Math.ceil(lifetimeSeconds)]);
-  }
-
-  async writeIfExists(id: string, data: SessionPayload, lifetimeSeconds: number): Promise<boolean> {
-    const redis = await this.#connection();
-    const key = redis.key(`session:${id}`);
+    const name = redis.key(`session:${key}`);
     if (lifetimeSeconds <= 0) {
-      await redis.command(['DEL', key]); // written back already expired: gone
-      return false;
+      await redis.command(['DEL', name]); // written already expired: gone
+      return expectedVersion === undefined ? 'written' : 'gone';
     }
-    return (await redis.command<string | null>(['SET', key, JSON.stringify(data), 'XX', 'EX', Math.ceil(lifetimeSeconds)])) === 'OK';
+    return redis.run<SessionWriteResult>(WRITE, [name], [expectedVersion ?? '', data, Math.ceil(lifetimeSeconds)]);
   }
 
-  async destroy(id: string): Promise<void> {
+  async destroy(key: string): Promise<void> {
     const redis = await this.#connection();
-    await redis.command(['DEL', redis.key(`session:${id}`)]);
+    await redis.command(['DEL', redis.key(`session:${key}`)]);
   }
 
   async gc(): Promise<number> {
