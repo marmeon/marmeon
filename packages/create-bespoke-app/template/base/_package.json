@@ -1,0 +1,55 @@
+{
+  "name": "@bespokecore/blank-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26.10"
+  },
+  "imports": {
+    "#modules/*": "./modules/*/index.ts"
+  },
+  "scripts": {
+    "dev": "bespoke dev",
+    "build": "bespoke build",
+    "start": "bespoke start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@bespokecore/auth": "workspace:*",
+    "@bespokecore/cache": "workspace:*",
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/database": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/i18n": "workspace:*",
+    "@bespokecore/log": "workspace:*",
+    "@bespokecore/mail": "workspace:*",
+    "@bespokecore/queue": "workspace:*",
+    "@bespokecore/react": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/scheduler": "workspace:*",
+    "@bespokecore/server": "workspace:*",
+    "@bespokecore/session": "workspace:*",
+    "mjml": "^5.4.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@bespokecore/devtools": "workspace:*",
+    "@bespokecore/testing": "workspace:*",
+    "@bespokecore/vite": "workspace:*",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.86.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  },
+  "description": "An app without modules — what create-bespoke-app --minimal writes (pnpm template:sync), and the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
+}

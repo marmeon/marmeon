@@ -20,6 +20,10 @@ What `bespoke()` does:
 - **chunks:** splits the first page's download into `vendor` (third-party packages) and `index` (the framework, the app's entry
   and layouts) — `CLIENT_CHUNKS`; what loads on first use stays in its own chunks (the size budget:
   [@bespokecore/react](../react/README.md#the-size-budget-e75));
+- **pre-bundling** while serving: Vite's dependency scan starts at the client entry and the pages (`optimizeDeps.entries`), not at
+  `index.html` (which names no entry before this plugin adds it), and includes the devtools' bar when an installed package brings
+  it — so a new app's first visit is not reloaded once or twice while Vite discovers its packages (workspace links are never
+  pre-bundled);
 - **virtual modules** (below) and the browser's **route manifest** (E57);
 - keeps **server code out of the browser** (E121, below).
 

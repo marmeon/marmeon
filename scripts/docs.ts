@@ -12,12 +12,14 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PACKAGES } from '../apps/docs/docs.config.ts';
 
 const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
+const root = fileURLToPath(new URL('..', import.meta.url));
 const bespoke = fileURLToPath(new URL('../packages/cli/bin/bespoke.js', import.meta.url));
 const mode = process.argv[2];
 
@@ -103,7 +105,11 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     expect(again.status === 304, `/ with If-None-Match: status ${again.status}, expected 304`);
   }
 
-  for (const name of PACKAGES) await publicPage(`/packages/${name}`, `@bespokecore/${name}</h1>`);
+  // Each page's heading is the package's npm name (`@bespokecore/core`; `create-bespoke-app` has no scope).
+  for (const name of PACKAGES) {
+    const { name: npmName } = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8')) as { name: string };
+    await publicPage(`/packages/${name}`, `${npmName}</h1>`);
+  }
 
   const search = async (q: string, page: string) => {
     const response = await publicPage(`/search?q=${encodeURIComponent(q)}`, `href="${page}`);

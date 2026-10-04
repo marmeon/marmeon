@@ -395,6 +395,30 @@ uses `node:crypto` now (≈ 3–4 µs) with the same layout — version, IV, cip
 encrypted sessions (`SESSION_ENCRYPT`), queued payloads and everything else encrypted before decrypt as they are, with `APP_KEY`
 and `APP_PREVIOUS_KEYS`; nobody is signed out. A tag shorter than 16 bytes was never accepted and is not now.
 
+#### Low: `bespoke make:auth` no longer maps `/` to the sign-in page
+
+*Likelihood of impact: low — apps that generate the auth module from now on.* The generated routes had `GET /` show the sign-in
+page to guests; the starter kit of `create-bespoke-app` has a home module for `/` (E150), and two modules must not claim one
+path. An app made with `make:auth` alone answers `/` with 404 until it has a page there. An existing `modules/auth` is the app's
+code and keeps its route. To have the old behaviour in a new module: `guests.get('/', ShowLoginController);` in
+`modules/auth/routes.ts`.
+
+#### Low: `create-bespoke-app` — the blank app is its `--minimal` output, with the devtools, a test and `pnpm test`
+
+*Likelihood of impact: low — apps copied from `apps/blank-app` before.* New apps start with `pnpm create bespoke-app my-app`
+([create-bespoke-app](packages/create-bespoke-app/README.md)): the starter kit (`make:auth`, a home page, the devtools, oxlint,
+Vitest) by default, the blank app with `--minimal` (E150, E167). The blank app is that output: it has `@bespokecore/devtools` as a
+dev dependency (development only, absent from production installs), a first test (`modules/system/system.test.ts`, `GET /up`),
+a `test` script (`vitest run`) and `engines.node`. In an older copy: `pnpm add -D @bespokecore/devtools` for the devtools, the
+rest as you like. `make:auth` names the devtools only for an app that lacks them.
+
+#### Low: the dev server pre-bundles from the client entry and the pages
+
+*Likelihood of impact: low — nothing to do.* `bespoke()` sets Vite's `optimizeDeps.entries` to the client entry and the pages (and
+`optimizeDeps.include` to the devtools' bar where it is installed): Vite found an app's packages only on the first request
+before, and reloaded the page once or twice (a 504 "Outdated Optimize Dep" in the console). Entries of your own in
+`vite.config.ts` are added to these.
+
 #### Low (contributors): the monorepo needs pnpm 12
 
 *Likelihood of impact: low — only for work on BespokeCore itself.* The repository pins pnpm 12 (`packageManager`), its root

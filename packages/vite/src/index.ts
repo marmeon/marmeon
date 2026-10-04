@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { bespokeInjection, CSP_NONCE_PLACEHOLDER } from '@bespokecore/core/vite';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
@@ -126,6 +126,12 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
       // Every script, style and preload tag of index.html (and the `csp-nonce` meta Vite's own code reads) carries the placeholder;
       // the server puts each response's CSP nonce in its place, or takes the attribute out (E147) — only this value is replaced.
       if (!options.test) result.html = { cspNonce: CSP_NONCE_PLACEHOLDER };
+      if (command === 'serve' && !options.test) {
+        // Vite scans index.html as written for the dependencies to pre-bundle — but this plugin adds the client entry, and the
+        // server the devtools' bar: found only on the first request, each re-bundling reloads the page (a 504 "Outdated Optimize
+        // Dep" for a chunk already asked for). Scan the entry and the pages, and name the bar when an installed package brings it.
+        result.optimizeDeps = { entries: [entries.client, ...[pages].flat()], include: installedModules(root, PREBUNDLED) };
+      }
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild
           ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }
@@ -211,6 +217,24 @@ export function adapterPeers(root: string): string[] {
     }
   }
   return [...peers].sort();
+}
+
+/** Modules a page loads that no file of the app imports: the devtools' bar (development only, added by the server). */
+const PREBUNDLED = ['@bespokecore/devtools/client'];
+
+/**
+ * The modules among `specifiers` an installed package provides — in `node_modules` for real: a workspace link (the monorepo's
+ * sources) is never pre-bundled.
+ */
+function installedModules(root: string, specifiers: readonly string[]): string[] {
+  return specifiers.filter((specifier) => {
+    const name = specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/');
+    for (let dir = root; ; dir = dirname(dir)) {
+      const candidate = join(dir, 'node_modules', name);
+      if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate).includes(`${sep}node_modules${sep}`);
+      if (dirname(dir) === dir) return false;
+    }
+  });
 }
 
 type Manifest = Record<string, unknown>;

@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26.10"
+  },
   "imports": {
     "#modules/*": "./modules/*/index.ts"
   },
@@ -10,6 +13,7 @@
     "dev": "bespoke dev",
     "build": "bespoke build",
     "start": "bespoke start",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint"
   },
@@ -35,6 +39,7 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
+    "@bespokecore/devtools": "workspace:*",
     "@bespokecore/testing": "workspace:*",
     "@bespokecore/vite": "workspace:*",
     "@types/node": "^26.6.3",
@@ -46,5 +51,5 @@
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   },
-  "description": "An app without modules — the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
+  "description": "An app without modules — what create-bespoke-app --minimal writes (pnpm template:sync), and the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
 }

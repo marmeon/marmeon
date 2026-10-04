@@ -51,10 +51,10 @@ export const parts: readonly Part[] = [
   { name: 'docs:check', command: pnpm('docs:check'), after: ['build'] },
   // The tarballs (E156–E158): a clean build, pnpm pack of every package, the content rules, publint and attw.
   { name: 'pack:check', command: pnpm('pack:check') },
-  // The tarballs installed into a copy of the blank app outside the monorepo: build, start, make:auth, migrate, its tests.
-  // Without pnpm's store and the registry it is skipped (exit 75) — reported as such, never as green.
+  // create-bespoke-app from the tarballs, outside the monorepo: the starter kit with pnpm and a blank app with npm — install, tests,
+  // lint, build, start. Without a store/cache and the registry it is skipped (exit 75) — reported as such, never as green.
   { name: 'pack:smoke', command: pnpm('pack:smoke'), after: ['build', 'pack:check'] },
-  // The smoke app as a Docker image (bespoke make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
+  // create-bespoke-app --docker as an image (bespoke make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
   // --workers, a worker's exit 70, the image's size. Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
 ];

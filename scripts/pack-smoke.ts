@@ -1,10 +1,14 @@
 /**
- * `pnpm pack:smoke` — the framework as a stranger gets it (E158): the tarballs of every package, installed into a copy of
- * the blank app OUTSIDE the monorepo, without its node_modules, and the app's life from there. A part of `pnpm run ci`.
+ * `pnpm pack:smoke` — the framework as a stranger gets it (E158, E150): the tarballs of every package, and a new app made
+ * from them OUTSIDE the monorepo by the `create-bespoke-app` tarball — twice. A part of `pnpm run ci`.
  *
- *   install → key:generate → build → start → GET /up 200 → make:auth → migrate → vitest run → build → start → GET /login 200
- *   (its CSP nonce on header and entry script, the entry as precompressed .br, immutable)
- *   → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
+ *   create-bespoke-app without a directory and without a terminal → exit 2 at once (never a prompt that waits)
+ *   create-bespoke-app app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
+ *     → migrate (development from .env) → vitest run → lint → build → start → GET /login 200
+ *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
+ *     .br, immutable), GET / 200 → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
+ *   create-bespoke-app app-npm --minimal --npm --no-git → build → start → GET /up 200 → vitest run → discovery in npm's flat
+ *     node_modules finds every package the pnpm app's does (E151)
  *
  * Every `bespoke start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
  * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group — and must load neither oxc-parser (the
@@ -12,21 +16,21 @@
  * hook records every module the start loads.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
- *   pnpm pack:smoke --keep       # leaves the app in $TMPDIR (the path is printed); a red run always keeps it
- *   pnpm pack:smoke --offline [--store-dir <dir>]   # never the network: only what pnpm's store (or that one) has
+ *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
+ *   pnpm pack:smoke --offline [--store-dir <dir>]   # never the network: only what pnpm's store (or that one) and npm's cache have
  *
- * The app lives in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@bespokecore or a
- * pnpm-workspace.yaml (checked by path — nothing of the repository can leak in). Every `@bespokecore/*` dependency points to
- * its tarball (`file:`), and `overrides` do the same for the packages' own dependencies on each other: their exact
- * `0.0.0` versions exist on no registry. Hoisting is off, so a package that imports what it does not declare (a
- * devDependency, say) fails here as it would for a user. The tsconfig is standalone and `@types/node` comes from the app
- * itself (until `create-bespoke-app` writes both, W8 step 10).
+ * The apps live in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@bespokecore or a
+ * pnpm-workspace.yaml (checked by path — nothing of the repository can leak in). The scaffolder takes the framework from
+ * `BESPOKE_CREATE_TARBALLS` (its maintainers' switch, packages/create-bespoke-app/README.md): the tarballs go into the app's
+ * `vendor/bespokecore/`, every `@bespokecore/*` dependency and override points there (their exact `0.0.0` versions exist on no
+ * registry), and for pnpm nothing is hoisted — a package that imports what it does not declare (a devDependency, say) fails
+ * here as it would for a user.
  *
- * Third-party packages come from pnpm's store or the registry. When neither is reachable the run ends with exit 75 and
- * "skipped" — `pnpm run ci` reports that as skipped, never as green.
+ * Third-party packages come from pnpm's store, npm's cache or the registry. When none is reachable the run ends with exit 75
+ * and "skipped" — `pnpm run ci` reports that as skipped, never as green.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
@@ -35,10 +39,11 @@ import { parseArgs } from 'node:util';
 import { packAll, type PackedPackage } from './packages.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const blankApp = join(root, 'apps/blank-app');
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
 export const SKIPPED = 75;
-export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode/;
+export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode|ENOTCACHED/;
+/** What create-bespoke-app says without a directory and without a terminal (E167). */
+const NO_DIRECTORY = 'create-bespoke-app needs a directory: create-bespoke-app <dir> [--yes]';
 
 export class SmokeError extends Error {}
 export class Offline extends Error {}
@@ -47,52 +52,10 @@ export class Offline extends Error {}
 export function cleanEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (/^(npm_|PNPM_|BESPOKE_|DB_|REDIS_|S3_|VITEST|INIT_CWD$|NODE_OPTIONS$|NODE_ENV$|NODE_PATH$)/.test(key)) continue;
+    if (/^(npm_|pnpm_|PNPM_|BESPOKE_|DB_|REDIS_|S3_|VITEST|GIT_|INIT_CWD$|NODE_OPTIONS$|NODE_ENV$|NODE_PATH$)/.test(key)) continue;
     env[key] = value;
   }
   return { ...env, NO_COLOR: '1', FORCE_COLOR: '0' };
-}
-
-/** Parses JSON with comments and trailing commas (tsconfig files). */
-export function parseJsonc(text: string): any {
-  let out = '';
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i]!;
-    if (char === '"') {
-      const end = /"(?:[^"\\]|\\.)*"/y;
-      end.lastIndex = i;
-      const string = end.exec(text)![0];
-      out += string;
-      i += string.length - 1;
-    } else if (char === '/' && text[i + 1] === '/') {
-      while (i < text.length && text[i] !== '\n') i++;
-      out += '\n';
-    } else if (char === '/' && text[i + 1] === '*') {
-      i = text.indexOf('*/', i + 2) + 1;
-    } else out += char;
-  }
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
-}
-
-/** A standalone tsconfig for the copy: the repository's shared settings without the source condition, then the app's own. */
-function standaloneTsconfig(): object {
-  const base = parseJsonc(readFileSync(join(root, 'tsconfig.base.json'), 'utf8')) as { compilerOptions: Record<string, unknown> };
-  const app = parseJsonc(readFileSync(join(blankApp, 'tsconfig.json'), 'utf8')) as { compilerOptions?: Record<string, unknown>; include?: string[] };
-  const { customConditions: _conditions, declaration: _d, declarationMap: _dm, sourceMap: _sm, ...shared } = base.compilerOptions;
-  return { compilerOptions: { ...shared, ...app.compilerOptions }, include: app.include };
-}
-
-/** The blank app's files as a fresh checkout has them (tracked and new, never ignored ones like .env or node_modules). */
-export function copyBlankApp(target: string): void {
-  const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'apps/blank-app'], { cwd: root, encoding: 'utf8' });
-  if (listed.status !== 0) throw new SmokeError(`git ls-files failed: ${listed.stderr}`);
-  for (const file of listed.stdout.split('\0').filter(Boolean)) {
-    const source = join(root, file);
-    if (!existsSync(source)) continue; // deleted in the working tree
-    const destination = join(target, relative(blankApp, source));
-    mkdirSync(dirname(destination), { recursive: true });
-    copyFileSync(source, destination);
-  }
 }
 
 /** Throws when anything above `dir` could hand the app the repository's packages or make it part of a workspace. */
@@ -106,40 +69,75 @@ export function assertIsolated(dir: string): void {
   }
 }
 
+/** The packed `create-bespoke-app`, unpacked into `dir` — it has no dependencies, so its bin runs as it is. Returns the bin. */
+export function unpackScaffolder(tarballs: ReadonlyMap<string, PackedPackage>, dir: string): string {
+  const scaffolder = tarballs.get('create-bespoke-app');
+  if (!scaffolder) throw new SmokeError('pnpm pack made no create-bespoke-app tarball.');
+  mkdirSync(dir, { recursive: true });
+  const tar = spawnSync('tar', ['-xzf', scaffolder.tarball, '-C', dir], { encoding: 'utf8' });
+  if (tar.status !== 0) throw new SmokeError(`could not unpack ${scaffolder.tarball}: ${tar.stderr}`);
+  return join(dir, 'package', 'bin', 'create-bespoke-app.js');
+}
+
 /**
- * The copy's package.json, pnpm-workspace.yaml and tsconfig.json: every `@bespokecore/*` from its tarball. `spec` says how a
- * tarball is named — an absolute `file:` path here, one relative to the app where the app is a Docker build context (`image`).
+ * A git that commits without anyone's signing key or identity — and without the machine's global ignore file, which could hide
+ * a `.env` the template's `.gitignore` forgot: for the throwaway repositories of the smoke apps only.
  */
-export function writeManifest(app: string, tarballs: Map<string, PackedPackage>, spec: (tarball: PackedPackage) => string = (tarball) => `file:${tarball.tarball}`): void {
-  const file = join(app, 'package.json');
-  const manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, any>;
-  manifest.name = 'bespoke-pack-smoke';
-  delete manifest.description;
-  for (const field of ['dependencies', 'devDependencies'] as const) {
-    for (const name of Object.keys(manifest[field] ?? {})) {
-      if (!name.startsWith('@bespokecore/')) continue;
-      const tarball = tarballs.get(name);
-      if (!tarball) throw new SmokeError(`the blank app depends on ${name}, which pnpm pack did not produce.`);
-      manifest[field][name] = spec(tarball);
+export const THROWAWAY_GIT: NodeJS.ProcessEnv = {
+  GIT_CONFIG_COUNT: '2',
+  GIT_CONFIG_KEY_0: 'commit.gpgsign',
+  GIT_CONFIG_VALUE_0: 'false',
+  GIT_CONFIG_KEY_1: 'core.excludesFile',
+  GIT_CONFIG_VALUE_1: '/dev/null',
+  GIT_AUTHOR_NAME: 'Smoke',
+  GIT_AUTHOR_EMAIL: 'smoke@example.com',
+  GIT_COMMITTER_NAME: 'Smoke',
+  GIT_COMMITTER_EMAIL: 'smoke@example.com',
+};
+
+/**
+ * Runs the unpacked create-bespoke-app in `cwd` without a terminal (stdin closed) — the framework from `tarballs`. Throws
+ * `Offline` when the install could not reach the registry, a `SmokeError` with its output on any other failure.
+ */
+export function scaffold(bin: string, cwd: string, args: string[], { tarballs, env = {} }: { tarballs: string; env?: NodeJS.ProcessEnv }): string {
+  const result = spawnSync(process.execPath, [bin, ...args], {
+    cwd,
+    env: { ...cleanEnvironment(), BESPOKE_CREATE_TARBALLS: tarballs, ...env },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: 10 * 60_000,
+  });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  if (result.status !== 0) {
+    throw OFFLINE.test(output) ? new Offline(output) : new SmokeError(`create-bespoke-app ${args.join(' ')} failed (exit ${result.status ?? result.signal}):\n${output}`);
+  }
+  return output;
+}
+
+/** The generated package.json: every `@bespokecore/*` from its vendored tarball — never `workspace:`, never a floating range. */
+export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Record<string, any> {
+  const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as Record<string, any>;
+  for (const field of ['dependencies', 'devDependencies', 'overrides'] as const) {
+    for (const [name, range] of Object.entries((manifest[field] ?? {}) as Record<string, string>)) {
+      if (/workspace:|^latest$|^\*$/.test(range)) throw new SmokeError(`package.json ${field}.${name} is "${range}" — a new app pins every package.`);
+      if (name.startsWith('@bespokecore/') && !/^file:(?:\.|\/.+)\/vendor\/bespokecore\/bespokecore-[\w-]+-\d+\.\d+\.\d+[\w.-]*\.tgz$/.test(range)) {
+        throw new SmokeError(`package.json ${field}.${name} is "${range}", not its vendored tarball.`);
+      }
     }
   }
-  if (!manifest.devDependencies?.['@types/node']) {
-    throw new SmokeError('the blank app has no @types/node devDependency — outside the monorepo nothing else brings it.');
+  if (packageManager === 'pnpm' && !/^pnpm@12\.\d+\.\d+$/.test(manifest.packageManager ?? '')) throw new SmokeError(`package.json pins no pnpm 12: ${manifest.packageManager}`);
+  if (packageManager === 'npm' && (manifest.packageManager || existsSync(join(app, 'pnpm-workspace.yaml')) || existsSync(join(app, 'pnpm-lock.yaml')))) {
+    throw new SmokeError('the npm app has pnpm files (packageManager, pnpm-workspace.yaml or pnpm-lock.yaml).');
   }
-  writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
-  const overrides = [...tarballs.values()].map((tarball) => `  ${JSON.stringify(tarball.name)}: ${JSON.stringify(spec(tarball))}`);
-  writeFileSync(
-    join(app, 'pnpm-workspace.yaml'),
-    [
-      '# Written by scripts/pack-smoke.ts: the framework from its tarballs.',
-      'overrides:',
-      ...overrides,
-      '# Nothing hoisted: a package can only import what it declares.',
-      'hoistPattern: []',
-      '',
-    ].join('\n'),
-  );
-  writeFileSync(join(app, 'tsconfig.json'), `${JSON.stringify(standaloneTsconfig(), null, 2)}\n`);
+  const env = readFileSync(join(app, '.env'), 'utf8');
+  if (!/^APP_KEY=base64:[A-Za-z0-9+/]{43}=$/m.test(env)) throw new SmokeError('.env has no APP_KEY.');
+  if (!/^APP_KEY=$/m.test(readFileSync(join(app, '.env.example'), 'utf8'))) throw new SmokeError('.env.example carries an APP_KEY.');
+  // The framework came from the tarballs: installed inside the app, its manifest without the source condition.
+  const core = realpathSync(join(app, 'node_modules/@bespokecore/core'));
+  if (!core.startsWith(app + sep)) throw new SmokeError(`@bespokecore/core resolves to ${core}, not into the app.`);
+  if (readFileSync(join(core, 'package.json'), 'utf8').includes('@bespokecore/source')) throw new SmokeError('the installed @bespokecore/core still has the source condition.');
+  return manifest;
 }
 
 export function freePort(): Promise<number> {
@@ -164,14 +162,16 @@ class Smoke {
   readonly env = cleanEnvironment();
   readonly #children = new Set<ChildProcess>();
   readonly app: string;
+  readonly label: string;
 
-  constructor(app: string) {
+  constructor(app: string, label: string) {
     this.app = app;
+    this.label = label;
   }
 
   async step<T>(name: string, work: () => Promise<T> | T): Promise<T> {
     const begin = performance.now();
-    process.stdout.write(`pack:smoke: ${name} … `);
+    process.stdout.write(`pack:smoke [${this.label}]: ${name} … `);
     try {
       const result = await work();
       const ms = performance.now() - begin;
@@ -284,11 +284,14 @@ class Smoke {
 }
 
 /**
- * The production HTTP defaults of the starter's shell (E147, E162): `/login` under its CSP — one nonce in the header and on the
+ * The production HTTP defaults of the starter kit (E147, E162): `/login` under its CSP — one nonce in the header and on the
  * entry script — and never compressed, for a guest without a cookie (E143), a cross-site post refused; the entry script as the
- * `.br` `bespoke build` wrote, kept a year (`immutable`).
+ * `.br` `bespoke build` wrote, kept a year (`immutable`); the home page.
  */
 async function checkProductionHttp(base: string): Promise<void> {
+  const home = await fetch(`${base}/`, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(5_000) });
+  const homeHtml = await home.text();
+  if (home.status !== 200 || !homeHtml.includes('home/Home')) throw new SmokeError(`GET / answered ${home.status} without the home page (modules/home).`);
   const page = await fetch(`${base}/login`, { headers: { accept: 'text/html', 'accept-encoding': 'gzip, deflate, br' }, signal: AbortSignal.timeout(5_000) });
   const html = await page.text();
   const policy = page.headers.get('content-security-policy') ?? '';
@@ -312,83 +315,135 @@ async function main(): Promise<number> {
   const { values } = parseArgs({ options: { keep: { type: 'boolean' }, offline: { type: 'boolean' }, 'store-dir': { type: 'string' } } });
   const started = performance.now();
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-pack-smoke-')));
-  const app = join(work, 'app');
-  const smoke = new Smoke(app);
+  const pnpmApp = new Smoke(join(work, 'app'), 'pnpm');
+  const npmApp = new Smoke(join(work, 'app-npm'), 'npm');
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
-      smoke.stopAll();
+      pnpmApp.stopAll();
+      npmApp.stopAll();
       process.exit(130);
     });
   }
+  // The package managers' own settings through their environment (the scaffolder runs the install): a warm store, or none of the network.
+  const offline = values.offline === true;
+  const installEnv: NodeJS.ProcessEnv = {
+    ...(offline ? { pnpm_config_offline: 'true', npm_config_offline: 'true' } : { pnpm_config_prefer_offline: 'true', npm_config_prefer_offline: 'true' }),
+    ...(values['store-dir'] ? { pnpm_config_store_dir: values['store-dir'] } : {}),
+  };
+  const pnpmFlags = [offline ? '--offline' : '--prefer-offline', ...(values['store-dir'] ? ['--store-dir', values['store-dir']] : [])];
   let keep = values.keep === true;
   try {
-    assertIsolated(app);
-    const tarballs = await smoke.step('pnpm pack (all packages)', () => new Map(packAll(root, join(work, 'tarballs')).map((tarball) => [tarball.name, tarball])));
-    await smoke.step('copy the blank app', () => {
-      copyBlankApp(app);
-      writeManifest(app, tarballs);
+    assertIsolated(pnpmApp.app);
+    const tarballDir = join(work, 'tarballs');
+    const tarballs = await pnpmApp.step('pnpm pack (all packages)', () => new Map(packAll(root, tarballDir).map((tarball) => [tarball.name, tarball])));
+    const bin = unpackScaffolder(tarballs, join(work, 'create-bespoke-app'));
+
+    // Without a directory and without a terminal: exit 2 and the reason — at once, never a prompt that waits for an answer (E167).
+    await pnpmApp.step('create-bespoke-app without a directory, no terminal → exit 2', () => {
+      const result = spawnSync(process.execPath, [bin], { cwd: work, env: cleanEnvironment(), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 15_000 });
+      if (result.error) throw new SmokeError(`create-bespoke-app without a directory did not end within 15 s (waiting for an answer?): ${result.error.message}`);
+      if (result.status !== 2 || !result.stderr.includes(NO_DIRECTORY)) throw new SmokeError(`create-bespoke-app without a directory ended with ${result.status}, expected 2 and "${NO_DIRECTORY}":\n${result.stdout}${result.stderr}`);
     });
-    await smoke.step('pnpm install', () => {
-      const flags = [values.offline ? '--offline' : '--prefer-offline', ...(values['store-dir'] ? ['--store-dir', values['store-dir']] : [])];
-      const result = spawnSync('pnpm', ['install', ...flags, '--reporter', 'append-only'], { cwd: app, env: smoke.env, encoding: 'utf8' });
-      const output = `${result.stdout}${result.stderr}`;
-      if (result.status !== 0) throw OFFLINE.test(output) ? new Offline(output) : new SmokeError(`pnpm install failed (exit ${result.status}):\n${output}`);
-      // The framework came from the tarballs: installed inside the smoke app, its manifest without the source condition.
-      const core = realpathSync(join(app, 'node_modules/@bespokecore/core'));
-      if (!core.startsWith(work + sep)) throw new SmokeError(`@bespokecore/core resolves to ${core}, not into the smoke app.`);
-      if (readFileSync(join(core, 'package.json'), 'utf8').includes('@bespokecore/source')) throw new SmokeError('the installed @bespokecore/core still has the source condition.');
+
+    // ── The starter kit with pnpm (the defaults) ──
+    const app = pnpmApp.app;
+    await pnpmApp.step('create-bespoke-app app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
+      const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
+      if (!output.includes('bespoke make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-bespoke-app skipped a step:\n${output}`);
+      checkManifest(app, 'pnpm');
+      for (const file of ['modules/auth/routes.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite']) {
+        if (!existsSync(join(app, file))) throw new SmokeError(`the starter kit has no ${file}.`);
+      }
+      // One commit, nothing left over — and none of what the app writes or keeps secret in it (.gitignore of the template).
+      const git = (...args: string[]) => pnpmApp.run('git', args, THROWAWAY_GIT).trim();
+      if (git('rev-list', '--count', 'HEAD') !== '1') throw new SmokeError('the new repository should have exactly one commit.');
+      if (git('status', '--porcelain') !== '') throw new SmokeError(`the first commit left files behind:\n${git('status', '--porcelain')}`);
+      const tracked = git('ls-files').split('\n');
+      const leaked = tracked.filter((file) => /^(\.env$|node_modules\/|dist\/|\.bespoke\/)|\.sqlite$|^storage\/(?!.*\.gitignore$)/.test(file));
+      if (leaked.length > 0) throw new SmokeError(`the first commit carries ${leaked.join(', ')}.`);
     });
-    await smoke.step('bespoke key:generate', () => smoke.bespoke('key:generate'));
-    await smoke.step('bespoke build', () => smoke.bespoke('build'));
-    await smoke.step('bespoke start → GET /up 200', () => smoke.serve('/up'));
-    await smoke.step('bespoke make:auth', () => {
-      const output = smoke.bespoke('make:auth');
-      const asks = /^(Install what the module uses|And what its tests use): (.*)$/m.exec(output);
-      if (asks) throw new SmokeError(`make:auth asks for packages the blank app should have: ${asks[2]}`);
-    });
-    // As a developer migrates: NODE_ENV=development from the .env that key:generate copied (E170) — no --force there, and it
-    // writes bootstrap/database.d.ts (E164).
-    await smoke.step('bespoke migrate (development from .env)', () => {
-      const output = smoke.bespoke('migrate');
+    // As a developer migrates: NODE_ENV=development from the .env (E170) — no --force there.
+    await pnpmApp.step('bespoke migrate (development from .env)', () => {
+      const output = pnpmApp.bespoke('migrate');
       if (!output.includes('Environment: development (from .env)')) throw new SmokeError(`bespoke migrate did not take NODE_ENV=development from .env:\n${output}`);
-      if (!existsSync(join(app, 'bootstrap/database.d.ts'))) throw new SmokeError(`bespoke migrate in development wrote no bootstrap/database.d.ts:\n${output}`);
     });
-    const tests = await smoke.step('vitest run', () => {
-      const output = smoke.run(join(app, 'node_modules/.bin/vitest'), ['run']);
-      return /Tests\s+(\d+ passed[^\n]*)/.exec(output)?.[1] ?? '?';
+    const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
+      const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
+      if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);
+      return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
-    await smoke.step('bespoke build (with the auth module)', () => {
-      smoke.bespoke('build');
+    await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));
+    await pnpmApp.step('bespoke build', () => {
+      pnpmApp.bespoke('build');
       // The injection lists of the app (E138): the auth module's controllers take their services through the constructor.
       const injections = JSON.parse(readFileSync(join(app, '.bespoke/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
       if (listed.length < 5) throw new SmokeError(`bespoke build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
     });
-    await smoke.step('bespoke start → GET /login 200 (CSP nonce, precompressed assets)', () => smoke.serve('/login', checkProductionHttp));
+    await pnpmApp.step('bespoke start → GET /login 200 (CSP nonce, precompressed assets), GET / 200', () => pnpmApp.serve('/login', checkProductionHttp));
+    const discovered = await pnpmApp.step('bespoke discover (pnpm, nothing hoisted)', () => discoveredPackages(pnpmApp.bespoke('discover')));
     // Production installs without the dev dependencies (E159): `bespoke` is a dependency, and the app starts without the rest.
-    await smoke.step('pnpm install --prod → node_modules/.bin/bespoke', () => {
-      const flags = [values.offline ? '--offline' : '--prefer-offline', ...(values['store-dir'] ? ['--store-dir', values['store-dir']] : [])];
-      smoke.run('pnpm', ['install', '--prod', ...flags, '--reporter', 'append-only']);
+    await pnpmApp.step('pnpm install --prod → node_modules/.bin/bespoke', () => {
+      pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);
       if (existsSync(join(app, 'node_modules/vitest'))) throw new SmokeError('pnpm install --prod left the dev dependency vitest in node_modules.');
       if (!existsSync(join(app, 'node_modules/.bin/bespoke'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/bespoke — @bespokecore/cli must be a dependency of the app.');
     });
-    await smoke.step('bespoke start (production install) → GET /login 200', () => smoke.serve('/login'));
+    await pnpmApp.step('bespoke start (production install) → GET /login 200', () => pnpmApp.serve('/login'));
+
+    // ── A blank app with npm (E151: npm's flat node_modules) ──
+    await npmApp.step('create-bespoke-app app-npm --minimal --npm --no-git (install, migrate)', () => {
+      scaffold(bin, work, ['app-npm', '--minimal', '--npm', '--no-git'], { tarballs: tarballDir, env: installEnv });
+      checkManifest(npmApp.app, 'npm');
+      if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
+      if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
+    });
+    await npmApp.step('bespoke build', () => npmApp.bespoke('build'));
+    await npmApp.step('bespoke start → GET /up 200', () => npmApp.serve('/up'));
+    const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');
+    // Discovery walks node_modules as Node resolves (E151): in npm's flat layout it finds every package pnpm's finds.
+    await npmApp.step('bespoke discover (npm) finds what pnpm\'s finds', () => {
+      // The same packages, and in them the same providers and injectable classes (a constructor's types resolve from the package's
+      // own dependencies — another place where a lookup could assume pnpm's layout).
+      const flat = discoveredPackages(npmApp.bespoke('discover'));
+      const missing = discovered.names.filter((name) => !flat.names.includes(name));
+      if (missing.length > 0 || flat.names.length !== discovered.names.length || flat.summary !== discovered.summary) {
+        throw new SmokeError(
+          `discovery in npm's node_modules found ${flat.summary} (${flat.names.join(', ')}), in pnpm's ${discovered.summary} — missing: ${missing.join(', ') || 'none'}`,
+        );
+      }
+    });
+
     const total = ((performance.now() - started) / 1000).toFixed(1);
-    console.log(`pack:smoke: ${tarballs.size} tarballs outside the monorepo — install, build, start, make:auth, migrate, ${tests} tests, start, production install, start: green (${total}s).`);
+    console.log(
+      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-bespoke-app: the starter kit with pnpm (${tests} tests, lint, build, start, production install) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
+    );
     return 0;
   } catch (error) {
     if (error instanceof Offline) {
-      console.error(`pack:smoke: SKIPPED — pnpm could not fetch the third-party packages (no store, no network):\n${error.message.trim().split('\n').slice(-5).join('\n')}`);
+      console.error(`pack:smoke: SKIPPED — the third-party packages could not be fetched (no store or cache, no network):\n${error.message.trim().split('\n').slice(-5).join('\n')}`);
       return SKIPPED;
     }
     keep = true;
     console.error(`pack:smoke: ${error instanceof SmokeError ? error.message : (error as Error).stack}`);
     return 1;
   } finally {
-    smoke.stopAll();
+    pnpmApp.stopAll();
+    npmApp.stopAll();
     if (keep) console.log(`pack:smoke: kept ${work}`);
     else rmSync(work, { recursive: true, force: true });
   }
+}
+
+/** What `bespoke discover` found: the package names (one per line, indented), sorted, and its summary (packages, providers, classes). */
+function discoveredPackages(output: string): { names: string[]; summary: string } {
+  const names = output
+    .split('\n')
+    .filter((line) => /^\s+@?[\w./-]+$/.test(line))
+    .map((line) => line.trim())
+    .sort();
+  const summary = /(\d+ packages, \d+ providers, \d+ injectable classes[^→]*)/.exec(output)?.[1]?.trim();
+  if (!summary) throw new SmokeError(`bespoke discover printed no summary:\n${output}`);
+  return { names, summary };
 }
 
 if (import.meta.main) process.exitCode = await main();

@@ -6,8 +6,8 @@
  *   node scripts/pack-check.ts --keep        # leave the tarballs and their unpacked contents in $TMPDIR (the path is printed)
  *
  * The rules, per tarball (made with `pnpm pack` — only pnpm applies `publishConfig.exports`):
- *   - no tests, type tests, `__fixtures__`, `test-helpers` or build info — except in `stubs/`, which ships whole (the
- *     generators copy it into apps, tests included);
+ *   - no tests, type tests, `__fixtures__`, `test-helpers` or build info — except in `stubs/` and `template/`, which ship whole
+ *     (the generators and create-bespoke-app copy them into apps, tests included);
  *   - nothing in `dist/` without its source in `src/` (a leftover of an earlier build — `tsc -b` never deletes), and every
  *     source map's sources are in the tarball (declaration and source maps point to `src/`, which ships for them);
  *   - `LICENSE` (the root's, byte for byte — `pnpm license:sync`) and `README.md`;
@@ -16,7 +16,10 @@
  *   - every `exports`/`bin` target in the tarball, none of them TypeScript source (Node does not strip types under node_modules);
  *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
  * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
- * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported).
+ * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported); a package with
+ * only a bin (create-bespoke-app) has no entry point for attw to check.
+ * `create-bespoke-app` besides (E167): no dependencies at all (it is the first thing a stranger runs — no supply chain behind
+ * it), and its template has no `.env` and no `APP_KEY` with a value (a new app gets a fresh one).
  * Also: the root `tsconfig.json` references every package.
  */
 import { spawnSync } from 'node:child_process';
@@ -49,15 +52,18 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   const files = new Set(packed.files);
   const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as PackageManifest & Record<string, any>;
 
-  // stubs/ are templates the generators copy into apps — tests included (make:auth writes the auth module's tests).
-  for (const file of packed.files.filter((name) => !name.startsWith('stubs/'))) {
+  // stubs/ and template/ are copied into apps — tests included (make:auth writes the auth module's tests, create-bespoke-app the app's).
+  for (const file of packed.files.filter((name) => !name.startsWith('stubs/') && !name.startsWith('template/'))) {
     const test = TEST_FILES.find(([pattern]) => pattern.test(file));
     if (test) problems.push(`${file} is ${test[1]} — exclude it in "files"`);
   }
-  for (const file of filesUnder(join(pkg.dir, 'stubs'))) {
-    const path = `stubs/${file}`;
-    if (!files.has(path)) problems.push(`${path} is missing — the stubs ship whole (the generators copy them)`);
+  for (const part of ['stubs', 'template']) {
+    for (const file of filesUnder(join(pkg.dir, part))) {
+      const path = `${part}/${file}`;
+      if (!files.has(path)) problems.push(`${path} is missing — ${part}/ ships whole (it is copied into apps)`);
+    }
   }
+  if (pkg.short === 'create-bespoke-app') problems.push(...checkScaffolder(packed, dir, manifest));
 
   // Leftovers: a compiled file needs its source next to it (a renamed or deleted source leaves its output behind).
   for (const file of packed.files) {
@@ -108,6 +114,25 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   if (source.publishConfig?.access !== 'public' || source.publishConfig?.provenance !== true) {
     problems.push('publishConfig needs "access": "public" and "provenance": true');
   }
+  return problems;
+}
+
+/**
+ * `create-bespoke-app` (E167): no dependencies — the first thing a stranger runs pulls in nothing else; its template carries no
+ * `.env` and no `APP_KEY` with a value (each app gets its own).
+ */
+function checkScaffolder(packed: PackedPackage, dir: string, manifest: Record<string, any>): string[] {
+  const problems: string[] = [];
+  for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies']) {
+    const list = manifest[field] as Record<string, string> | string[] | undefined;
+    const names = Array.isArray(list) ? list : Object.keys(list ?? {});
+    if (names.length > 0) problems.push(`${field}: ${names.join(', ')} — create-bespoke-app has no dependencies (prompts over node:readline, E167)`);
+  }
+  for (const file of packed.files.filter((name) => name.startsWith('template/'))) {
+    if (/(^|\/)\.env$/.test(file)) problems.push(`${file} is a .env — the template never carries one (the app's .env is written with a fresh APP_KEY)`);
+    else if (/^APP_KEY=\S/m.test(readFileSync(join(dir, file), 'utf8'))) problems.push(`${file} sets APP_KEY — the template leaves it empty (each app gets a fresh key)`);
+  }
+  if (!packed.files.includes('template/base/_package.json')) problems.push('template/base/_package.json is missing — pnpm template:sync');
   return problems;
 }
 
@@ -194,7 +219,9 @@ async function main(): Promise<number> {
         if (tar.status !== 0) return report(pkg.name, [`could not unpack ${tarball.tarball}: ${tar.stderr}`]);
         report(pkg.name, checkTarball(tarball, join(unpacked, 'package'), pkg, license));
         report(pkg.name, await lint(tarball));
-        report(pkg.name, typesWrong(tarball));
+        // attw checks what importing the package resolves to — a package that only has a bin (create-bespoke-app) has nothing to import.
+        const packedManifest = JSON.parse(readFileSync(join(unpacked, 'package', 'package.json'), 'utf8')) as Record<string, unknown>;
+        if (['exports', 'main', 'types', 'module'].some((field) => field in packedManifest)) report(pkg.name, typesWrong(tarball));
       }),
     );
 

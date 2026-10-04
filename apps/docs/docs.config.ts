@@ -8,6 +8,7 @@ export const PACKAGES = [
   'cache',
   'cli',
   'core',
+  'create-bespoke-app',
   'database',
   'devtools',
   'encryption',
@@ -55,7 +56,7 @@ export function defineDocs<const G extends readonly DocsGroup[]>(docs: { readonl
 
 export default defineDocs({
   groups: [
-    { title: 'Core', packages: ['core', 'cli', 'log', 'encryption', 'testing'] },
+    { title: 'Core', packages: ['core', 'cli', 'create-bespoke-app', 'log', 'encryption', 'testing'] },
     { title: 'HTTP', packages: ['router', 'http', 'server', 'session', 'vite', 'i18n'] },
     { title: 'Data', packages: ['database', 'cache', 'redis'] },
     { title: 'Auth & Mail', packages: ['auth', 'mail', 'notifications'] },

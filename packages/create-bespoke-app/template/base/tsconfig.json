@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": [
+      "ES2025",
+      "ESNext.Array",
+      "ESNext.Collection",
+      "ESNext.Disposable",
+      "ESNext.Error",
+      "ESNext.Iterator",
+      "ESNext.Promise",
+      "ESNext.Temporal",
+      "ESNext.TypedArrays",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "vite/client",
+      "@bespokecore/vite/client"
+    ],
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "bootstrap",
+    "config",
+    "lang",
+    "middleware",
+    "modules",
+    "vite.config.ts"
+  ]
+}

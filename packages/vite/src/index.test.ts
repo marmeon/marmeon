@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ConfigEnv, Plugin, UserConfig } from 'vite';
@@ -64,6 +64,22 @@ describe('bespoke()', () => {
       rolldownOptions: { input: { ssr: join(app, 'src/server.tsx') } },
     });
     expect(configFor(bespoke({ test: true }), { command: 'build', mode: 'production' }).build).toBeUndefined();
+  });
+
+  it('pre-bundles from the client entry and the pages — and the devtools\' bar when an installed package brings it (no reload on the first request)', () => {
+    const dev = configFor(bespoke(), { command: 'serve', mode: 'development' });
+    expect(dev.optimizeDeps?.entries).toEqual(['bootstrap/client.tsx', 'modules/*/views/**/*.tsx']);
+    expect(dev.optimizeDeps?.include).toEqual([]); // no devtools installed
+    const withDevtools = tree({ 'package.json': {}, 'node_modules/@bespokecore/devtools/package.json': { name: '@bespokecore/devtools' } });
+    const hook = main(bespoke()).config as (config: UserConfig, env: ConfigEnv) => UserConfig;
+    expect(hook({ root: withDevtools }, { command: 'serve', mode: 'development' } as ConfigEnv).optimizeDeps?.include).toEqual(['@bespokecore/devtools/client']);
+    // A workspace link (the monorepo's sources) is never pre-bundled.
+    const linked = tree({ 'package.json': {}, 'packages/devtools/package.json': { name: '@bespokecore/devtools' } });
+    mkdirSync(join(linked, 'node_modules/@bespokecore'), { recursive: true });
+    symlinkSync(join(linked, 'packages/devtools'), join(linked, 'node_modules/@bespokecore/devtools'), 'dir');
+    expect(hook({ root: linked }, { command: 'serve', mode: 'development' } as ConfigEnv).optimizeDeps?.include).toEqual([]);
+    expect(configFor(bespoke(), { command: 'build', mode: 'production' }).optimizeDeps).toBeUndefined();
+    expect(configFor(bespoke({ test: true }), { command: 'serve', mode: 'test' }).optimizeDeps).toBeUndefined();
   });
 
   it('dedupes the required peers of framework packages only (one React for adapter and app)', () => {

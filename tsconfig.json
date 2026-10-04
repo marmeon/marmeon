@@ -72,6 +72,9 @@
     },
     {
       "path": "packages/vite"
+    },
+    {
+      "path": "packages/create-bespoke-app"
     }
   ]
 }

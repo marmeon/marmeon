@@ -22,6 +22,7 @@
     "types:check": "export NODE_ENV=test && cd apps/web-app && bespoke route:types --check && bespoke db:types --check && cd ../blank-app && bespoke route:types --check && bespoke db:types --check && cd ../docs && bespoke route:types --check",
     "lint": "oxlint --deny-warnings",
     "license:sync": "node scripts/sync-license.ts",
+    "template:sync": "node scripts/sync-template.ts",
     "pack:check": "node scripts/pack-check.ts",
     "pack:smoke": "node scripts/pack-smoke.ts",
     "image:smoke": "node scripts/image-smoke.ts",

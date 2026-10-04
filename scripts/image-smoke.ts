@@ -1,7 +1,7 @@
 /**
- * `pnpm image:smoke` — the app as an image (E158, E140, E141, E163): the smoke app of `pack:smoke` (the blank app with the
- * framework from its tarballs, outside the monorepo, plus `make:auth`) gets its files from `bespoke make:docker` and is built
- * with Docker — then the container's life:
+ * `pnpm image:smoke` — the app as an image (E158, E140, E141, E163): `create-bespoke-app app --docker` from the tarballs (as in
+ * `pack:smoke`: outside the monorepo, the framework from its tarballs inside the app's `vendor/` — the build context) — the
+ * starter kit with the files of `bespoke make:docker` — is built with Docker; then the container's life:
  *
  *   compose.production.yaml valid · docker build → runs as a user other than root · no .env* in the image (.env and
  *   .env.production are in the context) · migrate --force · start → GET /up 200, /login 200
@@ -15,16 +15,16 @@
  *
  *   pnpm image:smoke          # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm image:smoke --keep   # leaves the app, the image and the volume (printed); a red run always keeps the app
- *   pnpm image:smoke --npm    # the app installed with npm (package-lock.json) — make:docker writes the npm variant
+ *   pnpm image:smoke --npm    # create-bespoke-app --npm (package-lock.json) — make:docker writes the npm variant
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { packAll } from './packages.ts';
-import { assertIsolated, cleanEnvironment, copyBlankApp, freePort, Offline, OFFLINE, SKIPPED, SmokeError, writeManifest } from './pack-smoke.ts';
+import { assertIsolated, cleanEnvironment, freePort, Offline, OFFLINE, scaffold, SKIPPED, SmokeError, unpackScaffolder } from './pack-smoke.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 /** Docker's own words for a registry it cannot reach (the build pulls node:26-slim and the app's dependencies). */
@@ -106,8 +106,9 @@ function addStuckJob(app: string): void {
   );
   const file = join(app, 'bootstrap/app.ts');
   const source = readFileSync(file, 'utf8');
-  if (!source.includes('modules: [system]')) throw new SmokeError('bootstrap/app.ts of the blank app has no `modules: [system]` to add the smoke module to.');
-  writeFileSync(file, source.replace("import system from '#modules/system';", "import system from '#modules/system';\nimport smoke from '#modules/smoke';").replace('modules: [system]', 'modules: [system, smoke]'));
+  const modules = /modules: \[([^\]]*)\]/.exec(source);
+  if (!modules || !source.includes("import system from '#modules/system';")) throw new SmokeError('bootstrap/app.ts of the new app has no `modules: [...]` and system import to add the smoke module to.');
+  writeFileSync(file, source.replace("import system from '#modules/system';", "import system from '#modules/system';\nimport smoke from '#modules/smoke';").replace(modules[0], `modules: [${modules[1]}, smoke]`));
 }
 
 /** Inserts the stuck job into the queue's table — with Node's own SQLite, inside the image (no tool on the host needed). */
@@ -134,7 +135,6 @@ async function main(): Promise<number> {
   const volume = `bespokecore-image-smoke-${id}`;
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-image-smoke-')));
   const app = join(work, 'app');
-  const env = cleanEnvironment();
   const key = `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
   let keep = values.keep === true;
   let built = false;
@@ -150,49 +150,29 @@ async function main(): Promise<number> {
       throw error;
     }
   };
-  const sh = (command: string, args: string[], extra: NodeJS.ProcessEnv = {}) => {
-    const result = spawnSync(command, args, { cwd: app, env: { ...env, ...extra }, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-    if (result.status !== 0) throw OFFLINE.test(output) ? new Offline(output) : new SmokeError(`${[command, ...args].join(' ')} failed (exit ${result.status}):\n${output}`);
-    return output;
-  };
-  const bespoke = (...args: string[]) => sh(join(app, 'node_modules/.bin/bespoke'), args);
   const logs = (name: string) => () => docker.run(['logs', name], { expect: 'any' }).output;
   const common = ['-e', `APP_KEY=${key}`, '-e', 'APP_NAME=Smoke', '-e', 'APP_URL=http://localhost', '-e', 'MAIL_MAILER=array', '-v', `${volume}:/app/storage`];
 
   try {
     assertIsolated(app);
-    await step('the smoke app (tarballs inside the build context, make:auth, a stuck job)', () => {
-      copyBlankApp(app);
-      // The tarballs inside the app: the Docker build sees only its context, and make:docker copies `file:` directories first.
-      const tarballs = new Map(packAll(root, join(app, 'vendor/bespokecore')).map((tarball) => [tarball.name, tarball]));
-      writeManifest(app, tarballs, (tarball) => `file:./vendor/bespokecore/${basename(tarball.tarball)}`);
-      // The pnpm the repository pins — the Dockerfile installs exactly this one.
-      const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as Record<string, unknown>;
-      if (npm) {
-        // An npm app (E151): the overrides in package.json, no pnpm files — make:docker writes the npm variant.
-        manifest.overrides = Object.fromEntries([...tarballs.values()].map((tarball) => [tarball.name, `file:./vendor/bespokecore/${basename(tarball.tarball)}`]));
-        rmSync(join(app, 'pnpm-workspace.yaml'));
-      } else manifest.packageManager = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { packageManager: string }).packageManager;
-      writeFileSync(join(app, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-      addStuckJob(app);
-    });
-    await step(`${npm ? 'npm' : 'pnpm'} install (the lockfile the image installs from)`, () =>
-      npm ? sh('npm', ['install', '--no-audit', '--no-fund']) : sh('pnpm', ['install', '--prefer-offline', '--reporter', 'append-only']),
-    );
-    await step('bespoke key:generate, make:auth, migrate, make:docker (compose config)', () => {
-      bespoke('key:generate'); // a .env in the context — the image must not get it
-      bespoke('make:auth');
-      // As a developer does before committing: the migration writes the tables' types (bootstrap/database.d.ts) the build checks.
-      bespoke('migrate');
-      const output = bespoke('make:docker');
-      if (!output.includes('Created Dockerfile')) throw new SmokeError(`make:docker wrote no Dockerfile:\n${output}`);
-      // The server's configuration next to the compose file — in the build context, so the image must keep it out too.
+    await step(`create-bespoke-app app --docker${npm ? ' --npm' : ''} --no-git (the starter kit: install, make:auth, migrate, make:docker) + a stuck job`, () => {
+      const tarballs = join(work, 'tarballs');
+      const bin = unpackScaffolder(new Map(packAll(root, tarballs).map((tarball) => [tarball.name, tarball])), join(work, 'create-bespoke-app'));
+      // The tarballs end up inside the app (vendor/bespokecore/): the Docker build sees only its context, and the Dockerfile copies them first.
+      const output = scaffold(bin, work, ['app', '--yes', '--docker', '--no-git', ...(npm ? ['--npm'] : [])], {
+        tarballs,
+        env: npm ? { npm_config_prefer_offline: 'true' } : { pnpm_config_prefer_offline: 'true' },
+      });
+      if (!output.includes('bespoke make:docker')) throw new SmokeError(`create-bespoke-app wrote no Docker files:\n${output}`);
+      // A .env in the context (the scaffolder wrote it) — the image must not get it; the server's configuration next to the compose
+      // file — in the build context too, so the image must keep it out as well.
       writeFileSync(join(app, '.env.production'), `APP_KEY=${key}\nAPP_NAME=Smoke\nAPP_URL=https://smoke.example\n`);
       const config = spawnSync('docker', ['compose', '-f', 'compose.production.yaml', 'config', '-q'], { cwd: app, env: docker.env, encoding: 'utf8' });
       if (config.status !== 0) throw new SmokeError(`docker compose config rejects compose.production.yaml:\n${config.stderr}`);
       const written = readFileSync(join(app, 'Dockerfile'), 'utf8');
       if (written.includes('npm ci') !== npm) throw new SmokeError(`make:docker did not write the ${npm ? 'npm' : 'pnpm'} variant:\n${written}`);
+      if (!/^COPY vendor\S* \.\/vendor/m.test(written)) throw new SmokeError(`the Dockerfile does not copy the vendored tarballs before the install:\n${written}`);
+      addStuckJob(app);
     });
     const buildSeconds = await step(`docker build -t ${image}`, () => {
       const begin = performance.now();
@@ -211,7 +191,9 @@ async function main(): Promise<number> {
       if (!listed.includes('dist') || !listed.includes('.bespoke')) throw new SmokeError(`the image has no build (dist/, .bespoke/): ${listed.join(' ')}`);
       // Production dependencies only (E159): the dev dependencies of the build stage are not in the image, not even unlinked.
       const store = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "const fs = require('fs'); console.log([...(fs.existsSync('node_modules/.pnpm') ? fs.readdirSync('node_modules/.pnpm') : []), ...fs.readdirSync('node_modules')].join('\\n'))"]).output.split('\n');
-      const dev = store.filter((entry) => /^(vitest|vite|typescript|@vitejs|oxlint)(@|$|\+)/.test(entry));
+      // npm keeps the optional peers of production packages that a dev dependency brought (vite, typescript, @vitejs) — only what
+      // nothing in production names may be missing there; pnpm leaves out all of them.
+      const dev = store.filter((entry) => (npm ? /^(vitest|oxlint)(@|$|\+)/ : /^(vitest|vite|typescript|@vitejs|oxlint)(@|$|\+)/).test(entry));
       if (dev.length > 0) throw new SmokeError(`the image carries dev dependencies: ${dev.join(', ')}`);
     });
     await step('bespoke migrate --force (into the storage volume)', () => docker.run(['run', '--rm', ...common, image, 'migrate', '--force']));

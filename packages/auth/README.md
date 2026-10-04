@@ -31,7 +31,8 @@ module imports that `package.json` lacks (`@bespokecore/cache`, `mail`, `queue`,
 existing `modules/auth` is never touched without `--force`. Then: `bespoke migrate` (with `NODE_ENV=development`, so it writes the table types), a jobs table for its queued mails
 (`bespoke make:queue-table`, once) and `MAIL_*` in `.env`. The lint preset and the devtools belong to the app, not to the
 module — `make:auth` names them while the app has neither: `bespoke make:lint-config` ([Lint](../cli/README.md#lint)) and
-`pnpm add -D @bespokecore/devtools` ([@bespokecore/devtools](../devtools/README.md)).
+`pnpm add -D @bespokecore/devtools` ([@bespokecore/devtools](../devtools/README.md)). An app from `create-bespoke-app` has both
+(E150) — its starter kit is this module, a home page and the blank app ([create-bespoke-app](../create-bespoke-app/README.md)).
 
 What the module holds:
 
@@ -40,7 +41,7 @@ What the module holds:
 | `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the job, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
 | `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP) and `verification` ([@bespokecore/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
-| `routes.ts` | `/login`, `/register`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password`, `/settings/devices/logout`, `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…` (behind `authenticate()`) |
+| `routes.ts` | `/login`, `/register`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password`, `/settings/devices/logout`, `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…` (behind `authenticate()`) |
 | `api-routes.ts` | `GET /api/user` behind `authenticate('api')` — Sanctum's `/api/user` |
 | `controllers/` | 22 single-action controllers with their requests (`LoginController`: throttled per e-mail and IP, counted before the check) |
 | `views/`, `layouts/` | `Login`, `Register`, `ForgotPassword`, `ResetPassword`, `ConfirmPassword`, `VerifyEmail`, `Dashboard`, `Security`, `AccessTokens`; `AppLayout`, `SettingsLayout` |

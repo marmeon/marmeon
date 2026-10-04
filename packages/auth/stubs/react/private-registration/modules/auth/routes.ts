@@ -29,7 +29,6 @@ import { VerifyEmailController } from './controllers/VerifyEmailController.ts';
 export default defineRoutes((Route) => {
   // Guests only: signed-in people go to the dashboard.
   const guests = Route.middleware(guest('/dashboard'));
-  guests.get('/', ShowLoginController);
   guests.get('/login', ShowLoginController).name('auth.login');
   guests.post('/login', LoginController).name('auth.login.store');
   guests.get('/register', ShowRegisterController).name('auth.register');

@@ -56,24 +56,28 @@ Status: in development, not published yet. MIT licence (`LICENSE`). Node 26.10 o
 Security comes before parity with Laravel or Inertia: no page props in `history.state` or browser storage, `no-store` for
 signed-in users, read-only islands, devtools only with `NODE_ENV=development`, redaction of everything recorded.
 
-## Quick start
-
-There is no project generator yet: the blank app (`apps/blank-app`) is the template — an app without modules. In a copy of
-it (inside this workspace, so the framework packages resolve):
+## Getting started
 
 ```sh
-pnpm install
-pnpm exec bespoke key:generate        # copies .env.example to .env and writes APP_KEY: cookies, signed URLs, encrypted jobs
-pnpm exec bespoke make:auth           # sign-up, login, password reset, e-mail verification, API tokens — as code the app owns
-pnpm exec bespoke migrate             # .env says NODE_ENV=development (E170): no --force, and it writes bootstrap/database.d.ts
-pnpm dev                              # bespoke dev: the server with Vite, a queue worker and the scheduler
+pnpm create bespoke-app my-app        # the starter kit: sign-in and registration, a home page, devtools, oxlint, Vitest — then a first commit
+cd my-app
+pnpm dev                              # bespoke dev: the server with Vite, a queue worker and the scheduler on http://localhost:3000
 ```
 
-`make:auth` copies a complete auth module into `modules/auth/` and registers it in `bootstrap/app.ts`; from then on the pages,
-routes and rules are the app's ([@bespokecore/auth](packages/auth/README.md#bespoke-makeauth)). `bespoke dev` sets
-`NODE_ENV=development`: the error page with code and queries, the devtools under `/_bespoke/devtools` and the in-page bar are on
-([@bespokecore/devtools](packages/devtools/README.md)). Production: `bespoke build`, then `bespoke start`
-([@bespokecore/cli](packages/cli/README.md#commands)).
+> Not on npm yet (E152: Max publishes): until the first release, `pnpm pack:smoke --keep` in this repository makes such an app
+> from the packages' tarballs and keeps it.
+
+`create-bespoke-app` copies the template, writes `.env` with a fresh `APP_KEY`, installs, and runs the app's own generators:
+`bespoke make:auth` puts a complete auth module into `modules/auth/` — the pages, routes and rules are the app's from then on
+([@bespokecore/auth](packages/auth/README.md#bespoke-makeauth)) — and `bespoke migrate` creates the tables. `--minimal` makes a
+blank app instead, `--docker` adds the files to run it in containers, `--npm` uses npm; without a terminal nothing is asked
+([create-bespoke-app](packages/create-bespoke-app/README.md), and the longer walk-through in
+[docs/getting-started.md](docs/getting-started.md)).
+
+`bespoke dev` sets `NODE_ENV=development`: the error page with code and queries, the devtools under `/_bespoke/devtools` and the
+in-page bar are on ([@bespokecore/devtools](packages/devtools/README.md)); in development mails go to the log, the confirmation
+link of a registration with them. Production: `bespoke build`, then `bespoke start`
+([@bespokecore/cli](packages/cli/README.md#commands), [deployment](docs/deployment.md)).
 
 An app is a composition root and its modules:
 
@@ -96,6 +100,7 @@ Installed framework packages register themselves (discovery through the `"bespok
 |---|---|---|
 | Core | [core](packages/core/README.md) | the application, modules, providers, the container with constructor injection, config, events, the clock, diagnostics channels, redaction |
 | | [cli](packages/cli/README.md) | `bespoke`: `dev`, `build`, `start`, generators, `tinker`, the lint preset |
+| | [create-bespoke-app](packages/create-bespoke-app/README.md) | `pnpm create bespoke-app`: a new app — the starter kit or a blank app |
 | | [log](packages/log/README.md) | pino logging with the request and job context |
 | | [encryption](packages/encryption/README.md) | `APP_KEY`, authenticated encryption, key rotation |
 | | [testing](packages/testing/README.md) | `createTestApp`, requests and assertions, database refresh, fakes |
@@ -124,7 +129,7 @@ Installed framework packages register themselves (discovery through the `"bespok
 ```text
 packages/*        the framework packages (each with its README — these pages)
 apps/web-app      the app every feature is shown and tested in
-apps/blank-app    an app without modules: the template, and what make:auth is tested against
+apps/blank-app    an app without modules: what create-bespoke-app --minimal writes (pnpm template:sync), and what make:auth is tested against
 apps/docs         these docs: the READMEs as a BespokeCore app (pnpm docs:dev)
 scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs, the tarballs
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
@@ -136,7 +141,8 @@ pnpm run ci            # everything, as CI runs it (pnpm ci without `run` is pnp
 pnpm test              # the test suite; test:pgsql, test:redis, test:s3 against the containers (docker compose up -d)
 pnpm docs:dev          # the docs on http://localhost:3970
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
-pnpm pack:smoke        # the tarballs in a copy of the blank app outside the repository: install, build, start, make:auth, tests
+pnpm pack:smoke        # create-bespoke-app from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
+pnpm template:sync     # apps/blank-app → the template of create-bespoke-app (a test fails while they differ)
 ```
 
 ### Benchmarks
