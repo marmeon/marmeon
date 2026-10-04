@@ -39,22 +39,42 @@ interface Entry {
  */
 export class MiddlewareGroups {
   readonly #groups = new Map<string, Entry[]>();
+  /** Each group in order, as `get` answers it — sorted once, not on every request; any change starts over. */
+  readonly #sorted = new Map<string, readonly AnyMiddleware[]>();
+  #version = 0;
 
   /** Adds middleware to a group; equal priorities keep the order they were added in. */
   append(group: string, middleware: AnyMiddleware, priority: number = MiddlewarePriority.app): this {
     const entries = this.#groups.get(group) ?? [];
     this.#groups.set(group, [...entries.filter((entry) => entry.middleware !== middleware), { middleware, priority }]);
+    this.#changed();
     return this;
   }
 
   remove(group: string, middleware: AnyMiddleware): this {
     this.#groups.set(group, (this.#groups.get(group) ?? []).filter((entry) => entry.middleware !== middleware));
+    this.#changed();
     return this;
   }
 
   get(group: string): readonly AnyMiddleware[] {
-    // Array#sort is stable, so insertion order breaks ties.
-    return [...(this.#groups.get(group) ?? [])].sort((a, b) => a.priority - b.priority).map((entry) => entry.middleware);
+    let sorted = this.#sorted.get(group);
+    if (!sorted) {
+      // Array#sort is stable, so insertion order breaks ties.
+      sorted = Object.freeze([...(this.#groups.get(group) ?? [])].sort((a, b) => a.priority - b.priority).map((entry) => entry.middleware));
+      this.#sorted.set(group, sorted);
+    }
+    return sorted;
+  }
+
+  /** Counts the changes — what `Router.middlewareFor` keeps its per-route lists by. */
+  get version(): number {
+    return this.#version;
+  }
+
+  #changed(): void {
+    this.#sorted.clear();
+    this.#version++;
   }
 
   names(): string[] {

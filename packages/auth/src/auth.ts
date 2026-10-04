@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
 import { EventDispatcher, Logger } from '@bespokecore/core';
 import { ClientHistory, RequestInfo } from '@bespokecore/http';
 import { CookieJar } from '@bespokecore/router';
@@ -36,7 +36,7 @@ declare module '@bespokecore/session' {
  * The hash itself never goes into the session.
  */
 export function passwordFingerprint(hash: PasswordHash | null): string {
-  return createHash('sha256').update(`bespoke-auth:${hash ?? ''}`).digest('base64url');
+  return oneShotHash('sha256', `bespoke-auth:${hash ?? ''}`, 'base64url');
 }
 
 export interface LoginOptions {

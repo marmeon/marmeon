@@ -1,3 +1,5 @@
+import { editableResponse } from './response.ts';
+
 export interface CookieOptions {
   /** Lifetime in seconds. Without `maxAge` and `expires`, the cookie ends with the browser session. */
   maxAge?: number;
@@ -45,9 +47,8 @@ export function parseCookies(header: string | null): Map<string, string> {
 
 /** Builds a `Set-Cookie` header value. The value is URI-encoded, so any string is safe. */
 export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
-  if (!COOKIE_NAME.test(name)) throw new TypeError(`Invalid cookie name "${name}".`);
+  checkCookie(name, options);
   const { path = '/', domain, maxAge, expires, secure = false, httpOnly = true, sameSite = 'lax' } = options;
-  if (sameSite === 'none' && !secure) throw new TypeError(`Cookie "${name}": SameSite=None requires secure: true.`);
 
   const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${path}`];
   if (domain) parts.push(`Domain=${domain}`);
@@ -57,6 +58,12 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   if (secure) parts.push('Secure');
   parts.push(`SameSite=${sameSite[0]!.toUpperCase()}${sameSite.slice(1)}`);
   return parts.join('; ');
+}
+
+/** Throws for what `serializeCookie` refuses — an invalid name, `SameSite=None` without `secure` — without building the header. */
+function checkCookie(name: string, options: CookieOptions | undefined): void {
+  if (!COOKIE_NAME.test(name)) throw new TypeError(`Invalid cookie name "${name}".`);
+  if (options?.sameSite === 'none' && !options.secure) throw new TypeError(`Cookie "${name}": SameSite=None requires secure: true.`);
 }
 
 /**
@@ -103,7 +110,7 @@ export class CookieJar {
   set(name: string, value: string, given?: CookieOptions): void {
     // The jar's defaults (`secure` from the session's config) unless the call says otherwise — also `secure: false`.
     const options = this.#defaults.secure && given?.secure === undefined ? { ...given, secure: true } : given;
-    serializeCookie(name, value, options); // validate now, where the mistake is made
+    checkCookie(name, options); // now, where the mistake is made — the header is built once, when the response goes out
     if (this.#permit && !this.#permit(`cookies.set('${name}')`)) return;
     this.#queued.set(name, { value, options });
   }
@@ -146,13 +153,13 @@ export class CookieJar {
   }
 }
 
-/** Adds the jar's queued cookies to a response (copying it, since some responses have immutable headers). */
+/** Adds the jar's queued cookies to a response — in place when the request owns it, else to a copy ({@link editableResponse}). */
 export async function withQueuedCookies(response: Response, cookies: CookieJar): Promise<Response> {
   const queued = await cookies.queued();
   if (queued.length === 0) return response;
-  const copy = new Response(response.body, response);
-  for (const cookie of queued) copy.headers.append('set-cookie', cookie);
-  return copy;
+  const editable = editableResponse(response);
+  for (const cookie of queued) editable.headers.append('set-cookie', cookie);
+  return editable;
 }
 
 function safeDecode(value: string): string {

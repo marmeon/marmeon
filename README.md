@@ -127,6 +127,7 @@ apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: the template, and what make:auth is tested against
 apps/docs         these docs: the READMEs as a BespokeCore app (pnpm docs:dev)
 scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs, the tarballs
+scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 UPGRADING.md      what changes for apps from one version to the next
 ```
 
@@ -137,6 +138,26 @@ pnpm docs:dev          # the docs on http://localhost:3970
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
 pnpm pack:smoke        # the tarballs in a copy of the blank app outside the repository: install, build, start, make:auth, tests
 ```
+
+### Benchmarks
+
+`pnpm bench` keeps the measurements in the repository (E166) — none of them is part of `pnpm run ci`, a laptop's noise (±3–5 %
+between runs) would make a gate flaky:
+
+```sh
+pnpm bench boot --app apps/web-app                    # bespoke start → /up 200: median of 7, a breakdown from a CPU profile
+pnpm bench login --base f785159 --without w8          # the request path, A/B: this checkout against a commit, each side in a git worktree
+pnpm bench people                                     # GET /people signed in
+pnpm bench login --profile --base f785159             # CPU profiles of the measured requests: top lists (self, inclusive) and their diff
+```
+
+The request benchmarks boot the web app in-process (SQLite in memory, `SESSION_DRIVER=memory`) and send the requests through the
+kernel as a browser would — the cookies as the server set them, the body read; none of the test helpers' work per response. Each
+side runs from a `git worktree` under `$TMPDIR/bespoke-bench/` (this checkout as a snapshot with its uncommitted changes), the sides
+alternate in fresh processes, and the report gives the median, the mean's 95 % confidence interval and Welch's test per pair.
+`--without <measure>` (`session-hash`, `fetch-metadata`, `csp`, `epoch`; `w8` for all four) switches Wave 8's security measures off
+in one variant — counted, and refused when one still runs — so their cost shows on its own (E154). The numbers and the machine
+are in [@bespokecore/server](packages/server/README.md#the-request-path-e136-e154).
 
 Packages are packed and published with pnpm only — `npm pack` ignores `publishConfig.exports` and would ship the
 `@bespokecore/source` condition (TypeScript sources Node does not strip under `node_modules`).

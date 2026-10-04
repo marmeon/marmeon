@@ -1,5 +1,5 @@
 import { token } from '@bespokecore/core';
-import { urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@bespokecore/router';
+import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@bespokecore/router';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
@@ -154,7 +154,7 @@ export class RedirectResult {
     const headers = new Headers(this.#headers);
     headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
-    return new Response(null, { status, headers });
+    return ownResponse(new Response(null, { status, headers }));
   }
 
   #location(request: Request, routes: RouteLookup): string {

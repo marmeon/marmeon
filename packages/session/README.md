@@ -173,7 +173,8 @@ there. Off by default (like Laravel): the payload holds the CSRF token, the sign
 flash messages — with hashed keys none of it signs anybody in, but turn it on when the store is shared or backed up where the
 data should not be read. The database's `user_id` column stays readable (it is what lists a user's sessions). Turning it on or
 off signs everybody out once (the other format does not open — a new session starts). The `cookie` driver's data is encrypted
-anyway (it is a cookie); `SESSION_ENCRYPT` changes nothing there.
+anyway (it is a cookie); `SESSION_ENCRYPT` changes nothing there. It costs ≈ 9 µs per request with a session (one decryption, one
+encryption — [@bespokecore/server](../server/README.md#the-request-path-e136-e154)).
 
 **Compare-and-set.** Every write is one atomic step of the store that compares the version the request read:
 

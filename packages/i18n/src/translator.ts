@@ -57,6 +57,8 @@ export interface TranslatorOptions {
 
 /** A {@link Translator} over the catalog; `locale` is read on every call (the request's may be set after creation). */
 export function createTranslator(catalog: Catalog, locale: () => string, { locales }: TranslatorOptions): Translator {
+  // An object literal with its getters — one per request (the request's `Translator`): half the cost of the object that
+  // `Object.defineProperties` completed afterwards (≈ 0.4 instead of ≈ 0.8 µs, W8 step 9).
   const translator = {
     get: (key: string, params?: Readonly<Record<string, unknown>>) => catalog.text(locale(), key, params),
     has: (key: string) => catalog.has(locale(), key),
@@ -65,12 +67,16 @@ export function createTranslator(catalog: Catalog, locale: () => string, { local
       const fixed = supportedLocale(wanted, locales()) ?? locale();
       return createTranslator(catalog, () => fixed, { locales });
     },
+    get locale() {
+      return locale();
+    },
+    fallbackLocale: catalog.fallback,
+    get locales() {
+      return locales();
+    },
+    get format() {
+      return catalog.formatter(locale());
+    },
   };
-  Object.defineProperties(translator, {
-    locale: { get: locale, enumerable: true },
-    fallbackLocale: { value: catalog.fallback, enumerable: true },
-    locales: { get: locales, enumerable: true },
-    format: { get: () => catalog.formatter(locale()), enumerable: true },
-  });
   return translator as unknown as Translator;
 }

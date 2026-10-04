@@ -39,6 +39,7 @@ import {
   clientIp,
   CookieJar,
   createRequestState,
+  editableResponse,
   isLiveValidation,
   RequestNonce,
   liveValidationFields,
@@ -414,11 +415,17 @@ export function createHttpKernel(
       else await run();
     });
 
-    // Some responses (e.g. Response.redirect) have immutable headers — copy before setting.
-    c.res = new Response(c.res.body, c.res);
-    c.res.headers.set('x-request-id', requestId);
+    // In place when the request owns the response (the framework made it, or a middleware copied it already) — else one copy
+    // (a response an app may hand out twice, immutable headers). Hono's `res` setter copies what it is given once more when it
+    // already holds a response: cleared first, it takes the copy as it is.
+    const response = editableResponse(c.res);
+    if (response !== c.res) {
+      c.res = undefined;
+      c.res = response;
+    }
+    response.headers.set('x-request-id', requestId);
     const serverTiming = timing?.header(info, performance.now() - started);
-    if (serverTiming) c.res.headers.set('server-timing', serverTiming);
+    if (serverTiming) response.headers.set('server-timing', serverTiming);
   });
 
   /** One request on the `http.request` channel — with the route and controller it matched, and its status. */

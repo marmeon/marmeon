@@ -1,6 +1,13 @@
+import * as nodeCrypto from 'node:crypto';
 import { createApplication } from '@bespokecore/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AesGcmEncrypter, DecryptError, Encrypter, EncryptionConfig, EncryptionServiceProvider, generateKey } from './index.ts';
+
+// Counts the keys the encrypter imports (W8 step 9: once, never per payload).
+vi.mock('node:crypto', async (original) => {
+  const actual = await original<typeof import('node:crypto')>();
+  return { ...actual, createSecretKey: vi.fn(actual.createSecretKey) };
+});
 
 const raw = () => crypto.getRandomValues(new Uint8Array(32));
 
@@ -50,6 +57,97 @@ describe('AesGcmEncrypter', () => {
 
   it('refuses keys that are not 32 bytes', () => {
     expect(() => new AesGcmEncrypter(new Uint8Array(16))).toThrow('exactly 32 bytes');
+  });
+
+  it('imports its keys once — not for every payload (W8 step 9)', async () => {
+    const imported = vi.mocked(nodeCrypto.createSecretKey);
+    imported.mockClear();
+    const encrypter = new AesGcmEncrypter(raw(), [raw()]);
+    expect(imported).toHaveBeenCalledTimes(2);
+    // 50 requests' worth: a cookie decrypted, two encrypted — with the previous key tried too.
+    const old = await new AesGcmEncrypter(raw()).encrypt('x');
+    imported.mockClear();
+    for (let i = 0; i < 50; i++) {
+      await encrypter.decrypt(await encrypter.encrypt(`session ${i}`, 'cookie:bespoke_session'), 'cookie:bespoke_session');
+      await failsToDecrypt(encrypter.decrypt(old));
+    }
+    expect(imported).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The encrypter as it was until Wave 8 step 9 — AES-256-GCM through WebCrypto, the same payload layout. Cookies, encrypted
+ * sessions (SESSION_ENCRYPT) and every other payload written by it must still decrypt, with the current and the previous keys.
+ */
+class WebCryptoEncrypter {
+  readonly #keys: Promise<CryptoKey>[];
+
+  constructor(key: Uint8Array<ArrayBuffer>, previousKeys: readonly Uint8Array<ArrayBuffer>[] = []) {
+    this.#keys = [key, ...previousKeys].map((raw) => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']));
+  }
+
+  async encrypt(plaintext: string, context = ''): Promise<string> {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(context) }, await this.#keys[0]!, new TextEncoder().encode(plaintext));
+    const payload = new Uint8Array(1 + 12 + ciphertext.byteLength);
+    payload[0] = 1;
+    payload.set(iv, 1);
+    payload.set(new Uint8Array(ciphertext), 13);
+    return payload.toBase64({ alphabet: 'base64url', omitPadding: true });
+  }
+
+  async decrypt(payload: string, context = ''): Promise<string> {
+    const bytes = Uint8Array.fromBase64(payload, { alphabet: 'base64url' });
+    for (const key of this.#keys) {
+      try {
+        return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(1, 13), additionalData: new TextEncoder().encode(context) }, await key, bytes.subarray(13)));
+      } catch {
+        // the next key
+      }
+    }
+    throw new DecryptError();
+  }
+}
+
+describe('AesGcmEncrypter and the WebCrypto encrypter before it (W8 step 9)', () => {
+  const texts = ['', 'user=1', 'Grüße 👋', 'x'.repeat(5000), JSON.stringify({ _token: 'abc', _flash_messages: [{ id: 'm1', text: '✓ Saved' }] })];
+
+  it('decrypts what WebCrypto encrypted — every text, every context, with the current and a previous key', async () => {
+    const [oldKey, newKey] = [raw(), raw()];
+    const now = new AesGcmEncrypter(newKey, [oldKey]);
+    for (const text of texts) {
+      for (const context of ['', 'cookie:bespoke_session', 'session:' + 'a'.repeat(64)]) {
+        expect(await now.decrypt(await new WebCryptoEncrypter(newKey).encrypt(text, context), context)).toBe(text);
+        expect(await now.decrypt(await new WebCryptoEncrypter(oldKey).encrypt(text, context), context)).toBe(text);
+        await failsToDecrypt(now.decrypt(await new WebCryptoEncrypter(newKey).encrypt(text, context), `${context}x`));
+      }
+    }
+  });
+
+  it('writes what WebCrypto decrypts — the same layout, the tag last, the context as additional data', async () => {
+    const [oldKey, newKey] = [raw(), raw()];
+    for (const text of texts) {
+      const payload = await new AesGcmEncrypter(newKey).encrypt(text, 'cookie:XSRF-TOKEN');
+      expect(await new WebCryptoEncrypter(newKey).decrypt(payload, 'cookie:XSRF-TOKEN')).toBe(text);
+      expect(await new WebCryptoEncrypter(raw(), [newKey]).decrypt(payload, 'cookie:XSRF-TOKEN')).toBe(text);
+      await expect(new WebCryptoEncrypter(oldKey).decrypt(payload, 'cookie:XSRF-TOKEN')).rejects.toBeInstanceOf(DecryptError);
+      await expect(new WebCryptoEncrypter(newKey).decrypt(payload, 'cookie:other')).rejects.toBeInstanceOf(DecryptError);
+    }
+  });
+
+  it('refuses a WebCrypto payload that was tampered with or cut short — the full 16-byte tag only', async () => {
+    const key = raw();
+    const payload = await new WebCryptoEncrypter(key).encrypt('user=1', 'c');
+    const bytes = Uint8Array.fromBase64(payload, { alphabet: 'base64url' });
+    const encrypter = new AesGcmEncrypter(key);
+    for (const index of [0, 5, 13, bytes.length - 1]) {
+      const changed = bytes.slice();
+      changed[index]! ^= 1;
+      await failsToDecrypt(encrypter.decrypt(changed.toBase64({ alphabet: 'base64url' }), 'c'));
+    }
+    // A shorter tag (WebCrypto's tagLength 96, say) never passes as the 128-bit one.
+    await failsToDecrypt(encrypter.decrypt(bytes.subarray(0, bytes.length - 4).toBase64({ alphabet: 'base64url' }), 'c'));
+    await failsToDecrypt(encrypter.decrypt(bytes.subarray(0, 1 + 12 + 15).toBase64({ alphabet: 'base64url' }), 'c'));
   });
 });
 

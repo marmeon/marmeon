@@ -49,9 +49,13 @@ A broken entry in `APP_PREVIOUS_KEYS` fails the same way.
 
 ## The `Encrypter`
 
-- **AES-256-GCM through WebCrypto** (`AesGcmEncrypter`). The payload is `base64url(version · iv · ciphertext + tag)` without
+- **AES-256-GCM through `node:crypto`** (`AesGcmEncrypter`). The payload is `base64url(version · iv · ciphertext + tag)` without
   padding — a version byte (`1`), a random 12-byte IV, the ciphertext and its 16-byte authentication tag. Cookie- and URL-safe;
-  the same plaintext never gives the same payload twice.
+  the same plaintext never gives the same payload twice. The keys are imported once, when the encrypter is made.
+- **Fast enough for every request:** a session-sized payload (250 bytes) takes ≈ 3.9 µs to encrypt and ≈ 2.8 µs to decrypt. Until
+  Wave 8 step 9 the encrypter used WebCrypto — the same layout, but ≈ 18.5 and ≈ 17.5 µs (each call a job on WebCrypto's queue and
+  a promise); a page with a session decrypts one cookie and encrypts two. Payloads written by either decrypt with the other
+  (a test encrypts and decrypts across both, with the current and the previous keys); the tag must be the full 16 bytes.
 - **Authenticated:** a payload cannot be read or changed without the key. Tampered bytes, another key, garbage or an empty
   string all end in the same `DecryptError` (`The payload is invalid.`) — it never says which.
 - **`context` binds a payload to its use** (additional authenticated data, default `''`): a value encrypted for the cookie

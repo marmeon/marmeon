@@ -394,3 +394,71 @@ describe('createHttpKernel — asset versioning', async () => {
     expect((await visit(createHttpKernel(application), 'v1')).status).toBe(200); // no version known
   });
 });
+
+describe('createHttpKernel — response copies (W8 step 9)', async () => {
+  /** An app may hand out one Response object to every request — a constant without a body. */
+  const SHARED = new Response(null, { status: 204, headers: { 'x-own': 'yes' } });
+  let visits = 0;
+  class SetVisitCookie {
+    async handle(ctx: HttpContext, next: Next<{}>) {
+      ctx.cookies.set('visit', String(++visits));
+      return next();
+    }
+  }
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider],
+    middleware: { web: [SetVisitCookie] },
+    modules: [
+      defineModule({
+        name: 'pages',
+        routes: defineRoutes((Route) => {
+          Route.get('/shared', () => SHARED);
+          Route.get('/page', () => view('pages/Show', {}));
+        }),
+      }),
+    ],
+  });
+  const app = createHttpKernel(application);
+
+  /** Counts `new Response(body, response)` — a copy of another response — while `run` runs. */
+  async function copies(run: () => Promise<unknown>): Promise<number> {
+    const Original = globalThis.Response;
+    let count = 0;
+    // A proxy, not a subclass: `instanceof Response` stays true for responses made before.
+    globalThis.Response = new Proxy(Original, {
+      construct(target, args: ConstructorParameters<typeof Response>, newTarget) {
+        if (args[1] instanceof Original) count++;
+        return Reflect.construct(target, args, newTarget) as object;
+      },
+    });
+    try {
+      await run();
+    } finally {
+      globalThis.Response = Original;
+    }
+    return count;
+  }
+
+  it('sets the headers of a response it made for the request in place — no copy, also with cookies and the request id', async () => {
+    let response: Response | undefined;
+    expect(await copies(async () => (response = await app.request('/page', { headers: { 'x-bespoke': 'true' } })))).toBe(0);
+    expect(response!.headers.get('x-request-id')).toBeTruthy();
+    expect(response!.headers.getSetCookie().some((cookie) => cookie.startsWith('visit='))).toBe(true);
+  });
+
+  it("copies an app's own response once — a constant handed to every request never carries one request's cookie to the next", async () => {
+    const answers: Response[] = [];
+    expect(await copies(async () => answers.push(await app.request('/shared')))).toBe(1);
+    answers.push(await app.request('/shared'));
+    const [first, second] = answers.map((answer) => answer.headers.getSetCookie());
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(first![0]).not.toBe(second![0]);
+    expect(answers.map((answer) => answer.headers.get('x-own'))).toEqual(['yes', 'yes']);
+    // The constant itself is as the app made it.
+    expect([...SHARED.headers]).toEqual([['x-own', 'yes']]);
+  });
+});

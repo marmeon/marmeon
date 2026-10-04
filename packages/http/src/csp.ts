@@ -1,5 +1,5 @@
 import { Logger, token } from '@bespokecore/core';
-import { RequestNonce, type CookieDefaults as CookieDefaultsOptions, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
+import { editableResponse, RequestNonce, type CookieDefaults as CookieDefaultsOptions, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
 
 /**
  * What every cookie of a request gets unless its `set` says otherwise — `@bespokecore/session` binds it from its config
@@ -134,15 +134,11 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
       }
       if (usesNonce) this.#warnIfShared(ctx, response);
       const value = usesNonce ? pieces.join(this.#nonce.value) : fixed;
-      try {
-        response.headers.set(header, value);
-        return response;
-      } catch {
-        // Immutable headers (Response.redirect) — copied.
-        const copy = new Response(response.body, response);
-        copy.headers.set(header, value);
-        return copy;
-      }
+      // In place when the framework made the document for this request; a copy otherwise (one an app may hand out twice — the
+      // nonce is this response's alone —, or with immutable headers).
+      const secured = editableResponse(response);
+      secured.headers.set(header, value);
+      return secured;
     }
 
     #warnIfShared(ctx: HttpContext, response: Response): void {

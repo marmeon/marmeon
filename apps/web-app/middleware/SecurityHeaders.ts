@@ -1,4 +1,4 @@
-import type { HttpContext, Next } from '@bespokecore/http';
+import { editableResponse, type HttpContext, type Next } from '@bespokecore/http';
 
 /**
  * `Strict-Transport-Security` (E162): browsers then refuse plain HTTP for this host for `max-age` seconds — turn it on once the
@@ -14,9 +14,9 @@ const HSTS: string | false = false;
  */
 export class SecurityHeaders {
   async handle(ctx: HttpContext, next: Next<{}>) {
-    const response = await next();
-    // Some responses (e.g. redirects built with Response.redirect) have immutable headers.
-    const secured = new Response(response.body, response);
+    // In place when the framework made the response for this request; a copy otherwise (one an app may hand out twice, or
+    // whose headers are immutable — Response.redirect).
+    const secured = editableResponse(await next());
     secured.headers.set('x-content-type-options', 'nosniff');
     secured.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
     secured.headers.set('x-frame-options', 'DENY');

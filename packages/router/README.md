@@ -216,6 +216,30 @@ const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx
 - **Errors** become a response at the layer that threw (the kernel's exception handler), so outer middleware — security
   headers, the session, cookies — still applies to error pages.
 
+### Adding headers to the response — `editableResponse`
+
+A middleware that adds a header takes the response through `editableResponse` (also exported by @bespokecore/http):
+
+```ts
+export class SecurityHeaders {
+  async handle(ctx: HttpContext, next: Next<{}>) {
+    const response = editableResponse(await next());
+    response.headers.set('x-frame-options', 'DENY');
+    return response;
+  }
+}
+```
+
+It hands back the response itself when the request owns it — the framework made it for this request (a page, a document, a
+redirect, a region, an error page, a `this.json(…)`) or copied it once already — and otherwise a copy the request owns from then
+on. So a request copies its response at most once, however many middleware add headers (the cookies, the language, the security
+headers, the CSP, `no-store`, the request id); before Wave 8 step 9 each of them copied it — four or five copies per page, about
+2.5 µs each. A `Response` that an action or a middleware returns itself is never changed in place: an app may hand out the same
+object to every request (a constant `new Response(null, { status: 204 })`) — a cookie set on it would reach the next request —
+and its headers may be immutable (`Response.redirect()`, `fetch()`). `ownResponse(response)` marks a response a package builds
+per request as owned; never one that could be handed out twice. Copying the response yourself
+(`new Response(response.body, response)`) still works — it costs the copy.
+
 ### Groups and priorities
 
 A route runs the global stack, then its group's (`web` or `api`), then its own middleware; one listed twice runs once, at its

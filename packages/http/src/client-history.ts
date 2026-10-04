@@ -1,4 +1,4 @@
-import type { HttpContext, MiddlewareClass, Next } from '@bespokecore/router';
+import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
 import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './page.ts';
 
 /**
@@ -68,7 +68,7 @@ export class ClearClientHistory {
     // An action (E59) too: signing out through one must not leave the pages in memory either.
     const action = isActionRequest(ctx.request);
     if (ctx.request.headers.get(PAGE_HEADER) !== 'true' && !action) {
-      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
     }
 
     const url = new URL(ctx.request.url);
@@ -81,7 +81,7 @@ export class ClearClientHistory {
     // A document change (E64), never a new build: whatever the response it replaces said (a version check's 409 that ran after a
     // sign-in of this request, say), the client may not postpone this one — `version` is the only cancelable reason.
     headers.set(RELOAD_HEADER, 'history');
-    return new Response(null, { status: 409, headers });
+    return ownResponse(new Response(null, { status: 409, headers }));
   }
 }
 
@@ -108,7 +108,7 @@ export function cacheControl(value: string): MiddlewareClass<{}, {}> {
     async handle(_ctx: HttpContext, next: Next<{}>): Promise<Response> {
       const response = await next();
       if (response.headers.has('cache-control')) return response;
-      const cached = new Response(response.body, response);
+      const cached = editableResponse(response);
       cached.headers.set('cache-control', value);
       return cached;
     }

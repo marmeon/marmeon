@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 
 /**
  * The scope of a session (E64, E90): a hash of its id — never the id, which is a secret. It changes with every sign-in and
@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
  * subscriptions (W6.10) are signed for it.
  */
 export function sessionScope(id: string): string {
-  return createHash('sha256').update(`bespoke-once-scope:${id}`).digest('base64url').slice(0, 22);
+  return hash('sha256', `bespoke-once-scope:${id}`, 'base64url').slice(0, 22);
 }
 
 /** Told the scope of a session that ended. */

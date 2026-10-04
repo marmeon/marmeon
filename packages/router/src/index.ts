@@ -15,6 +15,7 @@ export type { TextKey } from './errors.ts';
 export { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
 export type { CookieCodec, CookieDefaults, CookieOptions } from './cookies.ts';
 export { createNonce, RequestNonce } from './nonce.ts';
+export { editableResponse, ownResponse } from './response.ts';
 export { clientIp, createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
 export { authorizeRequest, defineRequest, nothingToValidate, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';

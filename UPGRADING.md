@@ -370,6 +370,31 @@ was shown next — another tab's poll could take it (E67). Now (E165) every requ
 sync — takes every message. A `Flasher` of your own takes the document: `takeFlash(document?: string)`, `hasFlash(document?:
 string)`; `PageSession` implementations add `generation()` (the session's part of the epoch — `undefined` for a guest).
 
+#### Low: middleware sets the headers of the framework's responses in place — `editableResponse()`
+
+*Likelihood of impact: low — middleware that keeps a reference to a response after handing it on.* The framework's middleware (the
+cookies, `SetLocale`, the CSP, `NoStoreWhenSignedIn`, `throttle`, `cacheControl`, the kernel's request id) used to copy every
+response before adding a header; a page was copied four or five times (W8 step 9). They now go through `editableResponse(response)`
+([@bespokecore/router](packages/router/README.md#adding-headers-to-the-response--editableresponse), also exported by
+@bespokecore/http): a response the framework made for this request is changed in place, any other — one your action or middleware
+returns — is copied once and then owned. Your own responses are never changed in place, as before. What changes: a middleware
+that holds on to the response its `next()` returned and reads it again after returning sees the headers outer middleware added.
+Your own header middleware keeps working with `new Response(response.body, response)`; to drop the copy, write
+`const response = editableResponse(await next())` — the web app's and the blank app's `SecurityHeaders` do.
+
+#### Low: `MiddlewareGroups.get()` and `Router.middlewareFor()` return the same frozen list until a group changes
+
+*Likelihood of impact: low — code that changed the array these returned.* Each request sorted the global and the group's
+middleware again; the lists are now worked out once (per group, per route) and frozen. `append`/`remove` still work at any time —
+the next request sees the change. Pushing into the returned array throws a `TypeError` now; use `append`.
+
+#### Low: the `Encrypter` runs on `node:crypto` — the same payloads, about five times faster
+
+*Likelihood of impact: low — nothing to do.* `AesGcmEncrypter` used WebCrypto (≈ 18 µs per call, each a job and a promise); it
+uses `node:crypto` now (≈ 3–4 µs) with the same layout — version, IV, ciphertext, 16-byte tag — and the same contexts. Cookies,
+encrypted sessions (`SESSION_ENCRYPT`), queued payloads and everything else encrypted before decrypt as they are, with `APP_KEY`
+and `APP_PREVIOUS_KEYS`; nobody is signed out. A tag shorter than 16 bytes was never accepted and is not now.
+
 #### Low (contributors): the monorepo needs pnpm 12
 
 *Likelihood of impact: low — only for work on BespokeCore itself.* The repository pins pnpm 12 (`packageManager`), its root

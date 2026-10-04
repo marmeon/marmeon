@@ -1,4 +1,4 @@
-import { HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@bespokecore/router';
+import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@bespokecore/router';
 import { Clock } from '@bespokecore/core';
 import { Cache } from './cache.ts';
 
@@ -154,7 +154,7 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
 
       const response = await next();
       if (limits.length === 0 || live) return response;
-      const withHeaders = new Response(response.body, response);
+      const withHeaders = editableResponse(response);
       for (const [header, value] of Object.entries(headers)) withHeaders.headers.set(header, value);
       return withHeaders;
     }

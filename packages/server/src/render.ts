@@ -56,7 +56,7 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@bespokecore/http';
-import { defaultToResponse, RequestNonce, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
+import { defaultToResponse, ownResponse, RequestNonce, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
 import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce } from './html.ts';
 
 export interface PageRenderOptions {
@@ -492,10 +492,10 @@ export function createResponseFactory(
     const json = JSON.stringify(page);
     if (ctx.request.headers.get(PAGE_HEADER) === 'true') {
       // A layer's page object, also to a plain visit: the client opens it over what is on screen (E53).
-      return new Response(json, {
+      return ownResponse(new Response(json, {
         status: result.status,
         headers: { ...headers, 'content-type': 'application/json', [PAGE_HEADER]: 'true', ...(layer ? { [REGION_HEADER]: 'layer' } : {}) },
-      });
+      }));
     }
 
     const sent = JSON.parse(json) as PageObject;
@@ -507,15 +507,15 @@ export function createResponseFactory(
       const stacked = await deepLink(top, ctx.request, scope);
       if (sent.flash) stacked.flash = sent.flash;
       const { resolveIsland } = streaming(stacked, ctx.request, {}, scope);
-      return new Response(await document(stacked, ctx.request, resolveIsland ? { resolveIsland } : {}, scope), {
+      return ownResponse(new Response(await document(stacked, ctx.request, resolveIsland ? { resolveIsland } : {}, scope), {
         status: result.status,
         headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
-      });
+      }));
     }
-    return new Response(await document(sent, ctx.request, streaming(sent, ctx.request, result.props, scope), scope), {
+    return ownResponse(new Response(await document(sent, ctx.request, streaming(sent, ctx.request, result.props, scope), scope), {
       status: result.status,
       headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
-    });
+    }));
   };
 }
 
@@ -525,7 +525,7 @@ function withFlash(response: Response, flash: readonly FlashMessage[]): Response
   const headers = new Headers(response.headers);
   headers.set(FLASH_HEADER, encodeURIComponent(JSON.stringify(flash)));
   headers.set('cache-control', 'no-store');
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
 }
 
 /**
@@ -562,10 +562,10 @@ async function islandResponse(
   const live = await liveSubscriptions(liveOf(result), scope, result.component);
   const region: RegionObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...query, ...live };
   onPage?.(request, region, 'island', () => propOrigins(result.props, undefined, Object.keys(resolved.props)));
-  return new Response(JSON.stringify(region), {
+  return ownResponse(new Response(JSON.stringify(region), {
     status: 200,
     headers: { vary: PAGE_VARY, 'content-type': 'application/json', [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' },
-  });
+  }));
 }
 
 /**
@@ -590,9 +590,9 @@ export async function toRegionResponse(response: Response): Promise<Response> {
   if (outcome !== 'exception' || !json) {
     await response.body?.cancel();
     headers.delete('content-type');
-    return new Response(null, { status: outcome === 'exception' ? (response.status >= 400 ? response.status : 500) : 204, headers });
+    return ownResponse(new Response(null, { status: outcome === 'exception' ? (response.status >= 400 ? response.status : 500) : 204, headers }));
   }
-  return new Response(response.body, { status: response.status >= 400 ? response.status : 500, headers });
+  return ownResponse(new Response(response.body, { status: response.status >= 400 ? response.status : 500, headers }));
 }
 
 /**
@@ -612,9 +612,9 @@ export async function toActionResponse(response: Response): Promise<Response> {
     await response.body?.cancel();
     for (const name of ['location', 'content-type', 'content-length']) headers.delete(name);
     headers.set(ACTION_REDIRECT_HEADER, location);
-    return new Response(null, { status: 204, headers });
+    return ownResponse(new Response(null, { status: 204, headers }));
   }
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
 }
 
 /**
@@ -632,9 +632,9 @@ export async function toLiveValidationResponse(response: Response): Promise<Resp
     await response.body?.cancel();
     for (const name of ['location', 'content-type', 'content-length', VALIDATED_HEADER]) headers.delete(name);
     headers.set(ACTION_REDIRECT_HEADER, location);
-    return new Response(null, { status: 204, headers });
+    return ownResponse(new Response(null, { status: 204, headers }));
   }
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
 }
 
 function regionOutcome(status: number): RegionOutcomeStatus {

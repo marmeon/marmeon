@@ -46,6 +46,22 @@ describe('Router — groups, global middleware, terminate', () => {
   }
   const request = (path: string) => ({ request: new Request(`http://app.test${path}`), params: {} });
 
+  it('works the list out once per route — and again after a group changed, also after requests ran (W8 step 9)', async () => {
+    const { router, log } = setup();
+    const page = router.findByName('page')!;
+    expect(router.middlewareFor(page)).toBe(router.middlewareFor(page)); // the same list, not sorted again per request
+    expect(Object.isFrozen(router.middlewareFor(page))).toBe(true);
+    await router.dispatch(page, request('/page'));
+    router.middleware.append('web', tracer('late', log), MiddlewarePriority.startSession);
+    log.length = 0;
+    await router.dispatch(page, request('/page'));
+    expect(log).toEqual(['global', 'late', 'group', 'own']);
+    router.middleware.remove(GLOBAL, router.middleware.get(GLOBAL)[0]!);
+    log.length = 0;
+    await router.dispatch(page, request('/page'));
+    expect(log).toEqual(['late', 'group', 'own']);
+  });
+
   it('runs global → group → route middleware, and a middleware listed twice only once', async () => {
     const { router, log } = setup();
     await router.dispatch(router.findByName('page')!, request('/page'));

@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
-import { MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@bespokecore/router';
+import { editableResponse, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@bespokecore/router';
 import { Session } from '@bespokecore/session';
 import * as v from 'valibot';
 import { Catalog } from './catalog.ts';
@@ -199,8 +199,7 @@ export class SetLocale {
       : locales.default;
     this.#current.set(locale);
 
-    const response = await next();
-    const localized = new Response(response.body, response);
+    const localized = editableResponse(await next());
     localized.headers.set('content-language', locale);
     if (!choice) return localized;
     // The answer depends on the browser's languages (for visitors without a choice): caches must keep them apart.

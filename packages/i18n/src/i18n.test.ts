@@ -7,8 +7,15 @@ import { createHttpKernel } from '@bespokecore/server';
 import { password } from '@bespokecore/auth';
 import { Session, SessionServiceProvider } from '@bespokecore/session';
 import * as v from 'valibot';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
+import { createTranslator } from './translator.ts';
+
+// Counts the translators made (W8 step 9: only for a request that asks for one).
+vi.mock('./translator.ts', async (original) => {
+  const actual = await original<typeof import('./translator.ts')>();
+  return { ...actual, createTranslator: vi.fn(actual.createTranslator) };
+});
 
 const root = join(import.meta.dirname, '__fixtures__', 'shop');
 
@@ -155,6 +162,22 @@ describe('the request locale (SetLocale)', () => {
     // Several: the answer depends on the browser's languages, and says so.
     const { send: several } = await boot();
     expect((await several('/hello', { headers: { [PAGE_HEADER]: 'true' } })).headers.get('vary')).toMatch(/accept-language/);
+  });
+
+  it("builds the request's translator only for a request that asks for one — one per request, whoever asks (W8 step 9)", async () => {
+    const { send } = await boot();
+    const built = vi.mocked(createTranslator);
+    built.mockClear();
+    expect(await (await send('/choose/de')).json()).toEqual({ ok: true }); // SetLocale ran, the session was written — no text in the answer
+    expect(await (await send('/form', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' } })).json()).toEqual({ ok: true });
+    expect(built).not.toHaveBeenCalled();
+    // A page: the controller, the page's locale and the session's epoch ask — one translator.
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true' } }))).props.greeting).toBe('Hallo Ada');
+    expect(built).toHaveBeenCalledTimes(1);
+    // An error page speaks the request's language: it asks too.
+    built.mockClear();
+    expect((await send('/gone', { headers: { [PAGE_HEADER]: 'true' } })).status).toBe(404);
+    expect(built).toHaveBeenCalledTimes(1);
   });
 
   it('sets <html lang> of the document', async () => {

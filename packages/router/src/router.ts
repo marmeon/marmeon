@@ -160,9 +160,16 @@ export class Router {
    * Listed twice (a group's and the route's), a middleware runs once, at its first place — like Laravel.
    */
   middlewareFor(route: RouteDefinition): readonly AnyMiddleware[] {
+    // Worked out once per route (every request of it needs the same list) — again only after a group changed.
+    const cached = this.#middlewareOf.get(route);
+    if (cached?.version === this.middleware.version) return cached.list;
     const all = [...this.middleware.get(GLOBAL), ...(route.group ? this.middleware.get(route.group) : []), ...route.middleware];
-    return [...new Set(all)];
+    const list = Object.freeze([...new Set(all)]);
+    this.#middlewareOf.set(route, { version: this.middleware.version, list });
+    return list;
   }
+
+  readonly #middlewareOf = new WeakMap<RouteDefinition, { readonly version: number; readonly list: readonly AnyMiddleware[] }>();
 
   /**
    * The URL of a named route (Laravel's `route()`): path parameters filled in, the rest — and `query` —

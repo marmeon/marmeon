@@ -77,6 +77,9 @@ describe('cookies', () => {
 
   it('validate names when set, not only when written', () => {
     expect(() => new CookieJar(null).set('bad name', '1')).toThrow('Invalid cookie name');
+    expect(() => new CookieJar(null).set('x', '1', { sameSite: 'none' })).toThrow('SameSite=None requires secure: true');
+    // The jar's `secure` default counts — as when the header is written.
+    expect(() => new CookieJar(null, { secure: true }).set('x', '1', { sameSite: 'none' })).not.toThrow();
   });
 
   it('are part of every context the router dispatches', async () => {

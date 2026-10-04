@@ -150,6 +150,33 @@ Where the time goes now (CPU samples of one profiled start, 324 ms with the prof
 - **The modules themselves:** loading them (resolve, read, compile) is now most of the start; kysely brings 257 of the 940. Only a
   bundle would cut that, and bundling was rejected (E138: discovery, dynamic imports and native packages break too easily).
 
+## The request path (E136, E154)
+
+What one request costs the server — measured with `pnpm bench login` / `pnpm bench people` (the web app in-process, SQLite in
+memory, `SESSION_DRIVER=memory`, `SESSION_ENCRYPT=false`, the requests through the kernel as a browser sends them; median of 6
+alternating runs, each the median of 3 × 10 000 requests) on an Apple M1 Pro (16 GB), Node 26.10, after Wave 8 step 9:
+
+| Request | µs per request | without Wave 8's measures | before Wave 7 (`f785159`) |
+| --- | --- | --- | --- |
+| JSON visit of `/login` with a guest session — **the budget** | **≈ 117** | ≈ 115 | ≈ 141 |
+| JSON visit of `/login` without a cookie (no session since W8 step 6) | ≈ 87 | ≈ 85 | ≈ 112 (a session per request) |
+| the `/login` document (HTML, CSP nonce) | ≈ 120 | ≈ 117 (without the CSP) | — |
+| JSON visit of `/people` signed in (session, auth, queries, shared props) | ≈ 336 | ≈ 332 | ≈ 362 |
+
+Wave 8's security measures cost (each switched off on its own, `--without <measure>`, plus a measurement of the code alone): the
+session id's hash ≈ 0.3 µs per request with a cookie (`crypto.hash`), the Fetch Metadata stage nothing on a GET (it checks unsafe
+methods only; ≈ 0.4 µs per POST — the token comparison it replaces for browsers cost ≈ 1.3), the CSP ≈ 1.5 µs per request (its
+middleware) and ≈ 3 µs per document (the nonce, the header), the tab-sync epoch ≈ 0.9 µs per page (a memoized HMAC).
+`SESSION_ENCRYPT=true` adds ≈ 9 µs to a request with a session (≈ 18 for `/people`): one decryption, one encryption.
+
+Where the time went before step 9, and what took it back (CPU profiles, `pnpm bench login --profile --base f785159`): the cookie
+encryption through WebCrypto (≈ 18 µs per call, three calls per page: now `node:crypto`, see
+[@bespokecore/encryption](../encryption/README.md#the-encrypter)), four or five copies of every response (now at most one,
+[`editableResponse`](../router/README.md#adding-headers-to-the-response--editableresponse)), the middleware list sorted per
+request (now once per route), allocations in the container's lookups of what a scope already holds, the cookie headers
+serialized twice, the request translator's construction. Without the encryption change the rest alone is level with `f785159`
+(−1 % for `/login`, −1 % for `/people`, both within the noise of ±3–5 %).
+
 ## Behind a proxy (E162)
 
 By default the server believes no `X-Forwarded-*` header: `ctx.ip` is the peer's address and the URL is what the peer asked

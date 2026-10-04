@@ -1,4 +1,4 @@
-import type { HttpContext, Next } from '@bespokecore/router';
+import { editableResponse, type HttpContext, type Next } from '@bespokecore/router';
 import { Session } from '@bespokecore/session';
 import { AUTH_SESSION_KEYS } from './auth.ts';
 
@@ -26,8 +26,9 @@ export class NoStoreWhenSignedIn {
     const response = await next();
     if (!this.#session.started || this.#session.get(AUTH_SESSION_KEYS.id) === undefined) return response;
     if (response.headers.has('cache-control')) return response;
-    // Some responses (Response.redirect) have immutable headers.
-    const uncached = new Response(response.body, response);
+    // In place when the framework made the response for this request; a copy otherwise (one an app may hand out twice, or with
+    // immutable headers — Response.redirect).
+    const uncached = editableResponse(response);
     uncached.headers.set('cache-control', NO_STORE);
     return uncached;
   }

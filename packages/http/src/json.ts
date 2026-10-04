@@ -1,3 +1,4 @@
+import { ownResponse } from '@bespokecore/router';
 import { withFlashMethod, type FlashMethod } from './flash.ts';
 
 const JSON_RESULT = Symbol.for('bespokecore.json-result');
@@ -33,6 +34,6 @@ export function isJsonResult(value: unknown): value is JsonResult {
 /** The response of a {@link JsonResult}. */
 export function jsonResponse(result: JsonResult): Response {
   // `undefined` is no JSON (Response.json would throw): an answer without data.
-  if (result.data === undefined) return new Response(null, { status: result.status === 200 ? 204 : result.status, headers: result.headers });
-  return Response.json(result.data, { status: result.status, headers: result.headers });
+  if (result.data === undefined) return ownResponse(new Response(null, { status: result.status === 200 ? 204 : result.status, headers: result.headers }));
+  return ownResponse(Response.json(result.data, { status: result.status, headers: result.headers }));
 }

@@ -118,7 +118,9 @@ export class Session {
   async start(id?: string): Promise<void> {
     const key = id && SESSION_ID.test(id) ? sessionKey(id) : undefined;
     const stored = key ? await this.#store.read(key) : undefined;
-    const json = stored ? await this.#codec.open(stored.data, key!) : undefined;
+    // The plain codec answers at once: awaited only when it is a promise (the encrypted codec) — a microtask less per request.
+    const opened = stored ? this.#codec.open(stored.data, key!) : undefined;
+    const json = opened instanceof Promise ? await opened : opened;
     const data = json === undefined ? undefined : parsePayload(json);
     if (data) {
       this.#id = id!;
@@ -430,7 +432,8 @@ export class Session {
 
   async #write(expectedVersion: number | undefined, lifetimeSeconds: number): Promise<SessionWriteResult> {
     const key = (this.#key ??= sessionKey(this.#id));
-    const data = await this.#codec.seal(JSON.stringify(this.#data), key);
+    const sealed = this.#codec.seal(JSON.stringify(this.#data), key);
+    const data = sealed instanceof Promise ? await sealed : sealed;
     return this.#store.write(key, data, { expectedVersion, lifetimeSeconds, userId: userIdOf(this.#data) });
   }
 

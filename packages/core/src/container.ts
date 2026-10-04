@@ -181,6 +181,12 @@ export class Container implements Resolver {
 
   #resolve(key: Key, path: readonly Key[]): unknown {
     const id = idOf(key);
+    const binding = this.#findBinding(id);
+    // What is already there — an instance, a built singleton, this scope's built service — is handed out as it is: no chain to
+    // track, nothing to allocate (the request path resolves dozens of these per request). Only what is built below can be circular.
+    if (binding?.lifetime === 'instance') return binding.owner.#instances.get(id);
+    if (binding?.lifetime === 'singleton' && binding.owner.#instances.has(id)) return binding.owner.#instances.get(id);
+    if (binding?.lifetime === 'scoped' && this.#instances.has(id)) return this.#instances.get(id);
     if (path.some((seen) => idOf(seen) === id)) {
       throw new ContainerError(`Circular dependency: ${[...path, key].map(describeKey).join(' → ')}.`, {
         reason: 'circular',
@@ -189,7 +195,6 @@ export class Container implements Resolver {
       });
     }
     const chain = [...path, key];
-    const binding = this.#findBinding(id);
 
     if (!binding) {
       if (typeof key === 'function') return this.#build(key as Concrete, chain);
@@ -201,9 +206,6 @@ export class Container implements Resolver {
     }
 
     switch (binding.lifetime) {
-      case 'instance':
-        return binding.create(this, chain);
-
       case 'transient':
         return binding.create(this, chain);
 
