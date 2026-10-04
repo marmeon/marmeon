@@ -118,6 +118,22 @@ Edit.layer = 'slideover';                                           // as a laye
 
 - **Layouts persist** (E35): a layout the next page has too, at the same depth, stays mounted — its state and scroll survive
   the visit. A layout is `({ children }: LayoutProps) => …` and reads shared props with `usePage()`.
+- **Shared props are missing on a 404 without a route.** A path no route matches passes no group's middleware — no session is
+  started for it (a bot's scan creates none) and nothing is shared — yet the error page renders inside the default layout. Declare
+  what the `web` group shares as optional and let the layout render without it (the web app and the `make:auth` templates do):
+
+  ```tsx
+  declare module '@bespokecore/http/page' {
+    interface SharedProps {
+      auth?: { user: { id: number; name: string } | null };   // optional: absent on the 404 of a path without a route
+      locales?: readonly string[];
+    }
+  }
+
+  const { auth, locales } = usePage().props;
+  const user = auth?.user ?? null;                            // a guest's header on that 404
+  {locales && <LanguageSwitcher locales={locales} />}
+  ```
 - **`revalidateOnBack`** — `true`, prop names, or none (default): what reloads in the background when Back/Forward shows the
   view from memory. `resolveModulePages` brings the feature (`ResolvePage.features`); `<BespokeApp>` attaches it.
 - **`placeholder`** — what an instant visit shows at once, inside the target's layouts, with what the link hands it — typed

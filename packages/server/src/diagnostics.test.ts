@@ -25,6 +25,7 @@ class ShowUserController extends Controller {
 const routes = defineRoutes((Route) => {
   Route.get('/users/:user', ShowUserController).name('users.show');
   Route.get('/ping', () => ({ pong: true }));
+  Route.get('/reset/:token', () => ({ ok: true })).name('reset');
   Route.get('/boom', () => {
     throw new Error('the cache is down');
   });
@@ -119,6 +120,17 @@ describe('the http.request channel (E118)', () => {
       ['GET /ping 200', undefined],
     ]);
     expect(lines[0]!.context.ms).toBeTypeOf('number');
+    await application.shutdown();
+  });
+});
+
+describe('the request\'s log line without secrets (E125, W7.11)', () => {
+  it('replaces sensitive route parameters and token-like segments of unmatched paths', async () => {
+    const { application, kernel } = await boot();
+    lines.length = 0;
+    await kernel.request('/reset/abc');
+    await kernel.request('/nowhere/Xq3v9Lr2pK8sT1uW4yZ6bN0cM5dF7gHjA2eR9tY1u');
+    expect(lines.map(({ message }) => message)).toEqual(['GET /reset/[redacted] 200', 'GET /nowhere/[redacted] 404']);
     await application.shutdown();
   });
 });

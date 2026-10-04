@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ACTION_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, VALIDATE_HEADER, type PageObject } from '../../page.ts';
 import { boot, FakeWindow, ORIGIN, page, settle, withActions, type FakeEventSource } from '../test-window.ts';
 import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal, type TimelineEntry } from './devtools.ts';
@@ -115,6 +115,19 @@ describe('the devtools data feature — every request of the client core, by kin
     await navigator.visit('/deploy', { async: true });
     expect(last(api)).toMatchObject({ status: 409, outcome: 'reload', location: '/deploy', reload: 'version' });
     expect(api.left).toBe(false);
+  });
+
+  it('the document with the status it came with — a 404 page is a 404 (navigation timing), 200 where the browser does not say (W7.11)', () => {
+    const { api } = tab();
+    const spy = vi.spyOn(performance, 'getEntriesByType').mockReturnValue([{ responseStatus: 404 } as unknown as PerformanceEntry]);
+    try {
+      api.record.document('/gibt-es-nicht', 'req-404');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(api.timeline[0]).toMatchObject({ kind: 'document', status: 404, requestId: 'req-404' });
+    api.record.document('/users/1', undefined);
+    expect(api.timeline[0]).toMatchObject({ kind: 'document', status: 200 });
   });
 
   it('answerFor: the answer that showed a page — the latest with every prop, its request id the server’s record of it (E131)', async () => {

@@ -6,8 +6,30 @@ import type { CommandInput } from '@bespokecore/cli';
 /** The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth`. */
 export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
-/** What the generated module imports — reported when the app lacks it. */
-const NEEDED = ['@bespokecore/auth', '@bespokecore/cache', '@bespokecore/database', '@bespokecore/mail', '@bespokecore/queue', '@bespokecore/react', '@bespokecore/router', '@bespokecore/scheduler', '@bespokecore/session', 'mjml', 'valibot'];
+/**
+ * What the generated module imports — reported when the app lacks it (the fixture test checks the list against every import
+ * of the templates). `mjml` is the mail package's optional peer behind the templates' `mjml` mails.
+ */
+export const NEEDED = [
+  '@bespokecore/auth',
+  '@bespokecore/cache',
+  '@bespokecore/core',
+  '@bespokecore/database',
+  '@bespokecore/http',
+  '@bespokecore/i18n',
+  '@bespokecore/mail',
+  '@bespokecore/queue',
+  '@bespokecore/react',
+  '@bespokecore/router',
+  '@bespokecore/scheduler',
+  '@bespokecore/session',
+  'mjml',
+  'react',
+  'valibot',
+];
+
+/** What only the module's tests import — reported as dev dependencies. */
+export const NEEDED_FOR_TESTS = ['@bespokecore/testing', 'vitest'];
 
 /**
  * `bespoke make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
@@ -51,10 +73,13 @@ export class MakeAuthCommand {
     }
 
     const missing = missingDependencies(input.root);
+    const runtime = missing.filter((name) => NEEDED.includes(name));
+    const forTests = missing.filter((name) => NEEDED_FOR_TESTS.includes(name));
     // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
-    const typed = missing.length === 0 && registered !== 'manual' && (await input.spawn('route:types')) === 0;
+    const typed = runtime.length === 0 && registered !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
-    if (missing.length > 0) input.output.line(`Install what the module uses: pnpm add ${missing.join(' ')}`);
+    if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add ${runtime.join(' ')}`);
+    if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -D ${forTests.join(' ')}`);
     if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: bespoke migrate — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one).');
@@ -83,8 +108,8 @@ function register(file: string): 'added' | 'present' | 'manual' {
 
 function missingDependencies(root: string): string[] {
   const file = join(root, 'package.json');
-  if (!existsSync(file)) return NEEDED;
+  if (!existsSync(file)) return [...NEEDED, ...NEEDED_FOR_TESTS];
   const pkg = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   const have = { ...pkg.dependencies, ...pkg.devDependencies };
-  return NEEDED.filter((name) => !(name in have));
+  return [...NEEDED, ...NEEDED_FOR_TESTS].filter((name) => !(name in have));
 }

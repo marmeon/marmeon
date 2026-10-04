@@ -44,3 +44,13 @@ describe('translated pages, rendered on the server', () => {
     expect(profile.body).toContain('aria-label="&quot;&gt;&lt;img src=x onerror=alert(1)&gt; entfernen"');
   });
 });
+
+describe('a path without a route (W7.11)', () => {
+  it('is a 404 page in the layout — no group ran, so no shared props: the layout renders without them, on the server and in the browser', async () => {
+    const response = await app.get('/gibt-es-nicht', html('en')).assertNotFound().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('Not Found');
+    // The layout's header — for a guest, without the language switcher (no `locales` without the `web` group) and without a session.
+    expect(response.body).toContain('Sign in');
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+});

@@ -151,6 +151,8 @@ export function createHttpKernel(
 ): HttpKernel {
   const router = application.container.make(Router);
   const logger = container.make(Logger).child({ channel: 'http' });
+  // The log line's path without secrets in it (E125): `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
+  const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   container.instance(AssetVersion, { value: version });
   const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   // Development only (E129): its provider binds it when NODE_ENV=development.
@@ -298,7 +300,6 @@ export function createHttpKernel(
   const developmentError = async (error: unknown, result: unknown, failed: Request, request: Request): Promise<Response | undefined> => {
     try {
       const solutions = application.container.has(ErrorSolutions) ? application.container.make(ErrorSolutions) : undefined;
-      const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
       if (result instanceof Response) {
         if (result.status < 500 || !result.headers.get('content-type')?.includes('json')) return undefined;
         const [solution] = (await solutions?.find(error, { app: application })) ?? [];
@@ -395,8 +396,9 @@ export function createHttpKernel(
       // The log line is written inside the request's trace (a tracer's span, E120: its `trace_id` in the line).
       const run = async () => {
         await next();
-        const route = matched.get(c.req.raw)?.routeName;
-        logger.info(`${c.req.method} ${c.req.path} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
+        const definition = matched.get(c.req.raw);
+        const route = definition?.routeName;
+        logger.info(`${c.req.method} ${redactor.path(c.req.path, definition?.path)} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
       };
       // Traced only while something listens (E118): otherwise no message is built at all.
       if (requests.hasSubscribers) await traceRequest(c.req.raw, requestId, c.env, run, () => c.res);
@@ -668,6 +670,11 @@ export interface ServeOptions {
   ssrEntry?: string;
   /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
+  /**
+   * `development` runs Vite's dev server in front of the app (source modules, HMR, `/__open-in-editor`); `production` serves
+   * the build. Defaults to `development` only with `NODE_ENV=development` (E115) — a missing `NODE_ENV`, `test` or `staging`
+   * serves the build: never "anything but production".
+   */
   mode?: 'development' | 'production';
   /**
    * How long `close()` waits for work after the responses — `afterResponse.defer(…)` tasks, `terminate` hooks — before
@@ -691,7 +698,7 @@ export async function startServer({
   app,
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
-  mode = process.env.NODE_ENV === 'production' ? 'production' : 'development',
+  mode = process.env.NODE_ENV === 'development' ? 'development' : 'production',
   drainTimeoutMs = 8_000,
 }: ServeOptions): Promise<RunningServer> {
   const server = createServer();

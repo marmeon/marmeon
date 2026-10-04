@@ -53,17 +53,19 @@ without markup and the browser renders the page — what an adapter's SSR entry 
 ## `startServer` and the drain
 
 ```ts
-const server = await startServer({ app });   // port: ServerConfig.port; mode: production when NODE_ENV=production
+const server = await startServer({ app });   // port: ServerConfig.port; mode: development only when NODE_ENV=development
 // …
 await server.close();                         // on SIGINT/SIGTERM — bespoke dev and start do this themselves
 await app.shutdown();
 ```
 
-- **development** (`mode: 'development'`, any `NODE_ENV` but `production`): the app's Vite in middleware mode — HMR, modules,
-  the SSR entry of the `bespoke()` plugin (`bootstrap/ssr.tsx`). Without Vite or without the plugin it fails with a
-  `ViteSetupError` that says what to install;
-- **production:** the built `dist/client/index.html` and `dist/server/ssr.js`, loaded once; without them the start fails with
-  "No production build in dist/client — run bespoke build first."
+- **development** (`mode: 'development'`; the default only with `NODE_ENV=development`, E115 — never "anything but production"):
+  the app's Vite in middleware mode — HMR, source modules, `/__open-in-editor`, the SSR entry of the `bespoke()` plugin
+  (`bootstrap/ssr.tsx`). Without Vite or without the plugin it fails with a `ViteSetupError` that says what to install. `bespoke
+  dev` sets `NODE_ENV=development` when it is unset; with another `NODE_ENV` (`staging`, `test`) it serves the build and says so;
+- **production** (the default with any other `NODE_ENV`, also none): the built `dist/client/index.html` and
+  `dist/server/ssr.js`, loaded once; without them the start fails with "No production build in dist/client — run bespoke
+  build first."
 
 `close()` stops gracefully (E102): live streams end first (a tab connects to the next server), no new connections, idle
 keep-alive connections close, requests in flight finish, then the work they deferred until after their response — at most
@@ -105,7 +107,8 @@ readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 10 }
 Every request writes one entry on the `http` channel — `GET /users/7 200` with `{ requestId, route: 'users.show', ms }`
 (`route` only for a named route). The kernel answers with the request's id (`x-request-id`, taken from the request when it
 is a sane one, else generated); every log entry of the request carries it — and, with `@bespokecore/otel`, the request span's
-`trace_id` and `span_id` (the line is written inside the span).
+`trace_id` and `span_id` (the line is written inside the span). Its path is redacted (E125): a sensitive route parameter
+(`/reset-password/:token`) and a token-like segment of a path without a route become `[redacted]`.
 
 ## Observation (E118)
 

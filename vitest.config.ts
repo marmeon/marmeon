@@ -7,5 +7,7 @@ export default defineConfig({
   plugins: [bespoke({ test: true })],
   test: {
     include: ['packages/*/src/**/*.test.{ts,tsx}', 'apps/*/modules/**/*.test.ts'],
+    // With Postgres: drops the test databases the run left behind (only `<database>_test_*` on BESPOKE_TEST_PGSQL_URL's server).
+    globalSetup: ['packages/database/src/__fixtures__/test-databases.ts'],
   },
 });

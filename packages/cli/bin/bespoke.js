@@ -24,6 +24,11 @@ if (process.env.BESPOKE_CHILD === '1') {
   // `start` is production; `dev` is development (E115: development-only tools — `Server-Timing`, devtools — check for
   // `NODE_ENV=development`, never for "not production"), unless the environment says otherwise.
   const mode = production ? { NODE_ENV: 'production' } : command === 'dev' && !process.env.NODE_ENV ? { NODE_ENV: 'development' } : {};
+  if (command === 'dev' && process.env.NODE_ENV && process.env.NODE_ENV !== 'development') {
+    process.stderr.write(
+      `bespoke dev with NODE_ENV=${process.env.NODE_ENV}: the development tools (Vite's dev server, the error page, the devtools) run with NODE_ENV=development only — this serves the build (bespoke build first).\n`,
+    );
+  }
   const child = spawn(process.execPath, [...flags, fileURLToPath(import.meta.url), ...args], {
     stdio: 'inherit',
     env: { ...process.env, BESPOKE_CHILD: '1', ...mode },

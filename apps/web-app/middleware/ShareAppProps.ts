@@ -5,13 +5,17 @@ import { Inbox } from '@bespokecore/notifications';
 import { notificationsChannel } from '@bespokecore/live';
 
 declare module '@bespokecore/http/page' {
+  /**
+   * Optional on purpose: shared by the `web` group's middleware — a path without a route (a 404) passes no group, so its error
+   * page has none of them, and the layout around it renders without them (no session is started for a bot's scan either).
+   */
   interface SharedProps {
-    /** The signed-in user, on every page — or null. */
-    auth: { user: { id: number; name: string; verified: boolean } | null };
+    /** The signed-in user, on every page of the `web` group — or null. */
+    auth?: { user: { id: number; name: string; verified: boolean } | null };
     /** The languages of the switcher (the page's own is `usePage().locale`). */
-    locales: readonly string[];
+    locales?: readonly string[];
     /** The bell in the header: how many of the signed-in user's notifications are unread — null for guests. */
-    bell: { unread: number } | null;
+    bell?: { unread: number } | null;
   }
 
   /**

@@ -74,7 +74,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
           <em>{t('show.own')}</em> <Link route="auth.security">{t('show.settings')}</Link>
         </p>
       )}
-      {isOwnProfile && auth.user && !auth.user.verified && (
+      {isOwnProfile && auth?.user && !auth.user.verified && (
         <p role="note">
           {t('show.verify')} <Link route="auth.verification.send">{t('show.verify_again')}</Link>
         </p>

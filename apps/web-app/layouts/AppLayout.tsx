@@ -11,8 +11,9 @@ const nameOf = (locale: string) => new Intl.DisplayNames([locale], { type: 'lang
  */
 export function AppLayout({ children }: LayoutProps) {
   const { props, locale } = usePage();
+  // The shared props are optional (`ShareAppProps`): the 404 of a path without a route has none — a guest's header then.
   const { auth, locales, bell } = props;
-  const user = auth.user;
+  const user = auth?.user ?? null;
   const t = useTranslation('app');
 
   return (
@@ -36,21 +37,23 @@ export function AppLayout({ children }: LayoutProps) {
         )}
         {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. An uncontrolled
             `<Form>` (E64): the pressed button's `locale` is the field — without JavaScript a real form (`_token` included). */}
-        <Form route="locale.update" aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
-          {(form) =>
-            locales.map((code) =>
-              code === locale ? (
-                <strong key={code} lang={code} aria-current="true">
-                  {nameOf(code)}
-                </strong>
-              ) : (
-                <button key={code} type="submit" {...form.field('locale')} value={code} lang={code} disabled={form.processing}>
-                  {nameOf(code)}
-                </button>
-              ),
-            )
-          }
-        </Form>
+        {locales && (
+          <Form route="locale.update" aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
+            {(form) =>
+              locales.map((code) =>
+                code === locale ? (
+                  <strong key={code} lang={code} aria-current="true">
+                    {nameOf(code)}
+                  </strong>
+                ) : (
+                  <button key={code} type="submit" {...form.field('locale')} value={code} lang={code} disabled={form.processing}>
+                    {nameOf(code)}
+                  </button>
+                ),
+              )
+            }
+          </Form>
+        )}
         {/* The bell (a shared prop, counted on the server per page): a link to the list — no client code of its own. */}
         {user && bell && (
           <Link route="notifications.index" aria-label={t('bell', { count: bell.unread })} data-bell="">

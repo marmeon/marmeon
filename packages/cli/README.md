@@ -17,7 +17,9 @@ everything that exists only in development (E115): the error page and `Server-Ti
 [mail previews](../mail/README.md#previews-e106). Next to the server it starts what packages add to
 `DevProcesses` — a queue worker on every queue (`queue:work --queue=*`, [@bespokecore/queue](../queue/README.md)) and the
 scheduler (`schedule:work`, [@bespokecore/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
-when one ends on its own. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed.
+when one ends on its own. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed. All of
+this — Vite's dev server included — needs `NODE_ENV=development`: with another `NODE_ENV` set (`staging`, `test`), `bespoke dev`
+says so and serves the build, without workers or watchers (never "anything but production", E115).
 
 ### `bespoke build` and `bespoke start`
 

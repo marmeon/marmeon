@@ -1,5 +1,6 @@
 import type { Application } from './application.ts';
 import { channels, messageBase } from './diagnostics.ts';
+import { redact } from './redact.ts';
 import { currentLogContext } from './request-context.ts';
 import { token } from './token.ts';
 
@@ -91,7 +92,7 @@ export class ConsoleLogger implements Logger {
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
-    const data = { ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context };
+    const data = redact({ ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context });
     const line = `[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`;
     (level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }

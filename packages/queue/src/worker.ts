@@ -127,14 +127,17 @@ export class Worker {
   async process(reserved: ReservedJob, options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'> = {}): Promise<Outcome> {
     const { runner, logger } = this.#deps;
     const prepared = await runner.prepare(reserved.payload);
+    const attempt = { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection };
     if (prepared.kind === 'poison') {
-      await this.#fail(reserved, prepared.record, new Error(prepared.reason), ' at once (it cannot run)');
+      const error = new Error(prepared.reason);
+      const fail = () => this.#fail(reserved, prepared.record, error, ' at once (it cannot run)');
+      await (prepared.record ? runner.unrunnable(prepared.record, attempt, error, fail) : fail());
       return 'failed';
     }
     const { record } = prepared;
     if (prepared.kind === 'unknown') {
-      const reason = `No job named "${record.job}" is registered in this app (a deploy in progress, or a module's jobs: [...] is missing it).`;
-      return this.#retryOrFail(reserved, record, new Error(reason), undefined, 'unknown');
+      const error = new Error(`No job named "${record.job}" is registered in this app (a deploy in progress, or a module's jobs: [...] is missing it).`);
+      return runner.unrunnable(record, attempt, error, () => this.#retryOrFail(reserved, record, error, undefined, 'unknown'));
     }
     // A job that comes back more often than it may — its worker died during each attempt — fails instead of looping.
     if (reserved.attempts > record.tries) {

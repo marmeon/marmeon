@@ -206,6 +206,12 @@ const VISITS = slot('devtools-visits', () => new Map<string, TimelineEntry>());
 const CACHE = slot('devtools-cache', () => new Map<string, unknown>());
 
 /** The kinds of answer that show a page or a layer — what {@link DevtoolsFeature.answerFor} looks for. */
+/** The status the document came with — the browser's navigation timing (a 404 page is a 404); 200 where it does not say. */
+function documentStatus(): number {
+  const [navigation] = (globalThis.performance?.getEntriesByType?.('navigation') ?? []) as { responseStatus?: number }[];
+  return navigation?.responseStatus || 200;
+}
+
 const PAGE_KINDS: ReadonlySet<TimelineKind> = new Set(['document', 'visit', 'reload', 'partial', 'background', 'deferred', 'prefetch', 'restore', 'layer']);
 
 /** Path and query of a URL (absolute or not). */
@@ -479,7 +485,7 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
         // The document came first — before what its page loaded while it was rendered (islands).
         const items = timeline();
         const at = Math.min(Date.now(), items[0]?.at ?? Infinity);
-        items.unshift({ id: ++next, kind: 'document', method: 'GET', url, at, end: at, status: 200, outcome: 'ok', answered: url, ...(requestId ? { requestId } : {}) });
+        items.unshift({ id: ++next, kind: 'document', method: 'GET', url, at, end: at, status: documentStatus(), outcome: 'ok', answered: url, ...(requestId ? { requestId } : {}) });
         changed();
       },
       patches: (ids) => {

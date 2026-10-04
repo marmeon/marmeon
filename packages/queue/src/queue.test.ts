@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Clock, createApplication, currentLogContext, Logger, TestClock, type Application, type ModuleDefinition } from '@bespokecore/core';
+import { channels, type QueueJobMessage } from '@bespokecore/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
 import { EncryptionServiceProvider } from '@bespokecore/encryption';
 import * as v from 'valibot';
@@ -372,6 +373,35 @@ describe('the worker', () => {
     application.clock.travel({ seconds: 20 });
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1 });
     expect((await failed.all())[0]!.exception).toMatch(/^Error: No job named "test\.from-the-next-release" is registered in this app/);
+  });
+
+  it('traces an attempt that cannot run on queue.job — an unknown name, a poisoned payload — ending with its error, its log in the job\'s context (W7.11)', async () => {
+    const lines: { message: string; context: Record<string, unknown> }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (message, context = {}) => void lines.push({ message, context: { ...currentLogContext(), ...context } }), error: (message, context = {}) => void lines.push({ message, context: { ...currentLogContext(), ...context } }), child: () => logger };
+    await using application = await app({ logger });
+    application.clock.freeze();
+    const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const failed = new MemoryFailedJobStore();
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@bespokecore/encryption')).Encrypter));
+    const w = new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger });
+    const ended: QueueJobMessage[] = [];
+    const off = channels.subscribe(application, 'queue.job', { end: (message) => void ended.push(message) });
+    try {
+      const unknown = await push(application, driver, 'test.from-the-next-release', { token: 't0k3n' }, { tries: 2, backoff: [0], requestId: 'req-9' });
+      const poisoned = await push(application, driver, 'test.welcome', { userId: 'x' });
+      expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 3, released: 1, failed: 2 });
+      expect(ended.map(({ job, jobId, attempt, originRequestId, payload, error }) => ({ job, jobId, attempt, originRequestId, payload, error: (error as Error).message.split(' (')[0] }))).toEqual([
+        { job: 'test.from-the-next-release', jobId: unknown, attempt: 1, originRequestId: 'req-9', payload: { token: 't0k3n' }, error: 'No job named "test.from-the-next-release" is registered in this app' },
+        { job: 'test.from-the-next-release', jobId: unknown, attempt: 2, originRequestId: 'req-9', payload: { token: 't0k3n' }, error: 'No job named "test.from-the-next-release" is registered in this app' },
+        { job: 'test.welcome', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: { userId: 'x' }, error: expect.stringMatching(/^The payload no longer matches the schema of test\.welcome/) },
+      ]);
+      // The worker's lines about it carry the job's context — what the recorder files them under.
+      expect(lines.map(({ context }) => context.jobId)).toEqual([unknown, unknown, poisoned]);
+    } finally {
+      off();
+    }
+    expect(await failed.all()).toHaveLength(2);
   });
 
   it('fails a job that came back more often than its tries (its worker died each time) instead of running it again', async () => {

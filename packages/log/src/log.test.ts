@@ -122,6 +122,34 @@ describe('@bespokecore/log', () => {
     expect(lines[0]).toMatchObject({ email: 'ada@example.com', headers: { accept: 'application/json', authorization: '[redacted]' }, nested: { deeper: { id: 7 } } });
   });
 
+  it('counter-check: redacts inside lists, the bindings of a child logger and an error\'s fields and causes (W7.11)', () => {
+    const { lines, raw, logger } = capture();
+    const child = logger.child({ channel: 'auth', token: 'bound-t0k3n', user: { password: 'bound-pw' } });
+    const cause = Object.assign(new Error('socket token=c4use'), { config: { headers: { authorization: 'Basic c2VjcmV0' } } });
+    child.info('Import', { users: [{ email: 'ada@example.com', password: 'hunter2' }, [{ api_key: 'k-2' }]] });
+    child.error('Failed', { err: Object.assign(new Error('auth failed for password=errpw', { cause }), { code: 'EAUTH', secret: 'own-field' }) });
+    const all = raw.join('');
+    for (const secret of ['bound-t0k3n', 'bound-pw', 'hunter2', 'k-2', 'errpw', 'c4use', 'Basic c2VjcmV0', 'own-field']) expect(all).not.toContain(secret);
+    expect(lines[0]).toMatchObject({ channel: 'auth', token: '[redacted]', user: { password: '[redacted]' }, users: [{ email: 'ada@example.com', password: '[redacted]' }, [{ api_key: '[redacted]' }]] });
+    // pino's error serializer still knows the error: its class, message with causes, stack and fields.
+    expect(lines[1]).toMatchObject({ err: { type: 'Error', message: expect.stringContaining('auth failed for password=[redacted]'), code: 'EAUTH', secret: '[redacted]' } });
+    expect((lines[1]!.err as { stack: string }).stack).toContain('caused by: Error: socket token=[redacted]');
+  });
+
+  it('counter-check: the console fallback redacts like pino (W7.11)', () => {
+    const written: string[] = [];
+    const log = console.log;
+    console.log = (line: string) => void written.push(line);
+    try {
+      new ConsoleLogger({ token: 'bound-t0k3n' }).child({ cookie: 'c=1' }).info('Import', { users: [{ password: 'hunter2' }] });
+    } finally {
+      console.log = log;
+    }
+    expect(written).toHaveLength(1);
+    expect(written[0]).not.toMatch(/bound-t0k3n|c=1|hunter2/);
+    expect(written[0]).toContain('"users":[{"password":"[redacted]"}]');
+  });
+
   it('filters by level', () => {
     const { lines, logger } = capture('warn');
     logger.info('hidden');

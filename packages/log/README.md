@@ -64,15 +64,19 @@ with `@bespokecore/otel` the request span's `trace_id` and `span_id`. Paths only
 
 Before pino writes an entry, its context goes through `redact()` of `@bespokecore/core` (re-exported here with
 `REDACTED_KEYS`): every key that looks like a secret — `password`, `new_password`, `secret`, `token`, `authorization`, `cookie`,
-`remember_web`, `api_key`, `signature` … — has its value replaced by `[redacted]`, in nested objects too (six levels deep;
-arrays are written as they are):
+`remember_web`, `api_key`, `signature` … — has its value replaced by `[redacted]`, in nested objects, lists, maps and sets too
+(six levels deep; deeper is left out as `[…]`). The bindings of a child logger (`logger.child({ token })`) go through it as
+well — pino writes them once, when the child is made. An error stays an error of its class (pino's `err` serializer still
+knows it), with its message and stack masked as text, its own fields redacted by key and its causes alike. The console
+fallback (`ConsoleLogger`, without this package) redacts the same way:
 
 ```ts
 logger.info('Login failed', { email, password, headers: { authorization: 'Bearer …', accept: 'application/json' } });
 // {"msg":"Login failed","email":"ada@example.com","password":"[redacted]","headers":{"authorization":"[redacted]","accept":"application/json"}}
 ```
 
-**Messages are not scanned**: never put a secret into the message text. The queue stores a failed job's error through
+**Messages are not scanned**: never put a secret into the message text (the request log line masks its path itself: a
+sensitive route parameter or a token-like segment becomes `[redacted]`). The queue stores a failed job's error through
 `redactText()` (passwords in SMTP errors) — see [redaction](../core/README.md#redaction-e125) for the `Redactor` the error page,
 the devtools and telemetry use, which also scans text.
 

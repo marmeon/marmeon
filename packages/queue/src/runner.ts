@@ -158,6 +158,40 @@ export class JobRunner {
     });
   }
 
+  /**
+   * An attempt that cannot run — no class for its name (`unknown`), a payload that is not its job's (`poison`): `then` (the
+   * worker's release or failure, with its log line) runs in the job's log context and, while something listens, as an attempt
+   * on the `queue.job` channel that ends with `error` — so the devtools show it like any failed attempt, not only `failed_jobs`.
+   */
+  async unrunnable<T>(record: JobRecord, attempt: { readonly attempt: number; readonly queue: string; readonly connection: string }, error: Error, then: () => Promise<T>): Promise<T> {
+    const info = { job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }) };
+    if (!attempts.hasSubscribers || !this.#container.has(Application)) return runWithJob(info, then);
+    const message: QueueJobMessage = {
+      ...messageBase(this.#container.make(Application)),
+      job: record.job,
+      jobId: record.uuid,
+      queue: attempt.queue,
+      connection: attempt.connection,
+      attempt: attempt.attempt,
+      ...(record.requestId === undefined ? {} : { originRequestId: record.requestId }),
+      ...(record.traceparent === undefined ? {} : { traceparent: record.traceparent }),
+      // As queued — not checked against any schema: shown only through the redactor, a ciphertext never (E125).
+      ...(record.encrypted ? { encrypted: true } : { payload: record.data }),
+    };
+    let result: { value: T } | undefined;
+    try {
+      await trace(attempts, message, () =>
+        runWithJob(info, async () => {
+          result = { value: await then() };
+          throw error;
+        }),
+      );
+    } catch (thrown) {
+      if (thrown !== error || !result) throw thrown;
+    }
+    return result!.value;
+  }
+
   async #run(
     prepared: Extract<Prepared, { kind: 'ready' }>,
     attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfter?: number },

@@ -3,8 +3,11 @@ import { SharedData, type HttpContext, type Next } from '@bespokecore/http';
 
 declare module '@bespokecore/http/page' {
   interface SharedProps {
-    /** The signed-in user, on every page — or null. */
-    auth: { user: { id: number; name: string; verified: boolean } | null };
+    /**
+     * The signed-in user, on every page of the `web` group — or null. Optional on purpose: a path without a route (a 404)
+     * passes no group's middleware, so its error page has no shared props — a layout around it renders without them.
+     */
+    auth?: { user: { id: number; name: string; verified: boolean } | null };
   }
 
   /**

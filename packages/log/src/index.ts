@@ -56,7 +56,8 @@ export class PinoLogger implements Logger {
     if (this.#app && entries.hasSubscribers) this.#publish('error', message, context);
   }
   child(bindings: LogContext): Logger {
-    return new PinoLogger(this.#pino.child(bindings), this.#app, bindings, this);
+    // pino writes a child's bindings once, at creation, past `formatters.log` — so they are redacted here (E125).
+    return new PinoLogger(this.#pino.child(redact(bindings)), this.#app, bindings, this);
   }
 
   #publish(level: 'debug' | 'info' | 'warn' | 'error', message: string, context: LogContext | undefined): void {

@@ -21,7 +21,7 @@ export default function Security({ viaRemember, email, auth, csrfToken }: Props)
       <h1>{t('security.title')}</h1>
       {viaRemember && (
         <p>
-          <small>{t('security.remembered', { name: auth.user?.name ?? '' })}</small>
+          <small>{t('security.remembered', { name: auth?.user?.name ?? '' })}</small>
         </p>
       )}
 
@@ -39,7 +39,7 @@ export default function Security({ viaRemember, email, auth, csrfToken }: Props)
             <br />
             <input id="email" type="email" autoComplete="email" value={emailForm.data.email} onChange={(e) => emailForm.set('email', e.target.value)} aria-invalid={!!emailForm.errors.email} />
             {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
-            {auth.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
+            {auth?.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
           </p>
           <button type="submit" disabled={emailForm.processing || !emailForm.isDirty}>
             {t('security.change_email')}

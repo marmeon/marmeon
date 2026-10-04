@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENCRYPTED, MAX_ENTRY_BYTES, REDACTED, Redactor, redactText } from './redact.ts';
+import { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, Redactor, redactText } from './redact.ts';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const SCRYPT = '$scrypt$ln=15,r=8,p=1$c2FsdA$aGFzaA';
@@ -118,5 +118,69 @@ describe('E125, completed for the devtools (W7.7)', () => {
     const huge = redactor.fit(Object.fromEntries(Array.from({ length: 20_000 }, (_, i) => [`key${i}`, i])));
     expect(Buffer.byteLength(JSON.stringify(huge))).toBeLessThanOrEqual(MAX_ENTRY_BYTES);
     expect(huge).toMatchObject({ cut: expect.stringMatching(/bytes$/) });
+  });
+});
+
+describe('redact() — the log path, completed (W7.11)', () => {
+  it('redacts inside lists, nested lists, maps and sets', () => {
+    const shown = redact({
+      users: [{ email: 'ada@example.com', password: 'hunter2' }, [{ api_key: 'k-1' }]],
+      sessions: new Map<string, unknown>([['token', 't0k3n'], ['owner', { remember_web: 'sel.val' }]]),
+      tags: new Set([{ secret: 's' }, 'plain']),
+      when: new Date('2026-10-04T12:00:00Z'),
+    });
+    expect(shown).toEqual({
+      users: [{ email: 'ada@example.com', password: REDACTED }, [{ api_key: REDACTED }]],
+      sessions: { token: REDACTED, owner: { remember_web: REDACTED } },
+      tags: [{ secret: REDACTED }, 'plain'],
+      when: new Date('2026-10-04T12:00:00Z'),
+    });
+    expect(JSON.stringify(shown)).not.toMatch(/hunter2|k-1|t0k3n|sel\.val|"s"/);
+  });
+
+  it('keeps an error an error of its class — message, stack, own fields and every cause redacted', () => {
+    class HttpError extends Error {
+      override name = 'HttpError';
+    }
+    const cause = Object.assign(new Error('socket token=y'), { config: { headers: { authorization: 'Basic z' } } });
+    const error = Object.assign(new HttpError('auth failed for password=x', { cause }), {
+      code: 'EAUTH',
+      response: { data: [{ access_token: 'a-1' }] },
+    });
+    const aggregate = new AggregateError([new Error('one secret=s1')], 'two failed');
+    const shown = redact({ err: error, aggregate }) as { err: Error & Record<string, unknown>; aggregate: AggregateError };
+    expect(shown.err).toBeInstanceOf(HttpError);
+    expect(shown.err.message).toBe('auth failed for password=[redacted]');
+    expect(shown.err.stack).toContain('password=[redacted]');
+    expect(shown.err).toMatchObject({ name: 'HttpError', code: 'EAUTH', response: { data: [{ access_token: REDACTED }] } });
+    expect((shown.err.cause as Error).message).toBe('socket token=[redacted]');
+    expect((shown.err.cause as Error & { config: unknown }).config).toEqual({ headers: { authorization: REDACTED } });
+    expect(shown.aggregate.errors.map((item: Error) => item.message)).toEqual(['one secret=[redacted]']);
+    // The original is untouched.
+    expect(error.message).toBe('auth failed for password=x');
+    // Whatever serializes it — JSON or a logger's error serializer reading its fields — finds no secret.
+    const fields = (value: Error) => JSON.stringify({ ...value, message: value.message, stack: value.stack, cause: String((value.cause as Error).message) });
+    expect(fields(shown.err)).not.toMatch(/password=x|token=y|Basic z|a-1/);
+  });
+
+  it('survives cycles and leaves out what is nested deeper than six levels', () => {
+    const error = new Error('loop') as Error & { self?: unknown };
+    error.cause = error;
+    const deep = { a: { b: { c: { d: { e: { f: { g: { h: { note: 'deep' } } } } } } } } };
+    expect(() => redact({ error })).not.toThrow();
+    expect(JSON.stringify(redact(deep))).not.toContain('deep');
+  });
+
+  it('describes a non-error cause or a thrown object redacted by key, also inside lists', () => {
+    const text = describeError(new Error('failed', { cause: { attempts: [{ token: 'abc' }] } }));
+    expect(text).toContain('Caused by: {"attempts":[{"token":"[redacted]"}]}');
+    expect(describeError({ users: [{ password: 'hunter2' }] })).not.toContain('hunter2');
+  });
+});
+
+describe('Redactor.headers — a header given more than once', () => {
+  it('redacts set-cookie as a list and joins other lists', () => {
+    const shown = new Redactor().headers({ 'set-cookie': ['a=1', 'b=2'], 'x-forwarded-for': ['1.2.3.4', '5.6.7.8'], accept: 'text/html', missing: undefined });
+    expect(shown).toEqual({ 'set-cookie': REDACTED, 'x-forwarded-for': '1.2.3.4, 5.6.7.8', accept: 'text/html' });
   });
 });

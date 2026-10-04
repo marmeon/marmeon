@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { MakeAuthCommand } from './make-auth.ts';
+import { MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, STUBS } from './make-auth.ts';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const blank = join(repo, 'apps', 'blank-app');
@@ -70,6 +70,39 @@ describe('make:auth', () => {
     expect(readFileSync(join(root, 'modules/auth/routes.ts'), 'utf8')).toBe('// changed by the app\n');
     expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').match(/#modules\/auth/g)).toHaveLength(1); // registered once
+  });
+
+  it('names every package its templates import — the module\'s in NEEDED, its tests\' in NEEDED_FOR_TESTS (W7.11: i18n was missing)', () => {
+    const imported = (test: boolean) => {
+      const names = new Set<string>();
+      for (const file of readdirSync(STUBS, { recursive: true }) as string[]) {
+        if (!/\.tsx?$/.test(file) || /\.test\.tsx?$/.test(file) !== test) continue;
+        for (const [, specifier] of readFileSync(join(STUBS, file), 'utf8').matchAll(/(?:from|import)\s+'([^'.#][^']*)'/g)) {
+          if (specifier!.startsWith('node:')) continue;
+          const parts = specifier!.split('/');
+          names.add(specifier!.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]!);
+        }
+      }
+      return [...names].sort();
+    };
+    const module = imported(false);
+    expect(module).toContain('@bespokecore/i18n');
+    expect(module.filter((name) => !NEEDED.includes(name))).toEqual([]);
+    expect(imported(true).filter((name) => !NEEDED.includes(name) && !NEEDED_FOR_TESTS.includes(name))).toEqual([]);
+  });
+
+  it('reports what the app lacks — the module\'s packages and its tests\'', async () => {
+    const root = blankApp();
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+    delete pkg.dependencies['@bespokecore/i18n'];
+    delete pkg.devDependencies['@bespokecore/testing'];
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const { input, lines, spawned } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    expect(lines).toContain('Install what the module uses: pnpm add @bespokecore/i18n');
+    expect(lines).toContain('And what its tests use: pnpm add -D @bespokecore/testing');
+    // Without the module's packages the route types would not load: not generated now.
+    expect(spawned).toEqual([]);
   });
 
   it('knows its adapters', async () => {

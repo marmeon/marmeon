@@ -38,11 +38,13 @@ export class ServeCommand {
   async handle({ output, root }: CommandInput): Promise<number> {
     // `bespoke dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
     // and when a view is added or removed (Node never loads views, so that restarts nothing).
-    const development = process.env.NODE_ENV !== 'production';
+    // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
+    // NODE_ENV=development only (E115; `bespoke dev` sets it), never with "anything but production" (staging, test, unset).
+    const development = process.env.NODE_ENV === 'development';
     const views = development ? await this.#watchRouteTypes(output, root) : undefined;
     let server;
     try {
-      server = await startServer({ app: this.#app });
+      server = await startServer({ app: this.#app, mode: development ? 'development' : 'production' });
     } catch (error) {
       // A setup problem (no Vite, no bespoke() plugin) is a message, not a stack trace.
       if (!(error instanceof ViteSetupError)) throw error;

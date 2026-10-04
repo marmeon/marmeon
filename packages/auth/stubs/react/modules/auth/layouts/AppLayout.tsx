@@ -6,16 +6,17 @@ import { useState } from 'react';
  * you navigate between pages that use it (E35). Make it the app's default with `createBespokeApp({ layout })`.
  */
 export function AppLayout({ children }: LayoutProps) {
-  const { auth } = usePage().props;
+  // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.
+  const user = usePage().props.auth?.user ?? null;
   const t = useTranslation('auth');
 
   return (
     <>
       <header style={{ display: 'flex', gap: 16, justifyContent: 'space-between', borderBottom: '1px solid #ddd', paddingBottom: 8 }}>
-        <strong>{auth.user ? <Link route="dashboard">{t('layout.dashboard')}</Link> : <Link route="auth.login">{t('layout.sign_in')}</Link>}</strong>
-        {auth.user ? (
+        <strong>{user ? <Link route="dashboard">{t('layout.dashboard')}</Link> : <Link route="auth.login">{t('layout.sign_in')}</Link>}</strong>
+        {user ? (
           <nav aria-label={t('layout.account')}>
-            {auth.user.name} · <Link route="auth.security">{t('layout.settings')}</Link> · <Link route="auth.logout">{t('layout.sign_out')}</Link>
+            {user.name} · <Link route="auth.security">{t('layout.settings')}</Link> · <Link route="auth.logout">{t('layout.sign_out')}</Link>
           </nav>
         ) : (
           <nav aria-label={t('layout.account')}>
