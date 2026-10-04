@@ -230,8 +230,10 @@ describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
   });
 
   it('shows the environment and the database in the banner — in production as a warning, never a secret', async () => {
-    const production = { ...env, NODE_ENV: 'production', APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent' };
-    const development = await session(['--no-history'], { ...env, NODE_ENV: 'development' }, '.exit\n');
+    // Outside NODE_ENV=test the app reads .env, which a fresh checkout (CI) does not have: the test brings its configuration.
+    const config = { APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent' };
+    const production = { ...env, ...config, NODE_ENV: 'production' };
+    const development = await session(['--no-history'], { ...env, ...config, NODE_ENV: 'development', DEVTOOLS_ENABLED: 'false' }, '.exit\n');
     expect(development.stdout).toContain(`BespokeCore tinker · @bespokecore/web-app · NODE_ENV=development · db sqlite (${env.DB_DATABASE}) · .ls lists helpers`);
     expect(development.stdout).not.toContain('PRODUCTION');
     const interactive = await session(['--no-history'], production, '.exit\n');
