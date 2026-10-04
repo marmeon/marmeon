@@ -6,6 +6,7 @@ import {
   compose,
   fromHtml,
   html,
+  LOG_MAILER_WARNING,
   LogTransport,
   MailError,
   mjml,
@@ -169,6 +170,25 @@ describe('MailServiceProvider', () => {
     expect((await boot({})).container.make(MailTransport)).toBeInstanceOf(LogTransport);
     expect((await boot({ MAIL_MAILER: 'smtp' })).container.make(MailTransport)).toBeInstanceOf(SmtpTransport);
     await expect(boot({ MAIL_FROM_ADDRESS: 'nope' })).rejects.toThrow(/mail: MAIL_FROM_ADDRESS/);
+  });
+
+  it('warns once at boot when production runs on the log mailer — reset links would land in the log (W7.11)', async () => {
+    const warningsWith = async (env: Record<string, string>) => {
+      const warnings: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: (message: string, _context?: LogContext) => void warnings.push(message), error() {}, child: () => logger };
+      await boot(env, (container) => container.instance(Logger, logger));
+      return warnings;
+    };
+    expect(await warningsWith({ NODE_ENV: 'production' })).toEqual([LOG_MAILER_WARNING]); // MAIL_MAILER unset: the default
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'log' })).toEqual([LOG_MAILER_WARNING]);
+    expect(LOG_MAILER_WARNING).toContain('no mail is sent');
+    expect(LOG_MAILER_WARNING).toContain('in plain text');
+    // Quiet with a real mailer, and in development and tests (there the log is where the links are clicked).
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'smtp' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'array' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'development' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'test' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'staging' })).toEqual([]);
   });
 
   it('takes a transport of your own — a class against the neutral message type', async () => {

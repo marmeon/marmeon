@@ -36,8 +36,15 @@ MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASS
 ```
 
 `MAIL_SECURE=true` means TLS from the first byte (port 465); otherwise STARTTLS when the server offers it. `MailConfig`
-(`config.mailer`, `config.from`, `config.smtp`, `config.previews`) is the package's config class. The web app's `.env.test`
-sets `MAIL_MAILER=array`.
+(`config.mailer`, `config.from`, `config.smtp`, `config.previews`, `config.production`) is the package's config class. The web
+app's `.env.test` sets `MAIL_MAILER=array`.
+
+> **`log` is the default in every environment — set `MAIL_MAILER` in production.** The log mailer sends nothing: it writes each
+> mail's text to the log, its links and tokens (password reset, e-mail verification, signed URLs) in plain text — in development
+> that is the point (the links are clicked from there), in production it puts working reset links into the log and leaves users
+> without their mails. With `NODE_ENV=production` and `MAIL_MAILER=log` (or unset) the boot therefore warns once per process
+> (`LOG_MAILER_WARNING`): `MAIL_MAILER=log in production: no mail is sent — every mail is written to the log instead, …`. It is a
+> warning, not an error (like Laravel's `log` mailer, decided 04.10.): a deployment may route mails through the log on purpose.
 
 ## Mails
 

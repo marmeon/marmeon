@@ -44,9 +44,20 @@ export const MailConfig = defineConfig('mail', {
      * a test, staging or a server without `NODE_ENV` has no such routes.
      */
     previews: env.NODE_ENV === 'development',
+    /** `NODE_ENV=production`: the boot warns about `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}). */
+    production: env.NODE_ENV === 'production',
   }),
 });
 export type MailConfig = ConfigOf<typeof MailConfig>;
+
+/**
+ * What the boot logs, once per process, when production runs on the `log` mailer — the default when `MAIL_MAILER` is not set.
+ * The log mailer stays as it is everywhere (Laravel's too): in development the links of a mail are clicked from the log.
+ */
+export const LOG_MAILER_WARNING =
+  'MAIL_MAILER=log in production: no mail is sent — every mail is written to the log instead, its links and tokens (password ' +
+  'reset, e-mail verification, signed URLs) in plain text. Set MAIL_MAILER=smtp (pnpm add nodemailer) and MAIL_HOST, ' +
+  'MAIL_USERNAME, MAIL_PASSWORD.';
 
 type QueueModule = typeof import('@bespokecore/queue');
 
@@ -95,8 +106,11 @@ export class MailServiceProvider implements ServiceProvider {
     const queue = await importQueue();
     if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@bespokecore/mail', { framework: true });
 
+    const config = app.container.make(MailConfig);
+    // Production on the log mailer (W7.11, Max 04.10.): no mail goes out, and reset links land in the log — said once, at boot.
+    if (config.production && config.mailer === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { mailer: 'log' });
     // Mail previews (E106): only in development (E115) — the devtools link to them.
-    if (app.container.make(MailConfig).previews) await registerPreviews(app);
+    if (config.previews) await registerPreviews(app);
   }
 
   async shutdown(): Promise<void> {
