@@ -21,6 +21,7 @@ export default {
   errors: {
     unauthorized: 'Diese Aktion ist nicht erlaubt.',
     csrf: 'Die Seite ist abgelaufen. Bitte neu laden und noch einmal versuchen.',
+    cross_site: 'Anfrage einer fremden Seite abgelehnt.',
     throttled: 'Zu viele Versuche.',
     signature: 'Ungültige Signatur.',
   },

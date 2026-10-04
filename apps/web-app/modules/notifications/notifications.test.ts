@@ -62,10 +62,10 @@ describe('"New sign-in" (W6.7)', () => {
     app.mail.assertNotQueued(NewSignInMail);
   });
 
-  it('is not sent for the sign-in right after registering', async () => {
+  it('is not sent for a registration — it signs nobody in (private registration, E146)', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
-    await app.post('/register', { form: { name: 'Katherine Johnson', email: 'kj@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } }).assertRedirect('/users/me');
-    app.events.assertDispatched(Login, (event) => event.via === 'login');
+    await app.post('/register', { form: { name: 'Katherine Johnson', email: 'kj@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } }).assertRedirect('/register/sent');
+    app.events.assertNotDispatched(Login);
     await app.queue.work();
     app.notifications.assertNothingSent();
   });

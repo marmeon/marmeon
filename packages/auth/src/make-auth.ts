@@ -3,7 +3,10 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CommandInput } from '@bespokecore/cli';
 
-/** The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth`. */
+/**
+ * The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth` — and `stubs/<adapter>/private-registration/modules/auth`,
+ * the files `--private-registration` writes over them (E146).
+ */
 export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
 /**
@@ -43,8 +46,8 @@ export const NEEDED_FOR_TESTS = ['@bespokecore/testing', 'vitest'];
 export class MakeAuthCommand {
   static command = 'make:auth';
   static description = 'Create the auth module (sign-in, registration, reset, verification, API tokens) — yours to change';
-  static usage = '[--adapter=react] [--force]';
-  static options = { force: { type: 'boolean' }, adapter: { type: 'string' } } as const;
+  static usage = '[--adapter=react] [--private-registration] [--force]';
+  static options = { force: { type: 'boolean' }, adapter: { type: 'string' }, 'private-registration': { type: 'boolean' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
     const adapter = typeof input.options.adapter === 'string' ? input.options.adapter : 'react';
@@ -64,8 +67,11 @@ export class MakeAuthCommand {
     }
 
     cpSync(source, target, { recursive: true, force: true });
+    // Private registration (E146): the same answer for new and known addresses, a note to the owner, a confirmed address first.
+    const isPrivate = input.options['private-registration'] === true;
+    if (isPrivate) cpSync(join(STUBS, adapter, 'private-registration', 'modules', 'auth'), target, { recursive: true, force: true });
     const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));
-    input.output.success(`Created modules/auth (${files.length} files)`);
+    input.output.success(`Created modules/auth (${files.length} files${isPrivate ? ', private registration' : ''})`);
 
     const registered = register(join(input.root, 'bootstrap', 'app.ts'));
     if (registered === 'added') input.output.success('Registered the module in bootstrap/app.ts');

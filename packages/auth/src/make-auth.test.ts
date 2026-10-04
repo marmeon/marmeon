@@ -141,6 +141,19 @@ describe('make:auth', () => {
     expect(lines[0]).toBe('✗ There are no auth templates for the UI adapter "vue". Known: react.');
   });
 
+  it('--private-registration writes the variant over the module (E146): its controller, views, routes, job, mail and tests', async () => {
+    const root = blankApp();
+    const { input, lines } = fakeInput(root, { 'private-registration': true });
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files, private registration\)$/);
+    const overlay = join(STUBS, 'react', 'private-registration', 'modules', 'auth');
+    for (const file of readdirSync(overlay, { recursive: true }) as string[]) {
+      if (!/\.\w+$/.test(file)) continue;
+      expect(readFileSync(join(root, 'modules/auth', file), 'utf8')).toBe(readFileSync(join(overlay, file), 'utf8'));
+    }
+    expect(readFileSync(join(root, 'modules/auth/controllers/RegisterController.ts'), 'utf8')).not.toContain('emailTaken');
+  });
+
   /**
    * The acceptance of wave 4 (E30): a new app gets a complete auth area whose own tests pass — generated,
    * migrated, type-checked and tested as a user would. On Postgres too when `pnpm test:pgsql` runs.
@@ -220,6 +233,38 @@ describe('make:auth', () => {
       expect(client).not.toContain('/email/verify/:id/:hash');
       expect(client).not.toContain('api.user');
       expect(client).not.toMatch(/["'`]\/api\/user["'`]/); // the page text mentions /api/users — the pattern itself must be absent
+    },
+    300_000,
+  );
+
+  /** The private registration (E146) as a user gets it: generated, migrated, type-checked, linted — and its own tests pass. */
+  it(
+    'gives a new app a working auth area with private registration: its generated tests pass',
+    () => {
+      const root = blankApp();
+      const env = { ...process.env };
+      for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST') delete env[key];
+      const run = (command: string, args: string[], extra: Record<string, string> = {}, base = env) => {
+        const result = spawnSync(command, args, { cwd: root, env: { ...base, ...extra }, encoding: 'utf8', timeout: 240_000 });
+        return { code: result.status, out: `${result.stdout}${result.stderr}` };
+      };
+      const { DB_CONNECTION: _connection, DB_URL: _url, ...sqliteEnv } = env;
+      const bespoke = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/bespoke.js'), ...args], { NODE_ENV: 'development' }, sqliteEnv);
+
+      expect(bespoke('discover').code).toBe(0);
+      const generated = bespoke('make:auth', '--private-registration');
+      expect(generated.out).toContain('private registration');
+      expect(generated.code).toBe(0);
+      expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
+      expect(bespoke('migrate').code).toBe(0);
+      const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
+      expect(typecheck.out).toBe('');
+      expect(bespoke('make:lint-config', '--boundaries', '--force').code).toBe(0);
+      expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
+      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
+      expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
+      expect(tests.out).not.toMatch(/failed/);
+      expect(tests.code).toBe(0);
     },
     300_000,
   );

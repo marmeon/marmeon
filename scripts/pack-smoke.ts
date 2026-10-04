@@ -285,7 +285,8 @@ class Smoke {
 
 /**
  * The production HTTP defaults of the starter's shell (E147, E162): `/login` under its CSP — one nonce in the header and on the
- * entry script — and never compressed; the entry script as the `.br` `bespoke build` wrote, kept a year (`immutable`).
+ * entry script — and never compressed, for a guest without a cookie (E143), a cross-site post refused; the entry script as the
+ * `.br` `bespoke build` wrote, kept a year (`immutable`).
  */
 async function checkProductionHttp(base: string): Promise<void> {
   const page = await fetch(`${base}/login`, { headers: { accept: 'text/html', 'accept-encoding': 'gzip, deflate, br' }, signal: AbortSignal.timeout(5_000) });
@@ -294,6 +295,11 @@ async function checkProductionHttp(base: string): Promise<void> {
   const nonce = /'nonce-([^']+)'/.exec(policy)?.[1];
   if (!nonce || !policy.includes("'strict-dynamic'")) throw new SmokeError(`GET /login has no strict CSP with a nonce: ${policy || '(no header)'}`);
   if (page.headers.get('content-encoding')) throw new SmokeError(`GET /login was compressed (${page.headers.get('content-encoding')}) — documents never are (BREACH).`);
+  // A guest's page keeps no session (E143): no cookie — and a post from another site is refused before the token is asked for.
+  if (page.headers.getSetCookie().length > 0) throw new SmokeError(`GET /login of a guest set cookies (E143: no session for a guest): ${page.headers.getSetCookie().join(' | ')}`);
+  const forged = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual', headers: { 'sec-fetch-site': 'cross-site', 'content-type': 'application/x-www-form-urlencoded' }, body: 'email=a%40example.com&password=x', signal: AbortSignal.timeout(5_000) });
+  await forged.arrayBuffer();
+  if (forged.status !== 403) throw new SmokeError(`A cross-site POST /login answered ${forged.status}, expected 403 (E143, Fetch Metadata).`);
   const entry = /<script type="module"[^>]*\ssrc="(\/assets\/[^"]+\.js)"[^>]*>/.exec(html);
   if (!entry || !entry[0].includes(`nonce="${nonce}"`)) throw new SmokeError(`The entry script of /login does not carry the response's nonce: ${entry?.[0] ?? '(no entry script)'}`);
   const asset = await fetch(`${base}${entry[1]}`, { headers: { 'accept-encoding': 'br' }, signal: AbortSignal.timeout(5_000) });

@@ -66,24 +66,28 @@ describe('the two 409s (E64)', () => {
 });
 
 describe('<Form> without JavaScript (E64)', () => {
-  it('the language switcher is a real form: POST /locale with `_token` (from the page) — CSRF checked', async () => {
+  it('the language switcher is a real form: a guest\'s POST /locale passes by the browser\'s word (E143) — never from elsewhere', async () => {
     app = await createTestApp(application, { database: 'refresh', csrf: true });
     const login = await app.navigating().get('/login');
-    const token = login.page()!.csrf!;
-    expect(token).toBeTruthy();
-    const browser = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
-    await browser.post('/locale', { form: { locale: 'de' }, headers: { referer: 'http://localhost/login' } }).assertStatus(419);
-    await browser.post('/locale', { form: { _token: token, locale: 'de' }, headers: { referer: 'http://localhost/login' } }).assertRedirect('/login').assertSessionHas('locale', 'de');
+    // A guest has no session — no token in the page, no cookie (E143).
+    expect(login.page()!.csrf).toBeUndefined();
+    expect(login.headers.getSetCookie()).toEqual([]);
+    const referer = { referer: 'http://localhost/login' };
+    await app.post('/locale', { form: { locale: 'de' }, headers: referer }).assertStatus(419); // no browser word, no token
+    await app.post('/locale', { form: { locale: 'de' }, headers: { ...referer, 'sec-fetch-site': 'cross-site' } }).assertStatus(403);
+    await app.post('/locale', { form: { locale: 'de' }, headers: { ...referer, origin: 'https://evil.example' } }).assertStatus(403);
+    await app.post('/locale', { form: { locale: 'de' }, headers: { ...referer, 'sec-fetch-site': 'same-origin' } }).assertRedirect('/login').assertSessionHas('locale', 'de');
+    // Plain HTTP (no Fetch Metadata): the form's Origin is the app's.
+    await app.post('/locale', { form: { locale: 'de' }, headers: { ...referer, origin: 'http://localhost' } }).assertRedirect('/login').assertSessionHas('locale', 'de');
   });
 
   it('a PUT route without JavaScript: POST with `_method=PUT` saves the profile — the CSRF check runs for the PUT', async () => {
     app = await createTestApp(application, { database: 'refresh', csrf: true });
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com', name: 'Ada' });
-    const login = await app.navigating().get('/login');
-    const guest = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
-    const signedIn = await guest.post('/login', { form: { _token: login.page()!.csrf!, email: 'ada@example.com', password: 'password' }, headers: { referer: 'http://localhost/login' } }).assertRedirect();
+    const signedIn = await app.post('/login', { form: { email: 'ada@example.com', password: 'password' }, headers: { referer: 'http://localhost/login', 'sec-fetch-site': 'same-origin' } }).assertRedirect();
     const browser = app.withCookie('bespoke_session', signedIn.cookie('bespoke_session')!);
     const page = (await browser.navigating().get(`/users/${ada.id}/edit`)).page() as PageObject;
+    expect(page.csrf).toBeTruthy(); // a session: its pages carry the token for forms without JavaScript
     await browser.post(`/users/${ada.id}`, { form: { _method: 'PUT', name: 'Ada', bio: 'x' }, headers: { referer: `http://localhost/users/${ada.id}/edit` } }).assertStatus(419);
     await browser
       .post(`/users/${ada.id}`, { form: { _method: 'PUT', _token: page.csrf!, name: 'Ada King', bio: 'Poet of science.' }, headers: { referer: `http://localhost/users/${ada.id}/edit` } })

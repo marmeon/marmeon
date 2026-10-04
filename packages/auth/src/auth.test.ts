@@ -1,8 +1,8 @@
 import { createApplication, defineModule, listen, type Container } from '@bespokecore/core';
 import { DatabaseServiceProvider, Migrator } from '@bespokecore/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { ClientHistory, Controller, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
+import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
+import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
 import { CsrfProtection, Session, SessionServiceProvider, SessionStore } from '@bespokecore/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
@@ -175,7 +175,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
     root: import.meta.dirname,
     discover: false,
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
-    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
     modules: [
       defineModule({
         name: 'auth-test',
@@ -213,7 +213,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
     };
     return { send, cookie: () => (jar.has('bespoke_session') ? `bespoke_session=${jar.get('bespoke_session')}` : ''), jar };
   };
-  return { application, users, add, browser, store: application.container.make(SessionStore) };
+  return { application, users, add, browser, kernel, store: application.container.make(SessionStore) };
 }
 
 const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
@@ -247,6 +247,29 @@ describe('Auth (session guard)', () => {
     expect(await store.read(await sessionId(cookie()))).toMatchObject({ [AUTH_SESSION_KEYS.id]: 1 });
   });
 
+  it('the Login event carries the request\'s address (through TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo, E169)', async () => {
+    const { add, kernel } = await boot({ env: { TRUSTED_PROXIES: '127.0.0.1' } });
+    await add(ada);
+    events.length = 0;
+    const post = (remoteAddress: string) =>
+      kernel.request(
+        '/login',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'Firefox/140.0', 'x-forwarded-for': '203.0.113.9' },
+          body: JSON.stringify({ email: ada.email, password: 'secret' }),
+        },
+        { incoming: { socket: { remoteAddress } } },
+      );
+    await post('127.0.0.1'); // the trusted proxy: the client is who it forwarded
+    await post('198.51.100.7'); // no proxy of ours: its X-Forwarded-For is the client's own word
+    const logins = events.filter((event): event is Login => event instanceof Login);
+    expect(logins.map((event) => [event.ip, event.userAgent])).toEqual([
+      ['203.0.113.9', 'Firefox/140.0'],
+      ['198.51.100.7', 'Firefox/140.0'],
+    ]);
+  });
+
   it('answers an unknown e-mail exactly like a wrong password (no enumeration)', async () => {
     const { add, browser } = await boot();
     await add(ada);
@@ -261,7 +284,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory());
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();

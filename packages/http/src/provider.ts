@@ -8,6 +8,7 @@ import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
 import { ParentRequest } from './parent-request.ts';
 import { ReadOnly } from './read-only.ts';
+import { NO_REQUEST_INFO, RequestInfo } from './request-info.ts';
 import { ResponseLifecycle } from './response-lifecycle.ts';
 import { SharedData } from './shared-data.ts';
 import { httpSolutions } from './solutions.ts';
@@ -69,6 +70,8 @@ export class HttpServiceProvider implements ServiceProvider {
     container.scoped(ParentRequest);
     container.scoped(ResponseLifecycle);
     container.scoped(ClientHistory);
+    // Who sent the request (E169): the kernel binds it per request; outside one (a job, a command) nobody.
+    container.scoped(RequestInfo, () => NO_REQUEST_INFO);
     container.singleton(UrlSigner);
     container.singleton(ServerClosing);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version

@@ -91,6 +91,59 @@ address, range or `*` (`proxy.internal`) fails the start: `server: TRUSTED_PROXI
 10.0.0.0/8, or *: proxy.internal is not one`. Without `TRUSTED_PROXIES` nothing changes: every `X-Forwarded-*` is ignored. Make
 sure the proxy **sets** these headers ([Behind a proxy](packages/server/README.md#behind-a-proxy-e162)).
 
+#### Medium: CSRF — the browser's word first; a request from another site is 403, not 419
+
+*Likelihood of impact: medium — apps with clients that post to `web` routes without a browser, tests with `csrf: true`, and code
+that looks for 419.* `VerifyCsrfToken` decides in stages now (E143, Laravel 13's model, [CSRF protection](packages/session/README.md#csrf-protection)):
+`Sec-Fetch-Site: same-origin` passes without a token; `same-site`/`cross-site` is refused with **403** unless its `Origin` is in
+`CSRF_TRUSTED_ORIGINS`; without Fetch Metadata the `Origin` decides (the app's own — the one the request reaches it at, or
+`APP_URL`'s — passes, any other is 403); only a request with neither header needs the session's token (419 without it, as
+before). Before, every request needed the token, and a foreign origin answered 419.
+
+- A script or a native client that posts to `web` routes sends its session's token (`X-XSRF-TOKEN`) or an `Origin` the app accepts.
+- Tests with `createTestApp(App, { csrf: true })` send what a browser sends — `headers: { 'sec-fetch-site': 'same-origin' }` — or
+  the token of a session they have; a test for a refused cross-site request expects 403.
+- Over plain HTTP (a staging host without TLS) browsers send no Fetch Metadata: the `Origin` decides there.
+
+There is no switch back: what passes without a token now is what the browser itself says comes from the app — a token adds nothing to that.
+
+#### Medium: a guest's page starts no session — `page.csrf` and `XSRF-TOKEN` only with a session
+
+*Likelihood of impact: medium — apps whose guest pages put `session.token()` into their props, or let guests upload files or
+follow live channels.* A page handed every visitor the session's token (`PageObject.csrf`), which kept a session — a row, a file,
+a Redis key and a cookie for every visit of the login page, bots included. Now (E143) a page carries `csrf` only when there is a
+session anyway; a guest's forms pass by the browser's word (above). A session starts when something is written: a sign-in, flash
+data, the errors of a failed form, `session.put()`.
+
+- Views that rendered `<input name="_token" value={csrfToken}>` from a controller's `session.token()` keep working — but that
+  call keeps a session for every visitor. Read `usePage().csrf` instead and render the field only when it is there (what
+  `bespoke make:auth` writes now; `<Form>` does it by itself).
+- A guest's page with an upload field calls `session.persist()` in its controller: an upload belongs to a session, and an upload
+  request (read-only, W6.9) cannot start one. A page that signs a live channel keeps the session by itself.
+- `PageSession.scope()` is `undefined` without a kept session (it was a hash of an id nobody would see again); a live stream
+  without a session answers 401 (was 403).
+
+#### Low: `CSRF_TRUSTED_ORIGINS` lists origins — the scheme counts
+
+*Likelihood of impact: low.* Entries were compared by host only; now as whole origins (`https://admin.example.com` does not
+let `http://admin.example.com` through), and an entry with a path (`https://admin.example.com/panel`) stops the boot.
+
+#### Low: the `Login` event carries the request's address and browser by itself — `RequestInfo`
+
+*Likelihood of impact: low — nothing to do.* `ip` and `userAgent` of `Login` were what the app passed to `attempt()`/`login()` —
+the generated `LoginController` passed nothing, so they were `null` (a remember-me sign-in always). Now `Auth` takes them from
+`RequestInfo` (http, E169: the address through `TRUSTED_PROXIES`, like `ctx.ip`); passing them still overrides. `RequestInfo` is
+injectable wherever a service needs to know who sent the request.
+
+#### Low: `bespoke make:auth --private-registration`; the generated views read the token from the page
+
+*Likelihood of impact: low — new; existing modules belong to their app.* `make:auth` writes views that render `_token` from
+`usePage().csrf` (no `csrfToken` props, no `Session` in the page controllers), its registration tests in `registration.test.ts`,
+and with `--private-registration` the variant that never tells whether an address has an account (E146,
+[Private registration](packages/auth/README.md#private-registration---private-registration-e146)): the same answer in the same time
+for new and known addresses, `AccountExistsMail` to the owner, no live check of the address, a confirmed address before the app
+opens. A module generated before can take the views over by hand; the registration is the app's choice.
+
 #### Low: one process for `bespoke start` and every command
 
 *Likelihood of impact: low — process supervisors and scripts that relied on the launcher.* `bespoke start`, `queue:work`,

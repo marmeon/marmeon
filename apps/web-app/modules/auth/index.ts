@@ -3,6 +3,7 @@ import { defineModule, listen } from '@bespokecore/core';
 import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { QueueWelcomeMail } from './listeners/QueueWelcomeMail.ts';
+import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
@@ -28,7 +29,8 @@ export default defineModule({
   notifications: [NewSignInNotification],
   recipients: { user: UserRecipients },
   // Queued work of this module — a worker (`bespoke queue:work`, started by `bespoke dev`) runs only registered jobs.
-  jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob],
+  // SendAccountExistsMailJob: private registration (E146) — the note to an account's owner that someone signed up with its address.
+  jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob, SendAccountExistsMailJob],
   migrations: new URL('./migrations/', import.meta.url),
   // Other modules may read and join `users` — writing goes through the UserRepository.
   exposes: ['users'],

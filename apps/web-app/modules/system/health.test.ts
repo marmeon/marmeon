@@ -7,16 +7,17 @@ import application from '../../bootstrap/app.ts';
 import { StorageWritable } from './health/StorageWritable.ts';
 
 describe('health in the web app (E126)', () => {
-  it('/up answers before the `web` group: no session cookie, no CSRF, no request id — the login page beside it gets them', async () => {
+  it('/up answers before the `web` group: no session cookie, no CSRF, no request id — a sign-in beside it gets them', async () => {
     const app = await createTestApp(application, { database: 'refresh', csrf: true });
     const up = await app.get('/up');
     expect(up.status).toBe(200);
     expect(up.body).toBe('OK');
     expect(up.headers.getSetCookie()).toEqual([]);
     expect(up.headers.has('x-request-id')).toBe(false);
-    // The control: a page of the `web` group starts a session and sets its cookies.
-    const login = await app.get('/login');
+    // The control: a request of the `web` group that writes the session (a guest's failed sign-in) sets its cookies.
+    const login = await app.post('/login', { form: { email: 'nobody@example.com', password: 'x' }, headers: { 'sec-fetch-site': 'same-origin' } });
     expect(login.headers.getSetCookie().length).toBeGreaterThan(0);
+    expect(login.headers.has('x-request-id')).toBe(true);
     await app.close();
   });
 

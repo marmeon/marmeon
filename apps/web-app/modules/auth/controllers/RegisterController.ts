@@ -1,68 +1,67 @@
-import { Auth, confirmed, Hasher, password, Registered } from '@bespokecore/auth';
+import { confirmed, Hasher, password, Registered } from '@bespokecore/auth';
 import { EventDispatcher } from '@bespokecore/core';
 import { Connections } from '@bespokecore/database';
-import { Controller, defineRequest, ValidationError, type ContextOf } from '@bespokecore/http';
+import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import { trans, Translator } from '@bespokecore/i18n';
+import { Queue } from '@bespokecore/queue';
 import * as v from 'valibot';
+import { SendAccountExistsMailJob } from '../jobs/SendAccountExistsMailJob.ts';
 import { UserRepository } from '../UserRepository.ts';
 
 export const RegisterRequest = defineRequest({
-  // Built per request (it asks the database): whether the e-mail is taken is part of the schema, so the form learns it when
-  // the field is checked live (E62) — with the same message as on submit, and never more than a submit tells.
-  schema: (resolve) =>
-    confirmed(
-      v.objectAsync({
-        name: v.pipe(v.string(trans('auth.validation.name_required')), v.trim(), v.minLength(2, trans('auth.validation.name_min')), v.maxLength(255)),
-        // Normalized once, here: stored lower case, so the login (which normalizes the same way) finds it.
-        email: v.pipeAsync(
-          v.string(trans('auth.validation.email_required')),
-          v.trim(),
-          v.toLowerCase(),
-          v.maxLength(255),
-          v.email(trans('auth.validation.email_invalid')),
-          v.checkAsync(async (email) => !(await resolve(UserRepository).emailTaken(email)), trans('auth.validation.email_taken')),
-        ),
-        password: password(),
-        password_confirmation: v.string(trans('auth.validation.password_repeat')),
-      }),
-    ),
+  // Private registration (E146): nothing in the schema asks the database — whether an address has an account is never told,
+  // not when the field is checked live (E62), not on submit. The unique index decides in handle(), out of sight.
+  schema: confirmed(
+    v.object({
+      name: v.pipe(v.string(trans('auth.validation.name_required')), v.trim(), v.minLength(2, trans('auth.validation.name_min')), v.maxLength(255)),
+      // Normalized once, here: stored lower case, so the login (which normalizes the same way) finds it.
+      email: v.pipe(v.string(trans('auth.validation.email_required')), v.trim(), v.toLowerCase(), v.maxLength(255), v.email(trans('auth.validation.email_invalid'))),
+      password: password(),
+      password_confirmation: v.string(trans('auth.validation.password_repeat')),
+    }),
+  ),
 });
 
+/**
+ * Private registration (`bespoke make:auth --private-registration`, E146): a new address and one that has an account get the
+ * same answer, in the same time — "check your inbox". A new account gets the verification mail; the owner of an existing one
+ * a note that someone tried to sign up with it. Nobody is signed in here: the new account signs in like any other; what
+ * needs a confirmed address asks for it (`verified()` — the members island, links on the profile).
+ */
 export class RegisterController extends Controller {
   static request = RegisterRequest;
 
   readonly #connections: Connections;
   readonly #users: UserRepository;
   readonly #hasher: Hasher;
-  readonly #auth: Auth;
   readonly #events: EventDispatcher;
+  readonly #queue: Queue;
   readonly #translator: Translator;
 
-  constructor(connections: Connections, users: UserRepository, hasher: Hasher, auth: Auth, events: EventDispatcher, translator: Translator) {
+  constructor(connections: Connections, users: UserRepository, hasher: Hasher, events: EventDispatcher, queue: Queue, translator: Translator) {
     super();
     this.#connections = connections;
     this.#users = users;
     this.#hasher = hasher;
-    this.#auth = auth;
     this.#events = events;
+    this.#queue = queue;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof RegisterRequest>) {
     const { name, email } = ctx.body;
+    const locale = this.#translator.locale;
+    // Hashed for every sign-up — a taken address too, whose password is thrown away: the hash is what takes the time, so the
+    // answer takes as long either way.
     const hash = await this.#hasher.make(ctx.body.password);
-    // One transaction (E107): the account and whatever the Registered listeners write join it on their own. A listener
-    // that fails leaves no account behind; the verification mail's listener is queued in it (E109).
-    const user = await this.#connections.transaction(async () => {
-      // The language the account was made in: its mails (the verification link, first) are in it.
-      const user = await this.#users.register({ name, email, password: hash, locale: this.#translator.locale });
+    // One transaction (E107). Either way one job is queued — the verification mail's listener or the note to the owner — and
+    // composed by a worker, never here (a mail rendered in one branch only would show in the time).
+    await this.#connections.transaction(async () => {
+      const user = await this.#users.register({ name, email, password: hash, locale });
       if (user) await this.#events.dispatch(new Registered(user));
-      return user;
+      else await this.#queue.dispatch(SendAccountExistsMailJob, { email, locale }, { queue: 'mail' });
     });
-    // Taken after all (two sign-ups at once — the unique index decides): the schema's message.
-    if (!user) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
-
-    await this.#auth.login(user);
-    return this.redirect().route('user-profile.me');
+    // The same answer for both: no session, no cookie, no flash — nothing that tells them apart.
+    return this.redirect().route('auth.register.sent');
   }
 }

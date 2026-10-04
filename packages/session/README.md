@@ -66,13 +66,34 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
 
 ## CSRF protection
 
-`VerifyCsrfToken` (decision E15) refuses every non-reading request (not `GET`, `HEAD`, `OPTIONS`) of the `web` group with
-**419** ("Page Expired") unless:
+`VerifyCsrfToken` (decisions E15, E143 — Laravel 13's model) checks every non-reading request (not `GET`, `HEAD`, `OPTIONS`) of
+the `web` group. The first stage that decides wins:
 
-1. the browser does not say it is cross-site (`Sec-Fetch-Site: cross-site`) and its `Origin` is the app's own host or one of
-   `CSRF_TRUSTED_ORIGINS` (a request without `Origin` — curl, old clients — is decided by the token alone), and
-2. it carries the session's token — as the `_token` field, the `X-CSRF-TOKEN` header, or `X-XSRF-TOKEN`, copied from the
-   readable `XSRF-TOKEN` cookie that every kept session's response refreshes (compared in constant time).
+1. **Fetch Metadata.** `Sec-Fetch-Site: same-origin` passes — the browser says a page of this app sent it, and no page can forge
+   the header. `same-site` (a subdomain) and `cross-site` are refused with **403** unless their `Origin` is one of
+   `CSRF_TRUSTED_ORIGINS`.
+2. **Origin** — when the browser sends no Fetch Metadata, or `Sec-Fetch-Site: none` (a navigation the user started — never how a
+   form posts): the app's own origin passes, `CSRF_TRUSTED_ORIGINS` too; any other — `null` included (a sandboxed frame, a
+   redirect across sites) — is refused with **403**.
+3. **The token** — neither header (curl, a script, an old client): the session's token must come along as the `_token` field,
+   the `X-CSRF-TOKEN` header or `X-XSRF-TOKEN` (copied from the readable `XSRF-TOKEN` cookie that every kept session's
+   response refreshes; compared in constant time). Without it — or without a session — **419** ("Page Expired").
+
+**The app's own origin** is the one a request reaches it at — scheme and host of the request URL, which a trusted proxy's
+`X-Forwarded-Proto`/`-Host` set (`TRUSTED_PROXIES`, [@bespokecore/server](../server/README.md)) — and `APP_URL`'s (so a proxy
+the app does not trust yet still lets the configured address through). `CSRF_TRUSTED_ORIGINS` lists whole origins — scheme,
+host, port, no path (`https://admin.example.com`); a value with a path stops the boot.
+
+**Guests need no session to post** (E143): the login form of a visitor passes by the browser's word — the page hands out no
+token, and no session is started just for one ([below](#new-sessions-are-only-kept-when-used)). `page.csrf` and the
+`XSRF-TOKEN` cookie come with a session only; a signed-in user's forms still carry the token.
+
+- **Plain HTTP:** browsers send Fetch Metadata only to secure origins (HTTPS, `localhost`, `127.0.0.1`). A staging host over
+  plain HTTP falls back to stage 2 — every current browser sends `Origin` with a form post and with `fetch` — then to the token.
+- **Clients without a browser** (a script, a mobile app posting to `web` routes) send the token of their session or an
+  `Origin` the app accepts; the `api` group (tokens, no session) is not affected.
+- **Live validation, uploads, islands:** a live validation is a `POST` like the submit and checked the same way; islands and live
+  streams only read.
 
 The client core sends `X-XSRF-TOKEN` by itself; forms without JavaScript post `page.csrf` as `_token` (E64). Paths that
 cannot carry a token — webhooks — are listed by their module (`*` matches any characters):
@@ -151,11 +172,17 @@ take it (a prefetch), saves afterwards. That needs versions (compare-and-set), n
 
 ### New sessions are only kept when used
 
-A request without a session cookie starts a new session — but it is written (and its cookie sent) only when it is worth
-keeping: it holds data or flash messages, or its CSRF token was handed out (every page does, for its forms;
-`session.token()`). Health checks, bots, prefetches of protected pages, a post refused for its CSRF token, a JSON
-endpoint that never touches the session: no row, no file, no cookie (`session.persists`). Sessions that came from the
-store are always written back.
+A request without a session cookie starts a new session — but it is written (and its cookie sent) only when something is
+written into it: data, flash messages or the errors of a failed form, a sign-in — or something bound to it went out: its CSRF
+token handed out explicitly (`session.token()`), a live subscription a page signs (`session.persist()` — what a guest's page with
+an upload field calls in its controller too: an upload belongs to a session). **A guest's page keeps none** (E143): the login and
+registration pages, any public page — no row, no file, no key, no cookie; their forms pass by the browser's word
+([CSRF](#csrf-protection)). Nor do health checks, bots, prefetches of protected pages, a post refused by the CSRF check or a JSON
+endpoint that never touches the session (`session.persists`). A failed guest form is the first write: its errors start the
+session. Sessions that came from the store are always written back.
+
+Without a kept session there is no scope either (`PageSession.scope()` is `undefined`): once props are counted without one, and a
+live stream without a session is refused (401).
 
 ### Concurrent requests and signing out
 
@@ -192,4 +219,5 @@ await app.post('/locale', { form: { locale: 'de' } }).assertSessionHas('locale',
 
 A flash message is asserted on the page that delivers it: `(await app.navigating().get('/login')).assertFlash('toast', { … })`.
 
-CSRF verification is off in tests unless `createTestApp(App, { csrf: true })` — then send `_token` or `X-XSRF-TOKEN` yourself.
+CSRF verification is off in tests unless `createTestApp(App, { csrf: true })` — then send what a browser sends
+(`headers: { 'sec-fetch-site': 'same-origin' }`, or an `Origin`) or the session's `_token`/`X-XSRF-TOKEN` yourself.

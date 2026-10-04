@@ -14,7 +14,9 @@ import type { ConfirmPasswordController } from './controllers/ConfirmPasswordCon
 import type { LoginController } from './controllers/LoginController.ts';
 import type { RegisterController } from './controllers/RegisterController.ts';
 import type { ResetPasswordController } from './controllers/ResetPasswordController.ts';
+import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
+import { AccountExistsMail } from './mail/AccountExistsMail.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
 import { EmailChangedMail } from './mail/EmailChangedMail.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
@@ -128,23 +130,26 @@ describe('auth module', () => {
     expect(await storedHash(ada.id)).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/);
   });
 
-  it('refuses a login without CSRF token (419) and accepts the one from the login page', async () => {
+  it('CSRF (E143): a guest signs in by the browser\'s word — no session, no token; from elsewhere 403; without any word the token decides', async () => {
     await app.close(); // one database app per test
     const protectedApp = await createTestApp(application, { csrf: true, database: 'refresh' });
     const ada = await protectedApp.factory(UserFactory).create();
-    await protectedApp.post('/login', credentials(ada)).assertStatus(419);
-
+    // The login page of a guest: no token, no cookie — nothing kept for a visitor.
     const page = await protectedApp.navigating().get('/login');
-    const { csrfToken } = page.page()!.props as { csrfToken: string };
-    const response = await protectedApp
-      .withCookie('bespoke_session', page.cookie('bespoke_session')!)
-      .post('/login', { form: { ...credentials(ada).form, _token: csrfToken } })
-      .assertRedirect('/users/me');
-    // The token rotates with the login: the one from the login page is worthless afterwards.
-    await protectedApp
-      .withCookie('bespoke_session', response.cookie('bespoke_session')!)
-      .post('/logout', { form: { _token: csrfToken } })
-      .assertStatus(419);
+    expect(page.page()!.csrf).toBeUndefined();
+    expect(page.headers.getSetCookie()).toEqual([]);
+    // From another site: refused before anything else (stage 1 Fetch Metadata, stage 2 Origin).
+    await protectedApp.post('/login', { ...credentials(ada), headers: { 'sec-fetch-site': 'cross-site' } }).assertStatus(403);
+    await protectedApp.post('/login', { ...credentials(ada), headers: { 'sec-fetch-site': 'same-site', origin: 'https://blog.localhost' } }).assertStatus(403);
+    await protectedApp.post('/login', { ...credentials(ada), headers: { origin: 'https://evil.example' } }).assertStatus(403);
+    // Neither header (an old client, a script): the token — a guest has none.
+    await protectedApp.post('/login', credentials(ada)).assertStatus(419);
+    // The app's own page: in.
+    const response = await protectedApp.post('/login', { ...credentials(ada), headers: { 'sec-fetch-site': 'same-origin' } }).assertRedirect('/users/me').assertAuthenticated(ada);
+    // Signed in: the session has a token (the XSRF-TOKEN cookie, its pages); without the browser's word, only it works.
+    const signedIn = protectedApp.withCookie('bespoke_session', response.cookie('bespoke_session')!);
+    await signedIn.post('/logout').assertStatus(419);
+    await signedIn.post('/logout', { form: { _token: decodeURIComponent(response.cookie('XSRF-TOKEN')!) } }).assertRedirect('/login').assertGuest();
   });
 
   it('throttles failed logins per e-mail and address — five a minute, keyed on the validated e-mail', async () => {
@@ -177,19 +182,67 @@ describe('registration', () => {
   const register = (form: Record<string, string>) =>
     app.post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password: 'correct horse', password_confirmation: 'correct horse', ...form }, headers: { referer: 'http://localhost/register' } });
 
-  it('creates the user with a hashed password and signs them in', async () => {
-    const response = await register({ email: '  Ada@Example.COM ' }).assertRedirect('/users/me');
-    await app.assertDatabaseHas('users', { name: 'Ada Lovelace', email: 'ada@example.com' });
+  it('creates the user with a hashed password — and signs nobody in (private registration, E146)', async () => {
+    const response = await register({ email: '  Ada@Example.COM ' }).assertRedirect('/register/sent');
+    expect(response.headers.getSetCookie()).toEqual([]); // no session: the same answer as for a known address
+    await app.assertDatabaseHas('users', { name: 'Ada Lovelace', email: 'ada@example.com', email_verified_at: null });
     const ada = await app.make(Database).selectFrom('users').select('id').where('email', '=', 'ada@example.com').executeTakeFirstOrThrow();
-    response.assertAuthenticated({ id: ada.id } as User);
     expect(await app.make(Hasher).verify('correct horse', await storedHash(ada.id))).toBe(true);
     await app.post('/login', { form: { email: 'ada@example.com', password: 'correct horse' } }).assertRedirect('/users/me');
   });
 
-  it('counter-check: an e-mail that exists — in any case — is a field error, not a 500', async () => {
-    await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    await register({ email: 'ADA@example.com' }).assertRedirect('/register').assertInvalid<RegisterController>({ email: 'This e-mail address is already registered.' }).assertGuest();
+  it('counter-check: an e-mail that exists — in any case — gets the answer a new one gets (E146): no field error, one account, a note to its owner', async () => {
+    const ada = await app.factory(UserFactory).create({ email: 'ada@example.com', locale: 'de' });
+    await register({ email: 'ADA@example.com' }).assertRedirect('/register/sent').assertNoFlash();
     await app.assertDatabaseCount('users', 1);
+    app.queue.assertDispatched(SendAccountExistsMailJob, { email: 'ada@example.com' });
+    app.mail.assertNothingQueued(); // composed by a worker, never in the request (the time would show it)
+    await app.queue.work();
+    app.mail.assertQueued(AccountExistsMail, (_mail, message) => message.to[0]!.address === ada.email && message.subject === 'Du hast schon ein Konto' && message.text.includes('http://localhost/forgot-password'));
+    app.mail.assertNotQueued(VerifyEmailMail);
+  });
+
+  it('answers a new and a known address byte for byte alike — status, headers, body; no cookie either way (E146)', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const answer = (response: { status: number; headers: Headers; body: string }) => ({
+      status: response.status,
+      // What differs per request anyway: the time, its id — and the sign-ups this client has left (the same for both kinds).
+      headers: [...response.headers].filter(([name]) => !['date', 'x-request-id', 'x-ratelimit-remaining'].includes(name)),
+      body: response.body,
+    });
+    for (const visit of [false, true]) {
+      const client = visit ? app.navigating() : app;
+      const send = (email: string) => client.post('/register', { form: { name: 'Ada Lovelace', email, password: 'correct horse', password_confirmation: 'correct horse' }, headers: { referer: 'http://localhost/register' } });
+      const fresh = answer(await send(visit ? 'grace@example.com' : 'alan@example.com'));
+      const known = answer(await send('ada@example.com'));
+      expect(known).toEqual(fresh);
+      expect(fresh.headers.filter(([name]) => name === 'set-cookie')).toEqual([]);
+    }
+  });
+
+  it('takes as long for a known address as for a new one — the password is hashed either way (E146, the configured costs)', async () => {
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const fresh: number[] = [];
+    const known: number[] = [];
+    // Taking turns, eleven of each — the first pair warms up and is not counted; a minute passes after every ten sign-ups (the
+    // throttle allows ten a minute from one address).
+    for (let i = 0; i < 11; i++) {
+      if (i > 0 && i % 5 === 0) app.travel({ seconds: 61 });
+      for (const [times, email] of [[fresh, `person${i}@example.com`], [known, 'ada@example.com']] as const) {
+        const started = performance.now();
+        await register({ email }).assertRedirect('/register/sent');
+        if (i > 0) times.push(performance.now() - started);
+      }
+    }
+    const median = (values: number[]) => {
+      const sorted = values.toSorted((a, b) => a - b);
+      return (sorted[4]! + sorted[5]!) / 2;
+    };
+    const ratio = median(known) / median(fresh);
+    expect(ratio).toBeGreaterThan(0.75);
+    expect(ratio).toBeLessThan(1.33);
   });
 
   it('checks the password: length, confirmation — and never flashes it', async () => {
@@ -480,12 +533,14 @@ describe('e-mail verification', () => {
   };
   const userBy = (email: string) => app.make(UserRepository).query().selectAll().where('email', '=', email).executeTakeFirstOrThrow() as Promise<User>;
 
-  it('mails a signed link after registration; the link verifies — then links may be published', async () => {
-    const registered = (await register()).assertRedirect('/users/me');
+  it('mails a signed link after registration; signed in, the link verifies — then links may be published', async () => {
+    (await register()).assertRedirect('/register/sent');
     app.mail.assertQueued(VerifyEmailMail, (_mail, message, options) => message.to[0]!.address === 'kj@example.com' && options.queue === 'mail');
     const kj = await userBy('kj@example.com');
     expect(kj.email_verified_at).toBeNull();
-    const session = app.withCookie('bespoke_session', registered.cookie('bespoke_session')!);
+    // Private registration (E146) signs nobody in: the new account signs in like any other.
+    const login = await app.post('/login', { form: { email: 'kj@example.com', password: 'orbital mechanics' } }).assertRedirect('/users/me');
+    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
 
     await session.post(`/users/${kj.id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect('/email/verify');
     await session.expectingJson().post(`/users/${kj.id}/links`, { json: { label: 'Blog', url: 'https://kj.example' } }).assertForbidden();

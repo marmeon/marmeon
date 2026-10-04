@@ -1,7 +1,6 @@
 import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
 import { trans, Translator } from '@bespokecore/i18n';
-import { Session } from '@bespokecore/session';
 import * as v from 'valibot';
 import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
 
@@ -27,13 +26,11 @@ export class CreateAccessTokenController extends Controller {
   static request = CreateAccessTokenRequest;
 
   readonly #tokens: AccessTokenStore;
-  readonly #session: Session;
   readonly #translator: Translator;
 
-  constructor(tokens: AccessTokenStore, session: Session, translator: Translator) {
+  constructor(tokens: AccessTokenStore, translator: Translator) {
     super();
     this.#tokens = tokens;
-    this.#session = session;
     this.#translator = translator;
   }
 
@@ -43,7 +40,6 @@ export class CreateAccessTokenController extends Controller {
       tokens: await this.#tokens.list(ctx.user.id),
       abilities: abilityDescriptions(this.#translator),
       plainText: plainText as string | null,
-      csrfToken: this.#session.token(),
     });
   }
 }

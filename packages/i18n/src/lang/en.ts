@@ -21,6 +21,7 @@ const en = {
   errors: {
     unauthorized: 'This action is unauthorized.',
     csrf: 'CSRF token mismatch.',
+    cross_site: 'Cross-site request refused.',
     throttled: 'Too Many Attempts.',
     signature: 'Invalid signature.',
   },

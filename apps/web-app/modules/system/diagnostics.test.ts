@@ -28,7 +28,7 @@ describe('the observation hooks in the web app (E118, E131)', () => {
     const app = await createTestApp(application, { database: 'refresh', mail: 'real' });
     const recorded = record(app, ['http.request', 'db.query', 'queue.job', 'mail.send']);
     try {
-      await app.withHeaders({ 'x-request-id': 'req-register' }).post('/register', { form: registration, headers: { referer: 'http://localhost/register' } }).assertRedirect('/users/me');
+      await app.withHeaders({ 'x-request-id': 'req-register' }).post('/register', { form: registration, headers: { referer: 'http://localhost/register' } }).assertRedirect('/register/sent');
       await app.queue.work();
     } finally {
       recorded.stop();

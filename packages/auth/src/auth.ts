@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { EventDispatcher, Logger } from '@bespokecore/core';
-import { ClientHistory } from '@bespokecore/http';
+import { ClientHistory, RequestInfo } from '@bespokecore/http';
 import { CookieJar } from '@bespokecore/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@bespokecore/session';
 import { AuthConfig } from './config.ts';
@@ -42,9 +42,12 @@ export function passwordFingerprint(hash: PasswordHash | null): string {
 export interface LoginOptions {
   /** Keep the user signed in on this device beyond the session ("remember me"). */
   readonly remember?: boolean;
-  /** The client's address (`ctx.ip`) — the `Login` event carries it (for "a new sign-in" notices, audit logs). */
+  /**
+   * The client's address for the `Login` event (for "a new sign-in" notices, audit logs). Default: the request's (`RequestInfo`,
+   * through `TRUSTED_PROXIES` like `ctx.ip`, E169) — pass it only to say something else.
+   */
   readonly ip?: string | undefined;
-  /** The browser's `User-Agent` header — carried by the `Login` event like `ip`. */
+  /** The browser's `User-Agent` header for the `Login` event — default: the request's, like `ip`. */
   readonly userAgent?: string | undefined;
 }
 
@@ -68,6 +71,7 @@ export class Auth {
   readonly #sessionConfig: SessionConfig;
   readonly #logger: Logger;
   readonly #history: ClientHistory;
+  readonly #request: RequestInfo;
   #user: Promise<AuthUser | undefined> | undefined;
 
   constructor(
@@ -81,6 +85,7 @@ export class Auth {
     sessionConfig: SessionConfig,
     logger: Logger,
     history: ClientHistory,
+    request: RequestInfo,
   ) {
     this.#session = session;
     this.#users = users;
@@ -92,6 +97,7 @@ export class Auth {
     this.#sessionConfig = sessionConfig;
     this.#logger = logger;
     this.#history = history;
+    this.#request = request;
   }
 
   /**
@@ -211,7 +217,7 @@ export class Auth {
     return { user: found.user, passwordHash };
   }
 
-  async #login(user: AuthUser, hash: PasswordHash | null, { remember = false, ip, userAgent }: LoginOptions, via: LoginVia): Promise<void> {
+  async #login(user: AuthUser, hash: PasswordHash | null, { remember = false, ip = this.#request.ip, userAgent = this.#request.userAgent }: LoginOptions, via: LoginVia): Promise<void> {
     const viaRemember = via === 'remember';
     // A session id (and CSRF token) handed out before login must not survive it: session fixation.
     this.#session.regenerate();

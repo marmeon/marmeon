@@ -52,10 +52,13 @@ async function importOptional<T>(load: () => Promise<T>, name: string): Promise<
   }
 }
 
-/** The session's scope of the current request (a hash of its id) — undefined without a session. */
-function sessionScopeOf(container: Resolver): string | undefined {
+/**
+ * The session's scope of the current request (a hash of its id) — undefined without a session. `keep`: a page signs a channel
+ * for it, so a guest's new session is kept (E143: guests get a session only when something needs one).
+ */
+function sessionScopeOf(container: Resolver, keep = false): string | undefined {
   try {
-    return container.make(PageSession).scope();
+    return container.make(PageSession).scope({ keep });
   } catch {
     return undefined; // no session in this app (or on this route)
   }
@@ -102,7 +105,7 @@ export class LiveServiceProvider implements ServiceProvider {
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request (E90).
-    container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c)));
+    container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c, true)));
     // Per resolution: in a request it knows the tab that sent it (x-bespoke-connection); in a job or a command, none.
     container.bind(Broadcaster, (c) => {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;

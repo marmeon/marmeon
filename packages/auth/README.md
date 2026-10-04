@@ -20,7 +20,7 @@ the commands `make:auth` and `auth:prune-tokens`. It needs [@bespokecore/session
 ## `bespoke make:auth`
 
 ```text
-bespoke make:auth [--adapter=react] [--force]
+bespoke make:auth [--adapter=react] [--private-registration] [--force]
 ```
 
 Copies `stubs/<adapter>/modules/auth` of this package to the app's `modules/auth/` (`react` is the only adapter with templates),
@@ -51,11 +51,37 @@ What the module holds:
 | `factories/`, `seeders/` | `UserFactory` (password `password`, hashed once at the test costs), `UserSeeder` (`test@example.com`) |
 | `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()` |
 | `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
-| `auth.test.ts` | the module's own tests (SQLite and Postgres) |
+| `auth.test.ts`, `registration.test.ts` | the module's own tests (SQLite and Postgres) |
+
+Forms without JavaScript post the page's token (`usePage().csrf`) only when there is a session: a guest's pages hand out none and
+keep no session (E143) — their forms pass by the browser's word (Fetch Metadata, `Origin`; [CSRF](../session/README.md#csrf-protection)).
+
+### Private registration (`--private-registration`, E146)
+
+By default the registration works like Laravel Breeze's: a taken address is a field error — when the field is checked live (E62)
+and on submit — and a new account is signed in at once; the throttle (`register`, 10/min per IP, E100) is what keeps it from
+being a cheap way to find out who has an account. `--private-registration` writes a variant over the module that never tells:
+
+- **The same answer, in the same time:** a new and a known address both get a redirect to `/register/sent` ("check your inbox")
+  — no session, no cookie, byte for byte alike. The password is hashed either way (the hash is what takes the time), and either
+  way the request queues one job: the verification mail's listener, or `SendAccountExistsMailJob` (encrypted payload).
+- **A note instead of "taken":** the owner of a known address gets `AccountExistsMail` (sign in, or choose a new password);
+  what was typed into the form is thrown away.
+- **No live check of the address:** the schema asks no database — live validation checks the e-mail's form only.
+- **A confirmed address first:** nobody is signed in by registering; the new account signs in like any other and sees only the
+  verification notice until it clicks the link from its inbox while signed in (`verified()` on the app's routes). Whoever signed up
+  first with somebody else's address cannot confirm it — and the owner takes it over with a password reset.
+
+It writes `controllers/RegisterController.ts`, `controllers/ShowRegistrationSentController.ts`, `views/Register.tsx`,
+`views/RegistrationSent.tsx`, `jobs/SendAccountExistsMailJob.ts`, `mail/AccountExistsMail.ts`, `routes.ts`, `index.ts` and
+`registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`); the texts are in the default `lang/en.ts`.
+The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
+queue worker run. The web app runs it — with `verified()` where it matters (its member numbers, links on a profile), not on every
+page, because it also shows what an unconfirmed account sees.
 
 From then on the app owns all of it: change the pages, the routes, the user table, the rules. What stays in the package — and
-what updates bring — is the mechanics below. `apps/web-app/modules/auth/` is such a module, grown further (a welcome mail,
-sign-in notifications, German texts, tokens in layers).
+what updates bring — is the mechanics below. `apps/web-app/modules/auth/` is such a module, grown further (private registration,
+a welcome mail, sign-in notifications, German texts, tokens in layers).
 
 ## The user type and the UserProvider (E24)
 
@@ -101,7 +127,7 @@ return this.redirect().intended().route('dashboard');
 
 | Method | |
 |---|---|
-| `attempt(identifier, password, { remember?, ip?, userAgent? })` | checks and signs in — `undefined` for an unknown identifier and a wrong password alike, in the same time (`dummyVerify`); rehashes when the costs changed; notes the password as just confirmed |
+| `attempt(identifier, password, { remember?, ip?, userAgent? })` | checks and signs in (`ip`/`userAgent` only to say something other than the request's — the `Login` event takes those by itself, `RequestInfo`) — `undefined` for an unknown identifier and a wrong password alike, in the same time (`dummyVerify`); rehashes when the costs changed; notes the password as just confirmed |
 | `login(user, options?)` | signs a user in without a password (after registering) |
 | `logout()` | sign-out on this device: session data, id and CSRF token replaced, the remember-me token dropped |
 | `user()`, `check()`, `id()` | who is signed in — looked up once per request, from the session, else the remember-me cookie |
@@ -291,7 +317,7 @@ Dispatched through the app's `EventDispatcher` (tests see them in `app.events`):
 
 | Event | When | Fields |
 |---|---|---|
-| `Login` (`auth.login`, queueable) | `attempt()`, `login()`, a remember-me sign-in | `user`, `remember`, `at`, `via` (`attempt` \| `login` \| `remember`), `ip`, `userAgent` (what the app passed to `attempt`/`login`) |
+| `Login` (`auth.login`, queueable) | `attempt()`, `login()`, a remember-me sign-in | `user`, `remember`, `at`, `via` (`attempt` \| `login` \| `remember`), `ip`, `userAgent` (the request's — `RequestInfo`, the address through `TRUSTED_PROXIES`, E169 — or what the app passed; null outside a request) |
 | `Logout` | `logout()` | `user` |
 | `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier` (never the password), `user` if known — for audit logs, never for the client |
 | `Lockout` | the app's login throttle (the generated `LoginController`) | `identifier`, `ip` |

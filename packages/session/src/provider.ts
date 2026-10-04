@@ -155,8 +155,9 @@ function storeFor(config: SessionConfig, container: Resolver): SessionStore {
 }
 
 /**
- * The session as a page sees it (E64). The scope is a hash of the session id — never the id, which is a secret — so it changes
- * with every sign-in and sign-out (the id is regenerated) and tells nothing about the session it came from.
+ * The session as a page sees it (E64): the CSRF token of a session that is kept (E143). The scope is a hash of the session id —
+ * never the id, which is a secret — so it changes with every sign-in and sign-out (the id is regenerated) and tells nothing about
+ * the session it came from.
  */
 export function pageSessionOf(session: Session): PageSession {
   const started = <T>(read: () => T): T | undefined => {
@@ -167,9 +168,15 @@ export function pageSessionOf(session: Session): PageSession {
     }
   };
   return {
-    csrfToken: () => started(() => session.token()),
-    scope: () => {
-      const id = started(() => session.id);
+    // Only a session that is kept has a token worth putting into the page (E143): a guest's new session, with nothing in it,
+    // gets none — and is not kept just for it. Its forms pass by the browser's word (Fetch Metadata, Origin).
+    csrfToken: () => started(() => (session.exists ? session.currentToken() : undefined)),
+    scope: (options) => {
+      // A session that is not kept has an id nobody will see again: no scope — unless the caller binds something to it.
+      const id = started(() => {
+        if (options?.keep && !session.readOnly) session.persist();
+        return session.exists ? session.id : undefined;
+      });
       return id ? sessionScope(id) : undefined;
     },
   };

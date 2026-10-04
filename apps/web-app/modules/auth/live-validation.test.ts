@@ -37,13 +37,13 @@ describe('live validation of the registration (E62)', () => {
     expect(response.body).not.toContain('nope');
   });
 
-  it('tells a taken e-mail exactly as the submit does — the same field, the same message, nothing more (enumeration)', async () => {
+  it('never tells whether an address has an account — like the submit (private registration, E146)', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    const live = await app.validating('email').post('/register', { json: { email: ' ADA@example.com ' } }).assertUnprocessable();
-    const submitted = await app.expectingJson().post('/register', { json: { ...registration, email: ' ADA@example.com ', password: 'correct horse', password_confirmation: 'correct horse' } }).assertUnprocessable();
-    expect(live.json<{ errors: unknown }>().errors).toEqual({ email: ['This e-mail address is already registered.'] });
-    expect(live.json<{ errors: unknown }>().errors).toEqual(submitted.json<{ errors: unknown }>().errors);
-    await app.validating('email').post('/register', { json: { email: 'grace@example.com' } }).assertLiveValid('email');
+    const known = await app.validating('email').post('/register', { json: { email: ' ADA@example.com ' } }).assertLiveValid('email');
+    const unknown = await app.validating('email').post('/register', { json: { email: 'grace@example.com' } }).assertLiveValid('email');
+    expect([known.status, known.body]).toEqual([unknown.status, unknown.body]);
+    // Only the form of the address is checked.
+    await app.validating('email').post('/register', { json: { email: 'not an address' } }).assertInvalid<RegisterController>({ email: 'Enter a valid e-mail address.' });
   });
 
   it('the login tells nothing about accounts: a known and an unknown address get the same answer', async () => {
@@ -56,8 +56,8 @@ describe('live validation of the registration (E62)', () => {
 
   it('in the request’s language (Accept-Language: de)', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    const response = await app.withHeaders({ 'accept-language': 'de' }).validating('name', 'email').post('/register', { json: { name: 'A', email: 'ada@example.com' } });
-    response.assertInvalid<RegisterController>({ name: 'Der Name braucht mindestens 2 Zeichen.', email: 'Diese E-Mail-Adresse ist schon registriert.' });
+    const response = await app.withHeaders({ 'accept-language': 'de' }).validating('name', 'email').post('/register', { json: { name: 'A', email: 'ada@' } });
+    response.assertInvalid<RegisterController>({ name: 'Der Name braucht mindestens 2 Zeichen.', email: 'Bitte gib eine gültige E-Mail-Adresse ein.' });
   });
 
   it("a signed-in visitor's check is no result: the guest-only route's redirect is reported, not followed", async () => {
@@ -113,16 +113,16 @@ describe('live validation is held to the route’s rules (E62)', () => {
     for (let i = 0; i < 30; i++) await app.validating('email').post('/register', { json: { email: `person${i}@example.com` } }).assertLiveValid();
     const limited = await app.validating('email').post('/register', { json: { email: 'ada@example.com' } }).assertStatus(429);
     expect(limited.body).not.toContain('registered');
-    await app.post('/register', { form: { ...registration, password: 'correct horse', password_confirmation: 'correct horse' }, headers: { referer: 'http://localhost/register' } }).assertRedirect('/users/me');
+    await app.post('/register', { form: { ...registration, password: 'correct horse', password_confirmation: 'correct horse' }, headers: { referer: 'http://localhost/register' } }).assertRedirect('/register/sent');
   });
 
-  it('needs the CSRF token like the submit (Gegenprobe: without it, 419)', async () => {
+  it('is held to CSRF like the submit (E143): the browser\'s word or the token — a guest from elsewhere gets 403', async () => {
     await app.close();
     app = await createTestApp(application, { csrf: true, database: 'refresh' });
     const page = await app.navigating().get('/register');
-    const { csrfToken } = page.page()!.props as { csrfToken: string };
-    const browser = app.withCookie('bespoke_session', page.cookie('bespoke_session')!);
-    await browser.validating('email').post('/register', { json: { email: 'ada@example.com' } }).assertStatus(419);
-    await browser.withHeaders({ 'x-csrf-token': csrfToken }).validating('email').post('/register', { json: { email: 'ada@example.com' } }).assertLiveValid('email');
+    expect(page.page()!.csrf).toBeUndefined(); // a guest: no session, no token
+    await app.validating('name').post('/register', { json: { name: 'Ada' } }).assertStatus(419);
+    await app.withHeaders({ 'sec-fetch-site': 'cross-site' }).validating('name').post('/register', { json: { name: 'Ada' } }).assertStatus(403);
+    await app.withHeaders({ 'sec-fetch-site': 'same-origin' }).validating('name').post('/register', { json: { name: 'Ada' } }).assertLiveValid('name');
   });
 });

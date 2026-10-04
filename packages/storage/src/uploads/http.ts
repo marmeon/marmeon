@@ -60,6 +60,7 @@ export function registerUploads(http: Http, container: Container, uploads: () =>
       const rule = FIELD.test(field) && method !== 'GET' && method !== 'HEAD' && route ? uploadFields(bodySchema(request, resolve)).get(field) : undefined;
       if (!rule || !route) throw new HttpError(404);
       const session = sessionScope(http, resolve as (key: unknown) => unknown);
+      // A guest's page that lets them upload keeps its session (`session.persist()` in its controller, E143): an upload belongs to one.
       if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'bespoke.status.419' });
       const input = await ctx.input();
       const { name, size } = input;
@@ -97,6 +98,7 @@ export function registerUploads(http: Http, container: Container, uploads: () =>
 
     async handle(ctx: HttpContext<{}, { id: string }>): Promise<Response> {
       const session = this.#session();
+      // A guest's page that lets them upload keeps its session (`session.persist()` in its controller, E143): an upload belongs to one.
       if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'bespoke.status.419' });
       const length = ctx.request.headers.get('content-length');
       const declared = length !== null && /^\d{1,16}$/.test(length) ? Number(length) : undefined;

@@ -1,6 +1,6 @@
 import { createApplication, defineModule } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
+import { Controller, defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@bespokecore/http';
 import { createHttpKernel } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
@@ -33,6 +33,10 @@ class FormController extends Controller {
 const routes = defineRoutes((Route) => {
   Route.get('/form', FormController);
   Route.get('/status', () => ({ ok: true }));
+  Route.get('/page', () => view('shop/Page', {}));
+  Route.post('/fail', () => {
+    throw new ValidationError({ email: ['Wrong.'] }, { email: 'ada@example.com' });
+  });
   Route.post('/save', () => ({ saved: true }));
   Route.post('/login', LoginController);
   Route.post('/webhooks/stripe', () => ({ received: true }));
@@ -117,17 +121,92 @@ describe('VerifyCsrfToken', () => {
     expect((await send('/save', form({ _token: token() }))).status).toBe(200);
   });
 
-  it('refuses cross-site requests even with a valid token (Fetch Metadata, Origin)', async () => {
-    const { send, token } = await boot({ CSRF_TRUSTED_ORIGINS: 'https://admin.example.com' });
+  it('stage 3 — neither Fetch Metadata nor Origin (curl, older clients): the session token decides, 419 without it', async () => {
+    const { send, token } = await boot();
     await send('/form');
-    const post = (headers: Record<string, string>) => send('/save', { method: 'POST', headers: { 'x-xsrf-token': token(), ...headers } });
+    expect((await send('/save', { method: 'POST' })).status).toBe(419);
+    expect((await send('/save', { method: 'POST', headers: { 'x-xsrf-token': token() } })).status).toBe(200);
+  });
 
-    expect((await post({ 'sec-fetch-site': 'cross-site' })).status).toBe(419);
-    expect((await post({ origin: 'https://evil.example' })).status).toBe(419);
-    expect((await post({ origin: 'null' })).status).toBe(419);
-    expect((await post({ 'sec-fetch-site': 'same-origin', origin: 'http://localhost' })).status).toBe(200);
-    expect((await post({ origin: 'https://admin.example.com' })).status).toBe(200);
-    expect((await post({})).status).toBe(200); // no metadata at all (curl, old clients): the token decides
+  describe('stage 1 — Fetch Metadata (E143)', () => {
+    it('lets a same-origin request through without a token — and without a session (a guest signing in)', async () => {
+      const { send } = await boot();
+      const response = await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' } });
+      expect(response.status).toBe(200);
+      expect(response.headers.getSetCookie()).toEqual([]); // nothing written: no session, no XSRF-TOKEN
+    });
+
+    it('refuses a cross-site request with 403 — even with a valid token, and without any Origin to fall back on', async () => {
+      const { send, token } = await boot();
+      await send('/form');
+      expect((await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })).status).toBe(403);
+      const refused = await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'cross-site', 'x-xsrf-token': token() } });
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toEqual({ message: 'Cross-site request refused.' });
+    });
+
+    it('refuses a same-site request (a subdomain) unless its origin is trusted — then without a token', async () => {
+      const { send } = await boot({ CSRF_TRUSTED_ORIGINS: 'https://admin.example.com, https://partner.example' });
+      const post = (headers: Record<string, string>) => send('/save', { method: 'POST', headers });
+      expect((await post({ 'sec-fetch-site': 'same-site', origin: 'https://blog.example.com' })).status).toBe(403);
+      expect((await post({ 'sec-fetch-site': 'same-site', origin: 'http://admin.example.com' })).status).toBe(403); // the scheme counts
+      expect((await post({ 'sec-fetch-site': 'same-site' })).status).toBe(403);
+      expect((await post({ 'sec-fetch-site': 'same-site', origin: 'https://admin.example.com' })).status).toBe(200);
+      expect((await post({ 'sec-fetch-site': 'cross-site', origin: 'https://partner.example' })).status).toBe(200);
+    });
+  });
+
+  describe('stage 2 — Origin, when the browser sends no Fetch Metadata (plain HTTP, older browsers)', () => {
+    it('lets the app\'s own origin through without a token — the one it is reached at, or APP_URL\'s', async () => {
+      const { send } = await boot({ APP_URL: 'https://shop.example' });
+      expect((await send('/save', { method: 'POST', headers: { origin: 'http://localhost' } })).status).toBe(200);
+      expect((await send('/save', { method: 'POST', headers: { origin: 'https://shop.example' } })).status).toBe(200);
+      expect((await send('/save', { method: 'POST', headers: { origin: 'http://localhost:8080' } })).status).toBe(403); // another port
+    });
+
+    it('refuses a foreign origin with 403 — even with a valid token; `null` (a sandboxed frame) counts as foreign', async () => {
+      const { send, token } = await boot();
+      await send('/form');
+      const post = (origin: string) => send('/save', { method: 'POST', headers: { origin, 'x-xsrf-token': token() } });
+      expect((await post('https://evil.example')).status).toBe(403);
+      expect((await post('null')).status).toBe(403);
+      expect((await post('not a url')).status).toBe(403);
+    });
+
+    it('takes trusted origins (CSRF_TRUSTED_ORIGINS) — and rejects one with a path at boot', async () => {
+      const { send } = await boot({ CSRF_TRUSTED_ORIGINS: 'https://admin.example.com' });
+      expect((await send('/save', { method: 'POST', headers: { origin: 'https://admin.example.com' } })).status).toBe(200);
+      await expect(boot({ CSRF_TRUSTED_ORIGINS: 'https://admin.example.com/panel' })).rejects.toThrow(/Expected an origin like https:\/\/admin\.example\.com/);
+    });
+
+    it('`Sec-Fetch-Site: none` (a navigation the user started — never a form) passes nothing by itself: Origin, then the token', async () => {
+      const { send, token } = await boot();
+      await send('/form');
+      expect((await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'none' } })).status).toBe(419);
+      expect((await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'none', origin: 'https://evil.example', 'x-xsrf-token': token() } })).status).toBe(403);
+      expect((await send('/save', { method: 'POST', headers: { 'sec-fetch-site': 'none', 'x-xsrf-token': token() } })).status).toBe(200);
+    });
+  });
+
+  describe('guests get no session for the token (E143)', () => {
+    it('a page for a guest carries no token and sets no cookie — 100 times', async () => {
+      const { send } = await boot();
+      for (let i = 0; i < 100; i++) {
+        const response = await send('/page', { headers: { 'x-bespoke': 'true' } });
+        expect(response.headers.getSetCookie()).toEqual([]);
+        expect(((await response.json()) as PageObject).csrf).toBeUndefined();
+      }
+    });
+
+    it('a failed guest form keeps its errors — that writes the session, and from then on its pages carry the token', async () => {
+      const { send, token } = await boot();
+      const failed = await send('/fail', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' } });
+      expect(failed.status).toBe(303);
+      expect(failed.headers.getSetCookie().map((cookie) => cookie.split('=')[0]).sort()).toEqual(['XSRF-TOKEN', 'bespoke_session']);
+      const page = (await (await send('/page', { headers: { 'x-bespoke': 'true' } })).json()) as PageObject;
+      expect(page.csrf).toBe(token());
+      expect(page.props).toMatchObject({ errors: { email: ['Wrong.'] } });
+    });
   });
 
   it('skips paths a module excepts, and reading requests', async () => {

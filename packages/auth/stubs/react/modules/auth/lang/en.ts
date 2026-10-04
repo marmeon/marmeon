@@ -34,6 +34,11 @@ const en = {
     checking: 'Checking …',
     registered: 'Already registered?',
     login: 'Sign in',
+    // Private registration (`bespoke make:auth --private-registration`, E146): one answer for new and known addresses.
+    confirm_hint: 'We send you a link to confirm your address.',
+    sent_title: 'Check your inbox',
+    sent_intro: 'We sent a message to the address you entered. Click the link in it to confirm your address — then sign in.',
+    sent_missing: 'Nothing after a few minutes? Look in your spam folder, or sign up again.',
   },
   forgot: {
     title: 'Forgot your password?',
@@ -172,6 +177,15 @@ const en = {
       intro: 'please confirm that this address is yours.',
       button: 'Confirm my e-mail address',
       outro: 'The link works for 60 minutes. If you did not create an account, ignore this mail.',
+    },
+    // Private registration (E146): a sign-up with the address of an existing account.
+    account_exists: {
+      subject: 'You already have an account',
+      preview: 'Someone tried to sign up with your address',
+      intro: 'someone — hopefully you — tried to create an account with this e-mail address. There is one already: yours.',
+      button: 'Sign in',
+      forgot: 'Forgot your password? Choose a new one:',
+      outro: 'If that was not you, ignore this mail: nothing has changed.',
     },
     email_changed: {
       subject: 'Your e-mail address was changed',

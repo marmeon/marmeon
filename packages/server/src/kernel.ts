@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
+import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@bespokecore/core';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@bespokecore/core/diagnostics';
 import {
   AfterResponse,
@@ -12,6 +12,7 @@ import {
   ExceptionHandler,
   HttpError,
   IncomingRequest,
+  RequestInfo,
   isActionRequest,
   isViewResult,
   LOCATION_HEADER,
@@ -395,7 +396,7 @@ export function createHttpKernel(
     const header = c.req.header('x-request-id');
     const requestId = header && REQUEST_ID.test(header) ? header : randomUUID();
     const started = performance.now();
-    const info: RequestInfo = { requestId };
+    const info: RequestContext = { requestId };
     timing?.begin(info);
     recorder?.begin(info);
 
@@ -481,6 +482,13 @@ export function createHttpKernel(
     if (debug || requests.hasSubscribers) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     scope.instance(IncomingRequest, request); // which tab sent it (`x-bespoke-connection`), for the live Broadcaster
+    // Who sent it (E169) — for services without `ctx`: `Auth`'s Login event. The header is read only when asked for.
+    scope.instance(RequestInfo, {
+      ip,
+      get userAgent() {
+        return request.headers.get('user-agent') ?? undefined;
+      },
+    });
     const terminable: [MiddlewareHandler<any, any>, HttpContext][] = [];
     // An island's request is read-only (E52): no session write, no cookie, no work after the response — and so is every
     // request resolved in-process for another (an island while its page renders, a layer's base for its deep link).

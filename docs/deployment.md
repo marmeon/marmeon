@@ -169,7 +169,7 @@ browser. kamal-proxy probes `/up` once a second: with `SHUTDOWN_DELAY` point it 
 container.
 
 **`TRUSTED_PROXIES`** (E162): only from these addresses do `X-Forwarded-For` (the client's address for rate limits, logs and
-`RequestInfo`) and `X-Forwarded-Proto`/`-Host` (the request's URL: `https://example.com/…`) count. Without it the headers are
+`RequestInfo`) and `X-Forwarded-Proto`/`-Host` (the request's URL: `https://example.com/…` — the app's own origin for the CSRF check, besides `APP_URL`'s) count. Without it the headers are
 ignored. Behind Compose's Caddy or nginx, where the web container publishes no port, `*` is right (the template sets it); with a
 proxy on the host, `127.0.0.1`; in a cluster, the ingress' range (`10.0.0.0/8`). A proxy that forwards a client's
 `X-Forwarded-*` unchanged makes them the client's word — let the proxy set them.

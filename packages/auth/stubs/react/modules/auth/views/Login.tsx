@@ -1,11 +1,14 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, usePage, useRoute, useTranslation } from '@bespokecore/react';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
 type Props = PageProps<ShowLoginController>;
 
-export default function Login({ appName, old, csrfToken }: Props) {
+export default function Login({ appName, old }: Props) {
+  // Without JavaScript the form posts itself: with the session's token when there is a session (a guest has none — the
+  // browser's word suffices, E143).
+  const { csrf } = usePage();
   const route = useRoute();
   const t = useTranslation('auth');
   // Method, URL, fields and errors come from the route (auth.login.store → LoginController's LoginRequest).
@@ -26,7 +29,7 @@ export default function Login({ appName, old, csrfToken }: Props) {
           void form.submit({ onFinish: () => form.set('password', '') });
         }}
       >
-        <input type="hidden" name="_token" value={csrfToken} />
+        {csrf !== undefined && <input type="hidden" name="_token" value={csrf} />}
         <p>
           <label htmlFor="email">{t('login.email')}</label>
           <br />

@@ -76,6 +76,7 @@ export { SharedData } from './shared-data.ts';
 export { addLive, carryLive, checkedChannel, isLiveChannel, LIVE_CHANNEL, LiveSigner, liveOf, signedLive, withLiveMethod } from './live.ts';
 export type { LiveDeclaration, LiveMethod, LiveOnly, PagePropNames } from './live.ts';
 export { IncomingRequest, ServerClosing } from './server-closing.ts';
+export { NO_REQUEST_INFO, RequestInfo } from './request-info.ts';
 // The live protocol (W6.10) — not re-exported by `page.ts`: what the browser needs of it, only the live feature's chunk imports.
 export { CONNECTION_HEADER, LIVE_PATH } from './live-protocol.ts';
 export { AfterResponse } from './after-response.ts';

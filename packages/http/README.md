@@ -31,6 +31,10 @@ defineApplication({
 });
 ```
 
+**Who sent the request** (E169): `RequestInfo` — `{ ip, userAgent }`, the address through `TRUSTED_PROXIES` like `ctx.ip` —
+is bound per request by the server kernel, for services that have no `ctx` (`Auth` puts it into the `Login` event); outside a
+request both are `undefined`. `IncomingRequest` is the request itself (headers a service needs).
+
 Both options, the groups and the order of the framework's middleware (`EncryptCookies` → `ClearClientHistory` → `StartSession`
 → … → `VerifyCsrfToken` → the app's): [@bespokecore/router](../router/README.md#configuration),
 [Groups and priorities](../router/README.md#groups-and-priorities). Its solutions (E130) — an undefined route name with "did
@@ -451,7 +455,8 @@ body). Uploads to S3 go to the store itself (a presigned POST) instead.
 it, E55 — the browser never parses a URL), `streamedProps` (deferred groups streamed in the document, E49), `layer`
 (`{ key, base, once? }`, E53) and `layers` (a deep link's document), `flash` (`[{ id, key, data }]` — a protocol field,
 not a prop, E60), `route` (the answering route's name for `activeMatch`, never an `.internal()` one), `onceProps` +
-`onceScope` (E64), `csrf` (for forms without JavaScript), and from Wave 6 `live` (`[{ channel, only?, token }]`, the channels it
+`onceScope` (E64), `csrf` (for forms without JavaScript — only with a session: a guest's page has none and needs none, E143),
+and from Wave 6 `live` (`[{ channel, only?, token }]`, the channels it
 follows — W6.10; a page's own and the shared ones, a layer's and an island's their own). A region object (`RegionObject`) is a page object without
 `locale`, `fallbackLocale`, `streamedProps`, `layer`, `layers` and `flash` — and without shared props.
 

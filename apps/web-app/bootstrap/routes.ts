@@ -32,6 +32,7 @@ import type { ShowMyActivityController } from '../modules/dashboard/controllers/
 import type { ShowNotificationsController } from '../modules/notifications/controllers/ShowNotificationsController.ts';
 import type { ShowRecentSignInsController } from '../modules/dashboard/controllers/ShowRecentSignInsController.ts';
 import type { ShowRegisterController } from '../modules/auth/controllers/ShowRegisterController.ts';
+import type { ShowRegistrationSentController } from '../modules/auth/controllers/ShowRegistrationSentController.ts';
 import type { ShowResetPasswordController } from '../modules/auth/controllers/ShowResetPasswordController.ts';
 import type { ShowSecurityController } from '../modules/auth/controllers/ShowSecurityController.ts';
 import type { ShowUserProfileController } from '../modules/user-profile/controllers/ShowUserProfileController.ts';
@@ -59,6 +60,7 @@ declare module '@bespokecore/router' {
     'auth.password.store': { method: 'post'; path: '/reset-password'; controller: typeof ResetPasswordController };
     'auth.password.update': { method: 'put'; path: '/settings/password'; controller: typeof UpdatePasswordController };
     'auth.register': { method: 'get'; path: '/register'; controller: typeof ShowRegisterController };
+    'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };
     'auth.register.store': { method: 'post'; path: '/register'; controller: typeof RegisterController };
     'auth.security': { method: 'get'; path: '/settings/security'; controller: typeof ShowSecurityController };
     'auth.tokens': { method: 'get'; path: '/settings/tokens'; controller: typeof ShowAccessTokensController };
@@ -98,6 +100,7 @@ declare module '@bespokecore/http/page' {
     'auth/Login': true;
     'auth/NewAccessToken': true;
     'auth/Register': true;
+    'auth/RegistrationSent': true;
     'auth/ResetPassword': true;
     'auth/Security': true;
     'auth/VerifyEmail': true;

@@ -48,13 +48,12 @@ async function queuePayloads(app: TestApp): Promise<string> {
 }
 
 describe('the verification mail through the queue', () => {
-  it('a mail server that is down never fails the registration: 303 and signed in, the mail retries, waits in failed_jobs after its tries, and queue:retry sends it', async () => {
+  it('a mail server that is down never fails the registration: 303 and the account exists, the mail retries, waits in failed_jobs after its tries, and queue:retry sends it', async () => {
     const transport = new TestTransport();
     transport.down = true;
     const app = await realApp(transport);
-    const registered = await app.post('/register', { form: form() }).assertRedirect('/users/me');
-    const kj = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;
-    registered.assertAuthenticated(kj);
+    await app.post('/register', { form: form() }).assertRedirect('/register/sent');
+    expect(await app.make(UserRepository).findForLogin('kj@example.com')).toBeDefined();
 
     // The listener composes the mail (bespoke.listener), the mail job hands it to the transport (bespoke.mail): 5 tries.
     await work(app);
@@ -84,7 +83,7 @@ describe('the verification mail through the queue', () => {
     transport.delay = 2_000;
     const app = await realApp(transport);
     const started = performance.now();
-    await app.post('/register', { form: form() }).assertRedirect('/users/me');
+    await app.post('/register', { form: form() }).assertRedirect('/register/sent');
     const ms = performance.now() - started;
     expect(ms).toBeLessThan(1_000); // measured ~60 ms; the transport alone would take 2 000
     expect(transport.sent).toEqual([]);
@@ -122,7 +121,7 @@ describe('the verification mail through the queue', () => {
 
   it('records the event — Registered dispatched, the queued listener listening', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
-    await app.post('/register', { form: form() }).assertRedirect('/users/me');
+    await app.post('/register', { form: form() }).assertRedirect('/register/sent');
     app.events.assertDispatched(Registered, (event) => (event.user as User).email === 'kj@example.com').assertListening(Registered, SendEmailVerification);
     app.queue.assertListenerQueued(SendEmailVerification);
   });
@@ -130,7 +129,7 @@ describe('the verification mail through the queue', () => {
   it('a faked event (EventFake, W6.7) is recorded, its listeners neither run nor are queued', async () => {
     // Login is faked too: its queued listener (the "new sign-in" notice) would be queued by the sign-in after registering.
     const app = await createTestApp(application, { database: 'refresh', events: [Registered, Login] });
-    await app.post('/register', { form: form() }).assertRedirect('/users/me');
+    await app.post('/register', { form: form() }).assertRedirect('/register/sent');
     app.events.assertDispatchedTimes(Registered, 1);
     app.queue.assertNothingDispatched(); // no verification listener, no welcome mail, no member stats
   });
@@ -168,14 +167,14 @@ describe('registration is throttled (E100)', () => {
   it('the 11th registration a minute from one address gets 429 — live validation does not count, the next minute registers again', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     for (let i = 1; i <= 10; i++) {
-      await app.post('/register', { form: form(`user${i}@example.com`) }).assertRedirect('/users/me');
+      await app.post('/register', { form: form(`user${i}@example.com`) }).assertRedirect('/register/sent');
     }
     await app.post('/register', { form: form('user11@example.com') }).assertStatus(429);
     await app.assertDatabaseMissing('users', { email: 'user11@example.com' });
     // Live validation (E62) of the form is no attempt.
     await app.validating('email').post('/register', { json: form('user11@example.com') }).assertStatus(429);
     app.travel({ seconds: 61 });
-    await app.post('/register', { form: form('user11@example.com') }).assertRedirect('/users/me');
+    await app.post('/register', { form: form('user11@example.com') }).assertRedirect('/register/sent');
   });
 });
 

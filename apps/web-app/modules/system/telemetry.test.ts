@@ -44,7 +44,7 @@ describe('OpenTelemetry in the web app (E120)', () => {
     const password = 'correct horse battery staple';
     await app
       .post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password }, headers: { referer: 'http://localhost/register' } })
-      .assertRedirect('/users/me');
+      .assertRedirect('/register/sent');
     await app.queue.work();
     await provider.forceFlush();
     const spans = exporter.getFinishedSpans();

@@ -19,8 +19,8 @@ const MAX_USER_AGENT = 512;
 /**
  * A user signed in (password, remember-me cookie, registration). Queueable (E86): a queued listener gets
  * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof Login>`, `at` as an ISO-8601 string) and reads
- * the account as it is when it runs. `ip` and `userAgent` are what the app passed to `attempt()`/`login()` — null
- * otherwise (a remember-me sign-in, a test).
+ * the account as it is when it runs. `ip` and `userAgent` are the request's (`RequestInfo`, E169: the address through
+ * `TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`login()`; null outside a request.
  */
 export class Login {
   static readonly event = 'auth.login';
@@ -39,9 +39,9 @@ export class Login {
   readonly at: Date;
   /** How: a password (`attempt`), the app (`login` — right after registering, say) or the remember-me cookie. */
   readonly via: LoginVia;
-  /** The client's address, if the app passed it (`ctx.ip`). */
+  /** The client's address — the request's (`ctx.ip`), or what the app passed. */
   readonly ip: string | null;
-  /** The browser's `User-Agent`, if the app passed it — cut to 512 characters. */
+  /** The browser's `User-Agent` — the request's, or what the app passed; cut to 512 characters. */
   readonly userAgent: string | null;
 
   constructor(user: AuthUser, remember = false, at = new Date(), details: { readonly via?: LoginVia; readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {

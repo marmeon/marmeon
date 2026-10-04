@@ -16,7 +16,7 @@ describe('the devtools', () => {
     const password = 'correct horse battery';
     const response = await app
       .post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password }, headers: { referer: 'http://localhost/register' } })
-      .assertRedirect('/users/me');
+      .assertRedirect('/register/sent');
     const requestId = response.headers.get('x-request-id')!;
 
     const request = app.devtools.assertRecorded('request', (content) => content.route === 'auth.register.store');
@@ -62,7 +62,7 @@ describe('the devtools', () => {
     const csrf = (await app.navigating().get('/register').assertOk()).page()!.csrf!;
     const registered = await app
       .post('/register', { form: { name: 'Ada Lovelace', email, password, password_confirmation: password, _token: csrf }, headers: { referer: 'http://localhost/register', 'x-xsrf-token': csrf } })
-      .assertRedirect('/users/me');
+      .assertRedirect('/register/sent');
     const sessions = [registered.cookie('bespoke_session')!];
     await app.withCookie('bespoke_session', sessions[0]!).post('/logout', { form: {} }).assertRedirect();
     sessions.push((await app.post('/login', { form: { email, password } }).assertRedirect('/users/me')).cookie('bespoke_session')!);
@@ -103,21 +103,23 @@ describe('the devtools', () => {
     }
   });
 
-  // The pages (W7 step 8): the registration as a visit — the protocol's 409 reload across the sign-in boundary, no failure —
-  // its queries, the jobs it queued, then what the worker did for it; the scheduler's lock warning (E123) on the overview.
+  // The pages (W7 step 8): the registration as a visit, its queries, the jobs it queued, then what the worker did for it; the
+  // sign-in after it — the protocol's 409 reload across the sign-in boundary, no failure; the scheduler's lock warning (E123).
   it('show a registration in /_bespoke/devtools: the request, its queries, then the jobs and mails a worker ran for it', async () => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true });
     const password = 'correct horse battery';
-    const csrf = (await app.navigating().get('/register').assertOk()).page()!.csrf!;
-    const response = await app
-      .navigating()
-      .post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password, _token: csrf }, headers: { referer: 'http://localhost/register', 'x-xsrf-token': csrf } });
+    const browser = { referer: 'http://localhost/register', 'sec-fetch-site': 'same-origin' };
+    const registered = await app.navigating().post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password }, headers: browser });
+    expect(registered.status).toBe(303); // private registration (E146): "check your inbox", nobody signed in
+    const response = await app.navigating().post('/login', { form: { email: 'ada@example.com', password }, headers: browser });
     expect(response.status).toBe(409);
     await app.queue.work();
     await app.devtools.settled();
     const request = app.devtools.assertRecorded('request', (content) => content.route === 'auth.register.store');
-    expect(request.content).toMatchObject({ status: 409, location: '/users/me', reload: 'history' });
-    expect(request.tags).toContain('reload');
+    expect(request.content).toMatchObject({ status: 303, location: '/register/sent' });
+    const signIn = app.devtools.assertRecorded('request', (content) => content.route === 'auth.login.store');
+    expect(signIn.content).toMatchObject({ status: 409, location: '/users/me', reload: 'history' });
+    expect(signIn.tags).toContain('reload');
 
     // Opened in the browser that is signed in to the app: the pages neither read nor write its session — no cookie comes back.
     const session = response.cookie('bespoke_session')!;
@@ -125,8 +127,8 @@ describe('the devtools', () => {
     const list = await app.withCookie('bespoke_session', session).get('/_bespoke/devtools/requests').assertOk();
     expect(list.body).toContain('409 reload (history)');
     expect(list.headers.get('set-cookie')).toBeNull();
+    expect((await app.get(`/_bespoke/devtools/requests/${signIn.id}`).assertOk()).body).toContain("409 is the protocol's full reload, not a failure");
     const page = (await app.get(`/_bespoke/devtools/requests/${request.id}`).assertOk()).body;
-    expect(page).toContain("409 is the protocol's full reload, not a failure");
     expect(page).toContain('RegisterController');
     expect(page).toMatch(/Queries \(\d+,/);
     expect(page).toMatch(/Job bespoke\.listener — attempt 1, done/);

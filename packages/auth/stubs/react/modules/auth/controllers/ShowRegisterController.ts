@@ -13,7 +13,6 @@ export class ShowRegisterController extends Controller {
     return this.view('auth/Register', {
       // Without JavaScript a failed submit comes back here: refill name and e-mail (passwords are never flashed).
       old: this.#session.old() as { name?: string; email?: string },
-      csrfToken: this.#session.token(),
     });
   }
 }

@@ -153,10 +153,10 @@ describe('live props through the app — the page declares, the stream hints (W6
     expect(tabB.events.map((each) => each.event)).toEqual(['hello', 'end']);
     await app.withSession({ who: 'grace' }).post('/boards/7/cards');
     expect(tabB.hints).toEqual([]);
-    // The tab's cookie still names the old session — gone from the store: a new session, the tokens do not fit.
+    // The tab's cookie still names the old session — gone from the store: no session, no stream (E143: none is made for it).
     expect((await ada.withHeaders({}).live(page.live!)).status).toBe(200); // `withSession` writes the session afresh (a test view)
     const stale = await app.withUnencryptedCookie('bespoke_session', 'gone').live(page.live!);
-    expect(stale.status).toBe(403);
+    expect(stale.status).toBe(401);
   });
 
   it('the server closing ends every stream', async () => {

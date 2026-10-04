@@ -1,10 +1,13 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, usePage, useRoute, useTranslation } from '@bespokecore/react';
 import type { ShowResetPasswordController } from '../controllers/ShowResetPasswordController.ts';
 
 type Props = PageProps<ShowResetPasswordController>;
 
-export default function ResetPassword({ email, csrfToken }: Props) {
+export default function ResetPassword({ email }: Props) {
+  // Without JavaScript the form posts itself: with the session's token when there is a session (a guest has none — the
+  // browser's word suffices, E143).
+  const { csrf } = usePage();
   const route = useRoute();
   const t = useTranslation('auth');
   const form = useForm('auth.password.store', { password: '', password_confirmation: '' });
@@ -35,7 +38,7 @@ export default function ResetPassword({ email, csrfToken }: Props) {
           void form.submit({ onFinish: () => form.reset() });
         }}
       >
-        <input type="hidden" name="_token" value={csrfToken} />
+        {csrf !== undefined && <input type="hidden" name="_token" value={csrf} />}
         {(
           [
             ['password', t('reset.password', { min: 8 })],

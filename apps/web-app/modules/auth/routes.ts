@@ -17,6 +17,7 @@ import { ShowResetPasswordController } from './controllers/ShowResetPasswordCont
 import { ShowConfirmPasswordController } from './controllers/ShowConfirmPasswordController.ts';
 import { ShowLoginController } from './controllers/ShowLoginController.ts';
 import { ShowRegisterController } from './controllers/ShowRegisterController.ts';
+import { ShowRegistrationSentController } from './controllers/ShowRegistrationSentController.ts';
 import { ShowSecurityController } from './controllers/ShowSecurityController.ts';
 import { ShowVerifyEmailNoticeController } from './controllers/ShowVerifyEmailNoticeController.ts';
 import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
@@ -33,6 +34,8 @@ export default defineRoutes((Route) => {
   guests.get('/register', ShowRegisterController).name('auth.register');
   // A few sign-ups per minute and address (E100) — live validation of the form does not count (E62).
   guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
+  // Private registration (E146): every sign-up ends here — a new address and a known one alike.
+  guests.get('/register/sent', ShowRegistrationSentController).name('auth.register.sent');
   guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
   guests.middleware(throttle('password-reset')).post('/forgot-password', SendPasswordResetLinkController).name('auth.password.email');
   guests.get('/reset-password', ShowResetPasswordController).name('auth.password.reset');

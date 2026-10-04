@@ -1,10 +1,9 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, useForm, useRoute, useTranslation } from '@bespokecore/react';
-import type { ShowConfirmPasswordController } from '../controllers/ShowConfirmPasswordController.ts';
+import { Head, useForm, usePage, useRoute, useTranslation } from '@bespokecore/react';
 
-type Props = PageProps<ShowConfirmPasswordController>;
-
-export default function ConfirmPassword({ csrfToken }: Props) {
+export default function ConfirmPassword() {
+  // Without JavaScript the form posts itself: with the session's token when there is a session (a guest has none — the
+  // browser's word suffices, E143).
+  const { csrf } = usePage();
   const route = useRoute();
   const t = useTranslation('auth');
   const form = useForm('auth.password.confirm.store', { password: '' });
@@ -23,7 +22,7 @@ export default function ConfirmPassword({ csrfToken }: Props) {
           void form.submit({ onFinish: () => form.reset('password') });
         }}
       >
-        <input type="hidden" name="_token" value={csrfToken} />
+        {csrf !== undefined && <input type="hidden" name="_token" value={csrf} />}
         <p>
           <label htmlFor="password">{t('confirm.password')}</label>
           <br />

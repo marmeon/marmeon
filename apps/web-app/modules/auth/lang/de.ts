@@ -29,6 +29,11 @@ export default {
     checking: 'Wird geprüft …',
     registered: 'Schon registriert?',
     login: 'Anmelden',
+    // Private Registrierung (E146): eine Antwort für neue und bekannte Adressen.
+    confirm_hint: 'Wir schicken dir einen Link, mit dem du deine Adresse bestätigst.',
+    sent_title: 'Schau in dein Postfach',
+    sent_intro: 'Wir haben eine Nachricht an die eingegebene Adresse geschickt. Klicke auf den Link darin, um die Adresse zu bestätigen — dann melde dich an.',
+    sent_missing: 'Nach ein paar Minuten nichts da? Schau im Spam-Ordner nach oder registriere dich noch einmal.',
   },
   forgot: {
     title: 'Passwort vergessen?',
@@ -163,6 +168,15 @@ export default {
       intro: 'willkommen bei {app} — dein Konto ist bereit.',
       button: 'Zu deinem Profil',
       outro: 'Bestätige deine E-Mail-Adresse mit dem Link aus unserer anderen Mail, dann kannst du Links in deinem Profil veröffentlichen.',
+    },
+    // Private Registrierung (E146): eine Registrierung mit der Adresse eines bestehenden Kontos.
+    account_exists: {
+      subject: 'Du hast schon ein Konto',
+      preview: 'Jemand wollte sich mit deiner Adresse registrieren',
+      intro: 'jemand — hoffentlich du — wollte mit dieser E-Mail-Adresse ein Konto anlegen. Es gibt schon eins: deins.',
+      button: 'Anmelden',
+      forgot: 'Passwort vergessen? Wähle ein neues:',
+      outro: 'Warst du das nicht, ignoriere diese Mail: Es hat sich nichts geändert.',
     },
     email_changed: {
       subject: 'Deine E-Mail-Adresse wurde geändert',

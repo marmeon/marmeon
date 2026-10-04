@@ -53,7 +53,7 @@ export class Session {
   #permit: ((what: string) => boolean) | undefined;
   /** The flash messages this request took (E60) — put back by `reflash()` (a 409: the page is requested again). */
   #taken: FlashEntry[] = [];
-  /** The CSRF token was handed out (a page, a form): the browser will send it back, so a new session is kept. */
+  /** Something bound to this session was handed out (its CSRF token, a live subscription — `persist()`): a new session is kept. */
   #issued = false;
   /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (W6.10: their live streams close). */
   #ended: string[] = [];
@@ -109,7 +109,8 @@ export class Session {
   adopt(page: Session): void {
     this.#id = page.id;
     this.#data = structuredClone(page.#data);
-    this.#loaded = page.#loaded;
+    // The page's session exists if it came from the store — or the page keeps it (a guest's page that signed a live channel).
+    this.#loaded = page.exists;
     this.#started = true;
   }
 
@@ -235,13 +236,25 @@ export class Session {
   // -- Security --------------------------------------------------------------
 
   /**
-   * The CSRF token of this session — handed out: a new session whose token went into a response (every page, a form)
-   * is saved, so the token is still valid when the browser sends it back.
+   * The CSRF token of this session — handed out: a new session whose token an app puts into a response itself is saved,
+   * so the token is still valid when the browser sends it back. Pages do not need to: `PageObject.csrf` (what `<Form>`
+   * renders, `usePage().csrf`) carries the token of a session that is kept anyway, and a guest's forms pass without one by
+   * the browser's word (Fetch Metadata, Origin — E143). So a guest's page creates no session.
    */
   token(): string {
     const token = this.#ensureStarted()[TOKEN] as string;
     this.#issued = true;
     return token;
+  }
+
+  /**
+   * Keeps this session even with nothing in it — something the browser got is bound to it: its CSRF token (`token()`), a live
+   * subscription a page signed (W6.10). A guest's page that lets them upload files persists it too (an upload belongs to a
+   * session, W6.9). Nothing changes for a session that is kept anyway; a read-only request (an island) keeps none.
+   */
+  persist(): void {
+    this.#ensureStarted();
+    this.#issued = true;
   }
 
   /** @internal — the token without handing it out: what `VerifyCsrfToken` compares a request's token against. */
@@ -251,14 +264,24 @@ export class Session {
 
   /**
    * Whether `save()` writes this session (and `StartSession` sends its cookie). Always for a session that came from the
-   * store. A NEW session only once it is worth keeping: it holds data or flash messages, or its CSRF token was handed
-   * out — every page does. A request that leaves nothing — a health check, an API call, a bot's redirect, a JSON
-   * endpoint that never touches the session — leaves no session behind either (no row, no file, no cookie).
+   * store. A NEW session only once something is written: data, flash messages or errors (a failed form), a sign-in — or
+   * something bound to it went out: its CSRF token handed out explicitly (`token()`), a live subscription (`persist()`). A
+   * request that leaves nothing — a guest's page (E143), a health check, an API call, a bot's redirect, a JSON endpoint that
+   * never touches the session — leaves no session behind either (no row, no file, no cookie).
    */
   get persists(): boolean {
     const data = this.#ensureStarted();
     if (this.#permit) return false;
     return this.#loaded || this.#issued || Object.keys(data).some((key) => key !== TOKEN && key !== FLASH);
+  }
+
+  /**
+   * Whether the session outlives this request: it came from the store, or this request keeps it (`persists`). For a read-only
+   * request (an island, a live stream, an upload) — which never keeps a new one — whether the session it reads exists.
+   */
+  get exists(): boolean {
+    if (!this.#started) return false;
+    return this.#loaded || (this.#permit === undefined && this.persists);
   }
 
   regenerateToken(): void {
