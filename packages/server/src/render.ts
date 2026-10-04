@@ -17,6 +17,8 @@ import {
   isViewResult,
   jsonResponse,
   LAYER_BACKDROP,
+  DOCUMENT_HEADER,
+  epochOf,
   LiveSigner,
   liveOf,
   LOCATION_HEADER,
@@ -392,12 +394,14 @@ export function createResponseFactory(
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     const resolved = await resolvePageProps({}, shared, undefined);
     const csrf = scope?.has(PageSession) ? scope.make(PageSession).csrfToken() : undefined;
+    const epoch = epochOf(scope);
     const surface: PageObject = {
       component: LAYER_BACKDROP,
       ...resolved,
       url: layers[0]!.layer?.base ?? layer.url,
       version,
       ...(csrf !== undefined ? { csrf } : {}),
+      ...(epoch !== undefined ? { epoch } : {}),
       // What every page follows (the layout's bell) — the surface shows the layout.
       ...(await liveSubscriptions(shared?.liveChannels() ?? [], scope, LAYER_BACKDROP)),
     };
@@ -414,7 +418,8 @@ export function createResponseFactory(
     if (isPrefetch(request) || regionOf(request) === 'island') return [];
     if (scope?.has(ReadOnly) && scope.make(ReadOnly).active) return [];
     const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
-    return serializedFlash([...(flasher?.takeFlash() ?? []), ...own]);
+    // Only those of this document (E165): a message another tab's request flashed waits for that tab.
+    return serializedFlash([...(flasher?.takeFlash(documentOfRequest(request)) ?? []), ...own]);
   };
 
   return async (result, ctx, scope) => {
@@ -453,7 +458,9 @@ export function createResponseFactory(
     // Shared props and the controller's (which win), resolved as far as this response sends them.
     const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component), once);
     const csrf = session?.csrfToken();
-    const pageSession = { ...(resolved.onceProps && onceScope !== undefined ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}) };
+    // The session's epoch (W8 step 8): the tabs of the browser compare it — on every page, a partial reload's too.
+    const epoch = epochOf(scope);
+    const pageSession = { ...(resolved.onceProps && onceScope !== undefined ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}), ...(epoch !== undefined ? { epoch } : {}) };
     // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
     const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
@@ -472,7 +479,7 @@ export function createResponseFactory(
     if (flash.length > 0) page.flash = flash;
     onPage?.(ctx.request, page, layer ? 'layer' : 'page', () => propOrigins(result.props, shared, Object.keys(resolved.props)));
     // A prefetch takes none — but says when some wait: the client asks again on the click instead of showing it (E60).
-    const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash()));
+    const waiting = isPrefetch(ctx.request) && (flashOf(result).length > 0 || (scope?.has(Flasher) === true && scope.make(Flasher).hasFlash(documentOfRequest(ctx.request))));
     const headers = {
       ...result.headers,
       vary: PAGE_VARY,
@@ -640,4 +647,9 @@ function describe(error: unknown): { exception: string; message: string; stack?:
   return error instanceof Error
     ? { exception: error.name, message: error.message, stack: error.stack }
     : { exception: 'Error', message: String(error) };
+}
+
+/** The document a request of the client core names (`x-bespoke-document`, the tabSync feature) — undefined: none (a full page load). */
+function documentOfRequest(request: Request): string | undefined {
+  return request.headers.get(DOCUMENT_HEADER) ?? undefined;
 }

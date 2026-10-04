@@ -11,6 +11,11 @@ export interface FlashEntry {
   readonly id: string;
   readonly key: string;
   readonly data: unknown;
+  /**
+   * The document whose request flashed it (E165, `x-bespoke-document` — the tabSync feature names it): only a request of that
+   * document, or one naming none (a full page load), takes it. Never sent to the browser.
+   */
+  readonly document?: string;
 }
 
 /** A new message with an id of its own. */
@@ -49,5 +54,5 @@ export function withFlashMethod<R extends object>(result: R): R {
 
 /** As the browser gets them: JSON, so a `Date` is its string — what the type says (`FlashMessage`). */
 export function serializedFlash(entries: readonly FlashEntry[]): FlashMessage[] {
-  return JSON.parse(JSON.stringify(entries)) as FlashMessage[];
+  return JSON.parse(JSON.stringify(entries.map(({ id, key, data }) => ({ id, key, data })))) as FlashMessage[];
 }

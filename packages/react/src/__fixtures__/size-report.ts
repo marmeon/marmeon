@@ -86,14 +86,14 @@ const top = only.length ? Infinity : 8;
 for (const scenario of Object.keys(SCENARIOS) as Scenario[]) {
   if (!wanted(scenario)) continue;
   const bundle = await appBundle(SCENARIOS[scenario], { sourcemap: true });
-  print(scenario, `scenario ${scenario} (limit ${budget.gzipKB[scenario].limit.toFixed(1)})`, bundle, { top });
+  print(scenario, `scenario ${scenario} (limit ${budget.gzipKB[scenario].limit})`, bundle, { top });
 }
 
 for (const app of APPS) {
   if (!wanted(app)) continue;
   const bundle = await appClientBuild(join(PACKAGES, '../apps', app), { sourcemap: true });
   const line = budget.appsGzipKB[app];
-  const marginal = print(app, `${app}${line ? ` (core + adapter marginal limit ${line.limit.toFixed(1)})` : ''}`, bundle, { top });
+  const marginal = print(app, `${app}${line ? ` (core + adapter marginal limit ${line.limit})` : ''}`, bundle, { top });
   if (!line) continue;
   const size = kb(marginal);
   const problem = budgetProblem(`${app}: core + adapter (marginal)`, size, line);

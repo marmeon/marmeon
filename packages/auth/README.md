@@ -141,8 +141,10 @@ return this.redirect().intended().route('dashboard');
 - **The session holds a fingerprint of the hash** (a SHA-256 of it, `_auth_password`), not the hash. A password change anywhere
   changes the hash, so every other session stops matching and ends at its next request. A deleted user ends the same way.
 - **Sign-in and sign-out reset the browser's history:** the next page loads fully, so pages kept from before do not come
-  back; `logout()` also sends `Clear-Site-Data: "cache"` — `ClientHistory` and the 409 of
-  [the protocol](../http/README.md#the-protocol).
+  back; `logout()` also sends `Clear-Site-Data: "cache", "storage"` (E165: the HTTP cache and the site's storage, in every tab —
+  `history.clear({ siteData: ['cache'] })` after `logout()` keeps the storage) — `ClientHistory` and the 409 of
+  [the protocol](../http/README.md#the-protocol). The other tabs of the browser follow by
+  [tab sync](../http/README.md#tab-sync-w8-step-8): the session's epoch changes with every sign-in and sign-out.
 - **Islands cannot sign in** (read-only requests, E52): for them a session whose password changed is a guest, and the
   remember-me cookie waits for the page's request.
 - The session keys (`AUTH_SESSION_KEYS`) start with `_`: framework bookkeeping, left out of `session.all()`. The `database`

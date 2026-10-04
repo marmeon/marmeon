@@ -50,6 +50,56 @@ export class FakeEventSource extends EventTarget {
 }
 
 /**
+ * The `BroadcastChannel`s of one browser (W8 step 8): what a tab posts, every other tab's channel of the same name hears a task
+ * later — never the sender (like the browser's), and never a tab that is `frozen` (it misses it: a frozen tab's queue is not
+ * promised). `posted` is everything any tab ever posted, structured-cloned as the browser would.
+ */
+export class FakeChannels {
+  readonly posted: { readonly name: string; readonly data: unknown }[] = [];
+  readonly #open = new Set<{ readonly name: string; readonly target: EventTarget; readonly win: { frozen: boolean } }>();
+
+  /** The constructor a tab's `window.BroadcastChannel` is. */
+  constructorFor(win: { frozen: boolean }): new (name: string) => BroadcastChannel {
+    const open = this.#open;
+    const posted = this.posted;
+    return class extends EventTarget {
+      readonly name: string;
+      readonly #self: { readonly name: string; readonly target: EventTarget; readonly win: { frozen: boolean } };
+      constructor(name: string) {
+        super();
+        this.name = name;
+        this.#self = { name, target: this, win };
+        open.add(this.#self);
+      }
+      postMessage(data: unknown): void {
+        const clone = structuredClone(data);
+        posted.push({ name: this.name, data: clone });
+        const from = this.#self;
+        setTimeout(() => {
+          for (const other of open) {
+            if (other === from || other.name !== from.name || other.win.frozen) continue;
+            other.target.dispatchEvent(new MessageEvent('message', { data: structuredClone(clone) }));
+          }
+        }, 0);
+      }
+      close(): void {
+        open.delete(this.#self);
+      }
+    } as never;
+  }
+
+  /** Channels open now. */
+  get open(): number {
+    return this.#open.size;
+  }
+
+  /** A message as another page of the site would post it (any shape) — to every tab's channel `name`. */
+  inject(data: unknown, name = 'bespoke'): void {
+    for (const other of this.#open) if (other.name === name && !other.win.frozen) other.target.dispatchEvent(new MessageEvent('message', { data }));
+  }
+}
+
+/**
  * One tab's history, as the browser keeps it: states are stored *serialized* (structured clone, written to
  * disk for session restore) — the test reads exactly what would end up there.
  */
@@ -75,6 +125,10 @@ export class FakeWindow implements NavigatorWindow {
   /** The live streams opened (W6.10), oldest first — `EventSource` of this tab. */
   readonly sources: FakeEventSource[] = [];
   EventSource?: new (url: string) => EventSource;
+  /** The browser's channels between tabs (W8 step 8) — with `new FakeWindow(url, channels)`. */
+  BroadcastChannel?: new (name: string) => BroadcastChannel;
+  /** A frozen tab (Page Lifecycle): it hears nothing on the channels. */
+  frozen = false;
   readonly performance: NonNullable<NavigatorWindow['performance']>;
   readonly #documentListeners = new Map<string, Set<() => void>>();
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
@@ -92,8 +146,9 @@ export class FakeWindow implements NavigatorWindow {
     return this.promptAnswer;
   };
 
-  constructor(url: string) {
+  constructor(url: string, channels?: FakeChannels) {
     this.entries.push({ url, state: 'null' });
+    if (channels) this.BroadcastChannel = channels.constructorFor(this);
     this.index = 0;
     const self = this;
     this.document = {

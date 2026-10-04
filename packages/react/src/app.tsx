@@ -329,6 +329,8 @@ export interface BespokeAppProps {
    * `ConfirmDialog`, or the app's own. Default: the browser's `confirm()` (and `prompt()` for a text to type).
    */
   confirm?: ConfirmComponent;
+  /** Client features attached from the start (`NavigatorOptions.features`) — `createBespokeApp` passes tab sync (E149). */
+  features?: readonly Feature[] | undefined;
 }
 
 interface Current {
@@ -370,6 +372,7 @@ export function BespokeApp({
   ssr,
   layer: frame,
   confirm: Confirm,
+  features,
 }: BespokeAppProps) {
   // A deep link's document brings the layers over its page (E53): rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
@@ -450,6 +453,8 @@ export function BespokeApp({
       ...(Confirm ? { confirm: ask } : {}),
       // The layers load with the stack that renders them (E71).
       loadLayers,
+      // What the app attaches from the start: tab sync (E149), before the navigator takes over the history.
+      features,
     });
     // A deep link's layers: their code was loaded before hydrating (createBespokeApp) — attached before the navigator stacks them.
     if (stackModule?.value) navigator.current.use(stackModule.value.layers);

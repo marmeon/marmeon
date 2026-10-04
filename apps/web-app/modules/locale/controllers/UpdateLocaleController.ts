@@ -42,8 +42,9 @@ export class UpdateLocaleController extends Controller {
     const user = await this.#auth.user();
     if (user) await this.#users.updateLocale(user.id, locale);
     // Every page the browser keeps — in memory, in its HTTP cache — is in the old language: a full load, and the
-    // cache cleared (as after signing out).
-    this.#history.clear({ siteCache: true });
+    // cache cleared (as after signing out — but not the site's storage: nobody signed out). The other tabs reload through
+    // the tabSync feature: the session's epoch includes the locale.
+    this.#history.clear({ siteData: ['cache'] });
     return this.back('/').flash('toast', { kind: 'success', message: this.#translator.forLocale(locale).get('app.locale.changed') });
   }
 }

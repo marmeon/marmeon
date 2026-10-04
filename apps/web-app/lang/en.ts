@@ -28,6 +28,9 @@ const en = {
     leave: 'Leave',
     stay: 'Stay',
     prompt: 'Type “{text}” to confirm',
+    // Another tab signed in or out, or switched the language (tab sync), while this one has unsaved changes.
+    session: 'You signed in or out, or changed the language, in another tab. Load this page again? Your unsaved changes will be lost.',
+    reload: 'Load again',
   },
   locale: {
     changed: 'Language changed.',

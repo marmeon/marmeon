@@ -233,6 +233,13 @@ export interface PageObject {
    */
   csrf?: string;
   /**
+   * The session's epoch (W8 step 8, E148/E165) — opaque (an HMAC keyed from `APP_KEY` over the session's generation, the signed-in
+   * user and the locale), changing whenever someone signs in or out, the session is regenerated or the language changes. The
+   * `tabSync` feature tells the other tabs of the browser when it changes (`BroadcastChannel`), and they let go of what they keep.
+   * Absent without the http provider's `SessionEpoch` (a test kernel), and in a region object (an island).
+   */
+  epoch?: string;
+  /**
    * The live subscriptions of this page (or island, or layer) — W6.10, E89/E90: what its controller declared
    * (`this.view(…).live('users.7', { only: ['profile'] })`) and what every page shares (`shared.live(…)`), each with its
    * channel signed for this session. The client core then loads the live feature, which follows every channel on screen

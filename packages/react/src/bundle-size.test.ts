@@ -80,6 +80,9 @@ const FEATURES = {
   live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
   // The client hook API (E132, W7 step 9): a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
   hooks: { markers: ['http/client/features/hooks'], use: { base: 'emptyApp' as const, entry: `${appEntry()}import { hooks } from '@bespokecore/http/client';\nglobalThis.__hooks = hooks;\n` } },
+  // Tab sync (W8 step 8, E149): a default feature of `createBespokeApp` — loaded with the first page, before hydrating, in a chunk of
+  // its own; `createBespokeApp({ tabSync: false })` never loads it. The core alone carries none of it.
+  tabSync: { markers: ['http/client/features/tab-sync', 'http/tab-sync-protocol'], use: inApp(), lazy: true },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
@@ -195,6 +198,19 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('live');
     expect(featuresIn(built, true)).toContain('live');
+  });
+
+  // W8 step 8 (E149): every app of createBespokeApp loads tab sync — in a chunk of its own, never in a first download; the core alone
+  // carries none of it, not even lazily (the core's limit stays where it was).
+  it.each(['emptyApp', 'minimalApp', 'everything'] as const)('tab sync is a chunk of its own in %s — loaded by createBespokeApp', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built)).not.toContain('tabSync');
+    expect(featuresIn(built, true)).toContain('tabSync');
+  });
+
+  it('the core alone carries no tab sync — not in its first download, not in a chunk', () => {
+    expect(featuresIn(bundle('core'))).not.toContain('tabSync');
+    expect(featuresIn(bundle('core'), true)).not.toContain('tabSync');
   });
 
   it('a view that asks useLayer() and an app frame of LayerDialog bring no layer code into the first download', async () => {

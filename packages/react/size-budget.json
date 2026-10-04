@@ -22,18 +22,19 @@
     "Measured without Vite's preload helper since the end of Wave 5c (Max, 02.10., option B2): the first import() of any client build brings it (≈ 0.5 KB gzip) — every app with lazy pages ships it whatever the framework does, so it is no framework code; the measured builds stub it (__fixtures__/bundle.ts). core 11.54 → 11.03, emptyApp 13.99 → 13.48, minimalApp 18.49 → 18.02, everything 31.09 → 30.60, blank-app 14.42 → 13.99, web-app 22.95 → 22.49.",
     "FINAL STATE after Wave 5c (Max, 02.10., option A): the targets are the measured sizes + the tolerance — core 11.2, emptyApp 13.6, minimalApp 18.2, blank-app 14.1, web-app 22.6 (all ratchets, they keep going down); everything is a ceiling at 31.0 (+0.4: its one chunk's gzip moves with the order of its modules). The spike's targets (core ≤ 8.5, an app without pages ≤ 12.5, with Link + useForm ≤ 14) were missed, for reasons on record: splitting the navigator into modules costs +1.0 (E78: one more hop per access, less gzip sharing), the feature host +1.4 instead of the +0.7 estimated (E79), the core gained work the spike did not count — a visit's own confirm (4i, security), loading the layers when the server answers with one (E71), applying a visit's optimistic patches (6e) — and Link + useForm cost +4.5 over an app without pages instead of +1.5 (useForm's guard and remember stay static, by plan). Everything optional is out (stillLeaking is [] everywhere); what remains is the fixed core of E72, the security invariants and the adapter's basics. Before Wave 5c (a5ac296^, with the injection strings): core 19.33, emptyApp 23.66, minimalApp 27.21; peak after E79 (1e12d6e): core 21.00, emptyApp 25.29, minimalApp 28.85, web-app 35.17 marginal.",
     "W6.10 live props (E110, Max, 03.10.): the everything ceiling 31.0 → 31.1 (measured 31.07: the useLiveUpdates hook +0.09, the core's server-driven live trigger +0.04, the islands' trigger and loader +0.05, the actions' send hook +0.01). The app limits stay as they are (core 11.2, emptyApp 13.6, minimalApp 18.2, blank-app 14.1, web-app 22.6): core 11.03 → 11.07, emptyApp 13.48 → 13.52, minimalApp 18.02 → 18.05, blank-app 13.99 → 14.02, web-app 22.50 → 22.53 — the core's +0.04 is the price of loading live when an answer follows a channel (like the layers, E71), accepted by E110.",
-    "W7.10 the docs app (apps/docs, E114/E133): its own limit from its first measurement, 17.22 → 17.3 (E75: from here only down). More than the blank app (14.02): <Link prefetch> in the navigation and the README links, useQueryState for the search (its module lands in the initial chunk: the search page, a lazy chunk, uses it), the progress bar, and useRouter() in the layout (the header's search visits) — which attaches the optimistic feature (≈ 0.8 KB: 16.4 without it, a full page load for a header search instead). The page chunks (README renderer, table of contents, search view) are lazy."
+    "W7.10 the docs app (apps/docs, E114/E133): its own limit from its first measurement, 17.22 → 17.3 (E75: from here only down). More than the blank app (14.02): <Link prefetch> in the navigation and the README links, useQueryState for the search (its module lands in the initial chunk: the search page, a lazy chunk, uses it), the progress bar, and useRouter() in the layout (the header's search visits) — which attaches the optimistic feature (≈ 0.8 KB: 16.4 without it, a full page load for a header search instead). The page chunks (README renderer, table of contents, search view) are lazy.",
+    "W8 step 8 tab sync (E149, Max, 04.10.: a default feature of createBespokeApp, the core's limit unchanged, the limits of the scenarios and apps that carry it raised ONCE by exactly its measured cost, no reserve — then the ratchet again). Savings first: the feature is a chunk of its own that createBespokeApp loads beside the first page's component and messages, before hydrating — statically in createBespokeApp it cost +0.93–0.99 (emptyApp 14.48, minimalApp 18.99, everything 32.05, blank-app 14.95, web-app 23.53, docs 18.18); lazily it costs the loader, its Promise.all slot and the features prop: +0.05–0.07. Measured before/after (d321705 → this step): core 11.07 → 11.07, emptyApp 13.52 → 13.58, minimalApp 18.05 → 18.11, everything 31.06 → 31.13, blank-app 14.02 → 14.07, web-app 22.57 → 22.63, docs 17.22 → 17.28. Limits: emptyApp 13.6 → 13.66, minimalApp 18.2 → 18.26, everything (ceiling) 31.1 → 31.17, blank-app 14.1 → 14.15, web-app 22.6 → 22.66, docs 17.3 → 17.36."
   ],
   "gzipKB": {
     "core": { "limit": 11.2, "target": 11.2 },
-    "emptyApp": { "limit": 13.6, "target": 13.6 },
-    "minimalApp": { "limit": 18.2, "target": 18.2 },
-    "everything": { "limit": 31.1, "ceiling": true }
+    "emptyApp": { "limit": 13.66, "target": 13.6 },
+    "minimalApp": { "limit": 18.26, "target": 18.2 },
+    "everything": { "limit": 31.17, "ceiling": true }
   },
   "appsGzipKB": {
-    "blank-app": { "limit": 14.1, "target": 14.1 },
-    "web-app": { "limit": 22.6, "target": 22.6 },
-    "docs": { "limit": 17.3, "target": 17.3 }
+    "blank-app": { "limit": 14.15, "target": 14.1 },
+    "web-app": { "limit": 22.66, "target": 22.6 },
+    "docs": { "limit": 17.36, "target": 17.3 }
   },
   "stillLeaking": {
     "core": [],

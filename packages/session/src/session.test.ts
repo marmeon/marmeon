@@ -95,6 +95,26 @@ describe('Session', () => {
     expect(island.all()).toEqual({});
   });
 
+  it('binds a flash message to the document whose request flashed it (E165): another document leaves it, a full load takes it', async () => {
+    const store = new MemorySessionStore();
+    const message = (id: string, document?: string) => ({ id, key: 'toast', data: { message: 'Saved.' }, ...(document ? { document } : {}) });
+    const { id } = await request(store, undefined, (session) => {
+      session.queueFlash(message('a', 'tab-a'));
+      session.queueFlash(message('free'));
+    });
+    // Tab B's request: only the message bound to no document; tab A's stays — and waits for A.
+    await request(store, id, (session) => {
+      expect(session.hasFlash('tab-b')).toBe(true);
+      expect(session.takeFlash('tab-b').map((taken) => taken.id)).toEqual(['free']);
+      expect(session.hasFlash('tab-b')).toBe(false);
+      expect(session.hasFlash('tab-a')).toBe(true);
+    });
+    await request(store, id, (session) => expect(session.takeFlash('tab-a').map((taken) => taken.id)).toEqual(['a']));
+    // A request naming no document (a full page load) takes every message.
+    await request(store, id, (session) => session.queueFlash(message('b', 'tab-b')));
+    await request(store, id, (session) => expect(session.takeFlash().map((taken) => taken.id)).toEqual(['b']));
+  });
+
   it('can keep flash data longer (reflash, keep) and flash input for old()', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => {

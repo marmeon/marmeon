@@ -83,6 +83,7 @@ export const render = createSsrRenderer(resolvePage, { title, routes, layout, la
 | `layer` | ✓ | ✓ | the frame around every layer (E53); default `LayerDialog` |
 | `progress` | ✓ | | a visit indicator (E82, opt-in): `progressBar({ delay: 250 })` or the app's own; none by default |
 | `confirm` | ✓ | | the dialog that asks (E64): `ConfirmDialog` or the app's own; default the browser's `confirm()`/`prompt()` |
+| `tabSync` | ✓ | | tab sync (W8 step 8, E149) — on by default; `false` leaves it out (the known risk E66: a tab keeps what it showed after a sign-out in another tab) |
 | `rootId` | ✓ | | the element the server rendered into; default `app` |
 | `onRecoverableError` | ✓ | | errors React recovered from while hydrating; default: the console, and in development the page's name and a notice on the page |
 
@@ -93,7 +94,9 @@ every page without markup.
 
 - **`createBespokeApp(options)`** reads the page object from the document and resolves, **before** hydrating, the page's
   component, the messages of its locale and — for a deep link with layers — the layer stack and the layers' views, so the
-  first render matches the server's HTML. With server markup it hydrates, without (SSR failed, `ssr = false`) it renders.
+  first render matches the server's HTML — and, beside them, **tab sync** (E149): a chunk of its own, attached to the navigator
+  from the start, so no other tab's sign-out is missed ([Tab sync](../http/README.md#tab-sync-w8-step-8); `tabSync: false` leaves
+  it out). With server markup it hydrates, without (SSR failed, `ssr = false`) it renders.
   A hydration mismatch is reported to the console; in development with the page's name and a dismissible notice on the page.
 - **`createSsrRenderer(resolve, options)`** returns the `SsrRender` the server calls per page. Pages stream
   (`renderToReadableStream`): the promise resolves with the shell and its `<Head>` content, Suspense boundaries follow in the
@@ -320,6 +323,11 @@ component that renders in the browser (there is no navigator on the server):
 const api = useFeature(hooks);                                   // import { hooks } from '@bespokecore/http/client'
 useEffect(() => api.on('before', (event) => { if (new URL(event.url).pathname === '/admin') event.cancel(); }), [api]);
 ```
+
+Tab sync is attached by `createBespokeApp` already; `useFeature(tabSync)` returns its API — `on('epoch', ({ previous, next, origin
+}) => …)` before a tab lets go of what it keeps (E132's hook API), `epoch`, `check()`. Its unsaved-changes question comes to the
+app's confirm dialog as a `leave` request with `reason: 'session'` — the web app's `layouts/Confirm.tsx` words it in the page's
+language.
 
 The hooks and components above attach theirs the same way — an app pays only for what it uses. Which feature comes with which
 hook, and which load lazily: [features](../http/README.md#features).

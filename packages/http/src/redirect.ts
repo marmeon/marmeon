@@ -2,6 +2,7 @@ import { token } from '@bespokecore/core';
 import { urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@bespokecore/router';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
+import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 
 const REDIRECT_RESULT = Symbol.for('bespokecore.redirect-result');
 
@@ -22,10 +23,12 @@ export interface Flasher {
   /**
    * The flash messages waiting, taken — by the response that delivers them (a page, a layer, an action's answer). Empty
    * for a read-only request (an island) and without a session. A 409 that reloads the page puts them back (`reflash()`).
+   * `document`: the document the request names (`x-bespoke-document`, E165) — a message bound to another document (another
+   * tab's request flashed it) is left waiting; without one (a full page load), every message is taken.
    */
-  takeFlash(): FlashEntry[];
-  /** Whether flash messages wait — without taking them (a prefetch says so, E60). */
-  hasFlash(): boolean;
+  takeFlash(document?: string): FlashEntry[];
+  /** Whether flash messages wait (for `document`, as `takeFlash` takes them) — without taking them (a prefetch says so, E60). */
+  hasFlash(document?: string): boolean;
 }
 export const Flasher = token<Flasher>('Flasher');
 
@@ -142,7 +145,10 @@ export class RedirectResult {
     }
     if (this.#messages.length > 0) {
       if (!flasher) throw new Error('redirect().flash() needs a session: install @bespokecore/session and start it for this route.');
-      for (const message of this.#messages) flasher.queueFlash(message);
+      // Bound to the document whose request flashed them (E165): another tab's request (a poll, a visit) never takes them —
+      // this tab's next answer does, or the full page load that follows a 409.
+      const document = request.headers.get(DOCUMENT_HEADER);
+      for (const message of this.#messages) flasher.queueFlash(document ? { ...message, document } : message);
     }
     const intended = this.#intended ? flasher?.pull(INTENDED_KEY) : undefined;
     const headers = new Headers(this.#headers);

@@ -50,9 +50,12 @@ import {
   rootElement,
   showProgress,
   visitUrlOf,
+  tabSync,
   type PageMessages,
   type RegionOwner,
 } from './index.ts';
+import { SESSION_PATH } from '../tab-sync-protocol.ts';
+import { FakeChannels, FakeWindow } from './test-window.ts';
 
 /** The whole adapter: the hydration entry, rendering a page object, the progress bar. */
 async function createTextApp(rootId = 'app') {
@@ -661,5 +664,68 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     await loadPageMessages(page('users/Show', '/users/1', {}), messages); // a server without i18n: the loader's own fallback
     expect(calls).toEqual([['fr', { fallback: 'de' }], ['en']]);
     expect(await loadPageMessages(page('users/Show', '/users/1', {}), undefined)).toBeUndefined();
+  });
+});
+
+describe('two tabs of one browser, each a plain-DOM adapter (tab sync, W8 step 8)', () => {
+  it('signing out in tab A: tab B lets go of what it shows and loads again — the server shows it the login page', async () => {
+    // One browser: its channels, its cookie (the server's session), and two tabs — each a FakeWindow with a plain-DOM root.
+    const channels = new FakeChannels();
+    const session = { user: 'Ada' as string | undefined, epoch: 'signed-in' };
+    const answer = (pathname: string): PageObject =>
+      session.user === undefined || pathname === '/login'
+        ? page('auth/Login', '/login', {}, { epoch: session.epoch })
+        : page('users/Show', pathname, { user: session.user, email: 'ada@example.com' }, { epoch: session.epoch });
+    const tab = (url: string) => {
+      const win = new FakeWindow(`https://app.test${url}`, channels);
+      win.handler = (to, init) => {
+        const { pathname } = new URL(to);
+        if (pathname === SESSION_PATH) return Response.json({ epoch: session.epoch });
+        if (pathname === '/logout' && init.method === 'POST') {
+          session.user = undefined;
+          session.epoch = 'guest';
+          return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
+        }
+        return respond(answer(pathname));
+      };
+      const root = document.createElement('div');
+      document.body.append(root);
+      // The adapter: a page as its component name and props, in text.
+      const render = async (shown: PageObject) => void (root.textContent = `${shown.component} ${JSON.stringify(shown.props)}`);
+      const load = (path: string) => {
+        const initial = answer(path);
+        void render(initial);
+        const navigator = new Navigator({ initialPage: initial, render, window: win, features: [tabSync] });
+        navigator.start();
+        return navigator;
+      };
+      return { win, root, navigator: load(url), load };
+    };
+    const settled = async () => {
+      for (let i = 0; i < 6; i++) await new Promise((done) => setTimeout(done, 0));
+    };
+    document.body.innerHTML = '';
+
+    const a = tab('/dashboard');
+    const b = tab('/dashboard');
+    await b.navigator.visit('/users/1');
+    expect(b.root.textContent).toContain('ada@example.com');
+    await settled();
+
+    // A signs out: its 409 loads /login fully — a new document, which posts the new epoch when it starts.
+    await a.navigator.visit('/logout', { method: 'post' });
+    expect(a.win.loads).toEqual(['assign /login']);
+    a.load('/login');
+    await settled();
+
+    // B heard it, asked the server and is leaving its document for a full load; nothing of Ada stays in its memory.
+    expect(b.win.loads).toEqual(['reload']);
+    expect(b.navigator.cachedPages).toBe(0);
+    // The reload: the server's page for this browser now.
+    const reloaded = b.load('/users/1');
+    expect(b.root.textContent).toBe('auth/Login {}');
+    expect(reloaded.page.epoch).toBe('guest');
+    // What the tabs said to each other: epochs, nothing else.
+    expect(channels.posted.map((message) => message.data)).toEqual([{ v: 1, epoch: 'signed-in' }, { v: 1, epoch: 'signed-in' }, { v: 1, epoch: 'guest' }, { v: 1, epoch: 'guest' }]);
   });
 });

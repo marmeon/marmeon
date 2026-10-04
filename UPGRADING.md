@@ -158,6 +158,39 @@ writeIfExists(id, data, lifetime): Promise<boolean>                    Promise<'
 argument (the container passes it); code that builds a `Session` by hand passes `plainSessionCodec`. Test code that read a store
 by the session id reads `store.read(sessionKey(id))` and parses `data`.
 
+#### Medium: the tabs of a browser follow each other's sign-in, sign-out and language — `createBespokeApp` loads tab sync
+
+*Likelihood of impact: medium — apps that sign in or out, or switch the language; nothing to do unless you want the old
+behaviour.* Before, a tab kept what it showed (pages in memory, islands, pages fetched ahead, once props, remembered input) after
+another tab signed out, until its own next request (E66). Now (E148, E149) `createBespokeApp` loads the `tabSync` feature with the
+first page: every page object carries the session's epoch (`PageObject.epoch`, opaque), the tabs post it on a `BroadcastChannel`
+(`{ v: 1, epoch }`, nothing else), and a tab that hears another one — or becomes visible again, or comes back from the
+back/forward cache — asks `GET /_bespoke/session`; if the epoch there is new, it lets go of everything and loads again. With
+unsaved changes on screen it asks first (a `leave` question with `reason: 'session'` — word it in your confirm dialog; the
+default text is English). Back/Forward to an entry of an older epoch loads it from the server
+([Tab sync](packages/http/README.md#tab-sync-w8-step-8)).
+
+- The old behaviour: `createBespokeApp({ …, tabSync: false })` — then the risk E66 is back: a tab shows what it kept after a
+  sign-out elsewhere until its next request.
+- An adapter of your own attaches it from the start: `new Navigator({ …, features: [await loadTabSync()] })`.
+- The path `/_bespoke/session` is the framework's now (in the `web` group, read-only).
+
+#### Medium: signing out clears the site's storage too — `Clear-Site-Data: "cache", "storage"`; `clear({ siteCache })` is `clear({ siteData })`
+
+*Likelihood of impact: medium — apps that keep something in `localStorage`, `sessionStorage` or IndexedDB, or call
+`ClientHistory.clear({ siteCache: true })`.* `Auth.logout()` asked for `Clear-Site-Data: "cache"`; now (E165) it asks for
+`"cache", "storage"`: the browser drops the site's HTTP cache **and its storage** — local and session storage, IndexedDB, service
+workers — in every tab. What a signed-in user left there does not wait for the next one. Before → after:
+
+```ts
+history.clear({ siteCache: true })   →  history.clear({ siteData: true })      // "cache", "storage"
+                                         history.clear({ siteData: ['cache'] }) // the cache alone (the web app's language switch)
+                                         history.clear({ siteData: false })     // none — takes back what an earlier call asked for
+```
+
+To keep the storage across a sign-out (a theme setting, say), call `history.clear({ siteData: ['cache'] })` after
+`auth.logout()` in your logout controller — the last call wins. `"cookies"` and `"executionContexts"` are never sent.
+
 #### Low: `SESSION_ENCRYPT` encrypts the session data in its store
 
 *Likelihood of impact: low — new, off by default.* `SESSION_ENCRYPT=true` (E144) encrypts the payload in the file, the `payload`
@@ -327,6 +360,15 @@ listens instead of ending the process.
 [--systemd]` writes a Dockerfile (`node:26-slim`, non-root, health check, `bespoke` as the process), `.dockerignore`,
 `compose.production.yaml` with one role per container and, on request, a proxy configuration and systemd units (E141,
 [Production files](packages/cli/README.md#production-files-makedocker-e141)). The deployment guide is `docs/deployment.md`.
+
+#### Low: a flash message stays with the tab that flashed it
+
+*Likelihood of impact: low — apps with a `Flasher` of their own.* A message waited in the session for whichever answer the user
+was shown next — another tab's poll could take it (E67). Now (E165) every request of a tab names its document
+(`x-bespoke-document`, the tabSync feature), a message is bound to the document whose request flashed it
+(`FlashEntry.document`), and another document's request leaves it; a request naming none — a full page load, a client without tab
+sync — takes every message. A `Flasher` of your own takes the document: `takeFlash(document?: string)`, `hasFlash(document?:
+string)`; `PageSession` implementations add `generation()` (the session's part of the epoch — `undefined` for a guest).
 
 #### Low (contributors): the monorepo needs pnpm 12
 

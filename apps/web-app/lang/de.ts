@@ -27,6 +27,9 @@ export default {
     leave: 'Verlassen',
     stay: 'Bleiben',
     prompt: 'Gib „{text}“ ein, um zu bestätigen',
+    // Ein anderer Tab hat an- oder abgemeldet oder die Sprache gewechselt (Tab-Sync), während dieser ungespeicherte Änderungen hat.
+    session: 'Du hast dich in einem anderen Tab an- oder abgemeldet oder die Sprache gewechselt. Diese Seite neu laden? Deine ungespeicherten Änderungen gehen verloren.',
+    reload: 'Neu laden',
   },
   locale: {
     changed: 'Sprache geändert.',

@@ -1,4 +1,4 @@
-import { hasServerMarkup, loadPageMessages, readInitialPage, rootElement, type DevtoolsGlobal, type TitleTemplate } from '@bespokecore/http/client';
+import { hasServerMarkup, loadPageMessages, loadTabSync, readInitialPage, rootElement, type DevtoolsGlobal, type Feature, type TitleTemplate } from '@bespokecore/http/client';
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
@@ -43,6 +43,13 @@ export interface CreateBespokeAppOptions {
    */
   confirm?: ConfirmComponent;
   /**
+   * Tab sync (W8 step 8, E148/E149) — on by default: when another tab of the browser signs in or out (or switches the language),
+   * this one lets go of everything it keeps (pages in memory, islands, pages fetched ahead, once props, remembered input) and
+   * loads again — or, with unsaved changes on screen, asks first. Its code loads with the first page, before hydrating.
+   * `false` leaves it out: then a tab keeps what it shows after a sign-out elsewhere until its next request (the known risk E66).
+   */
+  tabSync?: false;
+  /**
    * Errors React recovered from while hydrating: the server's markup did not match (React rendered that part again in
    * the browser), or a part failed on the server (the browser rendered it). Default: reported to the console — in
    * development with the page's name and a notice on the page, so a mismatch is not missed.
@@ -54,17 +61,20 @@ export interface CreateBespokeAppOptions {
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
  */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
+export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, tabSync, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
   const page = readInitialPage();
 
   // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
   // the page's locale. The history entry is the navigator's (<BespokeApp> starts it): its key and URL — never the
   // page's props (E36).
   // A deep link's layers (E53) too: the layer stack with the core's layers (E71) and their views render in the server's markup.
-  const [Component, catalog, root] = await Promise.all([
+  // Tab sync (E149) loads beside them — a chunk of its own, attached from the start: no message of another tab is missed. A chunk
+  // that cannot load leaves it out (the page works without it).
+  const [Component, catalog, root, synced] = await Promise.all([
     resolve(page.component),
     loadPageMessages(page, messages),
     rootElement(rootId),
+    tabSync === false ? undefined : loadTabSync().catch(() => undefined),
     ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
   ]);
   const app = (
@@ -80,6 +90,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
       initialCatalog={catalog}
       layer={layer}
       confirm={confirm}
+      features={synced && [synced as Feature]}
     />
   );
 

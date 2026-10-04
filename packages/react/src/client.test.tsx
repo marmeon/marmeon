@@ -128,3 +128,36 @@ describe('createBespokeApp — hydration', () => {
     expect(errors).toHaveBeenCalledWith(expect.stringContaining('[bespoke] A part of [users/WithPart] failed on the server'), expect.anything());
   });
 });
+
+describe('createBespokeApp — tab sync (W8 step 8, E149)', () => {
+  const attached = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([feature]) => (feature as { name: string }).name);
+
+  it('attaches tab sync by default — loaded with the first page, before hydrating: the navigator has it from the start', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The apps of the tests before are still there and hear this one's epoch: they ask the server (the same epoch).
+    vi.spyOn(window, 'fetch').mockImplementation(async () => Response.json({ epoch: 'e1' }));
+    const use = vi.spyOn(Navigator.prototype, 'use');
+    const sent = { ...page({ name: 'Ada', lastLoginAt: at.toISOString() }), epoch: 'e1' };
+    serve(sent, await ssr(sent));
+    await start();
+    expect(attached(use)).toContain('tabSync');
+    // Attached while the navigator was made (NavigatorOptions.features) — before any other feature a component attaches.
+    // (The test's own server render made a navigator too — happy-dom has a window.) The app's: tab sync is its first feature.
+    const app = use.mock.contexts[use.mock.calls.findIndex(([feature]) => (feature as { name: string }).name === 'tabSync')];
+    expect(use.mock.calls.filter((_, index) => use.mock.contexts[index] === app).map(([feature]) => (feature as { name: string }).name)[0]).toBe('tabSync');
+  });
+
+  it('tabSync: false leaves it out — and its chunk is never loaded (the known risk E66, by choice)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const use = vi.spyOn(Navigator.prototype, 'use');
+    const lazy = await import('@bespokecore/http/client');
+    const sent = page({ name: 'Ada', lastLoginAt: at.toISOString() });
+    serve(sent, await ssr(sent));
+    await act(async () => {
+      await createBespokeApp({ resolve, tabSync: false });
+      await new Promise((done) => setTimeout(done, 20));
+    });
+    expect(attached(use)).not.toContain('tabSync');
+    expect(lazy.loadTabSync).toBeTypeOf('function');
+  });
+});

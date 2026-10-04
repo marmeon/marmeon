@@ -92,7 +92,8 @@
       "src/client/**",
       "src/page.ts",
       "src/upload-header.ts",
-      "src/live-protocol.ts"
+      "src/live-protocol.ts",
+      "src/tab-sync-protocol.ts"
     ]
   }
 }

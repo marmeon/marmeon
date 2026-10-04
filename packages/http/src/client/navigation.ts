@@ -157,6 +157,8 @@ export interface NavigatorWindow {
   };
   /** Live hints (W6.10): one stream per document — without it, none. */
   readonly EventSource?: new (url: string) => EventSource;
+  /** Tab sync (W8 step 8): the tabs of the browser hear each other's session epoch — without it, a tab checks when it becomes visible. */
+  readonly BroadcastChannel?: new (name: string) => BroadcastChannel;
   /** How the document was loaded — its protocol (`nextHopProtocol`): a live stream over HTTP/1.1 waits while the tab is hidden (E104). */
   readonly performance?: Pick<Performance, 'getEntriesByType'>;
   /** For the upload progress of `FormData` visits — `fetch` cannot report it (over HTTP/1.1). */
@@ -213,7 +215,7 @@ export interface NavigatorOptions {
    * The features to attach from the start (E70) — default: none. An adapter attaches each where it is used
    * (`navigator.use(feature)`, or `navigator.load(loader)` on first use, E74).
    */
-  features?: readonly Feature[];
+  features?: readonly Feature[] | undefined;
   /**
    * How the layers load when the server answers with one and nothing attached them yet (E71) — default {@link loadLayers},
    * the core's chunk. An adapter loads its own layer UI with it, in the same round trip (React: the layer stack). Then use the

@@ -15,12 +15,14 @@ import { uploads, type UploadsFeature } from './features/uploads.ts';
 import { live } from './features/live.ts';
 import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal } from './features/devtools.ts';
 import { hooks, type ClientHooks } from './features/hooks.ts';
+import { tabSync } from './features/tab-sync.ts';
+import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
 import { islands, type IslandsFeature } from './features/islands.ts';
 import { REMEMBERED } from './remember.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, type FakeEventSource } from './test-window.ts';
+import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, settle, type FakeEventSource } from './test-window.ts';
 import { TOP } from './scroll.ts';
 
 /**
@@ -195,7 +197,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, hooks, devtools];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, hooks, devtools, tabSync];
 
 /**
  * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
@@ -209,7 +211,10 @@ function recordInPlace(feature: Feature, into: Recorded[]): () => void {
 
 /** A signed-in tab where every feature holds the canary somewhere — and what it takes to look at it all again. */
 async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly Feature[]; cacheSize?: number; lazyLayers?: Promise<void> } = {}) {
-  const win = new FakeWindow(`${ORIGIN}/users/1`);
+  // The browser's channels (tab sync, W8 step 8) and the server's session epoch — another tab may change it.
+  const channels = new FakeChannels();
+  const server = { epoch: 'e1' };
+  const win = new FakeWindow(`${ORIGIN}/users/1`, channels);
   win.confirmAnswer = true;
   const records: Recorded[] = [];
   // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves (E71).
@@ -219,6 +224,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   win.XMLHttpRequest = PendingXhr as never;
   win.handler = (url, init) => {
     const { pathname } = new URL(url);
+    if (pathname === SESSION_PATH) return Response.json({ epoch: server.epoch });
     // An upload's target (W6.9): its token is the signed-in user's — the canary.
     if ((init.headers as Record<string, string> | undefined)?.['x-bespoke-upload']) {
       return Response.json({ token: `tu_${CANARY}`, upload: { method: 'PUT', url: `/_bespoke/uploads/1?signature=${CANARY}` } });
@@ -229,7 +235,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
     return pageResponse(secretPage(pathname));
   };
   // The page follows a live channel (W6.10): its token is the signed-in user's — the canary.
-  const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada', live: [{ channel: 'users.1', only: ['secret'], token: CANARY }] };
+  const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada', epoch: 'e1', live: [{ channel: 'users.1', only: ['secret'], token: CANARY }] };
   initial.props.locales = [CANARY];
   const tab = boot(win, initial, { features, ...(cacheSize ? { cacheSize } : {}), ...(loadLayers ? { loadLayers } : {}) });
   // The core loads the live feature: its stream opens, says hello and hints a change — kept until the burst ends.
@@ -271,7 +277,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   // What the core itself keeps — once props, flash messages, the islands of the page's entry — and the remembered input of it.
   const core = { once: host.once, flash: host.flash, regions: host.entry(REGIONS, pageKey), remembered: host.entry(REMEMBERED, pageKey) };
   const prefetched = () => api<Prefetches>('prefetch').size;
-  return { win, tab, navigator, host, records, core, action, liking, pageKey, layerKey, submissions, prefetched, uploaded, stream };
+  return { win, tab, navigator, host, records, core, action, liking, pageKey, layerKey, submissions, prefetched, uploaded, stream, channels, server };
 }
 
 afterEach(() => {
@@ -330,6 +336,7 @@ describe('the security matrix — every feature × every event that must forget 
         expect.stringMatching(/^devtools: its slot "devtools-hydration"/),
         expect.stringMatching(/^devtools: its slot "devtools-cache"/),
         expect.stringMatching(/^devtools: its API still shows/),
+        expect.stringMatching(/^tabSync: its slot "tab-sync"/),
       ]),
     );
     // The live stream is open (W6.10), its URL holds the signed-in user's token.
@@ -405,6 +412,22 @@ describe('the security matrix — every feature × every event that must forget 
       expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
     });
   }
+
+  it('another tab changed the session’s epoch (signed out there, W8 step 8): nothing of it is left — in no feature, not in the core, not in history.state', async () => {
+    const tab = await stocked();
+    // What the core keeps, held from before: it forgets its slot maps when the document is left (a later look would find new ones).
+    const { core } = tab;
+    tab.server.epoch = 'e2';
+    tab.channels.inject({ v: 1, epoch: 'e2' });
+    for (let i = 0; i < 6; i++) await settle();
+    expect(tab.win.loads).toEqual(['reload']);
+    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
+    expect(coreLeftovers({ ...tab, core })).toEqual([]);
+    expect(historyWithCanary(tab.win)).toEqual([]);
+    // The action under way ends without its answer, the live stream is closed.
+    expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
+    expect(tab.stream.closed).toBe(true);
+  });
 
   it('memory letting go of an entry (LRU) empties what every feature kept of it — the page’s and the layer’s', async () => {
     const tab = await stocked({ cacheSize: 3 });

@@ -235,17 +235,24 @@ export class Session {
    * The flash messages waiting, taken — by the response that delivers them. Nothing for a read-only request (an island,
    * a layer's base resolved in-process: they are not what the user is shown) or an unstarted session.
    */
-  hasFlash(): boolean {
-    return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).length > 0;
+  hasFlash(document?: string): boolean {
+    return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).some((message) => mayTake(message, document));
   }
 
-  takeFlash(): FlashEntry[] {
+  /**
+   * `document`: the document the request names (E165) — a message bound to another one (another tab's request flashed it) stays;
+   * without one (a full page load), every message is taken.
+   */
+  takeFlash(document?: string): FlashEntry[] {
     if (!this.#started || this.#permit) return [];
     const waiting = (this.#data[MESSAGES] as FlashEntry[] | undefined) ?? [];
-    if (waiting.length === 0) return [];
-    delete this.#data[MESSAGES];
-    this.#taken.push(...waiting);
-    return waiting;
+    const taken = waiting.filter((message) => mayTake(message, document));
+    if (taken.length === 0) return [];
+    const left = waiting.filter((message) => !taken.includes(message));
+    if (left.length > 0) this.#data[MESSAGES] = left;
+    else delete this.#data[MESSAGES];
+    this.#taken.push(...taken);
+    return taken;
   }
 
   /** Keeps some flash data for one more request. */
@@ -454,6 +461,11 @@ function parsePayload(json: string): SessionPayload | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Whether a request naming `document` takes `message` (E165): one bound to no document, or to this one — or no document named. */
+function mayTake(message: FlashEntry, document: string | undefined): boolean {
+  return document === undefined || message.document === undefined || message.document === document;
 }
 
 /** The signed-in user's id as text (ids may be numbers or strings), or null for a guest — the `database` store's `user_id`. */

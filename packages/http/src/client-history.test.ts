@@ -35,9 +35,24 @@ describe('ClientHistory / ClearClientHistory', () => {
 
   it('keeps a plain browser request as it is — with Clear-Site-Data when asked for', async () => {
     const history = new ClientHistory();
-    history.clear({ siteCache: true });
+    history.clear({ siteData: true });
     const response = await run(history, ctx('POST', '/logout'), new Response(null, { status: 303, headers: { location: '/login' } }));
-    expect([response.status, response.headers.get('location'), response.headers.get('clear-site-data')]).toEqual([303, '/login', '"cache"']);
+    expect([response.status, response.headers.get('location'), response.headers.get('clear-site-data')]).toEqual([303, '/login', '"cache", "storage"']);
+  });
+
+  it('Clear-Site-Data names what was asked for — the cache alone, or nothing when a later call takes it back (the last call wins)', async () => {
+    const cacheOnly = new ClientHistory();
+    cacheOnly.clear({ siteData: ['cache'] });
+    expect((await run(cacheOnly, ctx('POST', '/locale'), new Response(null, { status: 303, headers: { location: '/' } }))).headers.get('clear-site-data')).toBe('"cache"');
+    const takenBack = new ClientHistory();
+    takenBack.clear({ siteData: true });
+    takenBack.clear({ siteData: false });
+    expect((await run(takenBack, ctx('POST', '/logout'), new Response(null, { status: 303, headers: { location: '/login' } }))).headers.get('clear-site-data')).toBeNull();
+    // A later call without the option keeps what the earlier one asked for.
+    const kept = new ClientHistory();
+    kept.clear({ siteData: true });
+    kept.clear();
+    expect(kept.siteData).toEqual(['cache', 'storage']);
   });
 });
 

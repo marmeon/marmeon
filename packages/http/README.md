@@ -83,7 +83,8 @@ component name and props in text) visits, goes back and forward, loads deferred 
 drives everything Wave 5b added: islands (loaded by the client, and hydrated from the SSR stream's data block without a
 request), layers (Back closes, Forward opens from memory), an action with an optimistic patch and its rollback, a flash message
 fired once, the navigation guard (a visit and a Back held), live validation, an instant visit's placeholder, remembered state
-and a postponed new build — with no UI framework anywhere. What a Vue adapter adds is components and composables; the mechanics
+and a postponed new build — and two tabs of one browser, each a plain-DOM adapter, where signing out in one makes the other let
+go of what it shows (tab sync) — with no UI framework anywhere. What a Vue adapter adds is components and composables; the mechanics
 are here.
 
 ### What the core provides
@@ -109,7 +110,7 @@ are here.
 | `navigator.use(guard).add(guard)` → lift, `isGuarded()` | The navigation guard (E64), a feature (attached where a component guards — `useBlocker`, a form's `guard`; a visit's own `confirm` is the core's, asked without it): while a `NavigationGuard` is registered (and `active()`), a visit that would take its level (the page, or its `layer`) off the screen asks first; Back/Forward — which the browser has done already — is undone by `history.go(-delta)` from `HistoryState.index`, asked, and redone on "leave"; closing a layer asks; closing the tab or reloading gets the browser's own question (`beforeunload`). A form passes its own guard when it is sent (`ignoreGuards`). Background requests (partial reloads, polls, deferred, a reload of the same page) never ask, and a 409 that is not `version` (signing in or out) never asks and is never stopped |
 | `navigator.confirm(confirm)`, `NavigatorOptions.confirm` (`ConfirmHandler`), `confirmRequest`, `accepted`, `nativeConfirm` | Asking the user (E64): `confirm` of a visit, an action or a form, and the guard's question (`kind: 'leave'`). The adapter's handler shows a `ConfirmRequest` (message, title, labels, `destructive`, `prompt` for type-to-confirm) and answers `true`/`false` — or the text typed; **the core** decides: a type-to-confirm question is a yes only for exactly that text. Without a handler: the browser's `confirm()`/`prompt()`; without those, a confirmation is a no and a guard lets go |
 | `NavigatorOptions.revalidateOnBack(component)` + `navigator.use(revalidateOnBack)` | E58, a feature (React: `resolveModulePages` brings it and `<BespokeApp>` attaches it — `ResolvePage.features`): what a view declares to reload when Back/Forward shows it from memory (`true` or prop names) — the page, a layer Forward opens again, an island of a restored entry (`RegionOwner({ onBack })`): shown at once, then reloaded in the background (no events, no progress bar). Never on a first load, a visit or a refetch |
-| `navigator.use(remember).of(owner.entry)` → `Remembered`, `rememberable(value, include)` | Remembered state (E63), a feature (attached where a component remembers): per history entry (a page's owner, a layer's `layer.owner`: their `entry`) — the entry's slot `REMEMBERED`, next to its islands — **memory only**, never `history.state` or storage. Gone with the entry (evicted, a layer closed for good) and with the document (every 409, a reload). `rememberable` leaves out fields named like a password (always), a token, a secret or a card (`include` lets those in) and files, at any depth. No tab sync (E66) |
+| `navigator.use(remember).of(owner.entry)` → `Remembered`, `rememberable(value, include)` | Remembered state (E63), a feature (attached where a component remembers): per history entry (a page's owner, a layer's `layer.owner`: their `entry`) — the entry's slot `REMEMBERED`, next to its islands — **memory only**, never `history.state` or storage. Gone with the entry (evicted, a layer closed for good) and with the document (every 409, a reload — and another tab's sign-in, sign-out or language switch: [tab sync](#tab-sync-w8-step-8)). `rememberable` leaves out fields named like a password (always), a token, a secret or a card (`include` lets those in) and files, at any depth |
 | once props (automatic) | E64: page objects with `onceProps` (+ `onceScope`) are kept by the navigator (`OnceStore`); every page request names what it holds (`x-bespoke-once`, `x-bespoke-once-scope`), the server skips those and the navigator puts them back before `render`. A page of another scope drops them; every 409 clears them |
 | `visit(url, { instant: { component, props } })`, `navigator.load(loadInstant)` | Instant visits (E64), a feature loaded where an instant link renders (E74: a chunk of its own — a visit before it is there goes without its placeholder): `render(page, { placeholder: true })` with `{ component, props }` = the target view and what the link hands its placeholder — shown at once, the page when its answer lands; the history entry is pushed only then. Failed or cancelled: the page on screen again (scroll kept); Back during it cancels it; a page fetched ahead shows at once instead |
 | `on('version', event)`, `newVersion` + `subscribeNewVersion`, `reloadForNewVersion()` | The asset-version 409 (E64, `x-bespoke-reload: version` — exactly that value): `event.preventDefault()` keeps the page (`newVersion` says where the full load waits; the user's next GET visit makes it); without it, unsaved changes nobody agreed to leave ask first (`event.unsaved`). Every other 409 (`history`: signing in or out, or no reason) is never cancelable and never asks |
@@ -117,6 +118,7 @@ are here.
 | `queryUrl`, `pageQuery`, `withoutDefaults`, `linkQuery`, `assertQueryPage` | Query helpers: a URL without the defaults, the page's query with them, a link's query for the page on screen, the "only on its route's page" check |
 | `progressBar(options)` → `ProgressIndicator`, `showProgress(navigator, options)` | The progress bar (E82, opt-in): plain DOM, inline CSS-variable styles (CSP-safe), not for `async` requests, only for visits slower than `delay` (250 ms). `progressBar` is what an adapter takes (React: `createBespokeApp({ progress: progressBar({ delay: 250 }) })`); an app without it carries none of its code |
 | `createPoll(run, interval, options)` | Polling, paused while the tab is hidden |
+| `tabSync`, `loadTabSync()`, `isTabSyncMessage`, `DEFAULT_SESSION_CHANGED_MESSAGE` | Tab sync (W8 step 8, E148/E149): the session's epoch between the tabs of a browser — `BroadcastChannel` hints, the server asked on `visibilitychange`/`pageshow`, a tab of another epoch leaves its document; `navigator.use(tabSync)` → `{ epoch, on('epoch', …), check() }`. A default of `createBespokeApp` ([Tab sync](#tab-sync-w8-step-8)) |
 | `readInitialPage()`, `rootElement(id)`, `hasServerMarkup(root)` | The hydration entry's first steps: the page from `#bespoke-page`, the root (also while streaming), hydrate or render |
 | `loadPageMessages(page, messages)`, `pageLocale(page, messages)` | The page's messages in its `locale`, falling back to the server's `fallbackLocale` (`APP_FALLBACK_LOCALE`, sent with every page) — any loader with `fallback` and `load(locale, { fallback })`, e.g. `createMessageLoader` of `@bespokecore/i18n/messages`. Load them before a page renders, in the browser and the SSR entry |
 | `resolveRoute(manifest, name, params, query)` | A named route's URL and method from the manifest (`virtual:bespoke/routes`) |
@@ -222,6 +224,7 @@ Nothing is attached by default (`NavigatorOptions.features` is empty). A feature
 | --- | --- | --- |
 | **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, the page's optimistic patches, `revalidateOnBack`, the progress bar (E82), the client hook API (E132) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `useRouter().optimistic`/`.reloading`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })`; `useFeature(hooks)` |
 | **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open, uploads (W6.9) | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders; a `<FileInput>` when it renders (`loadUploads`) |
+| **Lazy, by default** (E149) — `createBespokeApp` loads it beside the first page, before hydrating, and attaches it from the start | tab sync (W8 step 8) | `createBespokeApp` (`tabSync: false` leaves it out — [Tab sync](#tab-sync-w8-step-8)) |
 | **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers, live props (W6.10) | layers: an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry); live props: a page, a layer or an island that follows a channel (`PageObject.live`) — and `useLiveUpdates()` where it renders |
 
 The core itself loads uploads with progress (`FormData` with a progress listener, over XHR) with the first such upload — a
@@ -358,6 +361,50 @@ and only go down:
   app's entry): `CLIENT_CHUNKS` of `@bespokecore/vite`, initial modules only, so what loads on first use stays in its own chunks.
   The scenarios are built the same way.
 
+### Tab sync (W8 step 8)
+
+E148, E149, E165 — closes E66. Tab sync is the feature `createBespokeApp` attaches by default (`tabSync`, a chunk
+of its own the adapter loads beside the first page). Without it, a tab kept what it showed — pages in memory, islands, pages
+fetched ahead, once props, remembered input — after another tab of the browser signed out, until its own next request; the 409 of
+a sign-out reaches only the tab that made it. With it:
+
+- **The session's epoch.** Every page object carries `epoch` (`PageObject.epoch`): an HMAC — keyed from `APP_KEY` (HKDF,
+  `session-epoch`) — over the session's generation (`PageSession.generation()`: the session's scope and the user's id, for a
+  signed-in user; nothing for a guest), and the locale. Opaque: it changes when someone signs in or out, the session is
+  regenerated or the language changes, and stays the same for flash messages and every other write. A guest's failed sign-in
+  (a session for its errors) changes nothing.
+- **A hint between tabs.** A tab posts `{ v: 1, epoch }` on a `BroadcastChannel` (`bespoke`) when it starts and when an answer
+  of its own brings a new epoch (a sign-in by the remember-me cookie). Nothing else is ever posted — no props, ids or tokens; a
+  message of any other shape is ignored without a request. The sender never hears its own message.
+- **The server's word.** A tab that hears another epoch than its own asks `GET /_bespoke/session` → `{ "epoch": "…" }`
+  (`no-store`, read-only: it starts no session, writes none, extends none, takes no flash message, sets no cookie). So does a tab
+  that becomes visible again (`visibilitychange` — a hidden or frozen tab may have missed the message) or comes back from the
+  back/forward cache (`pageshow` with `persisted`). Only an epoch that differs there changes anything: a stale tab's message
+  reloads nobody.
+- **Then it lets go.** The tab leaves its document — the core's `leave`, as for a 409: every slot of every feature emptied,
+  every request aborted, the live stream closed — and loads the page again; the server shows what this browser may see now (the
+  login page, the new language). `navigator.use(tabSync).on('epoch', ({ previous, next, origin: 'self' | 'tab' | 'server' }) =>
+  …)` hears it first (E132's hook API as the feature's own; React: `useFeature(tabSync)`).
+- **Unsaved changes stay.** With a navigation guard holding (a dirty form), the page stays: pages fetched ahead are dropped, and
+  the user is asked — once the tab is visible — whether to load it again (a `leave` request with `reason: 'session'` to the
+  app's confirm dialog, `DEFAULT_SESSION_CHANGED_MESSAGE` by default). No, and the next answer of the server takes the new epoch
+  over; Back or Forward meanwhile loads from the server.
+- **History.** Every entry holds the epoch it was written under (`history.state.epoch`, a registered field: a position, never
+  data — E36). Back or Forward to an entry of another epoch loads the page from the server, never from memory.
+- **Flash messages stay with their tab.** Every request of a tab names its document (`x-bespoke-document`, random per
+  document); the server binds a flash message to the document whose request flashed it, and another tab's request — a poll, a
+  visit — leaves it waiting (E165). A request naming none (the full page load after a 409) takes every message.
+- **On sign-out the browser's storage goes too.** `Auth.logout()` answers with `Clear-Site-Data: "cache", "storage"`: the site's
+  HTTP cache, `localStorage`, `sessionStorage`, IndexedDB and service workers, in every tab (`ClientHistory.clear({ siteData })`
+  — `['cache']` for the cache alone, `false` for none; never `"cookies"` or `"executionContexts"`). Remembered input (E63) never
+  is in storage — it is memory, emptied by tab sync; what an app keeps in storage itself is gone after a sign-out (take it back
+  with `history.clear({ siteData: ['cache'] })` after `logout()`), and an app that must not lose it across tabs keeps it on the
+  server.
+
+**Opting out** — `createBespokeApp({ tabSync: false })` — brings back the known risk E66: a tab shows (and keeps in memory) what
+the signed-out user saw until its next request; Back in it may show pages from memory. Without `BroadcastChannel` (an old browser)
+a tab still checks when it becomes visible.
+
 ### Error codes
 
 A mistake in app code (a hook outside its app, a page with a broken export, a route the browser does not know) throws an
@@ -416,6 +463,7 @@ never a token from the URL (CSRF: [@bespokecore/session](../session/README.md)).
 | `x-bespoke-upload: avatar` | an upload's target (the form's own method and URL, `{ name, size, type }` as JSON) — and `bytes` on the request that sends the file | run middleware, bindings and `authorize`, never the controller; answer `{ token, upload: { method, url, fields? } }` from the field's `upload()` rule (404 without one, 422 too large); read-only like a live validation, errors as JSON (W6.9) |
 | `x-bespoke-once: k1,k2` + `x-bespoke-once-scope` | page requests | the once props held (by key) under that scope — skipped by the server for the same scope only (E64) |
 | `x-bespoke-connection: <id>` | every request of a document that follows live channels (visits, actions, live validations) | which tab sent it: a live hint its write causes reaches that tab with `only: []` (W6.10) |
+| `x-bespoke-document: <id>` | every request of a document with tab sync (visits, actions, live validations) | which document sent it: a flash message its request flashes waits for that document (or a full page load), never another tab's request (E165) |
 | `Accept: text/event-stream` | the live stream (`EventSource`) | an event stream — read-only like an island: no session write, no cookie, no flash taken (W6.10) |
 
 | Response header | Meaning |
@@ -443,6 +491,10 @@ caused it); `end` — `{}`, the session ended (signed in or out): do not reconne
 `LIVE_HEARTBEAT` seconds. Each `hello` and `refresh` carries `id:` — the sequences the stream has seen
 (`users.7=4&dashboard.sign-ins=12`), what the browser sends back as `Last-Event-ID`.
 
+**The session's epoch (W8 step 8, [Tab sync](#tab-sync-w8-step-8))**: `GET /_bespoke/session` → `200` `{ "epoch": "…" }` with
+`Cache-Control: no-store`, in the `web` group, read-only (no session started, written or extended, no cookie, no flash message
+taken). The tabs' channel: `BroadcastChannel('bespoke')`, messages exactly `{ v: 1, epoch }`.
+
 **The upload endpoint (W6.9, [@bespokecore/storage](../storage/README.md#uploads))**:
 `PUT /_bespoke/uploads/<id>?expires=…&signature=…` — the URL the target answered with, signed for 15 minutes, in the `web`
 group. The body is the file's bytes. Answers `200` `{ size }`, or: `403` (a signature that does not fit or expired), `404` (no
@@ -456,13 +508,15 @@ it, E55 — the browser never parses a URL), `streamedProps` (deferred groups st
 (`{ key, base, once? }`, E53) and `layers` (a deep link's document), `flash` (`[{ id, key, data }]` — a protocol field,
 not a prop, E60), `route` (the answering route's name for `activeMatch`, never an `.internal()` one), `onceProps` +
 `onceScope` (E64), `csrf` (for forms without JavaScript — only with a session: a guest's page has none and needs none, E143),
-and from Wave 6 `live` (`[{ channel, only?, token }]`, the channels it
-follows — W6.10; a page's own and the shared ones, a layer's and an island's their own). A region object (`RegionObject`) is a page object without
+from Wave 6 `live` (`[{ channel, only?, token }]`, the channels it
+follows — W6.10; a page's own and the shared ones, a layer's and an island's their own), and from Wave 8 `epoch` (the session's
+epoch, opaque — tab sync). A region object (`RegionObject`) is a page object without
 `locale`, `fallbackLocale`, `streamedProps`, `layer`, `layers` and `flash` — and without shared props.
 
 **A history entry** (`HistoryState`) holds positions only, never props (E36): `component`, `url`, `key` (the entry's memory),
 `scroll` and `scrollRegions` (named `regions` before W5b — still read), `layer` (`{ depth, below }`: the keys beneath a
-layer's entry) and `index` (where it is in the tab's history — what lets the guard undo a Back).
+layer's entry), `index` (where it is in the tab's history — what lets the guard undo a Back) and `epoch` (the session's epoch it was
+written under — tab sync).
 
 **The server's side** ([@bespokecore/server](../server/README.md#the-kernel)): the kernel answers islands and layers from the
 same routes — `dispatchIsland` is what `resolveIsland` calls (a synthetic GET through the island route's middleware, read-only,

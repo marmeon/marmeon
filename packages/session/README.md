@@ -57,7 +57,12 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
 - **Flash data:** `flash(key, value)` — for this and the next request; `keep(...keys)`, `reflash()`. `flashInput(input)` and
   `old(key?)` refill a form after a failed submit (`redirect().withInput()`). A redirect's `.with(…)` and `.flash(key, data)`
   (flash messages, E60 — kept until a response the user is shown takes them, not aged by prefetches or islands) write into
-  the request's session.
+  the request's session. A flash message is bound to the document (the browser tab) whose request flashed it — the tabSync
+  feature names it, `x-bespoke-document` — and another tab's request leaves it waiting; a full page load takes it (E165,
+  [tab sync](../http/README.md#tab-sync-w8-step-8)).
+- **The tab-sync epoch:** `PageSession.generation()` — a signed-in session's scope and its user's id, `undefined` for a guest — is
+  the session's part of `PageObject.epoch` (with the locale; an HMAC keyed from `APP_KEY`): new with every `regenerate()` and
+  `invalidate()`, the same for every other write.
 - **The `errors` prop:** `ShareErrorsFromSession` shares the flashed validation errors with every page of the `web` group —
   `{}` when there are none, also on partial reloads — what `useForm` shows next to the fields.
 - **Sign-in and sign-out:** `regenerate()` gives the session a new id and CSRF token (against session fixation),

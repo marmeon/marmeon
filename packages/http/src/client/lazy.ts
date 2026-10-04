@@ -8,6 +8,7 @@ import type { LiveValidationFeature } from './features/live-validation.ts';
 import type { InstantVisits } from './features/instant.ts';
 import type { LayerStack } from './features/layers.ts';
 import type { Prefetches, PrefetchOptions } from './features/prefetch.ts';
+import type { TabSync } from './features/tab-sync.ts';
 import type { LiveValidation, LiveValidationOptions } from './live-validation.ts';
 import type { Navigator } from './navigation.ts';
 
@@ -17,6 +18,12 @@ import type { Navigator } from './navigation.ts';
  * renders a deep link's document (`page.layers`): `navigator.load(loadLayers)`.
  */
 export const loadLayers = (): Promise<Feature<LayerStack>> => import('./features/layers.ts').then((module) => module.layers);
+
+/**
+ * Tab sync (W8 step 8, E149) — a default feature of `createBespokeApp`, in a chunk of its own: the adapter loads it with the first
+ * page's component and messages, before it hydrates, and attaches it from the start (`NavigatorOptions.features`).
+ */
+export const loadTabSync = (): Promise<Feature<TabSync>> => import('./features/tab-sync.ts').then((module) => module.tabSync);
 
 /** Live validation (E62) — `navigator.load(loadLiveValidation)`. */
 export const loadLiveValidation = (): Promise<Feature<LiveValidationFeature>> => import('./features/live-validation.ts').then((module) => module.liveValidation);

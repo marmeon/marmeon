@@ -12,7 +12,7 @@ import { ShareErrorsFromSession } from './share-errors.ts';
 import { SessionLottery, StartSession } from './start-session.ts';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
-import { SessionStore } from './store.ts';
+import { SESSION_USER_KEY, SessionStore } from './store.ts';
 import { CookieSessionStore } from './stores/cookie.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
 import { FileSessionStore } from './stores/file.ts';
@@ -183,5 +183,12 @@ export function pageSessionOf(session: Session): PageSession {
       });
       return id ? sessionScope(id) : undefined;
     },
+    // The tab-sync epoch's part (E165): a signed-in user's session — its scope (new with every regenerated id) and the user's id.
+    // A guest's is none: their session (a failed login's flash data) does not make the other tabs reload.
+    generation: () =>
+      started(() => {
+        const user: unknown = session.get(SESSION_USER_KEY);
+        return typeof user === 'string' || typeof user === 'number' || typeof user === 'bigint' ? `${sessionScope(session.id)}\n${String(user)}` : undefined;
+      }),
   };
 }

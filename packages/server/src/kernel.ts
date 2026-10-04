@@ -25,6 +25,7 @@ import {
   regionOf,
   ResponseLifecycle,
   ServerClosing,
+  SESSION_PATH,
   UPLOAD_HEADER,
   VERSION_HEADER,
   isPageObject,
@@ -503,11 +504,16 @@ export function createHttpKernel(
     // as the tab does: it reads the session to check who listens, never writes it — no cookie, no flash data taken.
     const stream = request.headers.get('accept')?.includes('text/event-stream') === true;
     const { pathname } = new URL(request.url);
+    // The tabs' question for the session's epoch (W8 step 8): it reads the session, never writes it — it starts none, extends none
+    // (a tab becoming visible is no activity), takes no flash data, sets no cookie.
+    const epoch = pathname === SESSION_PATH;
     const readOnly = scope.has(ReadOnly) ? scope.make(ReadOnly) : undefined;
-    if ((island || parent || live || upload || stream) && readOnly) {
+    if ((island || parent || live || upload || stream || epoch) && readOnly) {
       const reason = live
         ? `a live validation (${request.method} ${pathname})`
-        : upload
+        : epoch
+          ? `the session's epoch (${request.method} ${pathname})`
+          : upload
           ? `an upload (${request.method} ${pathname})`
           : stream
             ? `an event stream (${request.method} ${pathname})`
@@ -516,7 +522,9 @@ export function createHttpKernel(
               : `a layer's base, resolved for its deep link (${request.method} ${pathname})`;
       const rule = live
         ? 'a live validation is read-only (E62) — it checks the input and changes nothing: no session, cookies or flash data, no work after the response. Middleware with side effects skips them for it.'
-        : upload
+        : epoch
+          ? "the session's epoch is read-only (W8 step 8) — a tab asks it when it becomes visible: no session, cookies or flash data, no work after the response."
+          : upload
           ? 'an upload is read-only (W6.9) — it stores a file beside the page: no session, cookies or flash data, no work after the response.'
           : stream
             ? 'an event stream is read-only (W6.10) — it stays open beside the page and only listens: no session, cookies or flash data, no work after the response.'

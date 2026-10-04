@@ -9,28 +9,37 @@ import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './
  * - A client-side visit (`x-bespoke`) is answered with `409` and `x-bespoke-location` — the same answer as a
  *   new build (asset versioning) — so the browser loads the next page **fully**. The old document, and the
  *   in-memory page cache with it, is gone; every earlier history entry is fetched from the server again.
- * - With `{ siteCache: true }` (sign-out), the response also carries `Clear-Site-Data: "cache"`: the
- *   browser drops what its HTTP cache holds for the site.
+ * - With `{ siteData: true }` (sign-out — `Auth.logout()` asks for it, E165), the response also carries
+ *   `Clear-Site-Data: "cache", "storage"`: the browser drops what its HTTP cache holds for the site and the site's storage
+ *   (`localStorage`, `sessionStorage`, IndexedDB, service workers) — in every tab. `siteData: ['cache']` drops the cache alone
+ *   (a language switch); `siteData: false` takes back what an earlier call asked for (the last call wins). Never `"cookies"`
+ *   (the response sets the session's own) and never `"executionContexts"` (no browser does it; the other tabs let go of
+ *   their memory through the tabSync feature).
  *
  * Inertia's `clearHistory()` / `Inertia::location()`, made automatic.
  */
 export class ClientHistory {
   #cleared = false;
-  #siteCache = false;
+  #siteData: readonly SiteData[] = [];
 
-  clear(options: { siteCache?: boolean } = {}): void {
+  clear(options: { siteData?: boolean | readonly SiteData[] } = {}): void {
     this.#cleared = true;
-    if (options.siteCache) this.#siteCache = true;
+    const { siteData } = options;
+    if (siteData !== undefined) this.#siteData = siteData === true ? ['cache', 'storage'] : siteData === false ? [] : [...new Set(siteData)];
   }
 
   get cleared(): boolean {
     return this.#cleared;
   }
 
-  get clearsSiteCache(): boolean {
-    return this.#siteCache;
+  /** What the response's `Clear-Site-Data` names — empty: no header. */
+  get siteData(): readonly SiteData[] {
+    return this.#siteData;
   }
 }
+
+/** What `Clear-Site-Data` may name here: the HTTP cache and the site's storage (E165). */
+export type SiteData = 'cache' | 'storage';
 
 /** Headers of a page or redirect that make no sense on the bodiless 409 that replaces it. */
 const DROPPED = ['location', 'content-type', 'content-length', PAGE_HEADER];
@@ -54,7 +63,8 @@ export class ClearClientHistory {
     if (!this.#history.cleared) return response;
 
     const headers = new Headers(response.headers);
-    if (this.#history.clearsSiteCache) headers.set('clear-site-data', '"cache"');
+    const siteData = this.#history.siteData;
+    if (siteData.length > 0) headers.set('clear-site-data', siteData.map((type) => `"${type}"`).join(', '));
     // An action (E59) too: signing out through one must not leave the pages in memory either.
     const action = isActionRequest(ctx.request);
     if (ctx.request.headers.get(PAGE_HEADER) !== 'true' && !action) {

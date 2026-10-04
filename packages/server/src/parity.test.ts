@@ -56,7 +56,7 @@ describe('once props on the server (E64)', async () => {
     ],
   });
   application.container.make(Router).middleware.append('web', ShareCountries, 400);
-  application.container.scoped(PageSession, () => ({ csrfToken: () => 'csrf-of-the-session', scope: () => scope }));
+  application.container.scoped(PageSession, () => ({ csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined }));
   const app = createHttpKernel(application);
   const visit = async (path: string, headers: Record<string, string> = {}) =>
     (await (await app.request(path, { headers: { 'x-bespoke': 'true', ...headers } })).json()) as PageObject;

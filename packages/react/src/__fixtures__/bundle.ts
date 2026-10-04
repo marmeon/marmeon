@@ -408,13 +408,13 @@ export function limitFor(size: number): number {
 export function budgetProblem(name: string, size: number, line: BudgetLine): string | undefined {
   if (size > line.limit) {
     return (
-      `${name} grew to ${size} KB gzip, over its limit of ${line.limit.toFixed(1)} KB (${BUDGET_WHERE}). Limits only go down: ` +
+      `${name} grew to ${size} KB gzip, over its limit of ${line.limit} KB (${BUDGET_WHERE}). Limits only go down: ` +
       'find what grew (`pnpm size` attributes every byte to its module) instead of raising the limit.'
     );
   }
   if (!line.ceiling && size < line.limit - SHRINK_KB) {
     return (
-      `${name} shrank to ${size} KB gzip — lower its limit in ${BUDGET_WHERE} from ${line.limit.toFixed(1)} to ` +
+      `${name} shrank to ${size} KB gzip — lower its limit in ${BUDGET_WHERE} from ${line.limit} to ` +
       `${limitFor(size).toFixed(1)} so the gain is kept (or run with BESPOKE_SIZE_BUDGET=update).`
     );
   }

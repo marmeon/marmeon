@@ -17,5 +17,12 @@ export interface PageSession {
    * subscription a page signs, W6.10).
    */
   scope(options?: { readonly keep?: boolean }): string | undefined;
+  /**
+   * The session's generation for the tab-sync epoch (W8 step 8, E165): the scope of a signed-in user's session together with the
+   * user's id — new with every sign-in and sign-out and every regenerated id, the same for every other write. Undefined for a
+   * guest (with or without a session): nothing of a guest's is protected, so a guest's session (a failed login's flash data)
+   * does not make the other tabs reload. Never the session id itself.
+   */
+  generation(): string | undefined;
 }
 export const PageSession = token<PageSession>('PageSession');

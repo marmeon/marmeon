@@ -33,6 +33,11 @@ export type Confirm = string | ConfirmOptions;
 /** What the adapter is asked to show: a confirmation (`confirm`) or the navigation guard's question (`leave`). */
 export interface ConfirmRequest extends ConfirmOptions {
   readonly kind: 'confirm' | 'leave';
+  /**
+   * Why a `leave` question is asked, when it is not unsaved changes a navigation would lose: `session` — another tab signed in or
+   * out, or switched the language (tab sync, W8 step 8), and loading the page again would lose them. An app's dialog words it.
+   */
+  readonly reason?: 'session';
 }
 
 /**
