@@ -4,7 +4,7 @@ import { coreSolutions } from './core-solutions.ts';
 import { Redactor } from './redact.ts';
 import { ErrorSolutions } from './solutions.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
-import { environment } from './environment.ts';
+import { environment, resolveEnvironment } from './environment.ts';
 import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
 import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
@@ -155,6 +155,9 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),
   ]);
+  // NODE_ENV resolved once for the process (E170): the environment's, else the app's .env — `bespoke` did it already; a script
+  // that boots the app itself gets the same answer here. An app given its own `env` (a test fixture) decides for itself.
+  const resolved = options.env ? undefined : resolveEnvironment(options.root);
   const env = options.env ?? loadEnv(options.root);
   const config = await resolveConfig([...definitions], env);
   for (const [definition, value] of config) container.instance(definition, value);
@@ -204,6 +207,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   await app.boot();
   // An out-of-date manifest in a read-only .bespoke/ (E160): discovered in memory — said once per process, in the app's log.
   if (discovered?.warning) container.make(Logger).warn(discovered.warning);
+  for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);
   // Modules that changed since `bespoke build` (E138): their injection lists were derived at start — said once per process.
   const staleInjections = takeInjectionWarning();
   if (staleInjections) container.make(Logger).warn(staleInjections);

@@ -14,8 +14,10 @@
  * URL and checks it against a hash of the source it compiles — the source after the injection hook — so a changed module
  * is compiled afresh, never served from an old entry. A directory that cannot be written leaves the start uncached.
  *
- * `NODE_ENV` (E139): `bespoke start` sets `production` only when it is missing — `NODE_ENV=staging bespoke start` stays staging
- * (protected like production); `bespoke dev` sets `development` when it is missing.
+ * `NODE_ENV` (E139, E170) is resolved once, in the process that runs the command, before anything of the app loads
+ * (`resolveEnvironment` of `@bespokecore/core/environment`): the environment's value wins; else the app's `.env` (marked, and
+ * named as `development (from .env)`); else `bespoke start` sets `production` and `bespoke dev` `development`; else it stays
+ * unset — protected like production.
  */
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -27,20 +29,10 @@ const SOURCE_CONDITION = '@bespokecore/source';
 const [command, ...rest] = process.argv.slice(2);
 
 if (process.env.BESPOKE_CHILD === '1') {
-  await runHere(process.argv.slice(2));
+  await runHere(process.argv.slice(2), process.env.BESPOKE_LAUNCH);
 } else {
   // `dev` and `start` both run the server (`serve`); `dev` restarts on changes, `start` runs the build.
   const args = command === 'dev' || command === 'start' ? ['serve', ...rest] : process.argv.slice(2);
-  if (!process.env.NODE_ENV) {
-    // `start` is production unless the environment says otherwise (staging); `dev` is development (E115: development-only
-    // tools check for `NODE_ENV=development`, never for "not production").
-    if (command === 'start') process.env.NODE_ENV = 'production';
-    if (command === 'dev') process.env.NODE_ENV = 'development';
-  } else if (command === 'dev' && process.env.NODE_ENV !== 'development') {
-    process.stderr.write(
-      `bespoke dev with NODE_ENV=${process.env.NODE_ENV}: the development tools (Vite's dev server, the error page, the devtools) run with NODE_ENV=development only — this serves the build (bespoke build first).\n`,
-    );
-  }
 
   // `start` serves the build: the packages' `dist/`, also inside the monorepo — never their sources.
   const source = command !== 'start' && inMonorepo() && !sourceConditionActive();
@@ -49,13 +41,13 @@ if (process.env.BESPOKE_CHILD === '1') {
     const flags = [...(source ? [`--conditions=${SOURCE_CONDITION}`] : []), ...(watch ? ['--watch'] : [])];
     const child = spawn(process.execPath, [...flags, fileURLToPath(import.meta.url), ...args], {
       stdio: 'inherit',
-      env: { ...process.env, BESPOKE_CHILD: '1' },
+      env: { ...process.env, BESPOKE_CHILD: '1', BESPOKE_LAUNCH: command },
     });
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
     child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
   } else {
     if (command === 'start') compileCache();
-    await runHere(args);
+    await runHere(args, command);
   }
 }
 
@@ -66,8 +58,27 @@ function compileCache() {
   enableCompileCache(join(process.cwd(), 'storage', 'framework', 'compile-cache'));
 }
 
-/** Registers the injection hook (`module.registerHooks`), then runs the command — in this process. */
-async function runHere(args) {
+/**
+ * Resolves `NODE_ENV` (E170), registers the injection hook (`module.registerHooks`, which reads it: precomputed lists only where
+ * the app is protected), then runs the command — in this process.
+ */
+async function runHere(args, launch) {
+  const { DOTENV_MARKER, environment, resolveEnvironment } = await import('@bespokecore/core/environment');
+  // `start` is production unless the environment or .env says otherwise (staging); `dev` is development (E115: development-only
+  // tools check for `NODE_ENV=development`, never for "not production").
+  const fallback = launch === 'start' ? 'production' : launch === 'dev' ? 'development' : undefined;
+  const resolved = resolveEnvironment(process.cwd(), { fallback });
+  for (const warning of resolved.warnings) process.stderr.write(`⚠ ${warning}\n`);
+  if (launch === 'dev') {
+    // `bespoke dev` is development by itself — its server, worker and scheduler are no production commands, whatever .env says.
+    if (environment.isDevelopment()) delete process.env[DOTENV_MARKER];
+    else {
+      process.stderr.write(
+        `bespoke dev with NODE_ENV=${environment.describe()}: the development tools (Vite's dev server, the error page, the devtools) run with NODE_ENV=development only — this serves the build (bespoke build first).\n`,
+      );
+    }
+  }
+  delete process.env.BESPOKE_LAUNCH;
   await import('@bespokecore/core/register');
   const { run } = await import('@bespokecore/cli/main');
   process.exitCode = await run(args);

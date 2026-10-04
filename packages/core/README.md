@@ -168,12 +168,23 @@ export const LabConfig = defineConfig('lab', {
 ```
 
 `environment.describe()` names it the way start lines do: `production (protected)`, `staging (protected)`, `development`,
-`test`, `unset NODE_ENV (protected, like production)`. Set `NODE_ENV` in the process environment — the supervisor, the
-Dockerfile, the shell: `bespoke dev` sets `development` itself, and on a development machine `export NODE_ENV=development` makes
-the other commands (`migrate`, `tinker`, `queue:work`) development too; without it they are protected and say so when they
-start (`Environment: unset NODE_ENV (protected, like production)`). `bespoke start` sets `production` only when `NODE_ENV` is missing
-([@bespokecore/cli](../cli/README.md#bespoke-build-and-bespoke-start)); `createTestApp` runs as `test` unless its `env` says
-otherwise.
+`test`, `unset NODE_ENV (protected, like production)`.
+
+**Where it comes from (E170)** — one resolution, `resolveEnvironment(root)`, done by `bespoke` before anything of the app loads
+(and by `createApplication` for a script that boots the app itself):
+
+1. the process's `NODE_ENV` — the supervisor, the Dockerfile, the shell. It always wins;
+2. else the app's **`.env`** — only the base file: `.env.{NODE_ENV}` is chosen by `NODE_ENV` and cannot set it (a `NODE_ENV` there
+   is ignored, with a warning). `.env.example` carries `NODE_ENV=development`, so on a development machine every command
+   (`migrate`, `tinker`, `queue:work`) is development;
+3. else none — protected like production; `bespoke start` then sets `production`, `bespoke dev` `development`.
+
+The result is written to `process.env.NODE_ENV` (the one exception to "`process.env` is never modified"), so config definitions,
+the CLI, the load hook and the server all read the same value. A value from `.env` is named as such — `development (from .env)`,
+`staging (protected, from .env)` — in start lines and `Environment:` lines. **The risk** is a developer's `.env` copied to a server:
+then `bespoke start`, `queue:work` and `schedule:work` run as development, and each logs a loud warning (`NODE_ENV=development comes
+from .env, not from the environment: …`) — they are not refused. On a server, set `NODE_ENV` in the environment and never deploy a
+development `.env`. `createTestApp` runs as `test` unless its `env` says otherwise.
 
 ## Configuration
 

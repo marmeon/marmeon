@@ -6,7 +6,7 @@ const LAUNCHER = fileURLToPath(new URL('../bin/bespoke.js', import.meta.url));
 
 /** `bespoke <args>` in `root` as a new process (the launcher sets conditions and the injection hook itself). */
 export function spawnBespoke(root: string, args: readonly string[]): Promise<number> {
-  const { BESPOKE_CHILD: _child, ...env } = process.env;
+  const { BESPOKE_CHILD: _child, BESPOKE_LAUNCH: _launch, ...env } = process.env;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env, stdio: 'inherit' });
     child.once('error', reject);
@@ -19,6 +19,6 @@ export function spawnBespoke(root: string, args: readonly string[]): Promise<num
  * the processes it runs next to the server (a queue worker). The caller stops it.
  */
 export function startBespoke(root: string, args: readonly string[]): ChildProcess {
-  const { BESPOKE_CHILD: _child, ...env } = process.env;
+  const { BESPOKE_CHILD: _child, BESPOKE_LAUNCH: _launch, ...env } = process.env;
   return spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env, stdio: 'inherit' });
 }

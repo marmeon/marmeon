@@ -26,8 +26,8 @@ says so and serves the build, without workers or watchers (never "anything but p
 ```sh
 bespoke build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), the manifest
 bespoke build --no-typecheck   # without the type check
-bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless it is set
-NODE_ENV=staging bespoke start # staging: protected like production (E139)
+bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless set (environment, then .env)
+NODE_ENV=staging bespoke start # staging: protected like production (E139) — the environment wins over .env (E170)
 ```
 
 `build` precomputes the app's injection lists (`.bespoke/injections.json`, [A fast start](#a-fast-start-e138)), runs
@@ -39,7 +39,10 @@ that imports server code as a value fail it too, each with file and line
 discovery manifest (`.bespoke/manifest.json`, [Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)),
 so the first `start` rewrites nothing and `.bespoke/` may be read-only on the server.
 
-`start` respects a `NODE_ENV` that is set and sets `production` only when it is missing (E139). Every `NODE_ENV` but
+`start` respects a `NODE_ENV` that is set and sets `production` only when it is missing (E139) — set in the environment or,
+failing that, in the app's `.env` (E170, [Where it comes from](../core/README.md#the-environment-node_env)). A `.env` that says
+`development` makes `start`, `queue:work` and `schedule:work` development — with a loud warning in their log and
+`development (from .env)` in the start line; on a server set `NODE_ENV` in the environment. Every `NODE_ENV` but
 `development` and `test` is **protected** — JSON logs, `migrate` asks for `--force`, no lab pages, the boot warnings — so
 staging behaves like production; the development tools still need `NODE_ENV=development` (E115,
 [@bespokecore/core](../core/README.md#the-environment-node_env)). The start line names it:

@@ -88,7 +88,7 @@ export class MakeAuthCommand {
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -D ${forTests.join(' ')}`);
     if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add ${devOnly.join(' ')}`);
     if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
-    input.output.line('Then: NODE_ENV=development bespoke migrate (it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
+    input.output.line('Then: bespoke migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one).');
     input.output.line('Expired tokens are pruned at night by the scheduler (bespoke dev starts it; in production: bespoke schedule:work or schedule:run from cron).');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);

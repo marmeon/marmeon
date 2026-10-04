@@ -36,11 +36,23 @@ protection checked for `NODE_ENV=production`; now it is fail-closed (E139, E164)
 - `MAIL_MAILER=log` (or unset) warns at boot; `DEVTOOLS_ENABLED=true` fails the start; `tinker` shows the red banner
   (`PROTECTED (staging) — …`).
 
-This includes commands typed on a development machine: outside `bespoke dev` (which sets `development` itself) `bespoke migrate`
-without `NODE_ENV` now asks for `--force` and writes no table types — `export NODE_ENV=development` in the development shell.
+This includes commands typed on a development machine without any `NODE_ENV`: outside `bespoke dev` (which sets `development`
+itself) `bespoke migrate` asks for `--force` and writes no table types — put `NODE_ENV=development` into the app's `.env` (next
+entry) or the shell.
 The development tools still run with `NODE_ENV=development` only (E115). To keep pretty logs in staging: `LOG_FORMAT=pretty`.
 Code of your own checks `environment.isProtected()` / `environment.isDevelopment()` from `@bespokecore/core`
 ([The environment](packages/core/README.md#the-environment-node_env)) instead of comparing with `'production'`.
+
+#### Medium: `NODE_ENV` falls back to the app's `.env`
+
+*Likelihood of impact: medium — every app (do it once on each development machine; check every server).* `NODE_ENV` is resolved
+once per process (E170): the environment's value wins; else the one in the app's `.env` (only the base file — a `NODE_ENV` in
+`.env.{NODE_ENV}` is ignored with a warning); else none, which is protected (`bespoke start` then sets `production`). Config
+definitions, the CLI and the server read the same resolved value now (before, a `.env` `NODE_ENV` reached config definitions only).
+On a development machine add `NODE_ENV=development` to `.env` (the `.env.example` files of the starters carry it). **On servers**
+set `NODE_ENV` in the real environment and never deploy a development `.env`: a `bespoke start`, `queue:work` or `schedule:work`
+that runs as development because of `.env` says so loudly in its log, and its start line names the source
+(`development (from .env)`) — it is not refused.
 
 #### Medium: `bespoke start` respects `NODE_ENV`
 

@@ -4,7 +4,7 @@ The app every framework feature is shown and tested in (`modules/auth`, `modules
 
 ```bash
 cp .env.example .env && pnpm exec bespoke key:generate
-export NODE_ENV=development   # without NODE_ENV a command counts as production (E139) and migrate:fresh asks for --force
+# .env (from .env.example) says NODE_ENV=development — without it a command counts as production (E139) and asks for --force
 pnpm exec bespoke migrate:fresh --seed
 pnpm dev
 ```

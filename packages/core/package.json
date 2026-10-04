@@ -35,6 +35,11 @@
       "types": "./dist/register.d.ts",
       "default": "./dist/register.js"
     },
+    "./environment": {
+      "@bespokecore/source": "./src/environment.ts",
+      "types": "./dist/environment.d.ts",
+      "default": "./dist/environment.js"
+    },
     "./vite": {
       "@bespokecore/source": "./src/vite.ts",
       "types": "./dist/vite.d.ts",
@@ -57,6 +62,10 @@
       "./register": {
         "types": "./dist/register.d.ts",
         "default": "./dist/register.js"
+      },
+      "./environment": {
+        "types": "./dist/environment.d.ts",
+        "default": "./dist/environment.js"
       },
       "./vite": {
         "types": "./dist/vite.d.ts",

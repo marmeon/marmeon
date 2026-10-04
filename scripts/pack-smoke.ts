@@ -191,11 +191,6 @@ class Smoke {
     return this.run(join(this.app, 'node_modules/.bin/bespoke'), args);
   }
 
-  /** `bespoke <args>` as a developer runs it: NODE_ENV=development (migrate writes the table types there only, E164). */
-  bespokeInDevelopment(...args: string[]): string {
-    return this.run(join(this.app, 'node_modules/.bin/bespoke'), args, { NODE_ENV: 'development' });
-  }
-
   /**
    * `bespoke start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
    * answers, its process group must be exactly one process, and that one Node (E159).
@@ -213,7 +208,8 @@ class Smoke {
     rmSync(loaded, { force: true });
     const child = spawn(join(this.app, 'node_modules/.bin/bespoke'), ['start'], {
       cwd: this.app,
-      env: { ...this.env, PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}` },
+      // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example (E170).
+      env: { ...this.env, NODE_ENV: 'production', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}` },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -319,9 +315,11 @@ async function main(): Promise<number> {
       const asks = /^(Install what the module uses|And what its tests use): (.*)$/m.exec(output);
       if (asks) throw new SmokeError(`make:auth asks for packages the blank app should have: ${asks[2]}`);
     });
-    // As a developer migrates: in development, where it writes bootstrap/database.d.ts (E164) — no --force needed there.
-    await smoke.step('bespoke migrate (development)', () => {
-      const output = smoke.bespokeInDevelopment('migrate');
+    // As a developer migrates: NODE_ENV=development from the .env that key:generate copied (E170) — no --force there, and it
+    // writes bootstrap/database.d.ts (E164).
+    await smoke.step('bespoke migrate (development from .env)', () => {
+      const output = smoke.bespoke('migrate');
+      if (!output.includes('Environment: development (from .env)')) throw new SmokeError(`bespoke migrate did not take NODE_ENV=development from .env:\n${output}`);
       if (!existsSync(join(app, 'bootstrap/database.d.ts'))) throw new SmokeError(`bespoke migrate in development wrote no bootstrap/database.d.ts:\n${output}`);
     });
     const tests = await smoke.step('vitest run', () => {

@@ -9,6 +9,6 @@ import { environment } from '@bespokecore/core';
 export function confirmed({ options, output }: CommandInput, what: string): boolean {
   output.line(`Environment: ${environment.describe()}`);
   if (!environment.isProtected() || options.force === true) return true;
-  output.error(`The application is protected (${environment.describe()}). Pass --force to ${what} — or, on a development machine, set NODE_ENV=development.`);
+  output.error(`The application is protected (${environment.describe()}). Pass --force to ${what} — or, on a development machine, set NODE_ENV=development (in .env or the environment).`);
   return false;
 }

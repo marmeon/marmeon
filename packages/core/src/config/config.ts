@@ -1,6 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseEnv } from 'node:util';
+import { readEnvFile } from '../environment.ts';
 import type { Token } from '../token.ts';
 import { issuePath, type InferOutput, type StandardSchemaV1 } from './standard-schema.ts';
 
@@ -42,14 +41,15 @@ export class ConfigError extends Error {
  * Reads `.env`, then `.env.{mode}` on top (e.g. `.env.test`, like Laravel's
  * `.env.testing`); variables from the real environment win over both.
  * Parsed with `util.parseEnv`, so `process.env` itself is never modified.
+ *
+ * `NODE_ENV` follows the one resolution of `@bespokecore/core/environment` (E170): the real environment's, else the base
+ * `.env`'s — which is also what picks `.env.{mode}` when `mode` is not given. `.env.{mode}` never sets `NODE_ENV`.
  */
-export function loadEnv(root: string, mode = process.env.NODE_ENV, environment: Env = process.env): Env {
-  let fromFiles: Record<string, string | undefined> = {};
-  for (const file of ['.env', mode ? `.env.${mode}` : undefined]) {
-    const path = file && join(root, file);
-    if (path && existsSync(path)) fromFiles = { ...fromFiles, ...parseEnv(readFileSync(path, 'utf8')) };
-  }
-  return { ...fromFiles, ...environment };
+export function loadEnv(root: string, mode?: string, environment: Env = process.env): Env {
+  const base = readEnvFile(join(root, '.env'));
+  const chosen = mode ?? (environment.NODE_ENV || base.NODE_ENV || undefined);
+  const { NODE_ENV: _ignored, ...overlay } = chosen ? readEnvFile(join(root, `.env.${chosen}`)) : {};
+  return { ...base, ...overlay, ...environment };
 }
 
 /**

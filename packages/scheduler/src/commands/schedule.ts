@@ -69,6 +69,9 @@ export class ScheduleWorkCommand {
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
     const tasks = this.#scheduler.tasks;
+    // A scheduler as development because a .env says so (E170): a production command — said loudly, not refused.
+    const fromDotEnv = environment.dotEnvDevelopmentWarning('schedule:work');
+    if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed (E139) — `.environments(…)` compares against it, a missing NODE_ENV counting as production.
     output.line(
       `Running the schedule every minute: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${tasks.length > 0 ? ` (${tasks.map((task) => task.name).join(', ')})` : ''} — in ${environment.describe()}`,

@@ -42,11 +42,17 @@ export class ServeCommand {
     // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
     // NODE_ENV=development only (E115; `bespoke dev` sets it), never with "anything but production" (staging, test, unset).
     const development = environment.isDevelopment();
+    // `bespoke start` as development because a .env says so (E170): allowed (Max, 04.10.), but never quietly — a developer's
+    // .env on a server. (`bespoke dev` clears the mark: it is development by itself.)
+    const fromDotEnv = environment.dotEnvDevelopmentWarning('start');
+    if (fromDotEnv) this.#logger.warn(fromDotEnv);
     const views = development ? await this.#watchRouteTypes(output, root) : undefined;
     let server;
     try {
       server = await startServer({ app: this.#app, mode: development ? 'development' : 'production' });
     } catch (error) {
+      // The route-types watcher would keep the process alive after the failed start (it hung until killed).
+      views?.close();
       // A setup problem (no Vite, no bespoke() plugin) is a message, not a stack trace.
       if (!(error instanceof ViteSetupError)) throw error;
       output.error(error.message);

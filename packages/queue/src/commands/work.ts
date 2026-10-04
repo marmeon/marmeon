@@ -71,6 +71,9 @@ export class QueueWorkCommand {
     };
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
+    // A worker as development because a .env says so (E170): a production command — said loudly, not refused.
+    const fromDotEnv = environment.dotEnvDevelopmentWarning('queue:work');
+    if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
     output.line(`Processing jobs of the ${connection} connection: ${queues.map((queue) => (queue === '*' ? '* (every queue)' : queue)).join(', ')} — in ${environment.describe()}`);
     try {

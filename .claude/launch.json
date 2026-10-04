@@ -15,7 +15,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "source ~/.nvm/nvm.sh && nvm use >/dev/null && pnpm build && cd apps/web-app && pnpm build && PORT=3961 pnpm start"
+        "source ~/.nvm/nvm.sh && nvm use >/dev/null && pnpm build && cd apps/web-app && pnpm build && NODE_ENV=production PORT=3961 pnpm start"
       ],
       "port": 3961
     },

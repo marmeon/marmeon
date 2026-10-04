@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,15 +92,13 @@ describe('bespoke (in the web app)', () => {
     // Development regenerates the table types (already committed, so unchanged).
     const development = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
     expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
-    expect(bespoke(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (protected)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development.');
+    expect(bespoke(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (protected)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
     // Fail-closed (E139): staging and a missing NODE_ENV ask for --force too; with it, staging migrates — and writes no types.
     const staging = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: 'staging' });
     expect(staging.code).toBe(1);
     expect(staging.stdout).toContain('Environment: staging (protected)\n');
     expect(staging.stdout).not.toContain('Migrated');
-    expect(staging.stderr).toContain('Pass --force to migrate — or, on a development machine, set NODE_ENV=development.');
-    const unset = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: '' });
-    expect(unset.stderr).toContain('The application is protected (unset NODE_ENV (protected, like production)). Pass --force to migrate — or, on a development machine, set NODE_ENV=development.');
+    expect(staging.stderr).toContain('Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
     const forced = bespoke(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'staging' });
     expect(forced.code).toBe(0);
     expect(forced.stdout).toContain('Migrated 2026_10_01_120000_create_users_table');
@@ -352,6 +350,36 @@ describe('bespoke start', () => {
     expect(server.output()).toContain('SIGTERM received, shutting down');
   }, 30_000);
 
+  it('takes NODE_ENV=development from .env when the process has none — and says loudly that start runs as development (E170)', () => {
+    writeFileSync(join(app, '.env'), 'NODE_ENV=development\n');
+    mkdirSync(join(app, 'modules')); // what development watches for new views
+    try {
+      const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+      // Development serves through Vite's dev server, which this app does not have — the warning comes first, before the server.
+      const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '39999', LOG_LEVEL: 'info' } });
+      expect(`${result.stdout}${result.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: bespoke start runs with the development tools');
+      // …and the failed start ends (the route-types watcher kept it alive until it was killed).
+      expect(result.stderr).toContain('Vite is not installed in this app.');
+      expect(result.status).toBe(1);
+    } finally {
+      rmSync(join(app, 'modules'), { recursive: true });
+      rmSync(join(app, '.env'));
+    }
+  }, 30_000);
+
+  it('the process NODE_ENV wins over .env — staging stays staging, no warning (E170)', async () => {
+    writeFileSync(join(app, '.env'), 'NODE_ENV=development\n');
+    try {
+      const server = await start({ NODE_ENV: 'staging' });
+      server.child.kill('SIGTERM');
+      expect(await server.exited).toBe(0);
+      expect(server.output()).toContain(`BespokeCore in staging (protected) on http://localhost:${server.port}`);
+      expect(server.output()).not.toContain('comes from .env');
+    } finally {
+      rmSync(join(app, '.env'));
+    }
+  }, 30_000);
+
   it('runs as production when NODE_ENV is missing', async () => {
     const server = await start({});
     server.child.kill('SIGTERM');
@@ -418,6 +446,65 @@ describe('bespoke start', () => {
     } finally {
       chmodSync(join(app, 'storage'), 0o755);
     }
+  }, 30_000);
+});
+
+/**
+ * Where NODE_ENV comes from (E170): the process's, else the app's `.env` — what a developer's machine has (`NODE_ENV=development`
+ * from `.env.example`). A copy of the blank app with a `.env` of its own; the commands run without a NODE_ENV of the process.
+ */
+describe('NODE_ENV from the app’s .env (E170)', () => {
+  let app: string;
+  const blank = join(repo, 'apps/blank-app');
+  const config = (dir: string) => `APP_NAME=Blank\nAPP_URL=http://localhost\nAPP_KEY=base64:${Buffer.alloc(32, 5).toString('base64')}\nDB_DATABASE=${join(dir, 'db.sqlite')}\nMAIL_MAILER=array\n`;
+  const inApp = (args: string[], env: Record<string, string> = {}) => bespoke(app, args, { NODE_ENV: '', ...env });
+
+  beforeAll(() => {
+    app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-dotenv-')));
+    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.bespoke|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
+    symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
+    mkdirSync(join(app, 'storage'));
+  });
+  afterAll(() => rmSync(app, { recursive: true, force: true }));
+
+  it('a developer migrates without --force: NODE_ENV=development from .env, table types written, the worker warns', () => {
+    writeFileSync(join(app, '.env'), `NODE_ENV=development\n${config(app)}`);
+    rmSync(join(app, 'bootstrap/database.d.ts'), { force: true });
+    const migrate = inApp(['migrate']);
+    expect(migrate.stdout).toContain('Environment: development (from .env)\n');
+    expect(migrate.stdout).toContain('Wrote bootstrap/database.d.ts');
+    expect(migrate.code).toBe(0);
+    expect(existsSync(join(app, 'bootstrap/database.d.ts'))).toBe(true);
+    // A production command as development because of .env: said, not refused.
+    const worker = inApp(['queue:work', '--stop-when-empty']);
+    expect(worker.code).toBe(0);
+    expect(`${worker.stdout}${worker.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: bespoke queue:work runs with the development tools');
+    expect(worker.stdout).toContain('— in development (from .env)');
+  }, 30_000);
+
+  it('the process NODE_ENV wins over .env', () => {
+    writeFileSync(join(app, '.env'), `NODE_ENV=development\n${config(app)}`);
+    const staging = inApp(['migrate'], { NODE_ENV: 'staging' });
+    expect(staging.code).toBe(1);
+    expect(staging.stdout).toContain('Environment: staging (protected)\n');
+    expect(staging.stderr).toContain('Pass --force to migrate');
+  }, 30_000);
+
+  it('ignores NODE_ENV in .env.{NODE_ENV} — and without NODE_ENV anywhere the app is protected', () => {
+    writeFileSync(join(app, '.env'), `NODE_ENV=staging\n${config(app)}`);
+    writeFileSync(join(app, '.env.staging'), 'NODE_ENV=development\n');
+    try {
+      const staging = inApp(['migrate']);
+      expect(staging.stderr).toContain('NODE_ENV in .env.staging is ignored: .env.staging is chosen by NODE_ENV and cannot set it');
+      expect(staging.stdout).toContain('Environment: staging (protected, from .env)\n');
+      expect(staging.code).toBe(1);
+    } finally {
+      rmSync(join(app, '.env.staging'));
+    }
+    writeFileSync(join(app, '.env'), config(app));
+    const unset = inApp(['migrate']);
+    expect(unset.code).toBe(1);
+    expect(unset.stderr).toContain('The application is protected (unset NODE_ENV (protected, like production)). Pass --force to migrate');
   }, 30_000);
 });
 
