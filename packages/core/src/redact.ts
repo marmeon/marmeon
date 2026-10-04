@@ -63,6 +63,11 @@ const API_TOKEN = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
 // like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).
 const PATH_SEGMENT = /(?<=\/)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// What every pattern above (and an added name's `name=value`) needs to match at all: a separator (`:` `=`), a `$` (PHC),
+// whitespace (`Bearer …`) or a run of 32 URL-safe characters (a token-like segment — and an API token's secret). A text
+// without any of them — a request path like `/users/7/edit`, on every request's log line — has nothing to mask: one test
+// instead of seven replaces (W7.11: the log line's path cost /login 2.6 %).
+const MAYBE_SECRET = /[:=$\s]|[\w-]{32}/;
 
 /**
  * Whether a long path segment is a secret rather than a name: a hex string (a hash) or a random-looking base64url string —
@@ -144,6 +149,7 @@ export class Redactor {
 
   /** `text` without what looks like a secret ({@link redactText} and the added names' values), cut at {@link MAX_ENTRY_BYTES}. */
   text(text: string): string {
+    if (text.length <= MAX_ENTRY_BYTES && !MAYBE_SECRET.test(text)) return text;
     const masked = redactText(text);
     return truncate(this.#text ? masked.replace(this.#text, `$1$2${REDACTED}`) : masked);
   }

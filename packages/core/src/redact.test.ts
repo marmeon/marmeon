@@ -178,6 +178,27 @@ describe('redact() — the log path, completed (W7.11)', () => {
   });
 });
 
+describe('Redactor.text — the shortcut for text without anything to mask (W7.11)', () => {
+  it('returns a plain path as it is, and masks the same as redactText wherever a pattern could match', () => {
+    const redactor = new Redactor(['bespoke_session']);
+    const token = 'Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z';
+    const texts = [
+      '/users/7/edit', '/people', '/lab/errors/table', '/docs/packages/core', '/a-slug-of-thirty-one-characters',
+      `/reset-password/${token}`, `/files/${'a'.repeat(31)}b`, '/x?password=hunter2', '/x;password:hunter2',
+      'Bearer abc', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA', 'bc_1|' + token, 'postgres://u:secret@host/db',
+      'bespoke_session=abc', 'a b',
+    ];
+    for (const text of texts) {
+      const expected = redactText(text).replace(/(\bbespoke_session)(\s*[:=]\s*"?)([^\s"'&,;}]+)/gi, '$1$2[redacted]');
+      expect(redactor.text(text), text).toBe(expected);
+    }
+    expect(redactor.text('/users/7/edit')).toBe('/users/7/edit');
+    expect(redactor.text(`/reset-password/${token}`)).toBe('/reset-password/[redacted]');
+    expect(redactor.path(`/reset-password/${token}`)).toBe('/reset-password/[redacted]');
+    expect(redactor.text('bespoke_session=abc')).toBe('bespoke_session=[redacted]');
+  });
+});
+
 describe('Redactor.headers — a header given more than once', () => {
   it('redacts set-cookie as a list and joins other lists', () => {
     const shown = new Redactor().headers({ 'set-cookie': ['a=1', 'b=2'], 'x-forwarded-for': ['1.2.3.4', '5.6.7.8'], accept: 'text/html', missing: undefined });
