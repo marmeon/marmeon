@@ -58,6 +58,24 @@ describe('make:auth', () => {
     expect(app).toMatch(/modules: \[auth, system\]/);
     expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
+    // The blank app has its lint preset, but no devtools: only the devtools are named.
+    expect(lines.filter((line) => line.startsWith('Lint:'))).toEqual([]);
+    expect(lines).toContain('Devtools for bespoke dev (requests, queries, jobs, mails at /_bespoke/devtools): pnpm add -D @bespokecore/devtools');
+  });
+
+  it('names the lint preset and the devtools only while the app has neither (they belong to the app, W7.6)', async () => {
+    const root = blankApp();
+    rmSync(join(root, '.oxlintrc.json'));
+    const without = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
+    expect(without.lines).toContain("Lint: bespoke make:lint-config writes the app's preset (views import controllers only with import type).");
+    writeFileSync(join(root, '.oxlintrc.json'), '{}\n');
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { devDependencies: Record<string, string> };
+    pkg.devDependencies['@bespokecore/devtools'] = 'workspace:*';
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
+    const both = fakeInput(root, { force: true });
+    expect(await new MakeAuthCommand().handle(both.input)).toBe(0);
+    expect(both.lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools'))).toEqual([]);
   });
 
   it('refuses to overwrite an existing module unless forced — the module belongs to the app', async () => {

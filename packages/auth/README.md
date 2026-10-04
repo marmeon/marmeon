@@ -29,7 +29,9 @@ module imports that `package.json` lacks (`@bespokecore/cache`, `mail`, `queue`,
 `valibot`, …; it also imports [@bespokecore/i18n](../i18n/README.md)) and — when nothing is missing — runs
 `bespoke route:types`. It needs `config/app.ts` exporting `AppConfig` (`APP_NAME`, `APP_URL`) — the app skeleton has one. An
 existing `modules/auth` is never touched without `--force`. Then: `bespoke migrate`, a jobs table for its queued mails
-(`bespoke make:queue-table`, once) and `MAIL_*` in `.env`.
+(`bespoke make:queue-table`, once) and `MAIL_*` in `.env`. The lint preset and the devtools belong to the app, not to the
+module — `make:auth` names them while the app has neither: `bespoke make:lint-config` ([Lint](../cli/README.md#lint)) and
+`pnpm add -D @bespokecore/devtools` ([@bespokecore/devtools](../devtools/README.md)).
 
 What the module holds:
 

@@ -85,6 +85,13 @@ export class MakeAuthCommand {
     input.output.line('Its mails go through the queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one).');
     input.output.line('Expired tokens are pruned at night by the scheduler (bespoke dev starts it; in production: bespoke schedule:work or schedule:run from cron).');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
+    // The lint preset and the devtools belong to the app, not to the module (W7.6) — named when the app has neither yet.
+    if (!existsSync(join(input.root, '.oxlintrc.json'))) {
+      input.output.line('Lint: bespoke make:lint-config writes the app\'s preset (views import controllers only with import type).');
+    }
+    if (!('@bespokecore/devtools' in installed(input.root))) {
+      input.output.line('Devtools for bespoke dev (requests, queries, jobs, mails at /_bespoke/devtools): pnpm add -D @bespokecore/devtools');
+    }
     return 0;
   }
 }
@@ -107,9 +114,15 @@ function register(file: string): 'added' | 'present' | 'manual' {
 }
 
 function missingDependencies(root: string): string[] {
-  const file = join(root, 'package.json');
-  if (!existsSync(file)) return [...NEEDED, ...NEEDED_FOR_TESTS];
-  const pkg = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  const have = { ...pkg.dependencies, ...pkg.devDependencies };
+  if (!existsSync(join(root, 'package.json'))) return [...NEEDED, ...NEEDED_FOR_TESTS];
+  const have = installed(root);
   return [...NEEDED, ...NEEDED_FOR_TESTS].filter((name) => !(name in have));
+}
+
+/** The app's dependencies and dev dependencies (none without a package.json). */
+function installed(root: string): Record<string, string> {
+  const file = join(root, 'package.json');
+  if (!existsSync(file)) return {};
+  const pkg = JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  return { ...pkg.dependencies, ...pkg.devDependencies };
 }
