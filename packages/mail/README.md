@@ -20,12 +20,40 @@ await this.#mailer.queue(new VerifyEmailMail(user, url, this.#translators.for(us
 await this.#mailer.send(new VerifyEmailMail(user, url, t));                                                       // composed and sent now
 ```
 
+`bespoke discover` registers its `MailServiceProvider` through the `"bespoke"` field of its package.json: the `Mailer` and the
+`MailTransport` of `MAIL_MAILER` (built on first use — a web process that only queues mails never opens an SMTP connection;
+SMTP connections are closed on shutdown), the framework job `bespoke.mail` when the app has `@bespokecore/queue`, and — with
+`NODE_ENV=development` only — the [previews](#previews-e106). Optional peers: `mjml` (for the `` mjml`…` `` template, `pnpm add mjml`),
+`nodemailer` (for `smtp`), `@bespokecore/queue` (for `mailer.queue()`), `@bespokecore/router` (for the previews).
+
+## Configuration
+
 ```sh
 MAIL_MAILER=log               # log (default: written to the log, nothing sent) | array (kept in memory) | smtp (pnpm add nodemailer)
-MAIL_FROM_ADDRESS=hello@example.com
-MAIL_FROM_NAME=
-MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASSWORD=   # smtp; MAIL_SECURE=true: TLS from the first byte (465)
+MAIL_FROM_ADDRESS=hello@example.com   # the default sender (default hello@example.com)
+MAIL_FROM_NAME=               # its name (default: none — then the address alone)
+MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASSWORD=   # smtp (these are the defaults)
 ```
+
+`MAIL_SECURE=true` means TLS from the first byte (port 465); otherwise STARTTLS when the server offers it. `MailConfig`
+(`config.mailer`, `config.from`, `config.smtp`, `config.previews`) is the package's config class. The web app's `.env.test`
+sets `MAIL_MAILER=array`.
+
+## Mails
+
+A `Mailable` has `envelope()` — `to`, `subject`, optionally `from` (else `MAIL_FROM_ADDRESS`), `cc`, `bcc`, `replyTo`,
+`headers`; an address is `'ada@example.com'` or `{ address, name }` —, `content()` and optionally `attachments()`; each may be
+async. `content()` returns:
+
+- **`` mjml`…` ``** — every interpolated value escaped, nested `mjml`/`html` kept (a layout can be a function returning
+  `mjml`); compiled by `mjml` with strict validation (a mistyped tag is a `MjmlError`), the text version derived from the
+  compiled HTML — `fromMjml(body, { text })` gives one of your own.
+- **`` html`…` ``** — the escaping template of `@bespokecore/core` ([HTML](../core/README.md#html-the-escaping-html-template)),
+  re-exported here; `fromHtml(body, text?)`, `textFromHtml(markup)` (links keep their URL in the text).
+- **`{ html, text }`** — both as you made them.
+
+`compose(mailable, from)` turns a mailable into the neutral `MailMessage` (`from`, `to`, `cc`, `bcc`, `replyTo`, `subject`,
+`html`, `text`, `attachments`, `headers`) that transports send and the fake records.
 
 ## Queued mails (E105)
 
@@ -35,17 +63,19 @@ with its links — and queues the finished `MailMessage` as the framework job `b
 - **The request never waits for SMTP**, and a mail server that is down never turns a registration into a 500: the job retries
   (5 tries, 10 s / 1 min / 5 min apart), then waits in the failed jobs for `bespoke queue:retry`.
 - **Encrypted:** a queued mail carries what only its recipient may see — a reset link, a signed verification link. The payload
-  is encrypted with `APP_KEY`; `jobs` and `failed_jobs` hold ciphertext only. Attachments travel inside it (base64).
+  is encrypted with `APP_KEY`; `jobs` and `failed_jobs` hold ciphertext only. Attachments travel inside it (base64). See
+  [secrets in payloads](../queue/README.md#secrets-in-payloads-e105).
 - **At-least-once** (E85): a worker that dies after the transport took the mail and before the acknowledgement sends it again.
 - **Inside a transaction** (E107) it is a dispatch like any other: on the database queue a row in the transaction, else held
-  until the commit — a rolled-back registration sends nothing.
-- Needs `@bespokecore/queue` (an optional peer: without it `queue()` says what to install). The transport is built on first use —
-  a web process that only queues mails never opens an SMTP connection.
+  until the commit — a rolled-back registration sends nothing ([what joins](../database/README.md#what-joins-what-does-not)).
+- Needs `@bespokecore/queue` (an optional peer: without it `queue()` says what to install). A worker must take the queue:
+  `bespoke queue:work --queue=mail,default`.
 - Tokens that must stay the same over the mail's retries (a reset token) are made **before** the mail is queued — the web app
   queues a job that makes the token and queues the mail (two hops), so the request's answer time does not depend on the account.
 
-**The recipient's language, without a request:** `Translators.for(locale)` (`@bespokecore/i18n`) gives a fixed translator for any
-supported locale (else `APP_LOCALE`) — injectable everywhere: a job, a command, a scheduled task, a notification's `toMail`.
+**The recipient's language, without a request:** `Translators.for(locale)` (`@bespokecore/i18n`,
+[`Translators`](../i18n/README.md#translators-any-locale-anywhere)) gives a fixed translator for any supported locale (else
+`APP_LOCALE`) — injectable everywhere: a job, a command, a scheduled task, a notification's `toMail`.
 
 ## Links are absolute
 
@@ -61,22 +91,36 @@ in (nor should a `Host` header ever decide where a link points). `compose()` ref
 - **`calendarEvent({ uid, summary, start, end, url, … })`** — an `.ics` (RFC 5545): CRLF line ends, UTC times, text escaped,
   long lines folded at 75 octets; a line break in a value that must be one line (a uid, an address, a link) is refused — no value
   adds properties to the calendar entry.
-- **`diskAttachment(disk, key, { filename })`** (`@bespokecore/storage`) — a file from a disk.
+- **`diskAttachment(disk, key, { filename })`** ([@bespokecore/storage](../storage/README.md)) — a file from a disk.
 
 ## Previews (E106)
 
-`GET /_bespoke/mail` lists every mail class with a `static preview(context)` (in `modules/*/mail/*.ts`); `/_bespoke/mail/<module>/<Class>`
-shows one — subject, sender, recipients, attachments above the HTML in a sandboxed frame (no script of a template runs);
-`?locale=de`, `?text`, `?raw` (the HTML alone, sandboxed by its CSP too: no script of it runs on the app's origin). Previews build
-their mail from factory data (`make()`, never `create()`). The routes are **registered only with `NODE_ENV=development`** (E115,
-the devtools' gate — `bespoke dev` sets it) and have no middleware group (no session, no cookies); the devtools
-(`/_bespoke/devtools`, `@bespokecore/devtools`) link to them. A name finds a mail in the list made at startup — never a file path
+`GET /_bespoke/mail` lists every mail class with a `static preview(context)` (exported from `modules/<module>/mail/*.ts`);
+`/_bespoke/mail/<module>/<Class>` shows one — subject, sender, recipients, attachments above the HTML in a sandboxed frame (no
+script of a template runs); `?locale=de`, `?text`, `?raw` (the HTML alone, sandboxed by its CSP too: no script of it runs on the
+app's origin). Previews build their mail from factory data (`make()`, never `create()`):
+
+```ts
+static preview({ make, locale }: MailPreviewContext) {
+  return new VerifyEmailMail(make(Factories).for(UserFactory).make(), 'https://app.test/email/verify/1/abc', make(Translators).for(locale));
+}
+```
+
+The routes are **registered only with `NODE_ENV=development`** (E115, the devtools' gate — `bespoke dev` sets it,
+[only in development](../devtools/README.md#only-in-development-e115-fail-closed)) and have no middleware group (no session, no
+cookies); the devtools (`/_bespoke/devtools`) link to them. A name finds a mail in the list made at startup — never a file path
 from the URL. A test that wants them runs as development: `createTestApp(App, { env: { NODE_ENV: 'development' } })`.
 
 > **Upgrading from before Wave 7:** the previews were registered for every `NODE_ENV` but `production` ("not production"); since
 > W7 step 8 only with `NODE_ENV=development`. A staging server, a test or a server without `NODE_ENV` has no `/_bespoke/mail` any
 > more. The escaping `html` template moved to `@bespokecore/core` (`import { html } from '@bespokecore/core'`); this package
 > re-exports it unchanged.
+
+## Observation
+
+Every mail goes through the `mail.send` channel of `@bespokecore/core/diagnostics` while something listens
+([the channels](../core/README.md#the-channels)) — `send`, `queue`, and the worker that sends a queued one: the devtools record it
+(redacted, E125), OpenTelemetry counts recipients, never addresses.
 
 ## Testing
 
@@ -88,6 +132,8 @@ app.mail.assertQueued(VerifyEmailMail, (mail, message, options) => message.to[0]
 app.mail.assertSent(WelcomeMail).assertNotSent(ResetPasswordMail).assertNothingQueued();   // also assertQueuedCount, assertSentCount, …
 ```
 
+Also `assertNotQueued`, `assertNothingSent`, and `sent(Class, filter?)` / `queued(Class, filter?)` for the entries themselves.
 Sent (`send`) and queued (`queue`) mails are kept apart — `assertSent` on a queued mail fails with "(… was queued, not sent now —
 assertQueued)". The fake does not put queued mails on the queue; to test the `bespoke.mail` job itself use
-`createTestApp(app, { mail: 'real' })` with `MAIL_MAILER=array` and `app.queue.work()`.
+`createTestApp(app, { mail: 'real' })` with `MAIL_MAILER=array` and `app.queue.work()`. More in
+[fakes](../testing/README.md#fakes).

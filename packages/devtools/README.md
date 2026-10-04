@@ -2,7 +2,8 @@
 
 What the app does, recorded while you develop — requests, queries, jobs, mails, notifications, log entries, exceptions,
 scheduled runs, live hints, events and commands — as **redacted** entries in `storage/framework/devtools/` (Telescope's idea,
-files instead of a table). The recorder listens to the framework's observation points (`@bespokecore/core/diagnostics`, E118);
+files instead of a table). The recorder listens to the framework's observation points
+([`@bespokecore/core/diagnostics`](../core/README.md#diagnostics-bespokecorecorediagnostics-e118), E118);
 the pages under [`/_bespoke/devtools`](#the-pages-_bespokedevtools) (W7 step 8) and the [in-page bar](#the-in-page-bar) (step 9)
 read the entries through the store.
 
@@ -18,7 +19,7 @@ discovers again.
 
 | | |
 |---|---|
-| `NODE_ENV=development` (`bespoke dev` sets it — also for its worker and scheduler) | records |
+| `NODE_ENV=development` (`bespoke dev` sets it when the environment has none — also for its worker and scheduler) | records |
 | any other `NODE_ENV` — `test`, `staging`, **unset** | nothing subscribed, nothing written, `config/devtools.ts` never loaded |
 | `DEVTOOLS_ENABLED=false` | off, also in development |
 | `DEVTOOLS_ENABLED=true` with `NODE_ENV=production` | **the start fails** |
@@ -30,7 +31,19 @@ discovers again.
 
 ## Settings: `config/devtools.ts` (optional)
 
+Two parts, read by the `DevtoolsServiceProvider`:
+
+- **The gate** — `DevtoolsConfig`, the package's config class, from the environment: `NODE_ENV`, `DEVTOOLS_ENABLED` (see
+  [the table above](#only-in-development-e115-fail-closed)) and `APP_URL` (its host may open the pages, besides the loopback
+  names — [security model](#security-model)).
+- **What to record** — `config/devtools.ts`, a **convention file**: the provider looks for it at that path in the app's root
+  and loads it itself, once the gate is open. It is the only config of the app **outside `defineApplication({ config })`** —
+  because the package is a dev dependency: listed there, the app's composition root would import `@bespokecore/devtools`, and a
+  production install (without dev dependencies) could not even load it. The file is optional (the defaults below apply); if it
+  exists it must `export default defineDevtools({ … })`, or the start fails with a `DevtoolsConfigError`.
+
 ```ts
+// config/devtools.ts — every option; record, slowQueryMs, logLevel and storage as they default
 import { defineDevtools } from '@bespokecore/devtools';
 
 export default defineDevtools({
@@ -47,8 +60,10 @@ export default defineDevtools({
 });
 ```
 
-The file is loaded **by the devtools only, and only where they run** — so it may import `@bespokecore/devtools` although the
-package is a dev dependency. Nothing else imports it (do not list it in `defineApplication({ config })`).
+The file is loaded **by the devtools only, and only where they run** — so it may import `@bespokecore/devtools` although the package
+is a dev dependency; nothing else imports it. `ignore.paths` takes an exact path, a prefix ending in `*` or a `RegExp`; an unknown
+name in `record` fails at `defineDevtools()`. A test's opt-in (`devtools: true`) does not read the file: it records everything, into
+memory.
 
 ## Entries
 
@@ -73,7 +88,7 @@ interface Entry {
 | `mail` | mailable, mode (`send`, `queue`, `worker`), from, to, cc, bcc, subject, HTML and text with signatures and token paths in links masked, attachments by name and size |
 | `notification` | notification, id, recipient, queued, channels, outcome |
 | `log` | level, message, context (redacted) — from `debug`; the database's own line per statement is left out (the query says it) |
-| `exception` | class, message, stack (redacted), where (`request`, `job`, `schedule`, `command`), status/method/path, the solutions the error page shows (E130) |
+| `exception` | class, message, stack (redacted), where (`request`, `job`, `schedule`, `command`), status/method/path, the solutions the error page shows ([E130](../core/README.md#solutions-e130)) |
 | `schedule` | task, minute, reason, outcome, skipped, durationMs, error |
 | `live` | channel, `only` |
 | `event` | name (`static event` or class), class, its fields (redacted), listeners |
@@ -87,12 +102,12 @@ dropped).
 
 ## Redaction (E125) — also locally
 
-Everything goes through the app's `Redactor` (`@bespokecore/core`) before it is written — the same one as the error page, its
-Markdown and the OpenTelemetry spans: values of sensitive keys at any depth (`password`, `token`, `secret`, `cookie`,
-`authorization`, `_token`, `x-xsrf-token`, `set-cookie`, the session cookie's name …), statements on tables with secret columns
-without parameters, password hashes (PHC) and API tokens anywhere in text, token-like path segments (`/reset-password/<token>`
-in a mail, a log line or a `Referer`), `signature=` in links, encrypted payloads as `[encrypted]`, files and bytes by their
-size — and every entry cut to 64 KB.
+Everything goes through the app's `Redactor` ([redaction](../core/README.md#redaction-e125)) before it is written — the same one as
+the error page, its Markdown and the OpenTelemetry spans: values of sensitive keys at any depth (`password`, `token`, `secret`,
+`cookie`, `authorization`, `_token`, `x-xsrf-token`, `set-cookie`, the session cookie's name …), statements on tables with secret
+columns without parameters, password hashes (PHC) and API tokens anywhere in text, token-like path segments
+(`/reset-password/<token>` in a mail, a log line or a `Referer`), `signature=` in links, encrypted payloads as `[encrypted]`, files
+and bytes by their size — and every entry cut to 64 KB.
 
 ## The store (E116)
 
@@ -101,8 +116,8 @@ size — and every entry cut to 64 KB.
   tenth of `maxBytes`.
 - **Ring:** 50 MB / 24 hours by default — each writing process keeps it (after a write that may have gone over, when an hour
   begins, at the start); `bespoke devtools:prune` does the same, `bespoke devtools:clear` removes everything. The web app
-  schedules `devtools:prune` hourly with `.environments('development')` (the scheduler does not ask for a command limited to
-  other environments, so production — without the package — starts fine).
+  schedules `devtools:prune` hourly with `.environments('development')` ([@bespokecore/scheduler](../scheduler/README.md): it
+  does not ask for a command limited to other environments, so production — without the package — starts fine).
 - **Writes never fail a request:** a failed write is a process warning (once per kind) and the entries are lost.
 - **Reading:** an index in memory (id, type, time, batch, request, job, tags, where the line is) over every file, brought up
   to date before each read — whole lines only, so a line another process is writing is read next time.
@@ -124,7 +139,8 @@ await store.usage();                                   // { bytes, files, entrie
 
 ## The pages: `/_bespoke/devtools`
 
-Served by the app itself, rendered on the server (E117) with the escaping `html` template (`@bespokecore/core`) — own CSS, light
+Served by the app itself, rendered on the server (E117) with the escaping
+[`html` template](../core/README.md#html-the-escaping-html-template) — own CSS, light
 and dark, one small inline script for the live tail, filters and copy buttons; no client framework, **nothing of it in the
 app's Vite bundle** (the leak test looks for the devtools in every client chunk). Every page `bespoke dev` renders carries the
 [in-page bar](#the-in-page-bar), which links here.
@@ -136,11 +152,11 @@ app's Vite bundle** (the leak test looks for the devtools in every client chunk)
 | `/queries`, `/jobs`, `/mails`, `/notifications`, `/logs`, `/exceptions`, `/events`, `/live`, `/commands` (each `[/:id]`) | The type's list — newest first, live, filtered by tag, request id, search; paged — and an entry's page: its content, its batch, its request and job |
 | `/mails/:id` | A recorded mail: envelope, text, and its HTML in a **sandboxed frame** (`sandbox` without `allow-scripts`, from `/mails/:id/html`, which carries `Content-Security-Policy: sandbox` itself) |
 | `/schedule` | The scheduled tasks — schedule, next run (the logic of `schedule:list`), options, `bespoke schedule:test <task>` to copy — the lock warning (E123), and the latest runs |
-| `/queue` | Horizon's idea, development only (E113): every connection's queues with their jobs (ready, delayed, running), the failed jobs (error and payload redacted) with `bespoke queue:retry <id>` / `queue:forget <id>` **to copy**, the latest attempts — read through the queue's own connections, outside any transaction |
+| `/queue` | Horizon's idea, development only (E113) — the counts of [@bespokecore/queue](../queue/README.md#connections-and-drivers): every connection's queues with their jobs (ready, delayed, running), the failed jobs (error and payload redacted) with `bespoke queue:retry <id>` / `queue:forget <id>` **to copy**, the latest attempts — read through the queue's own connections, outside any transaction |
 | `/batches/:batch` | Everything one request, job attempt, run or command recorded, in order |
 | `/stream` | Server-Sent Events: the live tail (see below) |
 | `/api/*` | JSON for the in-page bar and other tools (see below) — `/api/source` too: where a controller or a view is, for "open in editor" |
-| `/_bespoke/mail` | The mail previews (`@bespokecore/mail`, E106), linked in the navigation — same gate: development only |
+| `/_bespoke/mail` | The mail previews ([previews](../mail/README.md#previews-e106), E106), linked in the navigation — same gate: development only |
 
 Filters (`?status=4xx&route=auth.login&tag=failed&requestId=…&search=…`) are plain links and forms; `/` focuses the search.
 
@@ -195,7 +211,8 @@ red dot after a hydration error or a failed request. A click or **`Alt+Shift+D`*
 | **SSR** | The document's server rendering, and every hydration error React recovered from (a mismatch, or a part that failed on the server) |
 
 **Only in development, never in a build (E115).** The provider adds two tags to the head of every document the **Vite dev
-server** renders (`DevDocument` of `@bespokecore/server`, bound with `NODE_ENV=development` only): `<meta name="bespoke-devtools">`
+server** renders ([`DevDocument`](../server/README.md#the-development-document-devdocument--development-only) of
+`@bespokecore/server`, bound with `NODE_ENV=development` only): `<meta name="bespoke-devtools">`
 with the document's request id, and `<script type="module" src="/@id/@bespokecore/devtools/client">` — served by Vite from this
 package's `./client` export. Nothing of the app imports it, so no build has it; the production renderer never reads `DevDocument`.
 In the head, it runs before the app's entry and sets the **dev hook** `__BESPOKE_DEVTOOLS_HOOK__`. The client core calls the hook
@@ -225,9 +242,11 @@ later (E117): the JSON API and the stream above, and on the client:
 | Data feature | `navigator.use(devtools)` → `{ timeline, snapshots, hydration, cache, left, answerFor(url), subscribe(listener), onStarted(listener), stop(), record }` — the hook attaches it to every navigator made; the one that takes over the history (`start()`) is the app's, the others stop (React makes a new one when it renders the tree again after a hydration error) |
 | Timeline entry | `{ id, kind, method, url, at, end?, status?, requestId?, answered?, outcome?, location?, reload?, only?, except?, name?, component?, errors?, patches?, channel?, hinted? }` — `kind`: `document`, `visit`, `reload`, `partial`, `background`, `deferred`, `prefetch`, `restore`, `layer`, `island`, `action`, `validation`, `upload`, `live`; `outcome`: `ok`, `invalid`, `reload` (409), `redirect`, `failed`, `cancelled`, `prefetched` |
 | Request id | `x-request-id` of every answer; the document's in `<meta name="bespoke-devtools" content="…">` — `GET /_bespoke/devtools/api/requests/:requestId` (E131) |
-| Visit events | `navigator.on('start' \| 'success' \| 'error' \| 'exception' \| 'cancel' \| 'finish' \| 'flash' \| 'version')` and the hook API `navigator.use(hooks).on('before' \| 'invalid')` (E132, `@bespokecore/http`) |
+| Visit events | `navigator.on('start' \| 'success' \| 'error' \| 'exception' \| 'cancel' \| 'finish' \| 'flash' \| 'version')` and the hook API `navigator.use(hooks).on('before' \| 'invalid')` (E132, [features](../http/README.md#features)) |
 
 ## Tests
+
+With [@bespokecore/testing](../testing/README.md), a test opts in (`devtools: true`); `app.devtools` reads what was recorded:
 
 ```ts
 const app = await createTestApp(App, { database: 'refresh', devtools: true });
@@ -246,6 +265,7 @@ channels like the real ones, so mails, dispatches and notifications of a test ar
 
 ## App events: the `bespoke:event` channel
 
-The `EventDispatcher` publishes every dispatch on `bespoke:event` (`channels.subscribe(app, 'event', …)`) — before a test's
+The `EventDispatcher` publishes every dispatch on `bespoke:event` (`channels.subscribe(app, 'event', …)`,
+[the channels](../core/README.md#the-channels)) — before a test's
 `EventFake` decides whether listeners run. The fake keeps its one observer slot; the channel is for everyone else, built only
 while something listens.

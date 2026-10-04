@@ -2,20 +2,27 @@
 
 Disks (E91): files under keys — on the local file system, in S3 (or an S3-compatible store) or in memory — behind one
 contract. Public disks are served by the app with safe headers; **private disks are never public**: their files leave only
-through signed URLs that expire.
+through signed URLs that expire. On top of the disks: [uploads](#uploads) — a file goes ahead of its form, onto a private
+disk, and the form's request checks it.
+
+`bespoke discover` registers its `StorageServiceProvider` like any installed package. What it serves needs
+[@bespokecore/http](../http/README.md) (public disks, temporary URLs); uploads also need `@bespokecore/database` and
+[@bespokecore/encryption](../encryption/README.md); S3 needs the AWS SDK (optional peers, [below](#s3)).
 
 ```ts
-// config/storage.ts — listed in the app's `config`
+// config/storage.ts — listed in the app's `config` (defineApplication({ config: [AppConfig, AppStorage] }))
 export const AppStorage = defineStorage({
   env: v.object({ S3_BUCKET: v.optional(v.string()), S3_REGION: v.optional(v.string()), S3_ENDPOINT: v.optional(v.string()) }),
   default: 'local',
   disks: (env) => ({
     local: { driver: 'local', root: 'storage/app/private' },                                       // private (default)
     public: { driver: 'local', root: 'storage/app/public', visibility: 'public', url: '/storage' },
+    uploads: { driver: 'local', root: 'storage/app/uploads' },                                     // where uploads wait (UPLOADS_DISK)
     s3: { driver: 's3', bucket: env.S3_BUCKET, region: env.S3_REGION, endpoint: env.S3_ENDPOINT },
   }),
 });
 declare module '@bespokecore/storage' { interface StorageTypes { storage: typeof AppStorage } }
+// → storage.disk('pubic') and storage.disk('local').url(…) are type errors
 
 // anywhere — constructor(storage: Storage)
 const disk = this.#storage.disk('public');
@@ -25,14 +32,35 @@ const url = await this.#storage.disk('local').temporaryUrl('exports/7.json', { e
 return this.redirect(url, 303);                                           // local: a signed app route; S3: a presigned GET
 ```
 
-Without a `defineStorage(…)` the app has Laravel's two disks: `local` (private, `storage/app/private`) and `public`
-(`storage/app/public` under `/storage`).
+## Configuration
+
+**Disks:** `defineStorage({ env?, default, disks })` is the config class — in the app's `config` (or a module's; one per app).
+Without one the app has Laravel's two disks, `local` (private, `storage/app/private`) and `public` (`storage/app/public` under
+`/storage`), plus `uploads` (private, `storage/app/uploads`). An app that defines its own disks and takes uploads lists
+`uploads` too — otherwise the first upload fails with the line to add.
+
+| Driver | Options (besides `visibility: 'private' \| 'public'`, default `private`) |
+|---|---|
+| `local` | `root` (relative to the app root, created on first use), `url` (public disks: a path the app serves, or an absolute URL — a CDN) |
+| `s3` | `bucket`, `region`, `endpoint` (S3-compatible stores), `forcePathStyle` (default `true` with an `endpoint`), `credentials` (else the SDK's chain), `root` (a prefix in the bucket), `url` (public disks; default endpoint/bucket) |
+| `memory` | `url` — gone with the process; tests and throwaway setups |
+
+**Uploads** (`UploadsConfig`):
+
+```sh
+UPLOADS_DISK=uploads          # the private disk uploads wait on until a form stores them (a public one fails the start)
+UPLOADS_CONNECTION=default    # the database connection of temporary_uploads — never in the app's transactions (E108)
+UPLOADS_LIFETIME=120          # minutes a token works after its target was handed out (at most 1440)
+UPLOADS_SEND_WITHIN=15        # minutes the browser has to send the file to its target
+```
 
 ## The contract
 
 `put`, `get` (bytes), `text`, `stream`, `open` (stream + size + time + type), `exists`, `delete` (→ whether there was a
 file), `move`, `copy`, `size`, `mimeType`, `lastModified`, `list(directory, { recursive })`, `url`, `temporaryUrl`. A missing
-file throws `FileNotFoundError`. `diskAttachment(disk, key)` turns a file into a mail attachment.
+file throws `FileNotFoundError`. `diskAttachment(disk, key)` turns a file into a mail attachment
+([attachments](../mail/README.md#attachments)). With `StorageTypes` registered, `url()` on a private disk is a type error that
+names `temporaryUrl()`.
 
 ## Keys — two measures against path traversal
 
@@ -52,8 +80,8 @@ S3 keys are checked too: some S3-compatible stores map keys onto paths.
 
 - **Public local (or memory) disks** whose `url` is a path get a route `GET {url}/<key>` — outside every middleware group
   (no session, no cookies). An absolute `url` (a CDN) gets none.
-- **Temporary URLs** of local and memory disks: `GET /_bespoke/storage/<disk>/<key>?expires=…&signature=…`, signed by
-  `UrlSigner` of @bespokecore/http (its own key from `APP_KEY`; path, `filename` and expiry signed; the time from the app's
+- **Temporary URLs** of local and memory disks: `GET /_bespoke/storage/<disk>/<key>?expires=…&signature=…`, signed by `UrlSigner` of
+  [@bespokecore/http](../http/README.md) (its own key from `APP_KEY`; path, `filename` and expiry signed; the time from the app's
   `Clock`), behind `signed()` — tampered or expired: 403. Works for public and private disks; S3 disks presign instead.
 - Every file goes out with `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and — for everything but
   raster images (PNG, JPEG, GIF, WebP, AVIF) — `Content-Disposition: attachment`. HTML, SVG (it can carry script), XML, PDF
@@ -108,23 +136,26 @@ const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'
 
 - **Once:** `store()` marks the token used with one `UPDATE … WHERE consumed_at IS NULL` — of two submits racing, exactly one
   stores the file; the other is a 422 of its field. A failed submit keeps the token usable (fix another field, send again).
-- **Infrastructure (E108):** the table `temporary_uploads` (`bespoke make:uploads-table`, E96) is written on its own connection
+- **Infrastructure ([E108](../database/README.md#infrastructure-connections-e108)):** the table `temporary_uploads`
+  (`bespoke make:uploads-table [--module=system]`, E96) is written on its own connection
   (`UPLOADS_CONNECTION`), never in the app's transaction — a rollback never makes a used token usable again. With SQLite give it
   the file of the cache and sessions (`system`); on Postgres it opens its small pool by itself.
 - **Never echoed:** a `TemporaryUpload` serializes to nothing — old input after a failed submit, logs and JSON never hold the
   token or the file.
 - **Housekeeping:** `bespoke uploads:prune [--hours=24]` deletes uploads made more than a day ago — the rows first (one
-  statement), then their files. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()`; with
-  a local uploads disk on several servers, on each).
+  statement), then their files. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` —
+  [@bespokecore/scheduler](../scheduler/README.md); with a local uploads disk on several servers, on each, without `onOneServer()`).
 - **Not yet:** lists of files (`v.array(upload(…))`) and a `<Form>` without JavaScript (it would post the file itself — refused).
 
-The browser side is the `uploads` feature of `@bespokecore/http/client` and `<FileInput field={form.field('avatar')} />` of
-`@bespokecore/react` (packages/http/README.md, "Features"). Tests: `app.upload(route, field, file, params)` (below).
+The browser side is the `uploads` feature of `@bespokecore/http/client` ([features](../http/README.md#features)) and `<FileInput
+field={form.field('avatar')} />` of [@bespokecore/react](../react/README.md). Tests: `app.upload(route, field, file, params)`
+(below).
 
 ## Testing
 
-`createTestApp` replaces `Storage` with a `StorageFake` (`storage: 'fake'`, the default): every configured disk is a memory
-disk with its name, visibility and URL — the app's routes serve it, temporary URLs are signed for real. Assertions:
+`createTestApp` ([@bespokecore/testing](../testing/README.md)) replaces `Storage` with a `StorageFake` (`storage: 'fake'`, the
+default): every configured disk is a memory disk with its name, visibility and URL — the app's routes serve it, temporary URLs are
+signed for real. Assertions:
 
 ```ts
 app.storage.disk('local').assertExists(`exports/user-${ada.id}.json`).assertCount(1);

@@ -1,10 +1,237 @@
 # @bespokecore/database
 
-Data access on [Kysely](https://kysely.dev): connections (`Connections`, the typed `Database`), migrations per module,
-generated table types (`bespoke db:types`), repositories, factories, seeders — and transactions.
+Data access on [Kysely](https://kysely.dev) (E6): connections (`Connections`, the typed `Database`), migrations per module,
+table types generated from the migrations (`bespoke db:types`), repositories, relations without lazy loading, pagination,
+factories, seeders — and transactions that everything awaited inside joins (E107). SQLite runs on Node's built-in
+`node:sqlite` (no native addon); Postgres needs `pg` (an optional peer: `pnpm add pg`).
 
 ```ts
-constructor(connections: Connections, users: UserRepository) { … }
+// modules/user-profile/controllers/ListUsersController.ts — constructor(users: UserRepository)
+handle(ctx: HttpContext) {
+  return this.#users.paginate(this.#users.query().select(['id', 'name']).orderBy('name').orderBy('id'), paginationFrom(ctx.query, { perPage: 25 }));
+}
+```
+
+`bespoke discover` registers its `DatabaseServiceProvider` through the `"bespoke"` field of its package.json: `Connections` and
+the default `Database` (singletons), the `db:*` and `migrate*` commands (when `@bespokecore/cli` is installed), a readiness
+check and the "run the pending migrations" solution of the error page (E130). Every connection is closed on shutdown.
+
+```text
+bespoke migrate [--force] [--no-types] | migrate:rollback [--step=<n>] [--force] | migrate:reset [--force]
+bespoke migrate:fresh [--seed] [--force] [--no-types] | migrate:status | db:types [--check] | db:show [--database=<connection>]
+bespoke db:seed [--module=<module>] [--class=<Seeder>] [--force] | make:migration <snake_case_name> --module=<module>
+```
+
+## Configuration
+
+The default connection reads Laravel's variables (`DatabaseConfig`, checked at the start like all configuration):
+
+```sh
+DB_CONNECTION=sqlite                  # sqlite (default) | pgsql
+DB_DATABASE=storage/database.sqlite   # SQLite: the file, relative to the app root (default), or :memory:; Postgres: the database name (default bespoke)
+DB_URL=postgres://bespoke:secret@localhost:55432/bespoke   # pgsql: a URL — or DB_HOST (127.0.0.1), DB_PORT (5432), DB_USERNAME (postgres), DB_PASSWORD
+DB_POOL_MAX=10                        # pgsql: the app's pool (default 10)
+DB_INFRA_POOL_MAX=4                   # pgsql: the infrastructure's own pool — cache, sessions, uploads (default 4, see E108 below)
+```
+
+Another connection is a config definition that knows its name — listed in the app's or a module's `config`, its variables
+validated at the start. The web app gives the cache and the sessions a SQLite file of their own:
+
+```ts
+// config/database.ts — and `config: [SystemDatabase]` in defineApplication({ … })
+export const SystemDatabase = defineConnection('system', {
+  env: v.object({ SYSTEM_DB_DATABASE: v.optional(v.pipe(v.string(), v.nonEmpty()), 'storage/system.sqlite') }),
+  resolve: (env) => ({ driver: 'sqlite', database: env.SYSTEM_DB_DATABASE }),
+});
+// connections.get('system'); or a Postgres one: resolve: (env) => ({ driver: 'pgsql', url: env.REPORTING_DB_URL, poolMax: 5 })
+```
+
+`default` is reserved for `DB_CONNECTION`. An unknown connection name fails at the start with the known ones; `bespoke db:show`
+prints where a connection points (password masked) and its tables.
+
+## Migrations
+
+A module lists its migrations directory; files are named `YYYY_MM_DD_HHMMSS_what_it_does.ts` and run in the order of their
+timestamps across all modules. `bespoke make:migration create_profile_links_table --module=user-profile` writes one (a name
+`create_…_table` creates a table, `add_…_to_…_table` alters one, anything else is blank):
+
+```ts
+// modules/user-profile/migrations/2026_10_01_120101_create_profile_links_table.ts — and in defineModule:
+// migrations: new URL('./migrations/', import.meta.url)
+export default defineMigration({
+  up: (schema) =>
+    schema.create('profile_links', (table) => {
+      table.id();
+      table.foreignId('user_id').constrained('users').cascadeOnDelete();
+      table.string('label', 60);
+      table.string('url', 2048);
+      table.timestamps();
+      table.index('user_id');
+    }),
+  down: (schema) => schema.drop('profile_links'),
+});
+```
+
+- **Schema:** `create`, `alter`, `drop`, `dropIfExists`, `rename`, `hasTable`, `hasColumn`.
+- **Columns:** `id()`, `string(name, length = 255)`, `text`, `integer`, `bigInteger`, `float`, `decimal(name, 8, 2)` (read as a
+  string), `boolean`, `json`, `uuid`, `binary`, `date`, `timestamp` (milliseconds, read as an ISO-8601 string in UTC),
+  `timestamps()` (`created_at`/`updated_at`, set on insert), `softDeletes()` (`deleted_at`), `foreignId(name)` with
+  `.constrained(table?, column = 'id')` (`user_id` → `users`) and `.cascadeOnDelete()`/`.nullOnDelete()`/`.restrictOnDelete()`.
+  Modifiers: `.nullable()`, `.unique()`, `.primary()`, `.default(value)`, `.useCurrent()`, `.secret()`. On the table:
+  `index(columns)`, `unique(columns)`, `dropColumn`, `dropIndex`, `dropUnique`, `renameColumn`.
+- **Each migration runs in a transaction of its own** (SQLite and Postgres roll back DDL): a failing one leaves no half-changed
+  schema. `migrate` runs every pending one in one batch; `migrate:rollback` undoes the last batch (or `--step=n` migrations),
+  `migrate:reset` all of them, `migrate:fresh` drops every table and migrates from scratch (`--seed`: then the seeders).
+  A migration without `down` stops a rollback there.
+- **In production** (`NODE_ENV=production`) `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed`
+  refuse without `--force`.
+- **Ownership (E20):** the migrator records which module's migration created which table — what module boundaries and
+  `db:types` build on.
+
+### Secret columns
+
+`.secret()` marks a column that must never be read by accident — a password hash, a 2FA secret. It is left out of
+`Row<'users'>`, and the connection removes it from every `selectAll()` and `returningAll()` result. Reading it is deliberate:
+
+```ts
+// modules/auth/UserRepository.ts — the only place that reads the hash
+const row = await this.query().where('email', '=', email).selectAll().select((eb) => secret(eb, 'password')).executeTakeFirst();
+```
+
+Statements on tables with secret columns are marked `secret: true` on the [query channel](#the-query-channel-e118).
+
+### Migrations on another connection
+
+A migration runs on another connection with `connection` — a name, or a function that reads it from the configuration
+when the migration runs, so a table lands where the code that uses it looks:
+
+```ts
+export default defineMigration({
+  connection: cacheTablesConnection,          // (c) => CACHE_CONNECTION with the database driver, else 'default'
+  up: async (schema) => { await schema.create('cache', …); },
+  down: async (schema) => { await schema.drop('cache'); },
+});
+```
+
+The record of the migration stays on `default` (one order, one batch number for all); the table's owner and its secret
+columns are kept on the connection the table is on, so `selectAll()` there never returns a secret column. A migration on
+another connection runs in a transaction of that connection, then is recorded — two databases, two transactions.
+`migrate:fresh` drops the tables of every connection a migration runs on. `bespoke db:types` runs every migration on one
+scratch database: the generated `Tables` know every table, wherever it lives.
+
+The framework's own tables (`make:cache-table`, `make:session-table`, `make:queue-table`, `make:notifications-table`,
+`make:uploads-table`) are migrations the command writes into an app module — `system` unless `--module` names another (E96):
+the tables are the app's.
+
+## Table types: `bespoke db:types`
+
+The types of every table come **from the migrations**, never from the state of a database: `db:types` runs them on a scratch
+database of the app's driver (SQLite in memory, or a temporary Postgres database), introspects it and writes
+`bootstrap/database.d.ts` — committed, so a type check needs no database. It fills `Tables` (and `TableOwners`, `Modules`) by
+declaration merging:
+
+```ts
+type User = Row<'users'>;          // as read — secret columns left out; also NewRow<'users'>, RowUpdate<'users'>
+```
+
+`migrate` and `migrate:fresh` regenerate the file when migrations ran (`--no-types` skips it; never in production, where the
+committed file is final). `bespoke db:types --check` only compares — for CI: it fails when a migration changed without
+regenerating. Column types: `Generated<T>` (filled in by the database), `Timestamp`, `Decimal`, `JsonColumn` (read parsed, written
+as `JSON.stringify(value)`), `Secret<T>`.
+
+## Repositories
+
+A repository is an optional base for one table — a data mapper: rows in, rows out; no Active Record, no identity map, no lazy
+loading, nothing happens on save that you did not call. Repositories are ordinary injectable classes, registered by their
+module's provider (`container.singleton(UserRepository)`):
+
+```ts
+// modules/auth/UserRepository.ts
+export class UserRepository extends Repository<'users'> {
+  static table = 'users' as const;          // the table as a runtime value
+  static timestamps = true;                 // update() sets updated_at
+
+  findForLogin(email: string) { return this.query().selectAll().where('email', '=', email).executeTakeFirst(); }
+  register(values: { name: string; email: string; password: PasswordHash; locale: string }) {
+    return this.tryInsert(values);          // undefined when the unique index already holds the e-mail — race-free
+  }
+}
+```
+
+- **Reads:** `query()` (a Kysely select on the table — soft-deleted rows left out), `find(id)`, `findOrFail(id)` (else a 404,
+  `RecordNotFoundError`, without telling the client what was looked up), `exists(id)`, `count()`, `paginate(query, { page, perPage })`,
+  `withTrashed()`.
+- **Writes:** `insert(values)` and `update(id, values)` return the row as stored; `tryInsert` (`undefined`) and `tryUpdate`
+  (`'duplicate'`) catch a unique violation in a savepoint, so a Postgres transaction around them survives; `delete(id)`,
+  `forceDelete(id)`, `restore(id)`. Values are exact: a field the table does not have is a type error, also from a variable.
+- **Statics:** `table`, `connection` (another connection), `timestamps`, `softDeletes` (`delete()` sets `deleted_at`),
+  `routeKey` (default `id`) and `routeKeyPattern` (default: digits for `id` — anything else is a 404 without a query).
+- **Route binding:** a repository is a route binder — `users.bind('user', UserRepository)`; scoped to a parent,
+  `user.bind('link', ProfileLinkRepository, { scopedBy: 'user' })` finds a link only where its `user_id` is the user's id
+  (another user's link id is a 404) — see [route model binding](../router/README.md#route-model-binding).
+- **Only the connection:** a repository's constructor takes `Connections` and nothing else — `using(trx)` rebuilds it bound to a
+  transaction you control (see [Transactions](#transactions)).
+
+## Queries, module boundaries and relations
+
+`constructor(db: Database)` is the default connection as `Kysely<Tables>`; `connections.get('reporting')` another one; `sql`
+(Kysely's template) is re-exported. Module boundaries are opt-in (E20): `Database<'user-profile'>` sees the module's own tables
+for everything and the tables other modules expose (`defineModule({ name: 'auth', exposes: ['users'] })`) for reading and joins
+only — an `insertInto('users')` there is a type error.
+
+`hasMany`, `hasOne` and `belongsTo` load related rows **in the same query** (JSON aggregation of the dialect) — one query, no
+N+1, the selection is the type:
+
+```ts
+// modules/user-profile/ProfileDirectory.ts — constructor(db: Database<'user-profile'>)
+this.#db.selectFrom('users').selectAll('users').select((eb) => [
+  hasOne(eb, 'login_activity', 'user_id', 'users.id', (q) => q.select('login_activity.last_login_at')).as('activity'),
+  hasMany(eb, 'profile_links', 'user_id', 'users.id', (q) => q.select(['profile_links.id', 'profile_links.label']).orderBy('profile_links.id')).as('links'),
+]).where('users.id', '=', id).executeTakeFirst();
+```
+
+`isUniqueViolation(error)` recognizes a unique violation on both drivers; `missingTable(error)` a table that does not exist.
+
+## Pagination
+
+- **`paginate(db, query, { page, perPage })`** (or `repository.paginate(query, …)`): one page and the total —
+  `{ data, meta: { page, perPage, total, lastPage, from, to } }`, the `meta` that `<Pagination>` of `@bespokecore/react` takes.
+  The count is a second query on the same filter.
+- **`paginationFrom(ctx.query, { perPage = 15, maxPerPage = 100 })`** reads `?page=` and `?per_page=` safely: `?page=-1`,
+  `?page=abc` or `?per_page=100000` fall back instead of failing.
+- **`cursorPaginate(query, { column, cursor, perPage, direction })`** — keyset pagination for large tables and "load more": no
+  count, no offset, nobody twice while rows are added. Order by a unique column, or add one as a tie-breaker:
+  `{ column: ['name', 'id'] }`. The cursor is opaque (`meta.nextCursor`); one that does not decode is the first page.
+
+## Factories and seeders
+
+```ts
+// modules/auth/factories/UserFactory.ts
+export const UserFactory = defineFactory('users', ({ sequence }) => ({
+  name: `User ${sequence}`,
+  email: `user${sequence}@example.com`,
+  password: FACTORY_PASSWORD_HASH,
+  bio: '',
+  email_verified_at: new Date().toISOString(),
+}), { states: { unverified: { email_verified_at: null } } });
+```
+
+A factory is typed against the table's insert type — a new `NOT NULL` column makes every factory that misses it a compile
+error. `factory(UserFactory).count(3).state('unverified').create({ … })` inserts and returns the stored rows; `make()` only
+builds the attributes (no insert — what mail previews use). In a definition, `user_id: factory(UserFactory)` creates the related
+row first and uses its id. Sequences are per app, never global.
+
+A seeder is a class with `handle({ factory, db })`, built by the container (constructor injection), listed by its module and
+run in module order by `bespoke db:seed` (or `migrate:fresh --seed`):
+
+```ts
+// modules/auth/seeders/DemoUsersSeeder.ts — and `seeders: [DemoUsersSeeder]` in defineModule
+export class DemoUsersSeeder {
+  constructor(hasher: Hasher) { … }
+  async handle({ factory }: SeedContext) {
+    await factory(UserFactory).create({ name: 'Ada Lovelace', email: 'ada@example.com', password: await this.#hasher.make('password') });
+  }
+}
 ```
 
 ## Transactions
@@ -25,7 +252,7 @@ const user = await this.#connections.transaction(async () => {
 
 It commits when the callback resolves and rolls back when it throws (the error is rethrown). `repository.transaction(cb)`
 is the same thing on the repository's connection. `{ connection: 'reporting' }` picks another connection,
-`{ isolationLevel }` sets the isolation level of an outermost transaction.
+`{ isolationLevel }` sets the isolation level of an outermost transaction. `inTransaction()` says whether one is open.
 
 ### The rules
 
@@ -108,6 +335,8 @@ is the same thing on the repository's connection. `{ connection: 'reporting' }` 
 | a job (worker, `sync`, `app.queue.work()`)              | runs outside of any transaction                                  |
 | another request, job or test running at the same time  | never sees it                                                    |
 
+The queue's side of this is in [@bespokecore/queue](../queue/README.md#transactions-e107-e109).
+
 ### How it works — and its limits
 
 The transaction context is kept in `AsyncLocalStorage` (the decision E107 allows it for request/job context, logging and
@@ -143,37 +372,40 @@ transaction of either).
 
 The handle runs single statements — no transactions of its own. The queue is deliberately **not** on it: a dispatch is a
 row in the transaction (E85, E107), visible with the commit, gone with a rollback. (Laravel's database cache and session
-drivers use the app's connection by default and join its transactions.)
-
-## Migrations on another connection
-
-A migration runs on another connection with `connection` — a name, or a function that reads it from the configuration
-when the migration runs, so a table lands where the code that uses it looks:
-
-```ts
-export default defineMigration({
-  connection: cacheTablesConnection,          // (c) => CACHE_CONNECTION with the database driver, else 'default'
-  up: async (schema) => { await schema.create('cache', …); },
-  down: async (schema) => { await schema.drop('cache'); },
-});
-```
-
-The record of the migration stays on `default` (one order, one batch number for all); the table's owner and its secret
-columns are kept on the connection the table is on, so `selectAll()` there never returns a secret column. A migration on
-another connection runs in a transaction of that connection, then is recorded — two databases, two transactions.
-`migrate:fresh` drops the tables of every connection a migration runs on. `bespoke db:types` runs every migration on one
-scratch database: the generated `Tables` know every table, wherever it lives.
+drivers use the app's connection by default and join its transactions.) What this means per store:
+[the cache](../cache/README.md#database-its-own-connection-never-the-apps-transactions-e108),
+[the sessions](../session/README.md#database).
 
 ## The query channel (E118)
 
 Every statement — of every connection, the infrastructure handle included — goes to the `db.query` channel of
-`@bespokecore/core/diagnostics` while something listens (the error page, the devtools, `Server-Timing`, OpenTelemetry):
-`connection`, `driver`, `sql`, `parameters`, `durationMs`, `error`, and the request (`requestId`) or job (`jobId`) it ran in.
+[`@bespokecore/core/diagnostics`](../core/README.md#diagnostics-bespokecorecorediagnostics-e118) while something listens (the
+error page, the devtools, `Server-Timing`, OpenTelemetry): `connection`, `driver`, `sql`, `parameters`, `durationMs`, `error`,
+and the request (`requestId`) or job (`jobId`) it ran in.
 **`secret: true`** marks a statement that touches a table with secret columns (`.secret()` in its migration) — every
 table the query builder names, and for raw SQL any secret table's name in its text. Its parameters may hold a password
-hash or a token: whatever records or shows queries redacts them all (E125). Without a subscriber nothing is built.
-`connections.onQuery(listener)` stays for code that counts queries itself (tests). OpenTelemetry (`@bespokecore/otel`) records
-a statement as a client span with its text only — never its parameters.
+hash or a token: whatever records or shows queries redacts them all ([redaction, E125](../core/README.md#redaction-e125)).
+Without a subscriber nothing is built. `connections.onQuery(listener)` stays for code that counts queries itself (tests).
+OpenTelemetry ([@bespokecore/otel](../otel/README.md)) records a statement as a client span with its text only — never its
+parameters.
 
 **Readiness (E126):** the provider registers `DatabaseHealthCheck` for `/up/ready` — `select 1` on every configured connection
-(the app's pools, as requests use them); one that fails makes the instance "not ready" and says which.
+(the app's pools, as requests use them); one that fails makes the instance "not ready" and says which
+([health checks](../core/README.md#health-checks-e126)).
+
+## Testing
+
+With `@bespokecore/testing`, `createTestApp(App, { database: 'refresh' })` gives a real database, reset for every test
+(Laravel's `RefreshDatabase`, E21): each test worker gets its own — a temporary SQLite file, or a Postgres database named after
+the app's with `_test_<worker>` — migrated once; every test app runs inside one transaction that is rolled back when the test
+ends. `seed: true` also runs the modules' seeders for every test. More in [the database](../testing/README.md#the-database).
+
+```ts
+const app = await createTestApp(application, { database: 'refresh' });
+const ada = await app.factory(UserFactory).create();
+const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id });
+await app.actingAs(ada).delete(`/users/${ada.id}/links/${link.id}`);
+await app.assertDatabaseMissing('profile_links', { id: link.id });   // also assertDatabaseHas, assertDatabaseCount
+```
+
+`pnpm test:pgsql` runs the suite against Postgres (`docker compose up -d` starts one on port 55432).

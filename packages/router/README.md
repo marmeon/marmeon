@@ -1,0 +1,320 @@
+# @bespokecore/router
+
+Routes, invokable controllers with their request definitions (REPR), route model binding, middleware groups and the
+pipeline, typed query strings, URL generation, request input and cookies — the router that
+[@bespokecore/http](../http/README.md) registers and the server kernel dispatches to (Hono matches the URL, this package runs
+the route). It knows no container, no database and no validation library: classes are built through a resolver, records come
+from binders, schemas are [Standard Schema](https://standardschema.dev) (Valibot in the docs and generators, E5).
+
+```ts
+// modules/user-profile/routes.ts — `routes` in defineModule({ … })
+export default defineRoutes((Route) => {
+  // Filtered and sorted by the query string (`ListPeopleRequest`) — state that lives in the URL.
+  Route.middleware(authenticate()).get('/people', ListPeopleController).name('user-profile.people');
+
+  const users = Route.prefix('/users').middleware(authenticate()).name('user-profile.');
+  users.get('/me', RedirectToOwnProfileController).name('me');
+  const user = users.bind('user', UserRepository);                       // ctx.params.user: the row, or a 404
+  user.get('/:user/edit', EditUserProfileController).name('edit');
+  user.put('/:user', UpdateUserProfileController).name('update');
+  // A link is looked up *within* its user: another user's link id under this user is a 404 (no IDOR).
+  const link = user.bind('link', ProfileLinkRepository, { scopedBy: 'user' });
+  link.delete('/:user/links/:link', DeleteProfileLinkController).name('links.destroy');
+});
+```
+
+Apps import the everyday names from `@bespokecore/http`, which re-exports them: `defineRoutes`, `defineRequest`,
+`defineMiddleware`, `Router`, `ValidationError`, `translatable`, `abort`, `HttpError` and the types `HttpContext`, `ContextOf`,
+`FormOf`, `QueryOf`, `Next`, `MiddlewareClass`, `RouteBinder`, `RouteName`, `Routes` … Import from `@bespokecore/router` what it
+does not re-export (`MiddlewarePriority`, `GLOBAL`, `parseQuery`, `urlFor`).
+
+## Registration
+
+The package has no `"bespoke"` field and no provider of its own — it is a library. `HttpServiceProvider` of
+`@bespokecore/http` (found by `bespoke discover`) registers the `Router` as a singleton, sets up the `web` and `api` groups and
+loads every module's routes:
+
+| `defineModule({ … })` | Group | Prefix |
+| --- | --- | --- |
+| `routes` | `web` — encrypted cookies, the session, CSRF, the asset version (the packages add them, see [Middleware](#middleware)) | none |
+| `apiRoutes` | `api` — stateless: no cookies, no session (API tokens) | `/api` |
+
+Two entry points:
+
+| Import | Runs in | What |
+| --- | --- | --- |
+| `@bespokecore/router` | server | everything below |
+| `@bespokecore/router/url` | server **and** browser | `urlFor`, `fillPath`, `toSearchParams`, `matchesPath` — no imports at all; the browser gets them through `@bespokecore/http/page` |
+
+## Configuration
+
+No config class and no environment variable of its own. What shapes it:
+
+- **App middleware** — `defineApplication({ middleware: { global, web, api } })`, appended after the framework's own (priority
+  `app`, see [Groups and priorities](#groups-and-priorities)).
+- **What the browser may learn** — `defineApplication({ clientRoutes: { include, except } })`: by default the named `web`
+  routes, API routes only when listed in `include`, `except` wins over both (`*` matches anything: `except: ['admin.*']`),
+  `.internal()` routes never. Of these, a client build ships only the names its code writes out (E57, see
+  [@bespokecore/vite](../vite/README.md#the-route-manifest-e57)). The server knows every route either way.
+- **Request bodies and addresses** — `MAX_BODY_SIZE` (default `8m`; bytes or `512k`, `8m`, `1g`) and `TRUSTED_PROXIES`
+  (comma-separated, or `*`) of [@bespokecore/server](../server/README.md#configuration)'s `ServerConfig`; the kernel hands them to
+  `createRequestState`. Without a server, `DEFAULT_MAX_BODY_SIZE` (8 MiB) applies.
+
+## Routes
+
+```ts
+export default defineRoutes((Route) => {
+  Route.get('/', ShowHomeController).name('home');
+  Route.post('/locale', UpdateLocaleController).name('locale.update');
+  Route.get('/health', () => ({ ok: true }));                 // a closure: strings become HTML, objects JSON, nothing 204
+});
+```
+
+- **Methods:** `get` (HEAD too), `post`, `put`, `patch`, `delete`, `options`, `match(['GET', 'POST'], …)`, `any(…)`.
+- **Parameters** are typed from the path: `/teams/:team/users/:id?` → `{ team: string; id?: string }`; a constraint goes in
+  braces, `/:id{[0-9]+}`.
+- **Groups:** every attribute call returns a new registrar, so the context type and the parameters flow into what is
+  registered through it — `prefix('/teams/:team')`, `name('teams.')`, `middleware(m)`, `bind(…)`, `internal()`, and
+  `group((Route) => { … })` to write them once for a block.
+- **Names** are an API (redirects, links, `<Link route>`): a name used twice is a boot error naming both routes.
+  `name('show')` in `name('profile.')` is `profile.show`.
+- **`.internal()`** — on a route or a registrar — keeps a route out of the browser for good: `bespoke route:types` marks it
+  `browser: false`, naming it in client code is a compile error, and it never enters the browser's manifest. For links only
+  the server builds, like the signed verification link it mails:
+  `signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal()`.
+- **What the types refuse** (and the router at boot, for code they did not check): a GET route whose controller validates a
+  body (E65: validate its URL with `query`), a route of another method whose controller answers `this.island(…)` (E52:
+  islands only read), a `bind('user', …)` without a `:user` in the path.
+- **`bespoke route:types`** writes `bootstrap/routes.ts` — `declare module '@bespokecore/router' { interface Routes { … } }`
+  with each route's method, path and controller — which types every API that takes a route name: `router.url()`,
+  `this.redirect().route()`, signed URLs, `<Link route>`, `useForm(name, …)`. `bespoke dev` and `bespoke build` run it; CI checks
+  it with `--check`. `bespoke route:list` prints method, path, name, group, middleware (in the order they run) and action.
+
+## Controllers and requests
+
+One invokable class per endpoint: `handle(ctx)`, constructor arguments from the container (per request). What it accepts
+and who may call it is declared next to it with `defineRequest` and attached as `static request` (E13):
+
+```ts
+// modules/user-profile/controllers/UpdateUserProfileController.ts
+export const UpdateUserProfileRequest = defineRequest({
+  schema: v.object({
+    name: v.pipe(v.string(), v.trim(), v.minLength(2, trans('user-profile.validation.name_min')), v.maxLength(60)),
+    bio: v.pipe(v.string(), v.trim(), v.maxLength(200, trans('user-profile.validation.bio_max'))),
+  }),
+  // Only your own profile. Runs after binding, before validation — others get a 403, not field errors.
+  authorize: can(ProfilePolicy, 'update', 'user'),
+});
+
+export class UpdateUserProfileController extends Controller {
+  static request = UpdateUserProfileRequest;
+
+  constructor(users: UserRepository) { … }
+
+  async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
+    await this.#users.update(ctx.params.user.id, ctx.body);     // ctx.body: { name: string; bio: string } — validated, trimmed
+    …
+  }
+}
+```
+
+A request runs in this order, and the controller is built only when everything before it passed:
+
+1. global, group and route middleware (authentication answers before a 404 could tell what exists);
+2. route bindings — a missing record is a 404;
+3. `authorize(ctx, resolve)` — `false` is a 403 (or it throws its own `HttpError`); `resolve` builds classes from the request's
+   scope, which is how `can(Policy, …)` of [@bespokecore/auth](../auth/README.md#authorization-policies-and-the-gate-e28) gets its
+   policy (E28);
+4. the query, parsed by `query` — never fails (see [Query schemas](#query-schemas-e55-e56));
+5. the body, validated by `schema` — a 422 `ValidationError` with the errors per field (`address.city` for nested ones);
+6. `handle(ctx)` with `ctx.body` (the schema's output) and `ctx.query` (the parsed query).
+
+- **`schema`** sees the body only, never the query (E65). It may be a function of `resolve`, built per request, for rules
+  that need the app: `schema: (resolve) => v.objectAsync({ email: v.pipeAsync(…, v.checkAsync((email) => resolve(UserRepository)…)) })`
+  — such a rule runs on submit and in a live validation of its field alike.
+- **Types:** `ContextOf<typeof Request>` is what `authorize` needs plus `body` and the parsed `query`;
+  `FormOf<typeof Controller>` the schema's *input* (what a form sends — `useForm(name)` types its fields with it),
+  `QueryOf<typeof Controller>` the parsed query. `handle`'s context is checked against what the route provides: a controller
+  that needs `ctx.user` on a route without the authentication middleware is a compile error.
+- **Messages** may be translation keys: `translatable(key, params, fallback)` (apps use the typed `trans()` of
+  [@bespokecore/i18n](../i18n/README.md)) leaves the key on the issue, and the exception handler shows it in the request's language
+  (`ValidationError.translate`).
+- The base class `Controller` (`this.view()`, `this.json()`, `this.redirect()`, `this.island()`, `this.closeLayer()`) and what a
+  result becomes are [@bespokecore/http](../http/README.md)'s.
+
+## Query schemas (E55, E56)
+
+A GET has no body: its controller reads the URL, typed by `query`. Links outlive their pages and people type URLs, so a
+query **never answers 422** — an invalid field falls back to its default:
+
+```ts
+export const ListPeopleRequest = defineRequest({
+  query: v.object({
+    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
+    sort: v.optional(v.picklist(PEOPLE_SORTS), 'name'),
+    cursor: v.optional(v.string()),
+  }),
+});
+// handle(ctx: ContextOf<typeof ListPeopleRequest>) — ctx.query: { q: string; sort: 'name' | '-name' | …; cursor?: string }
+```
+
+- **The schema must be total** — an empty query must be valid — and the types say so in the expected type: every field
+  optional or with a default (`query fields need a default or must be optional: 'page' is required`), string input (`parse
+  the string, e.g. v.pipe(v.string(), v.toNumber())`), and an output that can go back into a URL (a string, number, boolean
+  or a list of them).
+- **Parsing** (`parseQuery`): a field the schema rejects is taken out and the rest validated again, so it gets its default;
+  one value where the schema wants a list is tried as a list of one (`?tag=a`), a repeated key is a list (`?tag=a&tag=b`);
+  unknown keys are ignored; `__proto__` is no key. `/people?sort=DROP TABLE` is the list by name, 200.
+- **`queryOptions: { onInvalid: 'redirect' }`**: a GET with an invalid or unknown field is answered `302` to its canonical
+  URL — only the valid fields that differ from their defaults — so the address bar shows what the page shows. Other methods
+  always fall back. Default `'fallback'`.
+- **The page object** gets the parsed query without defaults (`PageObject.query`) and the defaults (`queryDefaults`): the
+  browser never parses a URL (`useQueryState`, `<Link query>` — see [@bespokecore/http](../http/README.md#the-protocol)).
+- Without a query schema, `ctx.query` stays the raw `URLSearchParams`.
+
+## Route model binding
+
+`Route.bind(param, Binder)` resolves a path parameter before `authorize` runs, so the controller (and `authorize`) get the
+record; a binder that finds nothing answers 404:
+
+```ts
+users.bind('user', ProfileDirectory).get('/:user', ShowUserProfileController).name('show');
+// handle(ctx: HttpContext<Authenticated, { user: Profile }>) — a missing user never gets here
+```
+
+- **A binder** is any injectable class with `resolveRouteBinding(value, { ctx, scope })` (`RouteBinder<T>`), built per request.
+  Repositories of [@bespokecore/database](../database/README.md) are binders: the row whose `routeKey` (default `id`, digits
+  only — `routeKeyPattern` for another) is the value. A repository's `static table` must match the table it is typed for.
+- **Scoped** (`{ scopedBy: 'team', column?: 'team_id' }`): the child is looked up *within* its already resolved parent
+  (`column` defaults to `<parent>_id`) — another parent's id is a 404, so an insecure direct object reference cannot happen by
+  forgetting a check.
+- An absent optional parameter stays absent. Bindings run in the order they were declared.
+
+## Middleware
+
+```ts
+const authenticate = defineMiddleware<{ user: User }>('auth', async (ctx, next) => {
+  const user = await findUser(ctx.request);
+  return user ? next({ user }) : new Response('Unauthorized', { status: 401 });
+});
+// Needs `user` from an earlier middleware, adds nothing:
+const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx, next) =>
+  ctx.user.isAdmin ? next() : new Response('Forbidden', { status: 403 }),
+);
+```
+
+- **What `next({ … })` passes** becomes part of the context of everything after it — typed: `Route.middleware(authenticate)`
+  makes `ctx.user` exist for the routes registered through that registrar, and middleware whose requirements are unmet does
+  not compile. Contexts are copied, never mutated.
+- **Classes** — `handle(ctx, next)` and an optional `terminate(ctx, response)` that runs after the response was handed off
+  (errors are logged, never sent) — are built per request from the container, with constructor injection. Calling `next()`
+  twice rejects.
+- **Errors** become a response at the layer that threw (the kernel's exception handler), so outer middleware — security
+  headers, the session, cookies — still applies to error pages.
+
+### Groups and priorities
+
+A route runs the global stack, then its group's (`web` or `api`), then its own middleware; one listed twice runs once, at its
+first place. Requests no route matched pass the global stack and then end in a 404. Packages append to groups while booting
+(`router.middleware.append(group, middleware, priority)`), in any order — the priority decides where it runs (lower first,
+equal ones in the order added):
+
+| `MiddlewarePriority` | | Middleware (package) |
+| --- | --- | --- |
+| `encryptCookies` | 100 | `EncryptCookies` (http) |
+| `clearClientHistory` | 150 | `ClearClientHistory` (http) |
+| `startSession` | 200 | `StartSession` ([session](../session/README.md)) |
+| `preventCaching` | 210 | `NoStoreWhenSignedIn` ([auth](../auth/README.md#signed-in-answers-are-never-cached)) |
+| `setLocale` | 220 | `SetLocale` ([i18n](../i18n/README.md#the-requests-locale-setlocale)) |
+| `checkAssetVersion` | 250 | `CheckAssetVersion` (http) |
+| `verifyCsrfToken` | 300 | `VerifyCsrfToken` (session) |
+| `shareProps` | 400 | `ShareErrorsFromSession` (session) |
+| `app` | 1000 | the app's own (`defineApplication({ middleware })`, the default) |
+| `limitLiveValidation` | 1100 | `LimitLiveValidation` ([cache](../cache/README.md)) — the last of the **global** stack |
+
+The rest are in `web`. `GLOBAL` (`'global'`) names the global stack. Rate limits are middleware of
+[@bespokecore/cache](../cache/README.md) — `Route.middleware(throttle('register')).post(…)` with a limiter defined by
+`RateLimiter.for(…)`; `signed()` (a valid, unexpired signature or 403) is [@bespokecore/http](../http/README.md)'s.
+
+## Live validation (E62)
+
+A form's own request — same method, URL and body — with `x-bespoke-validate: name,email` runs the route as far as its
+validation: middleware (CSRF, authentication, throttling), bindings, `authorize` and the request schema. Its controller is
+never built. The answer is `204`, or `422` with the named fields' errors only — both with `x-bespoke-validated: name,email`
+and `no-store`. Issues of fields not named are dropped (they are not filled in yet), and so are issues of the whole body.
+
+- Field names are paths (`email`, `address.city`, `links.0.url`), at most 64 per request; unusable ones are left out. A
+  request with the header is a live validation even with none left — never a submit.
+- A route without a body schema (a GET, a closure, no `schema`) has nothing to check: 400.
+- `throttle(name)` holds a live validation to the route's limit without counting it; live validations have their own limit
+  (`LimitLiveValidation`, 30 a minute per route and address). The kernel makes the request read-only.
+- `isLiveValidation(request)` and `liveValidationFields(request)` tell one apart; the client side is in
+  [the protocol](../http/README.md#the-protocol).
+
+## URLs
+
+```ts
+constructor(router: Router) { … }
+this.#router.url('user-profile.show', { user: 7 }, { tab: 'links' });   // → /users/7?tab=links
+```
+
+Names, parameters and the query are checked against the generated `Routes`: a wrong name is a compile error with
+"did you mean" (`'user-profile.shwo' is not a route name — did you mean user-profile.show, …?`), required parameters are
+required, and the query of a route with a query schema is typed by its fields (`page: 2`, not `'2'`). Parameters the path
+does not take go into the query string, like Laravel. Values are percent-encoded; `null` and `undefined` are left out, a
+list repeats its key.
+
+`urlFor(lookup, name, params, query)` is the one code path behind `router.url()`, signed URLs and the browser's `route()` —
+any `{ findByName }` works, the router or the browser's manifest. Signed URLs (`UrlSigner.signedRoute`,
+`temporarySignedRoute`, `signedPath`) are [@bespokecore/http](../http/README.md)'s.
+
+## Request input and cookies
+
+Every context has the raw `request`, its `route`, `params` and:
+
+- **`ctx.input()`** — the body, and only the body (E65): unlike Laravel's `$request->all()`, the query is never merged in, so
+  no field can be set through a link. JSON (an object), `application/x-www-form-urlencoded` and `multipart/form-data` (files
+  are `File`s; an empty file field is skipped) are parsed alike; bracket notation nests (`user[name]`, `tags[]`,
+  `links[0][url]`; at most 20 levels; `__proto__` is dropped; objects with keys `0…n-1` become arrays). Parsed once and
+  cached — do not read `ctx.request` yourself after it. A GET or HEAD has `{}`. Bodies over the limit are a 413 (counted,
+  whatever `Content-Length` says), malformed JSON a 400.
+- **`ctx.query`** — the `URLSearchParams`, or the parsed query behind a query schema.
+- **`ctx.ip`** — the client's address: the right-most `X-Forwarded-For` entry that is not a trusted proxy (`clientIp`).
+- **`ctx.expectsJson()`** — JSON is the first accepted type, or an XHR that accepts anything (Laravel's).
+- **`ctx.cookies`** — a `CookieJar`: `get`, `has`, `all` read what the client sent; `set(name, value, options)` and
+  `delete(name, { path, domain })` queue cookies for whatever response the request ends with — a view, a redirect or an
+  error page. Defaults: `Path=/`, `HttpOnly`, `SameSite=Lax`, a session cookie; `sameSite: 'none'` requires `secure`. In the
+  `web` group `EncryptCookies` installs a codec, so values are encrypted on the wire; read-only requests (an island) lock the
+  jar, and a `set` there is refused.
+
+## Errors
+
+- **`abort(404)`**, `abort(403, 'Not yours.')` — throws an `HttpError(status, message?, headers?, translation?)`. Its message
+  is meant for the client; without one, the status text and the key `bespoke.status.<status>` (translated when a translator
+  is bound). Controllers and middleware alike may throw it.
+- **`ValidationError`** (422): `errors` (`{ field: [messages] }`), `input` (for the old input), `issues`;
+  `ValidationError.fromIssues(issues, input)`; the message is the first error plus a count.
+- `statusText(404)` → `Not Found`. How errors are rendered (pages, JSON, the development error page) is the exception handler's,
+  in [@bespokecore/http](../http/README.md) and [@bespokecore/server](../server/README.md#error-page-e119--development-only).
+
+## For packages
+
+- `router.beforeValidation(hook)` — runs before every body schema (after `authorize`; a submit and a live validation alike)
+  and may replace input values: `@bespokecore/storage` puts a verified upload in place of its token.
+- `router.intercept({ claims, answer })` — answers requests it claims in the route's place, after the route's middleware,
+  bindings and `authorize`; the controller is never built. Upload targets (`x-bespoke-upload`) are answered this way.
+- `router.load({ group, prefix }, ...definitions)` — loads route files into a group (what the http provider does per module).
+
+## Testing
+
+`createTestApp` of [@bespokecore/testing](../testing/README.md#requests) sends requests through the whole kernel:
+
+```ts
+const app = await createTestApp(application, { database: 'refresh', seed: true });
+await app.actingAs(ada).get('/people?sort=nope').assertOk().assertPage('user-profile/People');      // E56: never a 422
+await app.validating('name', 'email').post('/register', { json: registration }).assertLiveValid('name', 'email');
+await app.actingAs(alan).expectingJson().put(`/users/${ada.id}`, { json: { name: 'Mallory', bio: '' } }).assertForbidden();
+```
+
+`assertInvalid<UpdateUserProfileController>({ name: /short/ })`, `assertNotFound()`, `assertRedirect('/login')` and
+`assertPage<C>(name, props)` check what came back.

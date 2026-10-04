@@ -9,10 +9,8 @@ props (`LIVE_DRIVER=redis`) build on it. **Redis is optional:** the defaults of 
 pnpm add @bespokecore/redis redis   # the official client (node-redis 5 or 6) is an optional peer
 ```
 
-```sh
-REDIS_URL=redis://127.0.0.1:6379    # redis://[[user]:password@]host[:port][/db] — rediss:// for TLS
-REDIS_PREFIX=myapp:                 # default: APP_NAME as a slug plus ":" — two apps on one Redis never share a key
-```
+`bespoke discover` registers its `RedisServiceProvider` through the `"bespoke"` field of its package.json: `RedisConnections`
+(a singleton), a readiness check, and closing every connection — duplicates included — on shutdown.
 
 ```ts
 constructor(redis: RedisConnections) {
@@ -30,6 +28,15 @@ await this.#redis.run(release, [this.#redis.key('lock:report')], [owner]);
 const off = await this.#redis.duplicate().subscribe(this.#redis.key('events'), (message) => …);
 ```
 
+## Configuration
+
+The default connection (`RedisConfig`, checked at the start like all configuration):
+
+```sh
+REDIS_URL=redis://127.0.0.1:6379    # the default; redis://[[user]:password@]host[:port][/db] — rediss:// for TLS
+REDIS_PREFIX=myapp:                 # default: APP_NAME as a slug plus ":" (`My App` → `my-app:`) — two apps on one Redis never share a key
+```
+
 Another connection (a separate instance for the queue, say) is a config definition, validated at startup like all
 configuration:
 
@@ -38,8 +45,19 @@ export const QueueRedis = defineRedisConnection('queue', {
   env: v.object({ QUEUE_REDIS_URL: v.string() }),
   resolve: (env) => ({ url: env.QUEUE_REDIS_URL, prefix: 'myapp:' }),
 });
-defineApplication({ config: [QueueRedis], … });   // REDIS_QUEUE_CONNECTION=queue, CACHE_CONNECTION=queue, …
+defineApplication({ config: [QueueRedis], … });
 ```
+
+`default` is reserved for `REDIS_URL`. Each driver names the connection it uses — `default` unless set:
+
+| Variable | Driver | Its README |
+| -------- | ------ | ---------- |
+| `CACHE_CONNECTION` | the cache, locks and rate limits (`CACHE_DRIVER=redis`) | [cache drivers](../cache/README.md#cache-drivers-cache_driver) |
+| `SESSION_CONNECTION` | sessions (`SESSION_DRIVER=redis`) | [session drivers](../session/README.md#session-drivers) |
+| `REDIS_QUEUE_CONNECTION` | the queue (`QUEUE_CONNECTION=redis`) | [connections and drivers](../queue/README.md#connections-and-drivers) |
+| `LIVE_REDIS_CONNECTION` | live hints (`LIVE_DRIVER=redis`) | [configuration](../live/README.md#configuration) |
+
+A driver whose connection name is unknown fails at the start; one whose package is missing says what to install.
 
 ## Behaviour you can rely on
 
@@ -53,11 +71,11 @@ defineApplication({ config: [QueueRedis], … });   // REDIS_QUEUE_CONNECTION=qu
   of the client changes one file (`src/connections.ts`). The peer range is `^5 || ^6`.
 - **Keys are not prefixed for you** — commands are raw; name them with `connection.key(…)`. The framework's keys:
   `<prefix>cache:…` and `<prefix>lock:…` (cache, locks), `<prefix>session:<id>` (sessions), `<prefix>queues:<queue>[:delayed|:reserved]`
-  and the set `<prefix>queues` (queue), `<prefix>live:seq:<channel>` and the pub/sub channel `<prefix>live` (live). `cache:clear` deletes only `cache:` keys
-  (`SCAN` + `UNLINK`), never `FLUSHDB`.
+  and the set `<prefix>queues` (queue), `<prefix>live:seq:<channel>` and the pub/sub channel `<prefix>live` (live).
+  `cache:clear` deletes only `cache:` keys (`SCAN` + `UNLINK`), never `FLUSHDB`.
 - **Readiness (E126):** `RedisHealthCheck` (registered by the provider for `/up/ready`) pings every connection **in use** — one a
   driver or the app asked for with `get()`. A configured connection nothing uses is not checked (`REDIS_URL` has a default; an
-  app on the database drivers is not "not ready" for a Redis it never talks to).
+  app on the database drivers is not "not ready" for a Redis it never talks to). See [health checks](../core/README.md#health-checks-e126).
 - **Time:** Redis TTLs follow Redis' clock, never the app's `Clock` — `app.travel()` in a test does not expire Redis keys.
 
 ## Not supported (yet)

@@ -1,9 +1,354 @@
 # @bespokecore/core
 
 The application kernel: the service container with constructor injection (generated `static inject` lists, no
-decorators), providers, configuration, events, the clock, the request/job context and the ambient transaction context.
-Every other package builds on it. This README covers its observation points, redaction, error solutions and what the
-container's errors and warnings mean; the rest follows with the docs app.
+decorators), service providers, modules, configuration, events, the clock, the request/job context and the ambient
+transaction context — plus the diagnostics channels, health checks, redaction and error solutions every other package uses.
+Every BespokeCore package builds on it; an app depends on it directly (`defineApplication`, `defineModule`, `defineConfig`).
+It has no provider of its own and is not discovered — it is what discovery runs on.
+
+| Import | What |
+| --- | --- |
+| `@bespokecore/core` | everything below |
+| `@bespokecore/core/register` | the Node loader hook that writes the injection lists of app code (`node --import`; `bespoke` loads it itself) |
+| `@bespokecore/core/vite` | the same transform as a Vite plugin (`bespokeInjection()` — part of `bespoke()` in [@bespokecore/vite](../vite/README.md)) |
+| `@bespokecore/core/diagnostics` | the observation channels ([Diagnostics](#diagnostics-bespokecorecorediagnostics-e118)) |
+
+## The application: `defineApplication`
+
+`bootstrap/app.ts` describes the app and exports it — it boots nothing. `bespoke` boots it for a command or the server
+([@bespokecore/cli](../cli/README.md)); tests boot a fresh instance per test (`createTestApp(app)`,
+[@bespokecore/testing](../testing/README.md)).
+
+```ts
+// bootstrap/app.ts (apps/web-app)
+export default defineApplication({
+  root: join(import.meta.dirname, '..'),
+  config: [AppConfig, SystemDatabase, AppStorage],
+  modules: [auth, userProfile, dashboard, notifications, locale, lab, system],
+  middleware: { global: [SecurityHeaders], web: [ShareAppProps] },
+});
+```
+
+| Option | What |
+| --- | --- |
+| `root` | the app root: `package.json`, `.env`, `.bespoke/`, `index.html` |
+| `modules` | the feature modules, in the order they register and boot |
+| `config` | app-level configuration (`defineConfig`) — validated with every other definition before anything registers |
+| `providers` | app-level service providers (booted after the packages', before the modules') |
+| `listeners` | app-level event listeners (`listen(Event, Listener)`) |
+| `health` | app-level readiness checks for `/up/ready` ([Health checks](#health-checks-e126)) |
+| `env` | the environment to validate against (default: `.env`, `.env.{NODE_ENV}`, then the real one — [Configuration](#configuration)) |
+| `discover` | register the providers of installed packages (default `true`, [Discovery](#discovery-the-bespoke-field-and-bespoke-discover)) |
+| `override` | runs after every provider registered and before any boots — replace bindings there (tests) |
+| `container` | a container to use instead of a new one |
+
+Packages add their own options by declaration merging: `middleware` and `clientRoutes` come from
+@bespokecore/http ([Configuration](../router/README.md#configuration) of the router).
+
+`createApplication(options)` creates and boots it and returns the `Application` (`root`, `container`, `modules`, `packages`
+— the discovered ones —, `options`). In order: discovery, configuration (validated and bound), the core's bindings
+(`Logger`, `Clock`, `Redactor`, `ErrorSolutions`, `HealthChecks`, `EventDispatcher`), every provider's `register()`,
+`override`, every provider's `boot()`. `app.shutdown()` — also `await using app = …` — runs every provider's `shutdown()`
+in reverse order, once; each gets its turn even if an earlier one fails (the errors are thrown together).
+
+## Modules: `defineModule`
+
+A feature module is a folder under `modules/` whose `index.ts` exports its definition — its name, providers, configuration,
+listeners and health checks; every other package adds what a module contributes:
+
+```ts
+// modules/user-profile/index.ts (apps/web-app)
+export default defineModule({
+  name: 'user-profile',
+  providers: [UserProfileServiceProvider],
+  config: [ProfileConfig],
+  listeners: [listen(Login, RecordLastLogin), listen(Registered, RefreshMemberStats)],
+  jobs: [RebuildMemberStatsJob],                          // @bespokecore/queue
+  migrations: new URL('./migrations/', import.meta.url),  // @bespokecore/database
+  seeders: [DemoLinksSeeder],                             // @bespokecore/database
+  routes,                                                 // @bespokecore/http: the `web` group
+  apiRoutes,                                              // @bespokecore/http: the `api` group, under /api
+  schedule,                                               // @bespokecore/scheduler
+});
+```
+
+| Key | From |
+| --- | --- |
+| `name`, `providers`, `config`, `listeners`, `health` | core |
+| `routes`, `apiRoutes` | @bespokecore/http ([Registration](../router/README.md#registration) of the router) |
+| `commands` | [@bespokecore/cli](../cli/README.md#commands) |
+| `migrations`, `seeders`, `exposes` | [@bespokecore/database](../database/README.md) |
+| `jobs` | [@bespokecore/queue](../queue/README.md) |
+| `notifications`, `recipients` | [@bespokecore/notifications](../notifications/README.md) |
+| `schedule` | [@bespokecore/scheduler](../scheduler/README.md) |
+| `csrfExcept` | [@bespokecore/session](../session/README.md) |
+
+Its `index.ts` is also its public API: other modules import from `#modules/user-profile` (the app's `package.json` maps
+`"#modules/*": "./modules/*/index.ts"`) — `bespoke make:lint-config --boundaries` can enforce that
+([Lint](../cli/README.md#lint)). `bespoke make:module <name>` writes a new one.
+
+## Service providers
+
+A provider registers and boots the services of a package or a module — Laravel's ServiceProvider. Any class with at least
+one of the hooks or static lists:
+
+```ts
+export class UserProfileServiceProvider implements ServiceProvider {
+  register(container: Container): void {          // bind only — other providers may not have registered yet
+    container.singleton(LoginActivityRepository);
+    container.singleton(MemberStats);
+  }
+  async boot(app: Application): Promise<void> { … }      // every provider has registered: resolve freely
+  async shutdown(app: Application): Promise<void> { … }  // release pools, handles, subscriptions
+}
+```
+
+| Static | What |
+| --- | --- |
+| `static config = [LogConfig]` | configuration the provider needs — validated with the app's own, before any provider registers |
+| `static solutions = defineSolutions([…])` | solutions for its errors on the development error page ([Solutions](#solutions-e130)) |
+| `static health = [DatabaseHealthCheck]` | readiness checks for `/up/ready` ([Health checks](#health-checks-e126)) |
+
+Order: the providers of installed packages (dependencies first, from discovery), then `providers` of the app, then each
+module's, in module order. **Every** provider registers before **any** boots; `shutdown` runs in reverse. A class listed as a
+provider without any hook or list fails the start.
+
+## Discovery: the `"bespoke"` field and `bespoke discover`
+
+Packages register themselves: a package that opts in with a `"bespoke"` field in its `package.json` has its providers
+registered by every app that installs it — no list in the app:
+
+```json
+{
+  "name": "@bespokecore/http",
+  "bespoke": {
+    "providers": ["HttpServiceProvider"],
+    "browser": ["src/client/**", "src/page.ts"]
+  }
+}
+```
+
+- **`providers`:** exported from the package's entry, registered in dependency order (a package after the ones it depends on).
+- **`browser`:** browser-only sources (globs relative to the package) — the injection transform leaves them alone, so no
+  injection code reaches a client bundle (E76).
+- **`bespoke discover`** walks the app's dependencies — its dev dependencies too, which a production install simply lacks — and
+  writes `.bespoke/manifest.json`: the providers and the injection lists of the packages' exported classes, read from their
+  `.d.ts` files (a package built with `bespoke package:build` carries its lists already). It runs **by itself** whenever
+  `package.json`, the lockfile or the resolution conditions change — `pnpm add` needs no extra step — and again when a listed
+  package is gone (a production install without the dev dependencies). The manifest is data, never imported: rewriting it
+  restarts no dev server.
+- `defineApplication({ discover: false })` registers nothing of the installed packages (`providers` then lists them by hand).
+
+## Configuration
+
+Packages, modules and the app declare their environment as config definitions (`defineConfig(name, { env, resolve })`,
+validated with any Standard Schema). The app validates **all** of them before anything registers: a missing or invalid
+variable stops the start with one `ConfigError` that lists every problem (`• encryption: APP_KEY — Missing — run "bespoke
+key:generate"`). Variables come from `.env`, then `.env.{NODE_ENV}` (`.env.test`) on top, then the real environment, which
+wins. `bespoke` prints how to fix it below the error (the solutions, E130).
+
+```ts
+// config/app.ts (apps/web-app)
+import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import * as v from 'valibot';
+
+export const AppConfig = defineConfig('app', {
+  env: v.object({
+    APP_NAME: v.pipe(v.string(), v.nonEmpty()),
+    APP_URL: v.pipe(v.string(), v.url()),
+  }),
+  resolve: (env) => ({ name: env.APP_NAME, url: env.APP_URL }),
+});
+export type AppConfig = ConfigOf<typeof AppConfig>;
+
+class ShowLoginController {
+  constructor(config: AppConfig, session: Session) { … }   // a definition is also a token: injected like any service
+}
+```
+
+- **Where it is listed:** `defineApplication({ config })`, `defineModule({ config })` or a provider's `static config` — each
+  definition once, however often it is listed.
+- **`resolve`** gets the schema's output and returns the typed value; `ConfigOf<typeof X>` is its type. Defaults belong in
+  the schema (`v.optional(…, '3000')`); every value is a string until the schema transforms it.
+- **`process.env` is never modified:** the files are parsed with `util.parseEnv`; tests pass `createTestApp(app, { env })`.
+- Each package's README lists its variables (`PORT` → [@bespokecore/server](../server/README.md#configuration), `LOG_LEVEL` →
+  [@bespokecore/log](../log/README.md#configuration), …); `.env.example` of `apps/web-app` shows them together.
+
+## The container
+
+```ts
+container.singleton(MemberStats);                        // one instance, built in the root container
+container.singleton(Mailer, (c) => new TransportMailer(…)); // an interface's token → a factory (or a class)
+container.scoped(SharedData);                            // one per scope — per request, job attempt or command
+container.bind(EventDispatcher, (resolver) => new EventDispatcher(registry, resolver)); // a new one on every resolution
+container.instance(Clock, new TestClock());              // a prebuilt value
+container.make(MemberStats);                             // resolve (an unbound class is built — autowired)
+container.has(Mailer);                                   // bound here or in a parent?
+```
+
+- **Scopes:** the kernel resolves controllers and middleware from `container.createScope()` per request; the worker per job
+  attempt; `bespoke` per command. A scoped service resolved outside a scope — or by a singleton — is an error
+  ([The container's errors](#the-containers-errors)): a singleton is built in the root and must never capture a request.
+- **Tokens:** an interface has no runtime value, so it is bound and injected through a token of the same name —
+  `export interface Mailer { … }` plus `export const Mailer = token<Mailer>('Mailer')`; one import gives both. The core's
+  contracts are tokens: `Logger` (a console fallback until [@bespokecore/log](../log/README.md) binds pino), `Clock`,
+  `Translator` (bound per request by [@bespokecore/i18n](../i18n/README.md#on-the-server-translator)).
+- **Re-binding** replaces a cached singleton — `override` (tests) sees every binding before anything is built.
+- `container.keys()` lists what is bound, for tooling ([tinker](../cli/README.md#tinker)).
+
+## Constructor injection
+
+App code gets its `static inject` lists from the injection transform (the loader of `bespoke dev`/`start`, the `bespoke()`
+Vite plugin for Vitest and SSR); packages get them from `bespoke package:build`. A parameter is injectable when its type is a
+class or a token that exists at runtime (a value import — not `import type` — or a declaration in the module). Interfaces are
+injected through a token of the same name: `export const Mailer = token<Mailer>('Mailer')`. A class that declares its own
+`static inject` is left alone.
+
+**Defaulted and optional parameters end the list** — JavaScript's default applies. When such a parameter has an injectable
+type (`clock: Clock = new SystemClock()`), the container would never inject it: a provider's or a test's binding never
+reaches the class. The transform marks the class, and the container reports it **once per class when it first builds it**
+(E128) — a warning, never an error:
+
+```text
+[warn] Injection: PruneTokensJob (modules/auth/jobs/PruneTokensJob.ts:5): the parameter "clock: Clock = new SystemClock()" is
+defaulted, so the container never injects Clock — its default is always used, also when a provider or a test binds another
+Clock. Remove the default to have it injected, or write `static inject = [...]` to make the choice explicit.
+```
+
+The log line is written in development (`NODE_ENV=development`); `container.warnings` keeps them for the development error
+page, and `container.onWarning(listener)` hears them. A tree's `parent?: Self` is no dependency and gets no warning.
+
+## The container's errors
+
+A `ContainerError` says why (`reason`), what (`key`) and who asked (`path`, `neededBy`):
+
+| `reason` | Means | The fix |
+|---|---|---|
+| `unbound` | An interface's token has no binding. | Bind it in a provider's `register()` (`container.singleton(Mailer, …)`), or install the package that does (`bespoke discover`). |
+| `scoped` | A per-request (scoped) service resolved outside a scope — or by a singleton, which would keep the first request's. | Resolve it from the request's scope (inject it into a controller, middleware, listener); a singleton that needs it becomes scoped too. |
+| `no-injection-list` | A class with constructor parameters but no list — `injection` says what the transform could not inject (a number, a type-only import, a missing annotation). | Inject classes and tokens; primitives come from a config object. |
+| `circular` | `A → B → A`. | Move what both need into a third class, or pass one of them per call. |
+
+`container.keys()` lists every class and token bound in a container and its parents (the nearest binding first) — for
+tooling: `bespoke tinker` completes them and resolves them by name. Resolving stays `make()`.
+
+## Events and listeners
+
+An event is a class — its class is its identity. A listener is a class with `handle(event)` (built through the container,
+so it gets constructor injection) or a closure. Modules and the app list who listens to what:
+
+```ts
+// @bespokecore/auth (its `static event` and `static schema` for queued listeners left out)
+export class Registered {
+  readonly #event = true;          // makes the class nominal: a listener for another event is a compile error
+  readonly user: AuthUser;
+  constructor(user: AuthUser) { this.user = user; }
+}
+
+// modules/user-profile/listeners/RecordLastLogin.ts
+export class RecordLastLogin {
+  readonly #activity: LoginActivityRepository;
+  constructor(activity: LoginActivityRepository) { this.#activity = activity; }
+  async handle(event: Login): Promise<void> {
+    await this.#activity.record(event.user.id, event.at);
+  }
+}
+
+defineModule({ name: 'user-profile', listeners: [listen(Login, RecordLastLogin), listen(Registered, RefreshMemberStats)] });
+```
+
+```ts
+constructor(events: EventDispatcher) { this.#events = events; }
+await this.#events.dispatch(new Registered(user));
+```
+
+- **In order, awaited:** listeners run one after the other in registration order — the event's class first, then the classes
+  it extends. An error stops the dispatch and reaches the caller (in a request: the exception handler); the listeners after it
+  do not run. For all or nothing, dispatch inside a transaction ([@bespokecore/database](../database/README.md#transactions)):
+  in-process listeners join it.
+- **Per scope:** the `EventDispatcher` is resolved from the asking container — in a request, listeners are built from the
+  request's scope and may use scoped services.
+- **Queued listeners** (`static queue = { queue: 'mail' }` on the listener, E86) are queued as a job and run in a worker, with
+  the event's payload (its `static event` and `static schema`) instead of the event object — they need
+  [@bespokecore/queue](../queue/README.md#transactions-e107-e109); without it the start fails. `listen()` checks the pairing at
+  compile time.
+- **Framework events** are classes like any other: `Login`, `Registered` (auth), the job events
+  ([queue](../queue/README.md#job-events)), the scheduler's ([scheduler](../scheduler/README.md#events-e127)).
+- Every dispatch is reported on the `event` channel ([Diagnostics](#diagnostics-bespokecorecorediagnostics-e118)) — the
+  devtools record it ([App events](../devtools/README.md#app-events-the-bespokeevent-channel)).
+
+### Testing: `EventFake`
+
+Every test app records the dispatched events (`app.events`, an `EventFake` — [Fakes](../testing/README.md#fakes)); faked events
+are recorded and nothing else — their listeners neither run nor are queued:
+
+```ts
+const app = await createTestApp(application, { events: [Registered] });   // or 'fake' (all), or 'real' (the default)
+await app.post('/register', { form }).assertRedirect();
+app.events.assertDispatched(Registered, (event) => event.user.email === 'kj@example.com');
+app.events.assertListening(Registered, RefreshMemberStats);
+```
+
+`assertDispatched(Class, match?)`, `assertDispatchedTimes(Class, n, match?)`, `assertNotDispatched`, `assertNothingDispatched`,
+`assertListening(Class, listener)`, `dispatched(Class, match?)` — `match` is part of the event (`{ orderId: 'o-1' }`) or a test.
+
+## The clock
+
+Services that expire, schedule or wait take a `Clock` instead of calling `Date.now()` (E97):
+
+```ts
+constructor(clock: Clock) { this.#clock = clock; }
+const expires = this.#clock.now() + 60_000;
+```
+
+`SystemClock` is the binding outside tests; every test app binds a `TestClock` ([Time](../testing/README.md#time)) —
+`app.travel({ minutes: 5 })`, `app.travelTo(date)` and `app.freeze()` move it without fake timers. `Duration`
+(`{ hours: 1, seconds: 30 }`) and `durationToMilliseconds()` are the core's spans of time. A `clock: Clock = new SystemClock()`
+default is never injected ([Constructor injection](#constructor-injection)).
+
+## Request, job and task context
+
+The one deliberate piece of ambient state besides transactions (E3): which unit of work runs now — for cross-cutting concerns
+like logging, never for services or data. The kernel sets the request (`runWithRequest`), the worker the job (`runWithJob`),
+the scheduler the task (`runWithTask`):
+
+```ts
+currentRequest();      // { requestId } — the request's x-request-id
+currentJob();          // { job, jobId, attempt, requestId? } — requestId: the request that dispatched it (E131)
+currentTask();         // { task }
+currentLogContext();   // what every log entry written now carries: { requestId }, { job, jobId, attempt }, { task }
+```
+
+`LogContextSources` (one per app) adds fields to every entry — `@bespokecore/otel` adds the span's ids.
+
+## The transaction context
+
+Which database transaction the current async call chain runs in (E107). The transaction is
+[@bespokecore/database](../database/README.md#transactions)'s — `connections.transaction(callback)`, `repository.transaction(callback)`
+—; the context and the functions around it live here, so every package can use them without depending on the database (the
+database package re-exports them):
+
+| Function | What |
+| --- | --- |
+| `afterCommit(fn)` | runs `fn` once the outermost transaction committed, outside of any transaction; never on a rollback; at once outside one |
+| `afterRollback(fn)` | runs `fn` if the current transaction rolls back — undo work done outside it (a lock on the cache's connection) |
+| `outsideTransaction(fn)` | runs `fn` outside the current transaction: its writes stay even when the transaction rolls back |
+| `inTransaction()`, `currentTransaction()` | whether — and in which — transaction the call chain runs |
+
+```ts
+await connections.transaction(async () => {
+  const user = await users.insert({ … });
+  await afterCommit(() => mailer.send(new WelcomeMail(user)));
+});
+```
+
+- **Entered only explicitly** and only for as long as its callback; everything awaited inside joins it. It never reaches
+  another request, job or test running at the same time.
+- **Loud, never silent:** work started inside a transaction that runs after it finished (an un-awaited promise, a timer)
+  throws `TransactionFinishedError` instead of writing outside it.
+- **Framework boundaries cut it:** work after the response, jobs and the worker never run inside the transaction that was open
+  when they were registered.
+- The rules, nesting (savepoints) and the limits: [Transactions](../database/README.md#transactions).
 
 ## Diagnostics: `@bespokecore/core/diagnostics` (E118)
 
@@ -93,11 +438,12 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
 
 ## Health checks (E126)
 
-`/up/ready` (`@bespokecore/server`) runs the app's `HealthChecks`: invokable classes with `static check` (the name) and
-`handle()` (throws when the check fails; may return a short note), dependencies through the constructor. Packages list theirs as
-`static health` on their provider (database: `select 1` on every connection; redis: `PING` on each connection in use; cache:
-`add` + `forget`; queue: the default connection's size); the app adds its own with `defineApplication({ health })` or
-`defineModule({ health })`. They run at once, each with a time limit (2 s, or `static timeout` in ms); `run()` never throws.
+`/up/ready` ([@bespokecore/server](../server/README.md#health-e126)) runs the app's `HealthChecks`: invokable classes with
+`static check` (the name) and `handle()` (throws when the check fails; may return a short note), dependencies through the
+constructor. Packages list theirs as `static health` on their provider (database: `select 1` on every connection; redis: `PING`
+on each connection in use; cache: `add` + `forget`; queue: the default connection's size); the app adds its own with
+`defineApplication({ health })` or `defineModule({ health })`. They run at once, each with a time limit (2 s, or
+`static timeout` in ms); `run()` never throws.
 
 ```ts
 export class StorageWritable implements HealthCheck {
@@ -115,62 +461,6 @@ defineModule({ name: 'system', health: [StorageWritable] });
 
 A class without `static check` or `handle()` does not compile (`Property 'check' is missing in type 'typeof NoName' but required
 in type '{ readonly check: string; readonly timeout?: number | undefined; }'.`); two classes with one name fail the start.
-
-## HTML: the escaping `html` template
-
-```ts
-import { html, raw } from '@bespokecore/core';
-
-html`<p>Hello ${user.name}</p><ul>${items.map((item) => html`<li>${item}</li>`)}</ul>`;   // every value escaped; nested html kept
-```
-
-For HTML the server writes itself — mails (`@bespokecore/mail` re-exports it) and the devtools' pages. Values are escaped as
-text and inside quoted attributes (`& < > " ' \``); `raw()` is markup you trust, never input. It does not judge URLs: put only
-links you built into `href`.
-
-## Configuration
-
-Packages, modules and the app declare their environment as config definitions (`defineConfig(name, { env, resolve })`,
-validated with any Standard Schema). The app validates **all** of them before anything registers: a missing or invalid
-variable stops the start with one `ConfigError` that lists every problem (`• encryption: APP_KEY — Missing — run "bespoke
-key:generate"`). Variables come from `.env`, then `.env.{NODE_ENV}` (`.env.test`) on top, then the real environment, which
-wins. `bespoke` prints how to fix it below the error (the solutions, E130).
-
-## Constructor injection
-
-App code gets its `static inject` lists from the injection transform (the loader of `bespoke dev`/`start`, the `bespoke()`
-Vite plugin for Vitest and SSR); packages get them from `bespoke package:build`. A parameter is injectable when its type is a
-class or a token that exists at runtime (a value import — not `import type` — or a declaration in the module). Interfaces are
-injected through a token of the same name: `export const Mailer = token<Mailer>('Mailer')`. A class that declares its own
-`static inject` is left alone.
-
-**Defaulted and optional parameters end the list** — JavaScript's default applies. When such a parameter has an injectable
-type (`clock: Clock = new SystemClock()`), the container would never inject it: a provider's or a test's binding never
-reaches the class. The transform marks the class, and the container reports it **once per class when it first builds it**
-(E128) — a warning, never an error:
-
-```text
-[warn] Injection: PruneTokensJob (modules/auth/jobs/PruneTokensJob.ts:5): the parameter "clock: Clock = new SystemClock()" is
-defaulted, so the container never injects Clock — its default is always used, also when a provider or a test binds another
-Clock. Remove the default to have it injected, or write `static inject = [...]` to make the choice explicit.
-```
-
-The log line is written in development (`NODE_ENV=development`); `container.warnings` keeps them for the development error
-page, and `container.onWarning(listener)` hears them. A tree's `parent?: Self` is no dependency and gets no warning.
-
-## The container's errors
-
-A `ContainerError` says why (`reason`), what (`key`) and who asked (`path`, `neededBy`):
-
-| `reason` | Means | The fix |
-|---|---|---|
-| `unbound` | An interface's token has no binding. | Bind it in a provider's `register()` (`container.singleton(Mailer, SmtpMailer)`), or install the package that does (`bespoke discover`). |
-| `scoped` | A per-request (scoped) service resolved outside a scope — or by a singleton, which would keep the first request's. | Resolve it from the request's scope (inject it into a controller, middleware, listener); a singleton that needs it becomes scoped too. |
-| `no-injection-list` | A class with constructor parameters but no list — `injection` says what the transform could not inject (a number, a type-only import, a missing annotation). | Inject classes and tokens; primitives come from a config object. |
-| `circular` | `A → B → A`. | Move what both need into a third class, or pass one of them per call. |
-
-`container.keys()` lists every class and token bound in a container and its parents (the nearest binding first) — for
-tooling: `bespoke tinker` completes them and resolves them by name. Resolving stays `make()`.
 
 ## Redaction (E125)
 
@@ -229,3 +519,15 @@ export class PaymentsServiceProvider {
 transform and invalid configuration; the packages add theirs (`http`: an undefined route name with "did you mean", a missing
 view R2; `database`: a missing table and the pending migrations; `encryption`: a missing `APP_KEY`). `bespoke` prints them
 too when the app cannot start.
+
+## HTML: the escaping `html` template
+
+```ts
+import { html, raw } from '@bespokecore/core';
+
+html`<p>Hello ${user.name}</p><ul>${items.map((item) => html`<li>${item}</li>`)}</ul>`;   // every value escaped; nested html kept
+```
+
+For HTML the server writes itself — mails (`@bespokecore/mail` re-exports it) and the devtools' pages. Values are escaped as
+text and inside quoted attributes (`& < > " ' \``); `raw()` is markup you trust, never input. It does not judge URLs: put only
+links you built into `href`.

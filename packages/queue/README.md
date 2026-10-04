@@ -3,7 +3,14 @@
 Work that should not happen in the request (E83–E86, E98): **jobs** are injectable classes with `handle()` — like
 controllers —, a stable name and a payload schema; drivers `sync`, `database` and `redis` behind one contract; a worker
 with a scope per job, timeouts, retries, failed jobs and a clean shutdown; unique jobs, chains, job middleware, job events —
-and a fake for tests. Queued listeners (`static queue`) and queued mails (`mailer.queue`) are jobs of this package too.
+and a fake for tests. Queued listeners (`static queue`) and queued mails (`mailer.queue`,
+[queued mails](../mail/README.md#queued-mails-e105)) are jobs of this package too.
+
+`bespoke discover` registers its `QueueServiceProvider` like any installed package. The drivers' packages are optional peers,
+checked at the start — not at the first dispatch: `database` (the default) needs [@bespokecore/database](../database/README.md),
+`redis` needs [@bespokecore/redis](../redis/README.md), an encrypted job (and every queued listener)
+[@bespokecore/encryption](../encryption/README.md) with an `APP_KEY`; unique jobs, `job.once()` and `withoutOverlapping()` keep
+their locks in the app's cache ([@bespokecore/cache](../cache/README.md#locks-and-markers-of-the-queue)).
 
 ```ts
 // modules/auth/jobs/SendWelcomeMailJob.ts — and `jobs: [SendWelcomeMailJob]` in defineModule({ … })
@@ -14,12 +21,14 @@ export class SendWelcomeMailJob {
   static readonly backoff = [10, 60, 300];                         // seconds before each retry, the last repeats
   static readonly timeout = 30;                                    // then job.signal aborts
 
-  constructor(users: UserRepository, mailer: Mailer, translators: Translators) { … }   // injected per attempt
+  constructor(users: UserRepository, mailer: Mailer, translators: Translators, app: AppConfig) { … }   // injected per attempt
 
   async handle(payload: JobPayload<typeof SendWelcomeMailJob>, job: JobContext): Promise<void> {
     const user = await this.#users.find(payload.userId);
-    if (!user) return job.discard('the user is gone');             // no retry, no failed entry
-    await job.once(`welcome-mail:${user.id}`, () => this.#mailer.send(new WelcomeMail(user, this.#translators.for(user.locale))));
+    if (!user) return job.discard('the account no longer exists');  // no retry, no failed entry
+    await job.once(`welcome-mail:${user.id}`, () =>                // once per account, also across retries (E85)
+      this.#mailer.send(new WelcomeMail(user, new URL('/users/me', this.#app.url).href, this.#translators.for(user.locale))),
+    );
   }
 }
 
@@ -30,13 +39,18 @@ await this.#queue.dispatch(SendWelcomeMailJob, { userId: 'x' });    // ✗ Type 
 
 ```text
 bespoke queue:work [--connection=database|redis] [--queue=mail,default|*] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]
-bespoke queue:failed | queue:retry <id…|all> | queue:forget <id> | queue:flush | queue:prune-failed [--hours=168] | queue:size [queue…]
-bespoke make:job <Name> --module=<module> | make:queue-table [--module=system]
+bespoke queue:failed | queue:retry <id…|all> | queue:forget <id> | queue:flush | queue:prune-failed [--hours=168]
+bespoke queue:size [queue…] [--connection=database|redis]
+bespoke make:queue-table [--module=system]
 ```
 
-`bespoke dev` starts a worker next to the server, on every queue (`--queue=*`), and restarts it when code changes (E101).
+`bespoke make:job <Name> --module=<module>` ([@bespokecore/cli](../cli/README.md)) writes a job class with a stable name and
+prints the line for its module. `bespoke dev` starts a worker next to the server, on every queue (`--queue=*`,
+`--stop-timeout=5`), and restarts it when code changes (E101) — not with `QUEUE_CONNECTION=sync`, where jobs run at the dispatch.
 
 ## Connections and drivers
+
+### Configuration
 
 ```sh
 QUEUE_CONNECTION=database       # database (default) | redis | sync
@@ -50,6 +64,11 @@ QUEUE_FAILED_DRIVER=database    # failed jobs: database (failed_jobs) | null (on
 QUEUE_FAILED_CONNECTION=…       # the database connection of failed_jobs (default: DB_QUEUE_CONNECTION)
 ```
 
+`QueueConfig` is the package's config class (`config.default`, `config.connections`, `config.failed`). A connection name that
+is not configured, an unknown database or Redis connection, a missing driver package: the start fails with what to do.
+
+### Drivers
+
 | Driver | Where jobs wait | Claim | Use it for |
 | --- | --- | --- | --- |
 | `database` | the `jobs` table (`bespoke make:queue-table`, E96) | one atomic statement: `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING` on Postgres; on SQLite one writing statement takes the lock before it reads | the default — no extra service, and a dispatch is part of the app's transaction |
@@ -59,7 +78,8 @@ QUEUE_FAILED_CONNECTION=…       # the database connection of failed_jobs (defa
 Workers never decide by reading first: a job is claimed by exactly one worker (2 workers × 200 jobs, Postgres and Redis: none
 twice — a test of the package). `queue:size` counts per queue; `--queue=*` finds every queue that holds jobs (at most once a second).
 A driver may also split its count (`counts(queue)` → `{ ready, delayed, reserved }`: due, not yet due or released for later,
-claimed by a worker) — all three drivers do; the devtools' queue view (`/_bespoke/devtools/queue`, development only) shows it.
+claimed by a worker) — all three drivers do; the devtools' queue view (`/_bespoke/devtools/queue`, development only —
+[the pages](../devtools/README.md#the-pages-_bespokedevtools)) shows it.
 
 ## At-least-once: what the queue promises (E85)
 
@@ -94,7 +114,8 @@ another worker; exit 0. Later signals do not cut that short.
 
 ## Transactions (E107, E109)
 
-A dispatch inside `connections.transaction()` belongs to the transaction — no `using(trx)` needed:
+A dispatch inside `connections.transaction()` ([transactions](../database/README.md#transactions)) belongs to the
+transaction — no `using(trx)` needed:
 
 | Connection | Inside `transaction()` |
 | --- | --- |
@@ -119,7 +140,8 @@ The `jobs` and `failed_jobs` tables (and Redis) are a database: a reset link or 
   plaintext payload for an encrypted job is poison (failed at once), never run.
 - The framework's own jobs are always encrypted: `bespoke.mail` (`mailer.queue`: the composed message with its links),
   `bespoke.listener` (queued listeners — the event belongs to the app), `bespoke.notification`.
-- `failed_jobs.exception` and the worker's log lines go through the log's redaction (passwords in SMTP errors).
+- `failed_jobs.exception` and the worker's log lines go through the log's redaction (passwords in SMTP errors —
+  [redaction](../core/README.md#redaction-e125)).
 - Without encryption: IDs only — a test of the web app asserts that no reset token appears in `jobs`/`failed_jobs` in clear.
 
 ## Retries, failures, poison
@@ -146,7 +168,8 @@ static readonly middleware = [withoutOverlapping<typeof RebuildStatsJob>((p) => 
 ```
 
 - **Unique:** a lock `queue:unique:<job>:<key>` in the app's cache (`cache.lock`, owner = the job's id), taken at the dispatch
-  *outside* the transaction (E108: every process sees it at once), freed again by `afterRollback` if the transaction rolls back,
+  *outside* the transaction ([E108](../cache/README.md#database-its-own-connection-never-the-apps-transactions-e108): every
+  process sees it at once), freed again by `afterRollback` if the transaction rolls back,
   by the worker when it starts the job (`uniqueUntil: 'processing'`) or when the job leaves the queue (`'done'`, the default:
   processed, failed, discarded), at the latest after `uniqueFor` (3600 s). Workers on several machines need a shared cache
   (`CACHE_DRIVER=database` or `redis`). `bulk()` and `chain()` take no unique key (a readable type error).
@@ -163,14 +186,15 @@ static readonly middleware = [withoutOverlapping<typeof RebuildStatsJob>((p) => 
 cannot be queued (a queued listener of a job event would make jobs whose events … — a loop; a readable type error).
 
 **Where a job comes from (E131):** a job dispatched in a request carries the request's id in its record (`requestId`, also
-without any subscriber) — and, when a tracer (`@bespokecore/otel`) put one on the `queue.dispatch` message, the trace
-context (`traceparent`). The devtools and OpenTelemetry follow a request into its jobs that way. For tools, the
-`queue.dispatch` and `queue.job` channels of `@bespokecore/core/diagnostics` (E118) trace every dispatch (`kind`, `jobs`,
+without any subscriber) — and, when a tracer ([@bespokecore/otel](../otel/README.md#what-it-records)) put one on the
+`queue.dispatch` message, the trace context (`traceparent`). The [devtools](../devtools/README.md) and OpenTelemetry follow a
+request into its jobs that way. For tools, the `queue.dispatch` and `queue.job` channels
+([the channels](../core/README.md#the-channels), E118) trace every dispatch (`kind`, `jobs`,
 `jobIds`, `queue`, `connection`, `delay`, `requestId`) and every attempt (`job`, `jobId`, `attempt`, `originRequestId`,
 `traceparent`, `outcome`, `durationMs`, `error`); job events stay the app's interface.
 
-**Readiness (E126):** the provider registers `QueueHealthCheck` for `/up/ready` — the default connection's driver answers (the
-size of its default queue; `sync` has nothing to reach).
+**Readiness (E126):** the provider registers `QueueHealthCheck` for `/up/ready` ([health checks](../core/README.md#health-checks-e126))
+— the default connection's driver answers (the size of its default queue; `sync` has nothing to reach).
 
 ## Testing
 
@@ -181,7 +205,8 @@ dispatches are checked like real ones (schema, unique locks in the test app's ca
 app.queue.assertDispatched(SendWelcomeMailJob, { userId: ada.id });           // also a predicate, and { unique }
 app.queue.assertDispatchedTimes(RebuildMemberStatsJob, 1).assertNotDispatched(OtherJob).assertNothingDispatched();
 app.queue.assertChained([[ImportProfileJob, { id }], RebuildStatsJob]);
-app.queue.assertListenerQueued(SendEmailVerification, { userId: ada.id });
+app.queue.assertListenerQueued(SendEmailVerification, { userId: ada.id });     // also assertListenerNotQueued
+app.queue.dispatched(SendWelcomeMailJob);                                     // the recorded dispatches, to inspect
 await app.queue.work();                                                       // runs what was queued — for real, in this process
 await app.queue.failed();                                                     // what failed there
 ```

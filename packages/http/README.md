@@ -13,17 +13,40 @@ signed URLs, encrypted cookies and the client history (`ClientHistory`). Three e
 `src/client/`, `src/page.ts` and the router's URL builder, and on any Node built-in or npm package
 (`src/client/browser-safe.test.ts`). The package compiles with the DOM library for `client/`; server code must not use it.
 
+Routes, middleware and the typed pipeline are [@bespokecore/router](../router/README.md); the server that runs them is
+[@bespokecore/server](../server/README.md); the React adapter on top of the client core is
+[@bespokecore/react](../react/README.md).
+
+## Registration and configuration
+
+`HttpServiceProvider` is found by `bespoke discover`. It has no environment variables of its own — it needs the `Encrypter`
+of [@bespokecore/encryption](../encryption/README.md) (`APP_KEY`; the start fails without it) for its encrypted cookies. It
+registers the `Router`, sets up the `web` and `api` middleware groups and loads every module's `routes` (group `web`) and
+`apiRoutes` (group `api`, under `/api`):
+
+```ts
+defineApplication({
+  middleware: { global: [SecurityHeaders], web: [ShareAppProps] },   // after the framework's own, per group
+  clientRoutes: { except: ['admin.*'] },                             // which named routes the browser may learn
+});
+```
+
+Both options, the groups and the order of the framework's middleware (`EncryptCookies` → `ClearClientHistory` → `StartSession`
+→ … → `VerifyCsrfToken` → the app's): [@bespokecore/router](../router/README.md#configuration),
+[Groups and priorities](../router/README.md#groups-and-priorities). Its solutions (E130) — an undefined route name with "did
+you mean", a missing view (R2) — show on the development error page.
+
 ## The client core and the adapter contract
 
-A UI adapter (`@bespokecore/react` today, a Vue adapter later) is a **rendering layer**. Everything else — the protocol,
-the history, caching, background requests — is in `@bespokecore/http/client`, uses DOM APIs where it must, and knows no
-UI framework. `src/client/adapter.test.ts` is the proof: a complete adapter in plain DOM (it renders a page as its
-component name and props in text) visits, goes back and forward, loads deferred props, reloads partially and follows a
-409 — and drives everything Wave 5b added: islands (loaded by the client, and hydrated from the SSR stream's data block
-without a request), layers (Back closes, Forward opens from memory), an action with an optimistic patch and its rollback,
-a flash message fired once, the navigation guard (a visit and a Back held), live validation, an instant visit's
-placeholder, remembered state and a postponed new build — with no UI framework anywhere. What a Vue adapter adds is
-components and composables; the mechanics are here.
+A UI adapter ([@bespokecore/react](../react/README.md) today, a Vue adapter later) is a **rendering layer**. Everything else —
+the protocol, the history, caching, background requests — is in `@bespokecore/http/client`, uses DOM APIs where it must, and
+knows no UI framework. `src/client/adapter.test.ts` is the proof: a complete adapter in plain DOM (it renders a page as its
+component name and props in text) visits, goes back and forward, loads deferred props, reloads partially and follows a 409 — and
+drives everything Wave 5b added: islands (loaded by the client, and hydrated from the SSR stream's data block without a
+request), layers (Back closes, Forward opens from memory), an action with an optimistic patch and its rollback, a flash message
+fired once, the navigation guard (a visit and a Back held), live validation, an instant visit's placeholder, remembered state
+and a postponed new build — with no UI framework anywhere. What a Vue adapter adds is components and composables; the mechanics
+are here.
 
 ### What the core provides
 
@@ -140,12 +163,14 @@ components and composables; the mechanics are here.
    (values, errors, `processing`): the core gives it the requests, the validation, the guard and the memory.
 7. **Its route sinks** (E57): every place where app code hands the adapter a route name (`<Link route>`, the function of
    `useRoute()`, `useForm(name, …)`, `useQueryState(name, …)`, `<Island route>`, `<Form route>`, `useAction(name)`,
-   `usePending(name)`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })`). A layer link is `<Link
+   `usePending(name)`) is a row in `ROUTE_SINKS` of `@bespokecore/vite` (or `bespoke({ routeSinks })` —
+   [The route manifest](../vite/README.md#the-route-manifest-e57)). A layer link is `<Link
    route layer>` — `layer` is a flag, not a sink; a name that is only compared (`usePendingSubmissions(name)`) needs none.
    The client build ships only the names written out at a sink; a name built at runtime fails the build. Route names
    never come from props — the server sends URLs (`router.url()`).
 
-Pages come from `virtual:bespoke/pages` (`bespoke({ pages })` in `@bespokecore/vite`, default `modules/*/views/**/*.tsx`),
+Pages come from `virtual:bespoke/pages` (`bespoke({ pages })`, default `modules/*/views/**/*.tsx` —
+[Virtual modules](../vite/README.md#virtual-modules)),
 language files from `virtual:bespoke/lang` and the route manifest from `virtual:bespoke/routes`; the adapter brings its framework's Vite plugin
 (`plugins: [bespoke(), react()]`).
 
@@ -175,19 +200,19 @@ on screen then sends `""`. It is a function object on purpose: remembered input 
 never remembered. Its state is on the value (`form.data.avatar?.progress`): `form.progress` stays the progress of a visit with
 `FormData`.
 
-**Live props (W6.10)** are a feature the server triggers, like the layers: a page object (a page, a layer's, an island's region
-object) with `live` — the channels it follows, each signed for the session — makes the core attach `live` (its chunk is
-loaded then; an app whose pages follow nothing never loads it). The feature opens **one** `EventSource` per document for every
-channel on screen (`GET /_bespoke/live`, see the protocol), switches it when what is on screen changes, and turns each hint into
-a partial reload of what follows the channel — hints that come in a burst (250 ms quiet, at most 2 s) into **one** reload per
-page, layer or island (`navigator.reload`, `layer.reload`, `region.reload` with `only`). Every request of the document names
-it (`x-bespoke-connection`: visits through the `start` hook, actions and live validations through the `send` event), so the
-server leaves a tab out of the hints its own writes cause. While a guard holds (unsaved changes) nothing reloads:
-`navigator.use(live).updates` (`pending`, `apply()`, `subscribe`; React: `useLiveUpdates()`). The connection rule (E104): always
-connected, except a page loaded over HTTP/1.1 or an unknown protocol (`nextHopProtocol`) — then only while the tab is visible;
-whenever a stream comes back, `hello` compares each channel's sequence with the last one seen and what moved reloads once. The
-stream, the sequences and the hints waiting live **only in the feature's slot of the document**: a 409 closes the stream and
-forgets them.
+**Live props (W6.10, [@bespokecore/live](../live/README.md))** are a feature the server triggers, like the layers: a page object
+(a page, a layer's, an island's region object) with `live` — the channels it follows, each signed for the session — makes the
+core attach `live` (its chunk is loaded then; an app whose pages follow nothing never loads it). The feature opens **one**
+`EventSource` per document for every channel on screen (`GET /_bespoke/live`, see the protocol), switches it when what is on
+screen changes, and turns each hint into a partial reload of what follows the channel — hints that come in a burst (250 ms
+quiet, at most 2 s) into **one** reload per page, layer or island (`navigator.reload`, `layer.reload`, `region.reload` with
+`only`). Every request of the document names it (`x-bespoke-connection`: visits through the `start` hook, actions and live
+validations through the `send` event), so the server leaves a tab out of the hints its own writes cause. While a guard holds
+(unsaved changes) nothing reloads: `navigator.use(live).updates` (`pending`, `apply()`, `subscribe`; React: `useLiveUpdates()`).
+The connection rule (E104): always connected, except a page loaded over HTTP/1.1 or an unknown protocol (`nextHopProtocol`) —
+then only while the tab is visible ([Robust streams](../live/README.md#robust-streams-e104)); whenever a stream comes back,
+`hello` compares each channel's sequence with the last one seen and what moved reloads once. The stream, the sequences and the
+hints waiting live **only in the feature's slot of the document**: a 409 closes the stream and forgets them.
 
 **The client hook API (E132)** is a feature too — the core's budget does not hold even two events, and no limit is raised for
 them: `navigator.use(hooks)` (React: `useFeature(hooks)`, in a component that renders in the browser). Typed events across every
@@ -205,11 +230,12 @@ api.on('invalid', (event) => console.table(event.errors)); // a visit's answer w
 props, islands and actions are no visits and pass no `before`. `invalid` is the visits' `error` event as an object; an action's 422
 comes with its outcome (`useAction`). Listeners are wiring, never data — the feature keeps nothing an event carried.
 
-**Development hooks (W7 step 9).** The in-page bar of `@bespokecore/devtools` attaches the `devtools` feature (exported here, used by
-nothing else) through `globalThis.__BESPOKE_DEVTOOLS_HOOK__`, which its client sets before the app starts. The core and the React
-adapter call that hook only under an inline `process.env.NODE_ENV !== 'production'` — when a navigator is made, when optimistic
-patches are applied, shown, folded in or taken out, and for hydration errors — so a production build drops the calls (the leak test
-checks no chunk names the hook, and the budgets are unchanged). What the feature records stays in slots of the document (E36).
+**Development hooks (W7 step 9).** [The in-page bar](../devtools/README.md#the-in-page-bar) of `@bespokecore/devtools` attaches
+the `devtools` feature (exported here, used by nothing else) through `globalThis.__BESPOKE_DEVTOOLS_HOOK__`, which its client
+sets before the app starts. The core and the React adapter call that hook only under an inline
+`process.env.NODE_ENV !== 'production'` — when a navigator is made, when optimistic patches are applied, shown, folded in or
+taken out, and for hydration errors — so a production build drops the calls (the leak test checks no chunk names the hook, and
+the budgets are unchanged). What the feature records stays in slots of the document (E36).
 
 **The progress bar is opt-in (E82):** `createBespokeApp({ progress: progressBar({ delay: 250 }) })` — the starters (blank-app,
 web-app, and so `make:auth`) pass it; an app that leaves it out carries none of its code. Without it, what every app has says
@@ -339,7 +365,7 @@ questions, the error pages).
 What goes over the wire, in one place (constants in `@bespokecore/http/page`). Every page and island request of the core
 carries `x-bespoke-version` (the build — a new one answers 409); actions and live validations do not (they are no pages: a new
 build shows with the next page request, a poll or a visit). Every write carries `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie —
-never a token from the URL.
+never a token from the URL (CSRF: [@bespokecore/session](../session/README.md)).
 
 | Request header | Sent by | Meaning |
 | --- | --- | --- |
@@ -366,23 +392,25 @@ never a token from the URL.
 | `x-bespoke-flash-waiting` | on a prefetch: messages wait for the page the user is shown — do not show this prefetch |
 | `x-bespoke-validated: a,b` | on a live validation's `204`/`422`: the fields checked — a client trusts only an answer with it (a proxy's 422 shows nothing) |
 
-**The live stream (W6.10, `@bespokecore/live`)**: `GET /_bespoke/live?connection=<id>&c=<token>.<channel>&…` — one per
-document, for every channel its page, layers and islands follow (`PageObject.live`: `[{ channel, only?, token }]`, the token an
-HMAC over the channel and a hash of the session id, E90). Answered `200` with `Content-Type: text/event-stream`,
-`Cache-Control: no-cache, no-store, no-transform` and `X-Accel-Buffering: no`, or refused: `400` (no connection, no channel, too
-many — `LIVE_MAX_CHANNELS`), `401` (no session), `403` (a token that does not fit: another channel, another session, one that
-ended — no stream at all), `503` + `Retry-After` (`LIVE_MAX_STREAMS` reached, the backend down, the server closing). Its events:
-`retry: <ms>` first; `hello` — `{ seq: { <channel>: n }, missed?: [<channel>] }` (each channel's sequence; `missed` after a
-reconnect with `Last-Event-ID`); `refresh` — `{ channel, only, seq }`, a hint and never data (`only: null` — what each follower
-names; `[]` — nothing: this tab caused it); `end` — `{}`, the session ended (signed in or out): do not reconnect; a comment line
-(`: heartbeat`) every `LIVE_HEARTBEAT` seconds. Each `hello` and `refresh` carries `id:` — the sequences the stream has seen
+**The live stream (W6.10, [@bespokecore/live](../live/README.md#configuration))**:
+`GET /_bespoke/live?connection=<id>&c=<token>.<channel>&…` — one per document, for every channel its page, layers and islands
+follow (`PageObject.live`: `[{ channel, only?, token }]`, the token an HMAC over the channel and a hash of the session id, E90).
+Answered `200` with `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-store, no-transform` and
+`X-Accel-Buffering: no`, or refused: `400` (no connection, no channel, too many — `LIVE_MAX_CHANNELS`), `401` (no session),
+`403` (a token that does not fit: another channel, another session, one that ended — no stream at all), `503` + `Retry-After`
+(`LIVE_MAX_STREAMS` reached, the backend down, the server closing). Its events: `retry: <ms>` first; `hello` —
+`{ seq: { <channel>: n }, missed?: [<channel>] }` (each channel's sequence; `missed` after a reconnect with `Last-Event-ID`);
+`refresh` — `{ channel, only, seq }`, a hint and never data (`only: null` — what each follower names; `[]` — nothing: this tab
+caused it); `end` — `{}`, the session ended (signed in or out): do not reconnect; a comment line (`: heartbeat`) every
+`LIVE_HEARTBEAT` seconds. Each `hello` and `refresh` carries `id:` — the sequences the stream has seen
 (`users.7=4&dashboard.sign-ins=12`), what the browser sends back as `Last-Event-ID`.
 
-**The upload endpoint (W6.9, `@bespokecore/storage`)**: `PUT /_bespoke/uploads/<id>?expires=…&signature=…` — the URL the target
-answered with, signed for 15 minutes, in the `web` group. The body is the file's bytes. Answers `200` `{ size }`, or: `403` (a
-signature that does not fit or expired), `404` (no such upload, another session's, or past its lifetime), `409` (its bytes were
-sent already — one PUT per upload), `413` (more than the field allows — cut off in the stream, whatever `Content-Length` said;
-nothing stays), `419` (no session), `400` (no body). Uploads to S3 go to the store itself (a presigned POST) instead.
+**The upload endpoint (W6.9, [@bespokecore/storage](../storage/README.md#uploads))**:
+`PUT /_bespoke/uploads/<id>?expires=…&signature=…` — the URL the target answered with, signed for 15 minutes, in the `web`
+group. The body is the file's bytes. Answers `200` `{ size }`, or: `403` (a signature that does not fit or expired), `404` (no
+such upload, another session's, or past its lifetime), `409` (its bytes were sent already — one PUT per upload), `413` (more
+than the field allows — cut off in the stream, whatever `Content-Length` said; nothing stays), `419` (no session), `400` (no
+body). Uploads to S3 go to the store itself (a presigned POST) instead.
 
 **The page object** (`PageObject`): `component`, `props`, `url`, `version`; `locale`, `fallbackLocale` (W5); `deferredProps`,
 `mergeProps`, `deepMergeProps`, `matchPropsOn`; and from Wave 5b `query` + `queryDefaults` (the query as the server parsed
@@ -397,8 +425,8 @@ follows — W6.10; a page's own and the shared ones, a layer's and an island's t
 `scroll` and `scrollRegions` (named `regions` before W5b — still read), `layer` (`{ depth, below }`: the keys beneath a
 layer's entry) and `index` (where it is in the tab's history — what lets the guard undo a Back).
 
-**The server's side** (`@bespokecore/server`): the kernel answers islands and layers from the same routes — `dispatchIsland`
-is what `resolveIsland` calls (a synthetic GET through the island route's middleware, read-only, the page's session as a
-copy, `islandTimeout`), `dispatchLayerBase` resolves a layer's declared base for a deep link (the same way, a chain up to
-`MAX_LAYER_DEPTH`; a base that turns the user away gives `layers/Backdrop`, E54). After the headers every request is
-read-only (`ResponseLifecycle`); islands and live validations are read-only throughout.
+**The server's side** ([@bespokecore/server](../server/README.md#the-kernel)): the kernel answers islands and layers from the
+same routes — `dispatchIsland` is what `resolveIsland` calls (a synthetic GET through the island route's middleware, read-only,
+the page's session as a copy, `islandTimeout`), `dispatchLayerBase` resolves a layer's declared base for a deep link (the same
+way, a chain up to `MAX_LAYER_DEPTH`; a base that turns the user away gives `layers/Backdrop`, E54). After the headers every
+request is read-only (`ResponseLifecycle`); islands and live validations are read-only throughout.

@@ -4,6 +4,77 @@ Sessions for BespokeCore apps: a scoped, injectable `Session` (no `ctx.session`)
 middleware before the route and saved after it, flash data, CSRF protection (`VerifyCsrfToken`) and the shared
 `errors` prop. Keys are typed through `interface SessionData` (declaration merging).
 
+```ts
+// modules/locale/controllers/UpdateLocaleController.ts — constructor(…, session: Session, …)
+this.#session.put('locale', locale);                  // typed: SessionData declares `locale: string` (@bespokecore/i18n)
+const locale = this.#session.get('locale');           // string | undefined
+```
+
+`bespoke discover` registers its `SessionServiceProvider` through the `"bespoke"` field of its package.json: the scoped
+`Session`, the store of `SESSION_DRIVER`, and three middleware of the `web` group — `StartSession`, `VerifyCsrfToken` and
+`ShareErrorsFromSession` — plus `make:session-table` and `session:prune` (when `@bespokecore/cli` is installed). The `database`
+and `redis` drivers need their packages — optional peers; a missing one fails the start with what to install
+(`SessionSetupError`). The session cookie's value is redacted wherever requests are recorded (E125).
+
+## Configuration
+
+```sh
+SESSION_DRIVER=file                     # file (default) | database | redis | memory | cookie
+SESSION_CONNECTION=default              # database/redis: which database or Redis connection (default: default)
+SESSION_LIFETIME=120                    # minutes of inactivity until the session expires (default 120)
+SESSION_COOKIE=bespoke_session          # the cookie's name (default)
+SESSION_FILES=storage/framework/sessions   # file: where sessions live, relative to the app root (default)
+SESSION_SECURE_COOKIE=false             # true: the cookie only over HTTPS — turn it on in production (default false)
+SESSION_SAME_SITE=lax                   # lax (default) | strict | none
+SESSION_LOTTERY=2/100                   # chance that a request prunes expired sessions after its response; 0/1 turns it off
+CSRF_TRUSTED_ORIGINS=                   # other origins that may post to the app, comma-separated (https://admin.example.com)
+```
+
+`SessionConfig` and `CsrfConfig` are the package's config classes. The web app runs `SESSION_DRIVER=database` with
+`SESSION_CONNECTION=system` (a SQLite file of its own), its `.env.test` `SESSION_DRIVER=memory`.
+
+## The session
+
+- **Data:** `get(key)`, `put(key, value)`, `pull(key)`, `has(key)`, `forget(...keys)`, `all()` (without the framework's `_…`
+  keys), `flush()`. Values must survive `JSON.stringify` — a `Date` comes back as a string. Declared keys are checked:
+
+  ```ts
+  declare module '@bespokecore/session' {
+    interface SessionData { cart: number[] }
+  }
+  ```
+
+- **Flash data:** `flash(key, value)` — for this and the next request; `keep(...keys)`, `reflash()`. `flashInput(input)` and
+  `old(key?)` refill a form after a failed submit (`redirect().withInput()`). A redirect's `.with(…)` and `.flash(key, data)`
+  (flash messages, E60 — kept until a response the user is shown takes them, not aged by prefetches or islands) write into
+  the request's session.
+- **The `errors` prop:** `ShareErrorsFromSession` shares the flashed validation errors with every page of the `web` group —
+  `{}` when there are none, also on partial reloads — what `useForm` shows next to the fields.
+- **Sign-in and sign-out:** `regenerate()` gives the session a new id and CSRF token (against session fixation),
+  `invalidate()` also drops all data — `@bespokecore/auth` calls them. The old id is destroyed when the request saves it.
+- **Read-only requests:** an island (E52) or a live stream reads the session but never writes it — no save, no cookie, flash
+  data stays for the page.
+
+## CSRF protection
+
+`VerifyCsrfToken` (decision E15) refuses every non-reading request (not `GET`, `HEAD`, `OPTIONS`) of the `web` group with
+**419** ("Page Expired") unless:
+
+1. the browser does not say it is cross-site (`Sec-Fetch-Site: cross-site`) and its `Origin` is the app's own host or one of
+   `CSRF_TRUSTED_ORIGINS` (a request without `Origin` — curl, old clients — is decided by the token alone), and
+2. it carries the session's token — as the `_token` field, the `X-CSRF-TOKEN` header, or `X-XSRF-TOKEN`, copied from the
+   readable `XSRF-TOKEN` cookie that every kept session's response refreshes (compared in constant time).
+
+The client core sends `X-XSRF-TOKEN` by itself; forms without JavaScript post `page.csrf` as `_token` (E64). Paths that
+cannot carry a token — webhooks — are listed by their module (`*` matches any characters):
+
+```ts
+defineModule({ name: 'billing', routes, csrfExcept: ['/webhooks/*'] });
+```
+
+`container.make(CsrfProtection).except('/webhooks/*')` does the same from a provider. `@bespokecore/testing` turns the check off
+unless a test asks for it (`createTestApp(App, { csrf: true })`), like Laravel.
+
 ## Session drivers
 
 Chosen with `SESSION_DRIVER` (see `SessionConfig`):
@@ -12,14 +83,14 @@ Chosen with `SESSION_DRIVER` (see `SessionConfig`):
 | ---------- | ------------------------------------------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
 | `file`     | one file per session (`SESSION_FILES`) — the default                     | lottery / `session:prune` (by mtime)     | apps with login on one server                       |
 | `database` | a row in `sessions` (`bespoke make:session-table`, `SESSION_CONNECTION`) | lottery / `session:prune` (`last_activity`) | apps with login, several processes or servers    |
-| `redis`    | `<REDIS_PREFIX>session:<id>` (`@bespokecore/redis` + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway                    |
+| `redis`    | `<REDIS_PREFIX>session:<id>` ([@bespokecore/redis](../redis/README.md) + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
 | `memory`   | the process                                                              | on read                                  | tests (gone with the process)                       |
 | `cookie`   | an encrypted cookie next to the session id                               | the cookie's `Max-Age`                   | apps **without** login (≈ 2.8 KB of JSON at most)   |
 
 ### `database`
 
 ```sh
-bespoke make:session-table   # writes modules/system/migrations/…_create_sessions_table.ts (E96: the table is the app's)
+bespoke make:session-table   # writes modules/system/migrations/…_create_sessions_table.ts (E96: the table is the app's; --module=<name> for another)
 bespoke migrate
 ```
 
@@ -28,11 +99,12 @@ The table: `id` (primary key), `user_id` (nullable, indexed — the signed-in us
 and `last_activity` (epoch milliseconds of the last write, indexed). A session expires `SESSION_LIFETIME` minutes after
 its last activity. Expired rows are deleted by the lottery (`SESSION_LOTTERY`, default 2 in 100 requests, after the
 response) or by `bespoke session:prune` — from cron (then set `SESSION_LOTTERY=0/1`) or from the app's scheduler
-(`s.command('session:prune').everyFifteenMinutes()`, `@bespokecore/scheduler`): then requests draw no lottery at all.
+(`s.command('session:prune').everyFifteenMinutes()`, [@bespokecore/scheduler](../scheduler/README.md)): then requests draw no
+lottery at all.
 
 **Its own connection, never the app's transactions (E108).** The store writes through `connections.infrastructure()`
-(see `packages/database/README.md`): a session written while a transaction is open — an in-process request inside
-`connections.transaction()`, a test — is not rolled back with it.
+([infrastructure connections](../database/README.md#infrastructure-connections-e108)): a session written while a transaction
+is open — an in-process request inside `connections.transaction()`, a test — is not rolled back with it.
 
 | Database | What the store gets | Inside an open app transaction |
 | -------- | ------------------- | ------------------------------ |
@@ -93,7 +165,22 @@ the sign-out, with the session as it was when it started: still signed in.
 ### When a session ends
 
 Signing in (`regenerate()`) or out (`invalidate()`) gives the session a new id and destroys the old one when the request saves
-it. Whoever must know — the live package closes every stream of the old session, in every process (W6.10) — listens through
-`SessionEndings` (one per app): `container.make(SessionEndings).listen((scope) => …)` hears the old session's **scope**
-(`sessionScope(id)`, a hash of its id — never the id, which is a secret; the same value `PageSession.scope()` hands out for
-once props and live tokens). A listener that fails does not stop the others.
+it. Whoever must know — the live package closes every stream of the old session, in every process (W6.10,
+[@bespokecore/live](../live/README.md)) — listens through `SessionEndings` (one per app):
+`container.make(SessionEndings).listen((scope) => …)` hears the old session's **scope** (`sessionScope(id)`, a hash of its id —
+never the id, which is a secret; the same value `PageSession.scope()` hands out for once props and live tokens). A listener
+that fails does not stop the others.
+
+## Testing
+
+With `@bespokecore/testing` (and a server-side driver — `SESSION_DRIVER=memory` in `.env.test`; the cookie driver has no
+session helpers):
+
+```ts
+await app.withSession({ cart: [42] }).get('/checkout');   // a session holding this data — to sign someone in: actingAs(user)
+await app.post('/locale', { form: { locale: 'de' } }).assertSessionHas('locale', 'de');   // also assertSessionMissing, session()
+```
+
+A flash message is asserted on the page that delivers it: `(await app.navigating().get('/login')).assertFlash('toast', { … })`.
+
+CSRF verification is off in tests unless `createTestApp(App, { csrf: true })` — then send `_token` or `X-XSRF-TOKEN` yourself.

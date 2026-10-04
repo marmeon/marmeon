@@ -2,7 +2,14 @@
 
 Live props (W6.10, E89, E90, E104): a page, an island or a layer **follows a channel**; when something changes, the server
 **hints** that channel — never data — and every tab that follows it reloads what changed through the page's own route, as
-a partial reload. One Server-Sent-Events stream per tab carries the hints of every channel on screen.
+a partial reload. One Server-Sent-Events stream per tab carries the hints of every channel on screen. This package is the
+server side; the browser side is the `live` feature of the client core ([features](../http/README.md#features)).
+
+`bespoke discover` registers its `LiveServiceProvider` like any installed package. It signs with the app's `APP_KEY`
+([@bespokecore/encryption](../encryption/README.md)) and registers its stream in the `web` group;
+[@bespokecore/redis](../redis/README.md) (for `LIVE_DRIVER=redis`), [@bespokecore/session](../session/README.md) (streams end
+with their session) and [@bespokecore/notifications](../notifications/README.md) (the [`live` channel](#notifications-the-live-channel))
+are optional peers.
 
 ```ts
 // A page, an island, a layer — the same API (regions, E50). `only`: the props a hint reloads (typed: a name that is not one of
@@ -37,8 +44,8 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   token that does not fit — a channel rewritten (`users.1` → `users.2`), a token of another session or of one that ended — with
   a 403 and no stream at all. The tokens travel in the stream's query (`EventSource` sends no headers of its own): without the
   session's cookie they open nothing.
-- **After the commit (E107).** `refresh()` inside `connections.transaction(…)` goes out once it committed (`afterCommit`); a
-  rollback sends nothing. The other tab never reloads what is not there yet.
+- **After the commit (E107).** `refresh()` inside `connections.transaction(…)` ([transactions](../database/README.md#transactions))
+  goes out once it committed (`afterCommit`); a rollback sends nothing. The other tab never reloads what is not there yet.
 - **Not to the tab that caused it.** Every request of a tab that follows live hints names its document
   (`x-bespoke-connection`); the hint of a write it caused reaches it with `only: []` — nothing to reload (it shows its own
   answer), only the sequence moves on. Outside a request (a job, a command) every tab hears it.
@@ -88,25 +95,37 @@ LIVE_REDIS_CONNECTION=default # the Redis connection of the redis driver
 LIVE_HEARTBEAT=20             # seconds between heartbeats
 LIVE_RETRY=3000               # ms before a browser reconnects a broken stream
 LIVE_MAX_STREAMS=1000         # open streams per process (beyond: 503 + Retry-After)
-LIVE_MAX_CHANNELS=20          # channels per stream
+LIVE_MAX_CHANNELS=20          # channels per stream (one page, its islands and layers)
 ```
+
+`LiveConfig` is the package's config class; it checks the ranges at the start (`LIVE_HEARTBEAT` 1–300, `LIVE_RETRY` 100–600000,
+`LIVE_MAX_CHANNELS` at most 200). `LIVE_DRIVER=redis` without `@bespokecore/redis` and its provider, or with an unknown
+`LIVE_REDIS_CONNECTION`, fails the start; a missing `APP_KEY` does too.
 
 **`memory` reaches the streams of its own process only.** A hint sent by a queue worker — the notifications' `live` channel,
 a queued listener, a job — needs `redis`: the worker publishes, the web processes deliver. With Redis down, `refresh()` logs
 the lost hint (the change itself is committed) and new streams answer 503; tabs that reconnect later catch up by sequence.
 Sequences live a day after a channel's last hint (`<prefix>live:seq:<channel>`); a tab away longer reloads once.
 
+**Observation (E118):** each hint going out (after its commit) is a message on the `live.refresh` channel
+([the channels](../core/README.md#the-channels)) — the [devtools](../devtools/README.md) record it as a `live` entry,
+[@bespokecore/otel](../otel/README.md#what-it-records) as a `live refresh` span.
+
 ## Notifications: the `live` channel
 
-With `@bespokecore/notifications` installed, `via()` may return `'live'`: once the delivery's transaction committed (its
-`database` row first), the recipient's channel `notificationsChannel(recipient)` (`notifications.<type>.<id>`) is refreshed —
-without `only`: each follower reloads what it follows the channel for (the bell `['bell']`, the list `['notifications']`).
+With [@bespokecore/notifications](../notifications/README.md#channels) installed, `via()` may return `'live'`: once the delivery's
+transaction committed (its `database` row first), the recipient's channel `notificationsChannel(recipient)`
+(`notifications.<type>.<id>`) is refreshed — without `only`: each follower reloads what it follows the channel for (the bell
+`['bell']`, the list `['notifications']`).
 
 ```ts
 via(user: User) { return ['database', 'live', 'mail'] as const; }
 ```
 
 ## Testing
+
+With [@bespokecore/testing](../testing/README.md), hints are sent as in production — the streams of `app.live()` get them — and recorded in
+`app.broadcast`:
 
 ```ts
 const ada$ = app.actingAs(ada);                              // one browser, one session
@@ -118,10 +137,10 @@ expect(stream.hints).toEqual([{ channel: `users.${ada.id}`, only: ['profile'], s
 app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // also assertNotRefreshed, assertNothingRefreshed
 ```
 
-`app.live(subscriptions)` takes the `live` of an island's region object too. `stream.events`, `stream.heartbeats`,
-`stream.closed`, `stream.close()`.
+`app.live(subscriptions)` takes the `live` of an island's region object too. `stream.status`, `stream.events`, `stream.heartbeats`,
+`stream.ended`, `stream.closed` (a promise), `stream.close()`; `app.broadcast.refreshed(channel?)` lists what was refreshed.
 
 ## Not yet
 
-WebSockets and presence channels (W8.4) — the hint protocol stays; a Postgres `LISTEN/NOTIFY` backend (Merkposten). A hint sent
+WebSockets and presence channels (W8.4) — the hint protocol stays; a Postgres `LISTEN/NOTIFY` backend (noted for later). A hint sent
 while Redis is unreachable is not retried.
