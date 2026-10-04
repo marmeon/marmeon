@@ -5,6 +5,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
+
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const bin = join(repo, 'packages/cli/bin/bespoke.js');
 const webApp = join(repo, 'apps/web-app');
@@ -224,7 +227,7 @@ describe('bespoke make:* (generated code compiles)', () => {
 
     const missing = bespoke(app, ['make:controller', 'ShowCart', '--module=cart']);
     expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: bespoke make:module cart');
-  });
+  }, ciTimeout);
 
   it('generates the application key into .env — without booting, and never silently replacing one', () => {
     writeFileSync(join(app, '.env.example'), 'APP_NAME=Shop\nAPP_KEY=\n');

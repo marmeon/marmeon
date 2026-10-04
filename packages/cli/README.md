@@ -48,7 +48,7 @@ that imports server code as a value fail it too, each with file and line
 | `key:generate [--show] [--force]` | sets `APP_KEY` in `.env` (copied from `.env.example` when missing); `--show` prints a key only; an existing key needs `--force` — replacing it makes sessions and encrypted cookies unreadable |
 | `tinker [--sandbox] [-e "<code>"] [--no-history]` | a REPL with the booted app ([tinker](#tinker)) |
 | `make:lint-config [--boundaries] [--force]` | writes `.oxlintrc.json` ([Lint](#lint)) |
-| `package:build [dirs…]` | builds framework packages and embeds their injection lists (for publishing) |
+| `package:build [dirs…] [--clean]` | builds framework packages and embeds their injection lists (for publishing); `--clean` empties `dist/` and the build info first — `tsc -b` never deletes what a removed source left behind |
 
 Generators write files into a module and say where to register them; they run without booting the app and never overwrite a
 file without `--force`:

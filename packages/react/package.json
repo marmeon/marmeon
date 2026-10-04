@@ -1,6 +1,27 @@
 {
   "name": "@bespokecore/react",
   "version": "0.0.0",
+  "description": "The React adapter of BespokeCore: components, hooks, layouts, error boundaries and <Head> on the UI-free client core.",
+  "keywords": [
+    "bespokecore",
+    "react",
+    "ssr",
+    "spa",
+    "adapter"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/react#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/react"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -15,10 +36,30 @@
       "default": "./dist/server.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./server": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      }
+    }
+  },
   "files": [
     "dist",
-    "!dist/**/*.test.*",
-    "!dist/**/__fixtures__"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"
@@ -43,18 +84,6 @@
   "peerDependenciesMeta": {
     "@bespokecore/i18n": {
       "optional": true
-    }
-  },
-  "publishConfig": {
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "./server": {
-        "types": "./dist/server.d.ts",
-        "default": "./dist/server.js"
-      }
     }
   },
   "bespoke": {

@@ -1,6 +1,26 @@
 {
   "name": "@bespokecore/devtools",
   "version": "0.0.0",
+  "description": "Development tools for BespokeCore apps: redacted recordings of requests, queries, jobs, mails and more, with a toolbar and pages.",
+  "keywords": [
+    "bespokecore",
+    "devtools",
+    "debugging",
+    "telescope"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/devtools#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/devtools"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": [
     "./src/client/index.ts",
@@ -19,6 +39,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -32,7 +54,14 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

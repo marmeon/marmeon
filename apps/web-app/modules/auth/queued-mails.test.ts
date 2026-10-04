@@ -12,6 +12,9 @@ import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
 
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
+
 // W6 step 5: the auth mails leave the request — a queued listener (verification), queued mails (verification, address
 // change, reset), composed in the recipient's language, encrypted in the queue (E105), sent by a worker.
 
@@ -74,7 +77,7 @@ describe('the verification mail through the queue', () => {
     await work(app);
     expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to BespokeCore']);
     await app.assertDatabaseCount('failed_jobs', 0);
-  });
+  }, ciTimeout);
 
   it('the registration answers without waiting for the mail server (a transport 2 s slow)', async () => {
     const transport = new TestTransport();

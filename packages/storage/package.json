@@ -1,6 +1,27 @@
 {
   "name": "@bespokecore/storage",
   "version": "0.0.0",
+  "description": "File storage for BespokeCore apps: local, S3 and memory disks behind one contract, public and private files, uploads.",
+  "keywords": [
+    "bespokecore",
+    "storage",
+    "files",
+    "s3",
+    "uploads"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/storage#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/storage"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +32,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,10 +43,15 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*",
-    "!dist/**/*.type-test.*",
-    "!dist/**/__fixtures__",
-    "stubs"
+    "src",
+    "stubs",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

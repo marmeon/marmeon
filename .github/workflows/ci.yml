@@ -1,5 +1,5 @@
-# The same parts as `pnpm run ci` (scripts/ci.ts, E111) — one job per suite that needs a database, so they run side by
-# side on their own runners. Locally `pnpm run ci` runs them all, one after the other.
+# The same parts as `pnpm run ci` (scripts/ci.ts, E111) — one job per suite that needs a database and one for the tarballs,
+# so they run side by side on their own runners. Locally `pnpm run ci` runs them all, one after the other.
 name: CI
 
 on:
@@ -22,13 +22,29 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4 # the version from "packageManager"
+      - uses: pnpm/action-setup@v6.1.0 # the version from "packageManager" (pnpm 12 needs 6.1)
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run ci --only build,typecheck,lint,test,size,types:check,docs:check
+
+  pack:
+    # The tarballs (E158): pack:check builds clean and checks every tarball (rules, publint, attw); pack:smoke installs them
+    # into a copy of the blank app outside the checkout and runs it — the store setup-node restores keeps it off the network.
+    name: pack:check, pack:smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci --only pack:check,pack:smoke
 
   pgsql:
     name: test:pgsql
@@ -51,7 +67,7 @@ jobs:
           --health-retries 15
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -76,7 +92,7 @@ jobs:
           --health-retries 15
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -92,7 +108,7 @@ jobs:
     # starts it with docker compose, as it does locally.
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc

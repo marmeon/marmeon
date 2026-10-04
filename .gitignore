@@ -9,5 +9,7 @@ dist/
 storage/
 # …but not the storage package itself
 !/packages/storage/
+# …nor the blank app's skeleton (its own .gitignore files ignore what the app writes there).
+!/apps/blank-app/storage/
 .claude/*
 !.claude/launch.json

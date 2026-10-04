@@ -1,6 +1,26 @@
 {
   "name": "@bespokecore/otel",
   "version": "0.0.0",
+  "description": "OpenTelemetry traces for BespokeCore apps: requests, queries, jobs, mails and rendering as spans.",
+  "keywords": [
+    "bespokecore",
+    "opentelemetry",
+    "tracing",
+    "observability"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/otel#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/otel"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +31,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,7 +42,14 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

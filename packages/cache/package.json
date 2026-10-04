@@ -1,6 +1,26 @@
 {
   "name": "@bespokecore/cache",
   "version": "0.0.0",
+  "description": "Cache, rate limits and locks for BespokeCore apps — memory, file, database and Redis stores behind one injectable contract.",
+  "keywords": [
+    "bespokecore",
+    "cache",
+    "rate-limit",
+    "locks"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/cache#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/cache"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +31,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,9 +42,15 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*",
-    "!dist/**/__fixtures__",
-    "stubs"
+    "src",
+    "stubs",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

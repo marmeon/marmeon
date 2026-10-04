@@ -12,6 +12,9 @@ import { CachePublicly } from './middleware/CachePublicly.ts';
 import { DocsConfig } from '../../config/docs.ts';
 import type { SearchResult } from './search.ts';
 
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
+
 const repo = resolve(import.meta.dirname, '../../../..');
 let app: TestApp;
 beforeEach(async () => {
@@ -168,7 +171,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, ciTimeout);
 
   it('shows raw HTML of a README as text — a <script> never reaches the page as markup (server-rendered)', async () => {
     const dir = copy();

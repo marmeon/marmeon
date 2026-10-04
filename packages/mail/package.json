@@ -1,6 +1,27 @@
 {
   "name": "@bespokecore/mail",
   "version": "0.0.0",
+  "description": "Mails as classes for BespokeCore apps: envelopes, MJML or HTML content, transports behind a neutral message, queued sending.",
+  "keywords": [
+    "bespokecore",
+    "mail",
+    "email",
+    "mjml",
+    "smtp"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/mail#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/mail"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +32,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,7 +43,14 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

@@ -1,6 +1,27 @@
 {
   "name": "@bespokecore/core",
   "version": "0.0.0",
+  "description": "The BespokeCore application kernel: service container with constructor injection, providers, modules, configuration, events and diagnostics.",
+  "keywords": [
+    "bespokecore",
+    "framework",
+    "dependency-injection",
+    "container",
+    "application"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/core"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -25,18 +46,9 @@
       "default": "./dist/diagnostics.js"
     }
   },
-  "files": [
-    "dist",
-    "!dist/**/*.test.*",
-    "!dist/**/__fixtures__"
-  ],
-  "scripts": {
-    "build": "tsc -b"
-  },
-  "dependencies": {
-    "oxc-parser": "^0.152.0"
-  },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -55,6 +67,23 @@
         "default": "./dist/diagnostics.js"
       }
     }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "oxc-parser": "^0.152.0"
   },
   "devDependencies": {
     "valibot": "^1.5.0"

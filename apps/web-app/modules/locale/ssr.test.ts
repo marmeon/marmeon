@@ -4,6 +4,9 @@ import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
+
 // Server rendering with the language files: the SSR entry loads the page's locale before rendering (streaming, W5.5).
 let app: TestApp;
 beforeEach(async () => {
@@ -25,7 +28,7 @@ describe('translated pages, rendered on the server', () => {
     const english = await app.get('/login', html('en')).assertServerRendered().assertHydrates();
     expect(english.body).toContain('<html lang="en">');
     expect(english.body).toContain('Keep me signed in');
-  });
+  }, ciTimeout);
 
   it('formats for the locale: plurals, dates, relative times', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', created_at: '2026-01-15T10:00:00.000Z' });

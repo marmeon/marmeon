@@ -1,6 +1,24 @@
 {
   "name": "@bespokecore/redis",
   "version": "0.0.0",
+  "description": "Redis connections for BespokeCore apps — the driver behind Redis cache, sessions, queues and live hints.",
+  "keywords": [
+    "bespokecore",
+    "redis"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/redis#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/redis"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +29,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,7 +40,14 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

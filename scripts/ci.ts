@@ -49,7 +49,15 @@ export const parts: readonly Part[] = [
   { name: 'types:check', command: pnpm('types:check') },
   // The docs app (E114): its production build, started on a free port and asked by a smoke test (scripts/docs.ts).
   { name: 'docs:check', command: pnpm('docs:check'), after: ['build'] },
+  // The tarballs (E156–E158): a clean build, pnpm pack of every package, the content rules, publint and attw.
+  { name: 'pack:check', command: pnpm('pack:check') },
+  // The tarballs installed into a copy of the blank app outside the monorepo: build, start, make:auth, migrate, its tests.
+  // Without pnpm's store and the registry it is skipped (exit 75) — reported as such, never as green.
+  { name: 'pack:smoke', command: pnpm('pack:smoke'), after: ['build', 'pack:check'] },
 ];
+
+/** The exit code of a part that could not run here (no network, no store): skipped, not green (`scripts/pack-smoke.ts`). */
+const SKIPPED_EXIT = 75;
 
 type Status = 'passed' | 'failed' | 'skipped';
 interface Result {
@@ -160,10 +168,11 @@ async function main(): Promise<number> {
     const ms = performance.now() - begin;
     if (github) console.log('::endgroup::');
     if (problem) console.error(`ci: ${problem}`);
-    const status: Status = code === 0 ? 'passed' : 'failed';
-    if (status === 'failed') red.add(part.name);
-    results.push({ part, status, ms, note: problem ?? (code === 0 ? undefined : `exit ${code}`) });
-    console.log(`${status === 'passed' ? '✓' : '✗'} ci: ${part.name} ${seconds(ms)}${code === 0 ? '' : ` (${problem ?? `exit ${code}`})`}`);
+    const status: Status = code === 0 ? 'passed' : !problem && code === SKIPPED_EXIT ? 'skipped' : 'failed';
+    if (status !== 'passed') red.add(part.name);
+    const note = problem ?? (status === 'skipped' ? 'could not run here (no network or store)' : code === 0 ? undefined : `exit ${code}`);
+    results.push({ part, status, ms, note });
+    console.log(`${{ passed: '✓', failed: '✗', skipped: '–' }[status]} ci: ${part.name} ${seconds(ms)}${note ? ` (${note})` : ''}`);
     if (github && status === 'failed') console.log(`::error title=ci: ${part.name}::${part.command.join(' ')} — ${problem ?? `exit ${code}`}`);
   }
 

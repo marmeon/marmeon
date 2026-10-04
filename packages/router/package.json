@@ -1,6 +1,27 @@
 {
   "name": "@bespokecore/router",
   "version": "0.0.0",
+  "description": "The typed router of BespokeCore: invokable controllers with request definitions, route model binding, middleware, URLs and cookies.",
+  "keywords": [
+    "bespokecore",
+    "router",
+    "routing",
+    "middleware",
+    "typescript"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/router#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/router"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -15,14 +36,9 @@
       "default": "./dist/url.js"
     }
   },
-  "files": [
-    "dist",
-    "!dist/**/*.test.*"
-  ],
-  "scripts": {
-    "build": "tsc -b"
-  },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -33,6 +49,20 @@
         "default": "./dist/url.js"
       }
     }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
   },
   "devDependencies": {
     "valibot": "^1.5.0"

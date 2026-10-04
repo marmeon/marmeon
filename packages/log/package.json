@@ -1,6 +1,25 @@
 {
   "name": "@bespokecore/log",
   "version": "0.0.0",
+  "description": "The logger of BespokeCore apps: pino behind the framework contract, pretty in development, JSON in production.",
+  "keywords": [
+    "bespokecore",
+    "logging",
+    "pino"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/log#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/log"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +30,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,7 +41,14 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

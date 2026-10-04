@@ -1,6 +1,26 @@
 {
   "name": "@bespokecore/scheduler",
   "version": "0.0.0",
+  "description": "Scheduled tasks for BespokeCore apps: written in the modules, run by schedule:work or cron, with locks against overlaps.",
+  "keywords": [
+    "bespokecore",
+    "scheduler",
+    "cron",
+    "tasks"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/scheduler#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/scheduler"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +31,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,8 +42,14 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*",
-    "!dist/**/__fixtures__"
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

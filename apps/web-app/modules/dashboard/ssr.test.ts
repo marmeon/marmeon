@@ -3,6 +3,9 @@ import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
+// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
+const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
+
 // Islands in the SSR stream (E49): resolved in-process while the page renders — rendered completely here, as for a bot.
 let app: TestApp;
 let ada: User, alan: User;
@@ -44,7 +47,7 @@ describe('the dashboard, rendered on the server with its islands (E49)', () => {
       expect(response.body.includes('"stats"')).toBe(admin);
       expect(response.page()!.props).toMatchObject({ auth: { user: { id: admin ? ada.id : alan.id } } });
     });
-  });
+  }, ciTimeout);
 
   it('sees whoever the page signed in — a remember-me sign-in of the page request itself (the cookie does not know it yet)', async () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' } }).assertRedirect();

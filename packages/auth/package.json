@@ -1,6 +1,28 @@
 {
   "name": "@bespokecore/auth",
   "version": "0.0.0",
+  "description": "Authentication and authorization for BespokeCore apps: session guard, remember-me, password hashing and resets, e-mail verification, API tokens, policies and make:auth.",
+  "keywords": [
+    "bespokecore",
+    "auth",
+    "authentication",
+    "authorization",
+    "policies",
+    "api-tokens"
+  ],
+  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/auth#readme",
+  "bugs": {
+    "url": "https://github.com/bespokecore/bespokecore/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "directory": "packages/auth"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -11,6 +33,8 @@
     }
   },
   "publishConfig": {
+    "access": "public",
+    "provenance": true,
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
@@ -20,8 +44,15 @@
   },
   "files": [
     "dist",
+    "src",
     "stubs",
-    "!dist/**/*.test.*"
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b"

@@ -31,7 +31,7 @@ export default function Show({ profile }: PageProps<ShowUserProfileController>) 
 }
 ```
 
-Status: in development, not published (the licence is still open). Node 26.10 or newer, pnpm 11.
+Status: in development, not published yet. MIT licence (`LICENSE`). Node 26.10 or newer, pnpm 12.
 
 ## Principles
 
@@ -63,8 +63,7 @@ it (inside this workspace, so the framework packages resolve):
 
 ```sh
 pnpm install
-printf 'APP_NAME=Shop\nAPP_URL=http://localhost:3000\n' > .env
-pnpm exec bespoke key:generate        # writes APP_KEY into .env: cookies, signed URLs, encrypted jobs
+pnpm exec bespoke key:generate        # copies .env.example to .env and writes APP_KEY: cookies, signed URLs, encrypted jobs
 pnpm exec bespoke make:auth           # sign-up, login, password reset, e-mail verification, API tokens — as code the app owns
 pnpm exec bespoke migrate
 pnpm dev                              # bespoke dev: the server with Vite, a queue worker and the scheduler
@@ -127,11 +126,17 @@ packages/*        the framework packages (each with its README — these pages)
 apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: the template, and what make:auth is tested against
 apps/docs         these docs: the READMEs as a BespokeCore app (pnpm docs:dev)
-scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs
+scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs, the tarballs
+UPGRADING.md      what changes for apps from one version to the next
 ```
 
 ```sh
 pnpm run ci            # everything, as CI runs it (pnpm ci without `run` is pnpm's clean install)
 pnpm test              # the test suite; test:pgsql, test:redis, test:s3 against the containers (docker compose up -d)
 pnpm docs:dev          # the docs on http://localhost:3970
+pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
+pnpm pack:smoke        # the tarballs in a copy of the blank app outside the repository: install, build, start, make:auth, tests
 ```
+
+Packages are packed and published with pnpm only — `npm pack` ignores `publishConfig.exports` and would ship the
+`@bespokecore/source` condition (TypeScript sources Node does not strip under `node_modules`).
