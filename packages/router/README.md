@@ -279,11 +279,16 @@ Every context has the raw `request`, its `route`, `params` and:
   cached — do not read `ctx.request` yourself after it. A GET or HEAD has `{}`. Bodies over the limit are a 413 (counted,
   whatever `Content-Length` says), malformed JSON a 400.
 - **`ctx.query`** — the `URLSearchParams`, or the parsed query behind a query schema.
-- **`ctx.ip`** — the client's address: the right-most `X-Forwarded-For` entry that is not a trusted proxy (`clientIp`).
+- **`ctx.ip`** — the client's address: the right-most `X-Forwarded-For` entry that is not a trusted proxy (`clientIp`; the
+  server's `TRUSTED_PROXIES` with ranges, [@bespokecore/server](../server/README.md#behind-a-proxy-e162)).
+- **`ctx.nonce()`** — the response's CSP nonce (E147): made on the first call, the same for the whole response — for HTML a
+  controller writes itself under `contentSecurityPolicy()` ([@bespokecore/http](../http/README.md#content-security-policy-e147)).
 - **`ctx.expectsJson()`** — JSON is the first accepted type, or an XHR that accepts anything (Laravel's).
 - **`ctx.cookies`** — a `CookieJar`: `get`, `has`, `all` read what the client sent; `set(name, value, options)` and
   `delete(name, { path, domain })` queue cookies for whatever response the request ends with — a view, a redirect or an
-  error page. Defaults: `Path=/`, `HttpOnly`, `SameSite=Lax`, a session cookie; `sameSite: 'none'` requires `secure`. In the
+  error page. Defaults: `Path=/`, `HttpOnly`, `SameSite=Lax`, a session cookie, `Secure` as the jar's defaults say (with
+  `@bespokecore/session`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`, E162 — `secure: false` opts out); `sameSite:
+  'none'` requires `secure`. In the
   `web` group `EncryptCookies` installs a codec, so values are encrypted on the wire; read-only requests (an island) lock the
   jar, and a `set` there is refused.
 

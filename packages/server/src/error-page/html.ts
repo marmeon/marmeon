@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { reportMarkdown } from './markdown.ts';
 import { editorLink, type ErrorReport, type StackFrame } from './report.ts';
 
@@ -284,3 +285,21 @@ th{width:22%;font-weight:600;color:var(--muted)}
 .muted{color:var(--muted);margin:0}
 textarea{width:100%;background:var(--code);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px;resize:vertical}
 `;
+
+const hash = (source: string) => `'sha256-${createHash('sha256').update(source).digest('base64')}'`;
+
+/**
+ * The error page's own Content-Security-Policy: its inline style and script by hash, nothing else runs — and an app's
+ * `contentSecurityPolicy()` leaves a response with a policy of its own alone (its nonce would not cover these). Editor links
+ * open in a frame of this origin.
+ */
+export const ERROR_PAGE_CSP = [
+  "default-src 'none'",
+  `style-src ${hash(STYLE)}`,
+  `script-src ${hash(SCRIPT)}`,
+  "img-src 'self' data:",
+  "frame-src 'self'",
+  "form-action 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'self'",
+].join('; ');

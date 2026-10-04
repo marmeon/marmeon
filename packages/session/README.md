@@ -24,7 +24,7 @@ SESSION_CONNECTION=default              # database/redis: which database or Redi
 SESSION_LIFETIME=120                    # minutes of inactivity until the session expires (default 120)
 SESSION_COOKIE=bespoke_session          # the cookie's name (default)
 SESSION_FILES=storage/framework/sessions   # file: where sessions live, relative to the app root (default)
-SESSION_SECURE_COOKIE=false             # true: the cookie only over HTTPS — turn it on in production (default false)
+SESSION_SECURE_COOKIE=                  # unset: follows APP_URL — https:// → Secure, http:// → not (E162); true/false decide
 SESSION_SAME_SITE=lax                   # lax (default) | strict | none
 SESSION_LOTTERY=2/100                   # chance that a request prunes expired sessions after its response; 0/1 turns it off
 CSRF_TRUSTED_ORIGINS=                   # other origins that may post to the app, comma-separated (https://admin.example.com)
@@ -32,6 +32,15 @@ CSRF_TRUSTED_ORIGINS=                   # other origins that may post to the app
 
 `SessionConfig` and `CsrfConfig` are the package's config classes. The web app runs `SESSION_DRIVER=database` with
 `SESSION_CONNECTION=system` (a SQLite file of its own), its `.env.test` `SESSION_DRIVER=memory`.
+
+**Secure cookies (E162):** `SESSION_SECURE_COOKIE` follows `APP_URL` unless it is set — an app served as `https://…` sends its
+cookies with `Secure`, so no browser ever sends them over plain HTTP. It covers **every cookie of the request**, not only the
+session's: the provider binds `CookieDefaults` from it, and the kernel gives each request's cookie jar these defaults — the
+`XSRF-TOKEN`, the remember-me token, the reset link's cookie, the `cookie` driver's, an app's own `ctx.cookies.set(…)` — unless a
+`set` says `secure: false` itself (Laravel's cookie jar defaults). In a protected environment (E139: staging, production, no
+`NODE_ENV`) cookies without `Secure` are warned about once at boot: "Cookies are sent without Secure: APP_URL is not https:// —
+…" (or "SESSION_SECURE_COOKIE=false — …"). Behind a TLS-terminating proxy nothing else is needed: the decision comes from
+`APP_URL`, not from the request's protocol (`TRUSTED_PROXIES`: [@bespokecore/server](../server/README.md#behind-a-proxy-e162)).
 
 ## The session
 

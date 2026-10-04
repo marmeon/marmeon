@@ -132,11 +132,11 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
     fixStack: (error) => vite.ssrFixStacktrace(error as Error),
     // A page that could not render on the server (E119): into Vite's overlay — to the tabs connected now (`hot.send`, which
     // Vite buffers only while no tab is connected) and into the failed document itself, which shows it once it loads.
-    failed: async (error, { solutions, redactor }) => {
+    failed: async (error, { solutions, redactor, nonce }) => {
       const { overlayError, overlayScript } = await import('./error-page/overlay.ts');
       const err = overlayError(error, root, redactor, solutions);
       vite.environments.client?.hot.send({ type: 'error', err });
-      return overlayScript(err);
+      return overlayScript(err, nonce);
     },
   });
 

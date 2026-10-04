@@ -1,13 +1,13 @@
 import { createServer, type Server } from 'node:http';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
-import { serveStatic } from '@hono/node-server/serve-static';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo } from '@bespokecore/core';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@bespokecore/core/diagnostics';
 import {
   AfterResponse,
   AssetVersion,
+  CookieDefaults,
   ERROR_PAGE,
   ExceptionHandler,
   HttpError,
@@ -38,6 +38,7 @@ import {
   CookieJar,
   createRequestState,
   isLiveValidation,
+  RequestNonce,
   liveValidationFields,
   VALIDATED_HEADER,
   Router,
@@ -57,6 +58,8 @@ import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { checkHealthPaths, createHealthEndpoints } from './health.ts';
 import { ServerConfig } from './provider.ts';
+import { forwardedRequest, proxyMatcher } from './proxies.ts';
+import { serveAssets } from './assets.ts';
 import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
 
@@ -155,7 +158,10 @@ export function createHttpKernel(
   // The log line's path without secrets in it (E125): `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   container.instance(AssetVersion, { value: version });
-  const trustedProxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
+  // TRUSTED_PROXIES (E162): only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
+  const trusts = proxyMatcher(container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : []);
+  // What every cookie gets unless its `set` says otherwise — `secure` from the session's config (E162), when there is a session.
+  const cookieDefaults = container.has(CookieDefaults) ? container.make(CookieDefaults) : undefined;
   // Development only (E129): its provider binds it when NODE_ENV=development.
   const timing = container.has(ServerTiming) ? container.make(ServerTiming) : undefined;
   // Development only (E119): the error page's queries and log of each request — bound by the provider in debug mode.
@@ -450,8 +456,9 @@ export function createHttpKernel(
   };
 
   if (clientDir) {
-    // serveStatic appends the request path to `root`, which it resolves against the working directory.
-    app.use('/assets/*', serveStatic({ root: relative(process.cwd(), clientDir) }));
+    // The build's hashed files (E162): cached for a year, `immutable`; the `.br`/`.gz` that `bespoke build` wrote next to them by
+    // `Accept-Encoding`. Never compressed here — documents least of all (BREACH): that is the proxy's business.
+    app.use('/assets/*', ...serveAssets(clientDir));
   }
 
   const pending = new Set<Promise<void>>();
@@ -465,9 +472,12 @@ export function createHttpKernel(
   ) => {
     const scope = container.createScope();
     // An island resolved in-process is from where its page's request is from.
-    const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), trustedProxies);
+    const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), trusts);
     addresses.set(request, ip);
-    const state = createRequestState(request, { maxBodySize, ip });
+    // The response's CSP nonce (E147): made only when a document needs it — the same for the header, React and the template.
+    const nonce = new RequestNonce();
+    scope.instance(RequestNonce, nonce);
+    const state = createRequestState(request, { maxBodySize, ip, nonce, ...(cookieDefaults ? { cookies: cookieDefaults } : {}) });
     if (debug || requests.hasSubscribers) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
     scope.instance(IncomingRequest, request); // which tab sent it (`x-bespoke-connection`), for the live Broadcaster
@@ -603,9 +613,10 @@ export function createHttpKernel(
   );
   app.onError((error, c) => renderError(error, c.req.raw));
 
-  // A plain HTML form's PUT, PATCH or DELETE (`_method` in its POST body, E64) is routed as that method.
+  // Behind a trusted proxy (E162), the URL the client asked for (`X-Forwarded-Proto`/`-Host`). A plain HTML form's PUT, PATCH or
+  // DELETE (`_method` in its POST body, E64) is routed as that method.
   const dispatch = app.fetch;
-  app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(request), env, executionContext);
+  app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(forwardedRequest(request, remoteAddress(env), trusts)), env, executionContext);
 
   return Object.assign(app, {
     settle: async () => {
@@ -660,6 +671,12 @@ async function regionResultOf(response: Response): Promise<RegionResult> {
   return { status: 'exception', failure: { status: response.status, ...(message === undefined ? {} : { message }) } };
 }
 
+/** The host of the start line: `localhost` for every interface, else the one listened on (an IPv6 address in brackets). */
+function shownHost(host: string | undefined): string {
+  if (host === undefined || host === '0.0.0.0' || host === '::') return 'localhost';
+  return host.includes(':') ? `[${host}]` : host;
+}
+
 /** The peer address from @hono/node-server's bindings; undefined for in-process requests (tests). */
 function remoteAddress(env: unknown): string | undefined {
   return (env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress;
@@ -671,6 +688,8 @@ export interface ServeOptions {
   ssrEntry?: string;
   /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
+  /** The interface to listen on. Defaults to `ServerConfig.host` (env `HOST`); unset: every interface. */
+  host?: string;
   /**
    * `development` runs Vite's dev server in front of the app (source modules, HMR, `/__open-in-editor`); `production` serves
    * the build. Defaults to `development` only with `NODE_ENV=development` (E115) — a missing `NODE_ENV`, `test` or `staging`
@@ -699,6 +718,7 @@ export async function startServer({
   app,
   ssrEntry,
   port = app.container.has(ServerConfig) ? app.container.make(ServerConfig).port : 3000,
+  host = app.container.has(ServerConfig) ? app.container.make(ServerConfig).host : undefined,
   mode = environment.isDevelopment() ? 'development' : 'production',
   drainTimeoutMs = 8_000,
 }: ServeOptions): Promise<RunningServer> {
@@ -753,15 +773,17 @@ export async function startServer({
   };
 
   return new Promise((resolve) => {
-    server.listen(port, () => {
+    server.listen(port, host, () => {
+      // The port it got — `0` asks the system for a free one.
+      const listening = (server.address() as { port?: number } | null)?.port ?? port;
       const routes = app.container.make(Router).routes.length;
       const packages = app.packages.length ? `, packages: ${app.packages.join(', ')}` : '';
       // The environment as the framework reads it (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
       const serving = mode === 'development' ? "Vite's dev server" : 'the build';
       app.container
         .make(Logger)
-        .info(`BespokeCore in ${environment.describe()} on http://localhost:${port} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
-      resolve({ server, port, close });
+        .info(`BespokeCore in ${environment.describe()} on http://${shownHost(host)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
+      resolve({ server, port: listening, close });
     });
   });
 }

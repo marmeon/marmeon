@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HttpError } from './errors.ts';
+import { RequestNonce } from './nonce.ts';
 import { clientIp, createRequestState, expectsJson, type Input } from './request.ts';
 
 const URL_BASE = 'http://app.test';
@@ -172,5 +173,40 @@ describe('clientIp', () => {
     expect(clientIp('10.0.0.1', '6.6.6.6, 198.51.100.7', ['10.0.0.1'])).toBe('198.51.100.7');
     expect(clientIp('10.0.0.2', '198.51.100.7, 10.0.0.1', ['10.0.0.1', '10.0.0.2'])).toBe('198.51.100.7');
     expect(clientIp('10.0.0.1', '198.51.100.7, 10.0.0.5', ['*'])).toBe('198.51.100.7');
+  });
+
+  it('takes a check instead of a list (the server\'s, with CIDR ranges) — addresses reach it without ::ffff:', () => {
+    const seen: string[] = [];
+    const inTen = (address: string) => (seen.push(address), address.startsWith('10.'));
+    expect(clientIp('::ffff:10.1.2.3', '6.6.6.6, 198.51.100.7, 10.9.9.9', inTen)).toBe('198.51.100.7');
+    expect(seen).toEqual(['10.1.2.3', '10.9.9.9', '198.51.100.7']);
+    expect(clientIp('203.0.113.9', '1.2.3.4', inTen)).toBe('203.0.113.9');
+  });
+});
+
+describe('ctx.nonce() — the response\'s CSP nonce (E147)', () => {
+  it('is made on first use and stays the same for the response; another response gets another', () => {
+    const holder = new RequestNonce();
+    const state = createRequestState(new Request(URL_BASE), { nonce: holder });
+    expect(holder.forDocument()).toBeUndefined(); // nobody asked: no nonce at all (a JSON visit never makes one)
+    const nonce = state.nonce();
+    expect(nonce).toMatch(/^[A-Za-z0-9+/]{22}==$/); // 16 bytes, base64
+    expect(state.nonce()).toBe(nonce);
+    expect(holder.value).toBe(nonce);
+    expect(holder.forDocument()).toBe(nonce);
+    expect(createRequestState(new Request(URL_BASE)).nonce()).not.toBe(nonce);
+  });
+
+  it('every nonce is new — also across the refills of the random pool (256 nonces per refill)', () => {
+    const nonces = Array.from({ length: 600 }, () => new RequestNonce().value);
+    expect(new Set(nonces).size).toBe(600);
+  });
+
+  it('wanted (the CSP middleware, before the route) — made only when a document asks for it', () => {
+    const holder = new RequestNonce();
+    holder.want();
+    const made = holder.forDocument();
+    expect(made).toBeDefined();
+    expect(holder.value).toBe(made);
   });
 });

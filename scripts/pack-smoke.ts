@@ -3,6 +3,7 @@
  * the blank app OUTSIDE the monorepo, without its node_modules, and the app's life from there. A part of `pnpm run ci`.
  *
  *   install → key:generate → build → start → GET /up 200 → make:auth → migrate → vitest run → build → start → GET /login 200
+ *   (its CSP nonce on header and entry script, the entry as precompressed .br, immutable)
  *   → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
  *
  * Every `bespoke start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
@@ -195,7 +196,7 @@ class Smoke {
    * `bespoke start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
    * answers, its process group must be exactly one process, and that one Node (E159).
    */
-  async serve(path: string): Promise<void> {
+  async serve(path: string, check?: (base: string) => Promise<void>): Promise<void> {
     const port = await freePort();
     const loads = join(dirname(this.app), 'loads.mjs');
     const loaded = join(dirname(this.app), 'loaded.json');
@@ -234,6 +235,7 @@ class Smoke {
             if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node$/.test(group[0]![2] ?? '')) {
               throw new SmokeError(`bespoke start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
             }
+            await check?.(`http://127.0.0.1:${port}`);
             await this.#checkLoads(child, exited, loaded, () => output);
             return;
           }
@@ -275,6 +277,25 @@ class Smoke {
   stopAll(): void {
     for (const child of this.#children) this.#stop(child, 'SIGKILL');
   }
+}
+
+/**
+ * The production HTTP defaults of the starter's shell (E147, E162): `/login` under its CSP — one nonce in the header and on the
+ * entry script — and never compressed; the entry script as the `.br` `bespoke build` wrote, kept a year (`immutable`).
+ */
+async function checkProductionHttp(base: string): Promise<void> {
+  const page = await fetch(`${base}/login`, { headers: { accept: 'text/html', 'accept-encoding': 'gzip, deflate, br' }, signal: AbortSignal.timeout(5_000) });
+  const html = await page.text();
+  const policy = page.headers.get('content-security-policy') ?? '';
+  const nonce = /'nonce-([^']+)'/.exec(policy)?.[1];
+  if (!nonce || !policy.includes("'strict-dynamic'")) throw new SmokeError(`GET /login has no strict CSP with a nonce: ${policy || '(no header)'}`);
+  if (page.headers.get('content-encoding')) throw new SmokeError(`GET /login was compressed (${page.headers.get('content-encoding')}) — documents never are (BREACH).`);
+  const entry = /<script type="module"[^>]*\ssrc="(\/assets\/[^"]+\.js)"[^>]*>/.exec(html);
+  if (!entry || !entry[0].includes(`nonce="${nonce}"`)) throw new SmokeError(`The entry script of /login does not carry the response's nonce: ${entry?.[0] ?? '(no entry script)'}`);
+  const asset = await fetch(`${base}${entry[1]}`, { headers: { 'accept-encoding': 'br' }, signal: AbortSignal.timeout(5_000) });
+  await asset.arrayBuffer();
+  if (asset.headers.get('content-encoding') !== 'br') throw new SmokeError(`${entry[1]} came without Brotli (${asset.headers.get('content-encoding') ?? 'identity'}) — bespoke build writes the .br.`);
+  if (!asset.headers.get('cache-control')?.includes('immutable')) throw new SmokeError(`${entry[1]} is not cached as immutable: ${asset.headers.get('cache-control')}`);
 }
 
 async function main(): Promise<number> {
@@ -333,7 +354,7 @@ async function main(): Promise<number> {
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
       if (listed.length < 5) throw new SmokeError(`bespoke build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
     });
-    await smoke.step('bespoke start → GET /login 200', () => smoke.serve('/login'));
+    await smoke.step('bespoke start → GET /login 200 (CSP nonce, precompressed assets)', () => smoke.serve('/login', checkProductionHttp));
     // Production installs without the dev dependencies (E159): `bespoke` is a dependency, and the app starts without the rest.
     await smoke.step('pnpm install --prod → node_modules/.bin/bespoke', () => {
       const flags = [values.offline ? '--offline' : '--prefer-offline', ...(values['store-dir'] ? ['--store-dir', values['store-dir']] : [])];

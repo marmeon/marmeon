@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { bespokeInjection } from '@bespokecore/core/vite';
+import { bespokeInjection, CSP_NONCE_PLACEHOLDER } from '@bespokecore/core/vite';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
@@ -98,6 +98,7 @@ const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
  * - dedupes the peers of the framework packages the app depends on (one React for the adapter and the app);
  * - runs the constructor-injection transform (`@bespokecore/core/vite`);
  * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
+ * - marks `index.html`'s tags for the response's CSP nonce (Vite's `html.cspNonce`, E147) — the server fills it in;
  * - splits the client build's initial load into two chunks, `vendor` and `index` ({@link CLIENT_CHUNKS});
  * - serves `virtual:bespoke/pages`, `virtual:bespoke/lang` and `virtual:bespoke/routes` (types: `@bespokecore/vite/client`) —
  *   the route manifest with only the names client code writes out (E57);
@@ -122,6 +123,9 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
         // it, tests would load builds only a bundler can run (the AWS SDK's ES build, with extensionless imports).
         ssr: { resolve: { conditions: [...source, ...(options.test ? defaultServerConditions.filter((condition) => condition !== 'module') : defaultServerConditions)] } },
       };
+      // Every script, style and preload tag of index.html (and the `csp-nonce` meta Vite's own code reads) carries the placeholder;
+      // the server puts each response's CSP nonce in its place, or takes the attribute out (E147) — only this value is replaced.
+      if (!options.test) result.html = { cspNonce: CSP_NONCE_PLACEHOLDER };
       if (command === 'build' && !options.test) {
         result.build = isSsrBuild
           ? { outDir: 'dist/server', emptyOutDir: true, rolldownOptions: { input: { ssr: resolve(root, entries.ssr) } } }

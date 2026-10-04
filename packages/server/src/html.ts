@@ -1,3 +1,4 @@
+import { CSP_NONCE_PLACEHOLDER } from '@bespokecore/core';
 import { PAGE_SCRIPT_ID, scriptJson, type PageObject, type SsrResult } from '@bespokecore/http';
 
 /** Placeholders an app's `index.html` provides. */
@@ -10,6 +11,18 @@ export const FALLBACK_TEMPLATE = `<!doctype html>
   <head><meta charset="utf-8" /><title>BespokeCore</title>${HEAD_OUTLET}</head>
   <body><div id="app">${HTML_OUTLET}</div></body>
 </html>`;
+
+const NONCE_ATTRIBUTE = ` nonce="${CSP_NONCE_PLACEHOLDER}"`;
+
+/**
+ * The template with the response's CSP nonce (E147) in place of {@link CSP_NONCE_PLACEHOLDER} — which Vite's `html.cspNonce`
+ * (set by `bespoke()`) put on every script, style and preload tag, and `DevDocument`'s HTML carries — or, for a response
+ * without one, with those `nonce` attributes taken out.
+ */
+export function withNonce(template: string, nonce: string | undefined): string {
+  if (!template.includes(CSP_NONCE_PLACEHOLDER)) return template;
+  return nonce ? template.replaceAll(CSP_NONCE_PLACEHOLDER, nonce) : template.replaceAll(NONCE_ATTRIBUTE, '');
+}
 
 export function serializePage(page: PageObject): string {
   // `<` is escaped so props can never close the script tag early.

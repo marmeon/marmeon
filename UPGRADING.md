@@ -69,6 +69,28 @@ a log alert that matched the old line. The old behaviour: `NODE_ENV=production b
 wrote into the app directory. Now only in development (E164). Elsewhere run `bespoke db:types` (it writes the file from the
 migrations alone) or migrate with `NODE_ENV=development`.
 
+#### Medium: cookies are `Secure` when `APP_URL` is `https://` — every cookie of the request
+
+*Likelihood of impact: medium — apps whose `APP_URL` is `https://…` but that are reached over plain HTTP somewhere (a local
+`.env` copied from production, a health check over `http://`).* `SESSION_SECURE_COOKIE` defaulted to `false` — in production too.
+Now it follows `APP_URL` when unset (E162): `https://` → `Secure`, `http://` → not; `true`/`false` still decide. It applies to
+every cookie the app sets without saying (`CookieDefaults`, bound by `@bespokecore/session`, Laravel's cookie jar defaults): the
+session's, `XSRF-TOKEN`, the remember-me token, the reset link's, the `cookie` driver's and an app's own `ctx.cookies.set(…)`.
+A browser never sends a `Secure` cookie over plain HTTP — a staging server reached as `http://` with `APP_URL=https://…` loses
+its sessions. Set `APP_URL` to the address users open, or `SESSION_SECURE_COOKIE=false` (warned about at boot), or a single
+cookie's `{ secure: false }`. A protected environment whose cookies go without `Secure` logs one warning at boot ("Cookies are
+sent without Secure: APP_URL is not https:// — …").
+
+#### Medium: behind `TRUSTED_PROXIES`, `X-Forwarded-Proto` and `-Host` set the request's URL; ranges are allowed, typos fail the start
+
+*Likelihood of impact: medium — apps behind a reverse proxy or load balancer.* Before, `TRUSTED_PROXIES` only decided whose
+`X-Forwarded-For` sets `ctx.ip`, and only by exact address. Now (E162) it takes CIDR ranges (`10.0.0.0/8`, `fd00::/8`), and from a
+trusted peer `X-Forwarded-Proto` (`http`/`https`) and `X-Forwarded-Host` replace the protocol and host of `ctx.request.url` — the
+CSRF origin check, an island's origin and the asset version's reload URL see the address the client used. An entry that is no
+address, range or `*` (`proxy.internal`) fails the start: `server: TRUSTED_PROXIES — Expected addresses or ranges like
+10.0.0.0/8, or *: proxy.internal is not one`. Without `TRUSTED_PROXIES` nothing changes: every `X-Forwarded-*` is ignored. Make
+sure the proxy **sets** these headers ([Behind a proxy](packages/server/README.md#behind-a-proxy-e162)).
+
 #### Low: one process for `bespoke start` and every command
 
 *Likelihood of impact: low — process supervisors and scripts that relied on the launcher.* `bespoke start`, `queue:work`,
@@ -142,6 +164,38 @@ maps lead to real code ("Go to Definition" lands in the source). `exports` still
 app writes there (the SQLite database, sessions, cache, files). Its `.gitignore` no longer ignores `storage/` as a whole.
 To do the same in an older copy: add those `.gitignore` files (see `apps/blank-app/storage/`) and drop `storage/` from the
 app's `.gitignore`.
+
+#### Low: an opt-in Content-Security-Policy with a nonce per response — on in the web app and the starter's shell
+
+*Likelihood of impact: low — apps that turn it on, and apps with their own `index.html` tags.* New: `contentSecurityPolicy()` from
+`@bespokecore/http` (E147) — `script-src 'nonce-…' 'strict-dynamic'; object-src 'none'; base-uri 'self'` on every HTML response,
+directives added or left out per app ([Content-Security-Policy](packages/http/README.md#content-security-policy-e147)). The blank
+app (the base of `create-bespoke-app`) registers it next to its new `middleware/SecurityHeaders.ts` (with an HSTS switch, off by
+default). For every app: `bespoke()` sets Vite's `html.cspNonce` to `__bespoke_csp_nonce__` (`CSP_NONCE_PLACEHOLDER`) — a value
+of your own in `vite.config.ts` is replaced; the built `index.html` carries `nonce="__bespoke_csp_nonce__"` on its tags and a
+`<meta property="csp-nonce">`, which the server fills in per response or strips when there is no policy. Inline scripts in your
+`index.html` get the nonce that way too; HTML a controller writes itself uses `ctx.nonce()`. A route cached publicly
+(`cacheControl('public, …')`) under the policy is warned about once. `PageRenderer.shell()` and `.render()` take the nonce
+(`PageRenderOptions.nonce`), `SsrRenderOptions.nonce` reaches the adapter — custom renderers pass it on.
+
+#### Low: `/assets/*` cached a year and sent precompressed — `bespoke build` writes `.br` and `.gz`
+
+*Likelihood of impact: low — nothing to do.* Assets had no `Cache-Control` and went uncompressed. Now (E162) they answer with
+`public, max-age=31536000, immutable`, and `bespoke build` writes a `.br` and a `.gz` next to every compressible file of
+`dist/client/assets`, which the server sends by `Accept-Encoding` (`Vary: Accept-Encoding`). The server never compresses per
+request — documents least of all (BREACH); a proxy may compress what it likes. Deploy `dist/` as built (the variants included).
+
+#### Low: `HOST` chooses the interface; the start line names it and the port it got
+
+*Likelihood of impact: low.* The server listened on every interface; it still does unless `HOST` is set (E162) — `127.0.0.1`
+behind a proxy on the same machine, `0.0.0.0` in a container. `RunningServer.port` and the start line are the port the server
+actually got (with `PORT=0` the system's choice, before `0`).
+
+#### Low: the development error page and the mail preview bring their own Content-Security-Policy
+
+*Likelihood of impact: low — development only.* Both send a policy of their own (the error page allows its inline style and
+script by hash, the mail preview no script at all), which an app's `contentSecurityPolicy()` leaves alone; a script in a mail
+preview's `srcdoc` frame never ran (sandbox) and still does not.
 
 #### Low (contributors): the monorepo needs pnpm 12
 

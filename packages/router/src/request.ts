@@ -1,5 +1,6 @@
-import { CookieJar } from './cookies.ts';
+import { CookieJar, type CookieDefaults } from './cookies.ts';
 import { HttpError } from './errors.ts';
+import { RequestNonce } from './nonce.ts';
 
 /**
  * Request input: the body, nested by bracket notation (`user[name]`, `tags[]`). Never the query (E65): a field of the
@@ -12,6 +13,10 @@ export interface RequestStateOptions {
   maxBodySize?: number;
   /** The client's IP address, as the server determined it (see the kernel's trusted proxies). */
   ip?: string | undefined;
+  /** The response's CSP nonce (the kernel binds the same one in the request's scope). Default: a fresh one. */
+  nonce?: RequestNonce;
+  /** What the request's cookies get unless `set` says otherwise — `secure` from the session's config (E162). */
+  cookies?: CookieDefaults;
 }
 
 /**
@@ -40,6 +45,12 @@ export interface RequestState {
   readonly cookies: CookieJar;
   /** The client's IP address — behind trusted proxies taken from `X-Forwarded-For`. Undefined in tests. */
   readonly ip: string | undefined;
+  /**
+   * The response's CSP nonce (E147) — made on the first call, the same for the whole response: what a script or style tag
+   * of HTML the app writes itself needs (`<script nonce="…">`) under `contentSecurityPolicy()`. Documents rendered from
+   * `index.html` carry it already.
+   */
+  nonce(): string;
   /** The client wants JSON back (an API call), not a page. */
   expectsJson(): boolean;
 }
@@ -49,7 +60,7 @@ export const DEFAULT_MAX_BODY_SIZE = 8 * 1024 * 1024;
 /** Bracket nesting deeper than this is rejected (a request is not a data structure attack surface). */
 const MAX_DEPTH = 20;
 
-export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE, ip }: RequestStateOptions = {}): RequestState {
+export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE, ip, nonce = new RequestNonce(), cookies }: RequestStateOptions = {}): RequestState {
   const query = new URL(request.url).searchParams;
   let input: Promise<Input> | undefined;
   let read: Input | undefined;
@@ -62,8 +73,9 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
         return parsed;
       })),
     inputRead: () => read,
-    cookies: new CookieJar(request.headers.get('cookie')),
+    cookies: new CookieJar(request.headers.get('cookie'), cookies),
     ip,
+    nonce: () => nonce.value,
     expectsJson: () => expectsJson(request),
   };
 }
@@ -73,11 +85,14 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
  * is not a trusted proxy. Left entries are whatever the client claimed, so they
  * count only once every hop to their right is trusted. `'*'` trusts every hop
  * (a platform that always sits behind its own load balancer).
+ *
+ * `trusted`: the proxies' addresses (`'*'` for all), or a check — the server's, which also knows CIDR ranges
+ * (`TRUSTED_PROXIES=10.0.0.0/8`). Addresses reach it without the IPv4-mapped `::ffff:` prefix.
  */
-export function clientIp(remote: string | undefined, forwardedFor: string | null, trusted: readonly string[]): string | undefined {
+export function clientIp(remote: string | undefined, forwardedFor: string | null, trusted: readonly string[] | ((address: string) => boolean)): string | undefined {
   const normalize = (address: string) => address.trim().replace(/^::ffff:/, '');
   if (remote === undefined) return undefined;
-  const isTrusted = (address: string) => trusted.includes('*') || trusted.includes(normalize(address));
+  const isTrusted = typeof trusted === 'function' ? (address: string) => trusted(normalize(address)) : (address: string) => trusted.includes('*') || trusted.includes(normalize(address));
   if (!isTrusted(remote) || !forwardedFor) return normalize(remote);
   const chain = forwardedFor.split(',').map(normalize).filter(Boolean);
   for (let i = chain.length - 1; i >= 0; i--) {

@@ -223,6 +223,9 @@ describe('mail previews (E106)', () => {
 
     const page = await previews.show('shop/OrderShippedMail', new URL('http://localhost/_bespoke/mail/shop/OrderShippedMail?locale=de'));
     expect(page.headers.get('cache-control')).toBe('no-store');
+    // Its own policy (E147): no script at all — an app's contentSecurityPolicy() leaves it alone; the srcdoc frame inherits it.
+    expect(page.headers.get('content-security-policy')).toMatch(/^default-src 'none'; style-src 'unsafe-inline'; .*frame-ancestors 'self'$/);
+    expect(page.headers.get('content-security-policy')).not.toContain('script-src');
     const body = await page.text();
     expect(body).toContain('<th>Subject</th><td>Deine Bestellung ist unterwegs</td>');
     expect(body).toContain('<iframe sandbox ');

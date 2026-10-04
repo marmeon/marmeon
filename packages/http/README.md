@@ -36,6 +36,40 @@ Both options, the groups and the order of the framework's middleware (`EncryptCo
 [Groups and priorities](../router/README.md#groups-and-priorities). Its solutions (E130) — an undefined route name with "did
 you mean", a missing view (R2) — show on the development error page.
 
+## Content-Security-Policy (E147)
+
+`contentSecurityPolicy(options?)` sends a policy with every **document** the app renders — opt-in, with a strict default; the
+web app and the starter's shell (`apps/blank-app`, the base of `create-bespoke-app`) turn it on:
+
+```ts
+import { contentSecurityPolicy, NONCE } from '@bespokecore/http';
+
+defineApplication({ middleware: { global: [SecurityHeaders, contentSecurityPolicy()] } });
+// script-src 'nonce-…' 'strict-dynamic'; object-src 'none'; base-uri 'self'
+
+contentSecurityPolicy({ imgSrc: ["'self'", 'data:'], frameAncestors: ["'none'"] });       // more directives (camel-cased)
+contentSecurityPolicy({ styleSrc: ["'self'", NONCE] });                                    // the nonce in another directive
+contentSecurityPolicy({ baseUri: false, reportOnly: true, reportUri: ['/csp-reports'] });  // a default left out; report only
+```
+
+- **One nonce per response** (16 random bytes), made only when a document is rendered — and then everywhere it is needed: on
+  `index.html`'s script, style and preload tags (the `bespoke()` Vite plugin sets Vite's `html.cspNonce` to a placeholder the
+  server fills in), on React's streamed scripts that reveal Suspense boundaries and its `<style>` tags
+  (`renderToReadableStream({ nonce })`, `SsrRenderOptions.nonce`), on a `<Head>`'s scripts and styles, on the development
+  document's scripts (the devtools' bar, Vite's error overlay). `'strict-dynamic'` lets the entry load its chunks. HTML an app
+  writes itself takes `ctx.nonce()` (`<script nonce="${ctx.nonce()}">`). Without the middleware, documents carry no nonce.
+- **Only HTML responses** get the header — a JSON visit (`x-bespoke`), an island, an action or an API answer neither needs nor
+  makes a nonce. A response with a policy of its own keeps it: the devtools' pages and the development error page (their inline
+  code by hash), the mail preview, a file served from a disk (`sandbox`).
+- **Development is not relaxed**: HMR, React Refresh, the devtools' bar and the overlay run under the same policy as production,
+  so a violation shows where it is made.
+- **Not with a shared cache:** a page cached publicly (`Cache-Control: public` or `s-maxage`, e.g. `cacheControl('public, …')`)
+  with a nonce is logged once — a CDN would hand the same nonce to everybody, which a script injected into the page could
+  reuse. Keep such pages private, or out of the policy.
+- The client code needs nothing: data travels in `<script type="application/json">` (inert, no nonce), the progress bar and the
+  dialogs style through CSSOM properties (not blocked by `style-src`); React's inline `style` props become attributes that
+  need `'unsafe-inline'` only if you add a `styleSrc` (or `styleSrcAttr`) directive.
+
 ## The client core and the adapter contract
 
 A UI adapter ([@bespokecore/react](../react/README.md) today, a Vue adapter later) is a **rendering layer**. Everything else —

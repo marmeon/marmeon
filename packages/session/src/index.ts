@@ -1,4 +1,4 @@
-export { SessionConfig } from './config.ts';
+export { insecureCookieWarning, SessionConfig } from './config.ts';
 export { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 export { MakeSessionTableCommand } from './commands/make-session-table.ts';
 export { PruneSessionsCommand } from './commands/prune-sessions.ts';

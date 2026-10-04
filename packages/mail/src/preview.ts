@@ -115,5 +115,20 @@ function page(title: string, body: string): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title>
 <style>:root{color-scheme:light}body{font:14px/1.5 system-ui,sans-serif;margin:0 auto;max-width:960px;padding:16px;background:#fff;color:#111}a{color:#1d4ed8}th{text-align:left;padding-right:12px;color:#555}iframe{width:100%;height:75vh;border:1px solid #ccc;border-radius:6px;margin-top:12px;background:#fff}</style>
 </head><body>${body}</body></html>`;
-  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': PREVIEW_CSP } });
 }
+
+/**
+ * The preview page's own policy — an app's `contentSecurityPolicy()` leaves it alone (E147): no script at all, its inline style
+ * and the mail's (the `srcdoc` frame inherits this policy), images and fonts as a mail client loads them, framed only here.
+ */
+const PREVIEW_CSP = [
+  "default-src 'none'",
+  "style-src 'unsafe-inline'",
+  'img-src data: http: https:',
+  'font-src data: http: https:',
+  "frame-src 'self'",
+  "form-action 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'self'",
+].join('; ');

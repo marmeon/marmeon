@@ -5,12 +5,24 @@ export interface CookieOptions {
   /** Defaults to `/`. */
   path?: string;
   domain?: string;
-  /** Defaults to `false`. */
+  /**
+   * HTTPS only. Defaults to the request's {@link CookieDefaults} — with `@bespokecore/session`, `SESSION_SECURE_COOKIE`,
+   * which follows `APP_URL` (`https:` → `true`, E162) — else `false`. `false` here turns it off for this cookie.
+   */
   secure?: boolean;
   /** Defaults to `true` — scripts cannot read the cookie (like Laravel). */
   httpOnly?: boolean;
   /** Defaults to `lax`. `none` requires `secure`. */
   sameSite?: 'lax' | 'strict' | 'none';
+}
+
+/**
+ * What every cookie of a request gets unless its `set` says otherwise (Laravel's `CookieJar` defaults): the kernel takes them
+ * from the container (`CookieDefaults`, bound by `@bespokecore/session` from its config, E162).
+ */
+export interface CookieDefaults {
+  /** `Secure` on every cookie that does not set `secure` itself. */
+  readonly secure?: boolean;
 }
 
 /** RFC 6265 `token`: what a cookie name may consist of. */
@@ -68,9 +80,12 @@ export class CookieJar {
   readonly #queued = new Map<string, { value: string; options: CookieOptions | undefined }>();
   #codec: CookieCodec | undefined;
   #permit: ((what: string) => boolean) | undefined;
+  readonly #defaults: CookieDefaults;
 
-  constructor(header: string | null) {
+  /** `defaults`: what every cookie set through this jar gets unless `set` says otherwise ({@link CookieDefaults}). */
+  constructor(header: string | null, defaults: CookieDefaults = {}) {
     this.#incoming = parseCookies(header);
+    this.#defaults = defaults;
   }
 
   get(name: string): string | undefined {
@@ -85,7 +100,9 @@ export class CookieJar {
     return Object.fromEntries(this.#incoming);
   }
 
-  set(name: string, value: string, options?: CookieOptions): void {
+  set(name: string, value: string, given?: CookieOptions): void {
+    // The jar's defaults (`secure` from the session's config) unless the call says otherwise — also `secure: false`.
+    const options = this.#defaults.secure && given?.secure === undefined ? { ...given, secure: true } : given;
     serializeCookie(name, value, options); // validate now, where the mistake is made
     if (this.#permit && !this.#permit(`cookies.set('${name}')`)) return;
     this.#queued.set(name, { value, options });

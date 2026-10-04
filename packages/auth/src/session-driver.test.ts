@@ -19,7 +19,7 @@ async function warningsWith(driver: string, withAuth = true): Promise<string[]> 
   await createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: driver, DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
+    env: { NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: driver, DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(withAuth ? [AuthServiceProvider] : [])],
     override: (container: Container) => container.instance(Logger, logger),
   });

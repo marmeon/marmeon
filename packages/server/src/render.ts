@@ -54,8 +54,8 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@bespokecore/http';
-import { defaultToResponse, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
-import { documentOf, FALLBACK_TEMPLATE, renderDocument } from './html.ts';
+import { defaultToResponse, RequestNonce, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
+import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce } from './html.ts';
 
 export interface PageRenderOptions {
   /** Wait for the whole page before sending — for bots (see {@link isBot}). */
@@ -70,6 +70,11 @@ export interface PageRenderOptions {
   resolveIsland?: (url: string) => Promise<RegionResult>;
   /** Computes a deferred group of this page while it streams (E49) — `SsrRenderOptions.resolveDeferred`. */
   resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
+  /**
+   * The response's CSP nonce (E147), when it has one: on the template's tags (in place of `CSP_NONCE_PLACEHOLDER`), React's
+   * streamed scripts and styles and `<Head>`'s scripts. Without it, the template's placeholder attributes are taken out.
+   */
+  nonce?: string;
 }
 
 /** Turns a page object into a full HTML document. Implemented per environment (Vite in development, the build in production). */
@@ -79,8 +84,8 @@ export interface PageRenderer {
    * finish. Rejects when the page cannot render on the server (an error in the shell).
    */
   render(page: PageObject, request: Request, options: PageRenderOptions): Promise<string | ReadableStream<Uint8Array>>;
-  /** The document without markup: the browser renders the page (server rendering failed, or is off). */
-  shell(page: PageObject, request: Request): Promise<string>;
+  /** The document without markup: the browser renders the page (server rendering failed, or is off). `nonce`: as for {@link render}. */
+  shell(page: PageObject, request: Request, nonce?: string): Promise<string>;
   /** Version of the built assets; undefined in development (no checks while Vite serves sources). */
   readonly version?: string;
   /**
@@ -98,6 +103,8 @@ export interface RenderFailureDetails {
   readonly solutions: readonly Solution[];
   /** The app's redactor (E125): what is shown passes it. */
   readonly redactor: Redactor;
+  /** The response's CSP nonce, for a script the markup brings (E147). */
+  readonly nonce?: string;
 }
 
 export interface DocumentRendererOptions {
@@ -121,7 +128,7 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, versio
     return error;
   };
   return {
-    async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred }) {
+    async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce }) {
       const [document, render] = await Promise.all([template(request), ssr()]);
       // Rendering stops when the client goes away — the request aborts, or the server cancels the body. Not an error.
       const stopped = new AbortController();
@@ -133,14 +140,15 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, versio
           onError: (error) => onError(fixed(error)),
           ...(resolveIsland ? { resolveIsland } : {}),
           ...(resolveDeferred ? { resolveDeferred } : {}),
+          ...(nonce ? { nonce } : {}),
         });
-        return await documentOf(document, page, result, (reason) => stopped.abort(reason));
+        return await documentOf(withNonce(document, nonce), page, result, (reason) => stopped.abort(reason));
       } catch (error) {
         throw fixed(error);
       }
     },
-    async shell(page, request) {
-      return renderDocument(await template(request), page, { html: '' });
+    async shell(page, request, nonce) {
+      return renderDocument(withNonce(await template(request), nonce), page, { html: '' });
     },
     ...(failed ? { failed } : {}),
     version,
@@ -298,8 +306,11 @@ export function createResponseFactory(
     page: PageObject,
     request: Request,
     resolvers: Pick<PageRenderOptions, 'resolveIsland' | 'resolveDeferred'> = {},
+    scope?: Container,
   ): Promise<string | ReadableStream<Uint8Array>> => {
-    if (!ssr) return renderer.shell(page, request);
+    // The response's CSP nonce (E147) — when `contentSecurityPolicy()` wants one (or the app made one): made here, read by the header.
+    const nonce = scope?.has(RequestNonce) ? scope.make(RequestNonce).forDocument() : undefined;
+    if (!ssr) return renderer.shell(page, request, nonce);
     const report = (message: string) => (error: unknown) => logger.error(message, { component: page.component, ...describe(error) });
     const complete = isBot(request);
     const render = () =>
@@ -309,6 +320,7 @@ export function createResponseFactory(
         onError: report(`Server rendering of [${page.component}] failed in a Suspense boundary — the browser renders that part`),
         onWarning: (message) => logger.warn(message, { component: page.component }),
         ...resolvers,
+        ...(nonce ? { nonce } : {}),
       });
     try {
       // On the `render.ssr` channel only while something listens (E118).
@@ -321,13 +333,13 @@ export function createResponseFactory(
       return await render();
     } catch (error) {
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
-      const shell = await renderer.shell(page, request);
+      const shell = await renderer.shell(page, request, nonce);
       // Development (E119): the developer sees it — in Vite's overlay — instead of a page that silently renders in the browser.
       if (debug && app && renderer.failed) {
         try {
           const solutions = app.container.has(ErrorSolutions) ? await app.container.make(ErrorSolutions).find(error, { app }) : [];
           const redactor = app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
-          const markup = await renderer.failed(error, { component: page.component, solutions, redactor });
+          const markup = await renderer.failed(error, { component: page.component, solutions, redactor, ...(nonce ? { nonce } : {}) });
           const at = shell.lastIndexOf('</body>');
           if (markup) return at === -1 ? shell + markup : shell.slice(0, at) + markup + shell.slice(at);
         } catch (failure) {
@@ -488,12 +500,12 @@ export function createResponseFactory(
       const stacked = await deepLink(top, ctx.request, scope);
       if (sent.flash) stacked.flash = sent.flash;
       const { resolveIsland } = streaming(stacked, ctx.request, {}, scope);
-      return new Response(await document(stacked, ctx.request, resolveIsland ? { resolveIsland } : {}), {
+      return new Response(await document(stacked, ctx.request, resolveIsland ? { resolveIsland } : {}, scope), {
         status: result.status,
         headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
       });
     }
-    return new Response(await document(sent, ctx.request, streaming(sent, ctx.request, result.props, scope)), {
+    return new Response(await document(sent, ctx.request, streaming(sent, ctx.request, result.props, scope), scope), {
       status: result.status,
       headers: { ...headers, 'content-type': 'text/html; charset=utf-8' },
     });

@@ -393,7 +393,7 @@ describe('the in-page bar’s side on the server (W7 step 9)', () => {
     try {
       const head = runWithRequest({ requestId: '"><script>alert(1)</script>' }, () => app.container.make(DevDocument).head);
       expect(head).toBe(
-        '<meta name="bespoke-devtools" content="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" data-bespoke-devtools>\n<script type="module" src="/@id/@bespokecore/devtools/client" data-bespoke-devtools></script>',
+        '<meta name="bespoke-devtools" content="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" data-bespoke-devtools>\n<script type="module" src="/@id/@bespokecore/devtools/client" nonce="__bespoke_csp_nonce__" data-bespoke-devtools></script>',
       );
       expect(app.container.make(DevDocument).body).toBe(''); // no link any more: the bar's pill is the way in
     } finally {

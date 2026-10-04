@@ -47,7 +47,8 @@ export function codeFrame(lines: readonly { number: number; text: string; curren
  * The script that shows `error` in Vite's overlay as soon as the document loads — Vite only buffers an error for a tab when
  * no tab is connected at all, so the document that failed brings its own (the overlay replaces an earlier one).
  */
-export function overlayScript(error: OverlayError): string {
+export function overlayScript(error: OverlayError, nonce?: string): string {
   const payload = JSON.stringify(error).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-  return `<script type="module">import('/@vite/client').then(({ ErrorOverlay }) => { document.querySelector('vite-error-overlay')?.remove(); document.body.appendChild(new ErrorOverlay(${payload})); });</script>`;
+  // The response's CSP nonce (E147): under `contentSecurityPolicy()` an inline script runs only with it.
+  return `<script type="module"${nonce ? ` nonce="${nonce}"` : ''}>import('/@vite/client').then(({ ErrorOverlay }) => { document.querySelector('vite-error-overlay')?.remove(); document.body.appendChild(new ErrorOverlay(${payload})); });</script>`;
 }

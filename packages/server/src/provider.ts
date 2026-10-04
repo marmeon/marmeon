@@ -1,6 +1,7 @@
 import { defineConfig, environment, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-token.ts';
+import { isProxyEntry } from './proxies.ts';
 import { ServerTiming } from './server-timing.ts';
 import * as v from 'valibot';
 
@@ -9,6 +10,11 @@ const UNITS = { '': 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 } as const;
 export const ServerConfig = defineConfig('server', {
   env: v.object({
     PORT: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(65535)), '3000'),
+    /**
+     * The interface the server listens on (E162): unset — every interface (Node's default), `127.0.0.1` — this machine only
+     * (behind a proxy on the same host), `0.0.0.0` — every IPv4 interface (a container).
+     */
+    HOST: v.optional(v.pipe(v.string(), v.nonEmpty())),
     /** Largest accepted request body: bytes, or with a unit — `512k`, `8m`, `1g`. */
     MAX_BODY_SIZE: v.optional(
       v.pipe(
@@ -19,13 +25,18 @@ export const ServerConfig = defineConfig('server', {
       '8m',
     ),
     /**
-     * Proxies (load balancers) whose `X-Forwarded-For` is believed, comma-separated IPs — or `*`
-     * when the app is only reachable through its own proxy. Without it, `ctx.ip` is the peer address.
+     * The app's proxies (load balancers, E162), comma-separated: addresses or ranges — `127.0.0.1,10.0.0.0/8,fd00::/8` — or
+     * `*` when the app is only reachable through its own proxy. Only from these, `X-Forwarded-For` sets `ctx.ip` and
+     * `X-Forwarded-Proto`/`X-Forwarded-Host` the request's URL (`https://…`). Default: none — the headers are ignored.
      */
     TRUSTED_PROXIES: v.optional(
       v.pipe(
         v.string(),
         v.transform((value) => value.split(',').map((proxy) => proxy.trim()).filter(Boolean)),
+        v.check(
+          (entries) => entries.every(isProxyEntry),
+          (issue) => `Expected addresses or ranges like 10.0.0.0/8, or *: ${(issue.input as string[]).filter((entry) => !isProxyEntry(entry)).join(', ')} is not one`,
+        ),
       ),
       '',
     ),
@@ -48,6 +59,8 @@ export const ServerConfig = defineConfig('server', {
   }),
   resolve: (env) => ({
     port: env.PORT,
+    /** The interface to listen on; undefined: every interface. */
+    host: env.HOST,
     maxBodySize: env.MAX_BODY_SIZE,
     assetVersion: env.ASSET_VERSION,
     trustedProxies: env.TRUSTED_PROXIES,

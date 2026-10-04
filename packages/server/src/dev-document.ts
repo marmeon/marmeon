@@ -20,7 +20,9 @@ export type DevMarkup = string | ((request: DevRequest) => string);
  * if (app.container.has(DevDocument)) app.container.make(DevDocument).add('<a href="/_bespoke/devtools">Devtools</a>');
  * ```
  *
- * What is added is trusted markup (a package's own) — a function that puts anything of the request into it escapes it.
+ * What is added is trusted markup (a package's own) — a function that puts anything of the request into it escapes it. A
+ * `<script>` or `<style>` writes `nonce="__bespoke_csp_nonce__"` (`CSP_NONCE_PLACEHOLDER` of `@bespokecore/core`): the renderer puts the response's
+ * CSP nonce there (E147), so the markup runs under `contentSecurityPolicy()` too.
  */
 export class DevDocument {
   readonly #body: DevMarkup[] = [];

@@ -1,6 +1,8 @@
 import { injectConstructorDependencies } from './injection/analyze.ts';
 import { isBrowserSource } from './injection/browser.ts';
 
+export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
+
 /** The subset of Vite's plugin interface this plugin uses — keeps `vite` out of core's dependencies. */
 export interface InjectionPlugin {
   name: string;

@@ -1,8 +1,8 @@
 import { isAbsolute, join } from 'node:path';
-import { Application, Clock, Redactor, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
-import { CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
+import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
+import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
 import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
-import { SessionConfig } from './config.ts';
+import { insecureCookieWarning, SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 import { Session } from './session.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
@@ -41,6 +41,9 @@ export class SessionServiceProvider implements ServiceProvider {
     container.scoped(PageSession, (c) => pageSessionOf(c.make(Session)));
 
     const config = container.make(SessionConfig);
+    // Every cookie of a request gets `Secure` with the session's (E162) — the reset cookie, the cookie store's, an app's own —
+    // unless its `set` says otherwise (Laravel's cookie jar defaults).
+    container.instance(CookieDefaults, { secure: config.secure });
     container.singleton(SessionLottery, () => new SessionLottery(config.lottery));
     // The cookie store works on the request's cookie jar: one per request. The others are shared.
     if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
@@ -59,7 +62,9 @@ export class SessionServiceProvider implements ServiceProvider {
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.
-    const { driver, connection } = app.container.make(SessionConfig);
+    const { driver, connection, secure, secureFrom } = app.container.make(SessionConfig);
+    // Protected (E139: staging, production, no NODE_ENV) and cookies without Secure (E162): said once, at boot.
+    if (app.container.make(SessionConfig).protected && !secure) app.container.make(Logger).warn(insecureCookieWarning(secureFrom), { secureFrom });
     if (driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {

@@ -1,4 +1,4 @@
-import { defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@bespokecore/core';
+import { CSP_NONCE_PLACEHOLDER, defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@bespokecore/core';
 import { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
 import { DevtoolsConfig, DevtoolsConfigError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
 import { FileStore } from './file-store.ts';
@@ -12,10 +12,11 @@ export const BAR_SCRIPT = '/@id/@bespokecore/devtools/client';
 /**
  * The in-page bar (W7 step 9, E117) in every development document's head: the document's request id (E131 — the bar asks the
  * server's record of it; escaped, a client may send its own `x-request-id`) and the module script of the bar, served by the Vite
- * dev server. In the head, it runs before the app's entry: its dev hook is there when the navigator is made.
+ * dev server. In the head, it runs before the app's entry: its dev hook is there when the navigator is made. Its script carries the
+ * nonce placeholder: under the app's `contentSecurityPolicy()` the renderer puts the response's nonce there (E147).
  */
 export function barMarkup({ requestId }: { readonly requestId: string | undefined }): string {
-  return `<meta name="bespoke-devtools" content="${escapeHtml(requestId ?? '')}" data-bespoke-devtools>\n<script type="module" src="${BAR_SCRIPT}" data-bespoke-devtools></script>`;
+  return `<meta name="bespoke-devtools" content="${escapeHtml(requestId ?? '')}" data-bespoke-devtools>\n<script type="module" src="${BAR_SCRIPT}" nonce="${CSP_NONCE_PLACEHOLDER}" data-bespoke-devtools></script>`;
 }
 
 /** The settings the recorder runs with — bound only where it runs. */

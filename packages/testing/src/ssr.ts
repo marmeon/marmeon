@@ -23,6 +23,8 @@ interface Resolved {
   readonly deferred: Map<string, DeferredResult | null>;
   /** Streamed: the page as the server rendered it (its live props) — rendered once more, completely, for the comparison. */
   page?: PageObject;
+  /** The response's CSP nonce, when it had one (E147). */
+  nonce?: string;
 }
 
 /**
@@ -54,6 +56,8 @@ export class TestSsr {
         const { resolveIsland, resolveDeferred } = options;
         const seen = id ? resolved.get(id) : undefined;
         if (seen && stream) seen.page = page;
+        // The response's CSP nonce (E147): the browser reads the same document — rendered again with it.
+        if (seen && options.nonce) seen.nonce = options.nonce;
         try {
           const document = await renderer.render(page, request, {
             ...options,
@@ -87,7 +91,7 @@ export class TestSsr {
           throw error;
         }
       },
-      shell: (page, request) => renderer.shell(page, request),
+      shell: (page, request, nonce) => renderer.shell(page, request, nonce),
     };
   }
 
@@ -107,7 +111,7 @@ export class TestSsr {
   /** What happened while rendering request `id`, and the page rendered again from its JSON (the browser's view of it). */
   async finish(id: string, url: string, page: PageObject | undefined): Promise<SsrOutcome> {
     const errors = this.#errors.get(id) ?? [];
-    const { islands, deferred, page: live } = this.#resolved.get(id) ?? { islands: new Map<string, RegionResult>(), deferred: new Map<string, DeferredResult | null>() };
+    const { islands, deferred, page: live, nonce } = this.#resolved.get(id) ?? { islands: new Map<string, RegionResult>(), deferred: new Map<string, DeferredResult | null>() };
     this.#errors.delete(id);
     this.#resolved.delete(id);
     if (!page || errors.length > 0) return { errors, rerendered: undefined };
@@ -120,6 +124,7 @@ export class TestSsr {
       onWarning: noop,
       resolveIsland: async (island: string): Promise<RegionResult> => islands.get(island) ?? { status: 'browser' },
       ...(this.#stream ? { resolveDeferred: async (group: string): Promise<DeferredResult | null> => deferred.get(group) ?? null } : {}),
+      ...(nonce ? { nonce } : {}),
     };
     const render = async (from: PageObject): Promise<string | undefined> => {
       const document = await this.renderer.render(from, new Request(url), options).catch(() => undefined);

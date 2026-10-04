@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApplication, defineModule, Logger, token, type Application } from '@bespokecore/core';
@@ -118,6 +119,12 @@ describe('the development error page (E119)', () => {
       expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
       expect(response.headers.get('cache-control')).toBe('no-store');
       const html = await response.text();
+      // Its own CSP (E147): exactly its inline style and script, by hash — an app's contentSecurityPolicy() leaves it alone.
+      const policy = response.headers.get('content-security-policy')!;
+      const hashOf = (tag: 'style' | 'script') => `'sha256-${createHash('sha256').update(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(html)![1]!).digest('base64')}'`;
+      expect(policy).toContain(`style-src ${hashOf('style')}`);
+      expect(policy).toContain(`script-src ${hashOf('script')}`);
+      expect(policy).toMatch(/^default-src 'none'; /);
       expect(html).toContain('<span class="class">Error</span>');
       expect(html).toContain('The controller failed on purpose');
 

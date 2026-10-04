@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@bespokecore/core';
 import { bespokeEntries, explainConfigError, importVite, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
+import { precompressAssets } from '../precompress.ts';
 import { typecheckApp } from '../typecheck.ts';
 
 /**
@@ -16,6 +17,7 @@ import { typecheckApp } from '../typecheck.ts';
  * Before anything else it precomputes the app's injection lists (`.bespoke/injections.json`, E138): the analysis the load
  * hook runs, kept per module with the hash of its source — a production start applies them instead of parsing the app
  * with oxc (and so does the `route:types` process this command starts, which boots the app).
+ * The client's assets get a `.br` and a `.gz` next to them (E162), which the server sends by `Accept-Encoding`.
  * Last, it writes the production discovery manifest (E160) — the one `bespoke start` reads, resolved without the monorepo's
  * source condition — so the first start rewrites nothing and `.bespoke/` may be read-only from then on.
  */
@@ -75,6 +77,12 @@ export class BuildCommand {
       return 1;
     }
     output.success('Built dist/client and dist/server');
+    // Compressed once, here (E162): the server sends these by Accept-Encoding and never compresses per request (BREACH).
+    const compressed = await precompressAssets(join(root, 'dist', 'client', 'assets'));
+    if (compressed.files > 0) {
+      const kb = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`;
+      output.success(`Compressed ${compressed.files} asset${compressed.files === 1 ? '' : 's'} (.br, .gz): ${kb(compressed.bytes)} → ${kb(compressed.brotliBytes)} with Brotli`);
+    }
     // What `bespoke start` resolves with: Node's conditions and NODE_OPTIONS' — never this process's `@bespokecore/source`.
     if (existsSync(join(root, 'package.json'))) {
       const manifest = writeManifest({ root, conditions: runtimeConditions([], process.env.NODE_OPTIONS ?? '') });

@@ -101,6 +101,10 @@ every page without markup.
   `ssr = 'complete'`, gets the whole page at once; `ssr = false` renders no markup. An error in the shell rejects (the server
   sends the page without markup); an error in a boundary is reported, and the browser renders that boundary. A `<Head>` inside
   a boundary that streams after the head was sent is a warning in development.
+  Under the app's Content-Security-Policy (E147) the server passes the response's nonce (`SsrRenderOptions.nonce`): React's
+  inline scripts that reveal streamed boundaries (`$RC`) and its `<style>` tags carry it (`renderToReadableStream({ nonce: {
+  script, style } })`), and so do a `<Head>`'s `<script>` and `<style>` children — without it, a strict policy would block the
+  reveal and the boundaries would wait for hydration ([Content-Security-Policy](../http/README.md#content-security-policy-e147)).
 
 ## Pages and layouts
 

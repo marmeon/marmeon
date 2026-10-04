@@ -59,6 +59,24 @@ describe('the dashboard as it streams (E49)', () => {
     expect(end).toBeGreaterThanOrEqual(DELAY);
   });
 
+  it('streams under the strict CSP (E147): React\'s scripts that reveal the late islands carry the response\'s nonce — every script does', async () => {
+    const response = await app.actingAs(ada).stream('/dashboard');
+    const html = await response.text();
+    const nonce = /'nonce-([^']+)'/.exec(response.headers.get('content-security-policy') ?? '')?.[1];
+    expect(response.headers.get('content-security-policy')).toBe(`script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`);
+    expect(html).toMatch(/data-island="dashboard\.members" data-status="ready"/);
+    expect(html).toContain('$RC'); // a boundary streamed in after the shell
+    const scripts = html.match(/<script\b[^>]*>/g)!;
+    const executable = scripts.filter((tag) => !tag.includes('type="application/json"'));
+    expect(executable.length).toBeGreaterThan(2);
+    for (const tag of executable) expect(tag).toContain(`nonce="${nonce}"`);
+    expect(html).not.toContain('__bespoke_csp_nonce__');
+    // Another response, another nonce.
+    const next = await app.actingAs(ada).stream('/dashboard');
+    await next.text();
+    expect(next.headers.get('content-security-policy')).not.toContain(nonce);
+  });
+
   it('gives a bot every island in the HTML — the whole page at once', async () => {
     const response = await app.actingAs(ada).stream('/dashboard', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)' } });
     const html = await response.text();

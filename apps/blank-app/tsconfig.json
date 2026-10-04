@@ -14,6 +14,7 @@
     "bootstrap",
     "config",
     "lang",
+    "middleware",
     "modules",
     "vite.config.ts"
   ]

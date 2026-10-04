@@ -15,6 +15,23 @@ describe('cookies', () => {
     );
   });
 
+  it('gives every cookie the jar\'s defaults (E162: Secure from the session config) — unless set says otherwise', async () => {
+    const jar = new CookieJar(null, { secure: true });
+    jar.set('plain', '1');
+    jar.set('opted_out', '1', { secure: false });
+    jar.delete('gone');
+    const [plain, optedOut, gone] = await jar.queued();
+    expect(plain).toContain('; Secure');
+    expect(optedOut).not.toContain('Secure');
+    expect(gone).toContain('; Secure');
+    const [without] = await (() => {
+      const other = new CookieJar(null);
+      other.set('plain', '1');
+      return other.queued();
+    })();
+    expect(without).not.toContain('Secure');
+  });
+
   it('refuses invalid names and SameSite=None without Secure', () => {
     expect(() => serializeCookie('bad name', '1')).toThrow('Invalid cookie name "bad name".');
     expect(() => serializeCookie('x', '1', { sameSite: 'none' })).toThrow('SameSite=None requires secure: true');

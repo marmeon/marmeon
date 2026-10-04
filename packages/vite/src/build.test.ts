@@ -101,7 +101,10 @@ describe('bespoke build with the bespoke() plugin', () => {
 
     // The client entry comes from the plugin, not from index.html.
     // `async`: a streamed page hydrates its shell while the rest still arrives.
-    expect(readFileSync(join(root, 'dist/client/index.html'), 'utf8')).toMatch(/<script type="module" async crossorigin src="\/assets\/index-[\w-]+\.js"><\/script>/);
+    // Every tag carries the nonce placeholder (Vite's `html.cspNonce`, E147) — the server fills in each response's nonce.
+    const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
+    expect(html).toMatch(/<script type="module" async crossorigin src="\/assets\/index-[\w-]+\.js" nonce="__bespoke_csp_nonce__"><\/script>/);
+    expect(html).toContain('<meta property="csp-nonce" nonce="__bespoke_csp_nonce__">');
     // virtual:bespoke/pages: root-absolute keys, one chunk per page.
     expect(client).toContain('/modules/demo/views/Home.ts');
     expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.startsWith('Home-'))).toBe(true);

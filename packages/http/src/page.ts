@@ -581,6 +581,11 @@ export interface SsrRenderOptions {
    * browser loads every group after showing the page.
    */
   resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
+  /**
+   * The response's CSP nonce (E147), when the app sends a policy: the adapter puts it on everything inline it streams —
+   * React's scripts that reveal Suspense boundaries, its `<style>` tags — and on the `<Head>`'s scripts and styles.
+   */
+  nonce?: string;
 }
 
 /**

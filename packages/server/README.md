@@ -15,8 +15,9 @@ a production server never loads it. Routes, controllers and responses are [@besp
 | Variable | Default | What |
 | --- | --- | --- |
 | `PORT` | `3000` | the port `startServer()` listens on |
+| `HOST` | every interface | the interface it listens on — `127.0.0.1` behind a proxy on the same machine, `0.0.0.0` in a container (E162) |
 | `MAX_BODY_SIZE` | `8m` | the largest request body: bytes, or `512k`, `8m`, `1g` |
-| `TRUSTED_PROXIES` | — | proxies whose `X-Forwarded-For` is believed, comma-separated IPs, or `*` behind the app's own proxy only; without it the client's address is the peer's |
+| `TRUSTED_PROXIES` | — | the app's proxies: addresses or ranges, comma-separated (`127.0.0.1,10.0.0.0/8,fd00::/8`), or `*` behind the app's own proxy only; only from these `X-Forwarded-*` count ([Behind a proxy](#behind-a-proxy-e162)); anything else fails the start |
 | `ASSET_VERSION` | the build's | the asset version a new deployment answers 409 for — e.g. the git commit; in production by default a hash of the built `index.html` |
 | `SSR_ENABLED` | `true` | `false`: no server rendering, the browser renders every page (one page: `Page.ssr = false`) |
 | `HEALTH_PATH` | `/up` | where the health endpoints answer (readiness below it); `off`: none ([Health](#health-e126)) |
@@ -44,7 +45,14 @@ in-process (`createTestApp`, [@bespokecore/testing](../testing/README.md)). Per 
 - **islands and layers** are resolved in-process while a page renders: a GET of the island's URL through its own route's
   middleware and authorization, with the page request's cookies (10 s limit, then the island's error); a layer's base the same
   way for a deep link ([The protocol](../http/README.md#the-protocol));
-- **in production**, `/assets/*` is served from `dist/client`.
+- **in production**, `/assets/*` is served from `dist/client` — kept a year (`Cache-Control: public, max-age=31536000,
+  immutable`: Vite names every file by its hash), as the `.br` (else `.gz`) `bespoke build` wrote next to it when
+  `Accept-Encoding` names it, with the original `Content-Type` and `Vary: Accept-Encoding` (E162). **Nothing is compressed per
+  request** — documents never: compressing a page that carries a secret (the CSRF token) next to reflected input leaks the
+  secret byte by byte (BREACH). Compressing responses is the proxy's business, if anybody's.
+- **documents get the response's CSP nonce** when the app sends a policy (`contentSecurityPolicy()`, E147): the template's
+  placeholder (`CSP_NONCE_PLACEHOLDER`, from Vite's `html.cspNonce`) becomes the nonce, React's streamed scripts carry it —
+  [Content-Security-Policy](../http/README.md#content-security-policy-e147).
 
 **Server rendering:** a page renders on the server until its shell, then streams (islands and deferred props into the same
 response, E49); crawlers and link previews get the whole page at once. When the shell cannot render, the document goes out
@@ -124,6 +132,24 @@ Where the time goes now (CPU samples of one profiled start, 324 ms with the prof
   the compile cache.
 - **The modules themselves:** loading them (resolve, read, compile) is now most of the start; kysely brings 257 of the 940. Only a
   bundle would cut that, and bundling was rejected (E138: discovery, dynamic imports and native packages break too easily).
+
+## Behind a proxy (E162)
+
+By default the server believes no `X-Forwarded-*` header: `ctx.ip` is the peer's address and the URL is what the peer asked
+for. With `TRUSTED_PROXIES` (addresses or CIDR ranges, `*` for "every peer is our proxy"):
+
+- **`ctx.ip`** is the right-most `X-Forwarded-For` entry that is not a trusted proxy — what a client wrote on the left counts
+  only once every hop to its right is trusted (rate limits, logs, islands use it);
+- **the request's URL** takes `X-Forwarded-Proto` (`http`/`https`) and `X-Forwarded-Host` from a trusted peer — of a list the
+  right-most value, which the nearest proxy added; an invalid value is ignored. So the CSRF origin check, an island's origin,
+  the asset version's reload URL and `ctx.request.url` see `https://example.com/…`, not `http://10.0.0.5:3000/…`;
+- `Forwarded` (RFC 7239) and `X-Forwarded-Port` are not read — Caddy, nginx, Traefik and the cloud load balancers send
+  `X-Forwarded-*` (a port belongs into `X-Forwarded-Host`).
+
+Configure the proxy to **set** these headers (Caddy does by itself; nginx: `proxy_set_header X-Forwarded-Proto $scheme;` and
+`X-Forwarded-For $proxy_add_x_forwarded_for`) — a proxy that passes a client's own headers on unchanged makes them the
+client's word. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
+[@bespokecore/session](../session/README.md#configuration)).
 
 ## Health (E126)
 

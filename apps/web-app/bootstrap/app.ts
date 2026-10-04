@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { defineApplication } from '@bespokecore/core';
+import { contentSecurityPolicy } from '@bespokecore/http';
 import auth from '#modules/auth';
 import dashboard from '#modules/dashboard';
 import lab from '#modules/lab';
@@ -25,7 +26,9 @@ export default defineApplication({
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {
-    global: [SecurityHeaders],
+    // A strict Content-Security-Policy on every document (E147): scripts only with the response's nonce ('strict-dynamic'),
+    // no plugins, no foreign <base>; framed by nobody.
+    global: [SecurityHeaders, contentSecurityPolicy({ frameAncestors: ["'none'"] })],
     web: [ShareAppProps],
   },
   // The browser learns only the `web` routes its code names (virtual:bespoke/routes). API routes stay on the server
