@@ -165,12 +165,19 @@ function walkDependencies(root: string): PackageInfo[] {
   const seen = new Set<string>();
   const ordered: PackageInfo[] = [];
 
-  const visit = (pkg: PackageInfo) => {
+  // A package's peers are what the package depending on it provides (as a package manager resolves them) — looked up from
+  // that dependent's directory, not the package's own: in a workspace a package's own node_modules also links its dev
+  // dependencies, and an app with @bespokecore/testing would otherwise discover every package testing is tested with.
+  const visit = (pkg: PackageInfo, dependentDir: string) => {
     if (seen.has(pkg.dir)) return;
     seen.add(pkg.dir);
-    for (const dep of dependencyNames(pkg.json)) {
+    for (const dep of [...Object.keys(pkg.json.dependencies ?? {}), ...Object.keys(pkg.json.optionalDependencies ?? {})]) {
       const found = findPackage(dep, pkg.dir);
-      if (found) visit(found);
+      if (found) visit(found, pkg.dir);
+    }
+    for (const dep of Object.keys(pkg.json.peerDependencies ?? {})) {
+      const found = findPackage(dep, dependentDir);
+      if (found) visit(found, dependentDir);
     }
     if (pkg.json.bespoke) ordered.push(pkg);
   };
@@ -178,7 +185,7 @@ function walkDependencies(root: string): PackageInfo[] {
   // Like Composer, the app's dev dependencies count too — they are simply absent in production installs.
   for (const dep of [...dependencyNames(rootJson), ...Object.keys(rootJson.devDependencies ?? {})]) {
     const found = findPackage(dep, root);
-    if (found) visit(found);
+    if (found) visit(found, root);
   }
   return ordered;
 }

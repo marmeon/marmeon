@@ -16,7 +16,7 @@
  * `compose.yaml` — only its own containers (`bespokecore-*`), never another project's. The Postgres and Redis suites run
  * one after the other, never at once: they share their test databases.
  *
- * A later step adds its part to `parts` (docs:check) — that is all.
+ * A new check is one more entry in `parts`.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +47,8 @@ export const parts: readonly Part[] = [
   { name: 'test:s3', command: pnpm('test:s3'), services: ['s3'], after: ['build'] },
   { name: 'size', command: pnpm('size'), after: ['build'] },
   { name: 'types:check', command: pnpm('types:check') },
+  // The docs app (E114): its production build, started on a free port and asked by a smoke test (scripts/docs.ts).
+  { name: 'docs:check', command: pnpm('docs:check'), after: ['build'] },
 ];
 
 type Status = 'passed' | 'failed' | 'skipped';

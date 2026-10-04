@@ -1,0 +1,45 @@
+{
+  "name": "@bespokecore/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The documentation of BespokeCore — the READMEs as a normal BespokeCore app (E114, E133: no static export). Not published (E10).",
+  "imports": {
+    "#modules/*": "./modules/*/index.ts"
+  },
+  "scripts": {
+    "dev": "bespoke dev",
+    "build": "bespoke build",
+    "start": "bespoke start",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@bespokecore/cache": "workspace:*",
+    "@bespokecore/core": "workspace:*",
+    "@bespokecore/http": "workspace:*",
+    "@bespokecore/log": "workspace:*",
+    "@bespokecore/react": "workspace:*",
+    "@bespokecore/router": "workspace:*",
+    "@bespokecore/server": "workspace:*",
+    "github-slugger": "2.0.0",
+    "markdown-it": "15.0.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "shiki": "4.5.0",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@bespokecore/cli": "workspace:*",
+    "@bespokecore/devtools": "workspace:*",
+    "@bespokecore/testing": "workspace:*",
+    "@bespokecore/vite": "workspace:*",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.86.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}

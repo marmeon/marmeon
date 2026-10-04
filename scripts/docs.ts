@@ -1,0 +1,166 @@
+/**
+ * The docs app (`apps/docs`, E114/E133 — a normal BespokeCore app, no static export):
+ *
+ *   pnpm docs:dev       # bespoke dev on http://localhost:3970 (PORT wins); writes apps/docs/.env with a fresh APP_KEY first
+ *   pnpm docs:check     # bespoke build, the production server on a free port, a smoke test, the server stopped — a part of
+ *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
+ *
+ * The smoke test asks the running production build what the acceptance asks: the start page and every package page (200,
+ * server-rendered), the search (`onOneServer` → the scheduler, `TracingChannel` → core), `/up`, no `Set-Cookie` on any
+ * public page, caching headers (`public`, `ETag`, `Vary`, `304`), an unknown package (404) and a 10 000-character query
+ * (no 500).
+ */
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { fileURLToPath } from 'node:url';
+import { PACKAGES } from '../apps/docs/docs.config.ts';
+
+const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
+const bespoke = fileURLToPath(new URL('../packages/cli/bin/bespoke.js', import.meta.url));
+const mode = process.argv[2];
+
+if (mode === 'dev') await dev();
+else if (mode === 'check') process.exitCode = await check();
+else {
+  console.error('Usage: node scripts/docs.ts dev | check');
+  process.exitCode = 2;
+}
+
+async function dev(): Promise<void> {
+  if (!existsSync(`${app}.env`)) spawnSync(process.execPath, [bespoke, 'key:generate'], { cwd: app, stdio: 'inherit' });
+  const child = spawn(process.execPath, [bespoke, 'dev'], { cwd: app, stdio: 'inherit', env: { ...process.env, PORT: process.env.PORT ?? '3970' } });
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
+  await new Promise<void>((resolve) => child.on('exit', (code) => resolve(void (process.exitCode = code ?? 1))));
+}
+
+async function check(): Promise<number> {
+  const started = performance.now();
+  // Everything the app needs comes with the command: CI has no .env (a key of its own for this run only).
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    APP_KEY: `base64:${randomBytes(32).toString('base64')}`,
+    CACHE_DRIVER: 'memory',
+    LOG_LEVEL: 'warn',
+  };
+  delete env.NODE_ENV; // `bespoke build` and `bespoke start` set production themselves
+
+  console.log('docs:check: bespoke build');
+  const build = spawnSync(process.execPath, [bespoke, 'build'], { cwd: app, stdio: 'inherit', env });
+  if (build.status !== 0) return fail(`bespoke build exited with ${build.status}`);
+
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  console.log(`docs:check: bespoke start on ${base}`);
+  const server = spawn(process.execPath, [bespoke, 'start'], { cwd: app, stdio: ['ignore', 'inherit', 'inherit'], env: { ...env, PORT: String(port), APP_URL: base } });
+  const failures: string[] = [];
+  let checks = 0;
+  try {
+    await waitForUp(base, server);
+    checks = await smoke(base, failures);
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+  } finally {
+    await stop(server);
+  }
+  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  if (failures.length > 0) {
+    console.error(`docs:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
+    return 1;
+  }
+  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${PACKAGES.length + 1} pages) and stop in ${seconds} s`);
+  return 0;
+}
+
+/** Asks the running server; returns how many checks it made. */
+async function smoke(base: string, failures: string[]): Promise<number> {
+  let checks = 0;
+  const expect = (ok: boolean, message: string) => {
+    checks++;
+    if (!ok) failures.push(message);
+  };
+  const get = async (path: string, headers: Record<string, string> = {}) => {
+    const response = await fetch(base + path, { headers, redirect: 'manual' });
+    return { response, body: await response.text() };
+  };
+  const publicPage = async (path: string, contains: string) => {
+    const { response, body } = await get(path);
+    expect(response.status === 200, `${path}: status ${response.status}, expected 200`);
+    expect(body.includes(contains), `${path}: the server-rendered page lacks "${contains}"`);
+    expect(!response.headers.has('set-cookie'), `${path}: sets a cookie (${response.headers.get('set-cookie')})`);
+    return response;
+  };
+
+  const home = await publicPage('/', '<h1>BespokeCore</h1>');
+  expect(/^public, max-age=\d+$/.test(home.headers.get('cache-control') ?? ''), `/: Cache-Control is "${home.headers.get('cache-control')}"`);
+  const vary = (home.headers.get('vary') ?? '').toLowerCase();
+  for (const header of ['x-bespoke', 'x-bespoke-partial-data', 'purpose', 'x-bespoke-version']) expect(vary.includes(header), `/: Vary lacks ${header} ("${vary}")`);
+  const etag = home.headers.get('etag');
+  expect(etag !== null, '/: no ETag');
+  if (etag) {
+    const again = await fetch(`${base}/`, { headers: { 'if-none-match': etag } });
+    expect(again.status === 304, `/ with If-None-Match: status ${again.status}, expected 304`);
+  }
+
+  for (const name of PACKAGES) await publicPage(`/packages/${name}`, `@bespokecore/${name}</h1>`);
+
+  const search = async (q: string, page: string) => {
+    const response = await publicPage(`/search?q=${encodeURIComponent(q)}`, `href="${page}`);
+    // The same URL as a visit: the page object (JSON), not the document — Vary keeps them apart in a cache.
+    const visit = await get(`/search?q=${encodeURIComponent(q)}`, { 'x-bespoke': 'true', accept: 'text/html, application/json' });
+    expect(visit.response.headers.get('content-type')?.startsWith('application/json') === true, `/search as a visit: ${visit.response.headers.get('content-type')}`);
+    expect(visit.body.includes(`"href":"${page}`), `/search?q=${q} as a visit: no result on ${page}`);
+    return response;
+  };
+  await search('onOneServer', '/packages/scheduler');
+  await search('TracingChannel', '/packages/core');
+
+  const missing = await get('/packages/no-such-package');
+  expect(missing.response.status === 404, `/packages/no-such-package: status ${missing.response.status}, expected 404`);
+  const long = await get(`/search?q=${'a'.repeat(10_000)}`);
+  expect(long.response.status < 500, `/search with 10 000 characters: status ${long.response.status}`);
+
+  const up = await get('/up');
+  expect(up.response.status === 200, `/up: status ${up.response.status}`);
+  return checks;
+}
+
+async function waitForUp(base: string, server: ChildProcess): Promise<void> {
+  const until = Date.now() + 60_000;
+  while (Date.now() < until) {
+    if (server.exitCode !== null) throw new Error(`the server exited with ${server.exitCode} before it answered /up`);
+    try {
+      if ((await fetch(`${base}/up`)).status === 200) return;
+    } catch {
+      // not listening yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error('the server did not answer /up within 60 s');
+}
+
+async function stop(server: ChildProcess): Promise<void> {
+  if (server.exitCode !== null) return;
+  const exited = new Promise<void>((resolve) => server.once('exit', () => resolve()));
+  server.kill('SIGTERM');
+  const killed = setTimeout(() => server.kill('SIGKILL'), 15_000);
+  await exited;
+  clearTimeout(killed);
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      probe.close(() => (typeof address === 'object' && address ? resolve(address.port) : reject(new Error('no free port'))));
+    });
+  });
+}
+
+function fail(message: string): number {
+  console.error(`docs:check: ✗ ${message}`);
+  return 1;
+}

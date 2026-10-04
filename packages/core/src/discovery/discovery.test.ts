@@ -173,6 +173,42 @@ describe('bespoke discover', () => {
   });
 });
 
+describe('peer dependencies', () => {
+  /**
+   * A workspace like this repository's: @acme/kit (a dev dependency of the app, e.g. a testing package) has @acme/extra as a
+   * peer — and its own node_modules link @acme/extra too, because kit's tests use it. An installed kit would not have that link:
+   * a peer is what the package depending on kit provides. Discovered only when the app has it.
+   */
+  function workspace(appHasExtra: boolean): string {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-peers-')));
+    const write = (dir: string, json: object) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify(json));
+    };
+    write(join(root, 'packages/kit'), { name: '@acme/kit', version: '1.0.0', peerDependencies: { '@acme/extra': '*' }, bespoke: {} });
+    write(join(root, 'packages/extra'), { name: '@acme/extra', version: '1.0.0', bespoke: {} });
+    mkdirSync(join(root, 'packages/kit/node_modules/@acme'), { recursive: true });
+    symlinkSync(join(root, 'packages/extra'), join(root, 'packages/kit/node_modules/@acme/extra'), 'dir');
+    const app = join(root, 'apps/app');
+    write(app, { name: 'app', type: 'module', devDependencies: { '@acme/kit': '*', ...(appHasExtra ? { '@acme/extra': '*' } : {}) } });
+    mkdirSync(join(app, 'node_modules/@acme'), { recursive: true });
+    symlinkSync(join(root, 'packages/kit'), join(app, 'node_modules/@acme/kit'), 'dir');
+    if (appHasExtra) symlinkSync(join(root, 'packages/extra'), join(app, 'node_modules/@acme/extra'), 'dir');
+    return app;
+  }
+
+  it("resolves a package's peers from the package that depends on it — not from links of the peer's own dev dependencies", () => {
+    for (const [hasExtra, expected] of [[false, ['@acme/kit']], [true, ['@acme/extra', '@acme/kit']]] as const) {
+      const app = workspace(hasExtra);
+      try {
+        expect(generateManifest({ root: app, conditions: DEV }).summary.packages).toEqual(expected);
+      } finally {
+        rmSync(join(app, '../..'), { recursive: true, force: true });
+      }
+    }
+  });
+});
+
 describe('exports resolution', () => {
   const pkg = (exports: unknown): PackageInfo => ({ name: 'x', dir: '/pkg', json: { exports } });
 

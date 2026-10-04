@@ -27,7 +27,7 @@ import {
   type Scenario,
 } from './bundle.ts';
 
-const APPS = ['blank-app', 'web-app'];
+const APPS = ['blank-app', 'web-app', 'docs'];
 const only = process.argv.slice(2);
 const wanted = (name: string) => only.length === 0 || only.includes(name);
 const budget = readBudget();

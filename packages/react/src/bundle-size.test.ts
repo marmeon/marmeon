@@ -216,6 +216,15 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     }
   }, 60_000);
 
+  it('the docs app carries no devtools either — it has them as a dev dependency and uses them under bespoke dev (W7 step 10)', async () => {
+    const node = process.env.NODE_ENV;
+    try {
+      expect(devtoolsIn(await appClientBuild(join(PACKAGES, '../apps/docs'))), 'docs').toEqual([]);
+    } finally {
+      process.env.NODE_ENV = node;
+    }
+  }, 60_000);
+
   it('no scenario carries devtools code (E115: development only, never in a build)', () => {
     for (const [name, built] of bundles) expect(devtoolsIn(built), name).toEqual([]);
   });
