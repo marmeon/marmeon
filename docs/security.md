@@ -62,9 +62,9 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: DENY` on every response; its HSTS switch is off until
   you turn it on — once the site answers over HTTPS only (or let the proxy send `Strict-Transport-Security`).
 - **Behind a proxy**, `X-Forwarded-*` count only from `TRUSTED_PROXIES` — otherwise any client could choose its own IP address
-  (rate limits, logs) and its scheme ([behind a proxy](../packages/server/README.md#behind-a-proxy-e162)). `*` trusts every
-  hop of `X-Forwarded-For`: use it only behind a proxy that replaces the header (Caddy, `make:docker --nginx`); behind one that appends to it (nginx's
-  `$proxy_add_x_forwarded_for`), name the proxy's address or network, or a client's own entry becomes `ctx.ip`.
+  (rate limits, logs) and its scheme ([behind a proxy](../packages/server/README.md#behind-a-proxy-e162)). `*` trusts the
+  direct peer only (E172): `ctx.ip` is the address that peer saw (the right-most `X-Forwarded-For` entry), never one a client
+  wrote before it — but only when nothing but your proxy can reach the app; prefer its address or network where you know it.
 - **No dynamic compression** of documents in the framework (BREACH): assets are compressed at build time; leave documents
   uncompressed at the proxy too ([deployment](deployment.md#proxies-and-http2)).
 
@@ -95,7 +95,7 @@ names of your own secrets to it. The devtools exist in development only and refu
 - `APP_URL=https://…`, a fresh `APP_KEY` per environment, kept in the server's secrets.
 - `contentSecurityPolicy()` in `bootstrap/app.ts` (the starter kit has it); new inline scripts take `ctx.nonce()`.
 - HSTS once the site is HTTPS only — the `SecurityHeaders` switch or the proxy.
-- `TRUSTED_PROXIES` set to exactly your proxy (`*` only behind one that replaces `X-Forwarded-For`); the proxy sets
+- `TRUSTED_PROXIES` set to exactly your proxy (`*` — the direct peer only — when nothing else can reach the app); the proxy sets
   `X-Forwarded-*` itself and does not compress documents.
 - Sessions in `file`, `database` or `redis` (not `cookie`) for apps with sign-in; `SESSION_ENCRYPT=true` if the store is shared.
 - Update in lockstep and read [UPGRADING.md](../UPGRADING.md); security fixes go to the latest minor version

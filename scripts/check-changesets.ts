@@ -73,7 +73,9 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 8' | 'Wave 7' | 'Wave 6', 
     'low-create-bespoke-app--the-blank-app-is-its---minimal-output-with-the-devtools-a-test-and-pnpm-test',
     'low-the-dev-server-pre-bundles-from-the-client-entry-and-the-pages',
     'low-one-version-for-every-package--010-from-npm-and-the-meta-package-bespokecore',
-    'medium-the-makedocker---nginx-template-replaces-x-forwarded-for--a-client-could-choose-its-own-address', // W8.13
+    'medium-trusted_proxies-trusts-the-direct-peer-only--a-client-can-no-longer-choose-its-address', // W8.13, E172
+    'low-a-guests-island-that-follows-a-live-channel-answers-without-the-subscription--not-500',
+    'low-the-file-stores-break-a-stale-guard-one-waiter-at-a-time--withfileguard',
     'low-an-idle-worker-names-a-queue-nobody-takes',
     'low-port0-asks-the-system-for-a-free-port',
     'low-with---workersn-the-boots-warnings-come-once-from-the-primary',

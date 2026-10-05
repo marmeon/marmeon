@@ -83,8 +83,9 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
 /**
  * The client's address behind proxies: the right-most `X-Forwarded-For` entry that
  * is not a trusted proxy. Left entries are whatever the client claimed, so they
- * count only once every hop to their right is trusted. `'*'` trusts every hop
- * (a platform that always sits behind its own load balancer).
+ * count only once every hop to their right is trusted. `'*'` trusts the direct peer
+ * only — whoever connects is the proxy, and the address it saw is the right-most entry
+ * (E172, Laravel's and Symfony's `*`): what anybody wrote further left never counts.
  *
  * `trusted`: the proxies' addresses (`'*'` for all), or a check — the server's, which also knows CIDR ranges
  * (`TRUSTED_PROXIES=10.0.0.0/8`). Addresses reach it without the IPv4-mapped `::ffff:` prefix.
@@ -92,7 +93,12 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
 export function clientIp(remote: string | undefined, forwardedFor: string | null, trusted: readonly string[] | ((address: string) => boolean)): string | undefined {
   const normalize = (address: string) => address.trim().replace(/^::ffff:/, '');
   if (remote === undefined) return undefined;
-  const isTrusted = typeof trusted === 'function' ? (address: string) => trusted(normalize(address)) : (address: string) => trusted.includes('*') || trusted.includes(normalize(address));
+  if (typeof trusted !== 'function' && trusted.includes('*')) {
+    // The direct peer is the proxy (E172): the entry it added — the right-most —, never one before it.
+    const nearest = forwardedFor?.split(',').map(normalize).filter(Boolean).at(-1);
+    return nearest ?? normalize(remote);
+  }
+  const isTrusted = typeof trusted === 'function' ? (address: string) => trusted(normalize(address)) : (address: string) => trusted.includes(normalize(address));
   if (!isTrusted(remote) || !forwardedFor) return normalize(remote);
   const chain = forwardedFor.split(',').map(normalize).filter(Boolean);
   for (let i = chain.length - 1; i >= 0; i--) {

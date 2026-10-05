@@ -443,15 +443,37 @@ the app's `package.json` with `0.1.0` (and drop the `overrides` that pointed at 
 [bespokecore](packages/bespokecore/README.md) — no code, the UI-agnostic runtime packages at exactly its version (E157; the UI
 adapter, `@bespokecore/react`, is listed by the app); with pnpm an app still lists the packages it imports.
 
-#### Medium: the `make:docker --nginx` template replaces `X-Forwarded-For` — a client could choose its own address
+#### Medium: `TRUSTED_PROXIES='*'` trusts the direct peer only — a client can no longer choose its address
 
-*Likelihood of impact: medium — apps that run the nginx template of `bespoke make:docker --nginx`.* The template's compose file
-trusts every peer (`TRUSTED_PROXIES: '*'`, only nginx reaches the web container), and its `nginx.conf` appended the client's
-address to the client's own `X-Forwarded-For` (`$proxy_add_x_forwarded_for`). With `*` every hop counts, so `ctx.ip` was the
-left-most entry — one the client wrote: any client could choose the address that rate limits (sign-in, registration, password
-resets), logs and the `Login` event see. The template now sets `proxy_set_header X-Forwarded-For $remote_addr;` (as Caddy
-does). In an app made before: change that line in `deploy/nginx.conf` (or run `bespoke make:docker --nginx --force`), or
-name nginx's address or network in `TRUSTED_PROXIES` instead of `*`. The Caddy template was never affected.
+*Likelihood of impact: medium — apps with `TRUSTED_PROXIES='*'`.* `*` trusted every hop of `X-Forwarded-For`, so `ctx.ip` was its
+left-most entry. Behind a proxy that appends to the header (nginx's `$proxy_add_x_forwarded_for` — which the `make:docker --nginx`
+template used together with `*`), that entry is the one the client sent itself: any client could choose the address that rate
+limits (sign-in, registration, password resets), logs and the `Login` event see. Now (E172, as Laravel and Symfony read `*`) `*`
+means "the direct peer is the proxy": `ctx.ip` is the right-most entry — the address that proxy saw — and `X-Forwarded-Proto`/
+`-Host` keep taking the right-most value; explicit addresses and ranges keep the walk from the right past every trusted hop. The
+nginx template also sets `proxy_set_header X-Forwarded-For $remote_addr;` now (as Caddy does).
+
+- Two proxies in a row (a CDN in front of nginx) with `*`: `ctx.ip` is now the CDN's address — list both proxies' addresses or
+  ranges instead of `*` (`TRUSTED_PROXIES=10.0.0.0/8,173.245.48.0/20,…`).
+- An app made with `make:docker --nginx` before: change that line in `deploy/nginx.conf` (or run `bespoke make:docker --nginx
+  --force`) — with E172 it is safe either way.
+- `clientIp(remote, forwardedFor, ['*'])` (router) returns the right-most entry; a check function keeps the walk.
+
+#### Low: a guest's island that follows a live channel answers without the subscription — not 500
+
+*Likelihood of impact: low.* Since a guest's page starts no session (above), an island (read-only, it can start none) that
+declared `.live(…)` for a guest without a session failed with 500 ("this request has none"). Now the island goes out without
+the subscription — the guest gets no hints for it until a page keeps a session (a page that signs a channel does). A
+`LiveSigner` of your own: `sign()` may return `undefined` (no subscription), and `LiveTokens.for(scope, readOnly)` takes the
+request's read-only check.
+
+#### Low: the `file` stores break a stale guard one waiter at a time — `withFileGuard`
+
+*Likelihood of impact: low — nothing to do.* The `file` session and cache stores serialise writers per entry with a guard file;
+one left by a crash (older than 2 s) was removed by name, and two waiters that both found it stale could remove each other's
+fresh guards — two writers at once, a lost session update. Now one waiter at a time breaks a stale guard, only while it is the
+very file found stale, and a holder removes only its own. The guard is `withFileGuard(file, work, options)` of
+`@bespokecore/core`, for stores of your own.
 
 #### Low: an idle worker names a queue nobody takes
 

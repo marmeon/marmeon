@@ -189,10 +189,11 @@ serialized twice, the request translator's construction. Without the encryption 
 ## Behind a proxy (E162)
 
 By default the server believes no `X-Forwarded-*` header: `ctx.ip` is the peer's address and the URL is what the peer asked
-for. With `TRUSTED_PROXIES` (addresses or CIDR ranges, `*` for "every peer is our proxy"):
+for. With `TRUSTED_PROXIES` (addresses or CIDR ranges, `*` for "the direct peer is our proxy", E172):
 
 - **`ctx.ip`** is the right-most `X-Forwarded-For` entry that is not a trusted proxy — what a client wrote on the left counts
-  only once every hop to its right is trusted (rate limits, logs, islands use it);
+  only once every hop to its right is trusted (rate limits, logs, islands use it). With `*` only the direct peer is trusted
+  (E172, Laravel's and Symfony's `*`): `ctx.ip` is the right-most entry — the address that peer saw;
 - **the request's URL** takes `X-Forwarded-Proto` (`http`/`https`) and `X-Forwarded-Host` from a trusted peer — of a list the
   right-most value, which the nearest proxy added; an invalid value is ignored. So the CSRF origin check, an island's origin,
   the asset version's reload URL and `ctx.request.url` see `https://example.com/…`, not `http://10.0.0.5:3000/…`;
@@ -201,9 +202,9 @@ for. With `TRUSTED_PROXIES` (addresses or CIDR ranges, `*` for "every peer is ou
 
 Configure the proxy to **set** these headers (Caddy does by itself; nginx: `proxy_set_header X-Forwarded-Proto $scheme;` and
 `X-Forwarded-For $remote_addr`, as the `make:docker --nginx` template does) — a proxy that passes a client's own headers on
-unchanged makes them the client's word. With `*` every hop counts, so `ctx.ip` is the left-most entry: only right behind a
-proxy that replaces `X-Forwarded-For`; one that appends to the client's list (nginx's `$proxy_add_x_forwarded_for`) needs its
-address or range in `TRUSTED_PROXIES` instead. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
+unchanged makes them the client's word. `*` suits a proxy that is the only way in (a Compose network, a platform's router);
+two proxies in a row — a CDN in front of nginx — need their ranges, or the app takes the CDN's address. Prefer explicit
+addresses or ranges where you know them. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
 [@bespokecore/session](../session/README.md#configuration)).
 
 ## Health (E126)

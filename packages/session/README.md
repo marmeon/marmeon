@@ -184,7 +184,7 @@ encryption — [@bespokecore/server](../server/README.md#the-request-path-e136-e
 | Store      | How                                                                                                     |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
 | `memory`   | synchronous: no `await` between the lookup and the write                                                |
-| `file`     | under a per-session guard file (`open(…, 'wx')`): compare the version, then write in place through a handle opened before — a deleted file fails the open (ENOENT) or takes the write with it; new keys are hard-linked into place (never over a session) |
+| `file`     | under a per-session guard file (`open(…, 'wx')`; one left by a crash is broken by one waiter at a time — `withFileGuard` of core): compare the version, then write in place through a handle opened before — a deleted file fails the open (ENOENT) or takes the write with it; new keys are hard-linked into place (never over a session) |
 | `database` | `UPDATE sessions … WHERE id = ? AND version = ? AND last_activity > ?` — the row count says whether it wrote; a new key is `INSERT … ON CONFLICT DO NOTHING` |
 | `redis`    | a Lua script: compare `v`, write `d` with `v + 1`, renew the TTL                                        |
 | `cookie`   | **cannot**: always writes (see below)                                                                   |

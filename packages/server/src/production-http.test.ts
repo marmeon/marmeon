@@ -77,6 +77,28 @@ describe('TRUSTED_PROXIES (E162)', async () => {
     expect(await whoami('::ffff:10.1.2.3', proxied, '/api/whoami')).toEqual({ ip: '198.51.100.7', url: 'https://example.com/api/whoami' });
   });
 
+  it("TRUSTED_PROXIES='*' trusts the direct peer only (E172): a client's own X-Forwarded-For through the proxy chooses no address", async () => {
+    const behindAny = createHttpKernel(
+      await createApplication({
+        root: import.meta.dirname,
+        discover: false,
+        env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '*' },
+        providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+        modules: [defineModule({ name: 'whoami', routes: defineRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))) })],
+      }),
+    );
+    const ask = async (remote: string, headers: Record<string, string>) =>
+      (await (await behindAny.request('/whoami', { headers: { accept: 'application/json', ...headers } }, peer(remote))).json()) as { ip: string; url: string };
+    // A proxy that appends (nginx's $proxy_add_x_forwarded_for): the client sent "6.6.6.6", the proxy added the address it saw.
+    expect(await ask('172.18.0.2', { 'x-forwarded-for': '6.6.6.6, 198.51.100.7', 'x-forwarded-proto': 'http, https' })).toEqual({
+      ip: '198.51.100.7',
+      url: 'https://localhost/whoami',
+    });
+    // A proxy that replaces the header; and none at all — the peer itself.
+    expect((await ask('172.18.0.2', { 'x-forwarded-for': '198.51.100.7' })).ip).toBe('198.51.100.7');
+    expect((await ask('172.18.0.2', {})).ip).toBe('172.18.0.2');
+  });
+
   it('the server config: HOST is where it listens (unset: every interface)', async () => {
     expect(application.container.make(ServerConfig).host).toBeUndefined();
     const local = await createApplication({ root: import.meta.dirname, discover: false, env: { APP_KEY: generateKey(), HOST: '127.0.0.1' }, providers: [ServerServiceProvider] });

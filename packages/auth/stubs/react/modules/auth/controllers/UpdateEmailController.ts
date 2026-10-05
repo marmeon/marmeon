@@ -41,6 +41,9 @@ export class UpdateEmailController extends Controller {
     const { email } = ctx.body;
     if (email === ctx.user.email) return this.back('/settings/security');
     const updated = await this.#users.changeEmail(ctx.user.id, email);
+    // "Taken" tells a signed-in user (in sudo mode) that the address has an account — also with --private-registration (E146),
+    // which leaves this page as it is: Wave 9 makes it a pending change (the same answer, a link to the new address, a note to
+    // the owner of a taken one). The auth README says so.
     if (updated === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
     if (!updated) return this.redirect().route('auth.login');
     // Both queued (composed now, sent by a worker): the answer does not wait for the mail server.

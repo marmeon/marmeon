@@ -65,6 +65,8 @@ describe('live tokens — the answer that declares a channel signs it for its se
 
   it('signs nothing without a session', () => {
     expect(() => tokens.for(() => undefined).sign('users.1')).toThrow(/this request has none/);
+    // A read-only request (a guest's island) cannot start a session: no token — the subscription is left out, no error.
+    expect(tokens.for(() => undefined, () => true).sign('users.1')).toBeUndefined();
   });
 });
 

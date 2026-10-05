@@ -94,7 +94,11 @@ export type PagePropNames<TProps> = (keyof TProps & string) | (keyof SharedProps
  * of the session's id, keyed from `APP_KEY`. The stream (`/_bespoke/live`) accepts a channel only with it, for that session.
  */
 export interface LiveSigner {
-  sign(channel: string): string;
+  /**
+   * The channel's token — undefined in a read-only request (an island, W8 step 6) whose guest has no session to bind it to: it
+   * cannot start one, so the subscription is left out and the answer goes out without it (never a 500).
+   */
+  sign(channel: string): string | undefined;
 }
 export const LiveSigner = token<LiveSigner>('LiveSigner');
 
@@ -114,7 +118,12 @@ export async function signedLive(
     if (channel === undefined || channel === null) continue;
     const name = checkedChannel(channel, 'A shared live channel');
     let token = tokens.get(name);
-    if (token === undefined) tokens.set(name, (token = signer().sign(name)));
+    if (token === undefined) {
+      token = signer().sign(name);
+      // No session to bind it to in a read-only request (a guest's island): no subscription, the answer itself still goes out.
+      if (token === undefined) continue;
+      tokens.set(name, token);
+    }
     subscriptions.push({ channel: name, ...(declaration.only ? { only: declaration.only } : {}), token });
   }
   return subscriptions.length > 0 ? subscriptions : undefined;

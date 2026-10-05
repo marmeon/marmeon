@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, type Clock } from '@bespokecore/core';
+import { SystemClock, withFileGuard, type Clock } from '@bespokecore/core';
 import type { CacheStore, Entry } from '../cache.ts';
 
 /** A guard older than this was left by a process that died inside its few-microsecond critical section. */
@@ -147,26 +146,7 @@ export class FileStore implements CacheStore {
 
   /** Runs `work` while holding the guard of `file` — one process (and one call) at a time per key. */
   async #guarded<T>(file: string, work: () => Promise<T>): Promise<T> {
-    const guard = `${file}.guard`;
-    const started = performance.now();
-    for (;;) {
-      try {
-        await (await open(guard, 'wx', 0o600)).close();
-        break;
-      } catch (error) {
-        if ((error as { code?: string }).code !== 'EEXIST') throw error;
-      }
-      // Held by another: wait a moment — or clear a guard a crashed process left behind.
-      const held = await stat(guard).catch(() => undefined);
-      if (held && Date.now() - held.mtimeMs > STALE_GUARD_MS) await rm(guard, { force: true });
-      else if (performance.now() - started > GUARD_TIMEOUT_MS) throw new Error(`The cache file ${file} stayed busy for ${GUARD_TIMEOUT_MS / 1000} s.`);
-      else await sleep(1 + Math.random() * 4);
-    }
-    try {
-      return await work();
-    } finally {
-      await rm(guard, { force: true });
-    }
+    return withFileGuard(file, work, { staleMs: STALE_GUARD_MS, timeoutMs: GUARD_TIMEOUT_MS, busy: (seconds) => `The cache file ${file} stayed busy for ${seconds} s.` });
   }
 
   #path(key: string): string {

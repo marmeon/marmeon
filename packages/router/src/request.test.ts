@@ -172,7 +172,13 @@ describe('clientIp', () => {
     expect(clientIp('10.0.0.1', '198.51.100.7', ['10.0.0.1'])).toBe('198.51.100.7');
     expect(clientIp('10.0.0.1', '6.6.6.6, 198.51.100.7', ['10.0.0.1'])).toBe('198.51.100.7');
     expect(clientIp('10.0.0.2', '198.51.100.7, 10.0.0.1', ['10.0.0.1', '10.0.0.2'])).toBe('198.51.100.7');
-    expect(clientIp('10.0.0.1', '198.51.100.7, 10.0.0.5', ['*'])).toBe('198.51.100.7');
+  });
+
+  it("'*' trusts the direct peer only (E172): the entry it added — what anybody wrote before it never counts", () => {
+    expect(clientIp('10.0.0.1', '6.6.6.6, 198.51.100.7', ['*'])).toBe('198.51.100.7'); // a client's own entry, then the proxy's
+    expect(clientIp('10.0.0.1', '198.51.100.7, 10.0.0.5', ['*'])).toBe('10.0.0.5'); // two proxies: name the ranges instead
+    expect(clientIp('10.0.0.1', null, ['*'])).toBe('10.0.0.1');
+    expect(clientIp('::ffff:10.0.0.1', ' ::ffff:198.51.100.7 ', ['*'])).toBe('198.51.100.7');
   });
 
   it('takes a check instead of a list (the server\'s, with CIDR ranges) — addresses reach it without ::ffff:', () => {

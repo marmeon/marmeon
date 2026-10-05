@@ -162,7 +162,10 @@ export function createHttpKernel(
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   container.instance(AssetVersion, { value: version });
   // TRUSTED_PROXIES (E162): only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
-  const trusts = proxyMatcher(container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : []);
+  const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
+  const trusts = proxyMatcher(proxies);
+  // `*` trusts the direct peer only (E172): the client's address is the entry that peer added, never one a client wrote before it.
+  const forwardedTrust: readonly string[] | ((address: string) => boolean) = proxies.includes('*') ? ['*'] : trusts;
   // What every cookie gets unless its `set` says otherwise — `secure` from the session's config (E162), when there is a session.
   const cookieDefaults = container.has(CookieDefaults) ? container.make(CookieDefaults) : undefined;
   // Development only (E129): its provider binds it when NODE_ENV=development.
@@ -481,7 +484,7 @@ export function createHttpKernel(
   ) => {
     const scope = container.createScope();
     // An island resolved in-process is from where its page's request is from.
-    const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), trusts);
+    const ip = parent ? addresses.get(parent.request) : clientIp(remote, request.headers.get('x-forwarded-for'), forwardedTrust);
     addresses.set(request, ip);
     // The response's CSP nonce (E147): made only when a document needs it — the same for the header, React and the template.
     const nonce = new RequestNonce();

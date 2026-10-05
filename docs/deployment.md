@@ -91,7 +91,7 @@ into the image: Node uses a cache directory only when it can write to it.
 | `APP_PREVIOUS_KEYS` | when you rotate: the old key(s), comma-separated — sessions, encrypted cookies and signed links made with them keep working until they expire |
 | `APP_URL` | `https://…` — cookies get `Secure` from it (E162); a protected app on `http://` logs a warning at boot. Over plain HTTP browsers also ignore the `Clear-Site-Data` of a sign-out (secure origins only): a staging box without TLS keeps its HTTP cache after a sign-out |
 | `HOST`, `PORT` | `0.0.0.0` / `3000` in a container; `127.0.0.1` behind a proxy on the same machine (`PORT=0` takes a free port — the start line names it) |
-| `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` when only your proxy can reach the app and it replaces `X-Forwarded-For` (Caddy, the `--nginx` template) — see [Proxies](#proxies-and-http2) |
+| `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` (the direct peer only, E172) when only your proxy can reach the app — see [Proxies](#proxies-and-http2) |
 | `SHUTDOWN_DELAY` | `5` behind a load balancer that learns from its probes — see [Stopping](#stopping-without-dropped-requests) |
 | `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; `pnpm add nodemailer`) |
 
@@ -177,10 +177,12 @@ container.
 `RequestInfo`) and `X-Forwarded-Proto`/`-Host` (the request's URL: `https://example.com/…` — the app's own origin for the CSRF check, besides `APP_URL`'s) count. Without it the headers are
 ignored. Behind Compose's Caddy, where the web container publishes no port, `*` is right (the template sets it); with a
 proxy on the host, `127.0.0.1`; in a cluster, the ingress' range (`10.0.0.0/8`). A proxy that forwards a client's
-`X-Forwarded-*` unchanged makes them the client's word — let the proxy set them. `*` trusts every entry of `X-Forwarded-For`, so
-`ctx.ip` becomes its left-most one: right behind Caddy and the `--nginx` template, which replace the header, but not behind a
-proxy that appends the client's address to what the client sent (nginx's `$proxy_add_x_forwarded_for`) — there name the proxy's
-address or the Compose network's subnet (as the docs below do), so the right-most entry, the one the proxy added, counts.
+`X-Forwarded-*` unchanged makes them the client's word — let the proxy set them. `*` trusts the **direct peer only** (E172, as in
+Laravel): whoever connects is the proxy, and `ctx.ip` is the right-most `X-Forwarded-For` entry — the address that proxy saw;
+whatever a client wrote further left never counts, whether the proxy replaces the header (Caddy, the `--nginx` template) or
+appends to it. Two proxies in a row (a CDN in front of nginx) need their ranges listed: with `*` the app would take the CDN's
+address. Prefer explicit addresses or ranges where you know them (the docs below name the Compose network's subnets) — and
+never `*` on a port anybody can reach: then every client is the "direct peer".
 
 **Compression:** the assets arrive precompressed (`.br`/`.gz` from `bespoke build`, `immutable` for a year); documents and JSON
 are not compressed by the app — a compressed response that carries a secret (the CSRF token) is what BREACH reads. Leave the

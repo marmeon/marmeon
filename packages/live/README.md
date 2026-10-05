@@ -45,7 +45,9 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   a 403 and no stream at all. The tokens travel in the stream's query (`EventSource` sends no headers of its own): without the
   session's cookie they open nothing. A page that signs a channel keeps its session — also a guest's, who otherwise gets none
   (E143: a new session is kept only when something needs it, [`session.persist()`](../session/README.md#new-sessions-are-only-kept-when-used));
-  a route without a session (outside the `web` group) cannot sign one, and a stream without a session is refused (401).
+  an island cannot (it is read-only and starts no session): a guest without a session gets the island without the
+  subscription — no hints, never an error — until a page keeps a session. A route without a session (outside the `web` group)
+  cannot sign one (an error that says so), and a stream without a session is refused (401).
 - **After the commit (E107).** `refresh()` inside `connections.transaction(…)` ([transactions](../database/README.md#transactions))
   goes out once it committed (`afterCommit`); a rollback sends nothing. The other tab never reloads what is not there yet.
 - **Not to the tab that caused it.** Every request of a tab that follows live hints names its document

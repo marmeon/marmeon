@@ -17,7 +17,8 @@ export function isProxyEntry(entry: string): boolean {
 /**
  * The check behind `TRUSTED_PROXIES` (E162): whether a peer is one of the app's proxies — by address or range (CIDR), IPv4
  * and IPv6, an IPv4-mapped IPv6 peer (`::ffff:10.0.0.1`) as its IPv4 address. Empty: nobody (the default — `X-Forwarded-*`
- * are ignored); `*`: everybody (a platform that is only reachable through its own load balancer).
+ * are ignored); `*`: whoever connects — the direct peer is the proxy (E172); the client's address is then the entry it added
+ * (`clientIp` with `['*']`), never one before it.
  */
 export function proxyMatcher(entries: readonly string[]): (address: string) => boolean {
   if (entries.includes('*')) return () => true;

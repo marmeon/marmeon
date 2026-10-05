@@ -287,8 +287,8 @@ server {
 		proxy_set_header Connection "";
 		proxy_set_header Host $host;
 		# Set by nginx (E162), never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
-		# sees. Appending to the client's own list ($proxy_add_x_forwarded_for) would let a client choose its address while the
-		# app trusts every peer (TRUSTED_PROXIES: '*'); behind another proxy (a CDN), append and name that proxy's ranges instead.
+		# sees (with TRUSTED_PROXIES: '*' the app takes the right-most entry anyway, E172). Behind another proxy (a CDN), append
+		# ($proxy_add_x_forwarded_for) and name both proxies' ranges in TRUSTED_PROXIES instead of '*'.
 		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $host;

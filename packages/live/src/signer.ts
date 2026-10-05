@@ -35,12 +35,17 @@ export class LiveTokens {
     });
   }
 
-  /** A signer for one request: its session's scope, read when a page is signed. */
-  for(scope: () => string | undefined): LiveSigner {
+  /**
+   * A signer for one request: its session's scope, read when a page is signed. A page keeps its session for the signature (W8
+   * step 6); a read-only request (`readOnly()` — an island) cannot start one, so a guest without a session gets no token there
+   * (the subscription is left out) — anything else without a session is a mistake that says so.
+   */
+  for(scope: () => string | undefined, readOnly: () => boolean = () => false): LiveSigner {
     return {
       sign: (channel) => {
         const current = scope();
         if (current === undefined) {
+          if (readOnly()) return undefined;
           throw new Error(`The live channel "${channel}" is signed for the session — this request has none (a route outside the web group?).`);
         }
         return this.sign(current, channel);

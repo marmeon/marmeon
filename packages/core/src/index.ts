@@ -70,3 +70,5 @@ export type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 export { generateManifest, loadDiscoveredPackages, manifestHash, manifestPath, writeManifest, DiscoveryError } from './discovery/discover.ts';
 export type { DiscoveredPackages, DiscoverOptions, DiscoverySummary, Manifest } from './discovery/discover.ts';
 export { runtimeConditions } from './discovery/resolve.ts';
+export { withFileGuard } from './file-guard.ts';
+export type { FileGuardOptions } from './file-guard.ts';

@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { link, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, type Clock } from '@bespokecore/core';
+import { SystemClock, withFileGuard, type Clock } from '@bespokecore/core';
 import { SESSION_KEY, type SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Stored {
@@ -89,7 +89,7 @@ export class FileSessionStore implements SessionStore {
   async gc(lifetimeSeconds: number): Promise<number> {
     let removed = 0;
     for (const name of await readdir(this.#directory)) {
-      if (name.endsWith('.guard')) continue; // held right now — or left by a crash, cleared by the next writer
+      if (name.endsWith('.guard') || name.endsWith('.guard.break')) continue; // held right now — or left by a crash, cleared by the next writer
       const file = join(this.#directory, name);
       try {
         if ((await stat(file)).mtimeMs + lifetimeSeconds * 1000 < this.#clock.now()) {
@@ -122,27 +122,9 @@ export class FileSessionStore implements SessionStore {
 
   /** Runs `work` while holding the guard of `file` — one writer (process or call) at a time per session. */
   async #guarded<T>(file: string, work: () => Promise<T>): Promise<T> {
-    const guard = `${file}.guard`;
-    const started = performance.now();
-    for (;;) {
-      try {
-        await (await open(guard, 'wx', 0o600)).close();
-        break;
-      } catch (error) {
-        if ((error as { code?: string }).code !== 'EEXIST') throw error;
-      }
-      // Held by another: wait a moment — or clear a guard a crashed process left behind.
-      const held = await stat(guard).catch(() => undefined);
-      if (held && Date.now() - held.mtimeMs > STALE_GUARD_MS) await rm(guard, { force: true });
-      else if (performance.now() - started > GUARD_TIMEOUT_MS) throw new Error(`The session file ${file} stayed busy for ${GUARD_TIMEOUT_MS / 1000} s.`);
-      else await sleep(1 + Math.random() * 4);
-    }
-    try {
-      return await work();
-    } finally {
-      await rm(guard, { force: true });
-    }
+    return withFileGuard(file, work, { staleMs: STALE_GUARD_MS, timeoutMs: GUARD_TIMEOUT_MS, busy: (seconds) => `The session file ${file} stayed busy for ${seconds} s.` });
   }
+
 
   #record(data: string, version: number, lifetimeSeconds: number): string {
     // JSON.stringify never writes a raw line break: the record is exactly the first line.

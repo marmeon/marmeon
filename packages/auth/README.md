@@ -85,8 +85,11 @@ being a cheap way to find out who has an account. `--private-registration` write
 It writes `controllers/RegisterController.ts`, `controllers/ShowRegistrationSentController.ts`, `views/Register.tsx`,
 `views/RegistrationSent.tsx`, `jobs/SendAccountExistsMailJob.ts`, `mail/AccountExistsMail.ts`, `routes.ts`, `index.ts` and
 `registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`); the texts are in the default `lang/en.ts`.
-The address change on the security page stays as it is: it answers "taken" for an address with an account — only to a signed-in
-user with a confirmed address in sudo mode, whose own address changes (and needs confirming again) whenever the new one is free.
+**What it does not cover yet — the address change.** The security page still answers "taken" for an address with an account, so
+it tells whether an address has one: only to a signed-in user with a confirmed address in sudo mode, whose own address changes
+(and needs confirming again) whenever the new one is free — a slow, self-locking probe, but a leak. Wave 9 closes it with a
+pending address change: the new address is kept aside and a confirmation link goes to it, the answer is the same for a free and
+a taken address, the owner of a taken one gets a note — and the account's address changes only once the link is used.
 The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
 queue worker run. The web app runs it — `verified()` on every page of its modules; an unconfirmed account sees the notice.
 

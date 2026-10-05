@@ -1,6 +1,6 @@
 import { Application, Logger, token, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
 import { EncryptionConfig } from '@bespokecore/encryption';
-import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, Router, ServerClosing } from '@bespokecore/http';
+import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@bespokecore/http';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { LiveConfig } from './config.ts';
@@ -64,6 +64,15 @@ function sessionScopeOf(container: Resolver, keep = false): string | undefined {
   }
 }
 
+/** Whether the current request is read-only (an island, an upload, a stream) — it can start no session. */
+function readOnlyRequest(container: Resolver): boolean {
+  try {
+    return container.make(ReadOnly).active;
+  } catch {
+    return false; // outside a request (a job, a command)
+  }
+}
+
 /** The tab that sent the current request — undefined outside a request (a job, a command) or when it names none. */
 function connectionOf(container: Resolver): string | undefined {
   try {
@@ -105,7 +114,8 @@ export class LiveServiceProvider implements ServiceProvider {
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request (E90).
-    container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c, true)));
+    // A read-only request (an island) cannot keep a session for the signature: a guest without one gets no subscription there.
+    container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c, true), () => readOnlyRequest(c)));
     // Per resolution: in a request it knows the tab that sent it (x-bespoke-connection); in a job or a command, none.
     container.bind(Broadcaster, (c) => {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
