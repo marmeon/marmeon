@@ -38,15 +38,15 @@ deprecated: with a query schema, `ctx.query` is no `URLSearchParams`, and `<Pagi
 `paginate(db, q, paginationFrom(ctx.query, { perPage: 25 }))`; after: `query: v.object({ ...pageQuery({ perPage: [25, 50] }), … })`
 and `paginate(db, q, ctx.query)`. `{ page, perPage }` written out is still accepted.
 
-#### Medium: `<Pagination>` takes its links from the parsed query and its texts from the page's language
+#### Medium: `<Pagination>` takes its links from the parsed query and its texts from `labels`
 
 *Likelihood of impact: medium — pages that render `<Pagination>`.* Its links come from the page's parsed query (`PageObject.query`
 + `queryDefaults`, E55) instead of the address: the rest of the query (search, sort, page size) stays, the defaults stay out
 (`?page=1` is no page's URL), and keys the schema does not know are no longer carried along. On a route **with** a query schema,
 the schema needs the page's field — spread `pageQuery()` into it (development warns: R17); a route without a schema keeps its
-query string as before. Its texts are English or — on a page whose `locale` is German — German ("‹ Zurück", "Weiter ›",
-"Seite 3", "Seitennavigation"); other languages through `labels={{ navigation, previous, next, page: (n) => … }}`. Snapshot
-tests of German pages change.
+query string as before. Its texts are English unless the app passes its own words: `labels={{ navigation, previous, next, page:
+(n) => … }}`, from the app's language files (`useTranslation`, E38) — best in a small wrapper component of the app (see the web
+app's `layouts/Pagination.tsx`); before, every text was a fixed English literal. An app without `labels` looks as before.
 
 #### Low: `bespoke build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
 

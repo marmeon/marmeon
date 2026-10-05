@@ -14,11 +14,8 @@ export interface PaginationLabels {
   readonly page: (page: number) => string;
 }
 
-/** The texts it brings: English, and German on a German page (`PageObject.locale`); any other language through `labels`. */
-const LABELS: Readonly<Record<'en' | 'de', PaginationLabels>> = {
-  en: { navigation: 'Pagination', previous: '‹ Previous', next: 'Next ›', page: (page) => `Page ${page}` },
-  de: { navigation: 'Seitennavigation', previous: '‹ Zurück', next: 'Weiter ›', page: (page) => `Seite ${page}` },
-};
+/** Its texts without `labels`: English. Every other language comes from the app's messages (E38) — `labels={{ next: t('next') }}`. */
+const ENGLISH: PaginationLabels = { navigation: 'Pagination', previous: '‹ Previous', next: 'Next ›', page: (page) => `Page ${page}` };
 
 export interface PaginationProps {
   meta: PaginationMeta;
@@ -26,7 +23,7 @@ export interface PaginationProps {
   window?: number;
   /** The query field that carries the page (default `page` — what `pageQuery()` names it). */
   param?: string;
-  /** Its texts in the page's language — English and German built in, the rest from the app's messages: `labels={{ next: t('next') }}`. */
+  /** Its texts in the page's language, from the app's messages (`useTranslation`): `labels={{ next: t('next') }}` — English without. */
   labels?: Partial<PaginationLabels>;
 }
 
@@ -38,7 +35,7 @@ export interface PaginationProps {
 export function Pagination({ meta, window = 2, param = 'page', labels }: PaginationProps): ReactNode {
   const page = usePage();
   if (meta.lastPage <= 1) return null;
-  const text: PaginationLabels = { ...(LABELS[page.locale?.split('-', 1)[0] as 'en' | 'de'] ?? LABELS.en), ...labels };
+  const text: PaginationLabels = { ...ENGLISH, ...labels };
   const href = pageHref(page, param);
   const pages = pagesAround(meta.page, meta.lastPage, window);
 
@@ -74,7 +71,7 @@ export function Pagination({ meta, window = 2, param = 'page', labels }: Paginat
 }
 
 /** Development only: the pages warned about a query schema without the page's field (once each). */
-const warned = new Set<string>();
+let warned: Set<string> | undefined;
 
 /**
  * The URL of page `number` of the page on screen: its parsed query with `param` set — from the schema, never by parsing the
@@ -82,7 +79,7 @@ const warned = new Set<string>();
  */
 function pageHref(page: Pick<PageObject, 'url' | 'component' | 'query' | 'queryDefaults'>, param: string): (number: number) => string {
   if (page.queryDefaults) {
-    if (process.env.NODE_ENV !== 'production' && !Object.hasOwn(page.queryDefaults, param) && !warned.has(`${page.component} ${param}`)) {
+    if (process.env.NODE_ENV !== 'production' && !Object.hasOwn(page.queryDefaults, param) && !(warned ??= new Set()).has(`${page.component} ${param}`)) {
       warned.add(`${page.component} ${param}`);
       console.warn(`[bespoke:R17] <Pagination param="${param}"> on ${page.component}, whose query schema has no "${param}" — its links would lead to the first page: spread pageQuery() into the route's query schema.`);
     }

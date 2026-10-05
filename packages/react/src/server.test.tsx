@@ -139,14 +139,11 @@ describe('<Pagination>', () => {
     expect(hrefs, 'the links parsed the address').toEqual(['/people?q=ada&per_page=50', '/people?q=ada&per_page=50', '/people?q=ada&page=3&per_page=50', '/people?q=ada&page=3&per_page=50']);
   });
 
-  it('speaks the page’s language: German built in, any text from the app (labels)', async () => {
-    const german = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'de-AT' });
-    expect(german.html).toContain('aria-label="Seitennavigation"');
-    expect(german.html).toContain('‹ Zurück');
-    expect(german.html).toContain('Weiter ›');
-    expect(german.html).toContain('aria-label="Seite 3"');
-    const english = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'fr' });
+  it('speaks English by itself — the page’s language comes from the app (labels, E38), whatever the page’s locale', async () => {
+    const english = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'de' });
+    expect(english.html).toContain('aria-label="Pagination"');
     expect(english.html).toContain('Next ›');
+    expect(english.html).toContain('aria-label="Page 3"');
     const labelled = await renderAll(createSsrRenderer(resolve), { component: 'people/Labelled', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'fr' });
     expect(labelled.html).toContain('Suivant');
     expect(labelled.html).toContain('aria-label="Page n° 3"');

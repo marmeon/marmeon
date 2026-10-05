@@ -1,4 +1,4 @@
-import { UserRepository, type User } from '#modules/auth';
+import { UserFactory, UserRepository, type User } from '#modules/auth';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -71,5 +71,18 @@ describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
     expect(response.body.match(/<dialog open="" data-bespoke-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
+  });
+});
+
+describe('the people list’s page links, rendered on the server', () => {
+  it('speak the reader’s language — the app’s words (layouts/Pagination.tsx), links from the parsed query', async () => {
+    await app.factory(UserFactory).count(12).create(); // 15 people: two pages
+    const german = await app.actingAs(ada).get('/people?page=2&sort=-name', { headers: { ...page.headers, 'accept-language': 'de' } }).assertServerRendered().assertHydrates();
+    expect(german.body, 'the page links are not German').toContain('<nav aria-label="Seitennavigation">');
+    expect(german.body).toContain('‹ Zurück');
+    expect(german.body).toContain('href="/people?sort=-name" aria-label="Seite 1"');
+    const english = await app.actingAs(ada).get('/people', { headers: { ...page.headers, 'accept-language': 'en' } }).assertServerRendered();
+    expect(english.body).toContain('<nav aria-label="Pagination">');
+    expect(english.body).toContain('aria-label="Page 2"');
   });
 });

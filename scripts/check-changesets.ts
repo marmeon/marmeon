@@ -37,7 +37,7 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-a-new-apps-title-is-its-name-not-bespokecore',
     'medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone', // W9.3, E183
     'medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated',
-    'medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-the-pages-language',
+    'medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels',
     'low-a-list-in-a-gets-data-is-the-key-repeated',
     'low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up',
     'low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400',

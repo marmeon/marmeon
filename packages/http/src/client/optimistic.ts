@@ -154,9 +154,10 @@ function observed(patches: readonly { readonly id: number; readonly patch: Props
 /** Two reloads as one: `only` lists united, else everything — and what either replaces, replaced. */
 export function unite(a: ReloadSpec | undefined, b: ReloadSpec): ReloadSpec {
   if (!a) return b;
-  const reset = a.reset && b.reset ? { reset: [...new Set([...a.reset, ...b.reset])] } : {};
-  if (a.only && b.only && !a.except?.length && !b.except?.length) return { only: [...new Set([...a.only, ...b.only])], ...reset };
-  return reset;
+  const both = (x?: readonly string[], y?: readonly string[]) => (x && y ? [...new Set([...x, ...y])] : undefined);
+  const only = a.except?.length || b.except?.length ? undefined : both(a.only, b.only);
+  const reset = both(a.reset, b.reset);
+  return { ...(only ? { only } : {}), ...(reset ? { reset } : {}) };
 }
 
 /**

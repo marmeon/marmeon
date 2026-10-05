@@ -34,19 +34,17 @@ export function mergePage(current: PageObject, partial: PageObject, reset: Reset
     else if (partial.deepMergeProps?.includes(key)) props[key] = mergeValues(props[key], value, true, key, match);
     else props[key] = value;
   }
-  const { deferredProps: _pending, mergeProps: _merge, deepMergeProps: _deep, matchPropsOn: _match, ...rest } = partial;
+  const page: PageObject = { ...partial, props };
   const deferredProps = stillPending(current.deferredProps, arrived);
-  const mergeProps = marked(current.mergeProps, partial.mergeProps, arrived);
-  const deepMergeProps = marked(current.deepMergeProps, partial.deepMergeProps, arrived);
-  const matchPropsOn = marked(current.matchPropsOn, partial.matchPropsOn, arrived);
-  return {
-    ...rest,
-    props,
-    ...(deferredProps ? { deferredProps } : {}),
-    ...(mergeProps ? { mergeProps } : {}),
-    ...(deepMergeProps ? { deepMergeProps } : {}),
-    ...(matchPropsOn ? { matchPropsOn } : {}),
-  };
+  if (deferredProps) page.deferredProps = deferredProps;
+  else delete page.deferredProps;
+  // The partial's merge marks for the props it brought, the page's for the rest (entries start with the prop's name).
+  for (const name of ['mergeProps', 'deepMergeProps', 'matchPropsOn'] as const) {
+    const marks = [...new Set([...(current[name] ?? []).filter((entry) => !arrived.includes(entry.split('.', 1)[0]!)), ...(partial[name] ?? [])])];
+    if (marks.length > 0) page[name] = marks;
+    else delete page[name];
+  }
+  return page;
 }
 
 /**
@@ -57,13 +55,12 @@ export function mergePage(current: PageObject, partial: PageObject, reset: Reset
 function mergeValues(current: unknown, next: unknown, deep: boolean, path: string, match: readonly string[]): unknown {
   if (Array.isArray(current) && Array.isArray(next)) return append(current, next, matchKey(path, match));
   if (isPlainObject(current) && isPlainObject(next)) {
+    const merged: Record<string, unknown> = { ...current, ...next };
     if (!deep) {
-      const merged = { ...current, ...next };
       if (Array.isArray(current.data) && Array.isArray(next.data)) merged.data = append(current.data, next.data, matchKey(`${path}.data`, match));
-      return merged;
+    } else {
+      for (const key of Object.keys(next)) if (Object.hasOwn(current, key)) merged[key] = mergeValues(current[key], next[key], true, `${path}.${key}`, match);
     }
-    const merged: Record<string, unknown> = { ...current };
-    for (const [key, value] of Object.entries(next)) merged[key] = Object.hasOwn(current, key) ? mergeValues(current[key], value, true, `${path}.${key}`, match) : value;
     return merged;
   }
   return next;
@@ -71,45 +68,29 @@ function mergeValues(current: unknown, next: unknown, deep: boolean, path: strin
 
 /**
  * The key that identifies the items of the array at `path` — a path into each item: `matchPropsOn: ['others.data.id']` → `id`
- * for `others.data`, `['feed.user.id']` → `user.id` for `feed`. One right at the array wins over a deeper one.
+ * for `others.data`, `['feed.user.id']` → `user.id` for `feed`.
  */
 function matchKey(path: string, match: readonly string[]): string | undefined {
-  const prefix = `${path}.`;
-  const keys = match.filter((entry) => entry.startsWith(prefix)).map((entry) => entry.slice(prefix.length));
-  return keys.find((key) => !key.includes('.')) ?? keys[0];
-}
-
-/** The value at `key` (`user.id`) of an item — undefined when it has none. */
-function keyOf(item: unknown, key: string): unknown {
-  let value = item;
-  for (const part of key.split('.')) {
-    if (!isPlainObject(value)) return undefined;
-    value = value[part];
-  }
-  return value;
+  return match.find((entry) => entry.startsWith(`${path}.`))?.slice(path.length + 1);
 }
 
 /**
- * `next` after `current` — with a `key`, an item whose key is shown already takes that one's place (the same page
- * loaded twice: a poll, "load more" clicked twice) instead of appearing again.
+ * `next` after `current` — with a `key` (a path into each item), an item whose key is shown already takes that one's place (the
+ * same page loaded twice: a poll, "load more" clicked twice) instead of appearing again.
  */
 function append(current: readonly unknown[], next: readonly unknown[], key: string | undefined): unknown[] {
   if (key === undefined) return [...current, ...next];
+  const keyOf = (item: unknown) => key.split('.').reduce<unknown>((value, part) => (isPlainObject(value) ? value[part] : undefined), item);
   const merged = [...current];
   const at = new Map<unknown, number>();
-  merged.forEach((item, index) => {
-    const id = keyOf(item, key);
-    if (id !== undefined) at.set(id, index);
-  });
+  merged.forEach((item, index) => at.set(keyOf(item), index));
   for (const item of next) {
-    const id = keyOf(item, key);
+    const id = keyOf(item);
     const index = id === undefined ? undefined : at.get(id);
-    if (index !== undefined) {
-      merged[index] = item;
-    } else {
-      if (id !== undefined) at.set(id, merged.length);
+    if (index === undefined) {
+      at.set(id, merged.length);
       merged.push(item);
-    }
+    } else merged[index] = item;
   }
   return merged;
 }
@@ -124,16 +105,6 @@ function stillPending(groups: PageObject['deferredProps'], arrived: readonly str
     .map(([group, props]) => [group, props.filter((prop) => !arrived.includes(prop))] as const)
     .filter(([, props]) => props.length > 0);
   return pending.length > 0 ? Object.fromEntries(pending) : undefined;
-}
-
-/**
- * A page's merge marks (`mergeProps`, `deepMergeProps`, `matchPropsOn` — entries start with the prop's name) after a partial
- * reload: the partial's for the props it brought, the page's for the rest.
- */
-function marked(current: readonly string[] | undefined, partial: readonly string[] | undefined, arrived: readonly string[]): string[] | undefined {
-  const kept = (current ?? []).filter((entry) => !arrived.includes(entry.split('.', 1)[0]!));
-  const all = [...new Set([...kept, ...(partial ?? [])])];
-  return all.length > 0 ? all : undefined;
 }
 
 /** Only these props (those `props` has). */

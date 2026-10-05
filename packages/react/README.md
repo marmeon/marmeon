@@ -261,9 +261,9 @@ usePoll<ShowUserProfileController>(15_000, { only: ['activity'] });     // in th
   schema is a compile error. A `set()` before the hook's effect ran (a child's effect on mount) is made once it has.
 - **`<Pagination meta={…} window={2} param="page" labels={…} />`** — links to the pages of `paginate()`'s `meta`, built from the
   page's parsed query (E55: the route's schema with `pageQuery()` of `@bespokecore/database` — the search, the sort and the page
-  size stay, the defaults stay out; never by parsing the address). Its texts are English and German (by the page's `locale`),
-  any other language through `labels` (`{ navigation, previous, next, page: (n) => … }`, e.g. from `useTranslation`). A query
-  schema without the page's field warns in development (R17).
+  size stay, the defaults stay out; never by parsing the address). Its texts are English; the page's language comes from the
+  app's messages through `labels` (`{ navigation, previous, next, page: (n) => … }` from `useTranslation`, E38) — best in a small
+  wrapper of the app, as the web app's `layouts/Pagination.tsx`. A query schema without the page's field warns in development (R17).
 - **`useLiveUpdates()`** — live props (W6.10) reload by themselves; while a guard holds (a dirty form) they wait:
   `{ pending, apply() }`.
 - **`useRemember(key, initial)`** — `useState` that survives Back/Forward (E63), per history entry, in memory only.

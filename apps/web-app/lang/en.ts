@@ -32,6 +32,13 @@ const en = {
     session: 'You signed in or out, or changed the language, in another tab. Load this page again? Your unsaved changes will be lost.',
     reload: 'Load again',
   },
+  // The page links of a list (<Pagination>, layouts/Pagination.tsx).
+  pagination: {
+    navigation: 'Pagination',
+    previous: '‹ Previous',
+    next: 'Next ›',
+    page: 'Page {page}',
+  },
   locale: {
     changed: 'Language changed.',
     unsupported: 'This language is not available.',

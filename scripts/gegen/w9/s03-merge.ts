@@ -101,15 +101,21 @@ export default defineGegenproben({
     },
     {
       id: 'G7',
-      title: 'matchOn takes a key right at the items only: a path into them (user.id) matches nothing',
-      patch: [{ file: 'packages/http/src/client/merge.ts', find: "  return keys.find((key) => !key.includes('.')) ?? keys[0];", replace: "  return keys.find((key) => !key.includes('.'));" }],
+      title: 'matchOn takes a key right at the items only: a path into them (user.id) matches nothing — appended twice',
+      patch: [
+        {
+          file: 'packages/http/src/client/merge.ts',
+          find: "key.split('.').reduce<unknown>((value, part) => (isPlainObject(value) ? value[part] : undefined), item)",
+          replace: '(isPlainObject(item) ? item[key] : undefined)',
+        },
+      ],
       run: merge('matches on a path into each item'),
       expect: /not matched on the path/,
     },
     {
       id: 'G8',
       title: 'mergeProps pile up over reloads: a prop the server no longer merges stays marked',
-      patch: [{ file: 'packages/http/src/client/merge.ts', find: "  const kept = (current ?? []).filter((entry) => !arrived.includes(entry.split('.', 1)[0]!));", replace: '  const kept = current ?? [];' }],
+      patch: [{ file: 'packages/http/src/client/merge.ts', find: "(current[name] ?? []).filter((entry) => !arrived.includes(entry.split('.', 1)[0]!))", replace: '(current[name] ?? [])' }],
       run: merge('it never piles up over reloads'),
       expect: /expected \[ 'a', 'b' \] to deeply equal \[ 'b' \]/,
     },
@@ -120,7 +126,7 @@ export default defineGegenproben({
       patch: [
         {
           file: 'packages/http/src/client/request.ts',
-          find: '        for (const item of Array.isArray(value) ? value : [value]) if (item !== undefined && item !== null) target.searchParams.append(key, String(item));',
+          find: '        for (const item of [value].flat()) if (item !== undefined && item !== null) target.searchParams.append(key, String(item));',
           replace: '        target.searchParams.set(key, String(value));',
         },
       ],
@@ -144,10 +150,10 @@ export default defineGegenproben({
     },
     {
       id: 'G12',
-      title: '<Pagination> in German: the English texts on a German page',
-      patch: [{ file: 'packages/react/src/pagination.tsx', find: "LABELS[page.locale?.split('-', 1)[0] as 'en' | 'de'] ?? LABELS.en", replace: 'LABELS.en' }],
-      run: { vitest: 'packages/react/src/server.test.tsx', name: 'speaks the page’s language' },
-      expect: /to contain 'aria-label="Seitennavigation"'/,
+      title: '<Pagination> in German: the web app passes no translation (its own words) — English on a German page',
+      patch: [{ file: 'apps/web-app/layouts/Pagination.tsx', find: '    <Pages\n      {...props}\n      labels=', replace: '    <Pages\n      {...props}\n      data-labels=' }],
+      run: { vitest: 'apps/web-app/modules/user-profile/ssr.test.ts', name: 'speak the reader’s language' },
+      expect: /the page links are not German/,
     },
     {
       id: 'G13',

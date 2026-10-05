@@ -1,5 +1,6 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Island, Link, Pagination, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
+import { Head, Island, Link, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
+import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListPeopleController } from '../controllers/ListPeopleController.ts';
 
 type Props = PageProps<ListPeopleController>;
@@ -73,7 +74,7 @@ export default function People({ people, now }: Props) {
           ))}
         </ul>
       )}
-      {/* Links to the pages, from the parsed query (the search, the sort and the page size stay) — in the page's language. */}
+      {/* Links to the pages, from the parsed query (the search, the sort and the page size stay) — in the app's words (layouts/Pagination.tsx). */}
       <Pagination meta={people.meta} />
       <aside aria-labelledby="recent-sign-ins">
         <h2 id="recent-sign-ins">{t('people.recent')}</h2>

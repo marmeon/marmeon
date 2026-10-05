@@ -23,7 +23,7 @@ export function buildRequest(target: URL, method: VisitMethod, data: VisitOption
       for (const [key, value] of Object.entries(data)) {
         if (value === undefined || value === null) continue;
         target.searchParams.delete(key);
-        for (const item of Array.isArray(value) ? value : [value]) if (item !== undefined && item !== null) target.searchParams.append(key, String(item));
+        for (const item of [value].flat()) if (item !== undefined && item !== null) target.searchParams.append(key, String(item));
       }
     }
     return { url: target.pathname + target.search, headers: {} };

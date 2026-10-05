@@ -31,6 +31,12 @@ export default {
     session: 'Du hast dich in einem anderen Tab an- oder abgemeldet oder die Sprache gewechselt. Diese Seite neu laden? Deine ungespeicherten Änderungen gehen verloren.',
     reload: 'Neu laden',
   },
+  pagination: {
+    navigation: 'Seitennavigation',
+    previous: '‹ Zurück',
+    next: 'Weiter ›',
+    page: 'Seite {page}',
+  },
   locale: {
     changed: 'Sprache geändert.',
     unsupported: 'Diese Sprache gibt es nicht.',
