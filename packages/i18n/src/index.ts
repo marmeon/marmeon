@@ -226,6 +226,22 @@ export function trans<K extends TranslationKey | (string & {})>(
   return translatable(key, params);
 }
 
+/**
+ * The language files' modules, by URL, once per process. Node keeps a module by its URL anyway; under a module runner (Vitest) every
+ * `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test (W9 step 1: under load
+ * that made `createTestApp` take seconds). A failed import is not kept.
+ */
+const langModules = new Map<string, Promise<unknown>>();
+function importLangFile(url: string): Promise<unknown> {
+  let module = langModules.get(url);
+  if (!module) {
+    module = import(url);
+    langModules.set(url, module);
+    module.catch(() => langModules.delete(url));
+  }
+  return module;
+}
+
 /** Where an app keeps its language files: `lang/<locale>.ts` (namespace `app`) and `modules/<module>/lang/<locale>.ts`. */
 async function langFiles(root: string): Promise<string[]> {
   const files: string[] = [];
@@ -252,7 +268,7 @@ export async function loadLangFiles(root: string, catalog: Catalog, locales: Loc
       skipped.push(path);
       continue;
     }
-    const module = (await import(pathToFileURL(path).href)) as { default?: unknown };
+    const module = (await importLangFile(pathToFileURL(path).href)) as { default?: unknown };
     catalog.add(locale, file.namespace, module.default, path);
     loaded.push(path);
   }

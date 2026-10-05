@@ -13,7 +13,7 @@ const form = { name: 'Warm Up', email: 'warm-up@example.com', password, password
  * For a test file's `beforeAll(warmUp, WARM_UP_TIMEOUT)` (W9 step 1): what the file's first tests would otherwise pay inside Vitest's
  * 5 s — the worker's database (created and migrated once per worker), the app's modules, a registration (the password hash) and
  * its jobs, through the fakes and through the real database queue and mailer (their drivers, mjml's import and first compile, the
- * mails' translations). Seconds on a loaded machine; afterwards every test pays only for its own work. Each app is closed again:
+ * mails' translations), and a seeded app in development. Seconds on a loaded machine; afterwards every test pays only for its own work. Each app is closed again:
  * its transaction rolls back, nothing stays.
  */
 export async function warmUp(): Promise<void> {
@@ -35,5 +35,12 @@ export async function warmUp(): Promise<void> {
     await real.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
   } finally {
     await real.close();
+  }
+  // The development-only parts (Server-Timing, the dev error page's recorder …) and the seeders: their first use is cold too.
+  const development = await createTestApp(application, { database: 'refresh', seed: true, env: { NODE_ENV: 'development' } });
+  try {
+    await development.get('/login').assertOk();
+  } finally {
+    await development.close();
   }
 }

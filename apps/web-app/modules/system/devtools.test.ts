@@ -60,7 +60,9 @@ describe('the devtools', () => {
   });
 
   // The sessions in the database too: their statements (`sessions.payload` is a secret column) carry the session id.
-  it.each(['memory', 'database'])('keep none of a session’s secrets — registration, login, reset, API token — in what they write (E125; sessions: %s)', async (driver) => {
+  // A whole account's life in one test — registration, two sign-ins, sign-out, a password reset through the worker, an API token — and
+  // every file the recorder wrote: 0.1 s here, past 5 s on a fully loaded machine (W9 step 1); its own time, like the page test below.
+  it.each(['memory', 'database'])('keep none of a session’s secrets — registration, login, reset, API token — in what they write (E125; sessions: %s)', { timeout: 20_000 }, async (driver) => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true, env: { SESSION_DRIVER: driver } });
     const email = 'ada@example.com';
     const [password, newPassword] = ['correct horse battery', 'brand new staple 42'];

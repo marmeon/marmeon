@@ -358,6 +358,22 @@ export interface DiscoveredPackages {
   readonly warning?: string;
 }
 
+/**
+ * The discovered packages' modules, by URL, once per process. Node keeps a module by its URL anyway; under a module runner (Vitest)
+ * every `import()` of a module it already ran is still a round trip to its server — and tests boot an app per test (W9 step 1: under
+ * load that made `createTestApp` take seconds). A failed import is not kept (a pruned install is discovered again, below).
+ */
+const packageModules = new Map<string, Promise<Record<string, any>>>();
+function importPackage(url: string): Promise<Record<string, any>> {
+  let module = packageModules.get(url);
+  if (!module) {
+    module = import(url) as Promise<Record<string, any>>;
+    packageModules.set(url, module);
+    module.catch(() => packageModules.delete(url));
+  }
+  return module;
+}
+
 /** Manifest files a warning was given for — once per process, not once per app (tests boot many). */
 const warned = new Set<string>();
 
@@ -383,7 +399,7 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   if (regenerated) manifest = discover();
 
   const load = (current: Manifest) =>
-    Promise.all(current.modules.map((file) => import(pathToFileURL(resolvePath(options.root, file)).href) as Promise<Record<string, any>>));
+    Promise.all(current.modules.map((file) => importPackage(pathToFileURL(resolvePath(options.root, file)).href)));
   let modules: Record<string, any>[];
   try {
     modules = await load(manifest!);

@@ -27,9 +27,13 @@ const heavyTimeout = 15_000;
 class TestTransport implements MailTransport {
   readonly sent: MailMessage[] = [];
   down = false;
-  delay = 0;
+  /** A mail server that never answers: `send` is called (`called` settles) and never returns. */
+  hung = false;
+  readonly #called = Promise.withResolvers<void>();
+  readonly called = this.#called.promise;
   async send(message: MailMessage): Promise<void> {
-    if (this.delay > 0) await new Promise((resolve) => setTimeout(resolve, this.delay));
+    this.#called.resolve();
+    if (this.hung) await new Promise(() => {});
     if (this.down) throw new Error('connect ECONNREFUSED 127.0.0.1:587');
     this.sent.push(message);
   }
@@ -83,14 +87,15 @@ describe('the verification mail through the queue', () => {
     await app.assertDatabaseCount('failed_jobs', 0);
   }, heavyTimeout);
 
-  it('the registration answers without waiting for the mail server (a transport 2 s slow)', async () => {
+  // No clock (W9 step 1: "under 1 000 ms" broke on a loaded machine): the mail server never answers — a request that waited for it
+  // would never return; one that reached it at all fails at once.
+  it('the registration answers without waiting for the mail server (one that never answers)', async () => {
     const transport = new TestTransport();
-    transport.delay = 2_000;
+    transport.hung = true;
     const app = await realApp(transport);
-    const started = performance.now();
-    await app.post('/register', { form: form() }).assertRedirect('/register/sent');
-    const ms = performance.now() - started;
-    expect(ms).toBeLessThan(1_000); // measured ~60 ms; the transport alone would take 2 000
+    const reached = transport.called.then(() => 'the request called the mail transport');
+    const answered = app.post('/register', { form: form() }).then(async (response) => (await response.assertRedirect('/register/sent'), 'answered'));
+    expect(await Promise.race([answered, reached])).toBe('answered');
     expect(transport.sent).toEqual([]);
   });
 
