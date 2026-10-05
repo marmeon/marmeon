@@ -28,9 +28,20 @@ export interface CodeHighlighter {
   readonly unknownColours: () => string[];
 }
 
+/**
+ * One Shiki per process: it holds only the grammars and themes, nothing of a request — and every instance keeps its compiled
+ * grammars in the WebAssembly memory of the regex engine, which all instances share and nothing frees. A test run boots the app
+ * dozens of times; with a Shiki each, the engine ran out of memory ("ShikiError" on compiling a grammar's pattern).
+ */
+let shared: ReturnType<typeof createHighlighter> | undefined;
+
 /** Shiki with GitHub's light and dark themes; tokens as short classes instead of two inline colours each. */
 export async function createCodeHighlighter(): Promise<CodeHighlighter> {
-  const shiki = await createHighlighter({ themes: ['github-light', 'github-dark'], langs: [...LANGS] });
+  shared ??= createHighlighter({ themes: ['github-light', 'github-dark'], langs: [...LANGS] }).catch((error: unknown) => {
+    shared = undefined;
+    throw error;
+  });
+  const shiki = await shared;
   const unknown = new Set<string>();
 
   const highlight: Highlighter = (code, lang) => {

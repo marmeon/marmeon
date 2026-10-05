@@ -1,12 +1,14 @@
 /** One section of a page in the search index: what is under one heading. */
 export interface IndexedSection {
-  /** The page: `/` or `/packages/<name>`. */
+  /** The page: `/`, `/guides/<slug>` or `/packages/<name>`. */
   readonly path: string;
   /** The page's title — `@bespokecore/scheduler`. */
   readonly page: string;
   readonly heading: string;
   readonly anchor: string;
   readonly text: string;
+  /** A record of changes (UPGRADING.md): after every other hit, whatever its score. */
+  readonly late?: boolean;
 }
 
 /** A hit: where it is, and a piece of the text around the first match. */
@@ -32,7 +34,7 @@ interface Entry extends IndexedSection {
 /**
  * The search over every section of every page — in memory, built with the pages (E133: a server route, no index in the
  * browser). Words are matched as parts of words, case-insensitively, all of them in one section; a match in the page's name
- * weighs most, then the heading, then how often the text has it.
+ * weighs most, then the heading, then how often the text has it — and a record of changes comes last.
  */
 export class SearchIndex {
   readonly #entries: Entry[];
@@ -70,7 +72,7 @@ export class SearchIndex {
       }
       if (all) hits.push({ entry, score });
     }
-    hits.sort((a, b) => b.score - a.score || a.entry.order - b.entry.order);
+    hits.sort((a, b) => Number(a.entry.late ?? false) - Number(b.entry.late ?? false) || b.score - a.score || a.entry.order - b.entry.order);
     return hits.slice(0, limit).map(({ entry }) => ({
       href: entry.anchor ? `${entry.path}#${entry.anchor}` : entry.path,
       page: entry.page,

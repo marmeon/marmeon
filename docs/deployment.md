@@ -205,6 +205,27 @@ and protect the system (`ProtectSystem=strict`, only `storage/` writable). The w
 proxy on the same machine (`--caddy`/`--nginx` with `--systemd` write the proxy configuration for the host). Node must be on the
 service's `PATH` (a system package, not nvm).
 
+## One server with Compose: the docs as an example
+
+The docs of this repository are deployed this way (E142): `apps/docs/Dockerfile` (the monorepo variant of the template, built
+from the repository's root) and [`deploy/docs/compose.yaml`](../deploy/docs/compose.yaml) with a [`Caddyfile`](../deploy/docs/Caddyfile) — two
+containers on one VPS. What they show beyond the template:
+
+- **A firewall in front of the server, not on it.** Docker publishes ports through its own iptables rules, past `ufw` and
+  `firewalld` — a host firewall does not protect a published port. Use the provider's firewall (Hetzner Cloud Firewall, a security
+  group): SSH, 80, 443/TCP and 443/UDP (HTTP/3) in, nothing else.
+- **`TRUSTED_PROXIES` as the network's range** instead of `*`: the Compose file gives the network fixed subnets and trusts exactly
+  those — only Caddy shares the network with the app. **IPv6 on that network** (`enable_ipv6`): without it Docker hands a visitor's
+  IPv6 connection to Caddy through a proxy process, and every IPv6 visitor arrives with the gateway's address (one rate limit for
+  all of them).
+- **Read-only:** `read_only: true` with a `tmpfs` for `/tmp` and the `storage` volume — the image carries its discovery manifest
+  (E160), nothing else is written.
+- **Compression of pages that carry no secret:** the docs have no session, no CSRF token and no cookie, so Caddy's `encode` is safe
+  there (and turns 190 KB pages into 40 KB). An app with sign-in keeps documents uncompressed.
+- **A tag per build for the way back:** `image: bespokecore-docs:${DOCS_TAG:-latest}` — `DOCS_TAG=$(git rev-parse --short HEAD)
+  docker compose up -d --build` builds and starts a named version; an earlier tag still on the machine starts again without a
+  build.
+
 ## Checklist
 
 - [ ] `NODE_ENV=production` (image) — no developer `.env` on the server; `APP_KEY` set, the same everywhere; `APP_URL` is `https://`

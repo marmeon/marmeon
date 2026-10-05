@@ -55,7 +55,8 @@ export const parts: readonly Part[] = [
   // lint, build, start. Without a store/cache and the registry it is skipped (exit 75) — reported as such, never as green.
   { name: 'pack:smoke', command: pnpm('pack:smoke'), after: ['build', 'pack:check'] },
   // create-bespoke-app --docker as an image (bespoke make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
-  // --workers, a worker's exit 70, the image's size. Without Docker (or the registry) it is skipped (exit 75), never green.
+  // --workers, a worker's exit 70, the image's size; then the docs' image (apps/docs/Dockerfile) — its contents, read-only, behind
+  // Caddy over HTTP/2 (deploy/docs). Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
   // The release rules (E152, E153, E157, E168): one fixed group and one version, no `major` changeset below 1.0.0, the meta package,
   // release.yml (staged publishing with OIDC), npm-trust.sh, every UPGRADING.md entry (the 22 Wave 7 hints), LICENSE and policies.

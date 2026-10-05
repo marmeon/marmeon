@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { PACKAGES } from '../../docs.config.ts';
+import docsConfig, { PACKAGES } from '../../docs.config.ts';
 import type { SearchController } from './controllers/SearchController.ts';
 import { DocsError, DocsRepository } from './DocsRepository.ts';
 import { createCodeHighlighter } from './highlight.ts';
@@ -64,7 +64,7 @@ describe('the search (a server route, E133)', () => {
 describe('pages', () => {
   it('an unknown package is a 404 (the repository binds the route)', async () => {
     await app.get('/packages/no-such-package').assertNotFound();
-    await app.get('/packages/core').assertOk().assertPage('docs/Package');
+    await app.get('/packages/core').assertOk().assertPage('docs/Page');
   });
 
   it('a path without a route is a 404 page in the layout — without the navigation (no shared props there), rendered on the server', async () => {
@@ -77,10 +77,32 @@ describe('pages', () => {
 
   it('shares the navigation — every package in its group — once per tab', async () => {
     const page = (await app.navigating().get('/packages/http').assertOk()).page()!;
-    const nav = page.props.nav as { groups: { title: string; packages: { name: string }[] }[] };
-    expect(nav.groups.map((group) => group.title)).toEqual(['Core', 'HTTP', 'Data', 'Auth & Mail', 'Background', 'Frontend', 'Tools']);
-    expect(nav.groups.flatMap((group) => group.packages.map((pkg) => pkg.name)).sort()).toEqual([...PACKAGES].sort());
-    expect(page.props).toMatchObject({ previous: { name: 'router' }, next: { name: 'server' }, group: 'HTTP', title: '@bespokecore/http' });
+    const nav = page.props.nav as { groups: { title: string; pages: { name: string; label: string; path: string }[] }[] };
+    expect(nav.groups.map((group) => group.title)).toEqual(['Guides', 'Core', 'HTTP', 'Data', 'Auth & Mail', 'Background', 'Frontend', 'Tools']);
+    expect(nav.groups.slice(1).flatMap((group) => group.pages.map((pkg) => pkg.name)).sort()).toEqual([...PACKAGES].sort());
+    expect(nav.groups[0]!.pages.map((guide) => guide.path)).toEqual(docsConfig.guides!.map((guide) => `/guides/${guide.slug}`));
+    expect(page.props).toMatchObject({ previous: { path: '/packages/router' }, next: { path: '/packages/server' }, group: 'HTTP', title: '@bespokecore/http' });
+  });
+});
+
+describe('the guides (docs/*.md and the policies at the root, E168)', () => {
+  it('are pages under /guides — with their own neighbours, in the search, and an unknown one is a 404', async () => {
+    const deployment = (await app.navigating().get('/guides/deployment').assertOk().assertPage('docs/Page')).page()!;
+    expect(deployment.props).toMatchObject({ title: 'Deploying a BespokeCore app', group: 'Guides', previous: { path: '/guides/getting-started' }, next: { path: '/guides/security' } });
+    const upgrading = (await app.navigating().get('/guides/upgrading').assertOk()).page()!;
+    expect(upgrading.props).toMatchObject({ title: 'Upgrading' });
+    await app.get('/guides/no-such-guide').assertNotFound();
+    await app.get('/guides/README').assertNotFound();
+    const hits = results(await app.navigating().get('/search?q=SHUTDOWN_DELAY').assertOk());
+    expect(hits.some((hit) => hit.href.startsWith('/guides/deployment'))).toBe(true);
+  });
+
+  it('a link of a README to a guide is a visit to its page, with the anchor (no longer code text)', async () => {
+    const docs = app.make(DocsRepository);
+    const home = JSON.stringify(docs.home().body);
+    expect(home).toContain('"href":"/guides/deployment","data-internal":""');
+    expect(home).toContain('"href":"/guides/upgrading","data-internal":""');
+    expect(docs.pages().flatMap((page) => page.fileLinks).filter((file) => /^docs\/|^[A-Z]+\.md$/.test(file))).toEqual([]);
   });
 });
 
@@ -88,7 +110,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   const document = { headers: { accept: 'text/html' } };
 
   it('sets no cookie, on any page — the docs group has no session, no CSRF, no encrypted cookies', async () => {
-    for (const path of ['/', '/packages/session', '/search?q=csrf']) {
+    for (const path of ['/', '/packages/session', '/guides/security', '/search?q=csrf']) {
       const response = await app.get(path, document).assertOk();
       expect(response.headers.get('set-cookie'), path).toBeNull();
       expect(response.headers.get('cache-control'), path).toMatch(/^public, max-age=300$/);
@@ -117,6 +139,22 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
     const response = await dev.get('/', document).assertOk();
     expect(response.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it("a cached page's policy has no nonce ('self'); in development — nothing cached — Vite's inline scripts get the strict nonce policy", async () => {
+    const ssr = await createTestApp(application, { ssr: true });
+    const first = await ssr.get('/packages/http', document).assertOk();
+    const second = await ssr.get('/packages/http', document).assertOk();
+    expect(first.headers.get('content-security-policy')).toBe("script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+    // No nonce attribute on a tag (the http README's text mentions `nonce=` — escaped, inside the page).
+    expect(first.body).not.toMatch(/<[a-z]+ [^>]*\bnonce=/);
+    expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
+    // The 404 page (no route, no group) is a document too.
+    expect((await ssr.get('/no/such/page', document)).headers.get('content-security-policy')).toMatch(/^script-src 'self';/);
+    // JSON visits carry no policy (it is for documents).
+    expect((await ssr.navigating().get('/packages/http').assertOk()).headers.get('content-security-policy')).toBeNull();
+    const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
+    expect((await dev.get('/', document).assertOk()).headers.get('content-security-policy')).toMatch(/^script-src 'nonce-[\w+/=-]+' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'$/);
   });
 
   it('never marks an answer with a cookie public (a cache would hand the cookie to everyone)', async () => {
@@ -151,8 +189,26 @@ describe('the repository and docs.config.ts', () => {
       cpSync(join(repo, 'packages', name, 'README.md'), join(dir, 'packages', name, 'README.md'));
       writeFileSync(join(dir, 'packages', name, 'package.json'), '{}');
     }
+    mkdirSync(join(dir, 'docs'));
+    for (const guide of docsConfig.guides!) cpSync(join(repo, guide.file), join(dir, guide.file));
     return dir;
   }
+
+  it('stops the start for a docs/*.md without its entry in the guides — and for a listed guide that is gone', async () => {
+    const dir = copy();
+    try {
+      writeFileSync(join(dir, 'docs/brandnew.md'), '# Brand new\n');
+      rmSync(join(dir, 'SECURITY.md'));
+      const error = await new DocsRepository({ source: dir }).load().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(DocsError);
+      expect((error as DocsError).problems).toEqual([
+        `docs.config.ts lists the guide SECURITY.md, but it does not exist in ${dir}.`,
+        'docs/brandnew.md has no entry in docs.config.ts — add it to the guides.',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, ciTimeout);
 
   it('stops the start for a package without its place in docs.config.ts — and for a package without a README', async () => {
     const dir = copy();
@@ -201,7 +257,7 @@ describe('the repository and docs.config.ts', () => {
   it('highlights every code block of every README with the stylesheet’s token classes (no inline colours left)', async () => {
     const highlighter = await createCodeHighlighter();
     const docs = await new DocsRepository({ source: repo }).load();
-    expect(docs.pages().length).toBe(PACKAGES.length + 1);
+    expect(docs.pages().length).toBe(PACKAGES.length + 1 + docsConfig.guides!.length);
     expect(highlighter.highlight("import { x } from 'y';", 'ts')).toBe(
       '<pre class="code" tabindex="0" data-lang="ts"><code><span class="line"><span class="tk">import</span> { x } <span class="tk">from</span><span class="ts"> \'y\'</span>;</span></code></pre>',
     );

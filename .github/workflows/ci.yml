@@ -49,7 +49,8 @@ jobs:
 
   image:
     # create-bespoke-app --docker as a Docker image (E158): bespoke make:docker → docker build → docker run (non-root, no .env, /up, the health
-    # check, SIGTERM with SHUTDOWN_DELAY → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size.
+    # check, SIGTERM with SHUTDOWN_DELAY → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size; then the docs' image
+    # (apps/docs/Dockerfile, E142): its contents, read-only, and deploy/docs/compose.yaml behind Caddy over HTTP/2.
     name: image
     runs-on: ubuntu-latest
     timeout-minutes: 20

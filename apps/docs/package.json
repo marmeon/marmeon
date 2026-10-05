@@ -3,10 +3,21 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The documentation of BespokeCore — the READMEs as a normal BespokeCore app (E114, E133: no static export). Not published (E10).",
+  "description": "The documentation of BespokeCore — the READMEs and guides as a normal BespokeCore app (E114, E133: no static export). Not published; deployed as an image (apps/docs/Dockerfile, E142).",
   "imports": {
     "#modules/*": "./modules/*/index.ts"
   },
+  "files": [
+    "bootstrap",
+    "config",
+    "layouts",
+    "modules",
+    "styles",
+    "docs.config.ts",
+    "index.html",
+    "!**/*.test.ts",
+    "!**/*.type-test.ts"
+  ],
   "scripts": {
     "dev": "bespoke dev",
     "build": "bespoke build",

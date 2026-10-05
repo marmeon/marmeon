@@ -9,13 +9,16 @@
  *   /up/ready 503 at once, exit 0 after the delay · a read-only root file system starts (E160) · start --workers=2 → SIGTERM →
  *   exit 0 · a worker with a stuck job ends the container with 70 · the image's size
  *
+ * Then the docs' image (`scripts/docs-image.ts`, `pnpm docs:image` alone): `apps/docs/Dockerfile` built from this checkout, its
+ * contents, the container read-only, and `deploy/docs/compose.yaml` behind Caddy over HTTP/2 (E142).
+ *
  * Containers, the volume and the image are named `bespokecore-image-smoke-…` and removed afterwards (Docker's build cache
  * stays — the next build reuses the dependency layers). Without Docker, or when the build cannot reach the registry, the run
  * ends with exit 75 — `pnpm run ci` shows it as skipped, never as green.
  *
  *   pnpm image:smoke          # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm image:smoke --keep   # leaves the app, the image and the volume (printed); a red run always keeps the app
- *   pnpm image:smoke --npm    # create-bespoke-app --npm (package-lock.json) — make:docker writes the npm variant
+ *   pnpm image:smoke --npm    # create-bespoke-app --npm (package-lock.json) — make:docker writes the npm variant (without the docs)
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -23,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { docsImage } from './docs-image.ts';
 import { packAll } from './packages.ts';
 import { assertIsolated, cleanEnvironment, freePort, Offline, OFFLINE, scaffold, SKIPPED, SmokeError, unpackScaffolder } from './pack-smoke.ts';
 
@@ -276,5 +280,10 @@ async function main(): Promise<number> {
   }
 }
 
-if (import.meta.main) process.exitCode = await main();
+if (import.meta.main) {
+  const app = await main();
+  // Then the docs' image (E142, scripts/docs-image.ts — alone: pnpm docs:image); not with --npm, the manual variant of the app.
+  const docs = process.argv.includes('--npm') ? 0 : await docsImage({ keep: process.argv.includes('--keep') });
+  process.exitCode = app !== 0 && app !== SKIPPED ? app : docs !== 0 && docs !== SKIPPED ? docs : app === SKIPPED || docs === SKIPPED ? SKIPPED : 0;
+}
 

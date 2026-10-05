@@ -135,23 +135,22 @@ Installed framework packages register themselves (discovery through the `"bespok
 ## Versions and deprecations
 
 The framework is released in **lockstep** (E152): every `@bespokecore/*` package, the meta package `bespokecore` and
-`create-bespoke-app` always have the same version, and the packages name each other at exactly that version. Upgrade them
-together; two versions of a framework package in one app mean two containers.
+`create-bespoke-app` always have the same version — upgrade them together.
 
-- **0.x — now.** Following [SemVer](https://semver.org/#spec-item-4), anything may change while the major version is 0, but not
-  silently: a **minor** version (0.1 → 0.2) may break, and every break has an entry in [UPGRADING.md](UPGRADING.md) — its
-  impact, before → after, the way back where there is one. A **patch** (0.1.0 → 0.1.1) never breaks. Pin the exact version
-  (`create-bespoke-app` does) or `~0.1.0`; `^0.1.0` already means `<0.2.0`.
-- **From 1.0 — after the reference app.** Breaking changes only in a major version. A feature to be removed is deprecated first in
-  a minor version: documented, marked `@deprecated` in its types, and warned about at runtime in development (`NODE_ENV=development`
-  only — never in production logs); it goes in the next major, with its UPGRADING entry. What is marked `@internal` or
-  `@experimental` is outside this promise. How long a major version gets bug and security fixes is set with 1.0, along Node's
-  release lines.
-- **A broken release** is never unpublished: it is deprecated on npm (`npm deprecate`, with the version to use instead) and fixed
-  by the next patch.
-- **Node:** 26.10 or newer (E9) — a new minimum Node version is a breaking change.
+- **0.x — now:** a **minor** version (0.1 → 0.2) may break, and every break has an entry in [UPGRADING.md](UPGRADING.md); a
+  **patch** never breaks. Pin the exact version (`create-bespoke-app` does) or `~0.1.0`.
+- **From 1.0 — after the reference app:** breaking changes only in a major version; a feature is deprecated first in a minor
+  (documented, `@deprecated` in its types, a warning in development only) and removed in the next major.
+- **A broken release** is never unpublished: it is deprecated on npm and fixed by the next patch. **Node** 26.10 or newer (E9) — a
+  new minimum is a breaking change. Security fixes go to the latest minor version ([SECURITY.md](SECURITY.md)).
 
-Security fixes go to the latest minor version ([SECURITY.md](SECURITY.md)).
+The whole policy, the first day after a release and how to upgrade: [docs/versioning.md](docs/versioning.md).
+
+## Guides
+
+[Getting started](docs/getting-started.md) · [Deployment](docs/deployment.md) · [Security](docs/security.md) ·
+[Versions and deprecations](docs/versioning.md) · [Upgrading](UPGRADING.md) · [Contributing](CONTRIBUTING.md) — in the docs app
+under `/guides/…`, beside the packages' READMEs.
 
 ## Contributing
 
@@ -165,7 +164,8 @@ vulnerability reporting, never a public issue ([SECURITY.md](SECURITY.md)).
 packages/*        the framework packages (each with its README — these pages)
 apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: what create-bespoke-app --minimal writes (pnpm template:sync), and what make:auth is tested against
-apps/docs         these docs: the READMEs as a BespokeCore app (pnpm docs:dev)
+apps/docs         these docs: the READMEs and docs/*.md as a BespokeCore app (pnpm docs:dev; apps/docs/Dockerfile, deploy/docs)
+docs              the guides: getting started, deployment, security, versions
 scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs, the tarballs
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 UPGRADING.md      what changes for apps from one version to the next
@@ -177,6 +177,7 @@ UPGRADING.md      what changes for apps from one version to the next
 pnpm run ci            # everything, as CI runs it (pnpm ci without `run` is pnpm's clean install)
 pnpm test              # the test suite; test:pgsql, test:redis, test:s3 against the containers (docker compose up -d)
 pnpm docs:dev          # the docs on http://localhost:3970
+pnpm docs:image        # the docs' image (apps/docs/Dockerfile): built, run read-only and behind Caddy (deploy/docs) — part of `image`
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
 pnpm pack:smoke        # create-bespoke-app from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-bespoke-app (a test fails while they differ)

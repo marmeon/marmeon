@@ -1,18 +1,19 @@
 import { existsSync, readdirSync, readFileSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import type { RouteBinder } from '@bespokecore/http';
-import docsConfig, { PACKAGES, type DocsDefinition, type PackageName } from '../../docs.config.ts';
+import docsConfig, { GUIDES_GROUP, PACKAGES, type DocsDefinition, type DocsGuide } from '../../docs.config.ts';
 import { createCodeHighlighter, type CodeHighlighter } from './highlight.ts';
 import { renderMarkdown, type RenderedMarkdown } from './markdown.ts';
 import { SearchIndex, type SearchResult } from './search.ts';
 import type { DocNode, TocEntry } from './types.ts';
 
-/** A page: the root README (`/`) or a package's (`/packages/<name>`). */
+/** A page: the root README (`/`), a package's (`/packages/<name>`) or a guide (`/guides/<slug>`). */
 export interface DocPage {
-  /** The package's name — `null` for the start page. */
-  readonly name: PackageName | null;
+  readonly kind: 'home' | 'package' | 'guide';
+  /** The package's name or the guide's slug — `null` for the start page. */
+  readonly name: string | null;
   readonly path: string;
-  /** The README's place in the repository: `packages/core/README.md`. */
+  /** The file's place in the repository: `packages/core/README.md`, `docs/deployment.md`. */
   readonly file: string;
   readonly title: string;
   readonly group: string | null;
@@ -23,9 +24,9 @@ export interface DocPage {
   readonly fileLinks: readonly string[];
 }
 
-/** The side navigation: the groups of `docs.config.ts`, each package with its page. */
+/** The side navigation: the guides, then the groups of `docs.config.ts` — each entry with its page. */
 export interface Navigation {
-  readonly groups: readonly { readonly title: string; readonly packages: readonly { readonly name: string; readonly path: string }[] }[];
+  readonly groups: readonly { readonly title: string; readonly pages: readonly { readonly name: string; readonly label: string; readonly path: string }[] }[];
 }
 
 /** The docs cannot start: a README without its place in `docs.config.ts`, or a place without its README. */
@@ -40,7 +41,7 @@ export class DocsError extends Error {
 }
 
 export interface DocsRepositoryOptions {
-  /** The repository: `README.md` and `packages/<name>/README.md`. */
+  /** The repository: `README.md`, `packages/<name>/README.md`, `docs/*.md` and the guides at the root. */
   readonly source: string;
   /** Re-read when a README changes (development). */
   readonly watch?: boolean;
@@ -52,14 +53,15 @@ export interface DocsRepositoryOptions {
 interface Loaded {
   readonly home: DocPage;
   readonly pages: ReadonlyMap<string, DocPage>;
+  readonly guides: ReadonlyMap<string, DocPage>;
   readonly navigation: Navigation;
   readonly index: SearchIndex;
 }
 
 /**
- * The READMEs as pages — read, rendered and indexed once when the app boots (in development again when one changes). An
- * app singleton that holds only the repository's content: nothing of a request, nothing a request could change. Also the
- * route binder of `/packages/:name` — an unknown package is a 404.
+ * The READMEs and guides as pages — read, rendered and indexed once when the app boots (in development again when one
+ * changes). An app singleton that holds only the repository's content: nothing of a request, nothing a request could change.
+ * Also the route binder of `/packages/:name` — an unknown package is a 404 ({@link GuideBinding} binds `/guides/:guide`).
  */
 export class DocsRepository implements RouteBinder<DocPage> {
   readonly #options: DocsRepositoryOptions;
@@ -95,21 +97,27 @@ export class DocsRepository implements RouteBinder<DocPage> {
     return this.#state().pages.get(name);
   }
 
-  /** Every page, the start page first, then in the order of the navigation. */
+  guide(slug: string): DocPage | undefined {
+    return this.#state().guides.get(slug);
+  }
+
+  /** Every page, the start page first, then in the order of the navigation (the guides, the packages). */
   pages(): DocPage[] {
-    const { home, pages } = this.#state();
-    return [home, ...pages.values()];
+    const { home, guides, pages } = this.#state();
+    return [home, ...guides.values(), ...pages.values()];
   }
 
   navigation(): Navigation {
     return this.#state().navigation;
   }
 
-  /** The pages before and after `name` in the navigation. */
-  neighbours(name: string): { previous: DocPage | null; next: DocPage | null } {
-    const pages = [...this.#state().pages.values()];
-    const at = pages.findIndex((page) => page.name === name);
-    return { previous: pages[at - 1] ?? null, next: pages[at + 1] ?? null };
+  /** The pages before and after `page` in the navigation — among the guides for a guide, among the packages for a package. */
+  neighbours(page: DocPage): { previous: DocPage | null; next: DocPage | null } {
+    const { guides, pages } = this.#state();
+    const list = [...(page.kind === 'guide' ? guides : pages).values()];
+    const at = list.findIndex((other) => other.path === page.path);
+    if (at === -1) return { previous: null, next: null };
+    return { previous: list[at - 1] ?? null, next: list[at + 1] ?? null };
   }
 
   search(query: string, options?: { limit?: number }): SearchResult[] {
@@ -129,6 +137,7 @@ export class DocsRepository implements RouteBinder<DocPage> {
   #read(highlighter: CodeHighlighter): Loaded {
     const { source } = this.#options;
     const docs = this.#options.docs ?? docsConfig;
+    const guides = docs.guides ?? [];
     const problems: string[] = [];
 
     const listed = new Map<string, string>();
@@ -155,25 +164,30 @@ export class DocsRepository implements RouteBinder<DocPage> {
       if (!found.includes(name)) problems.push(`docs.config.ts lists '${name}', but packages/${name} does not exist in ${source}.`);
     }
     if (!existsSync(join(source, 'README.md'))) problems.push(`${join(source, 'README.md')} is missing — the start page.`);
+    problems.push(...checkGuides(source, guides));
     if (problems.length > 0) throw new DocsError(problems);
 
     const names = new Set<string>(PACKAGES);
+    const guideOf = new Map(guides.map((guide) => [guide.file, `/guides/${guide.slug}`]));
     const pageOf = (file: string) => {
       if (file === 'README.md') return '/';
+      const guide = guideOf.get(file);
+      if (guide) return guide;
       const name = /^packages\/([^/]+)\/README\.md$/.exec(file)?.[1];
       return name && names.has(name) ? `/packages/${name}` : undefined;
     };
     const render = (file: string): RenderedMarkdown =>
       renderMarkdown(readFileSync(join(source, file), 'utf8'), { file, pageOf, highlight: highlighter.highlight });
-    const page = (name: PackageName | null, file: string, group: string | null): { page: DocPage; rendered: RenderedMarkdown } => {
+    const page = (kind: DocPage['kind'], name: string | null, file: string, group: string | null): { page: DocPage; rendered: RenderedMarkdown } => {
       const rendered = render(file);
       return {
         rendered,
         page: {
+          kind,
           name,
           path: pageOf(file)!,
           file,
-          title: rendered.title || (name ? `@bespokecore/${name}` : 'BespokeCore'),
+          title: rendered.title || (kind === 'package' ? `@bespokecore/${name}` : kind === 'guide' ? name! : 'BespokeCore'),
           group,
           body: rendered.body,
           toc: rendered.toc,
@@ -183,30 +197,41 @@ export class DocsRepository implements RouteBinder<DocPage> {
       };
     };
 
-    const home = page(null, 'README.md', null);
+    const home = page('home', null, 'README.md', null);
     const all = [home];
+    const guidePages = new Map<string, DocPage>();
+    for (const guide of guides) {
+      const entry = page('guide', guide.slug, guide.file, GUIDES_GROUP);
+      guidePages.set(guide.slug, entry.page);
+      all.push(entry);
+    }
     const pages = new Map<string, DocPage>();
     for (const group of docs.groups) {
       for (const name of group.packages) {
-        const entry = page(name, `packages/${name}/README.md`, group.title);
+        const entry = page('package', name, `packages/${name}/README.md`, group.title);
         pages.set(name, entry.page);
         all.push(entry);
       }
     }
+    const late = new Set(guides.filter((guide) => guide.changes).map((guide) => `/guides/${guide.slug}`));
     const index = new SearchIndex(
       all.flatMap(({ page: { path, title }, rendered }) =>
-        rendered.sections.map((section) => ({ path, page: title, heading: section.heading, anchor: section.anchor, text: section.text })),
+        rendered.sections.map((section) => ({ path, page: title, heading: section.heading, anchor: section.anchor, text: section.text, late: late.has(path) })),
       ),
     );
     const navigation: Navigation = {
-      groups: docs.groups.map((group) => ({ title: group.title, packages: group.packages.map((name) => ({ name, path: `/packages/${name}` })) })),
+      groups: [
+        ...(guides.length > 0 ? [{ title: GUIDES_GROUP, pages: guides.map((guide) => ({ name: guide.slug, label: guide.label, path: `/guides/${guide.slug}` })) }] : []),
+        ...docs.groups.map((group) => ({ title: group.title, pages: group.packages.map((name) => ({ name, label: name, path: `/packages/${name}` })) })),
+      ],
     };
-    return { home: home.page, pages, navigation, index };
+    return { home: home.page, pages, guides: guidePages, navigation, index };
   }
 
-  /** Development: the root and every package directory, for a changed, new or removed README (editors replace files). */
+  /** Development: the root, `docs/` and every package directory, for a changed, new or removed README or guide (editors replace files). */
   #watch(): void {
     const { source } = this.#options;
+    const guides = new Set((this.#options.docs ?? docsConfig).guides?.map((guide) => guide.file) ?? []);
     const changed = () => {
       clearTimeout(this.#reload);
       this.#reload = setTimeout(() => {
@@ -217,13 +242,49 @@ export class DocsRepository implements RouteBinder<DocPage> {
         }
       }, 50);
     };
-    const directories = [source, join(source, 'packages'), ...PACKAGES.map((name) => join(source, 'packages', name))];
+    const directories = [source, join(source, 'packages'), join(source, 'docs'), ...PACKAGES.map((name) => join(source, 'packages', name))];
     for (const directory of directories.filter((path) => existsSync(path))) {
       const watcher = watch(directory, (_event, file) => {
-        if (file === null || file === 'README.md' || directory.endsWith('packages')) changed();
+        if (file === null || file === 'README.md' || directory.endsWith('packages') || directory.endsWith('docs') || (directory === source && guides.has(file))) changed();
       });
       watcher.unref();
       this.#watchers.push(watcher);
     }
+  }
+}
+
+/** What a guide list and the repository must agree on: unique slugs and files, every listed file there, every `docs/*.md` listed. */
+function checkGuides(source: string, guides: readonly DocsGuide[]): string[] {
+  const problems: string[] = [];
+  const slugs = new Set<string>();
+  const files = new Set<string>();
+  for (const guide of guides) {
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(guide.slug)) problems.push(`The guide slug '${guide.slug}' in docs.config.ts is not lower-case words with dashes.`);
+    if (slugs.has(guide.slug)) problems.push(`The guide slug '${guide.slug}' is listed twice in docs.config.ts.`);
+    if (files.has(guide.file)) problems.push(`${guide.file} is listed twice in docs.config.ts.`);
+    slugs.add(guide.slug);
+    files.add(guide.file);
+    if (!/^[^/]+\.md$|^docs\/[^/]+\.md$/.test(guide.file)) problems.push(`The guide ${guide.file} is neither a Markdown file at the root nor in docs/.`);
+    else if (!existsSync(join(source, guide.file))) problems.push(`docs.config.ts lists the guide ${guide.file}, but it does not exist in ${source}.`);
+  }
+  const docsDir = join(source, 'docs');
+  if (existsSync(docsDir)) {
+    for (const name of readdirSync(docsDir).filter((file) => file.endsWith('.md')).sort()) {
+      if (!files.has(`docs/${name}`)) problems.push(`docs/${name} has no entry in docs.config.ts — add it to the guides.`);
+    }
+  }
+  return problems;
+}
+
+/** `/guides/:guide` → its page, or a 404. */
+export class GuideBinding implements RouteBinder<DocPage> {
+  readonly #docs: DocsRepository;
+
+  constructor(docs: DocsRepository) {
+    this.#docs = docs;
+  }
+
+  resolveRouteBinding(value: string): DocPage | undefined {
+    return this.#docs.guide(value);
   }
 }

@@ -1,0 +1,77 @@
+# The docs (apps/docs) on one server behind Caddy (E142): Caddy fetches the certificate for DOCS_DOMAIN and speaks HTTP/1.1, 2 and 3;
+# the docs answer only Caddy. Run it from this directory, next to a .env with the two settings below (never in the repository —
+# .gitignore and the image's .dockerignore keep it out):
+#
+#   DOCS_DOMAIN=docs.example.com
+#   APP_KEY=base64:…            # docker run --rm bespokecore-docs key:generate --show  (or: openssl rand -base64 32, prefixed base64:)
+#
+#   docker compose up -d --build        # build the image from this checkout and start both containers
+#   docker compose logs -f docs         # the docs' JSON log
+#
+# Updates, rollback, backups: the deployment guide in the vault (BespokeCore/Doku-App-Deployment.md) and docs/deployment.md.
+name: bespokecore-docs
+
+services:
+  docs:
+    build:
+      context: ../..
+      dockerfile: apps/docs/Dockerfile
+    # DOCS_TAG names a build (e.g. the commit): DOCS_TAG=$(git rev-parse --short HEAD) docker compose up -d --build; an older tag
+    # that is still on the machine starts again without a build (the rollback).
+    image: bespokecore-docs:${DOCS_TAG:-latest}
+    # An init process in front of bespoke: it passes signals on and reaps zombies.
+    init: true
+    restart: unless-stopped
+    # The image's files cannot change (E160: the discovery manifest is built in); only storage/ and /tmp are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      APP_KEY: ${APP_KEY:?set APP_KEY in deploy/docs/.env (bespoke key:generate --show)}
+      APP_URL: https://${DOCS_DOMAIN:?set DOCS_DOMAIN in deploy/docs/.env, e.g. docs.example.com}
+      APP_NAME: BespokeCore docs
+      # Only Caddy shares the network below with the docs — so its X-Forwarded-For/-Proto/-Host count (E162): the search's rate
+      # limit sees each visitor's address, not Caddy's. Change the subnets together with the network.
+      TRUSTED_PROXIES: 172.30.80.0/24,fd5b:c0de:d0c5::/64
+    volumes:
+      # The rate limit's cache and Node's compile cache — nothing to back up; a new volume only makes the first start slower.
+      - storage:/app/storage
+    networks:
+      - edge
+    # SIGTERM → drain (at most 10 s) — before Docker sends SIGKILL.
+    stop_grace_period: 20s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOCS_DOMAIN: ${DOCS_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The certificates and Caddy's ACME account: keep this volume (a new one asks Let's Encrypt again — rate-limited).
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    depends_on:
+      docs:
+        condition: service_healthy
+
+networks:
+  edge:
+    # With IPv6 on the network, Docker forwards a visitor's IPv6 connection to Caddy as it is; without, Caddy would see Docker's
+    # gateway for every IPv6 visitor.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.80.0/24
+        - subnet: fd5b:c0de:d0c5::/64
+
+volumes:
+  storage:
+  caddy_data:
+  caddy_config:

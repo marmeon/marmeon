@@ -26,6 +26,7 @@
     "pack:check": "node scripts/pack-check.ts",
     "pack:smoke": "node scripts/pack-smoke.ts",
     "image:smoke": "node scripts/image-smoke.ts",
+    "docs:image": "node scripts/docs-image.ts",
     "bench": "node scripts/bench/index.ts",
     "check-changesets": "node scripts/check-changesets.ts",
     "release:version": "changeset version",

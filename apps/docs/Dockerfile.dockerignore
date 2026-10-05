@@ -1,0 +1,28 @@
+# What never enters the build context of apps/docs/Dockerfile (the repository's root) — and so never the image. Docker reads
+# this file because it sits next to the Dockerfile under its name.
+#
+# Every .env file of every app and package: the image gets its configuration from the environment when it runs (APP_KEY,
+# APP_URL), and deploy/docs/.env holds the server's secrets — next to the compose file, inside this context.
+**/.env*
+# Installed and built inside the image.
+**/node_modules
+**/dist
+**/.bespoke
+**/*.tsbuildinfo
+# What apps write when they run.
+apps/*/storage
+# The other apps: only their package.json — pnpm installs the workspace from the lockfile, which names them.
+apps/web-app/**
+!apps/web-app/package.json
+apps/blank-app/**
+!apps/blank-app/package.json
+# Not needed to build.
+.git
+.github
+.claude
+.idea
+.changeset
+deploy
+coverage
+**/*.log
+**/.DS_Store

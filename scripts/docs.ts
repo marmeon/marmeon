@@ -5,10 +5,11 @@
  *   pnpm docs:check     # bespoke build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
- * The smoke test asks the running production build what the acceptance asks: the start page and every package page (200,
- * server-rendered), the search (`onOneServer` → the scheduler, `TracingChannel` → core), `/up`, no `Set-Cookie` on any
- * public page, caching headers (`public`, `ETag`, `Vary`, `304`), an unknown package (404) and a 10 000-character query
- * (no 500).
+ * The smoke test asks the running production build what the acceptance asks: the start page, every guide (`docs/*.md`,
+ * `UPGRADING.md`, …) and every package page (200, server-rendered, the static `'self'` Content-Security-Policy without a
+ * nonce), the search (`onOneServer` → the scheduler, `TracingChannel` → core, `SHUTDOWN_DELAY` → the deployment guide), `/up`,
+ * no `Set-Cookie` on any public page, caching headers (`public`, `ETag`, `Vary`, `304`), an unknown package and guide (404)
+ * and a 10 000-character query (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -16,12 +17,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PACKAGES } from '../apps/docs/docs.config.ts';
+import docsConfig, { PACKAGES } from '../apps/docs/docs.config.ts';
 
 const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
 const bespoke = fileURLToPath(new URL('../packages/cli/bin/bespoke.js', import.meta.url));
 const mode = process.argv[2];
+const guides = docsConfig.guides ?? [];
+/** The docs' policy in production (apps/docs DocsServiceProvider, DOCS_CSP). */
+const DOCS_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
 if (mode === 'dev') await dev();
 else if (mode === 'check') process.exitCode = await check();
@@ -71,7 +75,7 @@ async function check(): Promise<number> {
     console.error(`docs:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
     return 1;
   }
-  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${PACKAGES.length + 1} pages) and stop in ${seconds} s`);
+  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${PACKAGES.length + guides.length + 1} pages) and stop in ${seconds} s`);
   return 0;
 }
 
@@ -91,6 +95,10 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     expect(response.status === 200, `${path}: status ${response.status}, expected 200`);
     expect(body.includes(contains), `${path}: the server-rendered page lacks "${contains}"`);
     expect(!response.headers.has('set-cookie'), `${path}: sets a cookie (${response.headers.get('set-cookie')})`);
+    // Cached publicly, so no nonce (E147): scripts from this origin only — and the document carries no nonce attribute.
+    const policy = response.headers.get('content-security-policy');
+    expect(policy === DOCS_POLICY, `${path}: Content-Security-Policy is "${policy}", expected "${DOCS_POLICY}"`);
+    expect(!/<[a-z]+ [^>]*\bnonce=/.test(body), `${path}: a tag carries a nonce attribute`);
     return response;
   };
 
@@ -110,6 +118,11 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     const { name: npmName } = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8')) as { name: string };
     await publicPage(`/packages/${name}`, `${npmName}</h1>`);
   }
+  // Each guide's heading is its file's first `#` line.
+  for (const guide of guides) {
+    const title = /^# (.+)$/m.exec(readFileSync(join(root, guide.file), 'utf8'))?.[1] ?? guide.slug;
+    await publicPage(`/guides/${guide.slug}`, `${title.replace(/&/g, '&amp;')}</h1>`);
+  }
 
   const search = async (q: string, page: string) => {
     const response = await publicPage(`/search?q=${encodeURIComponent(q)}`, `href="${page}`);
@@ -121,9 +134,12 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   };
   await search('onOneServer', '/packages/scheduler');
   await search('TracingChannel', '/packages/core');
+  await search('SHUTDOWN_DELAY', '/guides/deployment');
 
   const missing = await get('/packages/no-such-package');
   expect(missing.response.status === 404, `/packages/no-such-package: status ${missing.response.status}, expected 404`);
+  const noGuide = await get('/guides/no-such-guide');
+  expect(noGuide.response.status === 404, `/guides/no-such-guide: status ${noGuide.response.status}, expected 404`);
   const long = await get(`/search?q=${'a'.repeat(10_000)}`);
   expect(long.response.status < 500, `/search with 10 000 characters: status ${long.response.status}`);
 
