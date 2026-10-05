@@ -62,20 +62,24 @@ describe('private registration (E146)', () => {
     // The configured costs (OWASP), not the tests' cheap ones: the hash is what takes the time.
     app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    const fresh: number[] = [];
-    const known: number[] = [];
-    // Five of each, taking turns — ten sign-ups, what the throttle allows in a minute.
-    for (let i = 0; i < 5; i++) {
-      for (const [times, email] of [[fresh, `person${i}@example.com`], [known, 'ada@example.com']] as const) {
+    // Pairs — a new address and the known one right beside it, the order swapped every pair; twenty-one counted, the first pair
+    // warms up. Each known address is compared with the new one beside it and the median of those ratios counts: a busy machine
+    // slows both of a pair alike. A minute passes after every ten sign-ups (the throttle allows ten a minute from one address).
+    const ratios: number[] = [];
+    for (let i = 0; i <= 21; i++) {
+      if (i > 0 && i % 5 === 0) app.travel({ seconds: 61 });
+      const pair = { fresh: 0, known: 0 };
+      for (const kind of i % 2 === 0 ? (['fresh', 'known'] as const) : (['known', 'fresh'] as const)) {
         const started = performance.now();
-        await register(email).assertRedirect('/register/sent');
-        times.push(performance.now() - started);
+        await register(kind === 'fresh' ? `person${i}@example.com` : 'ada@example.com').assertRedirect('/register/sent');
+        pair[kind] = performance.now() - started;
       }
+      if (i > 0) ratios.push(pair.known / pair.fresh);
     }
-    const median = (values: number[]) => values.toSorted((a, b) => a - b)[2]!;
-    expect(median(known) / median(fresh)).toBeGreaterThan(0.5);
-    expect(median(known) / median(fresh)).toBeLessThan(2);
-  });
+    const ratio = ratios.toSorted((a, b) => a - b)[10]!;
+    expect(ratio).toBeGreaterThan(0.5);
+    expect(ratio).toBeLessThan(2);
+  }, 30_000); // forty-four sign-ups at the configured hash costs — seconds on a busy machine
 
   it('checks the form live — but never says whether an address has an account', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });

@@ -239,26 +239,31 @@ describe('registration', () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    const fresh: number[] = [];
-    const known: number[] = [];
-    // Taking turns, eleven of each — the first pair warms up and is not counted; a minute passes after every ten sign-ups (the
-    // throttle allows ten a minute from one address).
-    for (let i = 0; i < 11; i++) {
+    // Pairs — a new address and the known one right beside it, the order swapped every pair; twenty-one counted, the first pair
+    // warms up. A sign-up's time swings with the machine's load (a full suite next door), so each known address is compared with
+    // the new one beside it and the median of those ratios counts: a slow stretch slows both of a pair alike, a lone stall moves
+    // one ratio, not the median. A minute passes after every ten sign-ups (the throttle allows ten a minute from one address).
+    const ratios: number[] = [];
+    const took = { fresh: [] as number[], known: [] as number[] };
+    for (let i = 0; i <= 21; i++) {
       if (i > 0 && i % 5 === 0) app.travel({ seconds: 61 });
-      for (const [times, email] of [[fresh, `person${i}@example.com`], [known, 'ada@example.com']] as const) {
+      const pair = { fresh: 0, known: 0 };
+      for (const kind of i % 2 === 0 ? (['fresh', 'known'] as const) : (['known', 'fresh'] as const)) {
         const started = performance.now();
-        await register({ email }).assertRedirect('/register/sent');
-        if (i > 0) times.push(performance.now() - started);
+        await register({ email: kind === 'fresh' ? `person${i}@example.com` : 'ada@example.com' }).assertRedirect('/register/sent');
+        pair[kind] = performance.now() - started;
       }
+      if (i === 0) continue;
+      ratios.push(pair.known / pair.fresh);
+      took.fresh.push(pair.fresh);
+      took.known.push(pair.known);
     }
-    const median = (values: number[]) => {
-      const sorted = values.toSorted((a, b) => a - b);
-      return (sorted[4]! + sorted[5]!) / 2;
-    };
-    const ratio = median(known) / median(fresh);
-    expect(ratio).toBeGreaterThan(0.75);
-    expect(ratio).toBeLessThan(1.33);
-  });
+    const median = (values: number[]) => values.toSorted((a, b) => a - b)[(values.length - 1) / 2]!;
+    const ratio = median(ratios);
+    const seen = `median of ${ratios.length} paired ratios ${ratio.toFixed(3)} (median known ${median(took.known).toFixed(1)} ms, new ${median(took.fresh).toFixed(1)} ms)`;
+    expect(ratio, seen).toBeGreaterThan(0.75);
+    expect(ratio, seen).toBeLessThan(1.33);
+  }, 30_000); // forty-four sign-ups at the configured hash costs — seconds on a busy machine
 
   it('checks the password: length, confirmation — and never flashes it', async () => {
     const short = await register({ password: 'short', password_confirmation: 'short' }).assertInvalid<RegisterController>({ password: 'The password needs at least 8 characters.' });
