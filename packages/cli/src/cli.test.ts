@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -410,18 +411,21 @@ describe('bespoke start', () => {
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
   /**
-   * `bespoke start` until `servers` servers listen. The system picks the port (`PORT=0`; the start line names it) — a port
-   * chosen here could be held by another program on 127.0.0.1 only (1Password listens on 127.0.0.1:39127): the server, on
-   * every interface, would start next to it and the requests to 127.0.0.1 would reach the other program (a 404 from `/up`).
+   * `bespoke start` until `servers` servers listen, on the address the requests go to: `HOST=127.0.0.1` (W9.2). On every interface
+   * (`::`, no HOST) macOS lets the server — even with the port the system picked for it (`PORT=0`) — listen beside another program
+   * that holds the same port on 127.0.0.1 only (1Password on 127.0.0.1:39127, W8.13); a request to 127.0.0.1 then reaches that
+   * program (a 404, a 501 from `/up`). Bound to 127.0.0.1 the start fails instead (EADDRINUSE). The requests go to `base`: the
+   * address and port the start line names.
    */
   async function start(env: Record<string, string>, args: string[] = [], servers = 1) {
     const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
-    const child = spawn(process.execPath, [bin, 'start', ...args], { cwd: app, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [bin, 'start', ...args], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
     const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
-    const ports = () => [...output.matchAll(/ on http:\/\/localhost:(\d+) /g)].map((match) => Number(match[1]));
+    const listening = () => [...output.matchAll(/ on http:\/\/([^\s/]+):(\d+) /g)].map((match) => ({ host: match[1]!, port: Number(match[2]) }));
+    const ports = () => listening().map(({ port }) => port);
     const deadline = Date.now() + 20_000;
     while (ports().length < servers) {
       if (child.exitCode !== null || Date.now() > deadline) {
@@ -433,7 +437,8 @@ describe('bespoke start', () => {
     }
     // The workers of a cluster share the one port the primary got.
     expect(new Set(ports()).size).toBe(1);
-    return { child, port: ports()[0]!, exited, output: () => output };
+    const { host, port } = listening()[0]!;
+    return { child, port, base: `http://${host}:${port}`, exited, output: () => output };
   }
 
   it('is one process, respects NODE_ENV=staging — protected, JSON logs — and drains on SIGTERM (E139, E159, E102)', async () => {
@@ -441,9 +446,9 @@ describe('bespoke start', () => {
     try {
       // No launcher, no child: the process that was started is the server.
       expect(spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout).toBe('');
-      expect((await fetch(`http://127.0.0.1:${server.port}/up`)).status).toBe(200);
+      expect((await fetch(`${server.base}/up`)).status).toBe(200);
       const line = server.output().split('\n').find((entry) => entry.includes('BespokeCore in'))!;
-      expect(JSON.parse(line).msg).toMatch(new RegExp(`^BespokeCore in staging \\(protected\\) on http://localhost:${server.port} \\(the build; `));
+      expect(JSON.parse(line).msg).toMatch(new RegExp(`^BespokeCore in staging \\(protected\\) on http://127.0.0.1:${server.port} \\(the build; `));
     } finally {
       server.child.kill('SIGTERM');
     }
@@ -458,7 +463,7 @@ describe('bespoke start', () => {
     writeFileSync(ssr, "console.log('ssr: loading');\nawait new Promise((resolve) => setTimeout(resolve, 800));\nexport const render = async () => ({ html: '' });\n");
     try {
       const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
-      const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info', NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'info', NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '';
       child.stdout.on('data', (chunk) => (output += chunk));
       child.stderr.on('data', (chunk) => (output += chunk));
@@ -470,7 +475,7 @@ describe('bespoke start', () => {
       }
       child.kill('SIGTERM');
       expect(await exited).toEqual({ code: 0, signal: null });
-      expect(output).toMatch(/ on http:\/\/localhost:\d+ /);
+      expect(output).toMatch(/ on http:\/\/127\.0\.0\.1:\d+ /);
       expect(output).toContain('SIGTERM received, shutting down');
     } finally {
       writeFileSync(ssr, original);
@@ -486,11 +491,11 @@ describe('bespoke start', () => {
       // The primary forked two workers (node:cluster) — no launcher, no other process.
       const workers = spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
       expect(workers).toHaveLength(2);
-      expect((await fetch(`http://127.0.0.1:${server.port}/up`)).status).toBe(200);
+      expect((await fetch(`${server.base}/up`)).status).toBe(200);
       // A worker's warnings after its boot are said (its boot's were not: the primary said them).
-      expect((await fetch(`http://127.0.0.1:${server.port}/api/warn`)).status).toBe(200);
+      expect((await fetch(`${server.base}/api/warn`)).status).toBe(200);
       // A request in flight in each worker (round-robin), then SIGTERM to the primary only — as `docker stop` sends it.
-      slow = Promise.all([fetch(`http://127.0.0.1:${server.port}/api/slow`), fetch(`http://127.0.0.1:${server.port}/api/slow`)]).then(([a]) => a);
+      slow = Promise.all([fetch(`${server.base}/api/slow`), fetch(`${server.base}/api/slow`)]).then(([a]) => a);
       await new Promise((resolve) => setTimeout(resolve, 150));
     } finally {
       server.child.kill('SIGTERM');
@@ -507,6 +512,31 @@ describe('bespoke start', () => {
     expect(output.split('warned at runtime').length - 1).toBe(1);
   }, 30_000);
 
+  it('a program on 127.0.0.1 at the server\'s port: the start fails (EADDRINUSE) — never a server beside it that the requests miss (W9.2)', async () => {
+    // What made `--workers=2` flaky: the server on every interface started beside a program holding its port on 127.0.0.1, and
+    // `/up` reached that program (501). The helper binds the address it asks.
+    const program = createHttpServer((_request, response) => {
+      response.statusCode = 501;
+      response.end();
+    });
+    await new Promise<void>((resolve) => program.listen(0, '127.0.0.1', resolve));
+    const port = (program.address() as AddressInfo).port;
+    try {
+      const outcome = await start({ NODE_ENV: 'production', PORT: String(port) }).then(
+        async (server) => {
+          const status = (await fetch(`${server.base}/up`)).status;
+          server.child.kill('SIGTERM');
+          await server.exited;
+          return `started beside the program on 127.0.0.1:${port} — ${server.base}/up answered ${status}`;
+        },
+        (error: Error) => error.message,
+      );
+      expect(outcome).toContain('EADDRINUSE');
+    } finally {
+      program.close();
+    }
+  }, 30_000);
+
   it('the workers\' mark left in the environment silences no single server: its boot warnings are said', async () => {
     rmSync(join(app, '.bespoke/injections.json'), { force: true });
     const server = await start({ NODE_ENV: 'production', BESPOKE_CLUSTER_WORKER: '1' });
@@ -519,11 +549,11 @@ describe('bespoke start', () => {
     const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
     // The port is taken: every worker fails to listen — the cluster must end, not fork them forever.
     const busy = createServer();
-    await new Promise<void>((resolve) => busy.listen(0, resolve));
+    await new Promise<void>((resolve) => busy.listen(0, '127.0.0.1', resolve));
     try {
       const port = (busy.address() as AddressInfo).port;
       const failed = await new Promise<{ code: number | null; output: string }>((resolve) => {
-        const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), NODE_ENV: 'production' } });
+        const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: String(port), NODE_ENV: 'production' } });
         let output = '';
         child.stdout.on('data', (chunk) => (output += chunk));
         child.stderr.on('data', (chunk) => (output += chunk));
@@ -541,7 +571,7 @@ describe('bespoke start', () => {
 
   it('SHUTDOWN_DELAY=1 (E163): after SIGTERM /up/ready 503 and requests answered for a second, then the drain; SIGINT skips it', async () => {
     const server = await start({ NODE_ENV: 'production', SHUTDOWN_DELAY: '1' });
-    const base = `http://127.0.0.1:${server.port}`;
+    const base = server.base;
     const signalled = performance.now();
     server.child.kill('SIGTERM');
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -582,7 +612,7 @@ describe('bespoke start', () => {
       const server = await start({ NODE_ENV: 'staging' });
       server.child.kill('SIGTERM');
       expect(await server.exited).toBe(0);
-      expect(server.output()).toContain(`BespokeCore in staging (protected) on http://localhost:${server.port}`);
+      expect(server.output()).toContain(`BespokeCore in staging (protected) on http://127.0.0.1:${server.port}`);
       expect(server.output()).not.toContain('comes from .env');
     } finally {
       rmSync(join(app, '.env'));
@@ -593,7 +623,7 @@ describe('bespoke start', () => {
     const server = await start({});
     server.child.kill('SIGTERM');
     expect(await server.exited).toBe(0);
-    expect(server.output()).toContain('BespokeCore in production (protected) on http://localhost:');
+    expect(server.output()).toContain('BespokeCore in production (protected) on http://127.0.0.1:');
   }, 30_000);
 
   /** One start until it listens, then SIGTERM: its output and the modules it loaded. */

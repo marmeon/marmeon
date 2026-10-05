@@ -66,9 +66,9 @@ describe('stopping the server', () => {
         }),
       ],
     });
-    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
-    expect((await fetch(`http://localhost:${port}/api/work`, { method: 'POST' })).status).toBe(200);
+    expect((await fetch(`http://127.0.0.1:${port}/api/work`, { method: 'POST' })).status).toBe(200);
     await running.close();
     expect(done).toEqual(['mail']);
     await app.shutdown();
@@ -87,9 +87,9 @@ describe('stopping the server', () => {
         }),
       ],
     });
-    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development', drainTimeoutMs: 200 });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development', drainTimeoutMs: 200 });
     const { port } = running.server.address() as AddressInfo;
-    await fetch(`http://localhost:${port}/api/hang`, { method: 'POST' });
+    await fetch(`http://127.0.0.1:${port}/api/hang`, { method: 'POST' });
     const started = performance.now();
     await running.close();
     expect(performance.now() - started).toBeLessThan(1_000);
@@ -104,7 +104,7 @@ describe('stopping the server', () => {
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'hello', apiRoutes: defineRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
     });
-    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     const base = `http://127.0.0.1:${port}`;
     expect((await fetch(`${base}/up/ready`)).status).toBe(200);
@@ -132,7 +132,7 @@ describe('stopping the server', () => {
       env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     });
-    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const started = performance.now();
     await running.close({ immediately: true });
     expect(performance.now() - started).toBeLessThan(2_000);
@@ -156,7 +156,7 @@ describe('stopping the server', () => {
       child.once('exit', () => reject(new Error(`The server did not start: ${errors}`)));
     });
     const port = await listening;
-    expect((await fetch(`http://localhost:${port}/api/reset`, { method: 'POST' })).status).toBe(200);
+    expect((await fetch(`http://127.0.0.1:${port}/api/reset`, { method: 'POST' })).status).toBe(200);
     child.kill('SIGTERM'); // the response is out, the mail not yet
     const [code] = (await once(child, 'exit')) as [number | null];
     expect(errors).not.toMatch(/Deferred work failed/);

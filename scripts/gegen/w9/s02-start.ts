@@ -129,6 +129,14 @@ export default defineGegenproben({
       expect: /expected \[ true, true, true, true \] to deeply equal \[ false, false, false, false \]/,
       masks: 'G8',
     },
+    // --- Process tests on the address they ask (follow-up: the --workers=2 flake, class W8.13) --------------------------------------
+    {
+      id: 'G11',
+      title: 'the start helper of the CLI tests binds every interface again: the server starts beside a program holding its port on 127.0.0.1',
+      patch: [{ file: 'packages/cli/src/cli.test.ts', find: "APP_KEY: key, HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'info', ...env }", replace: "APP_KEY: key, PORT: '0', LOG_LEVEL: 'info', ...env }" }],
+      run: cliTest('a program on 127.0.0.1 at the server'),
+      expect: /expected 'started beside the program on 127\.0\.0.* to contain 'EADDRINUSE'/, // Vitest cuts the value short
+    },
     // --- The scaffolder: <title>, pnpm ---------------------------------------------------------------------------------------------
     {
       id: 'G9',

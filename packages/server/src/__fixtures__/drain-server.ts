@@ -43,7 +43,7 @@ const app = await createApplication({
   providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, TransportProvider],
   modules: [defineModule({ name: 'reset', apiRoutes: defineRoutes((Route) => Route.post('/reset', SendResetLinkController)) })],
 });
-const server = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+const server = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
 process.once('SIGTERM', async () => {
   await server.close();
   await app.shutdown();

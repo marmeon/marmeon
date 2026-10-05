@@ -63,7 +63,8 @@ function environment(port: number, extra: Record<string, string> = {}): NodeJS.P
   for (const [key, value] of Object.entries(process.env)) {
     if (!/^(npm_|PNPM_|BESPOKE_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) env[key] = value;
   }
-  return { ...env, PORT: String(port), ...extra };
+  // On the address /up is asked at (W9.2): on every interface the server could start beside a program holding the port on 127.0.0.1.
+  return { ...env, HOST: '127.0.0.1', PORT: String(port), ...extra };
 }
 
 /** One `bespoke start` until `/up` answers 200, in milliseconds; then SIGTERM and wait for the exit. */

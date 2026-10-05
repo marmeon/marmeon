@@ -261,7 +261,7 @@ class Smoke {
     const child = spawn(join(this.app, 'node_modules/.bin/bespoke'), ['start'], {
       cwd: this.app,
       // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example (E170).
-      env: { ...this.env, NODE_ENV: 'production', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}` },
+      env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}` },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

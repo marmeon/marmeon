@@ -25,17 +25,17 @@ describe('startServer', () => {
       env: { APP_KEY: generateKey(), PORT: '1' },
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     });
-    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
 
     // An open tab: Vite's HMR socket (an upgraded connection) plus an idle keep-alive connection.
-    const hmr = new WebSocket(`ws://localhost:${port}/`, 'vite-hmr');
+    const hmr = new WebSocket(`ws://127.0.0.1:${port}/`, 'vite-hmr');
     await new Promise((resolve, reject) => {
       hmr.onopen = resolve;
       hmr.onerror = reject;
     });
     const hmrClosed = new Promise((resolve) => (hmr.onclose = resolve));
-    expect((await fetch(`http://localhost:${port}/nope`, { headers: { connection: 'keep-alive' } })).status).toBe(404);
+    expect((await fetch(`http://127.0.0.1:${port}/nope`, { headers: { connection: 'keep-alive' } })).status).toBe(404);
 
     const started = performance.now();
     await running.close();
@@ -58,12 +58,12 @@ describe('startServer', () => {
         if (nodeEnv === undefined) delete process.env.NODE_ENV;
         else process.env.NODE_ENV = nodeEnv;
         // The production renderer: this root has no build — so no Vite, no source modules, no `/__open-in-editor`.
-        await expect(startServer({ app, ssrEntry: 'ssr.ts', port: 0 }), `NODE_ENV=${nodeEnv}`).rejects.toThrow(/No production build/);
+        await expect(startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0 }), `NODE_ENV=${nodeEnv}`).rejects.toThrow(/No production build/);
       }
       process.env.NODE_ENV = 'development';
-      const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0 });
+      const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0 });
       const { port } = running.server.address() as AddressInfo;
-      expect((await fetch(`http://localhost:${port}/@vite/client`)).status).toBe(200);
+      expect((await fetch(`http://127.0.0.1:${port}/@vite/client`)).status).toBe(200);
       await running.close();
     } finally {
       if (before === undefined) delete process.env.NODE_ENV;

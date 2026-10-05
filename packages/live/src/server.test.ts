@@ -33,14 +33,14 @@ describe('a live stream and the server (E104)', () => {
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ServerServiceProvider, LiveServiceProvider],
       modules: [defineModule({ name: 'board', routes: defineRoutes((Route) => void Route.get('/board', ShowBoardController)) })],
     });
-    const running = await startServer({ app, ssrEntry: 'ssr.ts', port: 0, mode: 'development' });
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
-    const answer = await fetch(`http://localhost:${port}/board`, { headers: { 'x-bespoke': 'true' } });
+    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-bespoke': 'true' } });
     const page = (await answer.json()) as PageObject;
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;
     const stream = new LiveStreamReader(
-      await fetch(`http://localhost:${port}/_bespoke/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } }),
+      await fetch(`http://127.0.0.1:${port}/_bespoke/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } }),
     );
     expect(await stream.hello()).toEqual({ seq: { 'board.1': 0 } });
     // Read-only: the stream sets no cookie.

@@ -59,7 +59,7 @@ async function check(): Promise<number> {
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   console.log(`docs:check: bespoke start on ${base}`);
-  const server = spawn(process.execPath, [bespoke, 'start'], { cwd: app, stdio: ['ignore', 'inherit', 'inherit'], env: { ...env, PORT: String(port), APP_URL: base } });
+  const server = spawn(process.execPath, [bespoke, 'start'], { cwd: app, stdio: ['ignore', 'inherit', 'inherit'], env: { ...env, HOST: '127.0.0.1', PORT: String(port), APP_URL: base } });
   const failures: string[] = [];
   let checks = 0;
   try {
