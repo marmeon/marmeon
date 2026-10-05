@@ -4,10 +4,11 @@
  *
  *   create-bespoke-app without a directory and without a terminal → exit 2 at once (never a prompt that waits)
  *   create-bespoke-app app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
- *     → migrate (development from .env) → vitest run → lint → build → start → GET /login 200
+ *     → migrate (development from .env) → vitest run → lint → build without .env (E187: no key; nothing shaped like an APP_KEY and
+ *     not the app's own in dist/ or .bespoke/) → start → GET /login 200
  *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
  *     .br, immutable), GET / 200 → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
- *   create-bespoke-app app-npm --minimal --npm --no-git → build → start → GET /up 200 → vitest run → discovery in npm's flat
+ *   create-bespoke-app app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
  *     node_modules finds every package the pnpm app's does (E151)
  *
  * Every `bespoke start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
@@ -30,7 +31,7 @@
  * and "skipped" — `pnpm run ci` reports that as skipped, never as green.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
@@ -140,6 +141,32 @@ export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Reco
   return manifest;
 }
 
+/** An `APP_KEY` as `bespoke key:generate` writes it — the shape a key (a real one or a placeholder) has in any file. */
+const KEY_SHAPE = /base64:[A-Za-z0-9+/]{43}=/;
+
+/**
+ * Every place in what `bespoke build` wrote (`dist/`, `.bespoke/`) that holds something shaped like an `APP_KEY` or one of
+ * `values` — the app's own secrets (E187: the build has none, so none may end up there). Compressed copies are skipped: their
+ * originals are read.
+ */
+export function secretsIn(app: string, values: readonly string[]): string[] {
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (!/\.(br|gz|png|jpe?g|webp|avif|ico|woff2?)$/.test(entry.name)) {
+        const text = readFileSync(path, 'utf8');
+        const what = [KEY_SHAPE.exec(text)?.[0], ...values.filter((value) => value !== '' && text.includes(value))].filter((hit) => hit !== undefined);
+        if (what.length > 0) found.push(`${relative(app, path)} (${[...new Set(what)].map((hit) => `${hit.slice(0, 12)}…`).join(', ')})`);
+      }
+    }
+  };
+  for (const dir of ['dist', '.bespoke']) walk(join(app, dir));
+  return found;
+}
+
 export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -194,6 +221,26 @@ class Smoke {
 
   bespoke(...args: string[]): string {
     return this.run(join(this.app, 'node_modules/.bin/bespoke'), args);
+  }
+
+  /**
+   * `bespoke build` as an image builds it (E187): without the app's `.env` — no key, no name, no database — then what it wrote must
+   * hold no secret: neither the app's `APP_KEY` nor anything shaped like one (a placeholder a build phase might have used).
+   */
+  buildWithoutEnv(): string {
+    const env = join(this.app, '.env');
+    const aside = join(this.app, '.env.aside-for-the-build');
+    renameSync(env, aside);
+    let output: string;
+    try {
+      output = this.bespoke('build');
+    } finally {
+      renameSync(aside, env);
+    }
+    const key = /^APP_KEY=(.*)$/m.exec(readFileSync(env, 'utf8'))?.[1] ?? '';
+    const leaked = secretsIn(this.app, [key]);
+    if (leaked.length > 0) throw new SmokeError(`bespoke build wrote a secret (or a placeholder key) into its output: ${leaked.join('; ')}`);
+    return output;
   }
 
   /**
@@ -373,8 +420,8 @@ async function main(): Promise<number> {
       return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
     await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));
-    await pnpmApp.step('bespoke build', () => {
-      pnpmApp.bespoke('build');
+    await pnpmApp.step('bespoke build without .env (no key, E187) → no secret in dist/ or .bespoke/', () => {
+      pnpmApp.buildWithoutEnv();
       // The injection lists of the app (E138): the auth module's controllers take their services through the constructor.
       const injections = JSON.parse(readFileSync(join(app, '.bespoke/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
@@ -397,7 +444,7 @@ async function main(): Promise<number> {
       if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
     });
-    await npmApp.step('bespoke build', () => npmApp.bespoke('build'));
+    await npmApp.step('bespoke build without .env (E187)', () => npmApp.buildWithoutEnv());
     await npmApp.step('bespoke start → GET /up 200', () => npmApp.serve('/up'));
     const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');
     // Discovery walks node_modules as Node resolves (E151): in npm's flat layout it finds every package pnpm's finds.

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ServiceProviderClass } from '@bespokecore/core';
+import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@bespokecore/core';
 import { channels, messageBase, trace, type CommandRunMessage } from '@bespokecore/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
@@ -63,7 +63,8 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // Boot the application unless the command works without it (generators, tooling).
   let app: Application | undefined;
   if (listing || !builtIn || builtIn.boots !== false) {
-    const loaded = await loadApplication(root);
+    // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `bespoke build` needs (E187).
+    const loaded = await loadApplication(root, !listing && builtIn?.boots === 'build' ? 'build' : 'run');
     if (loaded instanceof Error) {
       if (!listing) {
         // Node's code (ERR_…) beside its message: what one searches for.
@@ -149,8 +150,8 @@ async function printSolutions(output: Output, error: Error, root: string): Promi
   }
 }
 
-/** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it. */
-async function loadApplication(root: string): Promise<Application | Error> {
+/** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it (in the build phase: registers it, E187). */
+async function loadApplication(root: string, phase: ApplicationPhase): Promise<Application | Error> {
   const entry = join(root, 'bootstrap', 'app.ts');
   if (!existsSync(entry)) return new Error(`No BespokeCore app in ${root} (bootstrap/app.ts not found)`);
   try {
@@ -158,7 +159,7 @@ async function loadApplication(root: string): Promise<Application | Error> {
     if (!module.default || typeof module.default.root !== 'string') {
       return new Error('bootstrap/app.ts must `export default defineApplication({ … })`.');
     }
-    return await createApplication(module.default);
+    return await createApplication(phase === 'build' ? { ...module.default, phase } : module.default);
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
   }

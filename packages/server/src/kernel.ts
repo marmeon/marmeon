@@ -409,6 +409,8 @@ export function createHttpKernel(
       // The log line is written inside the request's trace (a tracer's span, E120: its `trace_id` in the line).
       const run = async () => {
         await next();
+        // Built only when it goes somewhere: with LOG_LEVEL=silent (or warn) neither the line nor its redacted path (E187).
+        if (logger.enabled?.('info') === false) return;
         const definition = matched.get(c.req.raw);
         const route = definition?.routeName;
         logger.info(`${c.req.method} ${redactor.path(c.req.path, definition?.path)} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });

@@ -1,4 +1,4 @@
-import type { Application, Container, ServiceProvider } from '@bespokecore/core';
+import { Application, type Container, type ServiceProvider } from '@bespokecore/core';
 import { Encrypter } from '@bespokecore/encryption';
 import { defineRoutes, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@bespokecore/router';
 import { AfterResponse } from './after-response.ts';
@@ -51,7 +51,7 @@ declare module '@bespokecore/core' {
 
 /**
  * Registers the router and the exception handler, sets up the `web` and `api`
- * middleware groups and loads every module's routes — Laravel's RouteServiceProvider.
+ * middleware groups and loads every module's routes (while registering: E187) — Laravel's RouteServiceProvider.
  * Discovered like any installed package through the `"bespoke"` field in this package's package.json.
  *
  * Order within `web`, whatever order packages boot in (lower priority first):
@@ -80,6 +80,22 @@ export class HttpServiceProvider implements ServiceProvider {
     container.scoped(SessionEpochController, (c) => new SessionEpochController(() => epochOfResolver(c)));
     container.singleton(ServerClosing);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
+
+    // The routes are loaded here, not in boot(): `bespoke build` writes the route types from an app that registers its providers
+    // and boots none (E187) — no secret, no connection. Loading a route builds nothing (controllers come per request).
+    const router = container.make(Router);
+    // The tabs' word from the server (W8 step 8): the epoch now — in the web group (the session and the locale say it), read-only
+    // (the kernel: it starts, writes and extends no session), no name (no route manifest ships it).
+    router.load(
+      { group: 'web' },
+      defineRoutes((Route) => {
+        Route.get(SESSION_PATH, SessionEpochController).internal();
+      }),
+    );
+    for (const module of container.make(Application).modules) {
+      if (module.routes) router.load({ group: 'web' }, module.routes);
+      if (module.apiRoutes) router.load({ group: 'api', prefix: '/api' }, module.apiRoutes);
+    }
   }
 
   boot(app: Application): void {
@@ -101,18 +117,5 @@ export class HttpServiceProvider implements ServiceProvider {
     for (const middleware of web) router.middleware.append('web', middleware);
     for (const middleware of api) router.middleware.append('api', middleware);
 
-    // The tabs' word from the server (W8 step 8): the epoch now — in the web group (the session and the locale say it), read-only
-    // (the kernel: it starts, writes and extends no session), no name (no route manifest ships it).
-    router.load(
-      { group: 'web' },
-      defineRoutes((Route) => {
-        Route.get(SESSION_PATH, SessionEpochController).internal();
-      }),
-    );
-
-    for (const module of app.modules) {
-      if (module.routes) router.load({ group: 'web' }, module.routes);
-      if (module.apiRoutes) router.load({ group: 'api', prefix: '/api' }, module.apiRoutes);
-    }
   }
 }

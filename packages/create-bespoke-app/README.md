@@ -63,7 +63,7 @@ A thin shell around the framework's own generators (E150) — the app's code com
    lint preset (`bespoke make:lint-config`), `vitest.config.ts`, a standalone `tsconfig.json`, `.env.example`, `.env.test` and
    the `storage/` skeleton. The starter kit adds `template/kit`: the home module (`/`, its page and its test).
 2. **`package.json`** — every `@bespokecore/*` package at exactly this package's version (the framework is versioned in
-   lockstep, E152), `@bespokecore/cli` among the `dependencies` (it runs on the server, E159), `packageManager: pnpm@12.9.0` —
+   lockstep, E152), `@bespokecore/cli` among the `dependencies` (it runs on the server, E159), `packageManager: pnpm@12.9.1` —
    with `--npm` nothing of pnpm's. Next to it the app's `README.md`: its commands with the chosen package manager (production
    runs `bespoke queue:work --queue=mail,default` for the queued jobs and the auth module's mails).
 3. **`.env`** — from `.env.example`, with a fresh `APP_KEY` (readable by its owner only, ignored by git); `.env.test` gets a test

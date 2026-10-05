@@ -3,10 +3,12 @@
  * starter kit's image): `apps/docs/Dockerfile` built from this checkout, then
  *
  *   the image: runs as a user other than root · no .env*, no test, no other app's code, no config of the build (vite, vitest,
- *   tsconfig) · no dev dependency · the framework's manifests as published · every README and guide in /app/content
+ *   tsconfig) · no dev dependency · every README and guide in /app/content · a command besides start (route:types --check, no
+ *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and bespoke gives the
+ *   source condition only inside the workspace (E187) · tini is PID 1 and reaps an orphaned process
  *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page,
- *   every guide and every package 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · no
- *   warning in the log · SIGTERM → exit 0
+ *   every guide and every package 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
+ *   reaps an orphan · no warning in the log · SIGTERM → exit 0
  *   behind Caddy (deploy/docs/compose.yaml itself, Caddy's port moved to a free one on 127.0.0.1, DOCS_DOMAIN=localhost — Caddy's
  *   own CA): HTTP/2 · no Set-Cookie · Strict-Transport-Security · X-Forwarded-Proto/-Host trusted (an old client's 409 names
  *   https://localhost:<port>) · documents compressed, and a revalidation with the compressed ETag answers 304
@@ -81,7 +83,6 @@ console.log(JSON.stringify({
   env: [...app, ...frameworkFiles].filter((f) => /(^|\\/)\\.env/.test(f)),
   tests: [...app, ...frameworkFiles].filter((f) => /\\.(test|type-test)\\.tsx?$|__fixtures__/.test(f)),
   store,
-  sourceCondition: framework.filter((dir) => fs.readFileSync(path.join(dir, 'package.json'), 'utf8').includes('@bespokecore/source')),
   content: app.filter((f) => f.startsWith('content/')).sort(),
 }));
 `;
@@ -91,8 +92,28 @@ interface Inspection {
   env: string[];
   tests: string[];
   store: string[];
-  sourceCondition: string[];
   content: string[];
+}
+
+/** Lists the zombies of a container from inside it (state `Z` in /proc/<pid>/stat) — the image has no `ps`. */
+const ZOMBIES = `const fs = require('fs'); const found = [];
+for (const pid of fs.readdirSync('/proc')) {
+  if (!/^\\d+$/.test(pid)) continue;
+  try { const stat = /^\\d+ \\((.*)\\) (\\S)/.exec(fs.readFileSync('/proc/' + pid + '/stat', 'utf8')); if (stat && stat[2] === 'Z') found.push(pid + ' ' + stat[1]); } catch {}
+}
+console.log(JSON.stringify(found));`;
+
+/**
+ * tini is PID 1 and reaps an orphan (E187): a process whose parent ended is handed to PID 1 — `sh -c 'sleep … &'` through
+ * `docker exec` leaves one. Node as PID 1 never waits for it: it stays a zombie (`<defunct>`) until the container ends.
+ */
+export async function assertReapsOrphans(run: (args: string[]) => { output: string }, container: string): Promise<void> {
+  const init = run(['exec', container, 'cat', '/proc/1/comm']).output.trim();
+  run(['exec', container, 'sh', '-c', 'sleep 0.2 >/dev/null 2>&1 & exit 0']);
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  const zombies = JSON.parse(run(['exec', container, 'node', '-e', ZOMBIES]).output.trim().split('\n').at(-1)!) as string[];
+  if (zombies.length > 0) throw new SmokeError(`an orphaned process stayed a zombie (<defunct>: ${zombies.join(', ')}) — PID 1 is "${init}", which reaps none; the image must run bespoke under tini.`);
+  if (init !== 'tini') throw new SmokeError(`PID 1 of the container is "${init}", not tini.`);
 }
 
 /** The files the image must not have and the ones it must — `problems` empty when all is well. */
@@ -107,7 +128,6 @@ export function inspectionProblems(found: Inspection, repository = root): string
   if (found.tests.length > 0) problems.push(`tests in the image: ${found.tests.slice(0, 8).join(', ')}${found.tests.length > 8 ? ` … (${found.tests.length})` : ''}`);
   const dev = found.store.filter((entry) => DEV_PACKAGES.test(entry));
   if (dev.length > 0) problems.push(`dev dependencies in the image: ${dev.join(', ')} (pnpm deploy --prod)`);
-  if (found.sourceCondition.length > 0) problems.push(`framework manifests with the @bespokecore/source condition: ${found.sourceCondition.join(', ')} (scripts/published-manifests.ts)`);
   const pages = [
     'content/README.md',
     ...(docsConfig.guides ?? []).map((guide) => `content/${guide.file}`),
@@ -187,18 +207,23 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       built = true;
       return (performance.now() - begin) / 1000;
     });
-    await step('non-root; no .env, no test, no other app, no dev dependency; the manifests as published; every page in content/', () => {
+    await step('non-root; no .env, no test, no other app, no dev dependency; every page in content/; route:types --check without a key (dist/, E187)', () => {
       const uid = docker(['run', '--rm', '--entrypoint', 'id', image, '-u']).output.trim();
       if (uid === '0' || !/^\d+$/.test(uid)) throw new SmokeError(`the container runs as uid ${uid} — the Dockerfile must switch to USER node.`);
       const found = JSON.parse(docker(['run', '--rm', '--entrypoint', 'node', image, '-e', INSPECT]).output.trim().split('\n').at(-1)!) as Inspection;
       const problems = inspectionProblems(found);
       if (problems.length > 0) throw new SmokeError(`the image:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);
+      // A command besides start in the pnpm deploy copy (W8.12): the framework's manifests keep the workspace's source condition —
+      // bespoke must not take the copy for the monorepo (E187), or Node refuses the TypeScript under node_modules. No APP_KEY given:
+      // route:types registers the app without booting it (the build phase).
+      const types = docker(['run', '--rm', '-e', 'NODE_ENV=production', image, 'route:types', '--check'], { expect: 'any' });
+      if (types.code !== 0) throw new SmokeError(`bespoke route:types --check in the image ended with ${types.code}:\n${types.output}`);
     });
     await step('read-only root, the storage volume → /up, every page 200 without Set-Cookie, the static policy, healthy, a quiet log; SIGTERM → exit 0', async () => {
       const port = await freePort();
       const name = `bespokecore-docs-smoke-${id}-docs`;
       containers.add(name);
-      docker(['run', '-d', '--name', name, '--init', '--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, '-e', `APP_KEY=${key}`, '-e', `APP_URL=http://127.0.0.1:${port}`, '-v', `${volume}:/app/storage`, '--health-interval=1s', '--health-start-period=1s', image]);
+      docker(['run', '-d', '--name', name, '--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, '-e', `APP_KEY=${key}`, '-e', `APP_URL=http://127.0.0.1:${port}`, '-v', `${volume}:/app/storage`, '--health-interval=1s', '--health-start-period=1s', image]);
       const base = `http://127.0.0.1:${port}`;
       await until('GET /up 200', async () => ((await fetch(`${base}/up`, { signal: AbortSignal.timeout(2_000) })).status === 200 ? true : undefined), 60_000, logs(name));
       const problems: string[] = [];
@@ -213,6 +238,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       }
       if (problems.length > 0) throw new SmokeError(`the docs in the container:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);
       await until('the health check turning healthy', () => (docker(['inspect', '-f', '{{.State.Health.Status}}', name]).output.trim() === 'healthy' ? true : undefined), 30_000, logs(name));
+      await assertReapsOrphans(docker, name);
       docker(['kill', '--signal', 'SIGTERM', name]);
       const code = docker(['wait', name]).output.trim();
       const output = logs(name)();

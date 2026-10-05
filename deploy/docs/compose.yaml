@@ -19,8 +19,7 @@ services:
     # DOCS_TAG names a build (e.g. the commit): DOCS_TAG=$(git rev-parse --short HEAD) docker compose up -d --build; an older tag
     # that is still on the machine starts again without a build (the rollback).
     image: bespokecore-docs:${DOCS_TAG:-latest}
-    # An init process in front of bespoke: it passes signals on and reaps zombies.
-    init: true
+    # No `init: true`: the image's PID 1 is tini (E187) — it passes signals on and reaps orphans.
     restart: unless-stopped
     # The image's files cannot change (E160: the discovery manifest is built in); only storage/ and /tmp are writable.
     read_only: true

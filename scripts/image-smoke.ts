@@ -6,8 +6,9 @@
  *   compose.production.yaml valid · docker build → runs as a user other than root · no .env* in the image (.env and
  *   .env.production are in the context) · migrate --force · start → GET /up 200, /login 200
  *   (sessions written to the storage volume) · the image's health check turns healthy · SIGTERM with SHUTDOWN_DELAY=1 →
- *   /up/ready 503 at once, exit 0 after the delay · a read-only root file system starts (E160) · start --workers=2 → SIGTERM →
- *   exit 0 · a worker with a stuck job ends the container with 70 · the image's size
+ *   /up/ready 503 at once, exit 0 after the delay — all without `docker run --init`: tini is the image's PID 1 (E187) · tini reaps
+ *   an orphaned process (no zombie) · a read-only root file system starts (E160) · start --workers=2 → SIGTERM → exit 0 · a worker
+ *   with a stuck job ends the container with 70 · the image's size
  *
  * Then the docs' image (`scripts/docs-image.ts`, `pnpm docs:image` alone): `apps/docs/Dockerfile` built from this checkout, its
  * contents, the container read-only, and `deploy/docs/compose.yaml` behind Caddy over HTTP/2 (E142).
@@ -26,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { docsImage } from './docs-image.ts';
+import { assertReapsOrphans, docsImage } from './docs-image.ts';
 import { packAll } from './packages.ts';
 import { assertIsolated, cleanEnvironment, freePort, Offline, OFFLINE, scaffold, SKIPPED, SmokeError, unpackScaffolder } from './pack-smoke.ts';
 
@@ -204,7 +205,7 @@ async function main(): Promise<number> {
     await step('bespoke migrate --force (into the storage volume)', () => docker.run(['run', '--rm', ...common, image, 'migrate', '--force']));
     await step('start → /up 200, /login 200, healthy; SIGTERM (SHUTDOWN_DELAY=1) → /up/ready 503, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-web`, ['--init', '-p', `127.0.0.1:${port}:3000`, '-e', 'SHUTDOWN_DELAY=1', '--health-interval=1s', '--health-start-period=1s', ...common, image]);
+      const name = docker.detached(`bespokecore-image-smoke-${id}-web`, ['-p', `127.0.0.1:${port}:3000`, '-e', 'SHUTDOWN_DELAY=1', '--health-interval=1s', '--health-start-period=1s', ...common, image]);
       const base = `http://127.0.0.1:${port}`;
       await until('GET /up 200', async () => ((await status(`${base}/up`)) === 200 ? true : undefined), 30_000, logs(name));
       if ((await status(`${base}/login`)) !== 200) throw new SmokeError(`GET /login did not answer 200:\n${logs(name)()}`);
@@ -224,9 +225,16 @@ async function main(): Promise<number> {
       if (!logs(name)().includes('SIGTERM received, shutting down')) throw new SmokeError(`no drain in the log:\n${logs(name)()}`);
       docker.remove(name);
     });
+    await step('tini is PID 1 and reaps an orphaned process (no <defunct>)', async () => {
+      const port = await freePort();
+      const name = docker.detached(`bespokecore-image-smoke-${id}-orphans`, ['-p', `127.0.0.1:${port}:3000`, ...common, image]);
+      await until('GET /up 200', async () => ((await status(`http://127.0.0.1:${port}/up`)) === 200 ? true : undefined), 30_000, logs(name));
+      await assertReapsOrphans((args) => docker.run(args), name);
+      docker.remove(name);
+    });
     await step('read-only root file system → /up 200, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-readonly`, ['--init', '--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, ...common, image]);
+      const name = docker.detached(`bespokecore-image-smoke-${id}-readonly`, ['--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, ...common, image]);
       await until('GET /up 200 (read-only)', async () => ((await status(`http://127.0.0.1:${port}/login`)) === 200 ? true : undefined), 30_000, logs(name));
       docker.run(['kill', '--signal', 'SIGTERM', name]);
       const code = docker.run(['wait', name]).output.trim();
@@ -237,7 +245,7 @@ async function main(): Promise<number> {
     });
     await step('start --workers=2 → /up 200; SIGTERM → both drain, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-cluster`, ['--init', '-p', `127.0.0.1:${port}:3000`, ...common, image, 'start', '--workers=2']);
+      const name = docker.detached(`bespokecore-image-smoke-${id}-cluster`, ['-p', `127.0.0.1:${port}:3000`, ...common, image, 'start', '--workers=2']);
       await until('two workers listening', () => (logs(name)().split('BespokeCore in production').length - 1 >= 2 ? true : undefined), 30_000, logs(name));
       if ((await status(`http://127.0.0.1:${port}/up`)) !== 200) throw new SmokeError(`GET /up did not answer 200:\n${logs(name)()}`);
       docker.run(['kill', '--signal', 'SIGTERM', name]);
@@ -251,7 +259,7 @@ async function main(): Promise<number> {
       docker.run(['run', '--rm', ...common, '--entrypoint', 'node', image, '-e', INSERT_STUCK_JOB]);
       const name = `bespokecore-image-smoke-${id}-worker`;
       docker.containers.add(name);
-      const { code, output } = docker.run(['run', '--init', '--name', name, ...common, image, 'queue:work', '--stop-timeout=1'], { expect: 'any' });
+      const { code, output } = docker.run(['run', '--name', name, ...common, image, 'queue:work', '--stop-timeout=1'], { expect: 'any' });
       if (code !== 70) throw new SmokeError(`the worker container ended with ${code}, expected 70 (a stuck job):\n${output}`);
       docker.remove(name);
     });
@@ -259,7 +267,7 @@ async function main(): Promise<number> {
     const modules = docker.run(['run', '--rm', '--entrypoint', 'du', image, '-sm', 'node_modules']).output.trim().split(/\s+/)[0];
     const total = ((performance.now() - started) / 1000).toFixed(1);
     console.log(
-      `image: ${image} — ${(size / 1024 / 1024).toFixed(0)} MB (node_modules ${modules} MB), built in ${buildSeconds.toFixed(1)}s; non-root, no .env, /up, /login, healthy, SHUTDOWN_DELAY, read-only, --workers=2, exit 70: green (${total}s).`,
+      `image: ${image} — ${(size / 1024 / 1024).toFixed(0)} MB (node_modules ${modules} MB), built in ${buildSeconds.toFixed(1)}s; non-root, no .env, /up, /login, healthy, SHUTDOWN_DELAY, tini reaps, read-only, --workers=2, exit 70: green (${total}s).`,
     );
     return 0;
   } catch (error) {

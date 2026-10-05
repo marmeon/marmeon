@@ -18,6 +18,12 @@ export interface Logger {
   error(message: string, context?: LogContext): void;
   /** A logger that adds `bindings` to every entry, e.g. `{ channel: 'http' }`. */
   child(bindings: LogContext): Logger;
+  /**
+   * Whether an entry at `level` would go anywhere — written (the configured level lets it through) or seen on the `log` channel
+   * (E118). A caller asks before it builds an entry that costs something (the request line with its redacted path): with
+   * `LOG_LEVEL=silent` nothing is built. Optional — a logger without it counts as enabled.
+   */
+  enabled?(level: 'debug' | 'info' | 'warn' | 'error'): boolean;
 }
 export const Logger = token<Logger>('Logger');
 

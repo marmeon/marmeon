@@ -122,5 +122,5 @@ says so (E170) it logs a loud warning and runs anyway — set `NODE_ENV` in the 
 ([where it comes from](../core/README.md#the-environment-node_env)); a crontab line gets the server's environment from nowhere, so
 name it there (`* * * * * cd /app && NODE_ENV=production bespoke schedule:run`). `bespoke dev` starts it with the server when a
 module has a schedule (E101). `bespoke make:docker` writes the role as a `scheduler` container next to `web` and `worker` (one
-image, `init: true`, no health check) and as `deploy/systemd/scheduler.service`
+image, tini as PID 1, no health check) and as `deploy/systemd/scheduler.service`
 ([@bespokecore/cli](../cli/README.md#production-files-makedocker-e141)).

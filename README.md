@@ -60,7 +60,7 @@ signed-in users, read-only islands, devtools only with `NODE_ENV=development`, r
 
 ## Getting started
 
-Node 26.10 or newer and pnpm 12 (new apps pin `pnpm@12.9.0` in `packageManager`) — or npm with `--npm`:
+Node 26.10 or newer and pnpm 12 (new apps pin `pnpm@12.9.1` in `packageManager`) — or npm with `--npm`:
 
 ```sh
 pnpm create bespoke-app my-app        # the starter kit: sign-in and registration, a home page, devtools, oxlint, Vitest — then a first commit

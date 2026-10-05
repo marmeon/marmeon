@@ -28,7 +28,9 @@ The default is fail-closed (E139, E164): a worker started without `NODE_ENV`, a 
 `{ level, format }`. **`pretty`** writes colored lines through `pino-pretty` (synchronously, without `pid` and `hostname`; loaded
 only for a pretty logger — JSON logs never import it, E138); **`json`** one JSON object per line on stdout — pino's `level`
 (30 = info), `time` (ms), `msg`, then the context, no `pid`/`hostname`. The web app's tests run with `LOG_LEVEL=silent`
-(`.env.test`).
+(`.env.test`). `logger.enabled(level)` says whether an entry would go anywhere — written at this level, or seen on the `log`
+channel (the devtools listen to every level): the kernel asks before it builds the request line and redacts its path, so
+`silent` (or `warn`) costs no request anything (E187).
 
 ```json
 {"level":30,"time":1759574400000,"channel":"http","requestId":"9f1c…","route":"users.show","ms":12,"msg":"GET /users/7 200"}

@@ -195,3 +195,23 @@ describe('the log channel (E118)', () => {
     expect(lines.map((line) => line.msg)).toEqual(['a warning', 'another app', 'after off']);
   });
 });
+
+describe('enabled(level) — asked before an entry is built (E187)', () => {
+  it('follows the level — silent lets nothing through — and says yes while the log channel listens', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'test' } });
+    const sink = new Writable({ write: (_chunk, _encoding, done) => done() });
+    const silent = createPinoLogger({ level: 'silent', format: 'json' }, sink, app);
+    const warn = createPinoLogger({ level: 'warn', format: 'json' }, sink, app);
+    expect((['debug', 'info', 'warn', 'error'] as const).map((level) => silent.enabled?.(level))).toEqual([false, false, false, false]);
+    expect((['debug', 'info', 'warn', 'error'] as const).map((level) => warn.enabled?.(level))).toEqual([false, false, true, true]);
+    expect(silent.child({ channel: 'http' }).enabled?.('info')).toBe(false);
+    // The channel sees every level (the devtools): an entry is wanted while it listens, whatever pino writes.
+    const off = channels.subscribe(app, 'log', () => undefined);
+    try {
+      expect(silent.enabled?.('info')).toBe(true);
+    } finally {
+      off();
+    }
+    expect(silent.enabled?.('info')).toBe(false);
+  });
+});

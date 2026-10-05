@@ -9,6 +9,52 @@ breaks ([versions and deprecations](README.md#versions-and-deprecations)). Every
 `create-bespoke-app` share one version: upgrade them together — set every `@bespokecore/*` in `package.json` to the new
 version and install. Two versions of a framework package in one app mean two containers and two `Application` classes.
 
+## Upgrading to 0.2.0 from 0.1.0
+
+The changes of Wave 9 (client and navigation), collected as they land.
+
+### Wave 9 — client and navigation
+
+#### Low: `bespoke build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
+
+*Likelihood of impact: low — Dockerfiles and CI jobs written for 0.1.0 keep working; a provider that reads configuration while it
+registers.* `bespoke build` writes the route types (`bespoke route:types`) from the app in its **build phase** (E187,
+`createApplication({ phase: 'build' })`): every provider registered, none booted — no connection, no driver check — and the
+configuration that does not validate without `.env` (`APP_KEY`, `APP_NAME`, `APP_URL`, database passwords, mail credentials …)
+left out instead of failing. Before, the Dockerfile of `make:docker` copied `.env.example` to `.env` and generated a throwaway
+`APP_KEY` for the build; now it runs `NODE_ENV=production bespoke build` with neither, and its `.dockerignore` keeps every
+`.env*` out (no `!.env.example`). In a Dockerfile of your own, remove the `cp .env.example .env`, the
+`APP_KEY="$(bespoke key:generate --show)"` and any `ARG`/`ENV` you added only for the build. Two consequences: a provider that
+reads such a configuration in `register()` fails the build with `The configuration "…" is not available while building` — read
+it in `boot()` or later; and named routes belong where `register()` sees them — a module's `routes` (the http provider now loads
+them while registering, no longer in `boot()`) or a provider's own `register()`: routes loaded in `boot()` still serve requests
+but are no longer in `bootstrap/routes.ts`. `bespoke route:types` runs so everywhere — also `route:types --check` in CI, without
+a key. A command of your own can ask for the same with `static boots = 'build'`.
+
+#### Low: the image runs `bespoke` under tini — rebuild it
+
+*Likelihood of impact: low — images built from a Dockerfile of `make:docker`; Compose files with `init: true`.* The final stage of
+the Dockerfile installs `tini` (the Debian package) and starts `ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]` (E187): Node as
+PID 1 reaps no orphaned process (it stayed a zombie) and the kernel drops a signal to PID 1 that has no handler yet. tini passes
+SIGTERM on and ends with bespoke's exit code — 0 after the drain, 70 for a stuck job, as before. `compose.production.yaml` no
+longer sets `init: true` and the docs no longer ask for `docker run --init` (with one, tini runs as its child and warns that it is
+not PID 1). To take it over: `bespoke make:docker --force` (it rewrites the Docker files — keep your own changes), or add the
+`apt-get install -y --no-install-recommends tini` line to the final stage, change the `ENTRYPOINT`, drop `init: true` — and
+rebuild the image.
+
+#### Low: pnpm 12.9.1
+
+*Likelihood of impact: low.* New apps pin `pnpm@12.9.1` in `packageManager`, and `make:docker` installs that version when the
+app names none (`TESTED_PNPM`). An app keeps the pnpm it pins; to follow: `pnpm self-update 12.9.1` (a standalone pnpm) or
+`npm i -g pnpm@12.9.1`, then set `"packageManager": "pnpm@12.9.1"` and run `pnpm install` once (pnpm 12 records itself in the
+lockfile).
+
+#### Low: a new app's `<title>` is its name, not "BespokeCore"
+
+*Likelihood of impact: low — nothing to do.* `create-bespoke-app my-shop` writes `<title>My Shop</title>` into `index.html` (the
+blank app's is a neutral `<title>App</title>`); before, every new app was titled "BespokeCore" until a page set its own. An
+existing app changes the `<title>` in its `index.html` by hand.
+
 ## Upgrading to 0.1.0 from the development snapshots
 
 0.1.0 is the first release. An app made from it (`pnpm create bespoke-app`) has nothing to upgrade. This section is for apps

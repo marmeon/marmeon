@@ -56,6 +56,10 @@ export class PinoLogger implements Logger {
     this.#pino.error(context ?? {}, message);
     if (this.#app && entries.hasSubscribers) this.#publish('error', message, context);
   }
+  /** Written at this level (pino's own check) — or listened to on the `log` channel, which sees every level (E118). */
+  enabled(level: 'debug' | 'info' | 'warn' | 'error'): boolean {
+    return this.#pino.isLevelEnabled(level) || (this.#app !== undefined && entries.hasSubscribers);
+  }
   child(bindings: LogContext): Logger {
     // pino writes a child's bindings once, at creation, past `formatters.log` — so they are redacted here (E125).
     return new PinoLogger(this.#pino.child(redact(bindings)), this.#app, bindings, this);

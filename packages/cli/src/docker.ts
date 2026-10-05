@@ -5,7 +5,7 @@
  */
 
 /** The pnpm the framework is tested with — pinned in a Dockerfile when the app names none (`packageManager`). */
-export const TESTED_PNPM = '12.9.0';
+export const TESTED_PNPM = '12.9.1';
 
 /** The base image of every stage (E141): Debian with glibc — native addons (oxc, rolldown, lightningcss) work as on a dev machine. */
 export const NODE_IMAGE = 'node:26-slim';
@@ -49,7 +49,7 @@ export function dockerfile(app: DockerApp): string {
 # \`queue:work\` and \`schedule:work\` — compose.production.yaml runs each in a container of its own (E140).
 #
 #   docker build -t ${app.name} .
-#   docker run --init -p 3000:3000 --env-file .env.production -v ${app.name}-storage:/app/storage ${app.name}
+#   docker run -p 3000:3000 --env-file .env.production -v ${app.name}-storage:/app/storage ${app.name}
 #
 # The app stays TypeScript (E138): Node runs its .ts files; \`bespoke build\` adds the bundles, the injection lists and the
 # discovery manifest. Configuration and secrets (APP_KEY, APP_URL, DB_*, MAIL_*) come from the environment when the container
@@ -64,11 +64,9 @@ ${pnpm ? `# pnpm as the app pins it ("packageManager" in package.json) — Node 
 COPY ${manifests} ./
 ${app.localPackages.map((dir) => `COPY ${dir} ./${dir}\n`).join('')}RUN ${cache} ${install}
 COPY . .
-# \`bespoke build\` boots the app once (route types): with the defaults of .env.example (copied to .env) and a throwaway key,
-# all gone after this step — the image has neither a .env nor an APP_KEY. A setting without a default there: ARG/ENV in this stage.
-RUN mkdir -p storage && if [ -f .env.example ]; then cp .env.example .env; fi \\
- && APP_KEY="$(node_modules/.bin/bespoke key:generate --show)" NODE_ENV=production node_modules/.bin/bespoke build \\
- && rm -f .env .env.example
+# \`bespoke build\` needs no .env and no secret (E187): it registers the app's providers without booting them (the route types) —
+# no APP_KEY, no database, nothing that could end up in the image.
+RUN NODE_ENV=production node_modules/.bin/bespoke build
 # Production dependencies only — bespoke is one (E159); typescript, vite and vitest leave. Then the discovery manifest of exactly
 # these packages (E160): the start rewrites nothing, and the app's files may be read-only.
 RUN ${cache} ${prune} \\
@@ -76,6 +74,9 @@ RUN ${cache} ${prune} \\
 
 # ── Run: Node and the app, nothing to build with ───────────────────────────────────────────────────────────────────────
 FROM \${NODE_IMAGE}
+# tini as PID 1 (E187): Node as PID 1 reaps no orphaned process (they stay zombies), and the kernel drops a signal to PID 1 that
+# has no handler yet — tini passes SIGTERM on to bespoke and ends with its exit code (0 after the drain, 70 for a stuck job).
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 PATH=/app/node_modules/.bin:$PATH
 WORKDIR /app
 # The code belongs to root — the app cannot change it — and everyone may read it (a lockfile a package manager wrote with 0600
@@ -90,9 +91,8 @@ EXPOSE 3000
 # it). The worker and scheduler containers turn it off (compose).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \\
   CMD ["node", "-e", ${JSON.stringify(HEALTHCHECK_SCRIPT)}]
-# bespoke is the process — one Node (E159). Run it behind an init (docker run --init, compose init: true): Node as PID 1 reaps
-# no zombies, and a signal that comes before the app installed its handlers would be ignored.
-ENTRYPOINT ["bespoke"]
+# bespoke is the process — one Node (E159) — under tini, which only passes signals on and reaps orphans.
+ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]
 CMD ["start"]
 `;
 }
@@ -100,10 +100,8 @@ CMD ["start"]
 export function dockerignore(): string {
   return `# Written by \`bespoke make:docker\` — what never enters the build context, and so never the image.
 # Every .env file: the image gets its configuration from the environment when it runs (a developer's .env on a server would
-# switch on the development tools, E170). Only .env.example comes in — its defaults let \`bespoke build\` boot the app, and it is
-# removed right after.
+# switch on the development tools, E170) — and \`bespoke build\` needs none (E187).
 .env*
-!.env.example
 # Installed and built inside the image.
 node_modules
 dist
@@ -217,8 +215,7 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
 x-app: &app
   build: .
   image: ${app.name}
-  # An init process in front of bespoke: it passes signals on and reaps zombies (Node as PID 1 does neither well).
-  init: true
+  # No \`init: true\`: the image's PID 1 is tini (E187) — it passes signals on and reaps orphans.
   restart: unless-stopped
   env_file: .env.production
   volumes:

@@ -15,7 +15,7 @@ export { browserSources, isBrowserSource } from './injection/browser.ts';
 export { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './injection/embed.ts';
 export type { EmbedPackageOptions } from './injection/embed.ts';
 export { Application, CLUSTER_WORKER, createApplication, defineApplication } from './application.ts';
-export type { ApplicationOptions } from './application.ts';
+export type { ApplicationOptions, ApplicationPhase } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, LogContextSources, Logger, logContextSourcesOf } from './logger.ts';
 export { DEFAULT_HEALTH_TIMEOUT, HealthChecks } from './health.ts';

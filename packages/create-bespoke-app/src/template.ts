@@ -12,7 +12,7 @@ import { gunzipSync } from 'node:zlib';
 export const TEMPLATE = fileURLToPath(new URL('../template/', import.meta.url));
 
 /** The pnpm a new app pins (`packageManager`, E151) — the one the framework is tested with (a test keeps it equal to the repository's). */
-export const PNPM_VERSION = '12.9.0';
+export const PNPM_VERSION = '12.9.1';
 
 /**
  * Files a published tarball must not carry under their own name: npm turns `.gitignore` into `.npmignore` when it packs, and a
@@ -207,6 +207,18 @@ export function writeEnv(app: string, title: string): void {
   const test = join(app, '.env.test');
   if (existsSync(test)) writeFileSync(test, setEnv(setEnv(readFileSync(test, 'utf8'), 'APP_NAME', `${title} (test)`), 'APP_KEY', generateKey()));
   writeFileSync(join(app, '.env'), setEnv(example, 'APP_KEY', generateKey()), { mode: 0o600 });
+}
+
+/** The blank app's neutral `<title>` in `index.html` — what a new app replaces with its own name. */
+export const TEMPLATE_TITLE = '<title>App</title>';
+
+/** The app's name as the document's title in `index.html` (a page may set its own): `my-shop` → `<title>My Shop</title>`. */
+export function writeTitle(app: string, title: string): void {
+  const file = join(app, 'index.html');
+  const html = readFileSync(file, 'utf8');
+  if (!html.includes(TEMPLATE_TITLE)) throw new Error(`${TEMPLATE_TITLE} is missing in index.html — the template changed?`);
+  const escaped = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  writeFileSync(file, html.replace(TEMPLATE_TITLE, () => `<title>${escaped}</title>`));
 }
 
 /** Adds a module to `modules: [...]` of `bootstrap/app.ts`, imported next to `system` (the blank app has exactly that). */

@@ -61,28 +61,46 @@ export async function resolveConfig(
   definitions: readonly ConfigDefinition<unknown>[],
   env: Env,
 ): Promise<Map<ConfigDefinition<unknown>, unknown>> {
+  const { resolved, problems } = await validateConfig(definitions, env);
+  if (problems.size > 0) throw invalidConfiguration(problems);
+  return resolved;
+}
+
+/**
+ * Validates every definition against `env` without failing: the resolved values, and the problems of every definition that
+ * did not validate (`  • name: VARIABLE — message` per issue). `createApplication` in the build phase (E187) binds the valid ones
+ * and leaves the others unavailable — the build needs no runtime secrets.
+ */
+export async function validateConfig(
+  definitions: readonly ConfigDefinition<unknown>[],
+  env: Env,
+): Promise<{ resolved: Map<ConfigDefinition<unknown>, unknown>; problems: Map<ConfigDefinition<unknown>, string[]> }> {
   const resolved = new Map<ConfigDefinition<unknown>, unknown>();
-  const problems: string[] = [];
+  const problems = new Map<ConfigDefinition<unknown>, string[]>();
 
   for (const definition of definitions) {
     const result = await definition.env['~standard'].validate(env);
     if (result.issues) {
-      for (const issue of result.issues) {
-        const path = issuePath(issue);
-        problems.push(`  • ${definition.name}: ${path ? `${path} — ` : ''}${issue.message}`);
-      }
+      problems.set(
+        definition,
+        result.issues.map((issue) => {
+          const path = issuePath(issue);
+          return `  • ${definition.name}: ${path ? `${path} — ` : ''}${issue.message}`;
+        }),
+      );
     } else {
       resolved.set(definition, definition.resolve(result.value));
     }
   }
+  return { resolved, problems };
+}
 
-  if (problems.length > 0) {
-    const error = new ConfigError(
-      `Invalid configuration — the application cannot start:\n${problems.join('\n')}\n` +
-        'Set these variables in the environment or in .env (see .env.example).',
-    );
-    error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
-    throw error;
-  }
-  return resolved;
+/** The error a start fails with: every problem of every definition at once. */
+export function invalidConfiguration(problems: ReadonlyMap<ConfigDefinition<unknown>, readonly string[]>): ConfigError {
+  const error = new ConfigError(
+    `Invalid configuration — the application cannot start:\n${[...problems.values()].flat().join('\n')}\n` +
+      'Set these variables in the environment or in .env (see .env.example).',
+  );
+  error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
+  return error;
 }

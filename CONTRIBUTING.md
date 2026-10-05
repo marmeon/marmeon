@@ -46,7 +46,7 @@ By making a contribution to this project, I certify that:
 
 ## Set up
 
-Node 26.10 or newer and pnpm 12 (the version in `packageManager` — `pnpm self-update` or Corepack-free `npm i -g pnpm@12.9.0`).
+Node 26.10 or newer and pnpm 12 (the version in `packageManager` — `pnpm self-update` or Corepack-free `npm i -g pnpm@12.9.1`).
 
 ```sh
 pnpm install

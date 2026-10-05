@@ -127,6 +127,19 @@ describe('bespoke (in the web app)', () => {
     expect(code).toBe(0);
   });
 
+  it('writes the route types without a secret — route:types registers the app and boots nothing, as bespoke build runs it (E187)', () => {
+    // What a Docker build has: no .env of the app's (CI has none anyway), no key, no name — here emptied over whatever .env holds.
+    const withoutSecrets = { NODE_ENV: 'production', APP_KEY: '', APP_PREVIOUS_KEYS: '', APP_NAME: '', APP_URL: '' };
+    const types = bespoke(webApp, ['route:types', '--check'], withoutSecrets);
+    expect(types.stderr).not.toContain('Invalid configuration');
+    expect(types.stdout).toContain('✓ bootstrap/routes.ts matches the routes and views.');
+    expect(types.code).toBe(0);
+    // A command that runs the app still needs them.
+    const list = bespoke(webApp, ['route:list'], withoutSecrets);
+    expect(list.code).toBe(1);
+    expect(list.stderr).toContain('Invalid configuration — the application cannot start:\n  • app: APP_NAME');
+  }, ciTimeout);
+
   it.runIf(process.env.BESPOKE_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
     const { code, stdout } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.BESPOKE_TEST_PGSQL_URL! });
     expect(code).toBe(0);
@@ -291,6 +304,8 @@ describe('bespoke from a copy of the workspace package (pnpm deploy)', () => {
     const app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-deployed-')));
     try {
       const cli = join(app, 'node_modules/@bespokecore/cli');
+      // As pnpm deploy writes it: a workspace of the app alone — the copy under node_modules is none of its packages (E187).
+      writeFileSync(join(app, 'pnpm-workspace.yaml'), "packages:\n- '.'\ninjectWorkspacePackages: false\n");
       // The CLI copied with its workspace manifest and sources; its dependencies as installed (here: links to the built packages).
       for (const part of ['bin', 'src', 'dist', 'package.json']) cpSync(join(repo, 'packages/cli', part), join(cli, part), { recursive: true });
       for (const name of ['core', 'server', 'http', 'router', 'encryption', 'log']) symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@bespokecore', name), 'dir');
@@ -304,6 +319,18 @@ describe('bespoke from a copy of the workspace package (pnpm deploy)', () => {
       rmSync(app, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it('knows the monorepo by its workspace, not by a manifest: a pnpm-workspace.yaml above the package lists its directory (E187)', async () => {
+    const { inWorkspace, listedIn } = (await import(new URL('../bin/workspace.js', import.meta.url).href)) as { inWorkspace(dir: string): boolean; listedIn(yaml: string, path: string): boolean };
+    expect(inWorkspace(join(repo, 'packages/cli'))).toBe(true);
+    expect(inWorkspace(join(webApp, 'node_modules/@bespokecore/cli'))).toBe(true); // the app's link resolves to the workspace package
+    const yaml = "# the workspace\npackages:\n  - 'packages/*'\n  - \"apps/**\" # apps\n  - '!apps/legacy/**'\ncatalog:\n  - nope\n";
+    expect(['packages/cli', 'apps/shop', 'apps/a/b'].map((path) => listedIn(yaml, path))).toEqual([true, true, true]);
+    expect(['packages/cli/sub', 'apps/legacy/x', 'nope', 'node_modules/.pnpm/x/node_modules/@bespokecore/cli', 'packages/node_modules'].map((path) => listedIn(yaml, path))).toEqual([false, false, false, false, false]);
+    expect(listedIn("packages:\n- '.'\n", '')).toBe(false);
+    expect(listedIn("packages:\n- packages/*\nother: 1\n", 'packages/cli')).toBe(true); // a sequence need not be indented
+    expect(listedIn('onlyBuiltDependencies:\n  - esbuild\n', 'packages/cli')).toBe(false);
+  });
 
   it('a package that brings its TypeScript sources: the start says Node’s code and how to fix it', () => {
     const app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-shipped-ts-')));

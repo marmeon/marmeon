@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
-import { appManifest, filesUnder, PNPM_VERSION, readTarEntry, TEMPLATE } from './template.ts';
+import { appManifest, filesUnder, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_TITLE, writeTitle } from './template.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -108,11 +108,15 @@ describe('create-bespoke-app — the app', () => {
     const cwd = workspace();
     expect((await create(cwd, ['blank', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
     const app = join(cwd, 'blank');
-    const own = new Set(['package.json', 'tsconfig.json', 'README.md', '.env', '.env.test']);
+    const own = new Set(['package.json', 'tsconfig.json', 'README.md', 'index.html', '.env', '.env.test']);
     expect(filesUnder(app).filter((file) => file !== '.env')).toEqual([...new Set([...blankAppFiles(), 'README.md'])].sort());
     for (const file of blankAppFiles().filter((name) => !own.has(name))) {
       expect(readFileSync(join(app, file), 'utf8'), file).toBe(readFileSync(join(blank, file), 'utf8'));
     }
+    // index.html: the blank app's, with the app's name as its title — never the framework's (W8.10).
+    const html = readFileSync(join(app, 'index.html'), 'utf8');
+    expect(/<title>(.*)<\/title>/.exec(html)?.[1], 'the title of a new app').not.toMatch(/BespokeCore/);
+    expect(html).toBe(readFileSync(join(blank, 'index.html'), 'utf8').replace(TEMPLATE_TITLE, '<title>Blank</title>'));
     // .env.test: the blank app's, with a test key of the app's own.
     const withoutKey = (text: string) => text.replace(/^APP_KEY=.*$/m, 'APP_KEY=');
     expect(withoutKey(readFileSync(join(app, '.env.test'), 'utf8'))).toBe(withoutKey(readFileSync(join(blank, '.env.test'), 'utf8')));
@@ -175,6 +179,15 @@ describe('create-bespoke-app — the app', () => {
     expect(app).toContain('modules: [home, system]');
     expect(run.out).toContain('pnpm install\n  pnpm exec bespoke make:auth --private-registration\n  pnpm exec bespoke migrate\n  pnpm exec bespoke make:docker');
     expect(readFileSync(join(cwd, 'kit/README.md'), 'utf8')).toContain('private: one answer for new and known addresses');
+  });
+
+  it('titles the document with the app\'s name — escaped; the blank app stays neutral', () => {
+    expect(readFileSync(join(blank, 'index.html'), 'utf8')).toContain(TEMPLATE_TITLE);
+    const app = workspace();
+    writeFileSync(join(app, 'index.html'), `<head>${TEMPLATE_TITLE}</head>`);
+    writeTitle(app, 'Fish & <Chips>');
+    expect(readFileSync(join(app, 'index.html'), 'utf8')).toBe('<head><title>Fish &amp; &lt;Chips&gt;</title></head>');
+    expect(() => writeTitle(app, 'Again')).toThrow('<title>App</title> is missing in index.html');
   });
 
   it('pins the pnpm the repository uses — and make:docker installs the same one', () => {

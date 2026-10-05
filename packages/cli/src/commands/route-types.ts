@@ -13,6 +13,8 @@ export class RouteTypesCommand {
   static description = 'Generate bootstrap/routes.ts from the routes and views (--check: fail if outdated)';
   static usage = '[--check]';
   static options = { check: { type: 'boolean' } } as const;
+  /** Routes and views are all it reads: the app registers, boots nothing and needs no secret (E187) — `bespoke build` runs it so. */
+  static boots = 'build' as const;
 
   readonly #types: RouteTypes;
 

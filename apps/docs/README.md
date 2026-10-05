@@ -44,9 +44,10 @@ Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/a
 
 `apps/docs/Dockerfile` is the monorepo variant of what `bespoke make:docker` writes (E141): built from the repository's root, it
 installs the workspace, builds the packages and the docs, then `pnpm deploy --prod` takes the docs app alone — its `files` (no
-tests, no `.env`), its production dependencies, the framework's packages with their `dist/` and the manifests they are published
-with (`scripts/published-manifests.ts`: `pnpm deploy` keeps the workspace's `exports` with the source condition) — and the discovery
-manifest is written for exactly these packages (E160). The READMEs and guides are copied into `/app/content`: a new version of the
+tests, no `.env`), its production dependencies, the framework's packages with their `dist/` (their manifests keep the
+workspace's `exports` with the source condition — `bespoke` sets it only inside the workspace, E187, so the copies run `dist/`) — and
+the discovery manifest is written for exactly these packages (E160). `bespoke build` runs without a key or any other secret (E187);
+PID 1 of the image is `tini` (signals, orphans). The READMEs and guides are copied into `/app/content`: a new version of the
 docs is a new image. `node:26-slim`, `USER node`, `NODE_ENV=production`, the root file system may be read-only (only `storage/` —
 the rate limit's cache and the compile cache — is written). `apps/docs/Dockerfile.dockerignore` keeps every `.env`, `node_modules`,
 the builds and the other apps' code out of the build context.
@@ -59,7 +60,7 @@ docker build -f apps/docs/Dockerfile -t bespokecore-docs .    # from the reposit
 speaks HTTP/1.1, 2 and 3, sets `Strict-Transport-Security` and compresses the pages (they carry no secret — an app's pages would,
 BREACH); it sets `X-Forwarded-*` itself and drops a client's. The docs trust them from the Compose network's two subnets only
 (`TRUSTED_PROXIES`, IPv4 and IPv6 — with IPv6 on the network every visitor keeps their address for the search's rate limit),
-run read-only with a `tmpfs` for `/tmp` and a `storage` volume, `init: true`, and Caddy waits for them to be healthy.
+run read-only with a `tmpfs` for `/tmp` and a `storage` volume, and Caddy waits for them to be healthy.
 Next to the file, a `.env` holds `DOCS_DOMAIN` and `APP_KEY` (never committed); then `docker compose up -d --build` —
 `DOCS_TAG=$(git rev-parse --short HEAD)` names the build, and an older tag still on the machine starts again without one (the way
 back). The guide for

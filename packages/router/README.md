@@ -93,7 +93,8 @@ export default defineRoutes((Route) => {
 - **`bespoke route:types`** writes `bootstrap/routes.ts` — `declare module '@bespokecore/router' { interface Routes { … } }`
   with each route's method, path and controller — which types every API that takes a route name: `router.url()`,
   `this.redirect().route()`, signed URLs, `<Link route>`, `useForm(name, …)`. `bespoke dev` and `bespoke build` run it; CI checks
-  it with `--check`. `bespoke route:list` prints method, path, name, group, middleware (in the order they run) and action.
+  it with `--check`. It reads the routes of an app that registered and booted nothing (E187: no `.env`, no key needed) — a module's
+  `routes` are loaded while the http provider registers; routes a provider loads in `boot()` are not in it. `bespoke route:list` prints method, path, name, group, middleware (in the order they run) and action.
 
 ## Controllers and requests
 

@@ -6,8 +6,9 @@
  * exactly one Node process — PID 1 in a container.
  *
  * Node is started once more only for what a running process cannot switch on: `node --watch` for `bespoke dev`, and the
- * `@bespokecore/source` condition inside the framework's monorepo (its packages resolve to their TypeScript sources; a
- * published package does not carry the condition — `pnpm pack` writes the `publishConfig.exports` without it).
+ * `@bespokecore/source` condition inside the framework's monorepo — where a `pnpm-workspace.yaml` lists this package (its
+ * packages resolve to their TypeScript sources; a published package does not carry the condition — `pnpm pack` writes the
+ * `publishConfig.exports` without it — and a copied one is not given it).
  *
  * `bespoke start` turns on Node's compile cache (E138) before anything else loads — `storage/framework/compile-cache` of the
  * app, or Node's own `NODE_COMPILE_CACHE` (`NODE_DISABLE_COMPILE_CACHE=1` turns it off). Node keys an entry by the module's
@@ -20,10 +21,10 @@
  * unset — protected like production.
  */
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { enableCompileCache, getCompileCacheDir } from 'node:module';
-import { join, sep } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inWorkspace } from './workspace.js';
 
 const SOURCE_CONDITION = '@bespokecore/source';
 const [command, ...rest] = process.argv.slice(2);
@@ -35,7 +36,7 @@ if (process.env.BESPOKE_CHILD === '1') {
   const args = command === 'dev' || command === 'start' ? ['serve', ...rest] : process.argv.slice(2);
 
   // `start` serves the build: the packages' `dist/`, also inside the monorepo — never their sources.
-  const source = command !== 'start' && inMonorepo() && !sourceConditionActive();
+  const source = command !== 'start' && inWorkspace(fileURLToPath(new URL('..', import.meta.url))) && !sourceConditionActive();
   const watch = command === 'dev';
   if (source || watch) {
     const flags = [...(source ? [`--conditions=${SOURCE_CONDITION}`] : []), ...(watch ? ['--watch'] : [])];
@@ -82,22 +83,6 @@ async function runHere(args, launch) {
   await import('@bespokecore/core/register');
   const { run } = await import('@bespokecore/cli/main');
   process.exitCode = await run(args);
-}
-
-/**
- * This CLI is the monorepo's workspace package: its `exports` still name the source condition (a packed one does not) — and it
- * is not a copy under `node_modules`: `pnpm deploy` (and injected workspace dependencies) copy a workspace package with its
- * workspace manifest, where Node would refuse the TypeScript sources (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING); such a
- * copy runs its `dist/` like a published package.
- */
-function inMonorepo() {
-  if (fileURLToPath(new URL('..', import.meta.url)).split(sep).includes('node_modules')) return false;
-  try {
-    const json = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-    return JSON.stringify(json.exports ?? {}).includes(`"${SOURCE_CONDITION}"`);
-  } catch {
-    return false;
-  }
 }
 
 /** Started with the condition already (`node --conditions=@bespokecore/source …/bespoke.js`, `NODE_OPTIONS`): no second Node. */

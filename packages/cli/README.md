@@ -34,7 +34,7 @@ SHUTDOWN_DELAY=5 bespoke start # SIGTERM: /up/ready 503 at once, 5 more seconds 
 ```
 
 `build` precomputes the app's injection lists (`.bespoke/injections.json`, [A fast start](#a-fast-start-e138)), runs
-`bespoke route:types` (it boots the app — `.env` must be complete), type-checks the app against the
+`bespoke route:types` (in the app's build phase, E187: providers registered, none booted, no `.env` or secret needed), type-checks the app against the
 generated route types (a renamed route or a missing view fails the build) and builds with the app's own Vite config and the
 `bespoke()` plugin ([@bespokecore/vite](../vite/README.md)). A route name the browser's manifest cannot know and client code
 that imports server code as a value fail it too, each with file and line
@@ -78,16 +78,16 @@ bespoke make:docker --nginx --systemd  # … nginx on the host (deploy/nginx.con
 ```
 
 - **Dockerfile** — multi-stage on `node:26-slim`: the app's package manager (`pnpm` pinned from `packageManager`, else
-  `pnpm@12.9.0`, installed with `npm i -g` — Node ships no Corepack; `npm ci` for an app with `package-lock.json`), a frozen
-  install with a cache mount, `bespoke build` (with `.env.example`'s defaults and a throwaway `APP_KEY`, both removed in the same
-  step), a fresh production install, `bespoke discover`; the final stage has Node and the app only, the code owned by root and
+  `pnpm@12.9.1`, installed with `npm i -g` — Node ships no Corepack; `npm ci` for an app with `package-lock.json`), a frozen
+  install with a cache mount, `bespoke build` (no `.env`, no key — the build phase needs no secret, E187), a fresh production install, `bespoke discover`; the final stage has Node and the app only, the code owned by root and
   readable for everyone, `storage/` owned by `node`, `USER node`, `NODE_ENV=production`, `HOST=0.0.0.0`, a `HEALTHCHECK` with
-  Node's `fetch` on `/up` (no curl in the image), `ENTRYPOINT ["bespoke"]`, `CMD ["start"]`. Local packages the lockfile points
+  Node's `fetch` on `/up` (no curl in the image), `tini` as PID 1 (`ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]`, E187),
+  `CMD ["start"]`. Local packages the lockfile points
   to (`file:./vendor/…`) are copied before the install.
-- **`.dockerignore`** — every `.env*` (only `.env.example` comes in, for the build), `node_modules`, `dist`, `.bespoke`,
+- **`.dockerignore`** — every `.env*`, `node_modules`, `dist`, `.bespoke`,
   `storage`.
 - **`compose.production.yaml`** — one image, a role per container: `web` (`start`), `worker` (`queue:work --queue=mail,default`;
-  a stuck job's exit 70 is restarted by `restart: unless-stopped`), `scheduler` (`schedule:work`); `init: true`, `env_file:
+  a stuck job's exit 70 is restarted by `restart: unless-stopped`), `scheduler` (`schedule:work`); `env_file:
   .env.production`, a `storage` volume, the health check off for worker and scheduler, `stop_grace_period` longer than the drain.
 - **Proxies** — `--caddy` adds a Caddy service (certificates, HTTP/2 and 3; live streams unbuffered) and `TRUSTED_PROXIES: '*'`
   for the unpublished web container; `--nginx` the same with nginx (`http2 on`, `X-Forwarded-*` set, `proxy_read_timeout` above
@@ -107,10 +107,12 @@ The files are the app's afterwards; an existing one is overwritten only with `--
 a worker's exit code (70 for a job that ignored its timeout) and `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` reach exactly
 one Node process. The injection hook is registered in that process (`module.registerHooks`) before the command loads. Node is
 started a second time only for what a running process cannot switch on: `node --watch` for `bespoke dev`, and the
-`@bespokecore/source` condition when the CLI runs inside the framework's own monorepo (its packages resolve to their TypeScript
-sources there; a published package does not carry the condition) — never for `bespoke start`, which serves the packages'
-`dist/` there too. A copy of the CLI under `node_modules` (what `pnpm deploy` or an injected workspace dependency leaves, with
-the workspace manifest) is no monorepo either: it runs its `dist/` like a published package.
+`@bespokecore/source` condition when the CLI runs inside the framework's own monorepo — a `pnpm-workspace.yaml` above it lists its
+directory among `packages` (E187; its packages resolve to their TypeScript sources there; a published package does not carry the
+condition) — never for `bespoke start`, which serves the packages' `dist/` there too. A copy of the CLI (what `pnpm deploy` or an
+injected workspace dependency leaves under `node_modules`, with the workspace manifest and its source condition) is no workspace
+package: it runs its `dist/` like a published package — Node resolves the condition only when the launcher gives it. In an image,
+`tini` is PID 1 in front of it (E187: signals passed on, orphans reaped).
 
 When the app cannot start, `bespoke` prints the error with Node's code when it has one (`ERR_…`) and the solutions below it
 ([Solutions](../core/README.md#solutions-e130)) — e.g. for `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a package that reaches
@@ -189,7 +191,9 @@ export class PruneTokensCommand {
 
 An app's module lists its commands in `defineModule({ commands: [...] })`; a package adds its own in its provider's `boot()`
 (`app.container.make(CommandRegistry).add([PruneTokensCommand])`). `static usage` shows in errors and help,
-`static boots = false` runs a command without booting the app (generators), `static hidden` keeps it out of `bespoke list`. The
+`static boots = false` runs a command without booting the app (generators), `static boots = 'build'` with the app as `bespoke build`
+has it (registered, not booted, no runtime secret — `route:types`, E187; read for the built-in commands), `static hidden` keeps it
+out of `bespoke list`. The
 scheduler runs commands as tasks (`s.command('auth:prune-tokens').daily()`), each in a scope of its own. Each run is reported on
 the `command.run` channel ([Diagnostics](../core/README.md#diagnostics-bespokecorecorediagnostics-e118)).
 

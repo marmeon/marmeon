@@ -1,6 +1,8 @@
+import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createApplication, type Application } from './application.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
+import { ConfigError, defineConfig } from './config/config.ts';
 import { Logger } from './logger.ts';
 import type { ServiceProvider } from './provider.ts';
 
@@ -88,5 +90,61 @@ describe('injection warnings in the log (E128)', () => {
     app.container.make(DueDates);
     expect(warnings).toEqual([]);
     expect(app.container.warnings).toHaveLength(1);
+  });
+});
+
+/**
+ * The build phase (E187): what `bespoke build` needs of the app — every provider registered, none booted, and the configuration
+ * that does not validate (the runtime secrets) left out instead of failing. Two measures, each with its own scenario: a boot
+ * that would connect (here: one that records itself) and a configuration that cannot validate without `.env`.
+ */
+describe('createApplication({ phase: "build" }) (E187)', () => {
+  const Secret = defineConfig('secret', {
+    env: v.object({ APP_KEY: v.pipe(v.string('Missing'), v.nonEmpty('Missing')) }),
+    resolve: (env) => ({ key: env.APP_KEY }),
+  });
+  const Plain = defineConfig('plain', {
+    env: v.object({ PORT: v.optional(v.string(), '3000') }),
+    resolve: (env) => ({ port: env.PORT }),
+  });
+
+  it('registers every provider and boots none — no connection, no shutdown hook afterwards', async () => {
+    const { calls, provider } = recorder();
+    const registered: string[] = [];
+    class Registers implements ServiceProvider {
+      register(): void {
+        registered.push('register');
+      }
+      boot(): void {
+        calls.push('boot (it would connect)');
+      }
+    }
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production' }, phase: 'build', providers: [provider('a'), Registers] });
+    expect(app.phase).toBe('build');
+    expect(registered).toEqual(['register']);
+    expect(calls, 'a provider booted in the build phase').toEqual([]);
+    await app.shutdown();
+    expect(calls).toEqual([]);
+    await expect(app.boot()).rejects.toThrow('An app in the build phase is never booted (E187)');
+  });
+
+  it('leaves out the configuration that does not validate — reading it says why; the rest is there', async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production', PORT: '8080' }, phase: 'build', config: [Secret, Plain] });
+    expect(app.container.make(Plain)).toEqual({ port: '8080' });
+    expect(() => app.container.make(Secret)).toThrow(/^The configuration "secret" is not available while building — the build boots the app without runtime secrets \(E187\):\n {2}• secret: APP_KEY — .+\nRead it when the app runs/);
+    expect(() => app.container.make(Secret)).toThrow(ConfigError);
+  });
+
+  it('a run fails as before: every problem at once, nothing registered', async () => {
+    const registered: string[] = [];
+    class Registers implements ServiceProvider {
+      register(): void {
+        registered.push('register');
+      }
+    }
+    const error = await createApplication({ root: import.meta.dirname, discover: false, env: { NODE_ENV: 'production' }, config: [Secret, Plain], providers: [Registers] }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as Error).message).toMatch(/^Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet these variables in the environment or in \.env \(see \.env\.example\)\.$/);
+    expect(registered).toEqual([]);
   });
 });

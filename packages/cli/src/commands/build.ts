@@ -10,7 +10,9 @@ import { typecheckApp } from '../typecheck.ts';
  * Builds the client bundle and the SSR bundle with the app's own Vite. The `bespoke()` plugin
  * from `@bespokecore/vite` decides entries and output (`dist/client`, `dist/server/ssr.js`).
  * First, `bespoke route:types` brings `bootstrap/routes.ts` and `.bespoke/routes.json` up to date — the plugin builds
- * the bundle's route manifest from the latter — in a process of its own, as it boots the app (this command does not).
+ * the bundle's route manifest from the latter — in a process of its own, with the app in its build phase (E187): every provider
+ * registered, none booted, the configuration that does not validate left out — no `.env`, no key, no connection needed, and
+ * so no secret that could end up in `dist/`.
  * Then the app is type-checked against it, like `next build`: a renamed route or a missing view fails the build.
  * `--no-typecheck` skips that. A route name the client bundle cannot know (built at runtime) fails it too, and so does
  * client code that imports a server module (a controller, a job …) as a value (E121).
@@ -34,7 +36,7 @@ export class BuildCommand {
       output.success(`Precomputed the injection lists of ${injections.modules} module${injections.modules === 1 ? '' : 's'} → ${relative(root, injections.path)}`);
     }
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('route:types')) !== 0) {
-      output.error('Not built: bespoke route:types failed (it boots the app — is .env complete?).');
+      output.error('Not built: bespoke route:types failed (it registers the app without booting it, E187 — see its error above).');
       return 1;
     }
     if (options['no-typecheck'] !== true) {

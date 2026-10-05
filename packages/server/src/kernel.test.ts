@@ -1,5 +1,5 @@
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
+import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@bespokecore/core';
 import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
 import { describe, expect, it } from 'vitest';
@@ -152,6 +152,61 @@ describe('createHttpKernel — errors & logging', async () => {
 
     expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(entries.at(-1)).toMatchObject({ level: 'info', message: 'GET /nope 404', context: { channel: 'http', requestId } });
+  });
+});
+
+/**
+ * The request line (E187): built only when the logger lets `info` through — with `LOG_LEVEL=silent` neither the message nor its
+ * redacted path is computed. The counter sits on the Redactor's `path`, the expensive half of the line.
+ */
+describe('createHttpKernel — the request line at a level that discards it', async () => {
+  const written: string[] = [];
+  let level: 'info' | 'silent' = 'info';
+  const logger: Logger = {
+    debug: () => undefined,
+    info: (message) => void (level === 'info' && written.push(message)), // a logger writes what its level lets through
+    warn: () => undefined,
+    error: () => undefined,
+    child: () => logger,
+    enabled: (asked) => level === 'info' && asked !== 'debug',
+  };
+  class SilentLoggingProvider {
+    register(container: Container) {
+      container.singleton(Logger, () => logger);
+    }
+  }
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    env: { APP_KEY: generateKey() },
+    providers: [EncryptionServiceProvider, HttpServiceProvider, SilentLoggingProvider],
+    modules: [defineModule({ name: 'users', routes: defineRoutes((Route) => Route.get('/users/:id', () => ({ ok: true }))) })],
+  });
+  const redactor = application.container.make(Redactor);
+  let built = 0;
+  const path = redactor.path.bind(redactor);
+  redactor.path = (...args: Parameters<Redactor['path']>) => {
+    built++;
+    return path(...args);
+  };
+  const app = createHttpKernel(application);
+
+  it('builds no request line (and redacts no path) when info is off', async () => {
+    level = 'silent';
+    built = 0;
+    written.length = 0;
+    expect((await app.request('/users/7')).status).toBe(200);
+    expect(built, 'the request line was built at LOG_LEVEL=silent').toBe(0);
+    expect(written).toEqual([]);
+  });
+
+  it('writes it — redacted once — when info is on', async () => {
+    level = 'info';
+    built = 0;
+    written.length = 0;
+    expect((await app.request('/users/7')).status).toBe(200);
+    expect(written).toEqual(['GET /users/7 200']);
+    expect(built).toBe(1);
   });
 });
 

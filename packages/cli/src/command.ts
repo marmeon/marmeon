@@ -42,9 +42,11 @@ export interface CommandClass {
   readonly options?: ParseArgsOptionsConfig;
   /**
    * Whether the application must boot first (default: true). Generators and
-   * tooling set this to false, so they work without a valid `.env`.
+   * tooling set this to false, so they work without a valid `.env`. `'build'`: the app as `bespoke build` has it (E187) — every
+   * provider registered, none booted, no runtime secret needed (`route:types`). Read for the CLI's built-in commands, which it
+   * knows before the app boots.
    */
-  readonly boots?: boolean;
+  readonly boots?: boolean | 'build';
   /** Hidden from `bespoke list`. */
   readonly hidden?: boolean;
 }

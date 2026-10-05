@@ -37,11 +37,11 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
   build artifacts); the workers keep theirs to themselves.
 - **One process:** `bespoke start` *is* the server — no launcher in front — so the supervisor's SIGTERM, a worker's exit code and
   `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` reach exactly one Node process.
-- **An init process:** Node as PID 1 reaps no zombies, and the kernel drops a signal to PID 1 that has no handler yet — a
-  SIGTERM in the few hundred milliseconds of the boot would be lost (the container then waits for SIGKILL). Compose's
-  `init: true` (the template sets it) or `docker run --init` put one in front. Kubernetes does not; there the handlers, installed
-  before the server listens, cover everything after the boot — add `tini` to the image if that window or child processes
-  matter to you.
+- **tini as PID 1 (E187):** Node as PID 1 reaps no orphaned process (it stays a zombie), and the kernel drops a signal to PID 1
+  that has no handler yet — a SIGTERM in the few hundred milliseconds of the boot would be lost (the container then waits for
+  SIGKILL). The image of `make:docker` runs `bespoke` under `tini` (`ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]`, the Debian
+  package): it passes signals on and ends with bespoke's exit code — 0 after the drain, 70 for a stuck job — in Docker, Compose
+  and Kubernetes alike; no `docker run --init` or `init: true` needed (with one, tini runs as its child and warns).
 
 ## The image (E141)
 
@@ -58,12 +58,14 @@ The Dockerfile of `make:docker`, stage by stage:
    `HEALTHCHECK` with Node's own `fetch` on `/up` (no curl), `ENTRYPOINT ["bespoke"]`, `CMD ["start"]`. Worker and scheduler run
    the same image with another command.
 
-**Build-time configuration.** `bespoke build` boots the app once (to write the route types), so the configuration must be
-valid at build time: the build copies `.env.example` to `.env` and uses a throwaway `APP_KEY` — both are deleted in the same
-step; the image has neither. A setting that must be valid but has no default in `.env.example` goes into the build stage as
-`ARG`/`ENV`. Nothing secret is needed to build.
+**Build-time configuration: none (E187).** `bespoke build` writes the route types from the app in its **build phase**
+(`createApplication({ phase: 'build' })`): every provider registered, none booted — no connection, no driver check — and the
+configuration that does not validate without `.env` (`APP_KEY`, `APP_NAME`, database passwords, mail credentials …) left out
+instead of failing. So the build stage needs no `.env`, no throwaway key and no `ARG` for a setting, and no secret can end up in
+`dist/`. A provider that reads such a configuration while it registers fails the build with what it read and why; read it in
+`boot()` or later.
 
-**No `.env` in the image.** `.dockerignore` keeps every `.env*` out of the build context (only `.env.example`, for the build).
+**No `.env` in the image.** `.dockerignore` keeps every `.env*` out of the build context.
 The configuration comes from the environment when the container runs — `env_file: .env.production` in Compose, a Kubernetes
 `Secret`, `--env-file`. Never deploy a developer's `.env`: with `NODE_ENV=development` in it the app would run the development
 tools (E170; it says so loudly in its log).

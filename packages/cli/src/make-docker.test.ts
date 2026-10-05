@@ -30,7 +30,7 @@ function makeDocker(cwd: string, ...args: string[]) {
 
 const pnpmApp = () =>
   app({
-    'package.json': JSON.stringify({ name: '@acme/shop', packageManager: 'pnpm@12.9.0+sha512.abc', dependencies: { '@bespokecore/core': 'file:./vendor/fw/core.tgz' } }),
+    'package.json': JSON.stringify({ name: '@acme/shop', packageManager: 'pnpm@12.9.1+sha512.abc', dependencies: { '@bespokecore/core': 'file:./vendor/fw/core.tgz' } }),
     'pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
     'pnpm-workspace.yaml': 'overrides:\n  "@bespokecore/http": "file:./vendor/fw/http.tgz"\n  "left-pad": "file:../outside/left-pad.tgz"\n',
   });
@@ -44,7 +44,7 @@ describe('bespoke make:docker', () => {
     expect(result.stdout).toContain('Created Dockerfile');
     const dockerfile = result.file('Dockerfile');
     expect(dockerfile).toContain('ARG NODE_IMAGE=node:26-slim');
-    expect(dockerfile).toContain('RUN npm install --global --no-audit --no-fund pnpm@12.9.0\n');
+    expect(dockerfile).toContain('RUN npm install --global --no-audit --no-fund pnpm@12.9.1\n');
     // The install files and the local packages the lockfile points to come before the install; one outside the context is named.
     expect(dockerfile).toContain('COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./\nCOPY vendor/fw ./vendor/fw\nRUN --mount=type=cache');
     expect(result.stderr).toContain('Local packages outside the app cannot reach the Docker build (its context is the app): ../outside/left-pad.tgz');
@@ -54,16 +54,20 @@ describe('bespoke make:docker', () => {
     expect(dockerfile).toContain('&& node_modules/.bin/bespoke discover');
     expect(dockerfile).toMatch(/ENV NODE_ENV=production HOST=0\.0\.0\.0 PORT=3000/);
     expect(dockerfile).toMatch(/\nUSER node\n/);
-    expect(dockerfile).toContain('ENTRYPOINT ["bespoke"]\nCMD ["start"]\n');
+    // tini as PID 1 (E187): signals passed on, orphans reaped — installed in the final stage, the entrypoint in front of bespoke.
+    expect(dockerfile).toContain('apt-get install -y --no-install-recommends tini');
+    expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]\nCMD ["start"]\n');
     expect(dockerfile).toContain('chown -R node:node storage');
-    // The image has no .env: every one stays out of the context but the example (removed after the build).
-    expect(result.file('.dockerignore')).toMatch(/^\.env\*\n!\.env\.example\n/m);
-    expect(dockerfile).toContain('rm -f .env .env.example');
+    // The image has no .env: every one stays out of the context — the build needs none, nor a key (E187).
+    expect(result.file('.dockerignore')).toMatch(/^\.env\*\n/m);
+    expect(result.file('.dockerignore')).not.toContain('!.env.example');
+    expect(dockerfile).toContain('RUN NODE_ENV=production node_modules/.bin/bespoke build\n');
+    expect(dockerfile).not.toMatch(/APP_KEY=|key:generate|\.env\.example/);
     for (const ignored of ['node_modules', 'dist', '.bespoke', 'storage']) expect(result.file('.dockerignore')).toMatch(new RegExp(`^${ignored.replace('.', '\\.')}$`, 'm'));
 
     const compose = result.file('compose.production.yaml');
     expect(compose).toContain('image: shop');
-    expect(compose).toContain('init: true');
+    expect(compose).not.toMatch(/^\s*init: true/m); // tini is PID 1 already
     expect(compose).toContain("command: ['start']");
     expect(compose).toContain("command: ['queue:work', '--queue=mail,default']");
     expect(compose).toContain("command: ['schedule:work']");

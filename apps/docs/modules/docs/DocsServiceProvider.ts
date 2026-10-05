@@ -29,13 +29,15 @@ export const DOCS_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], f
 export const DOCS_DEV_CSP: ContentSecurityPolicyOptions = { frameAncestors: ["'none'"] };
 
 /**
- * Reads the READMEs while the app boots (a missing or unlisted one stops the start) and loads the routes into a group of
- * their own: `web` would encrypt cookies and — with @bespokecore/session — start a session and set its cookie and the CSRF
+ * Loads the routes into a group of their own (while registering) and reads the READMEs while the app boots (a missing or
+ * unlisted one stops the start). A group of their own: `web` would encrypt cookies and — with @bespokecore/session — start a session and set its cookie and the CSRF
  * cookie on every page. Public pages need none of it: the `docs` group checks the asset version (a client of an old build
  * reloads, E36-safe), shares the navigation and marks the answers cacheable.
  */
 export class DocsServiceProvider implements ServiceProvider {
   register(container: Container): void {
+    // The routes while registering, not in boot(): `bespoke build` writes the route types from an app that boots nothing (E187).
+    container.make(Router).load({ group: DOCS_GROUP }, routes);
     container.singleton(DocsRepository, (c) => {
       const config = c.make(DocsConfig);
       return new DocsRepository({
@@ -59,7 +61,6 @@ export class DocsServiceProvider implements ServiceProvider {
       .append(DOCS_GROUP, CachePublicly, MiddlewarePriority.encryptCookies - 50) // outermost: it sees the group's final answer
       .append(DOCS_GROUP, CheckAssetVersion, MiddlewarePriority.checkAssetVersion)
       .append(DOCS_GROUP, ShareNavigation, MiddlewarePriority.shareProps);
-    router.load({ group: DOCS_GROUP }, routes);
   }
 
   shutdown(app: Application): void {

@@ -91,6 +91,15 @@ Its `index.ts` is also its public API: other modules import from `#modules/user-
 `"#modules/*": "./modules/*/index.ts"`) — `bespoke make:lint-config --boundaries` can enforce that
 ([Lint](../cli/README.md#lint)). `bespoke make:module <name>` writes a new one.
 
+**The build phase (E187).** `createApplication({ ...definition, phase: 'build' })` is the app as `bespoke build` needs it — for
+the route types (`route:types` runs so: `static boots = 'build'`): discovery, configuration, every provider's `register()` and
+`override` — and **no** `boot()` (no connection, no driver check, no `shutdown()` afterwards; `app.phase` says `'build'`). A
+configuration that does not validate — without `.env` that is `APP_KEY`, `APP_NAME`, database passwords, mail credentials … —
+is left out instead of failing the start: reading it throws a `ConfigError` that names the variables and says the build has no
+runtime secrets. So a build needs no `.env` and no key, and none can end up in what it writes. Named routes therefore belong
+where `register()` sees them: a module's `routes` (the http provider loads them while registering) or a provider's own
+`register()` — routes loaded in `boot()` serve requests but are not in `bootstrap/routes.ts`.
+
 ## Service providers
 
 A provider registers and boots the services of a package or a module — Laravel's ServiceProvider. Any class with at least

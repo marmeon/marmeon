@@ -29,7 +29,13 @@ import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 /** The entries UPGRADING.md must keep, by wave — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
-export const UPGRADING_ANCHORS: Readonly<Record<'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
+export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
+  'Wave 9': [
+    'low-bespoke-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187
+    'low-the-image-runs-bespoke-under-tini--rebuild-it',
+    'low-pnpm-1291',
+    'low-a-new-apps-title-is-its-name-not-bespokecore',
+  ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',
     'high-session-keys-are-hashed--every-user-is-signed-out-once-a-database-sessions-table-needs-its-upgrade-migration',

@@ -25,6 +25,7 @@ import {
   titleOf,
   vendorTarballs,
   writeEnv,
+  writeTitle,
   type FrameworkSource,
   type PackageManager,
 } from './template.ts';
@@ -187,6 +188,7 @@ export async function main(io: Io = processIo()): Promise<number> {
   const manifest = appManifest(readFileSync(join(target, 'package.json'), 'utf8'), { name, packageManager: pm, source });
   writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   writeEnv(target, title);
+  writeTitle(target, title);
   writeFileSync(join(target, 'README.md'), readme({ name, title, packageManager: pm, kit: choices.kit, privateRegistration: choices.privateRegistration, docker: choices.docker }));
   step(`the files${choices.kit ? ' (with the home module)' : ''}, package.json${'version' in source ? ` (@bespokecore/* ${source.version})` : ' (the framework from BESPOKE_CREATE_TARBALLS)'}, .env with a new APP_KEY`);
 
