@@ -15,6 +15,7 @@ import {
   RequestInfo,
   isActionRequest,
   isViewResult,
+  LIVE_PATH,
   LOCATION_HEADER,
   PAGE_HEADER,
   ParentRequest,
@@ -512,10 +513,12 @@ export function createHttpKernel(
     // An upload's target or its bytes (W6.9): a request beside the page — like a live validation, it never writes the session
     // (flash data meant for the next page stays) or cookies.
     const upload = request.headers.has(UPLOAD_HEADER);
-    // An event stream (W6.10, the live stream: `EventSource` asks for `text/event-stream`) stays open beside the page for as long
-    // as the tab does: it reads the session to check who listens, never writes it — no cookie, no flash data taken.
-    const stream = request.headers.get('accept')?.includes('text/event-stream') === true;
     const { pathname } = new URL(request.url);
+    // An event stream (W6.10, the live stream: `EventSource` asks for `text/event-stream`) stays open beside the page for as long
+    // as the tab does: it reads the session to check who listens, never writes it — no cookie, no flash data taken. The live
+    // stream's path is read-only by itself (W9 step 4): a request without the header (a script, a proxy that drops it) must not
+    // start, extend or save a session there either.
+    const stream = pathname === LIVE_PATH || request.headers.get('accept')?.includes('text/event-stream') === true;
     // The tabs' question for the session's epoch (W8 step 8): it reads the session, never writes it — it starts none, extends none
     // (a tab becoming visible is no activity), takes no flash data, sets no cookie.
     const epoch = pathname === SESSION_PATH;
@@ -730,6 +733,12 @@ export interface ServeOptions {
    */
   drainTimeoutMs?: number;
   /**
+   * How long an idle keep-alive connection stays open (ms) — above the keep-alive of the proxy in front (W9 step 4). Defaults to
+   * `ServerConfig.keepAliveTimeoutMs` (env `KEEP_ALIVE_TIMEOUT`, seconds; default 65). The time to receive a request's headers
+   * (`headersTimeout`) is a second longer — between 60 s and the 300 s of `requestTimeout`.
+   */
+  keepAliveTimeoutMs?: number;
+  /**
    * How long `close()` keeps taking requests first, with `/up/ready` at 503 (E163) — so a load balancer that learns from its
    * probes sends the next requests elsewhere before this server stops listening. Defaults to `ServerConfig.shutdownDelayMs`
    * (env `SHUTDOWN_DELAY`, seconds; default 0).
@@ -762,8 +771,14 @@ export async function startServer({
   mode = environment.isDevelopment() ? 'development' : 'production',
   drainTimeoutMs = 8_000,
   shutdownDelayMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).shutdownDelayMs : 0,
+  keepAliveTimeoutMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).keepAliveTimeoutMs : 65_000,
 }: ServeOptions): Promise<RunningServer> {
-  const server = createServer();
+  // Node closes an idle keep-alive connection after 5 s by default; a proxy that keeps its connections to the app longer (nginx's
+  // upstream keepalive: 60 s) sends the next request on one the app is closing — a 502 now and then (W9 step 4). The app
+  // waits longer than the proxy. A request's headers may take a second longer (the usual pairing, `headersTimeout` above
+  // `keepAliveTimeout`), within Node's defaults: at least 60 s, at most the 300 s a whole request may take (`requestTimeout`, kept
+  // — a slow client must not hold a connection longer).
+  const server = createServer({ keepAliveTimeout: keepAliveTimeoutMs, headersTimeout: Math.min(300_000, Math.max(60_000, keepAliveTimeoutMs + 1000)) });
   const closing = app.container.has(ServerClosing) ? app.container.make(ServerClosing) : undefined;
   // While the server drains (SHUTDOWN_DELAY, E163) a keep-alive connection ends after its response: the client's next
   // request opens a new one — which the load balancer, told by the failing readiness, gives to another instance.

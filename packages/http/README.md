@@ -417,7 +417,9 @@ a sign-out reaches only the tab that made it. With it:
 - **Unsaved changes stay.** With a navigation guard holding (a dirty form), the page stays: pages fetched ahead are dropped, and
   the user is asked — once the tab is visible — whether to load it again (a `leave` request with `reason: 'session'` to the
   app's confirm dialog, `DEFAULT_SESSION_CHANGED_MESSAGE` by default). No, and the next answer of the server takes the new epoch
-  over; Back or Forward meanwhile loads from the server.
+  over; Back or Forward meanwhile loads from the server. Meanwhile the live stream ([live props](../live/README.md#robust-streams-e104)) is paused — no
+  stream, no reconnect, no reload — until a page of the new epoch is on screen (the event `stale` of the feature host: `true`
+  when the page stays, `false` once the new epoch landed).
 - **History.** Every entry holds the epoch it was written under (`history.state.epoch`, a registered field: a position, never
   data — E36). Back or Forward to an entry of another epoch loads the page from the server, never from memory.
 - **Flash messages stay with their tab.** Every request of a tab names its document (`x-bespoke-document`, random per

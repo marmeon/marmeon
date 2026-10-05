@@ -154,6 +154,7 @@ export interface NavigatorWindow {
     /** Whether the tab is shown — a live stream over HTTP/1.1 connects only while it is (E104). */
     readonly visibilityState?: DocumentVisibilityState;
     addEventListener?(type: 'DOMContentLoaded' | 'visibilitychange' | 'resume', listener: () => void, options?: AddEventListenerOptions): void;
+    removeEventListener?(type: 'visibilitychange' | 'resume', listener: () => void): void;
   };
   /** Live hints (W6.10): one stream per document — without it, none. */
   readonly EventSource?: new (url: string) => EventSource;

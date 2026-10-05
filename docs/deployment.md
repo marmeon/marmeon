@@ -170,6 +170,13 @@ the visible one kept its own.
 from nginx 1.29.7 on); **set** the forwarded headers (`X-Forwarded-Proto $scheme`, `X-Forwarded-Host $host`,
 `X-Forwarded-For $remote_addr` — replaced, not appended to the client's list). HTTP/3 in nginx is still experimental.
 
+**Keep-alive to the app (W9 step 4):** nginx keeps up to 16 idle connections to the app (`upstream { keepalive 16; }`) and closes
+one after `keepalive_timeout` — 60 s, written into the template's `upstream` block. The app keeps an idle connection
+`KEEP_ALIVE_TIMEOUT` seconds — **65** by default (Node's own default is 5 s). The proxy must be the side that closes first:
+otherwise nginx now and then sends a request on a connection the app is just closing, and the browser gets a **502** — for a
+page as for a live stream. The same holds for a cloud load balancer (AWS: idle timeout 60 s — fine with 65; Google: 600 s — set
+`KEEP_ALIVE_TIMEOUT=620`). Changing nginx's `keepalive_timeout`, keep it below `KEEP_ALIVE_TIMEOUT`.
+
 **kamal-proxy, Traefik, PaaS routers:** check that they do not buffer responses (Traefik flushes streams; kamal-proxy buffers by
 default and has a 30 s response timeout — test live updates there before relying on them) and that they speak HTTP/2 to the
 browser. kamal-proxy probes `/up` once a second: with `SHUTDOWN_DELAY` point it at `/up/ready` so it notices a stopping
@@ -200,7 +207,7 @@ a shared store:
 | Sessions (`SESSION_DRIVER`) | `file` on several machines, `memory` | `redis`, `database` (or `cookie`) |
 | Cache, rate limits, locks (`CACHE_DRIVER`) | `file` on several machines, `memory` | `redis`, `database` |
 | Queue (`QUEUE_CONNECTION`) | `sync` for real work; `database` on SQLite across machines | `redis`, `database` on Postgres |
-| Live (`LIVE_DRIVER`) | `memory` (a broadcast reaches only its own process) | `redis` |
+| Live (`LIVE_DRIVER`) | `memory` (a broadcast reaches only its own process — with `--workers` the start fails, W9 step 4) | `redis` |
 | Database | SQLite across machines | Postgres |
 | Uploads | the local disks on several machines | an S3 disk ([@bespokecore/storage](../packages/storage/README.md)) |
 

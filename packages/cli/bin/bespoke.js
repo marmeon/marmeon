@@ -83,6 +83,12 @@ async function runHere(args, launch) {
   await import('@bespokecore/core/register');
   const { run } = await import('@bespokecore/cli/main');
   process.exitCode = await run(args);
+  // A worker of `bespoke start --workers=N` that could not start (its app failed to boot): its channel to the primary would keep it
+  // alive — and the primary, waiting for it to end, with it (W9 step 4). It ends with its code once its output is written (letting
+  // go of the channel instead would end it with 0: node:cluster's own rule).
+  if (process.exitCode !== 0 && process.env.BESPOKE_CLUSTER_WORKER === '1' && process.connected) {
+    process.stderr.write('', () => process.stdout.write('', () => process.exit()));
+  }
 }
 
 /** Started with the condition already (`node --conditions=@bespokecore/source …/bespoke.js`, `NODE_OPTIONS`): no second Node. */

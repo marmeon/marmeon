@@ -1,19 +1,20 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { get } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { createApplication, CSP_NONCE_PLACEHOLDER, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { cacheControl, contentSecurityPolicy, HttpServiceProvider, PAGE_HEADER, view, type SsrRender } from '@bespokecore/http';
 import { defineRoutes } from '@bespokecore/router';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ASSET_CACHE_CONTROL } from './assets.ts';
 import { withNonce } from './html.ts';
 import { createHttpKernel, startServer } from './kernel.ts';
 import { ServerConfig, ServerServiceProvider } from './provider.ts';
 import { forwardedRequest, isProxyEntry, proxyMatcher } from './proxies.ts';
 import { createDocumentRenderer } from './render.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 // W8 step 4 (E147, E162): what a production server does at the HTTP level — the proxies it believes, the assets it sends,
 // the nonce every document and its policy share.
@@ -107,8 +108,8 @@ describe('TRUSTED_PROXIES (E162)', async () => {
 });
 
 describe('the build\'s assets (E162)', async () => {
-  const clientDir = mkdtempSync(join(tmpdir(), 'bespoke-assets-'));
-  afterAll(() => rmSync(clientDir, { recursive: true, force: true }));
+  // Removed with the file (also when a filter skips this suite and its afterAll would not run).
+  const clientDir = tempDir('bespoke-assets-');
   mkdirSync(join(clientDir, 'assets'));
   const script = `export const greeting = ${JSON.stringify('hello '.repeat(200))};\n`;
   writeFileSync(join(clientDir, 'assets/index-AbC123.js'), script);
@@ -258,7 +259,7 @@ describe('the CSP nonce (E147)', async () => {
 
 describe('startServer and HOST (E162)', () => {
   it('listens on HOST only — 127.0.0.1 answers, the start line names it', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-host-'));
+    const root = tempDir('bespoke-host-');
     mkdirSync(join(root, 'dist/client'), { recursive: true });
     mkdirSync(join(root, 'dist/server'), { recursive: true });
     writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
@@ -281,7 +282,39 @@ describe('startServer and HOST (E162)', () => {
     } finally {
       await running.close();
       await app.shutdown();
-      rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('keep-alive behind a proxy (W9 step 4)', () => {
+  /** The `Keep-Alive` header of an answer — what Node tells the client (the proxy) about idle connections. */
+  const keepAliveOf = (port: number) =>
+    new Promise<string | undefined>((resolve, reject) => {
+      get({ host: '127.0.0.1', port, path: '/up', agent: false, headers: { connection: 'keep-alive' } }, (response) => {
+        response.resume();
+        resolve(response.headers['keep-alive'] as string | undefined);
+      }).once('error', reject);
+    });
+
+  it('keeps idle connections 65 s (longer than nginx keeps its own to the app, 60 s) — KEEP_ALIVE_TIMEOUT sets it; headers may take a second more', async () => {
+    const root = tempDir('bespoke-keepalive-');
+    mkdirSync(join(root, 'dist/client'), { recursive: true });
+    mkdirSync(join(root, 'dist/server'), { recursive: true });
+    writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
+    writeFileSync(join(root, 'dist/server/ssr.js'), 'export const render = async () => ({ html: "" });');
+    for (const [env, seconds] of [[{}, 65], [{ KEEP_ALIVE_TIMEOUT: '620' }, 620]] as const) {
+      const app = await createApplication({ root, discover: false, env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test', LOG_LEVEL: 'silent', ...env }, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] });
+      const running = await startServer({ app, port: 0, mode: 'production' });
+      try {
+        expect([running.server.keepAliveTimeout, running.server.headersTimeout, running.server.requestTimeout]).toEqual([seconds * 1000, seconds === 65 ? 66_000 : 300_000, 300_000]);
+        expect(await keepAliveOf(running.port)).toBe(`timeout=${seconds}`);
+      } finally {
+        await running.close();
+        await app.shutdown();
+      }
+    }
+    await expect(createApplication({ root: import.meta.dirname, discover: false, env: { KEEP_ALIVE_TIMEOUT: '0' }, providers: [ServerServiceProvider] })).rejects.toThrow(
+      'server: KEEP_ALIVE_TIMEOUT — Expected at least 1 second',
+    );
   });
 });

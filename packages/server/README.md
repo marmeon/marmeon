@@ -22,6 +22,7 @@ a production server never loads it. Routes, controllers and responses are [@besp
 | `SSR_ENABLED` | `true` | `false`: no server rendering, the browser renders every page (one page: `Page.ssr = false`) |
 | `HEALTH_PATH` | `/up` | where the health endpoints answer (readiness below it); `off`: none ([Health](#health-e126)) |
 | `SHUTDOWN_DELAY` | `0` | seconds the server keeps answering after SIGTERM with `/up/ready` at 503, before it closes (E163, [the drain](#startserver-and-the-drain)) — 5 behind a load balancer that learns from its probes; at most 300 |
+| `KEEP_ALIVE_TIMEOUT` | `65` | seconds an idle keep-alive connection stays open — longer than the proxy in front keeps its own to the app (nginx's upstream `keepalive_timeout` 60 s, an AWS load balancer 60 s), so the proxy closes first ([Behind a proxy](#behind-a-proxy-e162)); 1–3600. The headers of a request may take a second longer (at least 60 s, at most the 300 s of a whole request) |
 | `NODE_ENV` | — | `development` turns on the error page, `Server-Timing` and `DevDocument` — nothing else does (E115); every value but `development` and `test`, none included, is protected (E139, [The environment](../core/README.md#the-environment-node_env)) |
 
 ## The kernel
@@ -206,6 +207,12 @@ unchanged makes them the client's word. `*` suits a proxy that is the only way i
 two proxies in a row — a CDN in front of nginx — need their ranges, or the app takes the CDN's address. Prefer explicit
 addresses or ranges where you know them. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
 [@bespokecore/session](../session/README.md#configuration)).
+
+**Keep-alive (W9 step 4).** A proxy that reuses its connections to the app (nginx `upstream { keepalive 16; }`, every cloud load
+balancer) must close an idle one **before** the app does — the other way round it now and then sends a request on a connection the
+app is just closing, and the browser gets a 502. Node's own default is 5 s; the server keeps idle connections `KEEP_ALIVE_TIMEOUT`
+seconds (65), above nginx's upstream `keepalive_timeout` (60 s, written into the `make:docker --nginx` template) and an AWS load
+balancer's idle timeout (60 s). Behind a proxy with a longer one (Google's load balancer: 600 s) set it higher (`KEEP_ALIVE_TIMEOUT=620`).
 
 ## Health (E126)
 

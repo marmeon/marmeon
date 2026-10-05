@@ -6,7 +6,10 @@ import { guard } from './features/guard.ts';
 import { islands } from './features/islands.ts';
 import { layers } from './features/layers.ts';
 import { live, LIVE_MAX_WAIT, LIVE_QUIET } from './features/live.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
+import { tabSync } from './features/tab-sync.ts';
+import { Navigator } from './navigation.ts';
+import { SESSION_PATH } from '../tab-sync-protocol.ts';
+import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
 /** A subscription as the server signs it into a page — the token is opaque to the client. */
 const follows = (channel: string, only?: string[]): LiveSubscription => ({ channel, ...(only ? { only } : {}), token: `t-${channel.replaceAll('.', '_')}` });
@@ -271,5 +274,74 @@ describe('catching up (E104): a stream that was away reloads once what it missed
     win.source!.emit('hello', { seq: { 'users.1': 1, 'notifications.user.1': 2 } });
     await wait(LIVE_QUIET + 50);
     expect(reloads(win)).toEqual(['/users/1 bell']);
+  });
+});
+
+describe('live and the session of the tab (W9 step 4)', () => {
+  /** A tab with tab sync on Ada's profile (it follows users.1) in a browser whose session the test changes; its tokens are the epoch's. */
+  async function syncedTab({ confirm }: { confirm?: () => Promise<boolean> } = {}) {
+    const channels = new FakeChannels();
+    const server = { epoch: 'e1' };
+    const win = new FakeWindow(`${ORIGIN}/users/1`, channels);
+    const signed = () => [{ channel: 'users.1', only: ['profile'], token: `t-${server.epoch}` }];
+    win.handler = (url) => (new URL(url).pathname === SESSION_PATH ? Response.json({ epoch: server.epoch }) : pageResponse({ ...livePage('/users/1', signed(), { profile: 'v2' }), epoch: server.epoch }));
+    const booted = boot(win, { ...livePage('/users/1', signed()), epoch: 'e1' }, { features: [tabSync, guard], ...(confirm ? { confirm } : {}) });
+    await arrived(win);
+    return { win, channels, server, ...booted };
+  }
+
+  it('pauses while the tab-sync question is open: the stream closes, no reconnect, no reload — a page of the new session connects again', async () => {
+    const questions: unknown[] = [];
+    // The user has not answered yet: the app's dialog is open.
+    const { win, channels, server, navigator } = await syncedTab({ confirm: (request?: unknown) => (questions.push(request), new Promise(() => {})) as never });
+    const first = win.source!;
+    first.emit('hello', { seq: { 'users.1': 0 } });
+    navigator.use(guard).add({ message: 'Unsaved' });
+    // A hint waits for the unsaved changes.
+    first.emit('refresh', { channel: 'users.1', only: ['profile'], seq: 1 });
+    await wait(LIVE_QUIET + 50);
+    expect(navigator.use(live).updates.pending).toBe(true);
+    // Another tab signed out (and in as someone else): this tab hears it, asks the server — and the user.
+    server.epoch = 'e2';
+    channels.inject({ v: 1, epoch: 'e2' });
+    for (let i = 0; i < 6; i++) await settle();
+    expect(questions).toHaveLength(1);
+    expect(first.closed).toBe(true);
+    // Visible again, resumed: still no stream (its tokens are the old session's).
+    win.hide();
+    win.show();
+    win.resume();
+    await wait(40);
+    expect(win.sources).toHaveLength(1);
+    // What waited is not reloaded under the new session — not even when asked to.
+    navigator.use(live).updates.apply();
+    await wait(LIVE_QUIET + 50);
+    expect(reloads(win)).toEqual([]);
+    // A page of the new session lands (the user saved and moved on): live follows it again — with the new session's token.
+    await navigator.reload({ only: ['profile'] });
+    await arrived(win, 2);
+    expect(win.sources).toHaveLength(2);
+    expect(win.source!.url).toContain('c=t-e2.users.1');
+  });
+
+  it('a second navigator (React builds one after a hydration mismatch) opens no stream; stop() lets go of every listener and the stream', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`, new FakeChannels());
+    win.handler = () => pageResponse(livePage('/users/1', [follows('users.1', ['profile'])]));
+    const initial = { ...livePage('/users/1', [follows('users.1', ['profile'])]), epoch: 'e1' };
+    // The first navigator: its features attached (tab sync, live once its chunk is there), never started — the tree was thrown away.
+    // It neither streams nor listens (before, its live feature listened to the document and threw on every visibilitychange).
+    new Navigator({ initialPage: initial, window: win, render: async () => {}, features: [tabSync] });
+    const { stop } = boot(win, initial, { features: [tabSync] });
+    await arrived(win);
+    await wait(40);
+    expect(win.sources.filter((source) => !source.closed)).toHaveLength(1);
+    expect([win.listening('document:visibilitychange'), win.listening('document:resume'), win.listening('window:pageshow')]).toEqual([2, 1, 3]);
+    stop();
+    expect([win.listening('document:visibilitychange'), win.listening('document:resume'), win.listening('window:pageshow')]).toEqual([0, 0, 0]);
+    expect(win.sources.every((source) => source.closed)).toBe(true);
+    win.hide();
+    win.show();
+    await wait(40);
+    expect(win.sources.filter((source) => !source.closed)).toHaveLength(0);
   });
 });

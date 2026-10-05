@@ -48,6 +48,37 @@ query string as before. Its texts are English unless the app passes its own word
 (n) => … }}`, from the app's language files (`useTranslation`, E38) — best in a small wrapper component of the app (see the web
 app's `layouts/Pagination.tsx`); before, every text was a fixed English literal. An app without `labels` looks as before.
 
+#### Medium: one session holds at most 16 live streams per process — the 17th tab gets a 429
+
+*Likelihood of impact: medium — apps with live props whose users keep many tabs open, and tests that open many streams for one
+session.* `GET /_bespoke/live` now counts the streams of each session (W9 step 4): beyond `LIVE_MAX_STREAMS_PER_SESSION` (default
+**16**) in one process a new stream is refused with **429** (`Retry-After: 30`, a `warn` line in the log) — the 17th tab of a browser
+gets no live hints until one of the others closes (its client tries again every 30 s). Before, one session could take every stream
+of the process (`LIVE_MAX_STREAMS`, 1000) and leave live updates dead for every other user. The counts are atomic now (fifty tabs
+opening at once never get past a limit), and a stream asked for while the server closes is refused with 503 instead of holding
+the shutdown. To allow more tabs: `LIVE_MAX_STREAMS_PER_SESSION=32` (there is no "off" — set it as high as `LIVE_MAX_STREAMS` for
+the old behaviour). A test that opens many streams for one user raises it in its environment.
+
+#### Medium: a cluster (`bespoke start` with workers) needs `LIVE_DRIVER=redis`
+
+*Likelihood of impact: medium — apps started with `bespoke start --workers=N` and the default `LIVE_DRIVER=memory`.* With the memory
+backend every worker of the cluster has its own pub/sub and its own sequences: a hint reached the tabs connected to the worker that
+sent it, and a tab that reconnected to another worker compared its sequences with another counter — live updates went missing
+without a sound. Now a worker does not start with `LIVE_DRIVER=memory` (`LiveSetupError`: "memory pub/sub never reaches the other
+workers — use LIVE_DRIVER=redis …"), and the cluster stops with the worker's code. Set `LIVE_DRIVER=redis` (with
+[@bespokecore/redis](packages/redis/README.md)) — the web app's `.env.example` does — or start one process without `--workers`.
+One process with `memory` (`bespoke start`, `bespoke dev`) is unchanged.
+
+#### Low: the server keeps idle connections 65 s (`KEEP_ALIVE_TIMEOUT`)
+
+*Likelihood of impact: low — apps behind a proxy or a load balancer.* Node closes an idle keep-alive connection after 5 s; nginx (the
+`make:docker --nginx` template: `upstream { keepalive 16; }`) keeps its connections to the app 60 s — so now and then it sent a
+request on a connection the app was just closing, and the browser got a 502. The server now keeps them `KEEP_ALIVE_TIMEOUT` seconds
+(default **65**, `headersTimeout` a second longer), above nginx's upstream `keepalive_timeout` (60 s, now written into the template) and an
+AWS load balancer's idle timeout (60 s). Behind a proxy that keeps them longer (Google's load balancer: 600 s) set
+`KEEP_ALIVE_TIMEOUT` above it; an nginx config of your own with a longer `keepalive_timeout` keeps it below. Nothing to do otherwise —
+an idle connection stays open a minute longer than before (the drain on shutdown closes idle connections at once, as before).
+
 #### Low: `bespoke build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
 
 *Likelihood of impact: low — Dockerfiles and CI jobs written for 0.1.0 keep working; a provider that reads configuration while it

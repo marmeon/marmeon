@@ -97,6 +97,20 @@ describe('live props in the web app (W6.10)', () => {
     expect(stream.status).toBe(200);
   });
 
+  it('one browser keeps 16 tabs connected; the 17th is refused (429) — another user’s tab still connects, and a hint still arrives (W9 step 4)', async () => {
+    const ada$ = app.actingAs(ada); // one browser — one session
+    const live = (await ada$.navigating().get(profile(ada))).page()!.live!;
+    const tabs = [];
+    for (let n = 0; n < 16; n++) tabs.push(await ada$.live(live, { connection: `tab-${String(n).padStart(2, '0')}-ada-0001` }));
+    expect(tabs.map((stream) => stream.status)).toEqual(Array(16).fill(200));
+    expect((await ada$.live(live, { connection: 'tab-16-ada-0001' })).status).toBe(429);
+    const alans = await app.actingAs(alan).live(profile(ada));
+    expect(alans.status).toBe(200);
+    await Promise.all([...tabs, alans].map((stream) => stream.hello()));
+    await app.actingAs(ada).post(`${profile(ada)}/links`, { json: { label: 'Blog', url: 'https://ada.example' } }).assertRedirect(profile(ada));
+    await Promise.all([tabs[15]!.waitFor(1), alans.waitFor(1)]);
+  });
+
   it('signing out in tab A closes tab B’s stream (`end`) — no further hints', async () => {
     const ada$ = app.actingAs(ada); // both tabs in one browser — one session
     const tabB = await ada$.live(profile(ada), { connection: 'tab-b-ada-0001' });

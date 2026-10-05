@@ -41,6 +41,9 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-a-list-in-a-gets-data-is-the-key-repeated',
     'low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up',
     'low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400',
+    'medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429', // W9.4, E182
+    'medium-a-cluster-bespoke-start-with-workers-needs-live_driverredis',
+    'low-the-server-keeps-idle-connections-65-s-keep_alive_timeout',
   ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',

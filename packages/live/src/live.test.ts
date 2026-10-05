@@ -2,11 +2,11 @@ import { createServer, type Server } from 'node:http';
 import { connect, createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from 'node:net';
 import { runTransaction, type Logger } from '@bespokecore/core';
 import { RedisConnections, defineRedisScript } from '@bespokecore/redis';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryLiveBackend, type LiveBackend } from './backend.ts';
 import { LiveBroadcaster } from './broadcaster.ts';
 import { LiveStreamController } from './endpoint.ts';
-import { LiveHub, type LiveHubOptions } from './hub.ts';
+import { LiveHub, OpenStream, type LiveHubOptions } from './hub.ts';
 import { BroadcastRecorder } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
@@ -129,6 +129,53 @@ describe('the stream endpoint — GET /_bespoke/live (E89, E90)', () => {
     expect(next.status).toBe(200);
     await next.body?.cancel();
   });
+
+  it('holds at most LIVE_MAX_STREAMS_PER_SESSION streams of one session (16): the 17th → 429 with its own log line — other sessions still open', async () => {
+    const warnings: string[] = [];
+    const logger: Logger = { ...silent, warn: (message) => void warnings.push(message), child: () => logger };
+    const hub = new LiveHub(new MemoryLiveBackend(), OPTIONS, logger);
+    cleanups.push(() => hub.close());
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const opened: LiveStreamReader[] = [];
+    for (let tab = 0; tab < 16; tab++) {
+      const response = await controller.handle(request(`connection=tab-${String(tab).padStart(2, '0')}-0001&${pair('users.1')}`));
+      expect(response.status).toBe(200);
+      opened.push(new LiveStreamReader(response));
+    }
+    cleanups.push(() => Promise.all(opened.map((reader) => reader.close())).then(() => undefined));
+    const refused = await controller.handle(request(`connection=tab-16-0001&${pair('users.1')}`));
+    if (refused.status === 200) await refused.body?.cancel();
+    expect(refused.status).toBe(429);
+    expect([refused.headers.get('retry-after'), await refused.text()]).toEqual(['30', 'Too many live streams for this session.']);
+    expect(warnings).toEqual(['A session asked for more live streams than it may hold in this process (LIVE_MAX_STREAMS_PER_SESSION); refused with 429']);
+    // Another session is not counted with Ada's.
+    const grace = await new LiveStreamController(hub, tokens, 20, () => GRACE).handle(request(`connection=tab-g-0001&${pair('users.1', GRACE)}`));
+    expect(grace.status).toBe(200);
+    await grace.body?.cancel();
+    // One of Ada's tabs closes: the next one opens.
+    await opened.shift()!.close();
+    const next = await controller.handle(request(`connection=tab-17-0001&${pair('users.1')}`));
+    expect(next.status).toBe(200);
+    await next.body?.cancel();
+  });
+
+  it('counts atomically: fifty streams opening at once — never more than the limits (of the process, of a session)', async () => {
+    // Fifty tabs whose requests arrive together (a synchronized start: all of them are handled before any stream got further).
+    const burst = async (hub: LiveHub, scopes: (tab: number) => string) => {
+      const responses = await Promise.all(
+        Array.from({ length: 50 }, (_, tab) => new LiveStreamController(hub, tokens, 20, () => scopes(tab)).handle(request(`connection=tab-${String(tab).padStart(2, '0')}-0001&${pair('users.1', scopes(tab))}`))),
+      );
+      const statuses = responses.map((response) => response.status);
+      await Promise.all(responses.map((response) => response.body?.cancel()));
+      return { opened: statuses.filter((status) => status === 200).length, refused: statuses.filter((status) => status !== 200).length };
+    };
+    // Fifty sessions, ten streams for the process.
+    const process = hubOf(new MemoryLiveBackend(), { maxStreams: 10 });
+    expect(await burst(process, (tab) => `scope-${tab}`)).toEqual({ opened: 10, refused: 40 });
+    // One session, sixteen streams for it.
+    const session = hubOf(new MemoryLiveBackend());
+    expect(await burst(session, () => ADA)).toEqual({ opened: 16, refused: 34 });
+  });
 });
 
 describe('the stream — hints, never data (E89, E104)', () => {
@@ -150,6 +197,25 @@ describe('the stream — hints, never data (E89, E104)', () => {
     expect(ada.events.at(-1)?.id).toBe('users.1=2&notifications.user.1=1');
     await settle();
     expect(other.hints).toEqual([]);
+  });
+
+  it('a hint goes to the streams of its channel only (the index) — a session’s end to that session’s streams only', async () => {
+    const backend = new MemoryLiveBackend();
+    const hub = hubOf(backend);
+    const followers = [await open(hub, ['users.1'], { connection: 'tab-a-0001' }), await open(hub, ['users.1', 'users.2'], { scope: GRACE, connection: 'tab-b-0001' })];
+    const others = await Promise.all(Array.from({ length: 30 }, (_, tab) => open(hub, [`users.${100 + tab}`], { scope: `scope-${tab}`, connection: `tab-${String(tab).padStart(2, '0')}-0002` })));
+    await Promise.all([...followers, ...others].map((reader) => reader.hello()));
+    const hinted = vi.spyOn(OpenStream.prototype, 'hint');
+    const ended = vi.spyOn(OpenStream.prototype, 'end');
+    cleanups.push(() => void (hinted.mockRestore(), ended.mockRestore()));
+    await broadcasterOf(backend).refresh('users.1');
+    await Promise.all(followers.map((reader) => reader.waitFor(1)));
+    // Two streams follow users.1: two deliveries — not one per stream of the process (32).
+    expect(hinted).toHaveBeenCalledTimes(2);
+    await backend.end(GRACE);
+    await followers[1]!.closed;
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(others.every((reader) => reader.events.length === 1)).toBe(true);
   });
 
   it('a refresh never carries data — whatever a caller passes besides `only` (the schema of every hint of these tests)', async () => {
@@ -269,6 +335,36 @@ describe('the stream — hints, never data (E89, E104)', () => {
     expect(hub.size).toBe(0);
   });
 
+  it('the server began closing: a stream asked for afterwards is refused (503) — none opens that would hold server.close() (W9 step 4)', async () => {
+    const closing = new AbortController();
+    const hub = hubOf(new MemoryLiveBackend(), {}, closing.signal);
+    closing.abort();
+    const late = await hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
+    await late.body?.cancel();
+    expect([late.status, late.headers.get('retry-after'), hub.size]).toEqual([503, '1', 0]);
+    // A hub made after the server began closing knows it, too.
+    const after = hubOf(new MemoryLiveBackend(), {}, closing.signal);
+    const refused = await after.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
+    await refused.body?.cancel();
+    expect([refused.status, after.size]).toEqual([503, 0]);
+  });
+
+  it('the server closing while a stream is being opened (hello on its way): that stream is refused and gone too', async () => {
+    const closing = new AbortController();
+    const backend = new MemoryLiveBackend();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow: LiveBackend = { refresh: backend.refresh.bind(backend), end: backend.end.bind(backend), listen: backend.listen.bind(backend), close: backend.close.bind(backend), seqs: async (channels) => (await gate, backend.seqs(channels)) };
+    const hub = hubOf(slow, {}, closing.signal);
+    const opening = hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
+    await settle();
+    closing.abort();
+    release();
+    const response = await opening;
+    await response.body?.cancel();
+    expect([response.status, hub.size]).toEqual([503, 0]);
+  });
+
   it('a tab that goes away closes its stream (the hub lets go of it)', async () => {
     const hub = hubOf();
     const reader = await open(hub, ['users.1']);
@@ -276,6 +372,36 @@ describe('the stream — hints, never data (E89, E104)', () => {
     expect(hub.size).toBe(1);
     await reader.close();
     expect(hub.size).toBe(0);
+  });
+});
+
+describe('the memory backend — bounded like Redis (W9 step 4)', () => {
+  it('forgets the channel hinted longest ago beyond maxChannels, and a channel a day after its last hint', async () => {
+    let now = 0;
+    const backend = new MemoryLiveBackend({ maxChannels: 3, now: () => now });
+    for (const channel of ['users.1', 'users.2', 'users.3']) await backend.refresh(channel, null, undefined);
+    await backend.refresh('users.1', null, undefined); // hinted again: the newest now
+    await backend.refresh('users.4', null, undefined); // one too many: users.2 (hinted longest ago) goes
+    expect(await backend.seqs(['users.1', 'users.2', 'users.3', 'users.4'])).toEqual([2, 0, 1, 1]);
+    now = 86_400_000 - 1;
+    expect(await backend.seqs(['users.1'])).toEqual([2]);
+    now = 86_400_000;
+    expect(await backend.seqs(['users.1', 'users.3', 'users.4'])).toEqual([0, 0, 0]);
+  });
+
+  it('a forgotten channel counts on above every forgotten sequence — a stream still open takes its next hint', async () => {
+    const backend = new MemoryLiveBackend({ maxChannels: 2 });
+    const hub = hubOf(backend);
+    const reader = await open(hub, ['users.1']);
+    for (let n = 0; n < 5; n++) await backend.refresh('users.1', null, undefined);
+    await reader.waitFor(5);
+    // Two other channels push users.1 out — the stream saw 5.
+    await backend.refresh('users.2', null, undefined);
+    await backend.refresh('users.3', null, undefined);
+    expect(await backend.seqs(['users.1'])).toEqual([0]);
+    expect(await backend.refresh('users.1', null, undefined)).toBe(6);
+    await reader.waitFor(6);
+    expect(reader.hints.at(-1)).toEqual({ channel: 'users.1', only: null, seq: 6 });
   });
 });
 

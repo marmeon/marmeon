@@ -65,6 +65,16 @@ export const ServerConfig = defineConfig('server', {
       v.pipe(v.string(), v.regex(/^\d+(\.\d+)?$/, 'Expected seconds, like 5 or 0.5'), v.transform(Number), v.maxValue(300, 'Expected at most 300 seconds')),
       '0',
     ),
+    /**
+     * Seconds an idle keep-alive connection stays open (W9 step 4). Default 65 — longer than the proxy in front keeps its idle
+     * connections to the app (nginx's upstream `keepalive_timeout` 60 s, an AWS load balancer's idle timeout 60 s): the side that
+     * closes first must be the proxy, or a request it sends on a connection the app is just closing fails (a 502). Behind a proxy
+     * that keeps them longer (a Google load balancer: 600 s) set it above that.
+     */
+    KEEP_ALIVE_TIMEOUT: v.optional(
+      v.pipe(v.string(), v.regex(/^\d+$/, 'Expected seconds, like 65'), v.transform(Number), v.minValue(1, 'Expected at least 1 second'), v.maxValue(3600, 'Expected at most 3600 seconds')),
+      '65',
+    ),
     NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
@@ -79,6 +89,8 @@ export const ServerConfig = defineConfig('server', {
     health: env.HEALTH_PATH === 'off' ? (false as const) : env.HEALTH_PATH,
     /** How long the server keeps taking requests after SIGTERM, not ready any more (E163), in milliseconds. */
     shutdownDelayMs: Math.round(env.SHUTDOWN_DELAY * 1000),
+    /** How long an idle keep-alive connection stays open, in milliseconds — above the proxy's (`KEEP_ALIVE_TIMEOUT`). */
+    keepAliveTimeoutMs: env.KEEP_ALIVE_TIMEOUT * 1000,
     /** The `Server-Timing` header (E129): only when `NODE_ENV=development` — not in tests, never in production. */
     serverTiming: environment.isDevelopment(env),
     /**

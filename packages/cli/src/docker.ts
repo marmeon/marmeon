@@ -255,6 +255,9 @@ export function nginxConf({ systemd = false }: DockerOptions): string {
 upstream bespoke {
 	server ${upstream};
 	keepalive 16;
+	# Idle connections to the app close here first: the app keeps them longer (KEEP_ALIVE_TIMEOUT, default 65 s) — the other
+	# way round nginx would send a request on a connection the app is just closing (a 502 now and then).
+	keepalive_timeout 60s;
 }
 
 server {

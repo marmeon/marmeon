@@ -5,6 +5,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createApplication } from '@bespokecore/core';
+import { ServerConfig, ServerServiceProvider } from '@bespokecore/server';
 import { describe, expect, it } from 'vitest';
 import { inspectApp } from './commands/make-docker.ts';
 import { HEALTHCHECK_SCRIPT, TESTED_PNPM } from './docker.ts';
@@ -106,7 +108,7 @@ describe('bespoke make:docker', () => {
     expect(`pnpm@${TESTED_PNPM}`).toBe(pinned);
   });
 
-  it('--caddy: Caddy in front (h2/h3, TLS), the web container unpublished and trusting it; --nginx: X-Forwarded-* set, buffering off for streams', () => {
+  it('--caddy: Caddy in front (h2/h3, TLS), the web container unpublished and trusting it; --nginx: X-Forwarded-* set, buffering off for streams', async () => {
     const caddy = makeDocker(pnpmApp(), '--caddy');
     const compose = caddy.file('compose.production.yaml');
     expect(compose).toContain('image: caddy:2');
@@ -127,6 +129,12 @@ describe('bespoke make:docker', () => {
     expect(conf).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
     expect(conf).not.toContain('X-Forwarded-For $proxy_add_x_forwarded_for');
     expect(conf).toContain('proxy_read_timeout 75s;');
+    // nginx closes an idle connection to the app before the app does (W9 step 4): the other way round, it would send a request on
+    // one the app is just closing — a 502 now and then. The app's default (KEEP_ALIVE_TIMEOUT) is longer than nginx's.
+    const upstreamIdle = Number(/^\s*keepalive_timeout (\d+)s;/m.exec(conf)?.[1]);
+    const app = await createApplication({ root: repo, discover: false, env: {}, providers: [ServerServiceProvider] });
+    expect(upstreamIdle, 'the template names its keepalive_timeout').toBeGreaterThan(0);
+    expect(app.container.make(ServerConfig).keepAliveTimeoutMs).toBeGreaterThan(upstreamIdle * 1000);
     expect(nginx.file('compose.production.yaml')).toContain('image: nginx:mainline-alpine');
   });
 

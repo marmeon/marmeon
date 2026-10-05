@@ -176,6 +176,12 @@ export interface FeatureHooks {
   /** The navigator took over the history (`start()`) / gave it back. */
   started(): void;
   stopped(): void;
+  /**
+   * The session changed in another tab while unsaved changes keep the page (tab sync — `true`: the page on screen is of the old
+   * session, the user is asked or chose to stay); `false` once a page of the new session landed. What runs in the background
+   * against the session (the live stream) waits meanwhile.
+   */
+  stale(stale: boolean): void;
   /** Rendering starts. */
   draw(): void;
   /** A page takes the screen as the page: what features put over the one before goes (layers). */

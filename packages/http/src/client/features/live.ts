@@ -14,6 +14,12 @@
  *   channel stands; one that moved since it was last seen (or was never seen on a stream that broke) reloads once.
  * - **In a slot of the document**: the stream, the sequences seen and the hints waiting — a 409 (signed out, a new build) closes
  *   the stream and forgets them (`#leave`).
+ * - **Paused while the session changed in another tab** (`stale`, tab sync — W9 step 4): unsaved changes kept the page, the user
+ *   is asked (or chose to stay) — the page on screen is of the old session. No stream, no reconnect, no reload until a page of
+ *   the new session lands: its tokens were signed for the old one, and what a reload would bring is the new session's.
+ * - **Only while the navigator runs** (`start()` → `stop()`): it connects and listens to the document once the navigator took over
+ *   the history, and lets go of both when it stops — a second navigator (React builds one after a hydration mismatch) never
+ *   opens a stream of its own.
  */
 import { CONNECTION_HEADER, LIVE_PATH } from '../../live-protocol.ts';
 import type { LiveHint, LiveSubscription } from '../../page.ts';
@@ -59,6 +65,8 @@ interface LiveState {
   first?: number | undefined;
   /** Updates wait for unsaved changes (`updates.pending`). */
   pending?: boolean | undefined;
+  /** The session changed in another tab and the page on screen is of the old one (tab sync): no stream, no reload. */
+  paused?: boolean | undefined;
 }
 
 const LIVE = slot<LiveState>('live', () => ({}), (state) => {
@@ -128,8 +136,10 @@ export const live = defineFeature('live', (host): LiveFeature => {
 
   const sync = () => {
     syncing = undefined;
-    if (host.left || !win.EventSource) return;
+    if (host.left || !host.started || !win.EventSource) return;
     const current = state();
+    // Paused (the session changed in another tab): the stream stays closed — what passes meanwhile, `hello` says once it is back.
+    if (current.paused) return void (current.source && close(current));
     const channels = new Map<string, string>();
     for (const target of targets()) for (const { channel, token } of target.live ?? []) channels.set(channel, token);
     const query = new URLSearchParams({ connection });
@@ -217,7 +227,8 @@ export const live = defineFeature('live', (host): LiveFeature => {
     const now = state();
     clearTimeout(now.timer);
     now.timer = now.first = undefined;
-    if (host.left || (!now.hinted?.size && !now.missed?.size)) return;
+    // Paused: what waits stays until a page of the new session lands (which drops it, `page`) — never reloaded under it.
+    if (host.left || now.paused || (!now.hinted?.size && !now.missed?.size)) return;
     // Unsaved changes on screen: the reloads wait for the user.
     if (!force && host.navigator.isGuarded()) {
       if (!now.pending) {
@@ -267,15 +278,39 @@ export const live = defineFeature('live', (host): LiveFeature => {
       notify(listeners);
     }
   });
+  // The session changed in another tab, and the page stays for now (tab sync): pause — and go on once it is of the new one.
+  host.on('stale', (stale) => {
+    const now = state();
+    now.paused = stale || undefined;
+    clearTimeout(now.timer);
+    now.timer = now.first = undefined;
+    sync();
+  });
   // Visible again (E104), back from a frozen state, or from the back/forward cache: connect — `hello` says what was missed.
   const back = () => {
     if (h1 && doc?.visibilityState === 'hidden') return void (state().source && close(state()));
     sync();
   };
-  doc?.addEventListener?.('visibilitychange', back);
-  doc?.addEventListener?.('resume', back);
-  win.addEventListener('pageshow', back);
-  schedule();
+  // Listening to the document only while the navigator runs — and letting go of it (and of the stream) when it stops.
+  const listen = () => {
+    doc?.addEventListener?.('visibilitychange', back);
+    doc?.addEventListener?.('resume', back);
+    win.addEventListener('pageshow', back);
+    schedule();
+  };
+  host.on('started', listen);
+  host.on('stopped', () => {
+    doc?.removeEventListener?.('visibilitychange', back);
+    doc?.removeEventListener?.('resume', back);
+    win.removeEventListener('pageshow', back);
+    clearTimeout(syncing);
+    clearTimeout(retry);
+    const now = state();
+    clearTimeout(now.timer);
+    now.timer = now.first = undefined;
+    if (now.source) close(now);
+  });
+  if (host.started) listen();
 
   return {
     sync: schedule,

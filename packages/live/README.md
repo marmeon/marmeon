@@ -55,8 +55,9 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   answer), only the sequence moves on. Outside a request (a job, a command) every tab hears it.
 - **Signing in or out ends the streams of the old session** — in every process (pub/sub): they get `end` and close; the browser
   does not reconnect. The next page the tab asks for is the server's answer to that (`/login`).
-- **Read-only.** The stream is an event stream (`Accept: text/event-stream`): the kernel never saves its session, sets no
-  cookie, takes no flash message — like an island.
+- **Read-only.** The stream's path (`GET /_bespoke/live`) is read-only by itself — with `Accept: text/event-stream` or without
+  (a script, a proxy that drops the header): the kernel never saves its session, sets no cookie, takes no flash message — like an
+  island.
 
 ## Robust streams (E104)
 
@@ -78,8 +79,35 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   target, however many hints came.
 - **Unsaved changes**: while a guard holds (`useForm(…, { guard })`, `useBlocker`), nothing reloads; `useLiveUpdates()` says
   updates are pending, `apply()` loads them (or the next render after the guard lets go).
-- **Server shutdown** closes every stream (`startServer().close()` would wait for them otherwise); the browsers reconnect to
-  the next server and catch up.
+- **Server shutdown** closes every stream (`startServer().close()` would wait for them otherwise) — also one whose request was
+  on its way when the server began closing (refused with 503); the browsers reconnect to the next server and catch up.
+- **Paused while the session changed in another tab**: with [tab sync](../http/README.md#tab-sync-w8-step-8) a tab that keeps its page
+  (unsaved changes) after a sign-in or sign-out elsewhere closes its stream, does not reconnect and reloads nothing until a page
+  of the new session is on screen — the old stream's tokens are the old session's, and a reload would show the new one's data in
+  the old page.
+- **Only while the navigator runs**: the stream opens once `navigator.start()` took over the history and closes on `stop()` —
+  with every listener on `document`/`window`; a second navigator (React builds one after a hydration mismatch) opens none.
+
+## Limits
+
+| | Default | Beyond |
+|---|---|---|
+| `LIVE_MAX_STREAMS` — streams per **process** | 1000 | 503 + `Retry-After: 10` |
+| `LIVE_MAX_STREAMS_PER_SESSION` — streams of one **session** per process (its tabs) | 16 | 429 + `Retry-After: 30`, a `warn` log line |
+| `LIVE_MAX_CHANNELS` — channels per stream | 20 | 400 |
+
+- **Per session**: without it, one user (or a script with their cookie) could take every stream of the process and leave live
+  updates dead for everyone else. Sixteen tabs of one browser stay connected; the 17th tab's `EventSource` is refused and the
+  client tries again 30 s later (it gets a place once another tab closes). The key is the session's **scope** — what the
+  tokens are signed for; a stream without a session is refused (401) before any count, so a guest streams only with the session
+  a page kept for them (E143). Someone who mints new sessions (a fresh cookie per request) is held by the process limit, not
+  this one — like any other flood of connections, that belongs in front of the app (the proxy's connection limits).
+- **Atomic**: a stream takes its place in the counts before `open()` waits for anything (the backend's sequences) — fifty tabs
+  opening at once never get past a limit.
+- **Per process**: the counts are each process's. With `--workers=4` or four containers, a session may hold 16 streams in each.
+- **A hint costs its followers**: the hub keeps an index `channel → streams` (and `session → streams` for the end of a session) —
+  a hint on a channel one tab follows takes ~0.01 ms among 50 000 open streams (`pnpm bench fanout`; before the index 4–5 ms); a
+  hint every stream follows is one event per stream (≈ 55 ms for 50 000).
 
 ### Behind a proxy
 
@@ -89,7 +117,12 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   `no-transform`; a proxy that compresses `text/event-stream` anyway holds hints back until a buffer fills.
 - **Idle timeouts longer than `LIVE_HEARTBEAT`** (nginx `proxy_read_timeout`, ALB idle timeout, Cloudflare's 100 s) — the
   heartbeat is what keeps an idle stream open.
-- Count connections: each open tab holds one stream (one socket through the proxy); `LIVE_MAX_STREAMS` caps them per process.
+- Count connections: each open tab holds one stream (one socket through the proxy); `LIVE_MAX_STREAMS` caps them per process,
+  `LIVE_MAX_STREAMS_PER_SESSION` per session.
+- **Keep-alive to the app**: the proxy must close an idle connection to the app before the app does — the app keeps them 65 s
+  (`KEEP_ALIVE_TIMEOUT`, [server](../server/README.md)); nginx's upstream `keepalive_timeout` (60 s, set in the `make:docker --nginx`
+  template), an AWS load balancer's idle timeout (60 s) are shorter. Behind a proxy that keeps them longer (Google's load
+  balancer: 600 s), raise `KEEP_ALIVE_TIMEOUT` above it — otherwise a request now and then meets a closing connection (a 502).
 
 ## Configuration
 
@@ -99,6 +132,7 @@ LIVE_REDIS_CONNECTION=default # the Redis connection of the redis driver
 LIVE_HEARTBEAT=20             # seconds between heartbeats
 LIVE_RETRY=3000               # ms before a browser reconnects a broken stream
 LIVE_MAX_STREAMS=1000         # open streams per process (beyond: 503 + Retry-After)
+LIVE_MAX_STREAMS_PER_SESSION=16 # open streams of one session per process (beyond: 429 + Retry-After)
 LIVE_MAX_CHANNELS=20          # channels per stream (one page, its islands and layers)
 ```
 
@@ -107,7 +141,12 @@ LIVE_MAX_CHANNELS=20          # channels per stream (one page, its islands and l
 `LIVE_REDIS_CONNECTION`, fails the start; a missing `APP_KEY` does too.
 
 **`memory` reaches the streams of its own process only.** A hint sent by a queue worker — the notifications' `live` channel,
-a queued listener, a job — needs `redis`: the worker publishes, the web processes deliver. With Redis down, `refresh()` logs
+a queued listener, a job — needs `redis`: the worker publishes, the web processes deliver. **`bespoke start --workers=N` needs
+`redis` too**: with `memory` a worker does not start (`LiveSetupError`: "memory pub/sub never reaches the other workers — use
+LIVE_DRIVER=redis"), and the cluster stops — a hint would reach one worker's tabs only, and a tab that reconnects to another
+worker would compare its sequences with another counter. The memory backend forgets a channel's sequence a day after its last
+hint and beyond 10 000 channels (the one hinted longest ago first), like Redis's TTL — a forgotten channel counts on above every
+sequence it forgot, so an open stream never takes its next hint for an old one. With Redis down, `refresh()` logs
 the lost hint (the change itself is committed) and new streams answer 503; tabs that reconnect later catch up by sequence.
 Sequences live a day after a channel's last hint (`<prefix>live:seq:<channel>`); a tab away longer reloads once.
 
@@ -146,5 +185,7 @@ app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // al
 
 ## Not yet
 
-WebSockets and presence channels (not part of 0.1.0) — the hint protocol stays; a Postgres `LISTEN/NOTIFY` backend (noted for later). A hint sent
-while Redis is unreachable is not retried.
+**Broadcasting over WebSockets** — data events, presence channels, client events, a Pusher-compatible protocol — is not part of
+BespokeCore: it is in the backlog until its design is settled (E191). Live props are hints over Server-Sent Events, and stay so.
+A Postgres `LISTEN/NOTIFY` backend is noted for later. A hint sent while Redis is unreachable is not retried. Channel tokens do
+not expire (a hint carries no data, and the reload goes through the route's policy; signing in or out ends the streams).

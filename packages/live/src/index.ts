@@ -1,4 +1,5 @@
-import { Application, Logger, token, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
+import cluster from 'node:cluster';
+import { Application, CLUSTER_WORKER, Logger, token, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
 import { EncryptionConfig } from '@bespokecore/encryption';
 import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@bespokecore/http';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
@@ -18,7 +19,7 @@ import { liveKeys, LiveTokens } from './signer.ts';
 export { Broadcaster, CONNECTION_ID, LiveBroadcaster } from './broadcaster.ts';
 export type { LiveBroadcasterDependencies, RefreshOptions } from './broadcaster.ts';
 export { MemoryLiveBackend, parseMessage } from './backend.ts';
-export type { LiveMessage } from './backend.ts';
+export type { LiveMessage, MemoryLiveOptions } from './backend.ts';
 export { RedisLiveBackend } from './redis.ts';
 export type { RedisLiveDependencies } from './redis.ts';
 export { LiveHub, STREAM_HEADERS } from './hub.ts';
@@ -109,8 +110,8 @@ export class LiveServiceProvider implements ServiceProvider {
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
-      const { heartbeat, retry, maxStreams } = c.make(LiveConfig);
-      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal);
+      const { heartbeat, retry, maxStreams, maxStreamsPerSession } = c.make(LiveConfig);
+      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal);
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request (E90).
@@ -127,6 +128,14 @@ export class LiveServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     const { container } = app;
     const config = container.make(LiveConfig);
+    // A worker of `bespoke start --workers=N` (E140): with the memory backend a hint reaches the streams of its own worker only,
+    // and a stream that reconnects to another worker compares its sequences with another counter — live updates would go
+    // missing without a sound. The start fails instead (W9 step 4).
+    if (config.driver === 'memory' && process.env[CLUSTER_WORKER] === '1' && cluster.isWorker) {
+      throw new LiveSetupError(
+        'LIVE_DRIVER=memory cannot serve bespoke start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @bespokecore/redis), or start one process without --workers.',
+      );
+    }
     if (config.driver === 'redis') {
       this.#redis = await importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis');
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
@@ -138,7 +147,7 @@ export class LiveServiceProvider implements ServiceProvider {
     // The keys come from APP_KEY: a missing key fails the start, not the first page.
     container.make(LiveTokens);
 
-    // The stream: in the web group (the session says whose it is), read-only as an event stream (the kernel).
+    // The stream: in the web group (the session says whose it is), read-only by its path (the kernel, LIVE_PATH).
     container.make(Router).load(
       { group: 'web' },
       defineRoutes((Route) => {

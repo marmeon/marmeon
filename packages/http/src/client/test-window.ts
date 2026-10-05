@@ -165,6 +165,7 @@ export class FakeWindow implements NavigatorWindow {
         if (!this.#documentListeners.has(type)) this.#documentListeners.set(type, new Set());
         this.#documentListeners.get(type)!.add(listener);
       },
+      removeEventListener: (type: string, listener: () => void) => void this.#documentListeners.get(type)?.delete(listener),
     };
     this.performance = { getEntriesByType: () => [{ nextHopProtocol: self.protocol }] as never };
     const sources = this.sources;
@@ -280,6 +281,12 @@ export class FakeWindow implements NavigatorWindow {
 
   removeEventListener(type: string, listener: (event: Event) => void) {
     this.#listeners.get(type)?.delete(listener);
+  }
+
+  /** How many listeners the window (`window:pageshow`) or its document (`document:visibilitychange`) has — what stays after a stop. */
+  listening(target: `${'window' | 'document'}:${string}`): number {
+    const [where, type] = target.split(':') as ['window' | 'document', string];
+    return (where === 'window' ? this.#listeners : this.#documentListeners).get(type)?.size ?? 0;
   }
 
   dispatch(type: string, init: Record<string, unknown>) {

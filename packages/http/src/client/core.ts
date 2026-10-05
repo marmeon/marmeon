@@ -48,7 +48,7 @@ export interface PlaceOptions {
 }
 
 /** The hooks that are events: they return nothing, all of them run. */
-export type FeatureEvent = 'write' | 'send' | 'unload' | 'started' | 'stopped' | 'draw' | 'page' | 'arrive' | 'popped' | 'deferred' | 'restored';
+export type FeatureEvent = 'write' | 'send' | 'unload' | 'started' | 'stopped' | 'stale' | 'draw' | 'page' | 'arrive' | 'popped' | 'deferred' | 'restored';
 
 /** A render as the core's modules ask for it: the page's owner and the features' contributions are filled in. */
 export type DrawOptions = Pick<RenderOptions, 'preserveState'> & Partial<RenderOptions>;

@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
 import type { FeatureHost } from './core.ts';
@@ -13,6 +14,7 @@ import { remember, type RememberFeature } from './features/remember.ts';
 import { revalidateOnBack } from './features/revalidate-on-back.ts';
 import { uploads, type UploadsFeature } from './features/uploads.ts';
 import { live } from './features/live.ts';
+import { liveValidation } from './features/live-validation.ts';
 import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal } from './features/devtools.ts';
 import { hooks, type ClientHooks } from './features/hooks.ts';
 import { tabSync } from './features/tab-sync.ts';
@@ -197,7 +199,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, hooks, devtools, tabSync];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync];
 
 /**
  * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
@@ -344,6 +346,20 @@ describe('the security matrix — every feature × every event that must forget 
     // The upload is on its way: its progress came, its XHR is open.
     expect([tab.uploaded.at(-1)?.status, tab.uploaded.at(-1)?.progress]).toEqual(['uploading', 0.5]);
     expect(PendingXhr.opened.at(-1)?.url).toContain(CANARY);
+  });
+
+  it('holds every feature module of the core to its rules — a feature left out of the matrix is one nobody checks (W9 step 4)', async () => {
+    const directory = new URL('./features/', import.meta.url);
+    const modules = readdirSync(directory).filter((file) => file.endsWith('.ts') && !file.includes('.test.'));
+    const features: string[] = [];
+    for (const file of modules) {
+      for (const value of Object.values(await import(new URL(file, directory).href))) {
+        if (typeof value === 'object' && value !== null && typeof (value as Feature).setup === 'function' && typeof (value as Feature).name === 'string') features.push((value as Feature).name);
+      }
+    }
+    const missing = features.filter((name) => !ALL_FEATURES.some((feature) => feature.name === name));
+    expect(missing, `not in ALL_FEATURES: ${missing.join(', ')}`).toEqual([]);
+    expect(features.length).toBeGreaterThanOrEqual(16);
   });
 
   it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload (W6.9)', async () => {

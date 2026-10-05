@@ -4,14 +4,15 @@ import type { LiveHub } from './hub.ts';
 import type { LiveTokens } from './signer.ts';
 
 /** A refusal as plain text — never an error page: `EventSource` reads nothing of it, and it costs no render. */
-const refuse = (status: number, message: string, headers: Record<string, string> = {}) =>
-  new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...headers } });
+const refuse = (status: number, message: string) =>
+  new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
 
 /**
  * `GET /_bespoke/live?connection=<id>&c=<token>.<channel>&…` — a tab's stream (E89): every channel its page, islands and layers
- * follow, each with the token the page was signed with (E90). Runs in the `web` group, read-only (an event stream: the kernel
- * never saves the session, sets no cookie): the session is read only to know whose stream it is. One invalid token — a
- * channel rewritten, a token of another session or of one that ended (signed out) — and there is no stream (403).
+ * follow, each with the token the page was signed with (E90). Runs in the `web` group, read-only (its path, with or without
+ * `Accept: text/event-stream`: the kernel never saves the session, sets no cookie): the session is read only to know whose stream it is. One invalid token — a
+ * channel rewritten, a token of another session or of one that ended (signed out) — and there is no stream (403). The hub
+ * counts what is open: 429 beyond the session's streams, 503 beyond the process's or while the server closes (W9 step 4).
  */
 export class LiveStreamController {
   readonly #hub: LiveHub;
@@ -43,7 +44,7 @@ export class LiveStreamController {
       if (dot < 1 || !isLiveChannel(channel) || !this.#tokens.verify(scope, channel, token)) return refuse(403, 'Not allowed to follow these channels.');
       channels.add(channel);
     }
-    if (this.#hub.full) return refuse(503, 'Too many live streams on this server.', { 'retry-after': '10' });
+    // The hub counts the streams of the process and of the session itself (503, 429) — atomically, in `open()`.
     return this.#hub.open({ channels: [...channels], scope, connection, lastEventId: ctx.request.headers.get('last-event-id'), signal: ctx.request.signal });
   }
 }

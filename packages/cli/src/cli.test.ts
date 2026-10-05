@@ -387,6 +387,7 @@ describe('bespoke start', () => {
         'let bootLogger: Logger | undefined;',
         'class GreeterProvider {',
         '  boot(app: Application) {',
+        "    if (process.env.GREETER_FAILS === '1' && process.env.BESPOKE_CLUSTER_WORKER === '1') throw new Error('the greeter cannot boot in a worker');",
         '    console.log(`greeter: ${app.container.make(Greeter).describe()}`);',
         '    bootLogger = app.container.make(Logger);',
         '  }',
@@ -564,6 +565,19 @@ describe('bespoke start', () => {
     } finally {
       busy.close();
     }
+    // A worker whose app fails to boot (a provider throws — LIVE_DRIVER=memory with --workers, W9 step 4): it ends, and so does
+    // the cluster — it neither hangs on its channel to the primary nor forks again.
+    const booting = await new Promise<{ code: number | null; output: string }>((resolve) => {
+      const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', NODE_ENV: 'production', GREETER_FAILS: '1' } });
+      let output = '';
+      child.stdout.on('data', (chunk) => (output += chunk));
+      child.stderr.on('data', (chunk) => (output += chunk));
+      const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
+      child.once('exit', (code) => (clearTimeout(timer), resolve({ code, output })));
+    });
+    expect(booting.output).toContain('the greeter cannot boot in a worker');
+    expect(booting.output).toMatch(/ended before it listened \(code 1\)/);
+    expect(booting.code).toBe(1);
     const wrong = spawnSync(process.execPath, [bin, 'start', '--workers=0'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, NODE_ENV: 'production' } });
     expect(wrong.status).toBe(1);
     expect(wrong.stderr).toContain('--workers expects a number of processes from 1, like --workers=4 (got 0).');

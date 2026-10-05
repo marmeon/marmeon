@@ -149,6 +149,8 @@ export const tabSync = defineFeature(
         // the other tabs hear of it. The entry on screen was written under the old epoch: written again.
         current.epoch = next;
         forgetHidden();
+        // A page of the newest session is on screen (also after the user kept one of an older): nothing waits for it any more.
+        host.fire('stale', false);
         const entry: unknown = win.history.state;
         if (isHistoryState(entry)) history.replace(entry, win.location.href);
         post();
@@ -158,6 +160,8 @@ export const tabSync = defineFeature(
       // Forward to an entry of the old epoch loads it from the server (`popState` below). Otherwise the document goes, and loads again.
       if (host.blocking(() => true).length === 0) return reload();
       host.fire('write');
+      // What runs against the session in the background (the live stream) waits until a page of the new one lands (W9 step 4).
+      host.fire('stale', true);
       ask();
     };
 
@@ -186,6 +190,7 @@ export const tabSync = defineFeature(
         // The server's answer after the user kept the page: now what is on screen is of the new epoch, too.
         current.epoch = next;
         forgetHidden();
+        host.fire('stale', false);
       } else change(next, 'self');
     });
 
@@ -212,8 +217,8 @@ export const tabSync = defineFeature(
     const onPageShow = (event: Event): void => {
       if ((event as PageTransitionEvent).persisted && !host.left) void check('server');
     };
-    doc?.addEventListener?.('visibilitychange', onVisible);
     host.on('started', () => {
+      doc?.addEventListener?.('visibilitychange', onVisible);
       const Channel = win.BroadcastChannel;
       const current = state();
       if (Channel && !current.channel) {
@@ -228,6 +233,7 @@ export const tabSync = defineFeature(
       current.channel?.close();
       current.channel = undefined;
       win.removeEventListener('pageshow', onPageShow);
+      doc?.removeEventListener?.('visibilitychange', onVisible);
     });
 
     return {
