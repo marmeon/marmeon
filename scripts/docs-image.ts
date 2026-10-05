@@ -208,6 +208,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
         if (response.status !== 200) problems.push(`${path}: ${response.status}`);
         if (response.headers.has('set-cookie')) problems.push(`${path}: Set-Cookie ${response.headers.get('set-cookie')}`);
         if (response.headers.get('content-security-policy') !== POLICY) problems.push(`${path}: Content-Security-Policy "${response.headers.get('content-security-policy')}"`);
+        if (response.headers.get('x-content-type-options') !== 'nosniff') problems.push(`${path}: no X-Content-Type-Options: nosniff`);
         if (!body.includes('</h1>')) problems.push(`${path}: not rendered on the server`);
       }
       if (problems.length > 0) throw new SmokeError(`the docs in the container:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);

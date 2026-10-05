@@ -14,7 +14,7 @@ export type { InjectionsFile } from './injection/artifacts.ts';
 export { browserSources, isBrowserSource } from './injection/browser.ts';
 export { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './injection/embed.ts';
 export type { EmbedPackageOptions } from './injection/embed.ts';
-export { Application, createApplication, defineApplication } from './application.ts';
+export { Application, CLUSTER_WORKER, createApplication, defineApplication } from './application.ts';
 export type { ApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, LogContextSources, Logger, logContextSourcesOf } from './logger.ts';

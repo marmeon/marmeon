@@ -6,6 +6,7 @@ import { GLOBAL, MiddlewarePriority, Router } from '@bespokecore/router';
 import { DocsConfig } from '../../config/docs.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
+import { SecurityHeaders } from './middleware/SecurityHeaders.ts';
 import { ShareNavigation } from './middleware/ShareNavigation.ts';
 import routes from './routes.ts';
 
@@ -52,8 +53,8 @@ export class DocsServiceProvider implements ServiceProvider {
     app.container.make(RateLimiter).for('docs.search', (ctx) => Limit.perMinute(config.searchPerMinute).by(ctx.ip ?? ''));
 
     const router = app.container.make(Router);
-    // Global: the 404 page (no route, no group) gets the policy too.
-    router.middleware.append(GLOBAL, contentSecurityPolicy(config.development ? DOCS_DEV_CSP : DOCS_CSP));
+    // Global: the 404 page (no route, no group) gets the policy and the headers too.
+    router.middleware.append(GLOBAL, SecurityHeaders).append(GLOBAL, contentSecurityPolicy(config.development ? DOCS_DEV_CSP : DOCS_CSP));
     router.middleware
       .append(DOCS_GROUP, CachePublicly, MiddlewarePriority.encryptCookies - 50) // outermost: it sees the group's final answer
       .append(DOCS_GROUP, CheckAssetVersion, MiddlewarePriority.checkAssetVersion)

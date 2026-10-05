@@ -63,8 +63,9 @@ export interface TestAppOptions {
   /** Replace bindings before the app boots — even singletons see these. */
   override?: (container: Container) => void;
   /**
-   * Verify CSRF tokens (default: false). Like Laravel, tests skip CSRF protection
-   * unless they test it — then send `_token` or the `X-XSRF-TOKEN` header yourself.
+   * Verify CSRF (default: false). Like Laravel, tests skip CSRF protection unless they test it — then the stages of E143
+   * apply: `Sec-Fetch-Site: same-origin` or the app's own `Origin` pass, another site's is 403; without either header send
+   * `_token` or the `X-XSRF-TOKEN` header yourself.
    */
   csrf?: boolean;
   /**

@@ -282,6 +282,51 @@ describe('bespoke make:* (generated code compiles)', () => {
 });
 
 /**
+ * A workspace package copied under `node_modules` — what `pnpm deploy` (and injected workspace dependencies) leave: the copy keeps
+ * the workspace manifest, whose `exports` name the source condition. It runs its `dist/` like a published package; started with
+ * the source condition, Node would refuse its TypeScript (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
+ */
+describe('bespoke from a copy of the workspace package (pnpm deploy)', () => {
+  it('is no monorepo: no source condition, the built dist/', () => {
+    const app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-deployed-')));
+    try {
+      const cli = join(app, 'node_modules/@bespokecore/cli');
+      // The CLI copied with its workspace manifest and sources; its dependencies as installed (here: links to the built packages).
+      for (const part of ['bin', 'src', 'dist', 'package.json']) cpSync(join(repo, 'packages/cli', part), join(cli, part), { recursive: true });
+      for (const name of ['core', 'server', 'http', 'router', 'encryption', 'log']) symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@bespokecore', name), 'dir');
+      expect(readFileSync(join(cli, 'package.json'), 'utf8')).toContain('"@bespokecore/source"');
+      const { BESPOKE_CHILD: _child, NODE_OPTIONS: _options, ...parent } = process.env;
+      const result = spawnSync(process.execPath, [join(cli, 'bin/bespoke.js'), 'list'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, NODE_ENV: 'production' } });
+      expect(result.stderr).not.toContain('ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING');
+      expect(result.stdout).toContain('make:module');
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(app, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('a package that brings its TypeScript sources: the start says Node’s code and how to fix it', () => {
+    const app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-shipped-ts-')));
+    try {
+      writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module' }));
+      mkdirSync(join(app, 'node_modules/@bespokecore'), { recursive: true });
+      symlinkSync(join(repo, 'packages/core'), join(app, 'node_modules/@bespokecore/core'), 'dir');
+      mkdirSync(join(app, 'node_modules/shipped'));
+      writeFileSync(join(app, 'node_modules/shipped/package.json'), JSON.stringify({ name: 'shipped', type: 'module', exports: './index.ts' }));
+      writeFileSync(join(app, 'node_modules/shipped/index.ts'), 'export const value: number = 1;\n');
+      mkdirSync(join(app, 'bootstrap'));
+      writeFileSync(join(app, 'bootstrap/app.ts'), "import { join } from 'node:path';\nimport { defineApplication } from '@bespokecore/core';\nimport 'shipped';\nexport default defineApplication({ root: join(import.meta.dirname, '..') });\n");
+      const { code, stdout, stderr } = bespoke(app, ['route:list'], { NODE_ENV: 'production' });
+      expect(code).toBe(1);
+      expect(stderr).toContain('(ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING)');
+      expect(stdout).toContain('How to fix it: Install the package as it is published');
+    } finally {
+      rmSync(app, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+/**
  * `bespoke start` (E139, E159): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
  * it — and the `NODE_ENV` it is given (staging stays staging, protected; a missing one becomes production). An app of its own
  * that resolves the framework's built `dist/` like an installed one (`start` never uses the source condition).
@@ -307,16 +352,19 @@ describe('bespoke start', () => {
       [
         "import { join } from 'node:path';",
         "import { setTimeout as sleep } from 'node:timers/promises';",
-        "import { defineApplication, defineModule, type Application } from '@bespokecore/core';",
+        "import { defineApplication, defineModule, Logger, type Application } from '@bespokecore/core';",
         "import { defineRoutes } from '@bespokecore/http';",
         "import { Greeter } from '../services/Greeter.ts';",
+        '// The logger as a service takes it while the app boots — its warnings later on are said.',
+        'let bootLogger: Logger | undefined;',
         'class GreeterProvider {',
         '  boot(app: Application) {',
         '    console.log(`greeter: ${app.container.make(Greeter).describe()}`);',
+        '    bootLogger = app.container.make(Logger);',
         '  }',
         '}',
         '// A request that takes a while — in flight when SIGTERM comes, it must still be answered (E102).',
-        "const slow = defineModule({ name: 'slow', apiRoutes: defineRoutes((Route) => void Route.get('/slow', async () => { await sleep(600); return { pid: process.pid }; })) });",
+        "const slow = defineModule({ name: 'slow', apiRoutes: defineRoutes((Route) => { Route.get('/slow', async () => { await sleep(600); return { pid: process.pid }; }); Route.get('/warn', () => { bootLogger?.warn('warned at runtime'); return { pid: process.pid }; }); }) });",
         "export default defineApplication({ root: join(import.meta.dirname, '..'), providers: [GreeterProvider], modules: [slow] });",
         '',
       ].join('\n'),
@@ -334,20 +382,31 @@ describe('bespoke start', () => {
   });
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
+  /**
+   * `bespoke start` until `servers` servers listen. The system picks the port (`PORT=0`; the start line names it) — a port
+   * chosen here could be held by another program on 127.0.0.1 only (1Password listens on 127.0.0.1:39127): the server, on
+   * every interface, would start next to it and the requests to 127.0.0.1 would reach the other program (a 404 from `/up`).
+   */
   async function start(env: Record<string, string>, args: string[] = [], servers = 1) {
     const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
-    const port = 39_000 + Math.floor(Math.random() * 1000);
-    const child = spawn(process.execPath, [bin, 'start', ...args], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [bin, 'start', ...args], { cwd: app, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
     const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
+    const ports = () => [...output.matchAll(/ on http:\/\/localhost:(\d+) /g)].map((match) => Number(match[1]));
     const deadline = Date.now() + 20_000;
-    while (output.split(`on http://localhost:${port}`).length - 1 < servers) {
-      if (child.exitCode !== null || Date.now() > deadline) throw new Error(`bespoke start did not start:\n${output}`);
+    while (ports().length < servers) {
+      if (child.exitCode !== null || Date.now() > deadline) {
+        // A start that took too long must not outlive the test (a primary and its workers would keep running).
+        child.kill('SIGTERM');
+        throw new Error(`bespoke start did not start:\n${output}`);
+      }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    return { child, port, exited, output: () => output };
+    // The workers of a cluster share the one port the primary got.
+    expect(new Set(ports()).size).toBe(1);
+    return { child, port: ports()[0]!, exited, output: () => output };
   }
 
   it('is one process, respects NODE_ENV=staging — protected, JSON logs — and drains on SIGTERM (E139, E159, E102)', async () => {
@@ -372,8 +431,7 @@ describe('bespoke start', () => {
     writeFileSync(ssr, "console.log('ssr: loading');\nawait new Promise((resolve) => setTimeout(resolve, 800));\nexport const render = async () => ({ html: '' });\n");
     try {
       const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
-      const port = 39_000 + Math.floor(Math.random() * 1000);
-      const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: String(port), LOG_LEVEL: 'info', NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info', NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '';
       child.stdout.on('data', (chunk) => (output += chunk));
       child.stderr.on('data', (chunk) => (output += chunk));
@@ -385,7 +443,7 @@ describe('bespoke start', () => {
       }
       child.kill('SIGTERM');
       expect(await exited).toEqual({ code: 0, signal: null });
-      expect(output).toContain(`on http://localhost:${port}`);
+      expect(output).toMatch(/ on http:\/\/localhost:\d+ /);
       expect(output).toContain('SIGTERM received, shutting down');
     } finally {
       writeFileSync(ssr, original);
@@ -393,6 +451,8 @@ describe('bespoke start', () => {
   }, 30_000);
 
   it('--workers=2 (E140): a primary and two servers on one port; SIGTERM reaches both, each drains its request, exit 0', async () => {
+    // Without the build's injection lists every process boots with a warning — said once, by the primary, not by each worker.
+    rmSync(join(app, '.bespoke/injections.json'), { force: true });
     const server = await start({ NODE_ENV: 'production' }, ['--workers=2'], 2);
     let slow: Promise<Response> | undefined;
     try {
@@ -400,6 +460,8 @@ describe('bespoke start', () => {
       const workers = spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
       expect(workers).toHaveLength(2);
       expect((await fetch(`http://127.0.0.1:${server.port}/up`)).status).toBe(200);
+      // A worker's warnings after its boot are said (its boot's were not: the primary said them).
+      expect((await fetch(`http://127.0.0.1:${server.port}/api/warn`)).status).toBe(200);
       // A request in flight in each worker (round-robin), then SIGTERM to the primary only — as `docker stop` sends it.
       slow = Promise.all([fetch(`http://127.0.0.1:${server.port}/api/slow`), fetch(`http://127.0.0.1:${server.port}/api/slow`)]).then(([a]) => a);
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -414,6 +476,16 @@ describe('bespoke start', () => {
     // Each worker drained as one server does.
     expect(output.split('SIGTERM received, shutting down').length - 1).toBe(2);
     expect(output).not.toContain('ended with');
+    expect(output.split('Build artifacts are missing').length - 1).toBe(1);
+    expect(output.split('warned at runtime').length - 1).toBe(1);
+  }, 30_000);
+
+  it('the workers\' mark left in the environment silences no single server: its boot warnings are said', async () => {
+    rmSync(join(app, '.bespoke/injections.json'), { force: true });
+    const server = await start({ NODE_ENV: 'production', BESPOKE_CLUSTER_WORKER: '1' });
+    server.child.kill('SIGTERM');
+    expect(await server.exited).toBe(0);
+    expect(server.output()).toContain('Build artifacts are missing');
   }, 30_000);
 
   it('a worker that cannot start stops the cluster with its exit code; --workers needs a number', async () => {
@@ -466,7 +538,7 @@ describe('bespoke start', () => {
     try {
       const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
       // Development serves through Vite's dev server, which this app does not have — the warning comes first, before the server.
-      const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '39999', LOG_LEVEL: 'info' } });
+      const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info' } });
       expect(`${result.stdout}${result.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: bespoke start runs with the development tools');
       // …and the failed start ends (the route-types watcher kept it alive until it was killed).
       expect(result.stderr).toContain('Vite is not installed in this app.');

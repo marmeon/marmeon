@@ -95,7 +95,7 @@ export class MakeAuthCommand {
     if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add ${devOnly.join(' ')}`);
     if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: bespoke migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
-    input.output.line('Its mails go through the queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one).');
+    input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one; in production: bespoke queue:work --queue=mail,default).');
     input.output.line('Expired tokens are pruned at night by the scheduler (bespoke dev starts it; in production: bespoke schedule:work or schedule:run from cron).');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
     // The lint preset and the devtools belong to the app, not to the module (W7.6) — named when the app has neither yet.
@@ -104,6 +104,11 @@ export class MakeAuthCommand {
     }
     if (!('@bespokecore/devtools' in installed(input.root))) {
       input.output.line('Devtools for bespoke dev (requests, queries, jobs, mails at /_bespoke/devtools): pnpm add -D @bespokecore/devtools');
+    }
+    // The Content-Security-Policy belongs to the app's middleware too (E147) — named when bootstrap/app.ts has none.
+    const bootstrap = join(input.root, 'bootstrap', 'app.ts');
+    if (existsSync(bootstrap) && !readFileSync(bootstrap, 'utf8').includes('contentSecurityPolicy(')) {
+      input.output.line("Content-Security-Policy: add contentSecurityPolicy() of @bespokecore/http to the app's global middleware (a nonce per page, E147).");
     }
     return 0;
   }

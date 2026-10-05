@@ -73,9 +73,21 @@ async function mount(initial: PageObject) {
 
 const $ = (testId: string) => container.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!;
 const wait = (ms: number) => act(async () => void (await new Promise((done) => setTimeout(done, ms))));
-/** Types into a controlled React input (the value setter React listens to, then an input event). */
-const type = (testId: string, value: string) =>
-  act(async () => {
+/** Until the assertion holds — React gets a turn (act) between the tries; never a fixed time that a loaded machine overruns. */
+async function until(assertion: () => void, timeout = 5000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    await wait(5);
+    try {
+      return assertion();
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+    }
+  }
+}
+/** Types into a controlled React input (the value setter React listens to, then an input event) — synchronously, in one act. */
+const typeNow = (testId: string, value: string) =>
+  act(() => {
     const input = $(testId) as HTMLInputElement;
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -85,11 +97,13 @@ describe('useQueryState (E55)', () => {
   it('shows what is typed at once and visits once per pause — a partial reload, the entry replaced', async () => {
     await mount(peoplePage('/people'));
     expect(($('q') as HTMLInputElement).value).toBe('');
-    await type('q', 'a');
-    await type('q', 'al');
+    // Two keys with no turn of the event loop between them (synchronous act): however long a loaded machine takes, the pause
+    // cannot end in between — awaited typing let a 30 ms debounce run out between two keys once (two visits).
+    typeNow('q', 'a');
+    typeNow('q', 'al');
     expect(($('q') as HTMLInputElement).value).toBe('al');
     expect(requests).toHaveLength(0);
-    await wait(80);
+    await until(() => expect($('list').textContent).toBe('Alan'));
     expect(requests.map((r) => r.url)).toEqual(['/people?q=al']);
     expect(requests[0]!.headers).toMatchObject({ [PARTIAL_DATA_HEADER]: 'people' });
     expect(location.search).toBe('?q=al');
@@ -101,13 +115,11 @@ describe('useQueryState (E55)', () => {
     await mount(peoplePage('/people?q=a'));
     expect($('desc').getAttribute('href')).toBe('/people?q=a&sort=-name');
     await act(async () => $('desc').click());
-    await wait(10);
+    await until(() => expect($('sort').textContent).toBe('-name'));
     expect(location.search).toBe('?q=a&sort=-name');
-    expect($('sort').textContent).toBe('-name');
     expect($('list').textContent).toBe('Grace,Alan,Ada'); // replaced (reset), not merged
     await act(async () => history.back());
-    await wait(20);
-    expect($('sort').textContent).toBe('name');
+    await until(() => expect($('sort').textContent).toBe('name'));
     expect(($('q') as HTMLInputElement).value).toBe('a');
   });
 

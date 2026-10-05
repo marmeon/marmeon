@@ -54,6 +54,20 @@ export const coreSolutions = defineSolutions([
     solve: (e) => injectionSolution('The class', e.message),
   },
   {
+    // Node refuses TypeScript under node_modules: a package that reaches Node with its sources instead of its dist/.
+    for: Error,
+    when: (e) => (e as { code?: unknown }).code === 'ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING',
+    solve: (e) => ({
+      title: 'Install the package as it is published',
+      text:
+        `Node does not run TypeScript under node_modules (${/for "([^"]+)"/.exec(e.message)?.[1] ?? 'a package'}). A published package ` +
+        'brings its built dist/ — this one points Node at its sources: packed with npm pack (which ignores publishConfig.exports — pack ' +
+        'with pnpm), a workspace package copied with its workspace manifest, or the @bespokecore/source condition outside the ' +
+        "framework's monorepo (NODE_OPTIONS).",
+      docs: 'packages/core/README.md#discovery-the-bespoke-field-and-bespoke-discover',
+    }),
+  },
+  {
     for: ConfigError,
     // The variables the start found missing or invalid (listed with •) — not a ConfigError that says something else.
     when: (e) => /•\s/.test(e.message),

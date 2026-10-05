@@ -1,3 +1,8 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, resolveConfig, defineConfig } from './config/config.ts';
 import { Container, ContainerError } from './container.ts';
@@ -72,6 +77,24 @@ describe('the core solutions (E130)', () => {
   it('an InjectionError (package:build)', async () => {
     const [solution] = await solutions.find(new InjectionError('Cannot inject x.ts:1 — A, parameter "m": "Mailer" is imported with "import type", so it does not exist at runtime.'));
     expect(solution?.title).toBe('Import the token as a value');
+  });
+
+  it('TypeScript under node_modules: install the package as it is published (its dist/)', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-ts-in-node-modules-')));
+    try {
+      mkdirSync(join(dir, 'node_modules/shipped'), { recursive: true });
+      writeFileSync(join(dir, 'node_modules/shipped/index.ts'), 'export const value: number = 1;\n');
+      // Node's own import, in a process of its own (Vitest's would transform the file): the error Node throws, as it threw it.
+      const script = `import(${JSON.stringify(pathToFileURL(join(dir, 'node_modules/shipped/index.ts')).href)}).catch((e) => console.log(JSON.stringify({ code: e.code, message: e.message })))`;
+      const thrownByNode = JSON.parse(spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).stdout) as { code: string; message: string };
+      const error = Object.assign(new Error(thrownByNode.message), { code: thrownByNode.code });
+      expect((error as { code?: string }).code).toBe('ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING');
+      const [solution] = await solutions.find(error);
+      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'packages/core/README.md#discovery-the-bespoke-field-and-bespoke-discover' });
+      expect(solution?.text).toContain('node_modules/shipped/index.ts');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('invalid configuration: the variables to set', async () => {

@@ -124,7 +124,9 @@ describe('bespoke make:docker', () => {
     expect(conf).toContain('server web:3000;');
     expect(conf).toContain('http2 on;');
     expect(conf).toContain('proxy_set_header X-Forwarded-Proto $scheme;');
-    expect(conf).toContain('proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+    // The client's address as nginx sees it — replaced, never appended to the client's own list (the app trusts '*' here).
+    expect(conf).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
+    expect(conf).not.toContain('X-Forwarded-For $proxy_add_x_forwarded_for');
     expect(conf).toContain('proxy_read_timeout 75s;');
     expect(nginx.file('compose.production.yaml')).toContain('image: nginx:mainline-alpine');
   });

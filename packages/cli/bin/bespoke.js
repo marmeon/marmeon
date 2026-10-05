@@ -22,7 +22,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { enableCompileCache, getCompileCacheDir } from 'node:module';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SOURCE_CONDITION = '@bespokecore/source';
@@ -84,8 +84,14 @@ async function runHere(args, launch) {
   process.exitCode = await run(args);
 }
 
-/** This CLI is the monorepo's workspace package: its `exports` still name the source condition (a packed one does not). */
+/**
+ * This CLI is the monorepo's workspace package: its `exports` still name the source condition (a packed one does not) — and it
+ * is not a copy under `node_modules`: `pnpm deploy` (and injected workspace dependencies) copy a workspace package with its
+ * workspace manifest, where Node would refuse the TypeScript sources (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING); such a
+ * copy runs its `dist/` like a published package.
+ */
 function inMonorepo() {
+  if (fileURLToPath(new URL('..', import.meta.url)).split(sep).includes('node_modules')) return false;
   try {
     const json = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     return JSON.stringify(json.exports ?? {}).includes(`"${SOURCE_CONDITION}"`);

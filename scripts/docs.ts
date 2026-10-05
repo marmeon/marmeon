@@ -99,6 +99,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     const policy = response.headers.get('content-security-policy');
     expect(policy === DOCS_POLICY, `${path}: Content-Security-Policy is "${policy}", expected "${DOCS_POLICY}"`);
     expect(!/<[a-z]+ [^>]*\bnonce=/.test(body), `${path}: a tag carries a nonce attribute`);
+    expect(response.headers.get('x-content-type-options') === 'nosniff', `${path}: no X-Content-Type-Options: nosniff`);
     return response;
   };
 

@@ -38,6 +38,12 @@ export interface WorkOptions {
   /** Aborted: no new claim; the running job gets `stopTimeout` to finish. */
   readonly signal?: AbortSignal;
   /**
+   * Seconds between two looks, while idle, at the queues this worker does not take (default 60; `false`: never). Jobs ready
+   * on one of them at two looks in a row — and none of them running — are logged once as a warning: a worker started without
+   * `--queue=mail,default` would otherwise leave the mails of the auth module waiting without a word. Not with `*`.
+   */
+  readonly watchOtherQueues?: number | false;
+  /**
    * A job ignored its timeout and the grace period: the worker cannot go on (the job keeps running). `queue:work` logs
    * and exits the process — the supervisor restarts it, the job returns after `retryAfter`. Default: throw {@link JobStuckError}.
    */
@@ -99,6 +105,7 @@ export class Worker {
     const counts = { processed: 0, failed: 0, released: 0 };
     const result = (reason: WorkResult['reason']): WorkResult => ({ ...counts, reason });
     const queues = this.#queues(options.queues);
+    const others = this.#others(options);
     for (;;) {
       if (options.signal?.aborted) return result('stopped');
       if (options.maxJobs !== undefined && counts.processed >= options.maxJobs) return result('max-jobs');
@@ -108,6 +115,7 @@ export class Worker {
       if (!job) {
         queues.stale();
         if (options.stopWhenEmpty) return result('empty');
+        await others.look();
         try {
           await sleep((options.sleep ?? 1) * 1000, undefined, { signal: options.signal });
         } catch {
@@ -222,6 +230,48 @@ export class Worker {
       },
       stale: () => {
         expanded = undefined;
+      },
+    };
+  }
+
+  /**
+   * Watches the queues the worker does not take (`watchOtherQueues`): a queue with jobs ready at two looks in a row and none
+   * running — nobody takes it — is named once in a warning. Two looks, because another worker that takes it may simply not
+   * have claimed a job pushed a moment ago.
+   */
+  #others(options: WorkOptions): { look(): Promise<void> } {
+    const every = options.watchOtherQueues ?? 60;
+    if (every === false || options.queues.includes('*')) return { look: async () => {} };
+    const taken = new Set(options.queues);
+    const { driver, logger, connection } = this.#deps;
+    let last = Number.NEGATIVE_INFINITY;
+    let waiting = new Set<string>();
+    const named = new Set<string>();
+    return {
+      look: async () => {
+        if (performance.now() - last < every * 1000) return;
+        last = performance.now();
+        const now = new Set<string>();
+        try {
+          for (const queue of await driver.queues()) {
+            if (taken.has(queue) || named.has(queue)) continue;
+            const counts = driver.counts ? await driver.counts(queue) : { ready: await driver.size(queue), reserved: 0 };
+            if (counts.ready > 0 && counts.reserved === 0) now.add(queue);
+          }
+        } catch (error) {
+          logger.debug(`Could not look at the other queues: ${messageOf(error)}`);
+          return;
+        }
+        for (const queue of now) {
+          if (!waiting.has(queue)) continue;
+          named.add(queue);
+          logger.warn(
+            `Jobs are waiting on the "${queue}" queue of the ${connection} connection, which this worker does not take (it takes ${options.queues.join(', ')}). ` +
+              `If no other worker takes it, start this one with --queue=${[queue, ...options.queues].join(',')} (in priority order) or --queue=*.`,
+            { queue, connection },
+          );
+        }
+        waiting = now;
       },
     };
   }

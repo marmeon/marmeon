@@ -366,7 +366,8 @@ describe('two tabs of one browser (W8 step 8)', () => {
     expect(JSON.stringify(b.visible)).not.toContain('ada@example.com');
     // The tabs said epochs to each other, nothing else.
     expect(browser.channels.posted.every((message) => JSON.stringify(Object.keys(message as object)) === '["v","epoch"]')).toBe(true);
-    expect(JSON.stringify(browser.channels.posted)).not.toMatch(/ada|Ada|bespoke_session|XSRF/);
+    // Ada's data as it would appear — not "ada" alone, which a random 22-character epoch contains now and then.
+    expect(JSON.stringify(browser.channels.posted)).not.toMatch(/ada@example\.com|Ada Lovelace|bespoke_session|XSRF/);
   });
 
   it('switching the language in A: B loads again, in the new language', async () => {

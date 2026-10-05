@@ -129,7 +129,7 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
       // Documents rendered inside need the nonce; a response that turns out to be JSON never makes one.
       if (usesNonce) this.#nonce.want();
       const response = await next();
-      if (!response.headers.get('content-type')?.startsWith('text/html') || response.headers.has(HEADER) || response.headers.has(REPORT_ONLY_HEADER)) {
+      if (!isDocument(response.headers.get('content-type')) || response.headers.has(HEADER) || response.headers.has(REPORT_ONLY_HEADER)) {
         return response;
       }
       if (usesNonce) this.#warnIfShared(ctx, response);
@@ -156,4 +156,10 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
   };
   Object.defineProperty(ContentSecurityPolicy, 'name', { value: 'ContentSecurityPolicy' });
   return ContentSecurityPolicy;
+}
+
+/** A document a browser runs scripts in: HTML or XHTML — a media type is case-insensitive (`Text/HTML` is HTML too). */
+function isDocument(contentType: string | null): boolean {
+  const type = contentType?.split(';')[0]!.trim().toLowerCase();
+  return type === 'text/html' || type === 'application/xhtml+xml';
 }

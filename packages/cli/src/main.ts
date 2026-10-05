@@ -66,7 +66,9 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
     const loaded = await loadApplication(root);
     if (loaded instanceof Error) {
       if (!listing) {
-        output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}`);
+        // Node's code (ERR_…) beside its message: what one searches for.
+        const code = (loaded as { code?: unknown }).code;
+        output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}`);
         await printSolutions(output, loaded, root);
         return 1;
       }

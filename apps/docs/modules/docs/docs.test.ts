@@ -150,7 +150,16 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     expect(first.body).not.toMatch(/<[a-z]+ [^>]*\bnonce=/);
     expect(second.headers.get('etag')).toBe(first.headers.get('etag'));
     // The 404 page (no route, no group) is a document too.
-    expect((await ssr.get('/no/such/page', document)).headers.get('content-security-policy')).toMatch(/^script-src 'self';/);
+    const missing = await ssr.get('/no/such/page', document);
+    expect(missing.headers.get('content-security-policy')).toMatch(/^script-src 'self';/);
+    // Never sniffed, no full URL to other sites, never framed — pages and the 404 alike (HSTS: the proxy).
+    for (const answer of [first, missing]) {
+      expect(Object.fromEntries(['x-content-type-options', 'referrer-policy', 'x-frame-options'].map((name) => [name, answer.headers.get(name)]))).toEqual({
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'strict-origin-when-cross-origin',
+        'x-frame-options': 'DENY',
+      });
+    }
     // JSON visits carry no policy (it is for documents).
     expect((await ssr.navigating().get('/packages/http').assertOk()).headers.get('content-security-policy')).toBeNull();
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });

@@ -18,7 +18,8 @@ upwards.
 
 *Estimated upgrade time:* about an hour for an app from Wave 7 — the High entries of Wave 8 (`@bespokecore/cli` as a
 dependency, the sessions table) and the Medium ones its features touch; half a day from Wave 6 or with a `SessionStore` of its
-own.
+own. The first day after a release pnpm may hold the new versions back (`minimumReleaseAge`) — see
+[the first day after a release](docs/versioning.md#the-first-day-after-a-release).
 
 ### Wave 8 — ship-ready
 
@@ -144,6 +145,8 @@ data, the errors of a failed form, `session.put()`.
   request (read-only, W6.9) cannot start one. A page that signs a live channel keeps the session by itself.
 - `PageSession.scope()` is `undefined` without a kept session (it was a hash of an id nobody would see again); a live stream
   without a session answers 401 (was 403).
+- New on `Session`: `persist()` (keep a session nothing was written to, because something is bound to it) and `exists` (a
+  read-only request — an upload, a stream, an island — asks whether the session it read is a stored one).
 
 #### Medium: a session written by two requests at once is merged, not overwritten — and custom stores compare versions
 
@@ -183,6 +186,8 @@ default text is English). Back/Forward to an entry of an older epoch loads it fr
   sign-out elsewhere until its next request.
 - An adapter of your own attaches it from the start: `new Navigator({ …, features: [await loadTabSync()] })`.
 - The path `/_bespoke/session` is the framework's now (in the `web` group, read-only).
+- Code that writes `history.state` itself keeps the registered `epoch` field (as it keeps the navigator's other fields); a hook of
+  your own on a new epoch: `navigator.use(tabSync).on('epoch', …)`.
 
 #### Medium: signing out clears the site's storage too — `Clear-Site-Data: "cache", "storage"`; `clear({ siteCache })` is `clear({ siteData })`
 
@@ -437,6 +442,48 @@ they name each other at exactly that version. Replace every `workspace:*`, `file
 the app's `package.json` with `0.1.0` (and drop the `overrides` that pointed at tarballs). New: the meta package
 [bespokecore](packages/bespokecore/README.md) — no code, the UI-agnostic runtime packages at exactly its version (E157; the UI
 adapter, `@bespokecore/react`, is listed by the app); with pnpm an app still lists the packages it imports.
+
+#### Medium: the `make:docker --nginx` template replaces `X-Forwarded-For` — a client could choose its own address
+
+*Likelihood of impact: medium — apps that run the nginx template of `bespoke make:docker --nginx`.* The template's compose file
+trusts every peer (`TRUSTED_PROXIES: '*'`, only nginx reaches the web container), and its `nginx.conf` appended the client's
+address to the client's own `X-Forwarded-For` (`$proxy_add_x_forwarded_for`). With `*` every hop counts, so `ctx.ip` was the
+left-most entry — one the client wrote: any client could choose the address that rate limits (sign-in, registration, password
+resets), logs and the `Login` event see. The template now sets `proxy_set_header X-Forwarded-For $remote_addr;` (as Caddy
+does). In an app made before: change that line in `deploy/nginx.conf` (or run `bespoke make:docker --nginx --force`), or
+name nginx's address or network in `TRUSTED_PROXIES` instead of `*`. The Caddy template was never affected.
+
+#### Low: an idle worker names a queue nobody takes
+
+*Likelihood of impact: low — nothing to do; new.* `bespoke queue:work` without `--queue` takes only the connection's queue
+(`default`), and the auth module of `make:auth` queues its mails on `mail` — a worker started by hand sent none of them, without
+a word. Now an idle worker looks at the other queues once a minute and names, once, a queue that had jobs ready at two looks in a
+row with none of them running: `Jobs are waiting on the "mail" queue …, which this worker does not take (it takes default)`.
+Start production workers with every queue the app uses, in priority order — `--queue=mail,default` (the `make:docker` templates
+do) — or `--queue=*`. `Worker#run({ watchOtherQueues: false })` turns the look off ([Which queues a worker takes](packages/queue/README.md#which-queues-a-worker-takes)).
+
+#### Low: `PORT=0` asks the system for a free port
+
+*Likelihood of impact: low — nothing to do.* `PORT` had to be 1–65535; `0` is allowed now and means "a free port" — the start
+line names the one the server got. Useful for tests and tools that start a server next to others.
+
+#### Low: with `--workers=N` the boot's warnings come once, from the primary
+
+*Likelihood of impact: low — nothing to do.* `bespoke start --workers=N` logged every boot warning (the log mailer, cookies
+without `Secure`, stale build artifacts) N + 1 times — once from the primary and once from each worker. The workers now keep
+their boot's warnings to themselves (the primary booted the same app with the same configuration); what a worker warns about
+after its boot is logged as before. The primary marks its workers with `BESPOKE_CLUSTER_WORKER=1` (`CLUSTER_WORKER` of
+`@bespokecore/core`); the mark counts only in a worker of `node:cluster`.
+
+#### Low: `bespoke` in a copy under `node_modules` runs its `dist/`; a failed start names Node's error code
+
+*Likelihood of impact: low.* `bespoke` took any copy of the framework whose `package.json` still carried the workspace's
+`exports` (with the `@bespokecore/source` condition) for the framework's monorepo and started Node with that condition — in the
+output of `pnpm deploy` (or with injected workspace dependencies) Node then refused the TypeScript sources under `node_modules`.
+A copy under `node_modules` now runs its built `dist/`, as a published package does. When the start fails, the message ends with
+Node's code (`(ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING)`), and that error comes with a solution: a package that brings its
+TypeScript sources was packed with `npm pack` (pack with pnpm), copied with its workspace manifest, or loaded with the source
+condition.
 
 #### Low (contributors): the monorepo needs pnpm 12
 

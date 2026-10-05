@@ -63,7 +63,7 @@ export class QueueWorkCommand {
 
     const stop = new AbortController();
     const onSignal = (signal: NodeJS.Signals) => {
-      if (stop.signal.aborted) return; // Ctrl+C arrives twice (terminal + launcher): one shutdown
+      if (stop.signal.aborted) return; // a second signal (Ctrl+C reaches every process of the group, a supervisor may repeat): one shutdown
       this.#logger.info(`${signal} received: no new jobs; the running one has ${stopTimeout}s to finish`);
       stop.abort();
       // A shutdown that hangs anyway (a stuck release) still ends.

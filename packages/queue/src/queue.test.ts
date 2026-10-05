@@ -404,6 +404,45 @@ describe('the worker', () => {
     expect(await failed.all()).toHaveLength(2);
   });
 
+  it('names a queue nobody takes — jobs ready at two looks in a row, none running — once, as a warning (a worker without --queue=mail)', async () => {
+    const warnings: string[] = [];
+    let named!: () => void;
+    const warned = new Promise<void>((resolve) => (named = resolve));
+    const logger: Logger = { debug() {}, info() {}, error() {}, warn: (message) => void (warnings.push(message), named()), child: () => logger };
+    await using application = await app({ logger });
+    const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@bespokecore/encryption')).Encrypter));
+    const w = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock: container.make(Clock), logger });
+    const job = (queue: string) => driver.push(queue, JSON.stringify({ uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId: 1 }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
+    await job('mail');
+    await job('mail');
+    // A queue another worker takes: its job is running (claimed) — not named.
+    await job('reports');
+    await job('reports');
+    await driver.reserve(['reports']);
+    const stop = new AbortController();
+    const run = w.run({ queues: ['default'], sleep: 0.005, watchOtherQueues: 0.02, signal: stop.signal });
+    await Promise.race([warned, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    // A few more looks: still once.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    stop.abort();
+    await run;
+    expect(warnings).toEqual([
+      'Jobs are waiting on the "mail" queue of the memory connection, which this worker does not take (it takes default). If no other worker takes it, start this one with --queue=mail,default (in priority order) or --queue=*.',
+    ]);
+    // `false` never looks (the mail jobs still wait).
+    warnings.length = 0;
+    const quiet = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock: container.make(Clock), logger });
+    const halt = new AbortController();
+    const running = quiet.run({ queues: ['default'], sleep: 0.005, watchOtherQueues: false, signal: halt.signal });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    halt.abort();
+    await running;
+    expect(warnings).toEqual([]);
+    expect(await driver.size('mail')).toBe(2);
+  });
+
   it('fails a job that came back more often than its tries (its worker died each time) instead of running it again', async () => {
     await using application = await app();
     application.clock.freeze();

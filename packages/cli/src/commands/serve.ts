@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
-import { Application, environment, Logger } from '@bespokecore/core';
+import { Application, CLUSTER_WORKER, environment, Logger } from '@bespokecore/core';
 import { ServerConfig, startServer, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
@@ -142,7 +142,8 @@ export class ServeCommand {
     };
 
     const fork = () => {
-      const worker = cluster.fork();
+      // Its boot's warnings stay unsaid: this process booted the same app and said them once (CLUSTER_WORKER).
+      const worker = cluster.fork({ [CLUSTER_WORKER]: '1' });
       workers.add(worker);
       let listening = false;
       worker.once('listening', () => (listening = true));

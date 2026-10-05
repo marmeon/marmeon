@@ -88,7 +88,9 @@ describe('a leaked sessions table (E144)', () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com', name: 'Ada Lovelace' });
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertAuthenticated(ada);
     const [row] = await table();
-    for (const secret of ['_auth_id', '_token', 'toast', 'Ada', String(login.cookie('XSRF-TOKEN') ?? '_token')]) expect(row!.payload).not.toContain(secret);
+    // Each as the plaintext would hold it, in a form a ciphertext cannot (base64url has no quote or space): a short word alone
+    // turns up in random ciphertext now and then.
+    for (const secret of ['"_auth_id"', '"_token"', '"toast"', 'Ada Lovelace', String(login.cookie('XSRF-TOKEN') ?? '"_token"')]) expect(row!.payload).not.toContain(secret);
   });
 });
 

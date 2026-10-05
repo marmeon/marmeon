@@ -9,7 +9,8 @@ const UNITS = { '': 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 } as const;
 
 export const ServerConfig = defineConfig('server', {
   env: v.object({
-    PORT: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(65535)), '3000'),
+    /** The port to listen on; `0` asks the system for a free one (the start line names the port it got). */
+    PORT: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(0), v.maxValue(65535)), '3000'),
     /**
      * The interface the server listens on (E162): unset — every interface (Node's default), `127.0.0.1` — this machine only
      * (behind a proxy on the same host), `0.0.0.0` — every IPv4 interface (a container).

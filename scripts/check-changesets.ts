@@ -73,6 +73,11 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 8' | 'Wave 7' | 'Wave 6', 
     'low-create-bespoke-app--the-blank-app-is-its---minimal-output-with-the-devtools-a-test-and-pnpm-test',
     'low-the-dev-server-pre-bundles-from-the-client-entry-and-the-pages',
     'low-one-version-for-every-package--010-from-npm-and-the-meta-package-bespokecore',
+    'medium-the-makedocker---nginx-template-replaces-x-forwarded-for--a-client-could-choose-its-own-address', // W8.13
+    'low-an-idle-worker-names-a-queue-nobody-takes',
+    'low-port0-asks-the-system-for-a-free-port',
+    'low-with---workersn-the-boots-warnings-come-once-from-the-primary',
+    'low-bespoke-in-a-copy-under-node_modules-runs-its-dist-a-failed-start-names-nodes-error-code',
     'low-contributors-the-monorepo-needs-pnpm-12',
   ],
   // The 22 hints of the Wave 7 acceptance (W8 step 11), in their order there.

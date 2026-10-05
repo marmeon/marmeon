@@ -31,6 +31,11 @@ describe('contentSecurityPolicy() (E147)', () => {
     );
     const json = await new Policy(new RequestNonce(), new ConsoleLogger()).handle(ctx, async () => Response.json({}));
     expect(json.headers.get('content-security-policy')).toBeNull();
+    // A media type is case-insensitive, and XHTML is a document too.
+    for (const type of ['Text/HTML; charset=utf-8', 'application/xhtml+xml']) {
+      const document = await new Policy(new RequestNonce(), new ConsoleLogger()).handle(ctx, async () => new Response('<p>page</p>', { headers: { 'content-type': type } }));
+      expect(document.headers.get('content-security-policy') ?? 'no policy', type).toMatch(/^script-src 'nonce-/);
+    }
 
     const ReportOnly = contentSecurityPolicy({ reportOnly: true, reportUri: ['/csp'] });
     const reported = await new ReportOnly(new RequestNonce(), new ConsoleLogger()).handle(ctx, async () => html());

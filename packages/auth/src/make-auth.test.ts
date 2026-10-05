@@ -58,13 +58,17 @@ describe('make:auth', () => {
     expect(app).toMatch(/modules: \[auth, system\]/);
     expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
-    // The blank app has its lint preset and the devtools (E150): neither is named.
-    expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools'))).toEqual([]);
+    // The blank app has its lint preset, the devtools (E150) and a Content-Security-Policy (E147): none is named.
+    expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
+    // The auth mails' queue, and the worker production needs for it.
+    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one; in production: bespoke queue:work --queue=mail,default).');
   });
 
-  it('names the lint preset and the devtools only while the app has neither (they belong to the app, W7.6)', async () => {
+  it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app, W7.6)', async () => {
     const root = blankApp();
     rmSync(join(root, '.oxlintrc.json'));
+    const bootstrap = join(root, 'bootstrap/app.ts');
+    writeFileSync(bootstrap, readFileSync(bootstrap, 'utf8').replace(', contentSecurityPolicy()', ''));
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { devDependencies: Record<string, string> };
     delete pkg.devDependencies['@bespokecore/devtools'];
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
@@ -72,6 +76,7 @@ describe('make:auth', () => {
     expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
     expect(without.lines).toContain("Lint: bespoke make:lint-config writes the app's preset (views import controllers only with import type).");
     expect(without.lines).toContain('Devtools for bespoke dev (requests, queries, jobs, mails at /_bespoke/devtools): pnpm add -D @bespokecore/devtools');
+    expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @bespokecore/http to the app's global middleware (a nonce per page, E147).");
     writeFileSync(join(root, '.oxlintrc.json'), '{}\n');
     pkg.devDependencies['@bespokecore/devtools'] = 'workspace:*';
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));

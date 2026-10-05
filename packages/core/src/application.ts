@@ -1,3 +1,4 @@
+import cluster from 'node:cluster';
 import { ConfigError, loadEnv, resolveConfig, type ConfigDefinition } from './config/config.ts';
 import { Container } from './container.ts';
 import { coreSolutions } from './core-solutions.ts';
@@ -137,6 +138,31 @@ export class Application {
   }
 }
 
+/** Set by the primary of `bespoke start --workers=N` for its workers (E140): the boot's warnings were said once, by the primary. */
+export const CLUSTER_WORKER = 'BESPOKE_CLUSTER_WORKER';
+
+/**
+ * The app's logger, without `warn` until `end()` — every child too, and every service that took it while booting logs its
+ * warnings again afterwards (the same logger, switched on).
+ */
+function quietWhileBooting(container: Container): { end(): void } {
+  const logger = container.make(Logger);
+  let booting = true;
+  const quiet = (inner: Logger): Logger => ({
+    debug: (message, context) => inner.debug(message, context),
+    info: (message, context) => inner.info(message, context),
+    warn: (message, context) => void (booting || inner.warn(message, context)),
+    error: (message, context) => inner.error(message, context),
+    child: (bindings) => quiet(inner.child(bindings)),
+  });
+  container.instance(Logger, quiet(logger));
+  return {
+    end: () => {
+      booting = false;
+    },
+  };
+}
+
 /** Creates and boots the application — the composition root of `bootstrap/app.ts`. */
 export async function createApplication(options: ApplicationOptions): Promise<Application> {
   const container = options.container ?? new Container();
@@ -204,13 +230,22 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
 
   app.register(providers);
   options.override?.(container);
-  await app.boot();
-  // An out-of-date manifest in a read-only .bespoke/ (E160): discovered in memory — said once per process, in the app's log.
-  if (discovered?.warning) container.make(Logger).warn(discovered.warning);
-  for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);
-  // Modules that changed since `bespoke build` (E138): their injection lists were derived at start — said once per process.
-  const staleInjections = takeInjectionWarning();
-  if (staleInjections) container.make(Logger).warn(staleInjections);
+  // A worker of `bespoke start --workers=N` (E140): its primary booted the same app with the same configuration and said the
+  // boot's warnings (log mailer, cookies without Secure, stale build artifacts) — the workers keep them to themselves instead of
+  // repeating them N times. Warnings after the boot are theirs as always.
+  // Only in a worker of node:cluster: the variable left in an operator's environment must not silence a single process.
+  const quiet = process.env[CLUSTER_WORKER] === '1' && cluster.isWorker ? quietWhileBooting(container) : undefined;
+  try {
+    await app.boot();
+    // An out-of-date manifest in a read-only .bespoke/ (E160): discovered in memory — said once per process, in the app's log.
+    if (discovered?.warning) container.make(Logger).warn(discovered.warning);
+    for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);
+    // Modules that changed since `bespoke build` (E138): their injection lists were derived at start — said once per process.
+    const staleInjections = takeInjectionWarning();
+    if (staleInjections) container.make(Logger).warn(staleInjections);
+  } finally {
+    quiet?.end();
+  }
   // A queued listener in an app without a queue fails the start, not its first dispatch.
   const queued = events.all().find((binding) => isQueuedListener(binding.listener));
   if (queued && !container.has(ListenerQueue)) throw new ConfigError(missingListenerQueue(queued.listener as { name: string }));

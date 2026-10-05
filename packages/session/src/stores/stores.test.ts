@@ -289,7 +289,9 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     const codec = new EncryptedSessionCodec(new AesGcmEncrypter(new Uint8Array(32).fill(7)));
     const ada = await request(store, undefined, (s) => (s.put(SESSION_USER_KEY, 'user-ada-17'), s.queueFlash({ id: 'x', key: 'toast', data: 'Welcome back, Ada' })), codec);
     const stored = (await store.read(sessionKey(ada.id)))!;
-    expect(stored.data).not.toMatch(/Ada|user-ada-17|_token|toast/);
+    // What the plaintext would hold, in forms a ciphertext cannot (base64url has no quote, space or comma): a short word alone
+    // turns up in random ciphertext now and then ("Ada" did, once in a thousand runs).
+    expect(stored.data).not.toMatch(/Welcome back, Ada|user-ada-17|"_token"|"toast"/);
     expect((await request(store, ada.id, () => {}, codec)).get(SESSION_USER_KEY)).toBe('user-ada-17');
     // Mallory's own session, Ada's ciphertext copied into its place: bound to Ada's key, it does not decrypt as Mallory's.
     const mallory = await request(store, undefined, (s) => s.put('name', 'Mallory'), codec);

@@ -286,9 +286,10 @@ server {
 		proxy_http_version 1.1;
 		proxy_set_header Connection "";
 		proxy_set_header Host $host;
-		# Set by nginx (E162): Proto and Host replace whatever the client sent; For appends the client's address — the app takes
-		# the right-most address that is not one of its TRUSTED_PROXIES, so what a client wrote to the left never counts.
-		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		# Set by nginx (E162), never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
+		# sees. Appending to the client's own list ($proxy_add_x_forwarded_for) would let a client choose its address while the
+		# app trusts every peer (TRUSTED_PROXIES: '*'); behind another proxy (a CDN), append and name that proxy's ranges instead.
+		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $host;
 		# Live streams send a heartbeat every 20 s and X-Accel-Buffering: no (unbuffered): the timeout must be longer.
