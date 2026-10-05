@@ -105,7 +105,8 @@ export class OpenStream {
     this.#write(`retry: ${retry}\n\n` + event('hello', { seq: Object.fromEntries(this.#seqs), ...(seen.size > 0 ? { missed } : {}) } satisfies LiveHello, eventId(this.#seqs)));
     const waiting = this.#waiting ?? [];
     this.#waiting = undefined;
-    for (const message of waiting) this.hint(message);
+    // Hints that came while `hello` was prepared: those it counted already are not told again (their sequence is at most its).
+    for (const message of waiting) if (message.seq > (this.#seqs.get(message.channel) ?? 0)) this.hint(message);
     // A comment line now and then: proxies and load balancers close connections that stay silent (E104).
     this.#heartbeat = setInterval(() => outsideTransaction(() => this.#write(': heartbeat\n\n')), heartbeat * 1000);
     this.#heartbeat.unref?.();
@@ -115,8 +116,9 @@ export class OpenStream {
   hint(message: Extract<LiveMessage, { kind: 'refresh' }>): void {
     if (this.#closed || !this.channels.has(message.channel)) return;
     if (this.#waiting) return void this.#waiting.push(message);
-    // Already told (the hint came before `hello` counted it): not again.
-    if (message.seq <= (this.#seqs.get(message.channel) ?? 0)) return;
+    // After `hello` every hint is news: the backend delivers each refresh once, in the order of its sequence. One with a lower
+    // sequence than the stream saw means the channel's counter started again (its key expired after a day without hints, was
+    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).
     this.#seqs.set(message.channel, message.seq);
     const hint: LiveHint = { channel: message.channel, only: message.except === this.connection ? [] : message.only, seq: message.seq };
     this.#write(event('refresh', hint, eventId(this.#seqs)));

@@ -148,7 +148,10 @@ worker would compare its sequences with another counter. The memory backend forg
 hint and beyond 10 000 channels (the one hinted longest ago first), like Redis's TTL — a forgotten channel counts on above every
 sequence it forgot, so an open stream never takes its next hint for an old one. With Redis down, `refresh()` logs
 the lost hint (the change itself is committed) and new streams answer 503; tabs that reconnect later catch up by sequence.
-Sequences live a day after a channel's last hint (`<prefix>live:seq:<channel>`); a tab away longer reloads once.
+Sequences live a day after a channel's last hint (`<prefix>live:seq:<channel>`); a tab away longer reloads once. A counter that
+starts again — its key expired, was evicted or flushed — never silences a stream: after `hello` every hint is told whatever its
+sequence (only the hints that came while `hello` was prepared and that it counted are left out), and a reconnect whose
+`Last-Event-ID` names another sequence than the channel's now — higher or lower — reloads that channel once.
 
 **Observation (E118):** each hint going out (after its commit) is a message on the `live.refresh` channel
 ([the channels](../core/README.md#the-channels)) — the [devtools](../devtools/README.md) record it as a `live` entry,

@@ -135,6 +135,27 @@ export default defineGegenproben({
       run: hub('a forgotten channel counts on above every forgotten sequence'),
       expect: /expected 1 to be 6/,
     },
+    {
+      id: 'G6c',
+      title: 'a counter that started again (expired, evicted, flushed): the open stream drops its hints as "old" — live goes silent',
+      patch: [{ file: HUB, find: '    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).\n', replace: '    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).\n    if (message.seq <= (this.#seqs.get(message.channel) ?? 0)) return;\n' }],
+      run: hub('an open stream that saw 5 is told the hints of the new count'),
+      expect: /The live stream did not get 7 hints/,
+    },
+    {
+      id: 'G6d',
+      title: 'the same against Redis: the sequence key deleted (its TTL), the stream hears nothing more',
+      patch: [{ file: HUB, find: '    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).\n', replace: '    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).\n    if (message.seq <= (this.#seqs.get(message.channel) ?? 0)) return;\n' }],
+      run: { vitest: 'packages/live/src/live.test.ts', name: 'the sequence key expired (a day without hints) or was deleted', env: { BESPOKE_TEST_REDIS_URL: 'redis://127.0.0.1:56379' } },
+      expect: /The live stream did not get 4 hints/,
+    },
+    {
+      id: 'G6e',
+      title: 'without the filter on the hints that came while hello was prepared: one it counted is told again',
+      patch: [{ file: HUB, find: '    for (const message of waiting) if (message.seq > (this.#seqs.get(message.channel) ?? 0)) this.hint(message);', replace: '    for (const message of waiting) this.hint(message);' }],
+      run: hub('a hint that arrives while hello is prepared goes out right after it'),
+      expect: /expected \[ 1, 2 \] to deeply equal \[ 2 \]/,
+    },
     // --- memory + --workers -------------------------------------------------------------------------------------------------
     {
       id: 'G7',

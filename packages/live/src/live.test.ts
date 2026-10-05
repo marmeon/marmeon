@@ -3,7 +3,7 @@ import { connect, createServer as createTcpServer, type AddressInfo, type Server
 import { runTransaction, type Logger } from '@bespokecore/core';
 import { RedisConnections, defineRedisScript } from '@bespokecore/redis';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryLiveBackend, type LiveBackend } from './backend.ts';
+import { MemoryLiveBackend, type LiveBackend, type LiveMessage } from './backend.ts';
 import { LiveBroadcaster } from './broadcaster.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub, OpenStream, type LiveHubOptions } from './hub.ts';
@@ -375,6 +375,52 @@ describe('the stream — hints, never data (E89, E104)', () => {
   });
 });
 
+describe('a channel whose counter started again (its key expired, was evicted or flushed) — W9 step 4', () => {
+  /** A backend whose sequences can be forgotten — what Redis does after a day without hints (TTL), an eviction or a flush. */
+  function forgetful() {
+    const memory = new MemoryLiveBackend();
+    const listeners = new Set<(message: LiveMessage) => void>();
+    let seqs = new Map<string, number>();
+    const backend: LiveBackend = {
+      refresh: async (channel, only, except) => {
+        const seq = (seqs.get(channel) ?? 0) + 1;
+        seqs.set(channel, seq);
+        for (const listener of listeners) listener({ kind: 'refresh', channel, only, seq, ...(except === undefined ? {} : { except }) });
+        return seq;
+      },
+      end: memory.end.bind(memory),
+      seqs: async (channels) => channels.map((channel) => seqs.get(channel) ?? 0),
+      listen: async (listener) => (listeners.add(listener), async () => void listeners.delete(listener)),
+      close: async () => listeners.clear(),
+    };
+    return { backend, forget: () => (seqs = new Map()) };
+  }
+
+  it('an open stream that saw 5 is told the hints of the new count (1, 2, …) — never drops them as old', async () => {
+    const { backend, forget } = forgetful();
+    const hub = hubOf(backend);
+    const reader = await open(hub, ['users.1']);
+    await reader.hello();
+    for (let n = 0; n < 5; n++) await backend.refresh('users.1', ['profile'], undefined);
+    await reader.waitFor(5);
+    forget();
+    await backend.refresh('users.1', ['profile'], undefined);
+    await backend.refresh('users.1', ['profile'], undefined);
+    await reader.waitFor(7);
+    expect(reader.hints.map((hint) => hint.seq)).toEqual([1, 2, 3, 4, 5, 1, 2]);
+  });
+
+  it('a reconnect with a Last-Event-ID above the new count: hello names the channel as missed — the tab reloads once', async () => {
+    const { backend, forget } = forgetful();
+    const hub = hubOf(backend);
+    for (let n = 0; n < 5; n++) await backend.refresh('users.1', null, undefined);
+    forget();
+    await backend.refresh('users.1', null, undefined);
+    const reader = await open(hub, ['users.1'], { lastEventId: 'users.1=5' });
+    expect(await reader.hello()).toEqual({ seq: { 'users.1': 1 }, missed: ['users.1'] });
+  });
+});
+
 describe('the memory backend — bounded like Redis (W9 step 4)', () => {
   it('forgets the channel hinted longest ago beyond maxChannels, and a channel a day after its last hint', async () => {
     let now = 0;
@@ -545,6 +591,19 @@ describe.runIf(REDIS_URL)('the redis backend — every process hears every hint 
     const keys = await one.connections.get().command<string[]>(['KEYS', `${prefix}*`]);
     expect(keys).toEqual([`${prefix}live:seq:users.1`]);
     expect(Number(await one.connections.get().command(['TTL', keys[0]!]))).toBeGreaterThan(80_000);
+  });
+
+  it('the sequence key expired (a day without hints) or was deleted: the open stream still hears the hints that count from 1 again', async () => {
+    const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const { backend, hub, connections } = processOf(prefix);
+    const reader = await open(hub, ['users.1']);
+    await reader.hello();
+    for (let n = 0; n < 3; n++) await backend.refresh('users.1', null, undefined);
+    await reader.waitFor(3);
+    await connections.get().command(['DEL', connections.get().key('live:seq:users.1')]);
+    expect(await backend.refresh('users.1', null, undefined)).toBe(1);
+    await reader.waitFor(4);
+    expect(reader.hints.map((hint) => hint.seq)).toEqual([1, 2, 3, 1]);
   });
 
   it('a session that ended in one process closes its streams in the other', async () => {
