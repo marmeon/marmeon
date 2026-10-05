@@ -61,15 +61,47 @@ function Profile({ links, activity }: { links: Link[]; activity: string }) {
 }
 Profile.revalidateOnBack = ['activity'];
 
+type Feed = { data: { id: number }[]; meta: { nextCursor: string | null } };
+
+/** A merge()d list with "load more" — and a delete that reloads it (E183: the reload replaces it, the row stays gone). */
+function Inbox({ inbox }: { inbox: Feed }) {
+  const router = useRouter();
+  const destroy = useAction('inbox.destroy');
+  const keep = useAction('inbox.destroy');
+  return (
+    <main>
+      <ul data-testid="inbox">
+        {inbox.data.map((row) => (
+          <li key={row.id}>
+            {row.id}
+            <button type="button" data-testid={`delete-${row.id}`} onClick={() => void destroy.submit({ params: { id: row.id }, reload: router.reloading({ only: ['inbox'] }) })}>
+              x
+            </button>
+            <button type="button" data-testid={`delete-appending-${row.id}`} onClick={() => void keep.submit({ params: { id: row.id }, reload: router.reloading({ only: ['inbox'], reset: [] }) })}>
+              x
+            </button>
+          </li>
+        ))}
+      </ul>
+      {inbox.meta.nextCursor && (
+        <button type="button" data-testid="more" onClick={() => void router.reload({ data: { cursor: inbox.meta.nextCursor }, only: ['inbox'], preserveUrl: true })}>
+          more
+        </button>
+      )}
+    </main>
+  );
+}
+
 function People() {
   return <p data-testid="people">People</p>;
 }
 
-const pages: Record<string, PageComponent> = { Profile, People };
+const pages: Record<string, PageComponent> = { Profile, People, Inbox };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'links.destroy': { method: 'delete', path: '/links/:link' },
   'links.store': { method: 'post', path: '/links' },
+  'inbox.destroy': { method: 'delete', path: '/inbox/:id' },
 };
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
 const profile = (labels: string[], activity = 'old') => page('Profile', '/users/1', { links: labels.map((label, index) => ({ id: index + 1, label })), activity });
@@ -179,5 +211,46 @@ describe('useAction (E59)', () => {
     expect(requests.slice(before)).toEqual([expect.objectContaining({ url: '/users/1', method: 'GET', headers: expect.objectContaining({ [PARTIAL_DATA_HEADER]: 'activity' }) })]);
     expect($('activity').textContent).toBe('fresh');
     expect(labels()).toEqual(['Notes']);
+  });
+
+  it('a row deleted from a merge()d list that loaded more stays gone: the action’s reload replaces the list — load more appends again', async () => {
+    const feed = (url: string, ids: number[], next: string | null): PageObject => ({
+      ...page('Inbox', url, { inbox: { data: ids.map((id) => ({ id })), meta: { nextCursor: next } } }),
+      mergeProps: ['inbox'],
+      matchPropsOn: ['inbox.data.id'],
+    });
+    let stored = [1, 2, 3, 4, 5];
+    server = (url, init) => {
+      if (init.method === 'DELETE') {
+        stored = stored.filter((id) => id !== Number(url.split('/').at(-1)));
+        return respond({ deleted: true });
+      }
+      const cursor = Number(new URL(url, 'https://app.test').searchParams.get('cursor') ?? 0);
+      const ids = stored.filter((id) => id > cursor).slice(0, 2);
+      const next = stored.some((id) => id > (ids.at(-1) ?? Infinity)) ? String(ids.at(-1)) : null;
+      return new Response(JSON.stringify(feed(url, ids, next)), { headers: { [PAGE_HEADER]: 'true' } });
+    };
+    history.replaceState(null, '', '/inbox');
+    await mount(feed('/inbox', [1, 2], '2'));
+    const shown = () => [...$('inbox').querySelectorAll('li')].map((item) => Number(item.firstChild?.textContent));
+    await click('more');
+    await wait();
+    expect(shown()).toEqual([1, 2, 3, 4]);
+
+    await click('delete-3');
+    await wait(30);
+    expect(requests.at(-1)!.headers).toMatchObject({ [PARTIAL_DATA_HEADER]: 'inbox' });
+    // The first page again, without the deleted row — not the old list with the first page merged over it (3 came back then).
+    expect(shown(), 'the deleted row came back').toEqual([1, 2]);
+
+    await click('more');
+    await wait();
+    expect(shown()).toEqual([1, 2, 4, 5]);
+    expect(location.pathname + location.search).toBe('/inbox');
+
+    // reset: [] — the way back: merged into what is shown (the deleted row stays until a reload starts the list over).
+    await click('delete-appending-4');
+    await wait(30);
+    expect(shown()).toEqual([1, 2, 4, 5]);
   });
 });

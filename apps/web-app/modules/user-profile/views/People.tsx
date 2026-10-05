@@ -1,5 +1,5 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Island, Link, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
+import { Head, Island, Link, Pagination, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
 import type { ListPeopleController } from '../controllers/ListPeopleController.ts';
 
 type Props = PageProps<ListPeopleController>;
@@ -29,7 +29,7 @@ export default function People({ people, now }: Props) {
           type="search"
           name="q"
           value={query.q}
-          onChange={(event) => setQuery({ q: event.target.value })}
+          onChange={(event) => setQuery({ q: event.target.value, page: undefined })}
           placeholder={t('people.search')}
           aria-label={t('people.search')}
         />
@@ -39,13 +39,12 @@ export default function People({ people, now }: Props) {
         {SORTS.map(([sort, label], index) => (
           <span key={sort}>
             {index > 0 && ' · '}
-            {/* A link per sort (a history entry each: Back undoes a sort). Defaults are left out of the URL, and the
-                list is replaced (`reset`) — merged, it would keep the old order. */}
+            {/* A link per sort (a history entry each: Back undoes a sort) — back to the first page. Defaults are left out of
+                the URL (`page: 1` is no page's). */}
             <Link
               route="user-profile.people"
-              query={{ ...query, sort }}
+              query={{ ...query, sort, page: 1 }}
               only={['people']}
-              reset={['people']}
               preserveState
               preserveScroll
               aria-current={query.sort === sort ? 'true' : undefined}
@@ -74,20 +73,8 @@ export default function People({ people, now }: Props) {
           ))}
         </ul>
       )}
-      {people.meta.nextCursor && (
-        // The next ten, appended (`people` is deepMerge()d on the server) — the URL stays the list's, so a reload starts
-        // over at the top; Back and Forward keep what was loaded (the page in memory). Without JavaScript, a plain link.
-        <Link
-          route="user-profile.people"
-          query={{ ...query, cursor: people.meta.nextCursor }}
-          only={['people']}
-          preserveUrl
-          preserveScroll
-          preserveState
-        >
-          {t('people.more')}
-        </Link>
-      )}
+      {/* Links to the pages, from the parsed query (the search, the sort and the page size stay) — in the page's language. */}
+      <Pagination meta={people.meta} />
       <aside aria-labelledby="recent-sign-ins">
         <h2 id="recent-sign-ins">{t('people.recent')}</h2>
         {/* The dashboard's island, reused (E48): the same route, its own query. Typing and sorting above reload the page's

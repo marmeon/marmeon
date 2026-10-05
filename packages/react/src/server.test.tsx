@@ -41,6 +41,11 @@ const resolve = resolveModulePages({
   '../modules/broken/views/NoDefault.tsx': async () => ({}),
   '../elsewhere/Ignored.tsx': async () => ({ default: Greeting }),
   '../modules/people/views/List.tsx': async () => ({ default: ({ page, lastPage }: { page: number; lastPage: number }) => <Pagination meta={{ page, perPage: 5, total: lastPage * 5, lastPage, from: 1, to: 5 }} /> }),
+  '../modules/people/views/Labelled.tsx': async () => ({
+    default: ({ page, lastPage }: { page: number; lastPage: number }) => (
+      <Pagination meta={{ page, perPage: 5, total: lastPage * 5, lastPage, from: 1, to: 5 }} labels={{ next: 'Suivant', page: (number) => `Page n° ${number}` }} />
+    ),
+  }),
 });
 
 describe('resolveModulePages', () => {
@@ -119,6 +124,33 @@ describe('<Pagination>', () => {
     expect(hrefs).toEqual(['/people?q=ada&page=5', '/people?q=ada', '/people?q=ada&page=4', '/people?q=ada&page=5', '/people?q=ada&page=7', '/people?q=ada&page=8', '/people?q=ada&page=20', '/people?q=ada&page=7']);
     expect(html).toContain('<strong aria-current="page"> <!-- -->6<!-- --> </strong>');
     expect(html).toContain('rel="prev"');
+  });
+
+  it('takes its links from the parsed query (E55): the rest of it kept, its defaults left out — the address is never parsed', async () => {
+    // The URL says one thing, the page's parsed query another: the links follow the query (the schema's view of the URL).
+    const { html } = await renderAll(createSsrRenderer(resolve), {
+      component: 'people/List',
+      props: { page: 2, lastPage: 3 },
+      url: '/people?ignored=1&page=2',
+      query: { q: 'ada', page: 2, per_page: 50 },
+      queryDefaults: { q: '', sort: 'name', page: 1, per_page: 25 },
+    });
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((match) => match[1]!.replaceAll('&amp;', '&'));
+    expect(hrefs, 'the links parsed the address').toEqual(['/people?q=ada&per_page=50', '/people?q=ada&per_page=50', '/people?q=ada&page=3&per_page=50', '/people?q=ada&page=3&per_page=50']);
+  });
+
+  it('speaks the page’s language: German built in, any text from the app (labels)', async () => {
+    const german = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'de-AT' });
+    expect(german.html).toContain('aria-label="Seitennavigation"');
+    expect(german.html).toContain('‹ Zurück');
+    expect(german.html).toContain('Weiter ›');
+    expect(german.html).toContain('aria-label="Seite 3"');
+    const english = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'fr' });
+    expect(english.html).toContain('Next ›');
+    const labelled = await renderAll(createSsrRenderer(resolve), { component: 'people/Labelled', props: { page: 2, lastPage: 3 }, url: '/people?page=2', locale: 'fr' });
+    expect(labelled.html).toContain('Suivant');
+    expect(labelled.html).toContain('aria-label="Page n° 3"');
+    expect(labelled.html).toContain('‹ Previous');
   });
 
   it('renders nothing for a single page', async () => {

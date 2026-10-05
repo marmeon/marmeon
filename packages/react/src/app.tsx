@@ -83,11 +83,14 @@ export type CheckedPatch<R, P> = (props: P) => { readonly [K in keyof R]: K exte
 
 /**
  * What an action reloads once it succeeded (E59) — some props of the page (`only`), all but some (`except`), its islands of a
- * route (`islands`): `router.reloading({ only: ['profile'] })`. Neither props nor islands: the whole page.
+ * route (`islands`): `router.reloading({ only: ['profile'] })`. Neither props nor islands: the whole page. What it brings replaces
+ * what was there, also a `merge()`d list (a row the action deleted is gone).
  */
 export interface ReloadingOptions<T = unknown, I extends readonly string[] = readonly string[]> {
   only?: readonly PropName<T>[];
   except?: readonly PropName<T>[];
+  /** The merged props it replaces — default: every prop it brings. `[]` merges them instead (appends, as before Wave 9). */
+  reset?: readonly PropName<T>[];
   /** The islands of these routes the page (or layer) shows — each one on screen reloads. Alone: only them, not the page. */
   islands?: { readonly [K in keyof I]: CheckIslandRouteName<I[K] & string> };
 }
@@ -140,13 +143,13 @@ export interface RouterValue extends Omit<Router, 'optimistic' | 'reloading'>, P
  * of the routes named (the routes the browser knows, `<Island route>`).
  */
 export function reloadsOf(
-  own: (spec: { only?: readonly string[]; except?: readonly string[] }) => Reloading,
+  own: (spec: { only?: readonly string[]; except?: readonly string[]; reset?: readonly string[] }) => Reloading,
   owner: RegionOwnerType | null,
   manifest: RouteManifest | undefined,
-  { only, except, islands }: { only?: readonly string[]; except?: readonly string[]; islands?: readonly string[] } = {},
+  { only, except, reset, islands }: { only?: readonly string[]; except?: readonly string[]; reset?: readonly string[]; islands?: readonly string[] } = {},
 ): readonly Reloading[] {
   const reloads: Reloading[] = [];
-  if (!islands || only || except) reloads.push(own({ ...(only ? { only } : {}), ...(except ? { except } : {}) }));
+  if (!islands || only || except) reloads.push(own({ ...(only ? { only } : {}), ...(except ? { except } : {}), ...(reset ? { reset } : {}) }));
   for (const name of islands ?? []) {
     const route = manifest && Object.hasOwn(manifest, name) ? manifest[name] : undefined;
     if (!route) {
@@ -265,7 +268,7 @@ export function useRouter<T = unknown>(): Router<T> {
   );
   const reloading = useCallback(
     (options?: ReloadingOptions) =>
-      ownReloading ? ownReloading(options as never) : reloadsOf((spec) => ({ target: pagePatches(navigator()), spec }), navigator()?.regionOwner ?? null, routes, options as { islands?: readonly string[] }),
+      ownReloading ? ownReloading(options as never) : reloadsOf((spec) => ({ target: pagePatches(navigator()), spec }), navigator()?.regionOwner ?? null, routes, options as Parameters<typeof reloadsOf>[3]),
     [ownReloading, navigator, routes],
   );
   return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as Router<T>, [visit, reload, prefetch, on, optimistic, reloading]);

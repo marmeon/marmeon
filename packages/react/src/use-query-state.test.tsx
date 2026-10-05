@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/people" }
 import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, type RouteManifest } from '@bespokecore/http/page';
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BespokeApp } from './app.tsx';
@@ -28,12 +28,29 @@ function People({ people }: { people: string[] }) {
   );
 }
 
+/** A child that sets the state as it mounts — its effect runs before the hook's own (children first). */
+function SortOnMount({ set }: { set: (update: { sort: string }) => void }) {
+  useEffect(() => set({ sort: '-name' }), [set]);
+  return null;
+}
+
+function Early({ people }: { people: string[] }) {
+  const [query, setQuery] = useQueryState('people', { only: ['people'], history: 'replace' });
+  return (
+    <main>
+      <SortOnMount set={setQuery} />
+      <output data-testid="sort">{query.sort as string}</output>
+      <ul data-testid="list">{people.join(',')}</ul>
+    </main>
+  );
+}
+
 function Misplaced() {
   useQueryState('people');
   return null;
 }
 
-const pages: Record<string, PageComponent> = { People, Misplaced };
+const pages: Record<string, PageComponent> = { People, Early, Misplaced };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const NAMES = ['Ada', 'Alan', 'Grace'];
 const peoplePage = (url: string): PageObject => {
@@ -121,6 +138,13 @@ describe('useQueryState (E55)', () => {
     await act(async () => history.back());
     await until(() => expect($('sort').textContent).toBe('name'));
     expect(($('q') as HTMLInputElement).value).toBe('a');
+  });
+
+  it('a set() before the state exists (a child’s effect on mount) is made once it does — never dropped', async () => {
+    await mount({ ...peoplePage('/people'), component: 'app/Early' });
+    await until(() => expect($('list').textContent, 'the early set() was dropped').toBe('Grace,Alan,Ada'), 2000);
+    expect($('sort').textContent).toBe('-name');
+    expect(location.search).toBe('?sort=-name');
   });
 
   it('belongs to the page of its route — elsewhere it throws a readable error (the page’s error boundary shows it)', async () => {

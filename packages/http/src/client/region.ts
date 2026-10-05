@@ -9,7 +9,7 @@
  * leaving the document (signing out, a new build) drops them with the pages. The islands feature makes them (`islands.region`).
  */
 import type { PageObject, RegionObject, RegionResult } from '../page.ts';
-import { mergePage, pick } from './merge.ts';
+import { mergePage, pick, resetOf, type ResetProps } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { pageQuery, queryUrl } from './query-state.ts';
@@ -172,7 +172,7 @@ export class Region {
     },
     revalidate: (spec, ids) => {
       const done = new Promise<void>((resolve) => this.#drops.push({ ids, done: resolve }));
-      void this.#fetch(this.#url, spec.only !== undefined || (spec.except?.length ?? 0) > 0 ? { only: spec.only, except: spec.except } : {});
+      void this.#revalidate(spec);
       return done;
     },
   };
@@ -234,7 +234,7 @@ export class Region {
       if (onBack) {
         const component = this.#region.component;
         void onBack(component).then((spec) => {
-          if (spec && !this.#owner.closed && this.#region?.component === component) void this.reload(spec.only || spec.except ? { only: spec.only, except: spec.except } : {});
+          if (spec && !this.#owner.closed && this.#region?.component === component) void this.#revalidate(spec);
         });
       }
       return Promise.resolve();
@@ -267,7 +267,13 @@ export class Region {
     return this.#fetch(url, partial ? { only, except, reset: reset ?? (changed ? only : undefined) } : {});
   }
 
-  async #fetch(url: string, { only, except, reset }: Pick<RegionReloadOptions, 'only' | 'except' | 'reset'>): Promise<void> {
+  /** Its props again, as they are now (an action's reload, Back's): what comes replaces merged props (`ReloadSpec.reset`). */
+  #revalidate(spec: ReloadSpec): Promise<void> {
+    const partial = spec.only !== undefined || (spec.except?.length ?? 0) > 0;
+    return this.#fetch(this.#url, partial ? { only: spec.only, except: spec.except, reset: resetOf(spec) } : {});
+  }
+
+  async #fetch(url: string, { only, except, reset }: Pick<RegionReloadOptions, 'only' | 'except'> & { reset?: ResetProps | undefined }): Promise<void> {
     if (this.#owner.closed) return this.#settleDrops(false);
     this.#request?.abort();
     const controller = new AbortController();

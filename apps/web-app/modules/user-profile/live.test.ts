@@ -79,7 +79,7 @@ describe('live props in the web app (W6.10)', () => {
     await page.waitFor(1);
     expect(page.hints).toEqual([{ channel: notificationsChannel({ type: 'user', id: ada.id }), only: null, seq: 1 }]);
     // Read in another tab: this tab's bell hears it too.
-    const [row] = (await app.actingAs(ada).navigating().get('/notifications').assertOk()).page()!.props.notifications as { id: string }[];
+    const [row] = ((await app.actingAs(ada).navigating().get('/notifications').assertOk()).page()!.props.notifications as { data: { id: string }[] }).data;
     await tab(ada, 'tab-other-0001').acting().post(`/notifications/${row!.id}/read`).assertOk();
     await page.waitFor(2);
   });

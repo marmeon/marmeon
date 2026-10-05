@@ -13,7 +13,7 @@ import { takeFlash } from '../flash.ts';
 import { entry, isHistoryState, newKey, type HistoryState, type PositionCheck } from '../history.ts';
 import { Layer, type LayerControl, type LayerHost } from '../layer.ts';
 import { follow } from '../load-live.ts';
-import { keepDeferred, mergePage, pick } from '../merge.ts';
+import { keepDeferred, mergePage, pick, resetOf } from '../merge.ts';
 import type { VisitOptions } from '../navigation.ts';
 import type { ReloadSpec } from '../optimistic.ts';
 import { REGIONS } from '../owner.ts';
@@ -315,7 +315,7 @@ export class LayerStack implements LayerHost {
     });
   }
 
-  /** A layer's props again from the server, in the background (as `PropLoader.revalidate` does for a page's). */
+  /** A layer's props again from the server, in the background (as `PropLoader.revalidate` does for a page's) — replacing merged props. */
   async revalidate(control: LayerControl, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
     const base = control.layer.page;
     if (control.layer.closed || this.#core.left) return false;
@@ -327,7 +327,7 @@ export class LayerStack implements LayerHost {
       this.#core.flushFlash();
       return false;
     }
-    const merged = partial ? mergePage(current, { ...loaded, props: spec.only ? pick(loaded.props, spec.only) : loaded.props }) : keepDeferred(current, loaded);
+    const merged = partial ? mergePage(current, { ...loaded, props: spec.only ? pick(loaded.props, spec.only) : loaded.props }, resetOf(spec)) : keepDeferred(current, loaded);
     control.update(merged, drop);
     updatePage(this.#core.cache, control.layer.entry, merged);
     await this.render();

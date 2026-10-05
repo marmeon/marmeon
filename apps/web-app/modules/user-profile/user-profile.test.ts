@@ -69,14 +69,18 @@ describe('user-profile module', () => {
   });
 
   it('serves a stateless API under /api — a token, no session, no cookies', async () => {
-    const response = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=2').assertOk().assertCookieMissing('bespoke_session');
+    const response = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=50').assertOk().assertCookieMissing('bespoke_session');
     expect(response.json()).toEqual({
       data: [
         { id: ada.id, name: 'Ada Lovelace' },
         { id: alan.id, name: 'Alan Turing' },
+        { id: grace.id, name: 'Grace Hopper' },
       ],
-      meta: { page: 1, perPage: 2, total: 3, lastPage: 2, from: 1, to: 2 },
+      meta: { page: 1, perPage: 50, total: 3, lastPage: 1, from: 1, to: 3 },
     });
+    // The page as its query schema parses it (pageQuery): a size it does not offer is the default, a page past the last is empty.
+    const other = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=2&page=2').assertOk();
+    expect(other.json()).toEqual({ data: [], meta: { page: 2, perPage: 25, total: 3, lastPage: 1, from: null, to: null } });
   });
 
   it('sends security headers on every response — global middleware, even for unknown paths', async () => {
@@ -253,9 +257,9 @@ describe('user-profile module', () => {
     const queries: string[] = [];
     app.make(Connections).onQuery((query) => queries.push(query.sql));
 
-    const people = await directory.people({ q: '', sort: 'name' }, { perPage: 50 });
-    // 8 people, each with their last sign-in: ONE query for the rows and their relation (keyset pagination counts nothing).
-    expect(queries).toHaveLength(1);
+    const people = await directory.people({ q: '', sort: 'name', per_page: 50 });
+    // 8 people, each with their last sign-in: ONE query for the rows and their relation, and one that counts (without it).
+    expect(queries).toHaveLength(2);
     expect(queries.filter((sql) => /login_activity/.test(sql))).toHaveLength(1);
     expect(people.data).toHaveLength(8);
     expect(people.data.find((person) => person.id === grace.id)?.activity).toEqual({ last_login_at: expect.stringMatching(/Z$/) });

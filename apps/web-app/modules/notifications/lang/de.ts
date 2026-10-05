@@ -6,6 +6,9 @@ export default {
   none: 'Keine Benachrichtigungen.',
   mark_read: 'Als gelesen markieren',
   mark_all_read: 'Alle als gelesen markieren',
+  more: 'Mehr laden',
+  delete: 'Löschen',
+  confirm_delete: 'Diese Benachrichtigung löschen?',
   unread: 'Ungelesen',
   unknown: 'Eine Benachrichtigung',
   new_sign_in: {

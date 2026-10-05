@@ -7,7 +7,7 @@ import type { DeferredResult, PageObject } from '../page.ts';
 import { updatePage } from './cache.ts';
 import type { NavigatorCore } from './core.ts';
 import type { Visit } from './events.ts';
-import { keepDeferred, mergePage, pick } from './merge.ts';
+import { keepDeferred, mergePage, pick, resetOf, type ResetProps } from './merge.ts';
 import type { ReloadSpec } from './optimistic.ts';
 import { partialReloadHeaders } from './request.ts';
 
@@ -88,17 +88,23 @@ export class PropLoader {
 
   /**
    * Merges loaded props into the page of history entry `key` — and shows it, if that is the page on screen. `replace`: the
-   * loaded page is the whole page now (a full reload) — its deferred props keep their values until they load again. `landed`:
-   * what the landing props take the place of goes (an action's optimistic patches, E59) — in the same render.
+   * loaded page is the whole page now (a full reload) — its deferred props keep their values until they load again. `reset`:
+   * the merged props the loaded ones replace (a revalidation's: all). `landed`: what the landing props take the place of goes
+   * (an action's optimistic patches, E59) — in the same render.
    */
-  async land(key: string, page: PageObject, loaded: PageObject, { replace = false, landed }: { replace?: boolean; landed?: () => void } = {}): Promise<PageObject | undefined> {
+  async land(
+    key: string,
+    page: PageObject,
+    loaded: PageObject,
+    { replace = false, reset, landed }: { replace?: boolean; reset?: ResetProps; landed?: () => void } = {},
+  ): Promise<PageObject | undefined> {
     // Left for a full page load (signed out, say): nothing lands in what this document shows any more.
     if (this.#core.left) return undefined;
     const onScreen = this.#core.key === key && !this.#core.transitioning;
     const target = onScreen ? this.#core.page : this.#core.cache.peek(key)?.page;
     // The entry shows another URL now (a replacing visit): these props are not for it.
     if (!target || target.url !== page.url || target.component !== page.component) return undefined;
-    const merged = replace ? keepDeferred(target, loaded) : mergePage(target, loaded);
+    const merged = replace ? keepDeferred(target, loaded) : mergePage(target, loaded, reset);
     updatePage(this.#core.cache, key, merged);
     landed?.();
     if (onScreen) {
@@ -111,8 +117,9 @@ export class PropLoader {
 
   /**
    * Reloads the page of entry `key` in the background — some props, or all — and lands them there (on screen or in memory),
-   * `landed` running in the same render (an action's patches go). No events, no progress bar, no failure notice: what is shown
-   * stays when it fails. Resolves with whether it landed.
+   * `landed` running in the same render (an action's patches go). A revalidation: what it brings replaces merged props
+   * (`ReloadSpec.reset`). No events, no progress bar, no failure notice: what is shown stays when it fails. Resolves with whether
+   * it landed.
    */
   async revalidate(key: string, spec: ReloadSpec, signal: AbortSignal, landed?: () => void): Promise<boolean> {
     const base = this.base(key);
@@ -125,7 +132,7 @@ export class PropLoader {
       return false;
     }
     const props = partial && spec.only ? pick(loaded.props, spec.only) : loaded.props;
-    const merged = await this.land(key, base, { ...loaded, props }, { replace: !partial, landed });
+    const merged = await this.land(key, base, { ...loaded, props }, { replace: !partial, reset: resetOf(spec), landed });
     this.#core.flushFlash();
     return merged !== undefined;
   }

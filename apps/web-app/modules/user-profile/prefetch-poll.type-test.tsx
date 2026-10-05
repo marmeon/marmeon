@@ -75,10 +75,11 @@ export const props = {
   // Argument of type '"uid"' is not assignable to parameter of type '"id" | "url"'.
   // @ts-expect-error
   badKey: merge([{ id: 1, url: 'x' }]).matchOn('uid'),
-  // merge() appends a top-level array only — for a list inside an object, deepMerge():
-  // Argument of type '"data.id"' is not assignable to parameter of type 'never'.
-  // @ts-expect-error
+  // merge() appends a top-level array, or a paginator's data (W9) — its items' keys under `data.`:
   shallow: merge(people).matchOn('data.id'),
+  // Argument of type '"data.uid"' is not assignable to parameter of type '"data.id" | "data.name"'.
+  // @ts-expect-error
+  shallowBadKey: merge(people).matchOn('data.uid'),
   // Only a merging deferred prop matches: Property 'matchOn' does not exist on type 'DeferredProp<{ id: number; }[]>'.
   // @ts-expect-error
   deferNoMerge: defer(() => [{ id: 1 }]).matchOn('id'),

@@ -12,11 +12,19 @@ export function xsrfToken(): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
-/** The URL, headers and body of a request to `target`: a GET's data goes into the query, a write's into the body (with the XSRF token). */
+/**
+ * The URL, headers and body of a request to `target`: a GET's data goes into the query, a write's into the body (with the XSRF
+ * token). A list in a GET's data is the key repeated (`{ role: ['admin', 'owner'] }` → `?role=admin&role=owner`) — what the
+ * server's query schema reads as a list, and what `toSearchParams` writes.
+ */
 export function buildRequest(target: URL, method: VisitMethod, data: VisitOptions['data']): { url: string; headers: Record<string, string>; body?: BodyInit } {
   if (method === 'get') {
     if (data && !(data instanceof FormData)) {
-      for (const [key, value] of Object.entries(data)) if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
+      for (const [key, value] of Object.entries(data)) {
+        if (value === undefined || value === null) continue;
+        target.searchParams.delete(key);
+        for (const item of Array.isArray(value) ? value : [value]) if (item !== undefined && item !== null) target.searchParams.append(key, String(item));
+      }
     }
     return { url: target.pathname + target.search, headers: {} };
   }

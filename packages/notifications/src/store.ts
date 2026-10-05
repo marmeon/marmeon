@@ -1,5 +1,5 @@
 import type { Clock } from '@bespokecore/core';
-import { sql, type Connections } from '@bespokecore/database';
+import { cursorPaginate, sql, type Connections, type CursorEncrypter, type CursorPaginated } from '@bespokecore/database';
 import type { AnyRecipient } from './notification.ts';
 
 /** The table `bespoke make:notifications-table` creates (E96: the app owns the migration; this package types it itself). */
@@ -87,6 +87,32 @@ export class NotificationStore {
     if (unread) query = query.where('read_at', 'is', null);
     const rows = await query.orderBy('created_at', 'desc').orderBy('id', 'desc').limit(Math.max(1, Math.min(limit, 500))).execute();
     return rows.map((row) => ({ id: row.id, type: row.type, data: row.data, readAt: iso(row.read_at), createdAt: iso(row.created_at)! }));
+  }
+
+  /**
+   * A page of the recipient's notifications, newest first — keyset by (`created_at`, `id`), the cursor encrypted (`encrypter`): for
+   * "load more". A cursor that is not one of this list's answers 400.
+   */
+  async page(recipient: AnyRecipient, { cursor, perPage = 20, encrypter }: { cursor?: string | null | undefined; perPage?: number; encrypter: CursorEncrypter }): Promise<CursorPaginated<StoredNotification>> {
+    const query = this.#db()
+      .selectFrom(NOTIFICATIONS_TABLE)
+      .select(['id', 'type', 'data', 'read_at', 'created_at'])
+      .where('recipient_type', '=', recipient.type)
+      .where('recipient_id', '=', String(recipient.id));
+    const page = await cursorPaginate(query, { column: 'created_at', key: 'id', cursor, perPage: Math.max(1, Math.min(perPage, 500)), direction: 'desc', encrypter });
+    return { data: page.data.map((row) => ({ id: row.id, type: row.type, data: row.data, readAt: iso(row.read_at), createdAt: iso(row.created_at)! })), meta: page.meta };
+  }
+
+  /** Deletes one of the recipient's notifications. `false` when the recipient has none with this id — someone else's is no different from none. */
+  async delete(recipient: AnyRecipient, id: string): Promise<boolean> {
+    if (!isNotificationId(id)) return false;
+    const result = await this.#db()
+      .deleteFrom(NOTIFICATIONS_TABLE)
+      .where('recipient_type', '=', recipient.type)
+      .where('recipient_id', '=', String(recipient.id))
+      .where('id', '=', id)
+      .executeTakeFirst();
+    return result.numDeletedRows > 0n;
   }
 
   /** How many of the recipient's notifications are unread. */

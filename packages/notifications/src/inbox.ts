@@ -1,4 +1,5 @@
 import type { DatabaseData, NotificationStatics, RecipientRef } from './notification.ts';
+import type { CursorEncrypter, CursorPaginated } from '@bespokecore/database';
 import type { NotificationStore, StoredNotification } from './store.ts';
 
 /**
@@ -30,6 +31,15 @@ export class Inbox {
     return this.#store.list(recipient, { limit });
   }
 
+  /**
+   * A page of the recipient's notifications, newest first, for "load more": the next `perPage` (default 20) after `cursor`
+   * (`meta.nextCursor` of the page before). The cursor is encrypted with the app key — inject `Encrypter` and pass it; one that is
+   * not this list's answers 400.
+   */
+  page(recipient: RecipientRef, options: { cursor?: string | null | undefined; perPage?: number; encrypter: CursorEncrypter }): Promise<CursorPaginated<StoredNotification>> {
+    return this.#store.page(recipient, options);
+  }
+
   /** How many of the recipient's notifications are unread — the bell's number. */
   count(recipient: RecipientRef): Promise<number> {
     return this.#store.count(recipient);
@@ -41,6 +51,14 @@ export class Inbox {
    */
   markRead(recipient: RecipientRef, id: string): Promise<boolean> {
     return this.#store.markRead(recipient, id);
+  }
+
+  /**
+   * Deletes one of the recipient's notifications. `false` when the recipient has none with this id (unknown, or somebody
+   * else's — answer 404 for both).
+   */
+  delete(recipient: RecipientRef, id: string): Promise<boolean> {
+    return this.#store.delete(recipient, id);
   }
 
   /** Marks all of the recipient's notifications read — how many were unread. */

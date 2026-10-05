@@ -173,7 +173,7 @@ Edit.layer = 'slideover';                                           // as a laye
   `user-profile.*`, `*`, or a list) for every page of those routes; the link being visited gets `data-pending`.
 - **`useRouter<Controller>()`** — `visit(url, options)`, `reload({ only: ['stats'] })` (prop names checked), `prefetch(url)`,
   `on('start' | 'progress' | 'success' | 'error' | 'exception' | 'cancel' | 'finish' | 'version', listener)` (returns the stop
-  function), and for actions `optimistic(patch)` / `reloading({ only, except, islands })`.
+  function), and for actions `optimistic(patch)` / `reloading({ only, except, reset, islands })`.
 - **`usePage()`** — the page object (`component`, `props` with the shared ones typed by `interface SharedProps`, `url`,
   `locale`, `flash` …); inside a layer, the layer's. **`useRoute()`** — `route('user-profile.show', { user: 7 })` → a URL.
 - **`usePending(name, { delay: 'short' })`** — a visit or action of that route under way. **`useBlocker({ when, message })`**
@@ -239,6 +239,10 @@ const adding = usePendingSubmissions('user-profile.links.store');      // ghost 
 `submit` resolves with `{ ok, kind: 'data' | 'redirect' | 'invalid' | 'exception' | 'cancelled' }` and never rejects; `pending`,
 `errors`, `exception`, `data`, `result`, `cancel()`. A `key` makes a newer call cancel the older; `onRedirect: 'visit'` follows a
 redirect. Patches are typed against the page's props (a prop it does not have is named) and rolled back unless the call succeeds.
+What `reloading` brings **replaces** what the page has — also a `merge()`d list that loaded more (Wave 9, E183): a row the action
+deleted is gone, the list starts over at its first page. `reloading({ only: ['people'], reset: [] })` merges instead; "load more"
+(`<Link query={{ cursor }} only={['people']} preserveUrl>`, `reload({ data: { cursor }, only })`) always appends. See
+[Merged props](../http/README.md#merged-props-revalidations-replace-load-more-appends-w9).
 
 ## Props that arrive later
 
@@ -254,8 +258,12 @@ usePoll<ShowUserProfileController>(15_000, { only: ['activity'] });     // in th
 - **`usePoll(interval, reloadOptions, { keepAlive, autoStart })`** — returns `{ start, stop }`.
 - **`useQueryState(name, { only, debounce, history, reset })`** — typed URL state (E55): the page's query as the server parsed
   it, and a setter that changes it at once and visits after `debounce` ms. Only on that route's page; a route without a query
-  schema is a compile error.
-- **`<Pagination meta={…} window={2} param="page" />`** — links to the pages of `paginate()`'s `meta`, the rest of the query kept.
+  schema is a compile error. A `set()` before the hook's effect ran (a child's effect on mount) is made once it has.
+- **`<Pagination meta={…} window={2} param="page" labels={…} />`** — links to the pages of `paginate()`'s `meta`, built from the
+  page's parsed query (E55: the route's schema with `pageQuery()` of `@bespokecore/database` — the search, the sort and the page
+  size stay, the defaults stay out; never by parsing the address). Its texts are English and German (by the page's `locale`),
+  any other language through `labels` (`{ navigation, previous, next, page: (n) => … }`, e.g. from `useTranslation`). A query
+  schema without the page's field warns in development (R17).
 - **`useLiveUpdates()`** — live props (W6.10) reload by themselves; while a guard holds (a dirty form) they wait:
   `{ pending, apply() }`.
 - **`useRemember(key, initial)`** — `useState` that survives Back/Forward (E63), per history entry, in memory only.

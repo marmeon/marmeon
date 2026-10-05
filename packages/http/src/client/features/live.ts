@@ -101,14 +101,15 @@ export const live = defineFeature('live', (host): LiveFeature => {
 
   /** What follows channels on screen: the page, the layers over it, the islands of each. */
   const targets = (): Target[] => {
-    const all: Target[] = [{ live: host.page.live, reload: (only) => host.navigator.reload({ only, async: true }) }];
+    // A hint is news: what it reloads replaces what was there, merged props too (`reset`) — a row deleted in another tab is gone.
+    const all: Target[] = [{ live: host.page.live, reload: (only) => host.navigator.reload({ only, reset: only, async: true }) }];
     const owners = [host.owner];
     for (const layer of host.layers) {
-      all.push({ live: layer.page.live, reload: (only) => layer.reload({ only, async: true }) });
+      all.push({ live: layer.page.live, reload: (only) => layer.reload({ only, reset: only, async: true }) });
       owners.push(layer.owner);
     }
     for (const owner of owners) {
-      for (const region of owner.live.values()) all.push({ live: region.snapshot.region?.live, reload: (only) => region.reload(only ? { only } : {}) });
+      for (const region of owner.live.values()) all.push({ live: region.snapshot.region?.live, reload: (only) => region.reload(only ? { only, reset: only } : {}) });
     }
     return all;
   };

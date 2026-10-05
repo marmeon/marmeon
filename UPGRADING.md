@@ -15,6 +15,39 @@ The changes of Wave 9 (client and navigation), collected as they land.
 
 ### Wave 9 — client and navigation
 
+#### Medium: an action's or a live hint's reload replaces merged props — a deleted row stays gone
+
+*Likelihood of impact: medium — pages with `merge()`/`deepMerge()` props that an action or a live hint reloads.* A partial reload
+that **revalidates** — what an action reloads once it succeeded (`router.reloading({ only })`, `layer.reloading`, an island's
+`reloading`), what a live hint reloads, what `revalidateOnBack` reloads — now **replaces** the props it brings, also those the
+server marks `merge()` or `deepMerge()` (E183). Before, it merged them: on a list that had loaded more, a row the action deleted
+came back from the pages loaded before (the first page was merged over the old list). Now the list is what the server says — and
+starts over at its first page; "load more" (a visit or reload with `data`/`query`: `<Link query={{ cursor }} only preserveUrl>`,
+`reload({ data: { cursor }, only })`) appends as before. The difference comes from where a reload comes from, not from what it
+looks like. To keep the old behaviour for one reload: `router.reloading({ only: ['people'], reset: [] })` (`reset` names the
+props it replaces — default: all it brings). Live hints and `revalidateOnBack` have no switch: they replace.
+
+#### Medium: `paginate` takes `ctx.query` — `pageQuery()` in the query schema, `paginationFrom` deprecated
+
+*Likelihood of impact: medium — controllers that paginate with `paginationFrom(ctx.query)`.* The page of a list is now a part of
+the route's query schema: spread `pageQuery({ perPage: [25, 50, 100] })` (`@bespokecore/database`) into it — `?page=` and
+`?per_page=` parsed like every query field (an invalid value falls back to its default, never a 422; `ctx.query.per_page` typed
+`25 | 50 | 100`) — and hand `paginate(db, query, ctx.query)` / `repository.paginate(query, ctx.query)` the parsed query. A query
+without a page is a type error that says so. `paginationFrom` keeps working (it reads a parsed query object now too) but is
+deprecated: with a query schema, `ctx.query` is no `URLSearchParams`, and `<Pagination>` builds its links from the schema. Before:
+`paginate(db, q, paginationFrom(ctx.query, { perPage: 25 }))`; after: `query: v.object({ ...pageQuery({ perPage: [25, 50] }), … })`
+and `paginate(db, q, ctx.query)`. `{ page, perPage }` written out is still accepted.
+
+#### Medium: `<Pagination>` takes its links from the parsed query and its texts from the page's language
+
+*Likelihood of impact: medium — pages that render `<Pagination>`.* Its links come from the page's parsed query (`PageObject.query`
++ `queryDefaults`, E55) instead of the address: the rest of the query (search, sort, page size) stays, the defaults stay out
+(`?page=1` is no page's URL), and keys the schema does not know are no longer carried along. On a route **with** a query schema,
+the schema needs the page's field — spread `pageQuery()` into it (development warns: R17); a route without a schema keeps its
+query string as before. Its texts are English or — on a page whose `locale` is German — German ("‹ Zurück", "Weiter ›",
+"Seite 3", "Seitennavigation"); other languages through `labels={{ navigation, previous, next, page: (n) => … }}`. Snapshot
+tests of German pages change.
+
 #### Low: `bespoke build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
 
 *Likelihood of impact: low — Dockerfiles and CI jobs written for 0.1.0 keep working; a provider that reads configuration while it
@@ -54,6 +87,31 @@ lockfile).
 *Likelihood of impact: low — nothing to do.* `create-bespoke-app my-shop` writes `<title>My Shop</title>` into `index.html` (the
 blank app's is a neutral `<title>App</title>`); before, every new app was titled "BespokeCore" until a page set its own. An
 existing app changes the `<title>` in its `index.html` by hand.
+
+#### Low: a list in a GET's data is the key repeated
+
+*Likelihood of impact: low — `visit`/`reload`/`useForm` GETs with a list in `data`.* `reload({ data: { role: ['admin', 'owner'] } })`
+asks for `?role=admin&role=owner` — what a query schema reads as a list and what `toSearchParams`/`<Link query>` write. Before, the
+list was joined with commas (`?role=admin%2Cowner`): one value, which a `v.array(…)` field read as a list of one. A server that
+split the commas itself reads the repeated key now (`searchParams.getAll`, or a query schema).
+
+#### Low: `merge()` of a paginator appends its data, `matchOn` takes paths, merge marks no longer pile up
+
+*Likelihood of impact: low.* `merge({ data, meta })` (a paginator) appends `data` and takes the new `meta` — before, a shallow merge
+replaced `data`, so "load more" needed `deepMerge()`; `merge(page).matchOn('data.id')` is typed now. `matchOn('user.id')` matches
+the items of a list by a path into them. A page's `mergeProps`/`deepMergeProps`/`matchPropsOn` are the latest answer's for the
+props it brought — before, they collected every answer's (only the devtools showed it). `deepMerge()` lists keep working unchanged.
+
+#### Low: cursors are encrypted — `cursorPaginate` needs the `Encrypter`, an old cursor is a 400
+
+*Likelihood of impact: low — apps that use `cursorPaginate`.* `meta.nextCursor` is now the last row's values encrypted and
+authenticated with the app key, its own context per list (columns, direction) — a client can neither read a hidden sort column's
+value from the URL nor make up a cursor. `cursorPaginate(query, { …, encrypter })` takes the `Encrypter` (inject it from
+`@bespokecore/encryption`; without it a type error); a cursor that does not decrypt — changed, of another list, of a key that
+was rotated away, or **the base64url format before Wave 9** (bookmarked "load more" URLs) — answers **400** instead of the first
+page. Also: the unique `key` (default `id`) is added as the last order by itself (`{ column: 'name' }` orders by `(name, id)`),
+a nullable sort column orders `NULLS LAST` and a NULL is a cursor like any other (before: "load more" started over), and an
+`orderBy` of the query is taken out (before it came first).
 
 ## Upgrading to 0.1.0 from the development snapshots
 

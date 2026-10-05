@@ -3,26 +3,42 @@
  * and the other ways a loaded page is shaped before it lands: only some props (`pick`), deferred ones kept, the query kept.
  */
 import type { PageObject } from '../page.ts';
+import type { ReloadSpec } from './optimistic.ts';
+
+/**
+ * Which merged props a partial reload replaces instead (`reset`): these names, or — `true` — every prop it brought. A revalidation
+ * (an action's reload, a live hint's, Back's) is `true`: what the server says now takes the place of what was there, so a row
+ * deleted meanwhile is gone. "Load more" (a visit with `data`/`query`) resets nothing: it appends.
+ */
+export type ResetProps = readonly string[] | true;
+
+/** The props a revalidation replaces (`ReloadSpec.reset`) — every one it brings unless it names some. */
+export function resetOf(spec: ReloadSpec): ResetProps {
+  return spec.reset ?? true;
+}
 
 /**
  * The page after a partial reload: the props it had, with the new ones — merged where the server marked them
- * (`mergeProps`: arrays appended, objects merged one level; `deepMergeProps`: all the way down), unless `reset`.
- * Deferred props that arrived are no longer pending.
+ * (`mergeProps`: arrays appended, objects merged one level — a paginator's `data` appended —; `deepMergeProps`: all the way
+ * down), unless `reset`. Deferred props that arrived are no longer pending. What the page says about merging (`mergeProps`,
+ * `deepMergeProps`, `matchPropsOn`) is the partial's for the props it brought and stays as it was for the others — it never
+ * piles up over reloads.
  */
-export function mergePage(current: PageObject, partial: PageObject, reset: readonly string[] = []): PageObject {
+export function mergePage(current: PageObject, partial: PageObject, reset: ResetProps = []): PageObject {
   const props: Record<string, unknown> = { ...current.props };
   const match = partial.matchPropsOn ?? [];
+  const arrived = Object.keys(partial.props);
   for (const [key, value] of Object.entries(partial.props)) {
-    if (reset.includes(key)) props[key] = value;
+    if (reset === true || reset.includes(key)) props[key] = value;
     else if (partial.mergeProps?.includes(key)) props[key] = mergeValues(props[key], value, false, key, match);
     else if (partial.deepMergeProps?.includes(key)) props[key] = mergeValues(props[key], value, true, key, match);
     else props[key] = value;
   }
   const { deferredProps: _pending, mergeProps: _merge, deepMergeProps: _deep, matchPropsOn: _match, ...rest } = partial;
-  const deferredProps = stillPending(current.deferredProps, Object.keys(partial.props));
-  const mergeProps = union(current.mergeProps, partial.mergeProps);
-  const deepMergeProps = union(current.deepMergeProps, partial.deepMergeProps);
-  const matchPropsOn = union(current.matchPropsOn, partial.matchPropsOn);
+  const deferredProps = stillPending(current.deferredProps, arrived);
+  const mergeProps = marked(current.mergeProps, partial.mergeProps, arrived);
+  const deepMergeProps = marked(current.deepMergeProps, partial.deepMergeProps, arrived);
+  const matchPropsOn = marked(current.matchPropsOn, partial.matchPropsOn, arrived);
   return {
     ...rest,
     props,
@@ -33,11 +49,19 @@ export function mergePage(current: PageObject, partial: PageObject, reset: reado
   };
 }
 
-/** Merges `next` into `current`, at `path` of the props (`others.data`) — arrays by the key `matchPropsOn` names for the path. */
+/**
+ * Merges `next` into `current`, at `path` of the props (`others.data`) — arrays by the key `matchPropsOn` names for the path.
+ * `merge()` (not deep) merges objects one level, except a paginator's `data` list (`{ data: [...], meta }`): appended like a
+ * list of its own, the rest (`meta`) the new one's.
+ */
 function mergeValues(current: unknown, next: unknown, deep: boolean, path: string, match: readonly string[]): unknown {
   if (Array.isArray(current) && Array.isArray(next)) return append(current, next, matchKey(path, match));
   if (isPlainObject(current) && isPlainObject(next)) {
-    if (!deep) return { ...current, ...next };
+    if (!deep) {
+      const merged = { ...current, ...next };
+      if (Array.isArray(current.data) && Array.isArray(next.data)) merged.data = append(current.data, next.data, matchKey(`${path}.data`, match));
+      return merged;
+    }
     const merged: Record<string, unknown> = { ...current };
     for (const [key, value] of Object.entries(next)) merged[key] = Object.hasOwn(current, key) ? mergeValues(current[key], value, true, `${path}.${key}`, match) : value;
     return merged;
@@ -45,10 +69,24 @@ function mergeValues(current: unknown, next: unknown, deep: boolean, path: strin
   return next;
 }
 
-/** The key that identifies the items of the array at `path` — `matchPropsOn: ['others.data.id']` → `id` for `others.data`. */
+/**
+ * The key that identifies the items of the array at `path` — a path into each item: `matchPropsOn: ['others.data.id']` → `id`
+ * for `others.data`, `['feed.user.id']` → `user.id` for `feed`. One right at the array wins over a deeper one.
+ */
 function matchKey(path: string, match: readonly string[]): string | undefined {
   const prefix = `${path}.`;
-  return match.find((entry) => entry.startsWith(prefix) && !entry.slice(prefix.length).includes('.'))?.slice(prefix.length);
+  const keys = match.filter((entry) => entry.startsWith(prefix)).map((entry) => entry.slice(prefix.length));
+  return keys.find((key) => !key.includes('.')) ?? keys[0];
+}
+
+/** The value at `key` (`user.id`) of an item — undefined when it has none. */
+function keyOf(item: unknown, key: string): unknown {
+  let value = item;
+  for (const part of key.split('.')) {
+    if (!isPlainObject(value)) return undefined;
+    value = value[part];
+  }
+  return value;
 }
 
 /**
@@ -60,10 +98,11 @@ function append(current: readonly unknown[], next: readonly unknown[], key: stri
   const merged = [...current];
   const at = new Map<unknown, number>();
   merged.forEach((item, index) => {
-    if (isPlainObject(item) && item[key] !== undefined) at.set(item[key], index);
+    const id = keyOf(item, key);
+    if (id !== undefined) at.set(id, index);
   });
   for (const item of next) {
-    const id = isPlainObject(item) ? item[key] : undefined;
+    const id = keyOf(item, key);
     const index = id === undefined ? undefined : at.get(id);
     if (index !== undefined) {
       merged[index] = item;
@@ -87,11 +126,15 @@ function stillPending(groups: PageObject['deferredProps'], arrived: readonly str
   return pending.length > 0 ? Object.fromEntries(pending) : undefined;
 }
 
-function union(a: readonly string[] | undefined, b: readonly string[] | undefined): string[] | undefined {
-  if (!a && !b) return undefined;
-  return [...new Set([...(a ?? []), ...(b ?? [])])];
+/**
+ * A page's merge marks (`mergeProps`, `deepMergeProps`, `matchPropsOn` — entries start with the prop's name) after a partial
+ * reload: the partial's for the props it brought, the page's for the rest.
+ */
+function marked(current: readonly string[] | undefined, partial: readonly string[] | undefined, arrived: readonly string[]): string[] | undefined {
+  const kept = (current ?? []).filter((entry) => !arrived.includes(entry.split('.', 1)[0]!));
+  const all = [...new Set([...kept, ...(partial ?? [])])];
+  return all.length > 0 ? all : undefined;
 }
-
 
 /** Only these props (those `props` has). */
 export function pick(props: Readonly<Record<string, unknown>>, names: readonly string[]): Record<string, unknown> {

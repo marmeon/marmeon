@@ -7,8 +7,11 @@ factories, seeders — and transactions that everything awaited inside joins (E1
 
 ```ts
 // modules/user-profile/controllers/ListUsersController.ts — constructor(users: UserRepository)
-handle(ctx: HttpContext) {
-  return this.#users.paginate(this.#users.query().select(['id', 'name']).orderBy('name').orderBy('id'), paginationFrom(ctx.query, { perPage: 25 }));
+export const ListUsersRequest = defineRequest({ query: v.object(pageQuery({ perPage: [25, 50, 100] })) });
+
+static request = ListUsersRequest;
+handle(ctx: ContextOf<typeof ListUsersRequest>) {   // ctx.query: { page: number; per_page: 25 | 50 | 100 }
+  return this.#users.paginate(this.#users.query().select(['id', 'name']).orderBy('name').orderBy('id'), ctx.query);
 }
 ```
 
@@ -201,14 +204,34 @@ this.#db.selectFrom('users').selectAll('users').select((eb) => [
 
 ## Pagination
 
-- **`paginate(db, query, { page, perPage })`** (or `repository.paginate(query, …)`): one page and the total —
-  `{ data, meta: { page, perPage, total, lastPage, from, to } }`, the `meta` that `<Pagination>` of `@bespokecore/react` takes.
-  The count is a second query on the same filter.
-- **`paginationFrom(ctx.query, { perPage = 15, maxPerPage = 100 })`** reads `?page=` and `?per_page=` safely: `?page=-1`,
-  `?page=abc` or `?per_page=100000` fall back instead of failing.
-- **`cursorPaginate(query, { column, cursor, perPage, direction })`** — keyset pagination for large tables and "load more": no
-  count, no offset, nobody twice while rows are added. Order by a unique column, or add one as a tie-breaker:
-  `{ column: ['name', 'id'] }`. The cursor is opaque (`meta.nextCursor`); one that does not decode is the first page.
+- **`pageQuery({ perPage })`** — the page as query fields, spread into a route's query schema (E55):
+  `v.object({ ...pageQuery({ perPage: [25, 50, 100] }), sort: … })` reads `?page=` (a whole number ≥ 1, default 1) and
+  `?per_page=` (one of `perPage`, default its first; one number allows just that). Like every query field, an invalid value falls
+  back to its default (`?page=-1`, `?per_page=100000`) — never a 422 — and the defaults stay out of URLs the browser builds.
+  `ctx.query.per_page` is typed `25 | 50 | 100`; `<Pagination>` of `@bespokecore/react` builds its links from the same parsed query.
+- **`paginate(db, query, ctx.query)`** (or `repository.paginate(query, ctx.query)`): one page and the total —
+  `{ data, meta: { page, perPage, total, lastPage, from, to } }`, the `meta` that `<Pagination>` takes. The count is a second
+  query on the same filter. It takes the parsed query of a schema with `pageQuery()` — a query without a page is a type error
+  ("this query has no page — spread pageQuery() into the route's query schema …") — or `{ page, perPage }` written out.
+- **`paginationFrom(query, { perPage = 15, maxPerPage = 100 })`** — *deprecated since Wave 9*: reads `?page=` and `?per_page=`
+  safely from the search params (or a parsed query object). Use `pageQuery()` and hand `paginate` the parsed `ctx.query`.
+- **`cursorPaginate(query, { column, key = 'id', cursor, perPage, direction, encrypter })`** — keyset pagination for large tables
+  and "load more": no count, no offset, nobody twice while rows are added.
+  - **Its own order:** by `column` (one or several), then the unique `key` as the tie-breaker — added by itself, so
+    `{ column: 'name' }` orders by `(name, id)`. An `orderBy` of the query is taken out (it would come first).
+  - **Nullable columns:** NULLs come last in both directions (`NULLS LAST`, SQLite and Postgres alike), and a row whose value is
+    NULL is a cursor like any other — the next page goes on among the NULLs instead of starting over.
+  - **Encrypted cursors:** `meta.nextCursor` is the last row's values encrypted and authenticated with the app key — inject
+    `Encrypter` (`@bespokecore/encryption`) and pass it. A client can neither read a hidden sort column's value from the URL nor
+    make up a cursor. One that does not decrypt — changed, made up, another list's, another key's, or the base64url format before
+    Wave 9 — answers **400** (`InvalidCursorError`), never the first page again.
+
+```ts
+constructor(db: Database<'blog'>, encrypter: Encrypter) { … }
+const page = await cursorPaginate(this.#db.selectFrom('articles').select(['id', 'title', 'published_at']), {
+  column: 'published_at', direction: 'desc', cursor: ctx.query.cursor, perPage: 20, encrypter: this.#encrypter,
+});   // by (published_at desc nulls last, id desc)
+```
 
 ## Factories and seeders
 

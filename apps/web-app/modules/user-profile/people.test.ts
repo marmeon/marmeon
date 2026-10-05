@@ -22,7 +22,7 @@ describe('the people list (/people): state in the URL, parsed by its query schem
 
   it('filters by name — the query trimmed by the schema, LIKE wildcards taken literally', async () => {
     await as(ada).get('/people?q=  TUR ').assertPage<ListPeopleController>('user-profile/People', {
-      people: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null, isMe: false }], meta: { perPage: 10, nextCursor: null } },
+      people: { data: [{ id: alan.id, name: 'Alan Turing', lastLoginAt: null, isMe: false }], meta: { page: 1, perPage: 10, total: 1, lastPage: 1, from: 1, to: 1 } },
     });
     await as(ada).get('/people').assertPage<ListPeopleController>('user-profile/People', (props) => {
       expect(names(props)).toEqual(['Ada Lovelace', 'Alan Turing', 'Grace Hopper']);
@@ -41,7 +41,7 @@ describe('the people list (/people): state in the URL, parsed by its query schem
   it('hands the browser the parsed query — without defaults — and the defaults, so it never parses the URL itself', async () => {
     const page = (await as(ada).get('/people?q=%20ada%20&sort=name&utm_source=mail').assertOk()).page()!;
     expect(page.query).toEqual({ q: 'ada' });
-    expect(page.queryDefaults).toEqual({ q: '', sort: 'name' });
+    expect(page.queryDefaults).toEqual({ q: '', sort: 'name', page: 1, per_page: 10 });
     // A route without a query schema has none.
     expect((await as(ada).get(`/users/${ada.id}`).assertOk()).page()).not.toHaveProperty('query');
   });
@@ -57,46 +57,25 @@ describe('the people list (/people): state in the URL, parsed by its query schem
     await app.actingAs(ada).get('/people?sort=nope').assertOk().assertPage('user-profile/People');
   });
 
-  it('pages through by cursor — ten at a time, the filter kept, a bad cursor harmless', async () => {
+  it('pages by the query schema (pageQuery): ?page= and ?per_page= parsed, invalid ones the defaults — never a 422', async () => {
     await app.factory(UserFactory).count(23).create(); // "User 1" … "User 23"
     const seen: string[] = [];
-    let cursor: string | null = '';
-    for (let page = 0; cursor !== null; page++) {
-      const props = (await as(ada).get(`/people?q=user${cursor ? `&cursor=${cursor}` : ''}`).assertOk()).page()!.props as {
-        people: { data: { name: string }[]; meta: { nextCursor: string | null } };
-      };
-      expect(props.people.data.length).toBeLessThanOrEqual(10);
+    for (let page = 1; page <= 3; page++) {
+      const shown = (await as(ada).get(`/people?q=user&page=${page}`).assertOk()).page()!;
+      const props = shown.props as { people: { data: { name: string }[]; meta: { page: number; lastPage: number; total: number } } };
+      expect(props.people.meta).toMatchObject({ page, lastPage: 3, total: 23 });
+      expect(shown.query).toEqual(page === 1 ? { q: 'user' } : { q: 'user', page });
       seen.push(...names(props));
-      cursor = props.people.meta.nextCursor;
-      expect(page).toBeLessThan(3);
     }
     expect(seen).toHaveLength(23);
     expect(new Set(seen).size).toBe(23);
-    await as(ada).get('/people?cursor=not-a-cursor').assertPage<ListPeopleController>('user-profile/People', (props) => {
-      expect(props.people.data[0]!.name).toBe('Ada Lovelace');
+    await as(ada).get('/people?per_page=25').assertPage<ListPeopleController>('user-profile/People', (props) => {
+      expect(props.people.data).toHaveLength(25);
+      expect(props.people.meta).toMatchObject({ perPage: 25, lastPage: 2 });
     });
-  });
-
-  it('"Load more": the next ten with a partial reload — merged by the browser: data appended, matched on id; meta replaced', async () => {
-    await app.factory(UserFactory).count(9).create(); // 12 people
-    const first = (await as(ada).get('/people').assertOk()).page()!;
-    const people = first.props.people as { data: { id: number }[]; meta: { nextCursor: string | null } };
-    expect(people.data).toHaveLength(10);
-    expect(first.deepMergeProps).toEqual(['people']);
-    expect(first.matchPropsOn).toEqual(['people.data.id']);
-
-    const more = (
-      await app
-        .actingAs(ada)
-        .reloading<ListPeopleController>('user-profile/People', { only: ['people'] })
-        .get(`/people?cursor=${people.meta.nextCursor}`)
-        .assertOk()
-    ).page()!;
-    expect(Object.keys(more.props).sort()).toEqual(['errors', 'people']);
-    const next = more.props.people as typeof people;
-    expect(next.data).toHaveLength(2);
-    expect(next.meta.nextCursor).toBeNull();
-    expect(new Set([...people.data, ...next.data].map((person) => person.id)).size).toBe(12);
-    expect(more).toMatchObject({ deepMergeProps: ['people'], matchPropsOn: ['people.data.id'], query: { cursor: people.meta.nextCursor } });
+    // A size the schema does not offer, a page that is none: the defaults (and the canonical query leaves them out).
+    const fallback = (await as(ada).get('/people?per_page=100000&page=-3').assertOk()).page()!;
+    expect(fallback.query).toEqual({});
+    expect((fallback.props as { people: { meta: { page: number; perPage: number } } }).people.meta).toMatchObject({ page: 1, perPage: 10 });
   });
 });

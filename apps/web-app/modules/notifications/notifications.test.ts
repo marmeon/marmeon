@@ -1,5 +1,6 @@
 import { Login } from '@bespokecore/auth';
 import { Connections, sql } from '@bespokecore/database';
+import { notificationsChannel } from '@bespokecore/live';
 import { Inbox, Notifications, SendQueuedNotification } from '@bespokecore/notifications';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { describe, expect, it } from 'vitest';
@@ -108,9 +109,10 @@ describe('the bell and the list', () => {
     const { app, ada, adas } = await seeded();
     const page = app.actingAs(ada).navigating().get('/notifications').assertOk();
     await page.assertPage<ShowNotificationsController>('notifications/Index', { bell: { unread: 2 } });
-    const { notifications } = (await page).page()!.props as { notifications: { id: string; title: string; body: string; read: boolean }[] };
-    expect(notifications.map((notification) => notification.id).sort()).toEqual([...adas].sort());
-    expect(notifications[0]).toMatchObject({ title: 'New sign-in to your account', body: 'From 203.0.113.9 · Firefox · macOS', read: false });
+    const { notifications } = (await page).page()!.props as { notifications: { data: { id: string; title: string; body: string; read: boolean }[]; meta: { nextCursor: string | null } } };
+    expect(notifications.data.map((notification) => notification.id).sort()).toEqual([...adas].sort());
+    expect(notifications.data[0]).toMatchObject({ title: 'New sign-in to your account', body: 'From 203.0.113.9 · Firefox · macOS', read: false });
+    expect(notifications.meta.nextCursor).toBeNull();
   });
 
   it('marks one read — someone else\'s is a 404 and stays unread (IDOR)', async () => {
@@ -131,10 +133,53 @@ describe('the bell and the list', () => {
     expect(await app.make(Inbox).count(me(alan))).toBe(1);
   });
 
+  it('deletes one — someone else\'s is a 404 and stays (IDOR); the user\'s other tabs hear it', async () => {
+    const { app, ada, alan, adas, alans } = await seeded();
+    await app.actingAs(ada).delete(`/notifications/${alans}`, { json: {} }).assertNotFound();
+    expect(await rows(app, alan)).toHaveLength(1);
+    await app.actingAs(ada).delete('/notifications/not-a-uuid', { json: {} }).assertNotFound();
+    // Another tab of Ada's (one browser, one session) follows the list.
+    const ada$ = app.actingAs(ada);
+    const other = await ada$.live((await ada$.navigating().get('/notifications')).page()!.live!);
+    await other.hello();
+    await ada$.delete(`/notifications/${adas[0]}`, { json: {} }).assertOk().assertJson({ deleted: adas[0] });
+    expect((await rows(app, ada)).map((row) => row.id)).toEqual([adas[1]]);
+    await other.waitFor(1);
+    expect(other.hints).toEqual([{ channel: notificationsChannel(me(ada)), only: null, seq: expect.any(Number) }]);
+  });
+
+  it('loads more: ten at a time by an encrypted cursor, merged by the browser (data appended, matched on id) — a forged cursor is a 400', async () => {
+    const { app, ada } = await seeded();
+    const notifications = app.make(Notifications);
+    for (let i = 0; i < 10; i++) {
+      app.travel({ seconds: 1 });
+      await notifications.sendNow(me(ada), NewSignInNotification, { at: '2026-10-03T08:00:00.000Z', ip: `203.0.113.${i}`, agent: FIREFOX });
+    }
+    type Feed = { data: { id: string; body: string }[]; meta: { nextCursor: string | null } };
+    const first = (await app.actingAs(ada).navigating().get('/notifications').assertOk()).page()!;
+    const feed = first.props.notifications as Feed;
+    expect(feed.data).toHaveLength(10);
+    expect(feed.data[0]!.body).toContain('203.0.113.9'); // newest first
+    expect(first).toMatchObject({ mergeProps: ['notifications'], matchPropsOn: ['notifications.data.id'] });
+    // The cursor is no row's data in plain text.
+    expect(Buffer.from(feed.meta.nextCursor!, 'base64url').toString('latin1')).not.toContain('2026-');
+
+    const more = (await app.actingAs(ada).reloading<ShowNotificationsController>('notifications/Index', { only: ['notifications'] }).get(`/notifications?cursor=${feed.meta.nextCursor}`).assertOk()).page()!;
+    const next = more.props.notifications as Feed;
+    expect(next.data).toHaveLength(2);
+    expect(next.meta.nextCursor).toBeNull();
+    expect(new Set([...feed.data, ...next.data].map((row) => row.id)).size).toBe(12);
+
+    const forged = `${feed.meta.nextCursor!.slice(0, -2)}${feed.meta.nextCursor!.at(-2) === 'A' ? 'B' : 'A'}${feed.meta.nextCursor!.at(-1)}`;
+    await app.actingAs(ada).navigating().get(`/notifications?cursor=${forged}`).assertStatus(400);
+    await app.actingAs(ada).navigating().get('/notifications?cursor=not-a-cursor').assertStatus(400);
+  });
+
   it('is only for signed-in users', async () => {
     const { app, adas } = await seeded();
     await app.get('/notifications').assertRedirect('/login');
     await app.post(`/notifications/${adas[0]}/read`, { json: {} }).assertRedirect('/login');
+    await app.delete(`/notifications/${adas[0]}`, { json: {} }).assertRedirect('/login');
   });
 
   it('prunes what was read a month ago at night — unread ones stay', async () => {

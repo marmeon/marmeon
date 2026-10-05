@@ -121,8 +121,10 @@ be per notification and explicit.
 ## The Inbox — always bound to the recipient
 
 Every method takes **whose** notifications it reads or changes — `unread(r, { limit = 20 })`, `latest(r, { limit = 50 })`,
-`count(r)` (unread), `markRead(r, id)`, `markAllRead(r)` (how many) — and every statement carries `recipient_type`/`recipient_id`:
-an id of somebody else's notification finds nothing (`markRead` → `false` → the controller answers 404). Ids that are no UUID
+`page(r, { cursor, perPage = 20, encrypter })` (newest first, for "load more": keyset by `created_at` and `id`, the cursor encrypted
+with the app key — inject `Encrypter`; a forged one answers 400), `count(r)` (unread), `markRead(r, id)`, `markAllRead(r)` (how
+many), `delete(r, id)` — and every statement carries `recipient_type`/`recipient_id`: an id of somebody else's notification finds
+nothing (`markRead`/`delete` → `false` → the controller answers 404). Ids that are no UUID
 are refused before any query. The recipient comes from who is signed in, never from the request's input.
 
 ## The table (E96)

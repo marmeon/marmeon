@@ -56,6 +56,8 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
   const latest = useRef(options);
   latest.current = options;
   const state = useRef<QueryState | null>(null);
+  // What was set before the state existed (a child's effect runs before this hook's): set once it does — never dropped.
+  const early = useRef<QueryUpdate<Record<string, unknown>>[]>([]);
   const [draft, setDraft] = useState<Record<string, unknown> | undefined>(undefined);
   useEffect(() => {
     const navigator = router.navigator();
@@ -64,6 +66,7 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
     const current = navigator.use(queryState).create(latest.current as QueryStateOptions);
     state.current = current;
     const stop = current.subscribe(() => setDraft(current.draft));
+    for (const update of early.current.splice(0)) current.set(update);
     return () => {
       stop();
       current.dispose();
@@ -72,9 +75,9 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
   }, []);
   if (state.current) state.current.options = options as QueryStateOptions;
 
-  const set = useCallback(
-    (update: QueryUpdate<Record<string, unknown>>) => state.current?.set(update),
-    [],
-  ) as SetQueryState<QueryStateOf<N>>;
+  const set = useCallback((update: QueryUpdate<Record<string, unknown>>) => {
+    if (state.current) state.current.set(update);
+    else early.current.push(update);
+  }, []) as SetQueryState<QueryStateOf<N>>;
   return [(draft ?? pageQuery(page)) as QueryStateOf<N>, set];
 }

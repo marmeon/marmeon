@@ -5,6 +5,7 @@ import type { AddProfileLinkController } from '../modules/user-profile/controlle
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
+import type { DeleteNotificationController } from '../modules/notifications/controllers/DeleteNotificationController.ts';
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
@@ -75,6 +76,7 @@ declare module '@bespokecore/router' {
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
+    'notifications.destroy': { method: 'delete'; path: '/notifications/:notification'; controller: typeof DeleteNotificationController };
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };
     'notifications.read': { method: 'post'; path: '/notifications/:notification/read'; controller: typeof MarkNotificationReadController };
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };

@@ -43,7 +43,6 @@ export default {
     none: 'Niemand mit diesem Namen.',
     last_seen: 'zuletzt gesehen {when}',
     never_signed_in: 'nie angemeldet',
-    more: 'Mehr laden',
     recent: 'Zuletzt angemeldet',
     profile: 'Mein Profil',
   },

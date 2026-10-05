@@ -1,5 +1,6 @@
 import { createApplication, Logger } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
+import { Encrypter } from '@bespokecore/encryption';
 import { Queue } from '@bespokecore/queue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, Faxed, KEY, Members, notificationApp, OrderShipped, ShippedMail, silent, Welcome, type TestApp } from './__fixtures__/app.ts';
@@ -243,6 +244,32 @@ describe.each(drivers)('notifications on %s', (driver) => {
       expect(await inbox.count(ada)).toBe(0);
       expect(await inbox.count(alan)).toBe(1);
       expect(await inbox.markAllRead(ada)).toBe(0);
+    });
+
+    it('deletes only the recipient\'s own notification — someone else\'s is false (404), nothing changed (IDOR)', async () => {
+      const { application, inbox, adas, alans } = await seeded();
+      expect(await inbox.delete(ada, alans)).toBe(false);
+      expect((await rows(application)).map((row) => row.id)).toContain(alans);
+      expect(await inbox.delete(ada, adas[0]!)).toBe(true);
+      expect(await inbox.delete(ada, adas[0]!)).toBe(false);
+      expect((await inbox.latest(ada)).map((row) => row.id)).toEqual([adas[1]]);
+      for (const id of ['1', 'not-a-uuid', "' or 1=1 --", '']) expect(await inbox.delete(ada, id)).toBe(false);
+    });
+
+    it('pages through the recipient\'s own notifications, newest first — by an encrypted cursor', async () => {
+      const { application, inbox, adas } = await seeded();
+      const notifications = application.container.make(Notifications);
+      application.clock.travel({ seconds: 1 });
+      const newest = await notifications.sendNow(ada, Welcome, { code: 'a3' });
+      const encrypter = application.container.make(Encrypter);
+      const first = await inbox.page(ada, { perPage: 2, encrypter });
+      expect(first.data.map((row) => row.id)[0]).toBe(newest);
+      expect(first.data).toHaveLength(2);
+      const second = await inbox.page(ada, { perPage: 2, cursor: first.meta.nextCursor, encrypter });
+      expect([...first.data, ...second.data].map((row) => row.id).sort()).toEqual([...adas, newest].sort());
+      expect(second.meta.nextCursor).toBeNull();
+      // Alan's list is his own; a cursor of Ada's list is no way into it — it only says where to go on.
+      expect((await inbox.page(alan, { encrypter })).data).toHaveLength(1);
     });
 
     it('takes an id that is no notification\'s for none (no database error on Postgres\'s uuid column)', async () => {

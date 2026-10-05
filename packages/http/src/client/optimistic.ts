@@ -17,11 +17,18 @@ import { rethrowLater } from './notify.ts';
  */
 export type PropsPatch = (props: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
 
-/** A reload of some props (`only`), all but some (`except`), or — neither — all of them. */
+/**
+ * A reload of some props (`only`), all but some (`except`), or — neither — all of them. It is a revalidation (an action's, Back's):
+ * what it brings replaces what was there, also where the server marked a prop `merge()`/`deepMerge()` — a row deleted meanwhile
+ * is gone, nothing is appended. `reset` names the merged props it replaces instead (`[]`: it merges them, as before Wave 9).
+ */
 export interface ReloadSpec {
   readonly only?: readonly string[];
   readonly except?: readonly string[];
+  /** The merged props it replaces — default: every prop it brings. */
+  readonly reset?: readonly string[];
 }
+
 
 /**
  * Where patches go — the page of a history entry, a layer, a region (an island). The navigator, layers and regions implement
@@ -143,11 +150,13 @@ function observed(patches: readonly { readonly id: number; readonly patch: Props
   return changed;
 }
 
-/** Two reloads as one: `only` lists united, else everything. */
-function unite(a: ReloadSpec | undefined, b: ReloadSpec): ReloadSpec {
+
+/** Two reloads as one: `only` lists united, else everything — and what either replaces, replaced. */
+export function unite(a: ReloadSpec | undefined, b: ReloadSpec): ReloadSpec {
   if (!a) return b;
-  if (a.only && b.only && !a.except?.length && !b.except?.length) return { only: [...new Set([...a.only, ...b.only])] };
-  return {};
+  const reset = a.reset && b.reset ? { reset: [...new Set([...a.reset, ...b.reset])] } : {};
+  if (a.only && b.only && !a.except?.length && !b.except?.length) return { only: [...new Set([...a.only, ...b.only])], ...reset };
+  return reset;
 }
 
 /**

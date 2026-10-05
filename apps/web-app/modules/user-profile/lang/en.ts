@@ -42,7 +42,6 @@ const en = {
     none: 'Nobody by that name.',
     last_seen: 'last seen {when}',
     never_signed_in: 'never signed in',
-    more: 'Load more',
     recent: 'Signed in lately',
     profile: 'My profile',
   },

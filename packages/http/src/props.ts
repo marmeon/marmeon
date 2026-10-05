@@ -62,19 +62,25 @@ export interface MergeProp<T, S extends MergeStrategy = MergeStrategy> extends P
   readonly match: readonly string[];
   /**
    * Items of the merged array with the same value of `key` replace each other instead of appearing twice — the
-   * same page loaded again (a poll, a double click on "load more"): `merge(people).matchOn('id')`, or for a list
-   * inside an object, `deepMerge({ data, meta }).matchOn('data.id')`.
+   * same page loaded again (a poll, a double click on "load more"): `merge(people).matchOn('id')`, for a paginator
+   * `merge({ data, meta }).matchOn('data.id')`, or for a list deeper inside an object, `deepMerge(…).matchOn('a.b.id')`.
    */
   matchOn(...keys: MatchKey<T, S>[]): MergeProp<T, S>;
 }
 
 /**
- * Where a merged prop's array items carry their identity: a key of the items of an array prop (`merge`), or, for
- * `deepMerge`, the path to a key of the items of an array inside it (`'data.id'` of `{ data: User[] }`).
+ * Where a merged prop's array items carry their identity: a key of the items of an array prop (`merge`) — or a path into them
+ * (`'user.id'`) —, of a paginator's items (`'data.id'` of `{ data: User[], meta }`, which `merge` appends by its `data`), or, for
+ * `deepMerge`, the path to a key of the items of an array inside it.
  */
-export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepItemKey<T, []> : ItemKey<T>;
+export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepItemKey<T, []> : T extends { readonly data: readonly unknown[] } ? `data.${ItemKey<T['data']>}` : ItemKey<T>;
 
-type ItemKey<T> = T extends readonly (infer E)[] ? (E extends object ? keyof E & string : never) : never;
+/** A key of the items of array `T`, or a path into them one object deep (`user.id`). */
+type ItemKey<T> = T extends readonly (infer E)[] ? (E extends object ? ItemPath<E> : never) : never;
+
+type ItemPath<E> = {
+  [K in keyof E & string]: E[K] extends readonly unknown[] | Date | ((...args: never) => unknown) ? K : E[K] extends object ? K | `${K}.${keyof E[K] & string}` : K;
+}[keyof E & string];
 
 type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4
   ? never
@@ -197,8 +203,9 @@ function mergeProp(kind: MergeStrategy, value: unknown, match: readonly string[]
 
 /**
  * A prop a partial reload merges into what the browser already shows — arrays are appended, objects merged one
- * level deep: `links: merge(page.data)` for "load more". A full response replaces it as usual. `.matchOn('id')`
- * keeps an item from appearing twice.
+ * level deep, a paginator's `data` appended (`{ data, meta }`: the new `meta`): `links: merge(page.data)` or
+ * `people: merge(page).matchOn('data.id')` for "load more". A full response replaces it as usual, and so does a
+ * revalidation (an action's reload, a live hint's — E183). `.matchOn('id')` keeps an item from appearing twice.
  */
 export function merge<V>(value: V): MergeProp<Unlazy<V>, 'merge'> {
   return mergeProp('merge', value, []) as MergeProp<Unlazy<V>, 'merge'>;

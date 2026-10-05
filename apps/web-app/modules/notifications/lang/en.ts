@@ -4,6 +4,9 @@ const en = {
   none: 'No notifications.',
   mark_read: 'Mark as read',
   mark_all_read: 'Mark all as read',
+  more: 'Load more',
+  delete: 'Delete',
+  confirm_delete: 'Delete this notification?',
   unread: 'Unread',
   unknown: 'A notification',
   new_sign_in: {

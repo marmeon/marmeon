@@ -1,8 +1,10 @@
 import type { Authenticated } from '@bespokecore/auth';
-import { Controller, type HttpContext } from '@bespokecore/http';
+import { Encrypter } from '@bespokecore/encryption';
+import { Controller, defineRequest, merge, type ContextOf } from '@bespokecore/http';
 import { Translator } from '@bespokecore/i18n';
 import { notificationsChannel } from '@bespokecore/live';
 import { Inbox, notificationData, type StoredNotification } from '@bespokecore/notifications';
+import * as v from 'valibot';
 import { NewSignInNotification } from '#modules/auth';
 
 /** One notification as the list shows it — its text made here, in the reader's language. */
@@ -15,23 +17,39 @@ export interface NotificationItem {
   readonly read: boolean;
 }
 
-/** The signed-in user's notifications, newest first — read and unread. */
+/** The list's query: where "load more" goes on — an encrypted cursor (a made-up or changed one is a 400). */
+export const ShowNotificationsRequest = defineRequest({
+  query: v.object({ cursor: v.optional(v.string()) }),
+});
+
+/** How many notifications a page of the list shows. */
+export const NOTIFICATIONS_PER_PAGE = 10;
+
+/** The signed-in user's notifications, newest first — read and unread, ten at a time ("load more" appends the next ten). */
 export class ShowNotificationsController extends Controller {
+  static request = ShowNotificationsRequest;
+
   readonly #inbox: Inbox;
   readonly #translator: Translator;
+  readonly #encrypter: Encrypter;
 
-  constructor(inbox: Inbox, translator: Translator) {
+  constructor(inbox: Inbox, translator: Translator, encrypter: Encrypter) {
     super();
     this.#inbox = inbox;
     this.#translator = translator;
+    this.#encrypter = encrypter;
   }
 
-  async handle(ctx: HttpContext<Authenticated>) {
-    const notifications = await this.#inbox.latest({ type: 'user', id: ctx.user.id }, { limit: 50 });
-    // Live (W6.10): a new notification — or one read in another tab — reloads the list (the bell is the layout's, shared).
-    return this.view('notifications/Index', { notifications: notifications.map((row) => this.#present(row)) }).live(notificationsChannel({ type: 'user', id: ctx.user.id }), {
-      only: ['notifications'],
-    });
+  handle(ctx: ContextOf<typeof ShowNotificationsRequest> & Authenticated) {
+    const me = { type: 'user', id: ctx.user.id } as const;
+    // A partial reload with `?cursor=…` appends (`merge()` of a paginator: its `data`, matched on the id); a revalidation — the
+    // reload after an action, a live hint — replaces the list (E183): a notification deleted meanwhile is gone.
+    const notifications = merge(async () => {
+      const page = await this.#inbox.page(me, { cursor: ctx.query.cursor, perPage: NOTIFICATIONS_PER_PAGE, encrypter: this.#encrypter });
+      return { data: page.data.map((row) => this.#present(row)), meta: page.meta };
+    }).matchOn('data.id');
+    // Live (W6.10): a new notification — or one read or deleted in another tab — reloads the list (the bell is the layout's, shared).
+    return this.view('notifications/Index', { notifications }).live(notificationsChannel(me), { only: ['notifications'] });
   }
 
   #present(row: StoredNotification): NotificationItem {

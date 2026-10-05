@@ -158,10 +158,10 @@ export const ListPeopleRequest = defineRequest({
   query: v.object({
     q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
     sort: v.optional(v.picklist(PEOPLE_SORTS), 'name'),
-    cursor: v.optional(v.string()),
+    ...pageQuery({ perPage: [10, 25, 50] }),   // @bespokecore/database: ?page= and ?per_page=, for paginate(…, ctx.query) and <Pagination>
   }),
 });
-// handle(ctx: ContextOf<typeof ListPeopleRequest>) — ctx.query: { q: string; sort: 'name' | '-name' | …; cursor?: string }
+// handle(ctx: ContextOf<typeof ListPeopleRequest>) — ctx.query: { q: string; sort: 'name' | '-name' | …; page: number; per_page: 10 | 25 | 50 }
 ```
 
 - **The schema must be total** — an empty query must be valid — and the types say so in the expected type: every field
@@ -169,8 +169,10 @@ export const ListPeopleRequest = defineRequest({
   the string, e.g. v.pipe(v.string(), v.toNumber())`), and an output that can go back into a URL (a string, number, boolean
   or a list of them).
 - **Parsing** (`parseQuery`): a field the schema rejects is taken out and the rest validated again, so it gets its default;
-  one value where the schema wants a list is tried as a list of one (`?tag=a`), a repeated key is a list (`?tag=a&tag=b`);
-  unknown keys are ignored; `__proto__` is no key. `/people?sort=DROP TABLE` is the list by name, 200.
+  one value where the schema wants a list is tried as a list of one (`?tag=a`), a repeated key is a list (`?tag=a&tag=b`) —
+  what `toSearchParams` writes for a list, and what the browser sends for a list in a GET's `data` (`reload({ data: { tag:
+  ['a', 'b'] } })`, since Wave 9; before, `?tag=a%2Cb`); unknown keys are ignored; `__proto__` is no key. `/people?sort=DROP
+  TABLE` is the list by name, 200.
 - **`queryOptions: { onInvalid: 'redirect' }`**: a GET with an invalid or unknown field is answered `302` to its canonical
   URL — only the valid fields that differ from their defaults — so the address bar shows what the page shows. Other methods
   always fall back. Default `'fallback'`.

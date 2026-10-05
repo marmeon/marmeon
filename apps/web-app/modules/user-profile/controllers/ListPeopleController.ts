@@ -1,5 +1,6 @@
 import type { Authenticated } from '@bespokecore/auth';
-import { Controller, deepMerge, defineRequest, type ContextOf } from '@bespokecore/http';
+import { pageQuery } from '@bespokecore/database';
+import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
 import { Storage } from '@bespokecore/storage';
 import * as v from 'valibot';
 import { PEOPLE_SORTS, ProfileDirectory } from '../ProfileDirectory.ts';
@@ -13,11 +14,12 @@ export const ListPeopleRequest = defineRequest({
   query: v.object({
     q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
     sort: v.optional(v.picklist(PEOPLE_SORTS), 'name'),
-    cursor: v.optional(v.string()),
+    // `?page=` and `?per_page=` (10, 25 or 50) — the page as the schema parses it: `<Pagination>` builds its links from it.
+    ...pageQuery({ perPage: [10, 25, 50] }),
   }),
 });
 
-/** `/people`: everyone, filtered and sorted by the URL — ten at a time, "Load more" appends the next ten. */
+/** `/people`: everyone, filtered and sorted by the URL — ten to a page (or 25, 50), with links to the pages. */
 export class ListPeopleController extends Controller {
   static request = ListPeopleRequest;
   /** An instant visit (E64): the list's placeholder needs nothing — `<Link route="user-profile.people" instant>`. */
@@ -33,11 +35,10 @@ export class ListPeopleController extends Controller {
   }
 
   handle(ctx: ContextOf<typeof ListPeopleRequest> & Authenticated) {
-    // ctx.query: { q: string; sort: 'name' | '-name' | 'joined' | '-joined'; cursor?: string } — parsed already.
+    // ctx.query: { q: string; sort: 'name' | '-name' | 'joined' | '-joined'; page: number; per_page: 10 | 25 | 50 } — parsed already.
     return this.view('user-profile/People', {
-      // A partial reload with `?cursor=…` appends (`deepMerge`, matched on the id: nobody twice); a new filter or sort
-      // replaces the list (`reset`, see the view). A function: computed only when sent.
-      people: deepMerge(async () => {
+      // A function: computed only when sent (a partial reload of something else leaves it out).
+      people: async () => {
         const page = await this.#directory.people(ctx.query);
         return {
           data: page.data.map((person) => ({
@@ -49,7 +50,7 @@ export class ListPeopleController extends Controller {
           })),
           meta: page.meta,
         };
-      }).matchOn('data.id'),
+      },
       // The server's clock for "5 minutes ago" (SSR and hydration render the same text).
       now: new Date(),
     });

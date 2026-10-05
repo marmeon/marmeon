@@ -1,4 +1,4 @@
-import { cursorPaginate, Database, hasMany, hasOne, sql } from '@bespokecore/database';
+import { Database, hasMany, hasOne, paginate, sql } from '@bespokecore/database';
 import type { RouteBinder } from '@bespokecore/http';
 
 /**
@@ -91,11 +91,10 @@ export class ProfileDirectory implements RouteBinder<Profile> {
 
   /**
    * The people of the list page (`/people`), as its query asks (`ListPeopleRequest`, already parsed): names containing
-   * `q` (LIKE wildcards taken literally), in `sort` order, the next `perPage` after `cursor` (anything that does not
-   * decode starts at the top). Keyset pagination — names repeat, ids break the tie — for "load more": no count, no
-   * offset, nobody twice. Sign-up order is the id's.
+   * `q` (LIKE wildcards taken literally), in `sort` order — names repeat, ids break the tie — the page `page` of `per_page`
+   * (with the total, for the page links). Sign-up order is the id's.
    */
-  people({ q, sort, cursor }: PeopleQuery, { perPage = 10 }: { perPage?: number } = {}) {
+  people({ q, sort, page = 1, per_page = 10 }: PeopleQuery) {
     let query = this.#db
       .selectFrom('users')
       .select((eb) => [
@@ -109,9 +108,8 @@ export class ProfileDirectory implements RouteBinder<Profile> {
       query = query.where(sql<boolean>`lower(users.name) like ${pattern} escape '\\'`);
     }
     const direction = sort.startsWith('-') ? 'desc' : 'asc';
-    return sort.endsWith('name')
-      ? cursorPaginate(query, { column: ['name', 'id'], cursor, perPage, direction })
-      : cursorPaginate(query, { column: 'id', cursor, perPage, direction });
+    query = sort.endsWith('name') ? query.orderBy('users.name', direction).orderBy('users.id', direction) : query.orderBy('users.id', direction);
+    return paginate(this.#db, query, { page, per_page });
   }
 }
 
@@ -122,7 +120,8 @@ export const PEOPLE_SORTS = ['name', '-name', 'joined', '-joined'] as const;
 export interface PeopleQuery {
   readonly q: string;
   readonly sort: (typeof PEOPLE_SORTS)[number];
-  readonly cursor?: string | undefined;
+  readonly page?: number;
+  readonly per_page?: number;
 }
 
 export type Profile = NonNullable<Awaited<ReturnType<ProfileDirectory['profile']>>>;

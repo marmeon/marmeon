@@ -11,7 +11,7 @@ import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, type FlashMessa
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
 import { notify } from './notify.ts';
-import type { OptimisticUpdate, PatchTarget, Reloading } from './optimistic.ts';
+import { unite, type OptimisticUpdate, type PatchTarget, type Reloading, type ReloadSpec } from './optimistic.ts';
 import { applyPatches, listOf, rollBack } from './patches.ts';
 
 /** The methods of an action — a GET reads (its `data` goes into the query), the others write. */
@@ -141,7 +141,7 @@ export async function reconcile(applied: ReadonlyMap<PatchTarget, readonly numbe
   for (const { target, spec } of reloads) byTarget.set(target, [...(byTarget.get(target) ?? []), spec]);
   await Promise.all(
     [...byTarget].map(([target, specs]) => {
-      const spec = specs.every((one) => one.only && !one.except?.length) ? { only: [...new Set(specs.flatMap((one) => one.only!))] } : {};
+      const spec = specs.reduce<ReloadSpec | undefined>((united, one) => unite(united, one), undefined) ?? {};
       return target.revalidate(spec, applied.get(target) ?? []);
     }),
   );

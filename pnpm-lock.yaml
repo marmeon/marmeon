@@ -387,6 +387,9 @@ importers:
       '@bespokecore/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../../packages/encryption
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../../packages/http

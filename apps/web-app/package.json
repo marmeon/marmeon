@@ -19,6 +19,7 @@
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/core": "workspace:*",
     "@bespokecore/database": "workspace:*",
+    "@bespokecore/encryption": "workspace:*",
     "@bespokecore/http": "workspace:*",
     "@bespokecore/i18n": "workspace:*",
     "@bespokecore/live": "workspace:*",

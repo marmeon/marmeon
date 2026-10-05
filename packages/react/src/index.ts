@@ -67,7 +67,7 @@ export type { DefaultLayout, Layout, LayoutProps, PageComponent, PageLayout, Pag
 export { Head } from './head.tsx';
 export type { HeadProps, TitleTemplate } from './head.tsx';
 export { Pagination, pagesAround } from './pagination.tsx';
-export type { PaginationProps } from './pagination.tsx';
+export type { PaginationLabels, PaginationProps } from './pagination.tsx';
 export { usePoll } from './use-poll.ts';
 export { useLiveUpdates } from './live.ts';
 export type { LiveUpdatesState } from './live.ts';
