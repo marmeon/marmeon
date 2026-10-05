@@ -61,7 +61,8 @@ alone (E76). It depends on `@bespokecore/core`, [@bespokecore/router](../router/
 - **Which are loaded:** every locale of `APP_LOCALES` — without it, every locale the app has files for. Files of other locales
   are skipped (a debug log line names them). Paths come from the app's folders, never from a request.
 - **The framework's texts** (namespace `bespoke`, English and German): status pages (`bespoke.status.404`), framework errors
-  (CSRF, throttling, signatures), the password and upload rules of [@bespokecore/auth](../auth/README.md) and
+  (CSRF — `bespoke.errors.csrf` for the 419, `bespoke.errors.cross_site` for the 403 of a cross-site request, E143 —, throttling,
+  signatures), the password and upload rules of [@bespokecore/auth](../auth/README.md) and
   [@bespokecore/storage](../storage/README.md#uploads), and `bespoke.validation.more` ("(and 2 more errors)"). Each package
   keeps its English text inline as well, for apps without i18n.
 
@@ -138,7 +139,8 @@ recipient's mail through `Translators.for` with the `locale()` of their recipien
 
 ## The request's locale: `SetLocale`
 
-The middleware runs in the `web` group, after the session and before CSRF verification (its 419 page is translated too). The
+The middleware runs in the `web` group, after the session and before CSRF verification (its 403 and 419 answers are translated
+too). The
 request's locale is the first supported one of:
 
 1. the **session's** `locale` — a language switcher's choice;
@@ -170,7 +172,11 @@ if (!locale) throw new ValidationError({ locale: ['app.locale.unsupported'] }, {
 this.#session.put('locale', locale);
 const user = await this.#auth.user();
 if (user) await this.#users.updateLocale(user.id, locale);   // mails reach the user in it; other devices start in it
+this.#history.clear({ siteData: ['cache'] });                 // ClientHistory: a full load, the HTTP cache of old-language pages gone
 ```
+
+The locale is part of the session's epoch: a switch makes the browser's other tabs load again in the new language
+([tab sync](../http/README.md#tab-sync-w8-step-8)); flash messages and other session writes do not.
 
 ## In the browser
 

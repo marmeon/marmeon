@@ -57,8 +57,9 @@ No config class and no environment variable of its own. What shapes it:
   `.internal()` routes never. Of these, a client build ships only the names its code writes out (E57, see
   [@bespokecore/vite](../vite/README.md#the-route-manifest-e57)). The server knows every route either way.
 - **Request bodies and addresses** — `MAX_BODY_SIZE` (default `8m`; bytes or `512k`, `8m`, `1g`) and `TRUSTED_PROXIES`
-  (comma-separated, or `*`) of [@bespokecore/server](../server/README.md#configuration)'s `ServerConfig`; the kernel hands them to
-  `createRequestState`. Without a server, `DEFAULT_MAX_BODY_SIZE` (8 MiB) applies.
+  (addresses or CIDR ranges, comma-separated, or `*`) of [@bespokecore/server](../server/README.md#configuration)'s
+  `ServerConfig`; the kernel hands them to `createRequestState` (`maxBodySize`, `ip`), with the request's `RequestNonce` and the
+  cookie defaults (`cookies: CookieDefaults`, E162). Without a server, `DEFAULT_MAX_BODY_SIZE` (8 MiB) applies.
 
 ## Routes
 
@@ -245,7 +246,9 @@ per request as owned; never one that could be handed out twice. Copying the resp
 A route runs the global stack, then its group's (`web` or `api`), then its own middleware; one listed twice runs once, at its
 first place. Requests no route matched pass the global stack and then end in a 404. Packages append to groups while booting
 (`router.middleware.append(group, middleware, priority)`), in any order — the priority decides where it runs (lower first,
-equal ones in the order added):
+equal ones in the order added). A group's list is sorted once and frozen, and `router.middlewareFor(route)` — the global stack,
+the group's, the route's, each once — is worked out once per route; an `append` or `remove` starts both over (Wave 8 step 9: they
+were sorted on every request):
 
 | `MiddlewarePriority` | | Middleware (package) |
 | --- | --- | --- |

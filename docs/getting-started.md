@@ -15,7 +15,8 @@ On a terminal it asks four things — the starter kit (yes), Docker files (no), 
 - **the starter kit**: an auth module (`modules/auth/`: sign-in, registration with e-mail confirmation, password reset, a
   security page with "sign out other devices", API tokens — written by `bespoke make:auth`, so it is your code), a home page
   (`modules/home/`), a layout, the devtools, oxlint with the app's preset and Vitest, with tests for all of it;
-- `.env` with a fresh `APP_KEY` (never committed), SQLite in `storage/`, the tables migrated;
+- `.env` with a fresh `APP_KEY` and `NODE_ENV=development` (never committed — this machine's environment for every `bespoke`
+  command, E170), SQLite in `storage/`, the tables migrated;
 - a strict Content-Security-Policy with a nonce per response, security headers, no session for guests;
 - a git repository with one commit.
 
@@ -72,5 +73,8 @@ pnpm start       # the build, one Node process — set NODE_ENV and the configur
 ```
 
 `.env` is this machine's file: on a server, `NODE_ENV=production` (or `staging`), `APP_KEY`, `APP_URL=https://…`, the database
-and the mailer come from the real environment. Containers, proxies and the queue worker in production:
-[deployment](deployment.md).
+and the mailer come from the real environment, which wins over `.env`. A `NODE_ENV` that is missing everywhere counts as
+production; one that comes from a `.env` on the server is named loudly in the log — never deploy this file. The queue worker
+takes every queue the app uses: `bespoke queue:work --queue=mail,default` (the auth module's mails wait on `mail`). Containers,
+proxies and the scheduler in production: [deployment](deployment.md); what the app protects by itself and what is left to you:
+[security](security.md).

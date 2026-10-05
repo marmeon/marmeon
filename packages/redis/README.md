@@ -70,7 +70,9 @@ A driver whose connection name is unknown fails at the start; one whose package 
 - **Raw commands only** (`sendCommand`): node-redis' own types never reach the API, so apps without Redis compile, and a new major
   of the client changes one file (`src/connections.ts`). The peer range is `^5 || ^6`.
 - **Keys are not prefixed for you** — commands are raw; name them with `connection.key(…)`. The framework's keys:
-  `<prefix>cache:…` and `<prefix>lock:…` (cache, locks), `<prefix>session:<id>` (sessions), `<prefix>queues:<queue>[:delayed|:reserved]`
+  `<prefix>cache:…` and `<prefix>lock:…` (cache, locks — a blocking route's `lock:session:<key>` too), `<prefix>session:<key>`
+  (sessions: a hash of the payload `d` and its version `v`, written by one Lua script; `<key>` is the SHA-256 of the session id,
+  never the id — E144, E145), `<prefix>queues:<queue>[:delayed|:reserved]`
   and the set `<prefix>queues` (queue), `<prefix>live:seq:<channel>` and the pub/sub channel `<prefix>live` (live).
   `cache:clear` deletes only `cache:` keys (`SCAN` + `UNLINK`), never `FLUSHDB`.
 - **Readiness (E126):** `RedisHealthCheck` (registered by the provider for `/up/ready`) pings every connection **in use** — one a

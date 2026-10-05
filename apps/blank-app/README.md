@@ -7,9 +7,14 @@ Edit it here, then sync. The starter kit is this app plus the home module and `b
 
 It is also what `bespoke make:auth` is tested against (`packages/auth/src/make-auth.test.ts`): the test copies it, generates the
 auth module, migrates, type-checks and runs the generated tests (on Postgres too with `pnpm test:pgsql`). Keep it minimal: it
-stands for a new project — with the devtools as a dev dependency, a first test (`modules/system/system.test.ts`) and `pnpm test`.
+stands for a new project — with `@bespokecore/cli` as a dependency (production runs `bespoke start`), the devtools as a dev
+dependency, a first test (`modules/system/system.test.ts`, `GET /up`) and `pnpm test`; `.env.example` with
+`NODE_ENV=development` (E170: this machine's environment for every `bespoke` command — never deployed) and a `storage/` skeleton
+whose `.gitignore` files keep what the app writes out of git.
 
-Besides `system` it has what every new app should start with: `middleware/SecurityHeaders.ts` (`nosniff`, a referrer policy,
-`X-Frame-Options`, and an HSTS switch to turn on once the site is HTTPS only) and a strict Content-Security-Policy with a nonce
-per response (`contentSecurityPolicy()` in `bootstrap/app.ts`, E147 —
-[Content-Security-Policy](../../packages/http/README.md#content-security-policy-e147)).
+Besides `system` it has what every new app should start with, both global middleware in `bootstrap/app.ts`:
+`middleware/SecurityHeaders.ts` on every response (`nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`X-Frame-Options: DENY`, and an HSTS switch — `HSTS`, off — to turn on once the site is HTTPS only; it sets the headers through
+`editableResponse()`) and a strict Content-Security-Policy with a nonce per response on every document
+(`contentSecurityPolicy()`, E147 — [Content-Security-Policy](../../packages/http/README.md#content-security-policy-e147)): add
+directives for what your pages load from elsewhere.

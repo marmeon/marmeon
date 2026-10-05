@@ -33,9 +33,12 @@ Register an account: in development the mails go to the log (`MAIL_MAILER=log`),
 | `--no-git` | no git repository |
 | `-h`, `--help` · `-v`, `--version` | |
 
-Without a terminal (CI, a pipe) nothing is asked: the flags and the defaults decide, and a missing directory ends the run with
-exit code 2 — `create-bespoke-app needs a directory: create-bespoke-app <dir> [--yes]`. Every other failure is exit code 1, with
-the output of the step that failed; the directory stays as it was then.
+On a terminal a missing directory is asked for (also with `--yes`). Without a terminal (CI, a pipe) nothing is asked: the flags
+and the defaults decide, and a missing directory ends the run with exit code 2 — `create-bespoke-app needs a directory:
+create-bespoke-app <dir> [--yes]`. Every wrong call is exit code 2: an unknown flag, two directories, `--npm` with `--pnpm`,
+`--private-registration` with `--minimal`. A failed step is exit code 1, with the output of the step; the directory stays as it
+was then. A directory that is not empty, a missing pnpm and a Node older than 26.10 are exit code 1 before anything is written;
+Ctrl+C at a question is 130.
 
 ### In the first day after a release
 
@@ -60,12 +63,16 @@ A thin shell around the framework's own generators (E150) — the app's code com
    lint preset (`bespoke make:lint-config`), `vitest.config.ts`, a standalone `tsconfig.json`, `.env.example`, `.env.test` and
    the `storage/` skeleton. The starter kit adds `template/kit`: the home module (`/`, its page and its test).
 2. **`package.json`** — every `@bespokecore/*` package at exactly this package's version (the framework is versioned in
-   lockstep), `packageManager` with pnpm 12 — with `--npm` nothing of pnpm's.
+   lockstep, E152), `@bespokecore/cli` among the `dependencies` (it runs on the server, E159), `packageManager: pnpm@12.9.0` —
+   with `--npm` nothing of pnpm's. Next to it the app's `README.md`: its commands with the chosen package manager (production
+   runs `bespoke queue:work --queue=mail,default` for the queued jobs and the auth module's mails).
 3. **`.env`** — from `.env.example`, with a fresh `APP_KEY` (readable by its owner only, ignored by git); `.env.test` gets a test
    key of its own. The template never carries a key.
 4. **Install**, then the app's `bespoke`: `make:auth` for the starter kit (sign-in, registration, password reset, e-mail
    verification, API tokens — the code is the app's; its layout `modules/auth/layouts/AppLayout.tsx` frames the home page too),
    `migrate` (`.env` says `NODE_ENV=development`: it writes the tables' types the build checks), `make:docker` with `--docker`.
+   The install and the generators run without your shell's `NODE_ENV` — the app's `.env` decides (E170), so a shell that
+   exports `NODE_ENV=production` changes nothing.
 5. **git** — `git init` and a first commit, unless the directory is inside a repository already. Signing follows your git
    configuration; when the commit fails (a signing key that is not there), every file stays staged and the output says so.
 
@@ -76,6 +83,8 @@ It has no dependencies: the prompts are `node:readline`.
 `BESPOKE_CREATE_TARBALLS=<dir>` takes the framework from the tarballs of `pnpm pack` in that directory instead of the registry:
 they are copied into the app's `vendor/bespokecore/`, every `@bespokecore/*` dependency points there (`file:`), the packages'
 dependencies on each other too (`overrides` — in `pnpm-workspace.yaml` for pnpm, with nothing hoisted, in `package.json` for
-npm). That is how `pnpm pack:smoke` and `pnpm image:smoke` make their apps before anything is published. Not for apps.
+npm; optional peers nobody installs by absolute path, since npm resolves a relative override from the dependent's directory).
+That is how `pnpm pack:smoke` and `pnpm image:smoke` make their apps before anything is published. Not for apps; the variable never
+reaches the install and the generators.
 
 Changing the template: edit `apps/blank-app` and run `pnpm template:sync`; a test fails while the two differ.

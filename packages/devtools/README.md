@@ -13,21 +13,24 @@ pnpm add -D @bespokecore/devtools     # a dev dependency: production installs do
 
 `bespoke discover` registers its `DevtoolsServiceProvider` like any installed package (dev dependencies count). A production
 install without dev dependencies next to a manifest written with them is fine: discovery notices the missing package and
-discovers again.
+discovers again — in memory, with one warning, when `.bespoke/` is read-only (E160); `make:docker`'s image runs `bespoke discover`
+after its production install.
 
 ## Only in development (E115, fail closed)
 
 | | |
 |---|---|
-| `NODE_ENV=development` (`bespoke dev` sets it when the environment has none — also for its worker and scheduler) | records |
+| `NODE_ENV=development` — from the environment or the app's `.env` (E170); `bespoke dev` sets it when neither has one, also for its worker and scheduler | records |
 | any other `NODE_ENV` — `test`, `staging`, **unset** | nothing subscribed, nothing written, `config/devtools.ts` never loaded |
 | `DEVTOOLS_ENABLED=false` | off, also in development |
 | `DEVTOOLS_ENABLED=true` where the app is protected — `production`, `staging`, **unset** (E139) | **the start fails** |
 | `DEVTOOLS_ENABLED=true` with `NODE_ENV=test` | no effect (a warning at the start) |
 | `createTestApp(App, { devtools: true })` | records into memory — the only way outside development (never where the app is protected) |
 
-"Not production" is not the gate: a server without `NODE_ENV` would record everything. The commands `devtools:clear` and
-`devtools:prune` exist everywhere — they only remove files.
+"Not production" is not the gate: a server without `NODE_ENV` would record everything. A developer's `.env` copied to a server
+(`NODE_ENV=development`) would open it there too — `bespoke start` warns loudly about it
+([where it comes from](../core/README.md#the-environment-node_env)), and a production install without dev dependencies has no
+devtools to open. The commands `devtools:clear` and `devtools:prune` exist everywhere — they only remove files.
 
 ## Settings: `config/devtools.ts` (optional)
 
@@ -174,7 +177,8 @@ Filters (`?status=4xx&route=auth.login&tag=failed&requestId=…&search=…`) are
 - **Headers:** `Cache-Control: no-store`, `Content-Security-Policy: default-src 'none'; style-src/script-src` the pages' own
   inline code by hash; `img-src 'self' data:; connect-src 'self'; frame-src 'self'; form-action 'self'; base-uri 'none';
   frame-ancestors 'self'` (only this origin may frame them), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`,
-  `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`.
+  `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`. An app's
+  [`contentSecurityPolicy()`](../http/README.md#content-security-policy-e147) leaves this policy alone (a response's own is kept).
 - **Escaping:** what the entries hold is redacted already (E125); the pages still escape every value — a `<script>` in a
   recorded path, query or log line is text. A recorded mail's HTML is shown only in the sandboxed frame (opaque origin, no
   scripts, inline styles and images only).
@@ -214,7 +218,8 @@ red dot after a hydration error or a failed request. A click or **`Alt+Shift+D`*
 server** renders ([`DevDocument`](../server/README.md#the-development-document-devdocument--development-only) of
 `@bespokecore/server`, bound with `NODE_ENV=development` only): `<meta name="bespoke-devtools">`
 with the document's request id, and `<script type="module" src="/@id/@bespokecore/devtools/client">` — served by Vite from this
-package's `./client` export. Nothing of the app imports it, so no build has it; the production renderer never reads `DevDocument`.
+package's `./client` export; under the app's [`contentSecurityPolicy()`](../http/README.md#content-security-policy-e147) the
+script carries the response's nonce (E147). Nothing of the app imports it, so no build has it; the production renderer never reads `DevDocument`.
 In the head, it runs before the app's entry and sets the **dev hook** `__BESPOKE_DEVTOOLS_HOOK__`. The client core calls the hook
 only under `process.env.NODE_ENV !== 'production'` — a production build drops every call, and the leak test checks that no chunk
 names it:

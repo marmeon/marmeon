@@ -1,7 +1,8 @@
 # @bespokecore/cache
 
 The cache, rate limits (`RateLimiter`, `throttle()`) and locks (`cache.lock()`) — injected like any service. The queue's unique
-jobs and `job.once` markers, the scheduler's locks and the limit on live validations are kept here too.
+jobs and `job.once` markers, the scheduler's locks, the session's `block()` locks and the limit on live validations are kept
+here too.
 
 ```ts
 constructor(cache: Cache, limiter: RateLimiter) { … }
@@ -107,6 +108,14 @@ job's id, so the worker that finishes the job frees it), the locks of the `witho
 machines the cache must be shared: `database` or `redis` — `file` and `memory` lock only one machine (one process). See
 [unique jobs, chains, middleware](../queue/README.md#unique-jobs-chains-middleware).
 
+### Locks of the session
+
+A route that `block()`s ([@bespokecore/session](../session/README.md#blocking-routes-block), E145) runs its requests one at a
+time per session through a lock of this cache: `session:<key>` — the session's store key (the SHA-256 of its id, never the id),
+held for the route's `lockSeconds`, waited for with `block(waitSeconds)` (then **423**). Without this package such a route
+answers 500 naming it. With several processes or servers the cache must be shared (`database` or `redis`) — `file` locks one
+machine, `memory` one process.
+
 ### Locks of the scheduler
 
 The scheduler ([@bespokecore/scheduler](../scheduler/README.md)) keeps its locks here too: `schedule:<task>:<minute>` for
@@ -132,6 +141,8 @@ guests.middleware(throttle('register')).post('/register', RegisterController).na
 
 - **`Limit`:** `perSecond(n)`, `perMinute(n)`, `perHour(n)`, `perDay(n)` (each with an optional multiple: `perMinute(5, 10)`),
   `.by(key)`, `Limit.none()`. A limiter may return several limits — each counts on its own.
+- **`ctx.ip`** is the client's address — behind a proxy only when the proxy is in `TRUSTED_PROXIES`
+  ([behind a proxy](../server/README.md#behind-a-proxy-e162)); otherwise every visitor shares the proxy's address, and its limit.
 - **Answers:** a used-up limit is a `429` with `Retry-After` and `X-RateLimit-*` headers (the message is the translated
   `bespoke.errors.throttled`); passing responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`. A limiter that is not
   defined throws on the first request.

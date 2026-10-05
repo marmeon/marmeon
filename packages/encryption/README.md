@@ -1,8 +1,10 @@
 # @bespokecore/encryption
 
 Symmetric, authenticated encryption with the application key — Laravel's `Encrypter`: AES-256-GCM, keyed by `APP_KEY`, with
-previous keys for rotation. `@bespokecore/http` encrypts every cookie with it, `@bespokecore/queue` encrypted job payloads; the
-key itself (`EncryptionConfig`) is what signed URLs, live tokens and upload tokens derive keys of their own from.
+previous keys for rotation. `@bespokecore/http` encrypts every cookie with it, `@bespokecore/queue` encrypted job payloads,
+`@bespokecore/session` the session data with `SESSION_ENCRYPT=true`; the
+key itself (`EncryptionConfig`) is what signed URLs, live tokens, upload tokens and the tabs' session epoch derive keys of their
+own from.
 
 ```ts
 import { Encrypter } from '@bespokecore/encryption';
@@ -12,9 +14,9 @@ const payload = await this.#encrypter.encrypt(JSON.stringify({ exportId: 7 }), '
 const data = JSON.parse(await this.#encrypter.decrypt(payload, 'exports:download'));   // DecryptError when anything is off
 ```
 
-It comes with `@bespokecore/http` (a dependency of it, of `@bespokecore/live`, `@bespokecore/cli` and `@bespokecore/testing`);
-`bespoke discover` registers its `EncryptionServiceProvider` through the `"bespoke"` field of its package.json. The queue and
-storage take it as an optional peer: only an encrypted job or uploads need it.
+It comes with `@bespokecore/http` (a dependency of it, of `@bespokecore/session`, `@bespokecore/live`, `@bespokecore/cli` and
+`@bespokecore/testing`); `bespoke discover` registers its `EncryptionServiceProvider` through the `"bespoke"` field of its
+package.json. The queue and storage take it as an optional peer: only an encrypted job or uploads need it.
 
 ## The key: `APP_KEY`
 
@@ -68,10 +70,13 @@ A broken entry in `APP_PREVIOUS_KEYS` fails the same way.
 ## Key rotation
 
 `encrypt()` always uses `APP_KEY`; `decrypt()` tries `APP_KEY`, then each of `APP_PREVIOUS_KEYS` in order. The keys derived from
-`APP_KEY` (below) accept the previous keys too — signed links, live tokens and upload tokens survive a rotation.
+`APP_KEY` (below) accept the previous keys too — signed links, live tokens and upload tokens survive a rotation. The session
+epoch is computed with the current key only: after a deploy with a new key every open tab finds a new epoch at its next check
+and reloads once ([tab sync](../http/README.md#tab-sync-w8-step-8)).
 
 1. `bespoke key:generate --force` writes a new `APP_KEY` into `.env` and moves the old one to the front of `APP_PREVIOUS_KEYS`
-   (E169: `The old key moved to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links stay valid.`) — where the
+   (E169: `The old key moved to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links stay valid. Set both on every
+   server.`) — keys already listed there stay behind it, without duplicates. Where the
    environment comes from elsewhere, do the same there: the current key into `APP_PREVIOUS_KEYS`, a new one (`--show`) into `APP_KEY`.
 2. Deploy, with both variables on every server.
 3. Remove the old key once nothing encrypted or signed with it is still around: sessions and remember-me cookies (their
@@ -92,6 +97,7 @@ absent), invalidates every signed link and turns encrypted jobs still waiting in
 | [@bespokecore/http](../http/README.md) | `UrlSigner` — signed URLs, HMAC-SHA-256 | HKDF-SHA-256 of each key, info `bespokecore:signed-url` |
 | [@bespokecore/live](../live/README.md#the-guarantees) | the tokens of the channels a page follows | HKDF-SHA-256, info `bespokecore:live` |
 | [@bespokecore/storage](../storage/README.md#uploads) | upload tokens | HKDF-SHA-256, info `bespokecore:upload-token` |
+| [@bespokecore/http](../http/README.md#tab-sync-w8-step-8) | the session epoch (`PageObject.epoch`, E148/E165), HMAC-SHA-256 | HKDF-SHA-256 of `APP_KEY` only, info `bespokecore:session-epoch` |
 
 - **Cookies:** the session id, the `cookie` session driver's data and auth's remember-me cookie are encrypted this way — every
   cookie except the names given to `CookieEncryption.except()` (the session package excepts `XSRF-TOKEN`: the browser's

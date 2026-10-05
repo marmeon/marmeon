@@ -8,7 +8,7 @@ itself in its README.
 
 BespokeCore takes contributions under the [Developer Certificate of Origin 1.1](https://developercertificate.org/) (DCO), as the
 Linux kernel and Node.js do — no contributor licence agreement. With the sign-off you certify that you wrote the change or have
-the right to submit it under the project's licence (MIT, [LICENSE](LICENSE); copyright BespokeCode). Every commit of a pull
+the right to submit it under the project's licence (MIT, `LICENSE`; copyright BespokeCode). Every commit of a pull
 request carries a `Signed-off-by` line with your real name and the e-mail of the commit:
 
 ```text
@@ -16,10 +16,7 @@ Signed-off-by: Jane Doe <jane@example.com>
 ```
 
 `git commit -s` adds it (`git commit --amend -s --no-edit` for the last commit, `git rebase --signoff main` for a whole branch).
-A check on every pull request (the DCO app) refuses commits without it.
-
-<details>
-<summary>The Developer Certificate of Origin 1.1</summary>
+A check on every pull request (the DCO app) refuses commits without it. The text you certify:
 
 ```text
 By making a contribution to this project, I certify that:
@@ -47,8 +44,6 @@ By making a contribution to this project, I certify that:
     this project or the open source license(s) involved.
 ```
 
-</details>
-
 ## Set up
 
 Node 26.10 or newer and pnpm 12 (the version in `packageManager` — `pnpm self-update` or Corepack-free `npm i -g pnpm@12.9.0`).
@@ -56,7 +51,7 @@ Node 26.10 or newer and pnpm 12 (the version in `packageManager` — `pnpm self-
 ```sh
 pnpm install
 docker compose up -d   # Postgres, Redis and S3 for test:pgsql, test:redis and test:s3 (this repository's containers only)
-pnpm dev               # the web app (apps/web-app) on http://localhost:3000
+pnpm dev               # the web app (apps/web-app) on http://localhost:3000 — first its .env and database (apps/web-app/README.md)
 ```
 
 ## Before you open a pull request
@@ -65,11 +60,14 @@ pnpm dev               # the web app (apps/web-app) on http://localhost:3000
 pnpm run ci            # every check CI runs: build, typecheck, lint, the test suites, sizes, types, docs, tarballs, image, release
 ```
 
-`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. Parts of the run: `pnpm run ci --only test,lint`.
+`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 14 parts (`pnpm run ci --list`; the
+[README](README.md#the-repository) names them); some of them: `pnpm run ci --only test,lint`. `pack:smoke` and `image` need the
+package store, the registry and Docker — without them they are reported as skipped, which is not green.
 
 - **Tests** come with the change — type guarantees as `@ts-expect-error` tests, behaviour in Vitest, a feature shown in
   `apps/web-app` (principle 9).
-- **The bundle-size limits only go down** (`packages/react/size-budget.json`).
+- **The bundle-size limits only go down** (`packages/react/size-budget.json`) — raising one is the maintainers' decision (tab
+  sync raised them once, by exactly its cost, E149).
 - **A change an app can notice** gets an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — and a
   changeset (next section).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.

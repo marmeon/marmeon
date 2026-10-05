@@ -35,6 +35,12 @@ defineApplication({
 is bound per request by the server kernel, for services that have no `ctx` (`Auth` puts it into the `Login` event); outside a
 request both are `undefined`. `IncomingRequest` is the request itself (headers a service needs).
 
+**For middleware and packages** it re-exports from the router `editableResponse` / `ownResponse` (a header added in place or to
+one copy per request — [Adding headers](../router/README.md#adding-headers-to-the-response--editableresponse)) and
+`RequestNonce`, and holds the `CookieDefaults` token: what every cookie of a request gets unless its `set` says otherwise —
+bound by [@bespokecore/session](../session/README.md#configuration) (`Secure` from `SESSION_SECURE_COOKIE`, which follows
+`APP_URL`, E162), handed to each request's jar by the kernel.
+
 Both options, the groups and the order of the framework's middleware (`EncryptCookies` → `ClearClientHistory` → `StartSession`
 → … → `VerifyCsrfToken` → the app's): [@bespokecore/router](../router/README.md#configuration),
 [Groups and priorities](../router/README.md#groups-and-priorities). Its solutions (E130) — an undefined route name with "did
@@ -43,7 +49,8 @@ you mean", a missing view (R2) — show on the development error page.
 ## Content-Security-Policy (E147)
 
 `contentSecurityPolicy(options?)` sends a policy with every **document** the app renders — opt-in, with a strict default; the
-web app and the starter's shell (`apps/blank-app`, the base of `create-bespoke-app`) turn it on:
+web app and the starter's shell (`apps/blank-app`, the base of `create-bespoke-app`) turn it on, and `bespoke make:auth` names it
+for an app whose `bootstrap/app.ts` does not:
 
 ```ts
 import { contentSecurityPolicy, NONCE } from '@bespokecore/http';
@@ -62,7 +69,7 @@ contentSecurityPolicy({ baseUri: false, reportOnly: true, reportUri: ['/csp-repo
   (`renderToReadableStream({ nonce })`, `SsrRenderOptions.nonce`), on a `<Head>`'s scripts and styles, on the development
   document's scripts (the devtools' bar, Vite's error overlay). `'strict-dynamic'` lets the entry load its chunks. HTML an app
   writes itself takes `ctx.nonce()` (`<script nonce="${ctx.nonce()}">`). Without the middleware, documents carry no nonce.
-- **Only HTML responses** get the header — a JSON visit (`x-bespoke`), an island, an action or an API answer neither needs nor
+- **Only documents** get the header — HTML or XHTML (`text/html`, `application/xhtml+xml`, in any letter case); a JSON visit (`x-bespoke`), an island, an action or an API answer neither needs nor
   makes a nonce. A response with a policy of its own keeps it: the devtools' pages and the development error page (their inline
   code by hash), the mail preview, a file served from a disk (`sandbox`).
 - **Development is not relaxed**: HMR, React Refresh, the devtools' bar and the overlay run under the same policy as production,
@@ -152,8 +159,9 @@ are here.
    `View.placeholder`) with `page.props` inside that view's layouts — never the view itself, and the page context stays the page
    on screen; no placeholder → nothing changes; one that resolves after a later render started is dropped. Remembered state
    (E63): keep it with the entry of the level it renders in (`navigator.use(remember).of(owner.entry)`, a layer's `layer.entry`), keyed by
-   the app (an island's apart). Forms without JavaScript (E64): `page.csrf` as `_token`, `_method` for PUT/PATCH/DELETE (the
-   kernel spoofs the method from a POST body, never from the query).
+   the app (an island's apart). Forms without JavaScript (E64): `_method` for PUT/PATCH/DELETE (the kernel spoofs the method
+   from a POST body, never from the query) and, when the page has one, `page.csrf` as `_token` — a browser's plain post passes
+   by Fetch Metadata or `Origin` anyway (E143); the token is for a client that sends neither, and a guest's page has none.
    Asking (E64): pass `confirm` — a handler that shows the `ConfirmRequest` in the app's dialog (React: `createBespokeApp({ confirm:
    ConfirmDialog })`) and answers yes/no or the text typed; the core compares it. Flash (E60): show messages from
    `navigator.on('flash')`/`onFlash(key)` — they fire after the answer is on screen, once; render nothing of them from props.
@@ -449,8 +457,9 @@ questions, the error pages).
 
 What goes over the wire, in one place (constants in `@bespokecore/http/page`). Every page and island request of the core
 carries `x-bespoke-version` (the build — a new one answers 409); actions and live validations do not (they are no pages: a new
-build shows with the next page request, a poll or a visit). Every write carries `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie —
-never a token from the URL (CSRF: [@bespokecore/session](../session/README.md)).
+build shows with the next page request, a poll or a visit). Every write carries `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie when
+the session has one (a guest without a session has none and needs none: the browser's `Sec-Fetch-Site`/`Origin` decide, E143) —
+never a token from the URL (CSRF: [@bespokecore/session](../session/README.md#csrf-protection)).
 
 | Request header | Sent by | Meaning |
 | --- | --- | --- |
@@ -477,6 +486,7 @@ never a token from the URL (CSRF: [@bespokecore/session](../session/README.md)).
 | `x-bespoke-flash` | an action's flash messages, URI-encoded JSON (E60) |
 | `x-bespoke-flash-waiting` | on a prefetch: messages wait for the page the user is shown — do not show this prefetch |
 | `x-bespoke-validated: a,b` | on a live validation's `204`/`422`: the fields checked — a client trusts only an answer with it (a proxy's 422 shows nothing) |
+| `Clear-Site-Data: "cache", "storage"` | on sign-out (`ClientHistory.clear({ siteData })`, E165): the site's HTTP cache and storage go, in every tab; `"cache"` alone for a language switch |
 
 **The live stream (W6.10, [@bespokecore/live](../live/README.md#configuration))**:
 `GET /_bespoke/live?connection=<id>&c=<token>.<channel>&…` — one per document, for every channel its page, layers and islands
@@ -522,4 +532,5 @@ written under — tab sync).
 same routes — `dispatchIsland` is what `resolveIsland` calls (a synthetic GET through the island route's middleware, read-only,
 the page's session as a copy, `islandTimeout`), `dispatchLayerBase` resolves a layer's declared base for a deep link (the same
 way, a chain up to `MAX_LAYER_DEPTH`; a base that turns the user away gives `layers/Backdrop`, E54). After the headers every
-request is read-only (`ResponseLifecycle`); islands and live validations are read-only throughout.
+request is read-only (`ResponseLifecycle`); islands, live validations, uploads' targets, event streams and `/_bespoke/session`
+are read-only throughout.

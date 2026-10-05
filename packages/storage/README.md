@@ -41,7 +41,7 @@ Without one the app has Laravel's two disks, `local` (private, `storage/app/priv
 
 | Driver | Options (besides `visibility: 'private' \| 'public'`, default `private`) |
 |---|---|
-| `local` | `root` (relative to the app root, created on first use), `url` (public disks: a path the app serves, or an absolute URL — a CDN) |
+| `local` | `root` (relative to the app root, created on first use — keep it under `storage/`, the one directory a production deployment lets the app write: a volume owned by `node` in `make:docker`'s image, `ReadWritePaths` in its systemd units), `url` (public disks: a path the app serves, or an absolute URL — a CDN) |
 | `s3` | `bucket`, `region`, `endpoint` (S3-compatible stores), `forcePathStyle` (default `true` with an `endpoint`), `credentials` (else the SDK's chain), `root` (a prefix in the bucket), `url` (public disks; default endpoint/bucket) |
 | `memory` | `url` — gone with the process; tests and throwaway setups |
 
@@ -116,7 +116,9 @@ Livewire's three steps (W6.9), with what the route already knows deciding everyt
    limit (no such rule: 404; a file the browser says is too large: 422). The answer is a token `tu_<id>.<hmac>` and where the
    bytes go: a signed URL of the app (`PUT /_bespoke/uploads/<id>`, 15 minutes) or — when the uploads disk is S3 — a
    **presigned POST** with `content-length-range` (the store refuses one byte more; the bucket needs CORS for the app's origin,
-   and `pnpm add @aws-sdk/s3-presigned-post`).
+   and `pnpm add @aws-sdk/s3-presigned-post`). A target belongs to a **session** — without one it is a 419. A guest's page keeps
+   none by itself (E143), so a guest's page with an upload field keeps it: the injected `Session`'s `persist()` in its
+   controller ([new sessions](../session/README.md#new-sessions-are-only-kept-when-used)).
 2. **The bytes**, with progress — streamed onto the private `uploads` disk (`UPLOADS_DISK`), cut off after `maxBytes` whatever
    `Content-Length` said (413, and nothing stays: the disk writes a temporary file and renames it only when complete). Never
    through `ctx.input()`/`MAX_BODY_SIZE`, never in memory.

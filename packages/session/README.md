@@ -70,7 +70,8 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
 - **Requests that must not overlap:** `Route.post(…).block()` runs a route's requests one at a time per session
   ([below](#blocking-routes-block)).
 - **Read-only requests:** an island (E52) or a live stream reads the session but never writes it — no save, no cookie, flash
-  data stays for the page.
+  data stays for the page. `session.exists` says whether the session outlives the request: it came from the store, or this
+  request keeps it ([below](#new-sessions-are-only-kept-when-used)) — for a read-only request, whether the session it reads exists.
 
 ## CSRF protection
 
@@ -133,6 +134,7 @@ Every server-side store keeps a session under its **key** — the SHA-256 of the
 ```sh
 bespoke make:session-table   # writes modules/system/migrations/…_create_sessions_table.ts (E96: the table is the app's; --module=<name> for another)
 bespoke migrate
+bespoke make:session-table --upgrade   # a table made before W8: …_upgrade_sessions_table.ts (below)
 ```
 
 The table: `id` (primary key — the session's key, the SHA-256 of its id), `user_id` (nullable, indexed — the signed-in user's
@@ -174,7 +176,8 @@ flash messages — with hashed keys none of it signs anybody in, but turn it on 
 data should not be read. The database's `user_id` column stays readable (it is what lists a user's sessions). Turning it on or
 off signs everybody out once (the other format does not open — a new session starts). The `cookie` driver's data is encrypted
 anyway (it is a cookie); `SESSION_ENCRYPT` changes nothing there. It costs ≈ 9 µs per request with a session (one decryption, one
-encryption — [@bespokecore/server](../server/README.md#the-request-path-e136-e154)).
+encryption — [@bespokecore/server](../server/README.md#the-request-path-e136-e154)). The provider binds the `SessionCodec` —
+`plainSessionCodec`, or `EncryptedSessionCodec` with `SESSION_ENCRYPT=true` (the `Encrypter`, context `session:<key>`).
 
 **Compare-and-set.** Every write is one atomic step of the store that compares the version the request read:
 
@@ -195,8 +198,8 @@ or expired — nothing written, and nothing ever brings it back). `Session.save(
   wins** (last write wins), everything else stays as the other request left it; **flash messages are merged by their ids** — none
   is lost, and none a faster request showed comes back (W5b.7: before, 20 of 20 came back). A request that changed nothing stops
   there. After a random moment it writes again — for up to 2 s; every round lets one writer through, so 20 requests of one
-  session at once all land. A request that still meets a newer version every time saves nothing and logs a warning
-  (`session.abandoned`).
+  session at once all land. A request that still meets a newer version every time saves nothing (`session.abandoned`, no
+  cookie) and `StartSession` logs a warning naming the route — `block()` it.
 
 What it does not do: add up. Two requests that read a counter and write it back + 1 both write 2 — the later wins. Routes that
 read, decide and write back need [`block()`](#blocking-routes-block).

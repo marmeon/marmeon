@@ -14,7 +14,7 @@ a production server never loads it. Routes, controllers and responses are [@besp
 
 | Variable | Default | What |
 | --- | --- | --- |
-| `PORT` | `3000` | the port `startServer()` listens on |
+| `PORT` | `3000` | the port `startServer()` listens on; `0` asks the system for a free one (the start line names it) |
 | `HOST` | every interface | the interface it listens on — `127.0.0.1` behind a proxy on the same machine, `0.0.0.0` in a container (E162) |
 | `MAX_BODY_SIZE` | `8m` | the largest request body: bytes, or `512k`, `8m`, `1g` |
 | `TRUSTED_PROXIES` | — | the app's proxies: addresses or ranges, comma-separated (`127.0.0.1,10.0.0.0/8,fd00::/8`), or `*` behind the app's own proxy only; only from these `X-Forwarded-*` count ([Behind a proxy](#behind-a-proxy-e162)); anything else fails the start |
@@ -31,16 +31,21 @@ in-process (`createTestApp`, [@bespokecore/testing](../testing/README.md)). Per 
 
 - **a container scope of its own** — controllers and middleware are built from it, so scoped services live as long as the
   request; the request id (`x-request-id`: the client's when it is a sane one, else generated) is set as the request context
-  and answered in the response header;
+  and answered in the response header. The scope holds the request's `CookieJar` (with the app's `CookieDefaults` — `Secure`
+  from `APP_URL` with `@bespokecore/session`, E162), its `RequestNonce` (the CSP nonce, made only when a document needs it,
+  E147), `IncomingRequest` and `RequestInfo` (`{ ip, userAgent }`, E169 — [who sent it](../http/README.md#registration-and-configuration));
 - **method spoofing** (E64): a form's POST with `_method=PUT|PATCH|DELETE` in its body is routed as that method — never from the
   query, never to GET;
 - **the body** is read once, by its route, up to `MAX_BODY_SIZE`;
 - **errors** — thrown, `abort()`ed or an unknown path — go through the app's `ExceptionHandler` (`@bespokecore/http`); an
   unknown path still passes the global middleware first;
-- **read-only requests:** an island's, a live validation, an upload's target, an event stream and a layer's base resolved for
-  its deep link change no session, cookie or work after the response; nor does any request once its headers are out (a
-  streamed page's deferred props). A write there throws with `NODE_ENV=development` and `test` (the mistake shows where it is
-  made) and is dropped and logged everywhere else — production, staging, no `NODE_ENV` (E164);
+- **read-only requests:** an island's, a live validation, an upload's target, an event stream, the tabs' `GET /_bespoke/session`
+  ([tab sync](../http/README.md#tab-sync-w8-step-8)) and a layer's base resolved for its deep link change no session, cookie or
+  work after the response; nor does any request once its headers are out (a streamed page's deferred props). A write there
+  throws with `NODE_ENV=development` and `test` (the mistake shows where it is made) and is dropped and logged everywhere else —
+  production, staging, no `NODE_ENV` (E164);
+- **one copy at most:** the kernel's own headers (`x-request-id`, `Server-Timing`) go onto the response in place when the request
+  owns it, else onto one copy ([`editableResponse`](../router/README.md#adding-headers-to-the-response--editableresponse));
 - **after the response:** `afterResponse.defer(…)` work and `terminate` hooks run once the response is out, outside of any
   transaction (E107);
 - **islands and layers** are resolved in-process while a page renders: a GET of the island's URL through its own route's
@@ -63,7 +68,7 @@ without markup and the browser renders the page — what an adapter's SSR entry 
 ## `startServer` and the drain
 
 ```ts
-const server = await startServer({ app });   // port: ServerConfig.port; mode: development only when NODE_ENV=development
+const server = await startServer({ app });   // port, host: ServerConfig (PORT, HOST); mode: development only when NODE_ENV=development
 // …
 await server.close();                         // on SIGTERM — bespoke dev and start do this themselves
 await server.close({ immediately: true });    // without SHUTDOWN_DELAY (bespoke does this on SIGINT, Ctrl+C)
@@ -79,7 +84,11 @@ await app.shutdown();
   build first."
 
 The start line names the environment and what is served (E139): `BespokeCore in staging (protected) on http://localhost:3000
-(the build; 54 routes, 7 modules, packages: …)` — `in development … (Vite's dev server; …)` with `bespoke dev`.
+(the build; 54 routes, 7 modules, packages: …)` — `in development … (Vite's dev server; …)` with `bespoke dev`, `in unset NODE_ENV
+(protected, like production)` without one, `(from .env)` when `.env` named it (E170). The host is the one listened on (`HOST`;
+`localhost` for every interface), the port the one it got (`PORT=0`: the system's choice; `RunningServer.port` says it too).
+`bespoke start` runs the server in the process it was started in — no launcher child, the signals reach it directly
+([One process](../cli/README.md#one-process-e159)).
 
 `close()` stops gracefully. First, **readiness falls** (E163): `/up/ready` answers `503 {"status":"draining"}` at once, and for
 `SHUTDOWN_DELAY` seconds (`shutdownDelayMs`, default 0) the server keeps answering every request — each response with `Connection:
@@ -191,8 +200,10 @@ for. With `TRUSTED_PROXIES` (addresses or CIDR ranges, `*` for "every peer is ou
   `X-Forwarded-*` (a port belongs into `X-Forwarded-Host`).
 
 Configure the proxy to **set** these headers (Caddy does by itself; nginx: `proxy_set_header X-Forwarded-Proto $scheme;` and
-`X-Forwarded-For $proxy_add_x_forwarded_for`) — a proxy that passes a client's own headers on unchanged makes them the
-client's word. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
+`X-Forwarded-For $remote_addr`, as the `make:docker --nginx` template does) — a proxy that passes a client's own headers on
+unchanged makes them the client's word. With `*` every hop counts, so `ctx.ip` is the left-most entry: only right behind a
+proxy that replaces `X-Forwarded-For`; one that appends to the client's list (nginx's `$proxy_add_x_forwarded_for`) needs its
+address or range in `TRUSTED_PROXIES` instead. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
 [@bespokecore/session](../session/README.md#configuration)).
 
 ## Health (E126)

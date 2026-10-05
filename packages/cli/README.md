@@ -11,7 +11,8 @@ it in the app root — `bespoke list` (or plain `bespoke`) shows every command t
 ### `bespoke dev`
 
 The development server: Vite's dev server with HMR and server rendering inside the app's HTTP server, restarted by
-`node --watch` when server code changes. It sets `NODE_ENV=development` when the environment sets nothing — the switch for
+`node --watch` when server code changes. It sets `NODE_ENV=development` when neither the environment nor the app's `.env` sets
+it (E170) — the switch for
 everything that exists only in development (E115): the error page and `Server-Timing`
 ([@bespokecore/server](../server/README.md#error-page-e119--development-only)), the [devtools](../devtools/README.md), the
 [mail previews](../mail/README.md#previews-e106). Next to the server it starts what packages add to
@@ -62,7 +63,9 @@ the primary. It passes SIGTERM/SIGINT on to every worker — each drains like a 
 requests in flight, the work after the response) — and exits with 0 once all exited with 0, else with the first worker's code
 (after 10 s plus the delay a worker that hangs is killed). A worker that ends while the cluster runs is started again after a
 second; one that ends before it listened (a taken port, a missing build) stops the cluster with its code instead of failing
-forever. Each worker has its own readiness, rate-limit memory and `memory` stores — use `redis` or `database` drivers for
+forever. The warnings of the boot (a log mailer in production, cookies without `Secure`, stale build artifacts, a development
+`.env`) are said once, by the primary — the workers boot the same app and keep them to themselves; what a worker warns about
+later is its own. With `PORT=0` the system picks the port and all workers share the one the start line names. Each worker has its own readiness, rate-limit memory and `memory` stores — use `redis` or `database` drivers for
 sessions, cache, locks and live (as with several containers). One process per container (more containers) is the default
 model; `--workers` is for a machine with several cores and one service. `bespoke dev` refuses it.
 
@@ -105,7 +108,13 @@ a worker's exit code (70 for a job that ignored its timeout) and `NODE_OPTIONS='
 one Node process. The injection hook is registered in that process (`module.registerHooks`) before the command loads. Node is
 started a second time only for what a running process cannot switch on: `node --watch` for `bespoke dev`, and the
 `@bespokecore/source` condition when the CLI runs inside the framework's own monorepo (its packages resolve to their TypeScript
-sources there; a published package does not carry the condition).
+sources there; a published package does not carry the condition) — never for `bespoke start`, which serves the packages'
+`dist/` there too. A copy of the CLI under `node_modules` (what `pnpm deploy` or an injected workspace dependency leaves, with
+the workspace manifest) is no monorepo either: it runs its `dist/` like a published package.
+
+When the app cannot start, `bespoke` prints the error with Node's code when it has one (`ERR_…`) and the solutions below it
+([Solutions](../core/README.md#solutions-e130)) — e.g. for `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a package that reaches
+Node with its TypeScript sources instead of its `dist/`; exit code 1.
 
 ### A fast start (E138)
 

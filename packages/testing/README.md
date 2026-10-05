@@ -44,7 +44,7 @@ elsewhere `await app.close()` or `await using app = await createTestApp(…)`. C
 |---|---|---|
 | `env` | — | variables on top of the app's environment (`undefined` removes one: `{ APP_URL: undefined }`) |
 | `override` | — | `(container) => …` — replace bindings before the boot; even singletons see them |
-| `csrf` | `false` | verify CSRF tokens — then send `_token` or the header yourself |
+| `csrf` | `false` | verify CSRF ([@bespokecore/session](../session/README.md#csrf-protection)) — then send what a browser sends (`headers: { 'sec-fetch-site': 'same-origin' }`, or an `Origin`) or the session's `_token`/`X-XSRF-TOKEN` yourself; a test request sends neither by itself |
 | `database` | — | `'refresh'`: a migrated database per test worker, each test in one transaction — [below](#the-database) |
 | `seed` | `false` | with `database: 'refresh'`: run the modules' seeders for every test |
 | `mail` | `'fake'` | `MailFake` as the `Mailer` (`app.mail`); `'real'` keeps the configured transport |
@@ -56,10 +56,10 @@ elsewhere `await app.close()` or `await using app = await createTestApp(…)`. C
 | `debug` | `false` | development error handling (E119): the error page for 5xx pages, `exception` and `solution` in JSON errors |
 | `devtools` | `false` | record what the app does into memory (`app.devtools`) — the only way outside `NODE_ENV=development` |
 
-**The environment** is `.env`, then `.env.test` (for `NODE_ENV=test`), then the process environment, then `options.env` — and
-with `database: 'refresh'` the worker database's connection on top. A definition with its own `env` (a fixture app) skips the
-files — and runs as `NODE_ENV=test` unless its `env` names another (without one it would count as protected, like production,
-E139). The devtools stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=false`), also one that runs
+**The environment** is `.env`, then `.env.test` (for `NODE_ENV=test`, which Vitest sets), then the process environment, then
+`options.env` — and with `database: 'refresh'` the worker database's connection on top. A definition with its own `env` (a
+fixture app) skips the files. Every test app runs as `NODE_ENV=test` unless its environment names another — without one it would
+count as protected, like production (E139); `env: { NODE_ENV: 'production' }` tests the protections. The devtools stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=false`), also one that runs
 as development (`env: { NODE_ENV: 'development' }`).
 
 **Always in place:** a `TestClock` as the app's `Clock`, an `EventFake` that records every dispatch, and — with
@@ -110,7 +110,8 @@ Each of these returns a new view of the same app with defaults for its requests:
 | `acting()` | an action (`useAction`, E59) |
 | `validating(...fields)` | a live validation of those fields (E62) — the controller never runs |
 
-A view made by `withSession` or `actingAs` keeps one session id across its requests, like one browser. To carry on with the
+A view made by `withSession` or `actingAs` keeps one session id across its requests, like one browser; the session is stored as
+the app stores its own — under the id's hash, through the app's codec (`SESSION_ENCRYPT`, [@bespokecore/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145)). To carry on with the
 session a response started, send its cookie: `app.withCookie('bespoke_session', login.cookie('bespoke_session')!)`.
 
 ```ts
@@ -217,7 +218,8 @@ await app.actingAs(ada).get('/dashboard', { headers: { accept: 'text/html' } }).
 ```
 
 `assertServerRendered()` fails with the render's error; `assertHydrates()` renders the page again from the JSON the browser
-receives and compares the markup (a `Date` prop rendered on the server but sent as a string fails here). `ssr: 'stream'`
+receives and compares the markup (a `Date` prop rendered on the server but sent as a string fails here) — with the response's
+CSP nonce (E147), as the browser reads the document. `ssr: 'stream'`
 answers as for a browser — the shell first, islands and deferred props streamed into the same response; read it as it
 arrives with `app.stream(path)`. Without `ssr` a response carries the page object only (fast, no Vite).
 

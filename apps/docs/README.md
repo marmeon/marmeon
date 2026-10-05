@@ -29,8 +29,13 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   and the entry, its chunks and tab sync's chunk come from `/assets/`. The links test checks every page for inline scripts and
   handlers. In development (`no-cache`, nothing shared) Vite's client, React Refresh and the devtools' bar are inline: the strict
   nonce policy there.
+- **Headers:** `modules/docs/middleware/SecurityHeaders.ts`, global like the policy (so the 404 has them too): `nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
+  `Strict-Transport-Security` comes from Caddy (`deploy/docs/Caddyfile`). `pnpm docs:check` and `pnpm docs:image` check `nosniff`
+  on the pages they fetch.
 - **Tests:** `modules/docs/links.test.ts` renders every page on the server and checks every link and anchor and that no page runs
-  an inline script; `docs.test.ts` the guides, the search, caching, the policy, cookies, the 404 and the boot checks.
+  an inline script; `docs.test.ts` the guides, the search, caching, the policy and the headers, cookies, the 404 and the boot
+  checks.
 
 Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image),
 `DOCS_CACHE_MAX_AGE` (300 s), `DOCS_SEARCH_PER_MINUTE` (120).
@@ -52,7 +57,11 @@ docker build -f apps/docs/Dockerfile -t bespokecore-docs .    # from the reposit
 
 `deploy/docs/compose.yaml` runs it behind Caddy on one server (Hetzner Cloud, E142): Caddy gets the certificate for `DOCS_DOMAIN`,
 speaks HTTP/1.1, 2 and 3, sets `Strict-Transport-Security` and compresses the pages (they carry no secret — an app's pages would,
-BREACH); the docs trust `X-Forwarded-*` from the Compose network only (`TRUSTED_PROXIES`), read-only, with a `storage` volume.
-Next to the file, a `.env` holds `DOCS_DOMAIN` and `APP_KEY` (never committed); then `docker compose up -d --build`. The guide for
+BREACH); it sets `X-Forwarded-*` itself and drops a client's. The docs trust them from the Compose network's two subnets only
+(`TRUSTED_PROXIES`, IPv4 and IPv6 — with IPv6 on the network every visitor keeps their address for the search's rate limit),
+run read-only with a `tmpfs` for `/tmp` and a `storage` volume, `init: true`, and Caddy waits for them to be healthy.
+Next to the file, a `.env` holds `DOCS_DOMAIN` and `APP_KEY` (never committed); then `docker compose up -d --build` —
+`DOCS_TAG=$(git rev-parse --short HEAD)` names the build, and an older tag still on the machine starts again without one (the way
+back). The guide for
 the server — firewall, DNS, updates, rollback — is [docs/deployment.md](../../docs/deployment.md) for any app; the steps for this
 one live with the maintainers.

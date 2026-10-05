@@ -48,6 +48,21 @@ bespoke make:queue-table [--module=system]
 prints the line for its module. `bespoke dev` starts a worker next to the server, on every queue (`--queue=*`,
 `--stop-timeout=5`), and restarts it when code changes (E101) — not with `QUEUE_CONNECTION=sync`, where jobs run at the dispatch.
 
+`queue:work` runs in the one Node process `bespoke` started (E159) — signals and its exit code reach the supervisor directly. Its
+first line names the connection, the queues and the environment it assumed (E139): `Processing jobs of the database connection:
+mail, default — in production (protected)`. A worker that is `development` only because the app's `.env` says so (E170) logs a
+loud warning (`NODE_ENV=development comes from .env, not from the environment: …`) and runs anyway: on a server, set `NODE_ENV`
+in the environment ([where it comes from](../core/README.md#the-environment-node_env)).
+
+## Which queues a worker takes
+
+Without `--queue` a worker takes only the connection's queue (`default`). The auth module of `make:auth` queues its mails on
+`mail`, so a production worker runs with `--queue=mail,default` (the `make:docker` templates do). A worker that is idle looks at
+the other queues once a minute: jobs ready on one of them at two looks in a row, and none of them running, are named once in a
+warning — `Jobs are waiting on the "mail" queue …, which this worker does not take (it takes default)` — instead of waiting
+without a word. `Worker#run({ watchOtherQueues })` sets the interval in seconds, `false` switches it off; with `--queue=*` there
+is nothing to look for.
+
 ## Connections and drivers
 
 ### Configuration
@@ -103,8 +118,9 @@ Node cannot stop a promise from outside. So a timeout is two lines of defence:
 
 1. At `timeout` (seconds, default 60) `job.signal` aborts — pass it on (`fetch(url, { signal: job.signal })`) or check
    `signal.aborted` between steps.
-2. A job that has not stopped `--stop-timeout` seconds later ends the **worker** (exit code 70). A supervisor (systemd, Docker,
-   Kubernetes — `bespoke dev` itself in development) starts a new one; the job comes back after `retryAfter`.
+2. A job that has not stopped `--stop-timeout` seconds later ends the **worker** (exit code 70, the process's own — no launcher
+   in between). A supervisor (systemd, Docker, Kubernetes — `bespoke dev` itself in development) starts a new one; the job comes
+   back after `retryAfter`.
 
 **`retryAfter` must be longer than every job's `timeout` plus `--stop-timeout`** — otherwise a second worker claims a job that is
 still running (Laravel's classic trap). `queue:work` checks every registered job at start and refuses with an explanation.

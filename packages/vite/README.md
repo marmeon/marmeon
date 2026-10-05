@@ -17,6 +17,10 @@ What `bespoke()` does:
   ([Constructor injection](../core/README.md#constructor-injection));
 - **entries:** adds the client entry to `index.html` (`async` in a build: a streamed page hydrates its shell while the rest
   arrives), builds the client to `dist/client` and the SSR entry to `dist/server/ssr.js`;
+- **CSP nonce:** sets Vite's `html.cspNonce` to `CSP_NONCE_PLACEHOLDER` (`@bespokecore/core`), so every script, style and preload
+  tag of `index.html` carries `nonce="__bespoke_csp_nonce__"`; the server puts each response's nonce in its place, or takes the
+  attribute out when the response has none ([Content-Security-Policy](../http/README.md#content-security-policy-e147)). Not with
+  `test: true`;
 - **chunks:** splits the first page's download into `vendor` (third-party packages) and `index` (the framework, the app's entry
   and layouts) — `CLIENT_CHUNKS`; what loads on first use stays in its own chunks (the size budget:
   [@bespokecore/react](../react/README.md#the-size-budget-e75));
@@ -36,7 +40,7 @@ What `bespoke()` does:
 | `lang` | `['modules/*/lang/*.ts', 'lang/*.ts']` | the language files (`virtual:bespoke/lang`) |
 | `routeSinks` | — | more places where client code hands a route name to the framework, besides `ROUTE_SINKS` |
 | `serverModules` | — | more server modules (globs), `'!glob'` takes some out of the conventions ([below](#server-code-in-the-browser-e121)) |
-| `test` | `false` | for `vitest.config.ts`: conditions, injection, virtual modules and the server-import check only — no entries, no HTML, no build settings |
+| `test` | `false` | for `vitest.config.ts`: conditions, injection, virtual modules and the server-import check only — no entries, no HTML, no CSP nonce, no pre-bundling, no build settings |
 
 ## Virtual modules
 

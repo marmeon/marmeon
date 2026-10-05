@@ -8,9 +8,12 @@ this page says which way it points. Found a vulnerability? Report it privately �
 
 Development tools — the error page with code and queries, the devtools, `Server-Timing`, mail previews, Vite's dev server — run
 **only** with `NODE_ENV=development`. Protections — JSON logs, `migrate` asking for `--force`, boot warnings, no lab pages — apply to
-**every other value, and to none**: a staging box or a server where `NODE_ENV` was forgotten is protected like production
-([the environment](../packages/core/README.md#the-environment-node_env)). Set `NODE_ENV` in the server's environment (the image does)
-and never deploy a developer's `.env`.
+**every other value but `test`** (the test runner's: neither tools nor protections) **and to none**: a staging box, a typo or a
+server where `NODE_ENV` was forgotten is protected like production (E139,
+[the environment](../packages/core/README.md#the-environment-node_env)). Where the process sets no `NODE_ENV`, the app's `.env`
+may (E170) — a new app's says `development`. Set `NODE_ENV` in the server's environment (the image does; it wins over `.env`) and
+never deploy a developer's `.env`: a `bespoke start`, `queue:work` or `schedule:work` that runs as development because of one
+warns loudly, and its start line says `development (from .env)`.
 
 ## Requests from other sites (CSRF)
 
@@ -55,18 +58,26 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
 - **Escaping:** React escapes what pages render; HTML written by hand goes through the `html` template of core
   ([escaping](../packages/core/README.md#html-the-escaping-html-template)). Page data travels as JSON in an inert
   `<script type="application/json">`.
+- **Security headers:** the starter kit's `middleware/SecurityHeaders.ts` sends `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: DENY` on every response; its HSTS switch is off until
+  you turn it on — once the site answers over HTTPS only (or let the proxy send `Strict-Transport-Security`).
 - **Behind a proxy**, `X-Forwarded-*` count only from `TRUSTED_PROXIES` — otherwise any client could choose its own IP address
-  (rate limits, logs) and its scheme ([behind a proxy](../packages/server/README.md#behind-a-proxy-e162)).
+  (rate limits, logs) and its scheme ([behind a proxy](../packages/server/README.md#behind-a-proxy-e162)). `*` trusts every
+  hop of `X-Forwarded-For`: use it only behind a proxy that replaces the header (Caddy, `make:docker --nginx`); behind one that appends to it (nginx's
+  `$proxy_add_x_forwarded_for`), name the proxy's address or network, or a client's own entry becomes `ctx.ip`.
 - **No dynamic compression** of documents in the framework (BREACH): assets are compressed at build time; leave documents
   uncompressed at the proxy too ([deployment](deployment.md#proxies-and-http2)).
 
 ## Accounts
 
 - Passwords are hashed with Argon2id ([password hashing](../packages/auth/README.md#password-hashing)); the generated auth module
-  rate-limits sign-in (per address and client), registration (per client) and reset mails
-  ([rate limits](../packages/cache/README.md#rate-limits)).
+  rate-limits sign-in (per address and client together), registration (per client), reset mails (per client and per address)
+  and a signed-in user's password checks — confirmation, password change, "sign out other devices" (per user)
+  ([rate limits](../packages/cache/README.md#rate-limits)). The password change and "sign out other devices" run one at a time
+  per session (`block()`).
 - Registration tells by default whether an address is taken (like Laravel's starter kits). `make:auth --private-registration`
-  answers every registration the same way, in the same time, and mails the owner instead
+  answers every registration the same way, in the same time, and mails the owner instead; the app's routes then ask for a
+  confirmed address (`verified()`)
   ([private registration](../packages/auth/README.md#private-registration---private-registration-e146)).
 - Policies and the `Gate` decide what a user may do
   ([authorization](../packages/auth/README.md#authorization-policies-and-the-gate-e28)).
@@ -83,7 +94,9 @@ names of your own secrets to it. The devtools exist in development only and refu
 - `NODE_ENV=production` (or any protected value) in the server's environment, no development `.env` on the server.
 - `APP_URL=https://…`, a fresh `APP_KEY` per environment, kept in the server's secrets.
 - `contentSecurityPolicy()` in `bootstrap/app.ts` (the starter kit has it); new inline scripts take `ctx.nonce()`.
-- `TRUSTED_PROXIES` set to exactly your proxy; the proxy sets `X-Forwarded-*` itself and does not compress documents.
+- HSTS once the site is HTTPS only — the `SecurityHeaders` switch or the proxy.
+- `TRUSTED_PROXIES` set to exactly your proxy (`*` only behind one that replaces `X-Forwarded-For`); the proxy sets
+  `X-Forwarded-*` itself and does not compress documents.
 - Sessions in `file`, `database` or `redis` (not `cookie`) for apps with sign-in; `SESSION_ENCRYPT=true` if the store is shared.
 - Update in lockstep and read [UPGRADING.md](../UPGRADING.md); security fixes go to the latest minor version
   ([versions](versioning.md)).

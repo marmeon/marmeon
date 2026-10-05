@@ -86,7 +86,11 @@ export default defineMigration({
 - **Where the app is protected** (E139, E164 — every `NODE_ENV` but `development` and `test`: production, staging and a
   missing `NODE_ENV`) `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed` refuse without `--force`:
   `The application is protected (staging (protected)). Pass --force to migrate.` Each first names the environment it assumed
-  (`Environment: staging (protected)`). A deployment runs `bespoke migrate --force`.
+  (`Environment: staging (protected)`). A deployment runs `bespoke migrate --force` (with `make:docker`'s files a one-off
+  container: `docker compose -f compose.production.yaml run --rm web migrate --force`), in the one Node process `bespoke`
+  started (E159). On a development machine the `.env`'s `NODE_ENV=development` (E170) needs no `--force` —
+  `Environment: development (from .env)`; a server whose `.env` says the same is not protected either, so set `NODE_ENV` in the
+  server's environment ([where it comes from](../core/README.md#the-environment-node_env)).
 - **Ownership (E20):** the migrator records which module's migration created which table — what module boundaries and
   `db:types` build on.
 
@@ -137,8 +141,9 @@ type User = Row<'users'>;          // as read — secret columns left out; also 
 ```
 
 `migrate` and `migrate:fresh` regenerate the file when migrations ran — with `NODE_ENV=development` only (E164; `--no-types` skips
-it). Anywhere else — production, staging, a test — the committed file is final, and the app directory may not be writable. `bespoke db:types --check` only compares — for CI: it fails when a migration changed without
-regenerating. Column types: `Generated<T>` (filled in by the database), `Timestamp`, `Decimal`, `JsonColumn` (read parsed, written
+it). Anywhere else — production, staging, a test — the committed file is final, and the app directory may not be writable (a
+container's image, systemd's `ProtectSystem=strict`). `bespoke db:types --check` only compares — for CI: it fails when a migration
+changed without regenerating. Column types: `Generated<T>` (filled in by the database), `Timestamp`, `Decimal`, `JsonColumn` (read parsed, written
 as `JSON.stringify(value)`), `Secret<T>`.
 
 ## Repositories

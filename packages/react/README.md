@@ -197,7 +197,8 @@ const form = useForm('user-profile.update', { user: profile.id }, { name: profil
   the input survives Back/Forward, in memory only; passwords, token-, secret- and card-like fields and files are never kept.
 - **By controller**, to any URL: `useForm<UpdateUserProfileController>(initial)` then `form.put(url)`.
 - **`<Form route>`** — uncontrolled (E64): fields are named inputs read from the DOM, `form.field('abilities[]')` checks a
-  name and gives `aria-invalid`; without JavaScript a real form with `_token` (and `_method`). `confirm`, `validate`,
+  name and gives `aria-invalid`; without JavaScript a real form with `_method` — and `_token` when the page has one (with a
+  session; a browser's plain post passes by Fetch Metadata or `Origin` anyway, E143). `confirm`, `validate`,
   `guard`, `remember`, `resetOnSuccess`; a GET route's form writes its query.
 
 ```tsx

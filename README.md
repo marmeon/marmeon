@@ -31,7 +31,7 @@ export default function Show({ profile }: PageProps<ShowUserProfileController>) 
 }
 ```
 
-Status: 0.1.0 — prepared, not published yet. MIT licence ([LICENSE](LICENSE), copyright BespokeCode). Node 26.10 or newer, pnpm 12.
+Status: 0.1.0 — prepared, not published yet. MIT licence (`LICENSE`, copyright BespokeCode). Node 26.10 or newer, pnpm 12.
 
 ## Principles
 
@@ -39,7 +39,8 @@ Status: 0.1.0 — prepared, not published yet. MIT licence ([LICENSE](LICENSE), 
    the React component. No `any` at framework boundaries; type guarantees are tested with `@ts-expect-error`.
 2. **No global state** — no facades, no singletons holding request data. One `Application` instance, a request scope in the
    container; tests run in parallel, HMR registers nothing twice.
-3. **Web standards first** — `Request`, `Response`, `FormData`, `crypto.subtle`, `URL`.
+3. **Web standards first** — `Request`, `Response`, `FormData`, `URL`, Fetch Metadata, `BroadcastChannel`; Node's own modules
+   where they are faster (the `Encrypter` runs on `node:crypto`).
 4. **TypeScript runs natively on Node** — Node strips the types (`erasableSyntaxOnly`): no parameter properties, no enums, no
    decorators. Constructor injection works from generated injection lists instead
    ([constructor injection](packages/core/README.md#constructor-injection)).
@@ -54,9 +55,12 @@ Status: 0.1.0 — prepared, not published yet. MIT licence ([LICENSE](LICENSE), 
    too (`apps/docs`).
 
 Security comes before parity with Laravel or Inertia: no page props in `history.state` or browser storage, `no-store` for
-signed-in users, read-only islands, devtools only with `NODE_ENV=development`, redaction of everything recorded.
+signed-in users, read-only islands, devtools only with `NODE_ENV=development`, redaction of everything recorded
+([Security](#security)).
 
 ## Getting started
+
+Node 26.10 or newer and pnpm 12 (new apps pin `pnpm@12.9.0` in `packageManager`) — or npm with `--npm`:
 
 ```sh
 pnpm create bespoke-app my-app        # the starter kit: sign-in and registration, a home page, devtools, oxlint, Vitest — then a first commit
@@ -83,8 +87,13 @@ blank app instead, `--docker` adds the files to run it in containers, `--npm` us
 
 `bespoke dev` sets `NODE_ENV=development`: the error page with code and queries, the devtools under `/_bespoke/devtools` and the
 in-page bar are on ([@bespokecore/devtools](packages/devtools/README.md)); in development mails go to the log, the confirmation
-link of a registration with them. Production: `bespoke build`, then `bespoke start`
-([@bespokecore/cli](packages/cli/README.md#commands), [deployment](docs/deployment.md)).
+link of a registration with them. The app's `.env` says `NODE_ENV=development` too (E170): every other `bespoke` command on this
+machine — `migrate` (which then writes the table types without `--force`), `tinker`, `queue:work` — runs as development. Any
+other value but `test`, and none, is protected like production (E139, [the environment](packages/core/README.md#the-environment-node_env)).
+`.env` is this machine's file: on a server, set `NODE_ENV`, `APP_KEY` and `APP_URL` in the real environment — it wins over
+`.env` — and never deploy a developer's `.env` (a `bespoke start` that runs as development because of it says so loudly).
+Production: `bespoke build`, then `bespoke start` ([@bespokecore/cli](packages/cli/README.md#commands),
+[deployment](docs/deployment.md)).
 
 An app is a composition root and its modules:
 
@@ -146,6 +155,14 @@ The framework is released in **lockstep** (E152): every `@bespokecore/*` package
 
 The whole policy, the first day after a release and how to upgrade: [docs/versioning.md](docs/versioning.md).
 
+## Security
+
+What an app protects by itself — CSRF by Fetch Metadata and `Origin` (E143), `Secure` cookies from an `https://` `APP_URL`,
+session ids the stores never see (E144), a strict Content-Security-Policy with a nonce per response (E147), tabs that follow a
+sign-out (E148), `Clear-Site-Data` on sign-out, protections that fail closed outside development (E139) — and what it leaves to
+you: [docs/security.md](docs/security.md). Report a vulnerability privately, never in a public issue: GitHub's private
+vulnerability reporting, as [SECURITY.md](SECURITY.md) describes (security fixes go to the latest minor version).
+
 ## Guides
 
 [Getting started](docs/getting-started.md) · [Deployment](docs/deployment.md) · [Security](docs/security.md) ·
@@ -154,9 +171,10 @@ under `/guides/…`, beside the packages' READMEs.
 
 ## Contributing
 
-Contributions are welcome under the Developer Certificate of Origin — every commit signed off (`git commit -s`); how to set up,
-check, add a changeset and how a release is made: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities go through GitHub's private
-vulnerability reporting, never a public issue ([SECURITY.md](SECURITY.md)).
+Contributions are welcome under the Developer Certificate of Origin (DCO 1.1, no contributor licence agreement) — every commit
+signed off (`git commit -s`); how to set up, check (`pnpm run ci`), add a changeset and how a release is made:
+[CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities go through GitHub's private vulnerability reporting, never a public issue
+([SECURITY.md](SECURITY.md)).
 
 ## The repository
 
@@ -166,11 +184,12 @@ apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: what create-bespoke-app --minimal writes (pnpm template:sync), and what make:auth is tested against
 apps/docs         these docs: the READMEs and docs/*.md as a BespokeCore app (pnpm docs:dev; apps/docs/Dockerfile, deploy/docs)
 docs              the guides: getting started, deployment, security, versions
-scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs, the tarballs
+scripts/ci.ts     pnpm run ci — its 14 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
+deploy/docs       the docs' Compose file and Caddyfile (one server, E142)
 UPGRADING.md      what changes for apps from one version to the next
 .changeset        Changesets: the pending changes, one fixed group (pnpm changeset; scripts/check-changesets.ts checks the release rules)
-.github/workflows ci.yml (pnpm run ci, one job per suite) and release.yml (the version pull request, then staged publishing)
+.github/workflows ci.yml (pnpm run ci in six jobs) and release.yml (the version pull request, then staged publishing)
 ```
 
 ```sh
@@ -183,6 +202,14 @@ pnpm pack:smoke        # create-bespoke-app from the tarballs, outside the repos
 pnpm template:sync     # apps/blank-app → the template of create-bespoke-app (a test fails while they differ)
 pnpm changeset         # a changeset for your change (CONTRIBUTING.md); pnpm check-changesets checks the release rules
 ```
+
+`pnpm run ci` runs 14 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
+`typecheck`, `lint`, `test`, then `test:pgsql`, `test:redis` and `test:s3` against this repository's containers (`compose.yaml`,
+started as needed), `size` (the bundle limits), `types:check` (the apps' generated route and table types are current), `docs:check`,
+`pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-changesets`.
+`pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
+`--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `ci.yml` splits the parts
+into six jobs that run side by side (the checks, the tarballs, the image, Postgres, Redis, S3).
 
 ### Benchmarks
 

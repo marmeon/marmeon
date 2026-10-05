@@ -13,13 +13,15 @@ pnpm add @opentelemetry/sdk-trace @opentelemetry/context-async-hooks @openteleme
 ```
 
 `bespoke discover` registers its `OtelServiceProvider` like any installed package. `@opentelemetry/api` is an optional peer the
-app installs; the package itself depends on nothing of the SDK.
+app installs; the package itself depends on nothing of the SDK. Install the SDK as **dependencies**, not dev dependencies: it runs
+in production, and a production install (`pnpm install --prod`, `make:docker`'s image) leaves dev dependencies out.
 
 ## Starting the SDK
 
 The SDK must be registered **before the app boots** — the provider looks for it while booting; without one it subscribes to
-nothing. Start it with Node's `--import`, in every process of the app (server, `queue:work`, `schedule:work` inherit
-`NODE_OPTIONS`):
+nothing. Start it with Node's `--import`, in every process of the app — `bespoke start`, `queue:work` and `schedule:work` each
+run in the one Node process `bespoke` started (E159), which reads `NODE_OPTIONS` itself. With `make:docker`'s files put it into
+`.env.production` (every role reads it) or an `Environment=` line of the systemd units:
 
 ```sh
 OTEL_SERVICE_NAME=shop OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 NODE_OPTIONS='--import ./bootstrap/telemetry.ts' bespoke start

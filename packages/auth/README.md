@@ -25,14 +25,20 @@ bespoke make:auth [--adapter=react] [--private-registration] [--force]
 
 Copies `stubs/<adapter>/modules/auth` of this package to the app's `modules/auth/` (`react` is the only adapter with templates),
 adds `import auth from '#modules/auth'` and `modules: [auth, …]` to `bootstrap/app.ts` (or says how), names the packages the
-module imports that `package.json` lacks (`@bespokecore/cache`, `mail`, `queue`, `react`, `scheduler`, `session`, `mjml`,
-`valibot`, …; it also imports [@bespokecore/i18n](../i18n/README.md)) and — when nothing is missing — runs
-`bespoke route:types`. It needs `config/app.ts` exporting `AppConfig` (`APP_NAME`, `APP_URL`) — the app skeleton has one. An
-existing `modules/auth` is never touched without `--force`. Then: `bespoke migrate` (with `NODE_ENV=development`, so it writes the table types), a jobs table for its queued mails
-(`bespoke make:queue-table`, once) and `MAIL_*` in `.env`. The lint preset and the devtools belong to the app, not to the
-module — `make:auth` names them while the app has neither: `bespoke make:lint-config` ([Lint](../cli/README.md#lint)) and
-`pnpm add -D @bespokecore/devtools` ([@bespokecore/devtools](../devtools/README.md)). An app from `create-bespoke-app` has both
-(E150) — its starter kit is this module, a home page and the blank app ([create-bespoke-app](../create-bespoke-app/README.md)).
+module imports that `package.json` lacks (`@bespokecore/cache`, `cli`, `i18n`, `mail`, `queue`, `react`, `scheduler`,
+`session`, `mjml`, `valibot`, …; `@bespokecore/testing` and `vitest` for its tests) and those it has only as dev dependencies
+(production runs the module through `@bespokecore/cli` — `bespoke start`, the worker, the scheduler — so `pnpm install --prod`
+must keep them), and — when nothing is missing — runs `bespoke route:types`. It needs `config/app.ts` exporting `AppConfig`
+(`APP_NAME`, `APP_URL`) — the app skeleton has one. An existing `modules/auth` is never touched without `--force`. Then:
+`bespoke migrate` (with `NODE_ENV=development`, so it writes the table types) and `MAIL_*` in `.env`. Its mails go through the
+queue, on its `mail` queue: a jobs table (`bespoke make:queue-table`, once) and a worker — `bespoke dev` starts one, production
+runs `bespoke queue:work --queue=mail,default` ([@bespokecore/queue](../queue/README.md)); its expired tokens are pruned at night
+by the scheduler (`bespoke schedule:work`, or `schedule:run` from cron). The lint preset, the devtools and the
+Content-Security-Policy belong to the app, not to the module — `make:auth` names them while the app has none:
+`bespoke make:lint-config` ([Lint](../cli/README.md#lint)), `pnpm add -D @bespokecore/devtools`
+([@bespokecore/devtools](../devtools/README.md)) and `contentSecurityPolicy()` of [@bespokecore/http](../http/README.md) among
+the global middleware of `bootstrap/app.ts` (a nonce per page, E147). An app from `create-bespoke-app` has all three (E150) —
+its starter kit is this module, a home page and the blank app ([create-bespoke-app](../create-bespoke-app/README.md)).
 
 What the module holds:
 
@@ -41,7 +47,7 @@ What the module holds:
 | `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the job, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
 | `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP) and `verification` ([@bespokecore/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
-| `routes.ts` | `/login`, `/register`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password`, `/settings/devices/logout`, `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…` (behind `authenticate()`) |
+| `routes.ts` | `/login`, `/register`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…` (behind `authenticate()`) |
 | `api-routes.ts` | `GET /api/user` behind `authenticate('api')` — Sanctum's `/api/user` |
 | `controllers/` | 22 single-action controllers with their requests (`LoginController`: throttled per e-mail and IP, counted before the check) |
 | `views/`, `layouts/` | `Login`, `Register`, `ForgotPassword`, `ResetPassword`, `ConfirmPassword`, `VerifyEmail`, `Dashboard`, `Security`, `AccessTokens`; `AppLayout`, `SettingsLayout` |
@@ -72,12 +78,15 @@ being a cheap way to find out who has an account. `--private-registration` write
   what was typed into the form is thrown away.
 - **No live check of the address:** the schema asks no database — live validation checks the e-mail's form only.
 - **A confirmed address first:** nobody is signed in by registering; the new account signs in like any other and sees only the
-  verification notice until it clicks the link from its inbox while signed in (`verified()` on the app's routes). Whoever signed up
-  first with somebody else's address cannot confirm it — and the owner takes it over with a password reset.
+  verification notice until it clicks the link from its inbox while signed in — `verified()` on every route of the module except
+  `/logout` and the verification notice, link and resend (`/dashboard`, `/confirm-password`, the settings and the tokens). Whoever
+  signed up first with somebody else's address cannot confirm it — and the owner takes it over with a password reset.
 
 It writes `controllers/RegisterController.ts`, `controllers/ShowRegistrationSentController.ts`, `views/Register.tsx`,
 `views/RegistrationSent.tsx`, `jobs/SendAccountExistsMailJob.ts`, `mail/AccountExistsMail.ts`, `routes.ts`, `index.ts` and
 `registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`); the texts are in the default `lang/en.ts`.
+The address change on the security page stays as it is: it answers "taken" for an address with an account — only to a signed-in
+user with a confirmed address in sudo mode, whose own address changes (and needs confirming again) whenever the new one is free.
 The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
 queue worker run. The web app runs it — `verified()` on every page of its modules; an unconfirmed account sees the notice.
 
@@ -153,7 +162,8 @@ return this.redirect().intended().route('dashboard');
 
 ### Remember me (E26)
 
-`attempt(…, { remember: true })` sets an encrypted, HttpOnly cookie (`AUTH_REMEMBER_COOKIE`, `remember_web`) valid for
+`attempt(…, { remember: true })` sets an encrypted, HttpOnly cookie (`AUTH_REMEMBER_COOKIE`, `remember_web`; `Secure` and
+`SameSite` as the session's, [E162](../session/README.md#configuration)) valid for
 `AUTH_REMEMBER_DAYS` from the sign-in — never extended by use. One token per device in `remember_tokens`: the cookie is
 `<selector>.<validator>`, the table keeps the validator only as SHA-256. Every use rotates the validator (a second tab racing
 the rotation is let through for 60 s); an old validator coming back later means the cookie was copied — every token of the

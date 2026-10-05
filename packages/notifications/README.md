@@ -5,7 +5,7 @@ Notifications (E92): a class per notification — a stable name, the schema of i
 channels `mail` and `database`, read back from an **Inbox that is always bound to its recipient**. The channel contract is
 open: `live` comes with [@bespokecore/live](../live/README.md#notifications-the-live-channel) (W6.10: once the delivery
 committed, a hint on `notificationsChannel(recipient)` — the bell and the list of the recipient's open tabs reload); Web Push
-is planned with `@bespokecore/pwa` (W8.6, E93).
+is planned with `@bespokecore/pwa` (E93) — not part of 0.1.0.
 
 ```ts
 // modules/auth/notifications/NewSignInNotification.ts — and `notifications: [NewSignInNotification]` in defineModule
@@ -99,7 +99,7 @@ export class UserRecipients implements RecipientResolver<'user'> {
   `@bespokecore/mail` (and a queue).
 - **`live`** — with `@bespokecore/live`, which registers it: once the delivery committed, the recipient's open tabs reload their
   bell and list. A hint from a worker needs `LIVE_DRIVER=redis` ([configuration](../live/README.md#configuration)).
-- **Your own** (Web Push in W8.6): add the name and what a notification needs for it to `interface NotificationChannelMap`,
+- **Your own** (Web Push will be one): add the name and what a notification needs for it to `interface NotificationChannelMap`,
   and register the channel at boot — this is how `@bespokecore/live` adds `live`:
 
   ```ts
@@ -114,7 +114,7 @@ export class UserRecipients implements RecipientResolver<'user'> {
 ### Web Push (E93): generic payloads
 
 A push message goes through the browser vendor's push service and shows on a **lock screen**. The planned Web Push channel
-(W8.6, with `@bespokecore/pwa`) therefore sends a **generic** text by default — "You have a new notification" —, never the
+(with `@bespokecore/pwa`) therefore sends a **generic** text by default — "You have a new notification" —, never the
 notification's content: the details load after the click, behind authentication, from the inbox. Opting into more text will
 be per notification and explicit.
 

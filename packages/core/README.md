@@ -9,8 +9,9 @@ It has no provider of its own and is not discovered — it is what discovery run
 | Import | What |
 | --- | --- |
 | `@bespokecore/core` | everything below |
-| `@bespokecore/core/register` | the Node loader hook that writes the injection lists of app code (`node --import`; `bespoke` loads it itself) |
-| `@bespokecore/core/vite` | the same transform as a Vite plugin (`bespokeInjection()` — part of `bespoke()` in [@bespokecore/vite](../vite/README.md)) |
+| `@bespokecore/core/environment` | `environment` and `resolveEnvironment` alone, without dependencies — what `bespoke` loads before anything else ([The environment](#the-environment-node_env)) |
+| `@bespokecore/core/register` | the Node loader hook that writes the injection lists of app code (`node --import`; `bespoke` loads it itself) — in a protected environment from `bespoke build`'s lists ([Precomputed lists](#precomputed-lists-in-production-e138)) |
+| `@bespokecore/core/vite` | the same transform as a Vite plugin (`bespokeInjection()` — part of `bespoke()` in [@bespokecore/vite](../vite/README.md)) and `CSP_NONCE_PLACEHOLDER` |
 | `@bespokecore/core/diagnostics` | the observation channels ([Diagnostics](#diagnostics-bespokecorecorediagnostics-e118)) |
 
 ## The application: `defineApplication`
@@ -48,7 +49,10 @@ Packages add their own options by declaration merging: `middleware` and `clientR
 `createApplication(options)` creates and boots it and returns the `Application` (`root`, `container`, `modules`, `packages`
 — the discovered ones —, `options`). In order: discovery, configuration (validated and bound), the core's bindings
 (`Logger`, `Clock`, `Redactor`, `ErrorSolutions`, `HealthChecks`, `EventDispatcher`), every provider's `register()`,
-`override`, every provider's `boot()`. `app.shutdown()` — also `await using app = …` — runs every provider's `shutdown()`
+`override`, every provider's `boot()` — then the warnings of the boot, each once per process (a `.env.{NODE_ENV}` that sets
+`NODE_ENV`, a read-only `.bespoke/`, stale build artifacts; the packages' own, like the log mailer in production). A worker of
+`bespoke start --workers=N` keeps its boot's warnings to itself: the primary booted the same app and said them once
+(`CLUSTER_WORKER`, set by the primary; warnings after the boot are the worker's as always). `app.shutdown()` — also `await using app = …` — runs every provider's `shutdown()`
 in reverse order, once; each gets its turn even if an earlier one fails (the errors are thrown together).
 
 ## Modules: `defineModule`
@@ -140,8 +144,14 @@ registered by every app that installs it — no list in the app:
 - **One manifest per set of resolution conditions (E160):** `.bespoke/manifest.json` for the published packages (an installed
   app, production) and `.bespoke/manifest.source.json` inside the framework's monorepo (`@bespokecore/source`) — switching
   between `bespoke dev` and `bespoke start` there rewrites neither. Module paths are relative to the app, so a manifest written
-  in a Docker build stage works where the app is copied to. `bespoke build` writes the production manifest.
-- **Read-only `.bespoke/`:** when the manifest is out of date and cannot be written (`EACCES`, `EROFS`), the app discovers in
+  in a Docker build stage works where the app is copied to. Any other set gets its own file (Vitest adds `development`:
+  `manifest.development+source.json`). `bespoke build` writes the production manifest.
+- **Published packages run their `dist/`:** Node does not strip types under `node_modules`. A package that reaches Node with its
+  TypeScript sources — packed with `npm pack` (which ignores `publishConfig.exports`), a workspace package copied with its
+  workspace manifest, the `@bespokecore/source` condition outside the framework's monorepo — fails the start with Node's
+  `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`; `bespoke` names the code and the solution (install the package as it is
+  published). `bespoke` itself, copied under `node_modules` by `pnpm deploy`, runs its `dist/`.
+- **Read-only `.bespoke/`:** when the manifest is out of date and cannot be written (`EACCES`, `EPERM`, `EROFS`), the app discovers in
   memory and logs one warning — it starts, never fails with `EACCES`. Run `bespoke build` (or `bespoke discover`) where it can
   write, e.g. in the image's build stage.
 - `defineApplication({ discover: false })` registers nothing of the installed packages (`providers` then lists them by hand).
@@ -167,17 +177,19 @@ export const LabConfig = defineConfig('lab', {
 });
 ```
 
+`environment.isTest()`, `environment.name()` (`undefined` when unset or empty) and `environment.fromDotEnv()` complete it.
 `environment.describe()` names it the way start lines do: `production (protected)`, `staging (protected)`, `development`,
 `test`, `unset NODE_ENV (protected, like production)`.
 
 **Where it comes from (E170)** — one resolution, `resolveEnvironment(root)`, done by `bespoke` before anything of the app loads
-(and by `createApplication` for a script that boots the app itself):
+(and by `createApplication` for a script that boots the app itself; an app given its own `env` decides for itself):
 
 1. the process's `NODE_ENV` — the supervisor, the Dockerfile, the shell. It always wins;
 2. else the app's **`.env`** — only the base file: `.env.{NODE_ENV}` is chosen by `NODE_ENV` and cannot set it (a `NODE_ENV` there
    is ignored, with a warning). `.env.example` carries `NODE_ENV=development`, so on a development machine every command
    (`migrate`, `tinker`, `queue:work`) is development;
-3. else none — protected like production; `bespoke start` then sets `production`, `bespoke dev` `development`.
+3. else none — protected like production; `bespoke start` then sets `production`, `bespoke dev` `development` (the `fallback`
+   option).
 
 The result is written to `process.env.NODE_ENV` (the one exception to "`process.env` is never modified"), so config definitions,
 the CLI, the load hook and the server all read the same value. A value from `.env` is named as such — `development (from .env)`,
@@ -217,7 +229,8 @@ class ShowLoginController {
   definition once, however often it is listed.
 - **`resolve`** gets the schema's output and returns the typed value; `ConfigOf<typeof X>` is its type. Defaults belong in
   the schema (`v.optional(…, '3000')`); every value is a string until the schema transforms it.
-- **`process.env` is never modified:** the files are parsed with `util.parseEnv`; tests pass `createTestApp(app, { env })`.
+- **`process.env` is never modified** (except the resolved `NODE_ENV`, [The environment](#the-environment-node_env)): the files
+  are parsed with `util.parseEnv`; tests pass `createTestApp(app, { env })`.
 - Each package's README lists its variables (`PORT` → [@bespokecore/server](../server/README.md#configuration), `LOG_LEVEL` →
   [@bespokecore/log](../log/README.md#configuration), …); `.env.example` of `apps/web-app` shows them together.
 
@@ -271,7 +284,8 @@ The transform parses every app module with a constructor (oxc-parser) — at eac
 the build writes `.bespoke/injections.json`, per module of the app the insertions the hook would make (the same analysis,
 `analyzeInjections` + `insertionsOf`, line for line) and the SHA-256 of the source they were derived from. In a protected
 environment (production, staging, no `NODE_ENV` — [The environment](#the-environment-node_env)) the hook applies them to every
-module whose source is unchanged; oxc-parser is not loaded at all (it is imported on the first parse only). The app stays `.ts`
+module whose source is unchanged; oxc-parser is not loaded at all (it is imported on the first parse only — also by
+discovery's declaration reader, which an up-to-date manifest never needs). The app stays `.ts`
 (no compiled copy, no second code path); the file holds no paths of the build machine (messages name a module relative to the
 app).
 
@@ -585,9 +599,10 @@ export class PaymentsServiceProvider {
 `solve` may look things up (the database's solution asks the migrator for pending migrations) and may return nothing.
 `ErrorSolutions` (`app.container.make(ErrorSolutions)`) holds every provider's solutions, then the core's, and `find(error,
 { app })` looks through the error and its causes. The core brings solutions for the container's errors, the injection
-transform and invalid configuration; the packages add theirs (`http`: an undefined route name with "did you mean", a missing
+transform, invalid configuration and a package that reaches Node with its TypeScript sources (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`,
+[Discovery](#discovery-the-bespoke-field-and-bespoke-discover)); the packages add theirs (`http`: an undefined route name with "did you mean", a missing
 view R2; `database`: a missing table and the pending migrations; `encryption`: a missing `APP_KEY`). `bespoke` prints them
-too when the app cannot start.
+too when the app cannot start, after the error and Node's code (`ERR_…`) when it has one.
 
 ## HTML: the escaping `html` template
 

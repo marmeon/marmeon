@@ -43,7 +43,9 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   Whoever may see the page may hear its hints — the same policy, in one place. The stream (`GET /_bespoke/live`) refuses any
   token that does not fit — a channel rewritten (`users.1` → `users.2`), a token of another session or of one that ended — with
   a 403 and no stream at all. The tokens travel in the stream's query (`EventSource` sends no headers of its own): without the
-  session's cookie they open nothing.
+  session's cookie they open nothing. A page that signs a channel keeps its session — also a guest's, who otherwise gets none
+  (E143: a new session is kept only when something needs it, [`session.persist()`](../session/README.md#new-sessions-are-only-kept-when-used));
+  a route without a session (outside the `web` group) cannot sign one, and a stream without a session is refused (401).
 - **After the commit (E107).** `refresh()` inside `connections.transaction(…)` ([transactions](../database/README.md#transactions))
   goes out once it committed (`afterCommit`); a rollback sends nothing. The other tab never reloads what is not there yet.
 - **Not to the tab that caused it.** Every request of a tab that follows live hints names its document
@@ -142,5 +144,5 @@ app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // al
 
 ## Not yet
 
-WebSockets and presence channels (W8.4) — the hint protocol stays; a Postgres `LISTEN/NOTIFY` backend (noted for later). A hint sent
+WebSockets and presence channels (not part of 0.1.0) — the hint protocol stays; a Postgres `LISTEN/NOTIFY` backend (noted for later). A hint sent
 while Redis is unreachable is not retried.

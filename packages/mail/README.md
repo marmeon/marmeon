@@ -36,14 +36,15 @@ MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASS
 ```
 
 `MAIL_SECURE=true` means TLS from the first byte (port 465); otherwise STARTTLS when the server offers it. `MailConfig`
-(`config.mailer`, `config.from`, `config.smtp`, `config.previews`, `config.production`) is the package's config class. The web
+(`config.mailer`, `config.from`, `config.smtp`, `config.previews`, `config.protected`) is the package's config class. The web
 app's `.env.test` sets `MAIL_MAILER=array`.
 
 > **`log` is the default in every environment — set `MAIL_MAILER` in production.** The log mailer sends nothing: it writes each
 > mail's text to the log, its links and tokens (password reset, e-mail verification, signed URLs) in plain text — in development
 > that is the point (the links are clicked from there), in production it puts working reset links into the log and leaves users
 > without their mails. Where the app is protected (E139: `production`, `staging`, any `NODE_ENV` but `development` and `test`,
-> and none) with `MAIL_MAILER=log` (or unset) the boot therefore warns once per process (`LOG_MAILER_WARNING`):
+> and none) with `MAIL_MAILER=log` (or unset) the boot therefore warns once per process — `bespoke start --workers=N` once, in
+> its primary — (`LOG_MAILER_WARNING`):
 > `MAIL_MAILER=log outside development and tests: no mail is sent — every mail is written to the log instead, …`. It is a
 > warning, not an error (like Laravel's `log` mailer, decided 04.10.): a deployment may route mails through the log on purpose.
 
@@ -77,7 +78,8 @@ with its links — and queues the finished `MailMessage` as the framework job `b
 - **Inside a transaction** (E107) it is a dispatch like any other: on the database queue a row in the transaction, else held
   until the commit — a rolled-back registration sends nothing ([what joins](../database/README.md#what-joins-what-does-not)).
 - Needs `@bespokecore/queue` (an optional peer: without it `queue()` says what to install). A worker must take the queue:
-  `bespoke queue:work --queue=mail,default`.
+  `bespoke queue:work --queue=mail,default` (`make:docker`'s compose file and systemd unit do); a worker without it names the
+  waiting `mail` queue in a warning ([which queues a worker takes](../queue/README.md#which-queues-a-worker-takes)).
 - Tokens that must stay the same over the mail's retries (a reset token) are made **before** the mail is queued — the web app
   queues a job that makes the token and queues the mail (two hops), so the request's answer time does not depend on the account.
 
@@ -106,7 +108,9 @@ in (nor should a `Host` header ever decide where a link points). `compose()` ref
 `GET /_bespoke/mail` lists every mail class with a `static preview(context)` (exported from `modules/<module>/mail/*.ts`);
 `/_bespoke/mail/<module>/<Class>` shows one — subject, sender, recipients, attachments above the HTML in a sandboxed frame (no
 script of a template runs); `?locale=de`, `?text`, `?raw` (the HTML alone, sandboxed by its CSP too: no script of it runs on the
-app's origin). Previews build their mail from factory data (`make()`, never `create()`):
+app's origin). The pages bring their own Content-Security-Policy — no script at all, only their and the mail's inline styles,
+framed only by the app's origin — which an app's [`contentSecurityPolicy()`](../http/README.md#content-security-policy-e147)
+leaves alone (E147). Previews build their mail from factory data (`make()`, never `create()`):
 
 ```ts
 static preview({ make, locale }: MailPreviewContext) {

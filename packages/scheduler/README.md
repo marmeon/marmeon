@@ -115,7 +115,12 @@ Prune commands of the framework to schedule — each one statement (or one guard
 In production run **one `schedule:work` per server** under a supervisor (or `schedule:run` from cron every minute:
 `* * * * * cd /app && bespoke schedule:run` — it waits for the runs and exits 1 if one failed), next to the web processes and
 `queue:work`; `onOneServer()` tasks then run once across them. **SIGTERM/SIGINT:** no new tick; runs still going get
-`--stop-timeout` seconds, then the process ends and frees their overlap locks. `bespoke dev` starts it with the server when a
+`--stop-timeout` seconds, then the process ends and frees their overlap locks. `schedule:work` runs in the one Node process
+`bespoke` started (E159); its first line names its tasks and the environment `environments(…)` compares against (E139:
+`Running the schedule every minute: 3 tasks (…) — in production (protected)`). As `development` only because the app's `.env`
+says so (E170) it logs a loud warning and runs anyway — set `NODE_ENV` in the supervisor's environment
+([where it comes from](../core/README.md#the-environment-node_env)); a crontab line gets the server's environment from nowhere, so
+name it there (`* * * * * cd /app && NODE_ENV=production bespoke schedule:run`). `bespoke dev` starts it with the server when a
 module has a schedule (E101). `bespoke make:docker` writes the role as a `scheduler` container next to `web` and `worker` (one
 image, `init: true`, no health check) and as `deploy/systemd/scheduler.service`
 ([@bespokecore/cli](../cli/README.md#production-files-makedocker-e141)).

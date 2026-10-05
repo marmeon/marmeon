@@ -30,6 +30,11 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
   containers, or on a machine with several cores with `bespoke start --workers=N` (`node:cluster`: one port, N servers, the
   primary passes signals on, each worker drains, exit 0 when all exited 0). Run **one scheduler** per deployment (or per server
   with `onOneServer()` tasks and a shared cache) and as many workers as the queue needs.
+- **The worker's queues:** without `--queue` a worker takes only `default` — the auth module's mails wait on `mail`. Name every
+  queue the app uses, in priority order (`--queue=mail,default`), or `--queue=*`. An idle worker names a queue nobody takes in a
+  warning (`Jobs are waiting on the "mail" queue …`) once it saw jobs ready there twice in a row.
+- **Boot warnings once:** with `--workers=N` the primary says the boot's warnings (log mailer, cookies without `Secure`, stale
+  build artifacts); the workers keep theirs to themselves.
 - **One process:** `bespoke start` *is* the server — no launcher in front — so the supervisor's SIGTERM, a worker's exit code and
   `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` reach exactly one Node process.
 - **An init process:** Node as PID 1 reaps no zombies, and the kernel drops a signal to PID 1 that has no handler yet — a
@@ -84,9 +89,9 @@ into the image: Node uses a cache directory only when it can write to it.
 | `NODE_ENV` | `production` (set by the image; `staging` is protected the same way, E139) |
 | `APP_KEY` | the key from `bespoke key:generate --show` — the same on every instance; a secret |
 | `APP_PREVIOUS_KEYS` | when you rotate: the old key(s), comma-separated — sessions, encrypted cookies and signed links made with them keep working until they expire |
-| `APP_URL` | `https://…` — cookies get `Secure` from it (E162); a protected app on `http://` logs a warning at boot |
-| `HOST`, `PORT` | `0.0.0.0` / `3000` in a container; `127.0.0.1` behind a proxy on the same machine |
-| `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` when only your proxy can reach the app — see [Proxies](#proxies-and-http2) |
+| `APP_URL` | `https://…` — cookies get `Secure` from it (E162); a protected app on `http://` logs a warning at boot. Over plain HTTP browsers also ignore the `Clear-Site-Data` of a sign-out (secure origins only): a staging box without TLS keeps its HTTP cache after a sign-out |
+| `HOST`, `PORT` | `0.0.0.0` / `3000` in a container; `127.0.0.1` behind a proxy on the same machine (`PORT=0` takes a free port — the start line names it) |
+| `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` when only your proxy can reach the app and it replaces `X-Forwarded-For` (Caddy, the `--nginx` template) — see [Proxies](#proxies-and-http2) |
 | `SHUTDOWN_DELAY` | `5` behind a load balancer that learns from its probes — see [Stopping](#stopping-without-dropped-requests) |
 | `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; `pnpm add nodemailer`) |
 
@@ -161,7 +166,7 @@ the visible one kept its own.
 `X-Accel-Buffering: no` for live streams; `proxy_read_timeout` (60 s default) must be longer than the live heartbeat (20 s,
 `LIVE_HEARTBEAT`) — the template sets 75 s; `proxy_http_version 1.1` with `Connection ""` for keep-alive to the app (the default
 from nginx 1.29.7 on); **set** the forwarded headers (`X-Forwarded-Proto $scheme`, `X-Forwarded-Host $host`,
-`X-Forwarded-For $proxy_add_x_forwarded_for`). HTTP/3 in nginx is still experimental.
+`X-Forwarded-For $remote_addr` — replaced, not appended to the client's list). HTTP/3 in nginx is still experimental.
 
 **kamal-proxy, Traefik, PaaS routers:** check that they do not buffer responses (Traefik flushes streams; kamal-proxy buffers by
 default and has a 30 s response timeout — test live updates there before relying on them) and that they speak HTTP/2 to the
@@ -170,9 +175,12 @@ container.
 
 **`TRUSTED_PROXIES`** (E162): only from these addresses do `X-Forwarded-For` (the client's address for rate limits, logs and
 `RequestInfo`) and `X-Forwarded-Proto`/`-Host` (the request's URL: `https://example.com/…` — the app's own origin for the CSRF check, besides `APP_URL`'s) count. Without it the headers are
-ignored. Behind Compose's Caddy or nginx, where the web container publishes no port, `*` is right (the template sets it); with a
+ignored. Behind Compose's Caddy, where the web container publishes no port, `*` is right (the template sets it); with a
 proxy on the host, `127.0.0.1`; in a cluster, the ingress' range (`10.0.0.0/8`). A proxy that forwards a client's
-`X-Forwarded-*` unchanged makes them the client's word — let the proxy set them.
+`X-Forwarded-*` unchanged makes them the client's word — let the proxy set them. `*` trusts every entry of `X-Forwarded-For`, so
+`ctx.ip` becomes its left-most one: right behind Caddy and the `--nginx` template, which replace the header, but not behind a
+proxy that appends the client's address to what the client sent (nginx's `$proxy_add_x_forwarded_for`) — there name the proxy's
+address or the Compose network's subnet (as the docs below do), so the right-most entry, the one the proxy added, counts.
 
 **Compression:** the assets arrive precompressed (`.br`/`.gz` from `bespoke build`, `immutable` for a year); documents and JSON
 are not compressed by the app — a compressed response that carries a secret (the CSRF token) is what BREACH reads. Leave the
@@ -208,8 +216,8 @@ service's `PATH` (a system package, not nvm).
 ## One server with Compose: the docs as an example
 
 The docs of this repository are deployed this way (E142): `apps/docs/Dockerfile` (the monorepo variant of the template, built
-from the repository's root) and [`deploy/docs/compose.yaml`](../deploy/docs/compose.yaml) with a [`Caddyfile`](../deploy/docs/Caddyfile) — two
-containers on one VPS. What they show beyond the template:
+from the repository's root) and `deploy/docs/compose.yaml` with a `Caddyfile` — two containers on one VPS. What they show
+beyond the template:
 
 - **A firewall in front of the server, not on it.** Docker publishes ports through its own iptables rules, past `ufw` and
   `firewalld` — a host firewall does not protect a published port. Use the provider's firewall (Hetzner Cloud Firewall, a security
@@ -233,6 +241,8 @@ containers on one VPS. What they show beyond the template:
 - [ ] the proxy speaks HTTP/2 to browsers, does not buffer event streams, sets `X-Forwarded-*`; `TRUSTED_PROXIES` names it
 - [ ] `MAIL_MAILER=smtp`
 - [ ] web, worker and scheduler each under a supervisor that restarts them; grace periods longer than the drain
+- [ ] the worker takes every queue the app uses (`--queue=mail,default`, or `--queue=*`)
+- [ ] HSTS once the site is HTTPS only (the app's `SecurityHeaders` switch or the proxy); the rest of the list: [security](security.md#your-checklist)
 - [ ] `SHUTDOWN_DELAY` (≈ 5) behind a probing load balancer or in Kubernetes
 - [ ] more than one instance: shared drivers for sessions, cache, queue, live and uploads; Postgres instead of SQLite
 - [ ] `storage/` on a volume
