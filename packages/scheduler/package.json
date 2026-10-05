@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/scheduler",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Scheduled tasks for BespokeCore apps: written in the modules, run by schedule:work or cron, with locks against overlaps.",
   "keywords": [
     "bespokecore",

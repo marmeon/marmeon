@@ -31,7 +31,7 @@ export default function Show({ profile }: PageProps<ShowUserProfileController>) 
 }
 ```
 
-Status: in development, not published yet. MIT licence (`LICENSE`). Node 26.10 or newer, pnpm 12.
+Status: 0.1.0 — prepared, not published yet. MIT licence ([LICENSE](LICENSE), copyright BespokeCode). Node 26.10 or newer, pnpm 12.
 
 ## Principles
 
@@ -67,6 +67,13 @@ pnpm dev                              # bespoke dev: the server with Vite, a que
 > Not on npm yet (E152: Max publishes): until the first release, `pnpm pack:smoke --keep` in this repository makes such an app
 > from the packages' tarballs and keeps it.
 
+> **In the first day after a release** pnpm (11 and newer) holds the new versions back: its `minimumReleaseAge` (one day by default)
+> protects against packages that are pulled again soon after they appear. `pnpm create bespoke-app` then falls back to an older
+> release or stops, and the new exact `@bespokecore/*` versions fail to install. Wait a day — or let only the
+> framework through, for this one command:
+> `pnpm_config_minimum_release_age_exclude='["@bespokecore/*","bespokecore","create-bespoke-app"]' pnpm create bespoke-app my-app`
+> (the variable reaches the install `create-bespoke-app` runs). npm has no such delay.
+
 `create-bespoke-app` copies the template, writes `.env` with a fresh `APP_KEY`, installs, and runs the app's own generators:
 `bespoke make:auth` puts a complete auth module into `modules/auth/` — the pages, routes and rules are the app's from then on
 ([@bespokecore/auth](packages/auth/README.md#bespoke-makeauth)) — and `bespoke migrate` creates the tables. `--minimal` makes a
@@ -101,6 +108,7 @@ Installed framework packages register themselves (discovery through the `"bespok
 | Core | [core](packages/core/README.md) | the application, modules, providers, the container with constructor injection, config, events, the clock, diagnostics channels, redaction |
 | | [cli](packages/cli/README.md) | `bespoke`: `dev`, `build`, `start`, generators, `tinker`, the lint preset |
 | | [create-bespoke-app](packages/create-bespoke-app/README.md) | `pnpm create bespoke-app`: a new app — the starter kit or a blank app |
+| | [bespokecore](packages/bespokecore/README.md) | the meta package: the UI-agnostic runtime packages at one version (the UI adapter is the app's choice) |
 | | [log](packages/log/README.md) | pino logging with the request and job context |
 | | [encryption](packages/encryption/README.md) | `APP_KEY`, authenticated encryption, key rotation |
 | | [testing](packages/testing/README.md) | `createTestApp`, requests and assertions, database refresh, fakes |
@@ -124,6 +132,33 @@ Installed framework packages register themselves (discovery through the `"bespok
 | Tools | [devtools](packages/devtools/README.md) | the recorder, `/_bespoke/devtools` and the in-page bar — development only |
 | | [otel](packages/otel/README.md) | OpenTelemetry spans from the diagnostics channels |
 
+## Versions and deprecations
+
+The framework is released in **lockstep** (E152): every `@bespokecore/*` package, the meta package `bespokecore` and
+`create-bespoke-app` always have the same version, and the packages name each other at exactly that version. Upgrade them
+together; two versions of a framework package in one app mean two containers.
+
+- **0.x — now.** Following [SemVer](https://semver.org/#spec-item-4), anything may change while the major version is 0, but not
+  silently: a **minor** version (0.1 → 0.2) may break, and every break has an entry in [UPGRADING.md](UPGRADING.md) — its
+  impact, before → after, the way back where there is one. A **patch** (0.1.0 → 0.1.1) never breaks. Pin the exact version
+  (`create-bespoke-app` does) or `~0.1.0`; `^0.1.0` already means `<0.2.0`.
+- **From 1.0 — after the reference app.** Breaking changes only in a major version. A feature to be removed is deprecated first in
+  a minor version: documented, marked `@deprecated` in its types, and warned about at runtime in development (`NODE_ENV=development`
+  only — never in production logs); it goes in the next major, with its UPGRADING entry. What is marked `@internal` or
+  `@experimental` is outside this promise. How long a major version gets bug and security fixes is set with 1.0, along Node's
+  release lines.
+- **A broken release** is never unpublished: it is deprecated on npm (`npm deprecate`, with the version to use instead) and fixed
+  by the next patch.
+- **Node:** 26.10 or newer (E9) — a new minimum Node version is a breaking change.
+
+Security fixes go to the latest minor version ([SECURITY.md](SECURITY.md)).
+
+## Contributing
+
+Contributions are welcome under the Developer Certificate of Origin — every commit signed off (`git commit -s`); how to set up,
+check, add a changeset and how a release is made: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerabilities go through GitHub's private
+vulnerability reporting, never a public issue ([SECURITY.md](SECURITY.md)).
+
 ## The repository
 
 ```text
@@ -134,6 +169,8 @@ apps/docs         these docs: the READMEs as a BespokeCore app (pnpm docs:dev)
 scripts/ci.ts     pnpm run ci — build, typecheck, lint, every test suite, size, types, docs, the tarballs
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 UPGRADING.md      what changes for apps from one version to the next
+.changeset        Changesets: the pending changes, one fixed group (pnpm changeset; scripts/check-changesets.ts checks the release rules)
+.github/workflows ci.yml (pnpm run ci, one job per suite) and release.yml (the version pull request, then staged publishing)
 ```
 
 ```sh
@@ -143,6 +180,7 @@ pnpm docs:dev          # the docs on http://localhost:3970
 pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or leftovers, LICENSE, exact versions, publint, attw
 pnpm pack:smoke        # create-bespoke-app from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-bespoke-app (a test fails while they differ)
+pnpm changeset         # a changeset for your change (CONTRIBUTING.md); pnpm check-changesets checks the release rules
 ```
 
 ### Benchmarks

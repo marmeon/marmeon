@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/session",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Sessions for BespokeCore apps: an injectable session, file, database, Redis and cookie stores, flash data and CSRF protection.",
   "keywords": [
     "bespokecore",

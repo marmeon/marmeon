@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/notifications",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Notifications for BespokeCore apps: classes with channels (mail, database), recipients as data, delivered by the queue.",
   "keywords": [
     "bespokecore",

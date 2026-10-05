@@ -22,7 +22,8 @@ On a terminal it asks four things — the starter kit (yes), Docker files (no), 
 `--minimal` makes a blank app (only the `system` module), `--private-registration` a registration that never tells whether an
 address has an account, `--docker` the files of [deployment](deployment.md), `--npm` an npm app. Without a terminal — in CI, in a
 script — nothing is asked and a missing directory is exit code 2. All options:
-[create-bespoke-app](../packages/create-bespoke-app/README.md).
+[create-bespoke-app](../packages/create-bespoke-app/README.md) — also what to do in the first day after a release, when pnpm's
+`minimumReleaseAge` still holds the new versions back.
 
 ## Run it
 

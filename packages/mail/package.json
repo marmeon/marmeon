@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/mail",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Mails as classes for BespokeCore apps: envelopes, MJML or HTML content, transports behind a neutral message, queued sending.",
   "keywords": [
     "bespokecore",

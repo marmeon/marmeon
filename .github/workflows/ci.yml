@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   check:
-    name: build, typecheck, lint, test, size, types:check, docs:check
+    name: build, typecheck, lint, test, size, types:check, docs:check, check-changesets
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -28,7 +28,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run ci --only build,typecheck,lint,test,size,types:check,docs:check
+      - run: pnpm run ci --only build,typecheck,lint,test,size,types:check,docs:check,check-changesets
 
   pack:
     # The tarballs (E158): pack:check builds clean and checks every tarball (rules, publint, attw); pack:smoke runs the packed

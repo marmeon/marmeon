@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/log",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The logger of BespokeCore apps: pino behind the framework contract, pretty in development, JSON in production.",
   "keywords": [
     "bespokecore",

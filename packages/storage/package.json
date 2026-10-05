@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/storage",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "File storage for BespokeCore apps: local, S3 and memory disks behind one contract, public and private files, uploads.",
   "keywords": [
     "bespokecore",

@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/live",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Live props for BespokeCore apps: pages, islands and layers follow channels and reload when the server hints a change.",
   "keywords": [
     "bespokecore",

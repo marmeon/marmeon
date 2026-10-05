@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/otel",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "OpenTelemetry traces for BespokeCore apps: requests, queries, jobs, mails and rendering as spans.",
   "keywords": [
     "bespokecore",

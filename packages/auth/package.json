@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/auth",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Authentication and authorization for BespokeCore apps: session guard, remember-me, password hashing and resets, e-mail verification, API tokens, policies and make:auth.",
   "keywords": [
     "bespokecore",

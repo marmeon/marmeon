@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/queue",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Queues for BespokeCore apps: injectable job classes, sync, database and Redis drivers, workers, retries and failed jobs.",
   "keywords": [
     "bespokecore",

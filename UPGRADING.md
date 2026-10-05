@@ -3,13 +3,22 @@
 What changes for an app from one version of BespokeCore to the next — in Laravel's manner: each entry says how likely it is
 to affect you (**impact**), what to do (before → after), and how to keep the old behaviour where there is a way.
 
-> BespokeCore is not published yet. Until the first release (0.1.0) this guide collects the changes of the development
-> waves; the release turns them into the guide for 0.1.0. In 0.x a minor version may break — every break has an entry here.
-
 **Impact:** High — most apps must act. Medium — apps that use the feature must act. Low — only in rare cases, or nothing
-to do. **Estimated upgrade time** is given per version once it is released.
+to do. The newest version comes first. In 0.x a minor version may break, and every break has an entry here; a patch never
+breaks ([versions and deprecations](README.md#versions-and-deprecations)). Every package, `bespokecore` and
+`create-bespoke-app` share one version: upgrade them together — set every `@bespokecore/*` in `package.json` to the new
+version and install. Two versions of a framework package in one app mean two containers and two `Application` classes.
 
-## Unreleased → 0.1.0
+## Upgrading to 0.1.0 from the development snapshots
+
+0.1.0 is the first release. An app made from it (`pnpm create bespoke-app`) has nothing to upgrade. This section is for apps
+that followed the repository during its development waves: the changes of Wave 8 (ship-ready) first, then those of Wave 7
+(devtools and observability) and Wave 6 (background services) — an app that followed until a wave reads from that wave
+upwards.
+
+*Estimated upgrade time:* about an hour for an app from Wave 7 — the High entries of Wave 8 (`@bespokecore/cli` as a
+dependency, the sessions table) and the Medium ones its features touch; half a day from Wave 6 or with a `SessionStore` of its
+own.
 
 ### Wave 8 — ship-ready
 
@@ -419,18 +428,217 @@ rest as you like. `make:auth` names the devtools only for an app that lacks them
 before, and reloaded the page once or twice (a 504 "Outdated Optimize Dep" in the console). Entries of your own in
 `vite.config.ts` are added to these.
 
+#### Low: one version for every package — 0.1.0 from npm, and the meta package `bespokecore`
+
+*Likelihood of impact: low — apps that took the framework from a checkout or from tarballs.* The packages were `0.0.0`, linked
+from the repository (`workspace:*`) or installed from `pnpm pack` tarballs (`file:`). From 0.1.0 they come from npm, all at one
+version (E152: Changesets with one `fixed` group — every `@bespokecore/*` package, `bespokecore` and `create-bespoke-app`), and
+they name each other at exactly that version. Replace every `workspace:*`, `file:…` or `0.0.0` of a `@bespokecore/*` package in
+the app's `package.json` with `0.1.0` (and drop the `overrides` that pointed at tarballs). New: the meta package
+[bespokecore](packages/bespokecore/README.md) — no code, the UI-agnostic runtime packages at exactly its version (E157; the UI
+adapter, `@bespokecore/react`, is listed by the app); with pnpm an app still lists the packages it imports.
+
 #### Low (contributors): the monorepo needs pnpm 12
 
 *Likelihood of impact: low — only for work on BespokeCore itself.* The repository pins pnpm 12 (`packageManager`), its root
 package is called `bespokecore-monorepo` (the name `bespokecore` is the meta package's), and packages are packed and
 published with pnpm only (`npm pack` would ship the `@bespokecore/source` condition). Apps are not affected.
 
-<!-- Later steps of Wave 8 add their entries above; Wave 7 and Wave 6 follow below (W8 step 11). -->
-
 ### Wave 7 — devtools and observability
 
-*Collected in W8 step 11.*
+The 22 hints of the Wave 7 acceptance, sorted by impact; where Wave 8 changed a hint, the entry says so.
+
+#### High: every app needs an `APP_KEY`
+
+*Likelihood of impact: high — apps without cookies or sessions that never set one.* `@bespokecore/http` depends on
+`@bespokecore/encryption` (signed URLs, the session epoch, encrypted cookies), so every app boots with an encrypter — and a
+missing `APP_KEY` fails the start with a `ConfigError` that names it. Run `bespoke key:generate` (it writes `.env` from
+`.env.example` with a fresh key) or set `APP_KEY` in the environment; `create-bespoke-app` writes one. There is no way to boot
+without a key.
+
+#### Medium: development features run with `NODE_ENV=development` only — never "not production"
+
+*Likelihood of impact: medium — apps that ran staging, tests or a missing `NODE_ENV` with the development tools, and tests of
+the mail preview.* Server-Timing, the development error page (`ServerConfig.debug`), the devtools, the **mail preview**
+(`MailConfig.previews`) and Vite's dev server in `startServer`/`bespoke serve` are on only when `NODE_ENV` is `development`
+(E115). Staging, test and a missing `NODE_ENV` serve the build, and `bespoke serve` starts no worker, scheduler or watcher there.
+Tests of the mail preview create their app with `createTestApp(App, { env: { NODE_ENV: 'development' } })`. *Changed by Wave 8
+(E139, E170):* the protections — JSON logs, `migrate --force`, the boot warnings — now apply to every `NODE_ENV` but
+`development` and `test`, and `NODE_ENV` falls back to the app's `.env` (the Wave 8 entries above). There is no switch to turn a
+development tool on elsewhere.
+
+#### Medium: `/up` and `/up/ready` belong to the framework
+
+*Likelihood of impact: medium — apps with a route of their own at `/up` or `/up/ready`.* The health endpoints (E126) answer
+before every middleware group; an app route on one of the two paths is a boot error ("Give the route another path, or move the
+health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off)"). Move your route, or the health check with `HEALTH_PATH=/healthz` —
+`HEALTH_PATH=off` turns the endpoints off (a container's health check then needs another way).
+
+#### Medium: shared props are optional — layouts must cope with `undefined`
+
+*Likelihood of impact: medium — apps whose layouts read `auth`, `locales` or other shared props.* A path without a route (the
+404 page, a framework endpoint) runs through no middleware group: no session, no shared props. `SharedProps` are typed as
+optional now, and a layout that reads `page.props.auth.user` must accept `auth` being `undefined` — `page.props.auth?.user`
+(the pattern is in [@bespokecore/react](packages/react/README.md)). The generated auth module (`make:auth`) does so. Before →
+after: `const { user } = usePage().props.auth` → `const user = usePage().props.auth?.user ?? null`.
+
+#### Medium: discovery follows pnpm — an app discovers only what it installs
+
+*Likelihood of impact: medium — apps that relied on packages they did not list.* Discovery resolves a package's peers from the
+directory of the package that depends on it, as pnpm does. Before, `@bespokecore/testing`'s dev links pulled nearly every
+package into every app; now an app loses the providers it only had that way (the blank app lost devtools, live, notifications,
+redis and storage). Add what you use to `package.json` (`pnpm add @bespokecore/storage`). A manifest that names a package
+missing in production (`ERR_MODULE_NOT_FOUND`) is discovered anew once instead of failing.
+
+#### Medium: client code imports server modules with `import type` only
+
+*Likelihood of impact: medium — apps whose views or client code import controllers, jobs, repositories or other server
+modules for a type.* The Vite plugin checks the client's imports (E121): a value import of a server module breaks `bespoke
+dev`, `bespoke build` and the SSR tests with an error naming the import chain. **`import { type X } from '…'` counts as a value
+import** (the module is still loaded); write `import type { X } from '…'`. Your own conventions go into
+`bespoke({ serverModules: [...] })`.
+
+#### Medium: `MAIL_MAILER=log` writes mail texts to the log — protected environments warn
+
+*Likelihood of impact: medium — apps that deploy without a mail transport.* `log` is the default mailer in every environment
+and writes the mails' texts — password-reset and verification links included — unredacted to the log. The start warns once per
+process (`LOG_MAILER_WARNING`) when the app is protected (E135; *changed by Wave 8, E139:* every `NODE_ENV` but `development`
+and `test`, staging and a missing `NODE_ENV` included). In production set `MAIL_MAILER=smtp` (and the `MAIL_*` settings); in
+development the log mailer is the way to read the links.
+
+#### Low: `bespoke dev` sets `NODE_ENV=development` when it is missing
+
+*Likelihood of impact: low.* With another `NODE_ENV` set, `bespoke dev` warns and serves the build instead of Vite's dev
+server. (Wave 8 also resolves `NODE_ENV` from the app's `.env`, E170 — see above.)
+
+#### Low: `onOneServer()` and `withoutOverlapping()` with a `file` or `memory` cache warn instead of throwing
+
+*Likelihood of impact: low — apps whose scheduler uses those cache stores.* E123 revises E88: a task with `onOneServer()` or
+`withoutOverlapping()` on a cache that cannot lock across machines no longer throws a `ScheduleError` — the start warns in every
+environment (also `schedule:list`). `ScheduleError` remains for a missing cache. `checkProcess` skips the commands of other
+environments. Use a `database` or `redis` cache for tasks that must run once.
+
+#### Low: the scheduler's events — the field is `skipped`
+
+*Likelihood of impact: low — apps that listen to the scheduler.* `ScheduledTaskStarting`, `ScheduledTaskFinished` (`ms`),
+`ScheduledTaskFailed` (`error`, `ms`) and `ScheduledTaskSkipped` (`skipped`) share `task`, `minute` and `reason` (E127). The
+skipped event's field is called `skipped`, not `reason` as E127 sketched it.
+
+#### Low: diagnostics channels for observing the framework
+
+*Likelihood of impact: low — new; custom drivers may add methods.* `@bespokecore/core/diagnostics` publishes `http.request`,
+`db.query`, `queue.dispatch`, `queue.job`, `schedule.task`, `mail.send`, `notification.send`, `live.refresh`, `render.ssr`,
+`command.run`, `log`, `exception` and `event` (E118; API `channels.subscribe/tracing/event/built/around`). A subscriber that
+throws becomes a process warning. The messages carry **raw** values — a subscriber that records them redacts with `Redactor`.
+`JobRecord.requestId` is always set, `traceparent` once a tracer listens. A `QueueDriver` of your own may implement `counts()`,
+a `PageRenderer` of your own `failed()` (both optional).
+
+#### Low: `createTestApp` turns the devtools off unless asked
+
+*Likelihood of impact: low — tests of apps with `@bespokecore/devtools`.* `createTestApp` sets `DEVTOOLS_ENABLED=false` unless
+the test opts in: `createTestApp(App, { devtools: true })` records into a memory store (`app.devtools`). The error page in tests:
+`{ debug: true }`.
+
+#### Low: `bespoke make:lint-config` and the lint preset
+
+*Likelihood of impact: low — new.* `bespoke make:lint-config [--boundaries]` writes `.oxlintrc.json` (with oxlint as a dev
+dependency and a `lint` script). An app needs a `.gitignore` (oxlint follows pnpm's `node_modules` links otherwise), and a
+nested `.oxlintrc.json` replaces the root's instead of extending it.
+
+#### Low: redaction reaches into lists, child loggers and the request log line
+
+*Likelihood of impact: low — log consumers that matched redacted values.* `redact()` looks into arrays, maps, sets and errors
+(deeper than 6 levels → `[…]`, E125); the bindings of `logger.child()` and the `ConsoleLogger` are redacted; **the request log
+line shows sensitive route parameters and token-like path segments as `[redacted]`**; `Redactor.headers` accepts list values.
+
+#### Low: `html`, `raw`, `Html` and `escapeHtml` live in `@bespokecore/core`
+
+*Likelihood of impact: low.* They moved from `@bespokecore/mail` to core; mail re-exports them, so imports keep working.
+`interpolate` is called `interpolateHtml` in core.
+
+#### Low: the devtools are a package of their own
+
+*Likelihood of impact: low — new.* `pnpm add -D @bespokecore/devtools` (a dev dependency: production installs leave it out);
+`DEVTOOLS_ENABLED=true` together with `NODE_ENV=production` is a boot error. The recordings live in
+`storage/framework/devtools/`; `config/devtools.ts` is optional (convention). The web app schedules `devtools:prune` hourly for
+`development`.
+
+#### Low: OpenTelemetry — the app brings the SDK, as `dependencies`
+
+*Likelihood of impact: low — apps that trace.* `@bespokecore/otel` is optional and has only `@opentelemetry/api` as a peer; the
+SDK and the exporter are the app's, loaded with `NODE_OPTIONS=--import ./bootstrap/telemetry.ts` (no `sdk-node`: its
+`protobufjs` needs a postinstall script pnpm refuses). *Changed by Wave 8 (E159):* the SDK packages belong in `dependencies` —
+a production install leaves dev dependencies out — and `bespoke start` runs in one process, so the `--import` applies exactly
+once.
+
+#### Low: a defaulted constructor parameter of an injectable type warns
+
+*Likelihood of impact: low.* A class the container builds whose constructor has a default or optional parameter of an
+injectable type is never injected there (E128) — the development log warns once. Remove the default, or give the class a
+`static inject` list.
+
+#### Low: a `ConfigError` shows its solution only when it lists variables
+
+*Likelihood of impact: low.* The solution text appears only when the message lists the variables (`•`) it is about.
+
+#### Low: tinker keeps a history — plain text, and a banner where it is protected
+
+*Likelihood of impact: low.* `bespoke tinker` writes its history to `storage/framework/tinker_history` (0600, the plain text of
+what was typed; `--no-history` keeps none). In production — since Wave 8 in every protected environment — it shows a red
+banner (`PRODUCTION`, `PROTECTED (staging)`).
+
+#### Low (contributors): `pnpm run ci` is the check command — not `pnpm ci`
+
+*Likelihood of impact: low — only for work on BespokeCore itself.* `pnpm run ci` (`scripts/ci.ts`) runs every check;
+`pnpm ci` without `run` is pnpm's own clean install (it deletes every `node_modules`, installs again and exits 0 — nothing
+checked).
+
+#### Low (contributors): the Postgres test databases are dropped after a test run
+
+*Likelihood of impact: low — only for work on BespokeCore itself.* At the end of a Vitest run the repository's global setup drops
+the databases it created (`bespoke_{test,cache,queue,schedule,types}_*`) — only on the server of `BESPOKE_TEST_PGSQL_URL`.
 
 ### Wave 6 — background services
 
-*Collected in W8 step 11.*
+#### Medium: an event with a queued listener needs `static event` and `static schema`
+
+*Likelihood of impact: medium — apps with queued listeners.* A queued listener (`static queue`) receives its event in a worker,
+so the event needs a stable name and the JSON of what is queued: `static event = 'orders.placed'` and a `static schema` read
+from the event object (`get userId() { return this.user.id; }`). Without them `listen(Event, Listener)` is a type error ("A
+queued listener (static queue) needs an event that can be queued — …") and the start fails. Events with only synchronous
+listeners are unchanged.
+
+#### Medium: `createTestApp()` fakes the queue, events, storage and notifications
+
+*Likelihood of impact: medium — tests that relied on the real services.* `queue`, `events` (recorded; listeners still run
+unless `events: 'fake' | [...]`), `storage` and `notifications` are fakes by default, as `mail` was. Pass `'real'` where a test
+needs the real one: `createTestApp(App, { queue: 'real' })`.
+
+#### Medium: mails need absolute links
+
+*Likelihood of impact: medium — apps whose mails link with `href="/…"`.* A mail composed in a worker has no request to resolve a
+relative link against; `compose()` refuses `href="/…"`. Build links from `APP_URL` (the starters' `AppConfig` requires it).
+
+#### Low: the `Login` event carries `via`, `ip` and `userAgent` and can be queued
+
+*Likelihood of impact: low — code that constructs `Login` itself.* `Login` (auth) has a required `via`
+(`'attempt' | 'login' | 'remember'`) and `ip`/`userAgent` (`LoginOptions` take them) and is queueable
+(`static event = 'auth.login'`); `Registered` is queueable too (`auth.registered`, `{ userId }`). Pass `via` where you construct
+`Login`. (Wave 8 fills `ip` and `userAgent` by itself — `RequestInfo`, above.)
+
+#### Low: queued listeners have no `afterCommit` any more
+
+*Likelihood of impact: low.* E109: queued listeners join the transaction like every dispatch (a row in it on the database
+queue, held until the commit elsewhere) — `afterCommit` in `static queue` is a type error ("afterCommit is always on: queued
+listeners join the transaction (E107/E109) — remove it") and a boot error. Remove it.
+
+#### Low: custom stores implement more
+
+*Likelihood of impact: low — apps with a store of their own.* A `CacheStore` implements `add`, `increment`, `lock`, `unlock`,
+`forceUnlock` and `lockOwner` (and optionally `prune`). A `SessionStore` implemented `writeIfExists` in Wave 6 — since Wave 8 its
+`write` compares versions instead (the Wave 8 entry above, [Your own store](packages/session/README.md#your-own-store)).
+
+#### Low: constructors that take a `Clock` take it as a required parameter
+
+*Likelihood of impact: low — code that builds the auth token stores or `UrlSigner` by hand.* The container injects the `Clock`;
+code that constructs them itself passes `new SystemClock()`.

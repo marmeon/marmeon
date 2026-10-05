@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The HTTP server of BespokeCore apps: the kernel on Hono, server rendering through Vite or the build, islands, health checks and graceful shutdown.",
   "keywords": [
     "bespokecore",

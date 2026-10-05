@@ -22,7 +22,7 @@
  * The apps live in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@bespokecore or a
  * pnpm-workspace.yaml (checked by path — nothing of the repository can leak in). The scaffolder takes the framework from
  * `BESPOKE_CREATE_TARBALLS` (its maintainers' switch, packages/create-bespoke-app/README.md): the tarballs go into the app's
- * `vendor/bespokecore/`, every `@bespokecore/*` dependency and override points there (their exact `0.0.0` versions exist on no
+ * `vendor/bespokecore/`, every `@bespokecore/*` dependency and override points there (the exact versions of this checkout are on no
  * registry), and for pnpm nothing is hoisted — a package that imports what it does not declare (a devDependency, say) fails
  * here as it would for a user.
  *

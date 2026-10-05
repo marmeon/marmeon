@@ -221,22 +221,7 @@ reaches the recorded job, and `work()` runs it in the trace of the request that 
 The real worker is tested as a process too (`worker-processes.test.ts`: SIGKILL in the middle of a job, SIGTERM, a job
 that ignores its signal, two workers × 200 jobs — on SQLite, Postgres and Redis).
 
-## Upgrading from before Wave 6 (for the W8.5 changelog)
+## Upgrading from before Wave 6
 
-- **An event that gets a queued listener needs `static event` and `static schema`** — a stable name and the JSON of what is
-  queued of it, read from the event object (`get userId() { return this.user.id; }`). Without them, `listen(Event, Listener)`
-  is a type error ("A queued listener (static queue) needs an event that can be queued — …") and the start fails. Events
-  with only synchronous listeners are unchanged.
-- **`Login` (auth) carries new fields:** `via` (`'attempt' | 'login' | 'remember'`, required), `ip` and `userAgent`
-  (`LoginOptions` take them) and is queueable (`static event = 'auth.login'`). Code that constructs `Login` itself passes `via`.
-  `Registered` is queueable (`auth.registered`, `{ userId }`).
-- **Queued listeners: `afterCommit` is gone** (E109) — remove it from `static queue`.
-- **`createTestApp()` fakes more by default:** `queue`, `events` (recorded, listeners still run unless `events: 'fake' | [...]`),
-  `storage`, `notifications` — pass `'real'` where a test relied on the real one (as for `mail`).
-- **Mails need absolute links** (`compose()` refuses `href="/…"`): a mail composed in a worker has no request to resolve
-  them against — build them from `APP_URL` (the starters' `AppConfig` requires it).
-- **Store contracts grew:** a custom `CacheStore` implements `add`, `increment`, `lock`, `unlock`, `forceUnlock`, `lockOwner`
-  (and optionally `prune`); a custom `SessionStore` implemented `writeIfExists` (W6) — since W8 its `write` compares versions
-  instead ([session README](../session/README.md#your-own-store)).
-- **Constructors that take a `Clock`** (the token stores of auth, `UrlSigner`) take it as a required parameter — the container
-  injects it; code that builds them by hand passes `new SystemClock()`.
+The changes of Wave 6 for apps — queueable events, the `Login` fields, `afterCommit`, the test fakes, absolute links in mails,
+the store contracts, the `Clock` — are in [UPGRADING.md](../../UPGRADING.md) ("Wave 6 — background services").

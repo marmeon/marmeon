@@ -1,0 +1,95 @@
+# Releases (E152): Changesets with one fixed group, published by pnpm with trusted publishing — and never live without a maintainer.
+#
+#   push to main with changesets   → "version": the Version packages pull request (changeset version — the versions and changelogs)
+#   push to main without changesets, with versions npm does not have yet (the merged pull request)
+#                                  → "publish": the checks, then `pnpm stage publish -r` — every package is STAGED on npm (OIDC, no
+#                                    token anywhere; provenance from this workflow). Nothing is public until a maintainer approves
+#                                    the staged versions on npmjs.com with two-factor authentication (npm stage approve). The
+#                                    trusted-publisher configuration of every package allows staging only (scripts/npm-trust.sh).
+#   otherwise                      → "none"
+#
+# scripts/check-changesets.ts (a part of `pnpm run ci`) checks this file: id-token only where the packages are staged, no npm
+# publish, no token, the checks before staging.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mode:
+    name: select the mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.select.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: select
+        uses: changesets/action/select-mode@v2
+
+  version:
+    name: Version packages pull request
+    needs: mode
+    if: needs.mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the version commit on the pull request's branch
+      pull-requests: write # the pull request
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action/version@v2
+        with:
+          script: pnpm run release:version
+          commit-message: Version packages
+          pr-title: Version packages
+
+  publish:
+    name: stage the packages on npm
+    needs: mode
+    if: needs.mode.outputs.mode == 'publish'
+    # Trusted publishing needs a GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # the release's git tags
+      id-token: write # OIDC: trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The tarballs as they will be staged: a clean build, the content rules, publint, attw — and the release rules.
+      - run: pnpm run ci --only build,pack:check,check-changesets
+      # Staged, not published: every package waits for a maintainer's approval with 2FA on npmjs.com.
+      - run: pnpm run release:stage
+      - name: tag the release
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          pnpm changeset git-tag
+          git push origin --tags

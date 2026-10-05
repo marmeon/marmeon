@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/devtools",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Development tools for BespokeCore apps: redacted recordings of requests, queries, jobs, mails and more, with a toolbar and pages.",
   "keywords": [
     "bespokecore",

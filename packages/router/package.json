@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/router",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The typed router of BespokeCore: invokable controllers with request definitions, route model binding, middleware, URLs and cookies.",
   "keywords": [
     "bespokecore",

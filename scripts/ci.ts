@@ -57,6 +57,9 @@ export const parts: readonly Part[] = [
   // create-bespoke-app --docker as an image (bespoke make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
   // --workers, a worker's exit 70, the image's size. Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
+  // The release rules (E152, E153, E157, E168): one fixed group and one version, no `major` changeset below 1.0.0, the meta package,
+  // release.yml (staged publishing with OIDC), npm-trust.sh, every UPGRADING.md entry (the 22 Wave 7 hints), LICENSE and policies.
+  { name: 'check-changesets', command: pnpm('check-changesets') },
 ];
 
 /** The exit code of a part that could not run here (no network, no store): skipped, not green (`scripts/pack-smoke.ts`). */
@@ -141,7 +144,7 @@ async function main(): Promise<number> {
   }
   if (values.help || values.list) {
     if (values.help) console.log('Usage: pnpm run ci [--only a,b] [--skip a,b] [--bail] [--no-compose] [--list]\n');
-    for (const part of parts) console.log(`  ${part.name.padEnd(12)} ${part.command.join(' ')}${part.services ? `  (needs ${part.services.join(', ')})` : ''}`);
+    for (const part of parts) console.log(`  ${part.name.padEnd(17)} ${part.command.join(' ')}${part.services ? `  (needs ${part.services.join(', ')})` : ''}`);
     return 0;
   }
   const selected = select(values.only, values.skip);
@@ -183,7 +186,7 @@ async function main(): Promise<number> {
   const mark = { passed: '✓', failed: '✗', skipped: '–' } as const;
   console.log('\nci summary');
   for (const result of results) {
-    console.log(`  ${mark[result.status]} ${result.part.name.padEnd(12)} ${result.status.padEnd(8)} ${seconds(result.ms).padStart(7)}${result.note ? `  ${result.note}` : ''}`);
+    console.log(`  ${mark[result.status]} ${result.part.name.padEnd(17)} ${result.status.padEnd(8)} ${seconds(result.ms).padStart(7)}${result.note ? `  ${result.note}` : ''}`);
   }
   const failed = results.filter((result) => result.status !== 'passed');
   console.log(`  ${failed.length === 0 ? 'all green' : `${failed.length} of ${results.length} not green`} in ${seconds(total)}`);

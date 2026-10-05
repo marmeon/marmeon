@@ -1,6 +1,6 @@
 {
   "name": "create-bespoke-app",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Create a BespokeCore app: pnpm create bespoke-app my-app — the starter kit (sign-in, layout, home page) or a blank app.",
   "keywords": [
     "bespokecore",
@@ -35,6 +35,7 @@
     "dist",
     "src",
     "template",
+    "template/base/.env.test",
     "LICENSE",
     "README.md",
     "!{dist,src}/**/*.test.*",

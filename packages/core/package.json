@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The BespokeCore application kernel: service container with constructor injection, providers, modules, configuration, events and diagnostics.",
   "keywords": [
     "bespokecore",

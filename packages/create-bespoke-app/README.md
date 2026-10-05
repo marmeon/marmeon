@@ -37,6 +37,20 @@ Without a terminal (CI, a pipe) nothing is asked: the flags and the defaults dec
 exit code 2 — `create-bespoke-app needs a directory: create-bespoke-app <dir> [--yes]`. Every other failure is exit code 1, with
 the output of the step that failed; the directory stays as it was then.
 
+### In the first day after a release
+
+pnpm (11 and newer) installs no version that is younger than its `minimumReleaseAge` — one day by default, a guard against
+packages that are pulled again soon after they appear. For a day after a release, `pnpm create bespoke-app` therefore either
+falls back to an older `create-bespoke-app` (with the framework of its release) or stops — for the very first release there is
+none — and an install of the new exact `@bespokecore/*` versions fails. Wait a day, or let only the framework through for this one command (the
+variable reaches the install `create-bespoke-app` runs, and nothing else changes):
+
+```sh
+pnpm_config_minimum_release_age_exclude='["@bespokecore/*","bespokecore","create-bespoke-app"]' pnpm create bespoke-app my-app
+```
+
+npm has no such delay. `create-bespoke-app` never changes your pnpm settings.
+
 ## What it does
 
 A thin shell around the framework's own generators (E150) — the app's code comes from one place:

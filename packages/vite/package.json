@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/vite",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Vite plugin for BespokeCore apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic — the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
   "keywords": [
     "bespokecore",

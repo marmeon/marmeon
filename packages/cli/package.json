@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The bespoke command: dev, build, start, generators, tinker and the commands of the app and its packages.",
   "keywords": [
     "bespokecore",

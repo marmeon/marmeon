@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/i18n",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Translations for BespokeCore apps: typed messages per module (TS files), an ICU subset, a translator per request and the locale middleware. UI-agnostic — `@bespokecore/i18n/messages` is the browser-safe core the UI adapters build on.",
   "keywords": [
     "bespokecore",

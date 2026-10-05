@@ -12,7 +12,7 @@
  *     source map's sources are in the tarball (declaration and source maps point to `src/`, which ships for them);
  *   - `LICENSE` (the root's, byte for byte — `pnpm license:sync`) and `README.md`;
  *   - the packed manifest without the `@bespokecore/source` condition and without `workspace:` ranges; every internal
- *     dependency (also optional peers) at exactly the package's own version (lockstep — the exact `0.0.0` peers exist nowhere else);
+ *     dependency (also optional peers) at exactly the package's own version (lockstep, E152 — the exact peers name the release);
  *   - every `exports`/`bin` target in the tarball, none of them TypeScript source (Node does not strip types under node_modules);
  *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
  * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
@@ -78,6 +78,12 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
       const target = posix.normalize(posix.join(posix.dirname(file), map.sourceRoot ?? '', source));
       if (!files.has(target)) problems.push(`${file} points to ${target}, which is not in the tarball`);
     }
+  }
+
+  // A dotenv file ships only when "files" names it (pnpm 13 refuses others): never by a directory entry that happens to hold one.
+  const listed = new Set(((pkg.manifest as Record<string, unknown>).files as string[] | undefined) ?? []);
+  for (const file of packed.files.filter((name) => /(^|\/)\.env(\.(?!example$)[^/]+)?$/.test(name))) {
+    if (!listed.has(file)) problems.push(`${file} is a dotenv file "files" does not name — list it on purpose, or leave it out (pnpm 13 refuses to pack it)`);
   }
 
   if (!files.has('LICENSE')) problems.push('LICENSE is missing — pnpm license:sync');
@@ -201,7 +207,10 @@ async function main(): Promise<number> {
       report(pkg.name, [`the root tsconfig.json does not reference packages/${pkg.short}`]);
     }
   }
-  for (const file of licenseDrift(root)) report(`@bespokecore/${file.split('/')[1]}`, [`${file} is missing or not the root LICENSE — pnpm license:sync`]);
+  for (const file of licenseDrift(root)) {
+    const pkg = packages.find((candidate) => candidate.short === file.split('/')[1]);
+    report(pkg?.name ?? file, [`${file} is missing or not the root LICENSE — pnpm license:sync`]);
+  }
 
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-pack-check-')));
   try {

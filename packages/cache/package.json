@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/cache",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Cache, rate limits and locks for BespokeCore apps — memory, file, database and Redis stores behind one injectable contract.",
   "keywords": [
     "bespokecore",

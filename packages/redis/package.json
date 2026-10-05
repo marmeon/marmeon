@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/redis",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Redis connections for BespokeCore apps — the driver behind Redis cache, sessions, queues and live hints.",
   "keywords": [
     "bespokecore",

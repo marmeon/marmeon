@@ -1,6 +1,6 @@
 {
   "name": "@bespokecore/database",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Data access on Kysely for BespokeCore apps: connections, migrations per module, generated table types, repositories and pagination.",
   "keywords": [
     "bespokecore",

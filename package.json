@@ -27,6 +27,9 @@
     "pack:smoke": "node scripts/pack-smoke.ts",
     "image:smoke": "node scripts/image-smoke.ts",
     "bench": "node scripts/bench/index.ts",
+    "check-changesets": "node scripts/check-changesets.ts",
+    "release:version": "changeset version",
+    "release:stage": "pnpm stage publish -r --provenance --access public",
     "ci": "node scripts/ci.ts"
   },
   "devDependencies": {
@@ -34,6 +37,7 @@
     "@bespokecore/cli": "workspace:*",
     "@bespokecore/core": "workspace:*",
     "@bespokecore/vite": "workspace:*",
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^26.6.3",
     "oxlint": "^1.86.0",
     "publint": "^0.3.25",
