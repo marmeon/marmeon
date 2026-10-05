@@ -1,18 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ConfigEnv, Plugin, UserConfig } from 'vite';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { adapterPeers, bespoke, CLIENT_CHUNKS, PLUGIN_NAME, routesModule, SOURCE_CONDITION, virtualGlob, type BespokePluginApi } from './index.ts';
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function tree(files: Record<string, unknown>): string {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-vite-unit-'));
-  temporary.push(root);
+  const root = tempDir('bespoke-vite-unit-');
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), typeof content === 'string' ? content : JSON.stringify(content));

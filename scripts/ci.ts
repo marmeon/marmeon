@@ -16,7 +16,8 @@
  * `compose.yaml` — only its own containers (`bespokecore-*`), never another project's. The Postgres and Redis suites run
  * one after the other, never at once: they share their test databases.
  *
- * A new check is one more entry in `parts`.
+ * A new check is one more entry in `parts`. Never the Gegenproben (`pnpm gegen`, E188): they patch the working tree —
+ * `scripts/ci.test.ts` keeps them out.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -78,12 +79,6 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const github = process.env.GITHUB_ACTIONS === 'true';
 let current: ChildProcess | undefined;
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => {
-    current?.kill(signal);
-    process.exit(130);
-  });
-}
 
 function run(command: readonly string[]): Promise<number> {
   return new Promise((resolve) => {
@@ -194,4 +189,12 @@ async function main(): Promise<number> {
   return failed.length === 0 ? 0 : 1;
 }
 
-process.exitCode = await main();
+if (import.meta.main) {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      current?.kill(signal);
+      process.exit(130);
+    });
+  }
+  process.exitCode = await main();
+}

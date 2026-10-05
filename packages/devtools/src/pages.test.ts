@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createApplication, defineModule, Logger, runWithRequest, type Application } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@bespokecore/database';
@@ -12,6 +11,7 @@ import { createHttpKernel, DevDocument, ServerServiceProvider } from '@bespokeco
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
 import { BASE, DevtoolsServiceProvider, DevtoolsStore, enableDevtoolsForTests, MAIL_CSP, type AnyEntry, type DevtoolsTester } from './index.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const roots: string[] = [];
 afterAll(() => {
@@ -62,7 +62,7 @@ interface Booted {
 }
 
 async function boot(env: Record<string, string> = {}, { test = true }: { test?: boolean } = {}): Promise<Booted> {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-devtools-pages-'));
+  const root = tempDir('bespoke-devtools-pages-');
   roots.push(root);
   let tester: DevtoolsTester | undefined;
   const app = await createApplication({

@@ -1,13 +1,8 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MakeUploadsTableCommand, UPLOADS_MIGRATION } from './uploads/commands.ts';
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const directory of temporary) rmSync(directory, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function run(root: string, options: Record<string, string> = {}) {
   const lines: string[] = [];
@@ -17,8 +12,7 @@ function run(root: string, options: Record<string, string> = {}) {
 
 describe('make:uploads-table', () => {
   it('writes the migration of temporary_uploads into the system module (E96), next to the cache and session tables', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-uploads-table-'));
-    temporary.push(root);
+    const root = tempDir('bespoke-uploads-table-');
     mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/system/index.ts'), "export default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });");
     writeFileSync(join(root, 'modules/system/migrations/2026_10_02_195920_create_cache_table.ts'), '');

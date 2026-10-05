@@ -1,9 +1,8 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -11,12 +10,12 @@ import { fileURLToPath } from 'node:url';
 import { createApplication, defineModule } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { AfterResponse, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { startServer } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = mkdtempSync(join(tmpdir(), 'bespoke-drain-'));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir('bespoke-drain-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
 mkdirSync(join(root, 'node_modules'));

@@ -1,19 +1,18 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createApplication, defineModule } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { Controller, defineRoutes, HttpServiceProvider, type PageObject } from '@bespokecore/http';
 import { ServerServiceProvider, startServer } from '@bespokecore/server';
 import { SessionServiceProvider } from '@bespokecore/session';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { LiveServiceProvider } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = mkdtempSync(join(tmpdir(), 'bespoke-live-'));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir('bespoke-live-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
 mkdirSync(join(root, 'node_modules'));

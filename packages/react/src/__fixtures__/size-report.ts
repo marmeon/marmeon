@@ -9,7 +9,7 @@
  *
  *   pnpm size                 # scenarios and apps
  *   pnpm size web-app         # one app (or scenario), with every module
- *   BESPOKE_SIZE_BUDGET=update pnpm size   # lower the apps' limits that the sizes undercut
+ *   BESPOKE_SIZE_BUDGET=update pnpm size   # lower the apps' limits to the measured size + 0.5 KB (E186), never raise one
  */
 import { join } from 'node:path';
 import {
@@ -17,7 +17,7 @@ import {
   appClientBuild,
   budgetProblem,
   kb,
-  limitFor,
+  loweredLimit,
   lowerLimits,
   PACKAGES,
   readBudget,
@@ -96,14 +96,16 @@ for (const app of APPS) {
   const marginal = print(app, `${app}${line ? ` (core + adapter marginal limit ${line.limit})` : ''}`, bundle, { top });
   if (!line) continue;
   const size = kb(marginal);
-  const problem = budgetProblem(`${app}: core + adapter (marginal)`, size, line);
-  if (problem && update && size < line.limit) lowered[app] = limitFor(size);
-  else if (problem) problems.push(problem);
+  // update: a saving lowers the limit to the size + the reserve (E186); a size over its limit stays red — never raised.
+  const lower = update ? loweredLimit(size, line) : undefined;
+  if (lower !== undefined) lowered[app] = lower;
+  const problem = budgetProblem(`${app}: core + adapter (marginal)`, size, lower === undefined ? line : { ...line, limit: lower });
+  if (problem) problems.push(problem);
 }
 
 if (Object.keys(lowered).length > 0) {
   lowerLimits(lowered);
-  console.log(`\nLowered: ${Object.entries(lowered).map(([name, limit]) => `${name} → ${limit.toFixed(1)}`).join(', ')}`);
+  console.log(`\nLowered: ${Object.entries(lowered).map(([name, limit]) => `${name} → ${limit.toFixed(2)}`).join(', ')}`);
 }
 for (const problem of problems) console.error(`\n✗ ${problem}`);
 process.exitCode = problems.length > 0 ? 1 : 0;

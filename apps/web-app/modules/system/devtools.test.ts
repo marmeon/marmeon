@@ -4,10 +4,14 @@ import { join } from 'node:path';
 import { Database, secret } from '@bespokecore/database';
 import { DevtoolsStore, FileStore } from '@bespokecore/devtools';
 import { createTestApp } from '@bespokecore/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserRepository } from '../auth/index.ts';
 import { ResetPasswordMail } from '../auth/mail/ResetPasswordMail.ts';
+import { WARM_UP_TIMEOUT, warmUp } from '../auth/warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // The devtools (W7, E115–E116, E131): what a registration does — the request, its queries, the jobs it queued, the mails a
 // worker sent for it — tied together by the request id, and nothing of the password on record (E125).
@@ -109,7 +113,8 @@ describe('the devtools', () => {
 
   // The pages (W7 step 8): the registration as a visit, its queries, the jobs it queued, then what the worker did for it; the
   // sign-in after it — the protocol's 409 reload across the sign-in boundary, no failure; the scheduler's lock warning (E123).
-  it('show a registration in /_bespoke/devtools: the request, its queries, then the jobs and mails a worker ran for it', async () => {
+  // Two password hashes, a worker and seven pages (the first ones render cold): 0.13 s here, 7–8 s on a fully loaded machine (W9 step 1).
+  it('show a registration in /_bespoke/devtools: the request, its queries, then the jobs and mails a worker ran for it', { timeout: 20_000 }, async () => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true });
     const password = 'correct horse battery';
     const browser = { referer: 'http://localhost/register', 'sec-fetch-site': 'same-origin' };

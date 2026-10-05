@@ -4,16 +4,21 @@ import { Connections, sql } from '@bespokecore/database';
 import { MailTransport, type MailMessage } from '@bespokecore/mail';
 import { QueueConnections, QueueRetryCommand } from '@bespokecore/queue';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
-// Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
-const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
+
+// Slow under load: five rounds of a worker on the real database queue — 5–6 s on a fully loaded machine even after the warm-up
+// (W9 step 1; until then 15 s on CI runners only, W8 step 1).
+const heavyTimeout = 15_000;
 
 // W6 step 5: the auth mails leave the request — a queued listener (verification), queued mails (verification, address
 // change, reset), composed in the recipient's language, encrypted in the queue (E105), sent by a worker.
@@ -76,7 +81,7 @@ describe('the verification mail through the queue', () => {
     await work(app);
     expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to BespokeCore']);
     await app.assertDatabaseCount('failed_jobs', 0);
-  }, ciTimeout);
+  }, heavyTimeout);
 
   it('the registration answers without waiting for the mail server (a transport 2 s slow)', async () => {
     const transport = new TestTransport();

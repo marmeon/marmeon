@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@bespokecore/core';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
@@ -200,8 +200,7 @@ describe.each(drivers)('migrations on another connection (%s, E108)', (driver) =
 });
 
 describe('migration files', () => {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-migrations-'));
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const root = tempDir('bespoke-migrations-');
   const app = (modules: ModuleDefinition[]) => new Migrator({ modules, root } as unknown as Application, undefined as never);
 
   it('rejects badly named files, duplicate names and missing directories — with the module', () => {

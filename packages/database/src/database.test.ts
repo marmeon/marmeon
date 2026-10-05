@@ -1,6 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createApplication } from '@bespokecore/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { jsonArrayFrom as pgJsonArrayFrom } from 'kysely/helpers/postgres';
@@ -9,6 +7,7 @@ import * as v from 'valibot';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { Connections, Database, DatabaseConnectionError, DatabaseServiceProvider, defineConnection, type QueryEvent } from './index.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 interface TestTables {
   users: { id: Generated<number>; name: string; is_admin: Generated<boolean>; settings: unknown; bio: string | null; created_at: Generated<string> };
@@ -196,8 +195,7 @@ describe('connection errors', () => {
 });
 
 describe('DatabaseServiceProvider', () => {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-db-'));
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const root = tempDir('bespoke-db-');
   const Reporting = defineConnection('reporting', {
     env: v.object({ REPORTING_DB: v.string() }),
     resolve: (env) => ({ driver: 'sqlite', database: env.REPORTING_DB }),

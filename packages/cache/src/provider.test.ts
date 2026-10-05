@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@bespokecore/database';
@@ -16,11 +15,7 @@ import { DatabaseStore } from './stores/database.ts';
 import { RedisStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
 import * as v from 'valibot';
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 class Limits {
   boot(app: { container: { make(key: typeof RateLimiter): RateLimiter } }) {
@@ -126,8 +121,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', ()
   });
 
   it('SQLite with a file of its own (CACHE_CONNECTION): works inside a transaction, and a hit survives its rollback', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'bespoke-cache-system-'));
-    temporary.push(directory);
+    const directory = tempDir('bespoke-cache-system-');
     const app = await boot(
       { CACHE_DRIVER: 'database', CACHE_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
       [DatabaseServiceProvider],
@@ -203,8 +197,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', ()
 
 describe('make:cache-table', () => {
   function app(): string {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-cache-table-'));
-    temporary.push(root);
+    const root = tempDir('bespoke-cache-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(
       join(root, 'bootstrap/app.ts'),

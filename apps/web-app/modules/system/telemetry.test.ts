@@ -8,6 +8,10 @@ import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider, type ReadableSpan } from '@opentelemetry/sdk-trace';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { WARM_UP_TIMEOUT, warmUp } from '../auth/warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // What bootstrap/telemetry.ts registers — with an in-memory exporter instead of OTLP.
 const exporter = new InMemorySpanExporter();

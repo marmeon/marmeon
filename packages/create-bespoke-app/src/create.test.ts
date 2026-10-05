@@ -1,24 +1,19 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
 import { appManifest, filesUnder, PNPM_VERSION, readTarEntry, TEMPLATE } from './template.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const blank = join(repo, 'apps', 'blank-app');
 const ownVersion = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
 
 function workspace(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'bespoke-create-'));
-  temporary.push(dir);
+  const dir = tempDir('bespoke-create-');
   return dir;
 }
 

@@ -17,7 +17,7 @@
  * ends with exit 75 — `pnpm run ci` shows it as skipped, never as green.
  *
  *   pnpm image:smoke          # packs the current dist/ (pnpm build first; pnpm run ci does)
- *   pnpm image:smoke --keep   # leaves the app, the image and the volume (printed); a red run always keeps the app
+ *   pnpm image:smoke --keep   # leaves the app, the image and the volume (printed) — a red run keeps its app only with --keep
  *   pnpm image:smoke --npm    # create-bespoke-app --npm (package-lock.json) — make:docker writes the npm variant (without the docs)
  */
 import { spawnSync } from 'node:child_process';
@@ -140,7 +140,8 @@ async function main(): Promise<number> {
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-image-smoke-')));
   const app = join(work, 'app');
   const key = `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
-  let keep = values.keep === true;
+  // The app with its node_modules is kept only when asked — a red run says how to keep it (E187: red runs piled up in $TMPDIR).
+  const keep = values.keep === true;
   let built = false;
   const step = async <T>(name: string, work: () => Promise<T> | T): Promise<T> => {
     const begin = performance.now();
@@ -266,8 +267,8 @@ async function main(): Promise<number> {
       console.error(`image: SKIPPED — the build could not reach the registry:\n${error.message.trim().split('\n').slice(-5).join('\n')}`);
       return SKIPPED;
     }
-    keep = true;
     console.error(`image: ${error instanceof SmokeError ? error.message : (error as Error).stack}`);
+    if (!keep) console.error(`image: removing ${work} — run pnpm image:smoke --keep to keep the app of a red run`);
     return 1;
   } finally {
     for (const name of [...docker.containers]) docker.remove(name);

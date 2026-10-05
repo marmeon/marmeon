@@ -1,8 +1,7 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { CookieJar } from '@bespokecore/router';
-import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -10,6 +9,7 @@ import { sessionKey, type SessionPayload, type SessionStore } from './store.ts';
 import { CookieSessionStore } from './stores/cookie.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 declare module './session.ts' {
   interface SessionData {
@@ -287,18 +287,10 @@ describe('Session', () => {
 });
 
 describe('session stores', () => {
-  const directories: string[] = [];
-  const tempDir = () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bespoke-sessions-'));
-    directories.push(dir);
-    return dir;
-  };
-  afterAll(() => {
-    for (const dir of directories) rmSync(dir, { recursive: true, force: true });
-  });
+  const directory = () => tempDir('bespoke-sessions-');
 
   it('file: survives a restart (a new store instance), writes atomically, private files', async () => {
-    const dir = tempDir();
+    const dir = directory();
     const { id } = await request(new FileSessionStore(dir), undefined, (session) => session.put('user_id', '7'));
 
     const restarted = new FileSessionStore(join(dir)); // like a new process
@@ -308,7 +300,7 @@ describe('session stores', () => {
   });
 
   it('file: expires by lifetime and garbage-collects old files', async () => {
-    const dir = tempDir();
+    const dir = directory();
     const store = new FileSessionStore(dir);
     await store.write('a'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: -1 });
     expect(await store.read('a'.repeat(64))).toBeUndefined();
@@ -322,7 +314,7 @@ describe('session stores', () => {
   });
 
   it('file: writes back in place without ever losing the session — racing writes and reads of long and short records', async () => {
-    const store = new FileSessionStore(tempDir());
+    const store = new FileSessionStore(directory());
     const key = 'd'.repeat(64);
     await store.write(key, '', { expectedVersion: undefined, lifetimeSeconds: 60 });
     const records = Array.from({ length: 60 }, (_, i) => JSON.stringify({ round: i, note: (i % 2 === 0 ? 'long ' : 's').repeat(i % 2 === 0 ? 100_000 : 1) }));
@@ -343,8 +335,8 @@ describe('session stores', () => {
   });
 
   it('file: refuses keys that are not session keys (SHA-256 hex) — a raw session id included', async () => {
-    await expect(new FileSessionStore(tempDir()).destroy('../escape')).rejects.toThrow('Invalid session key');
-    await expect(new FileSessionStore(tempDir()).read('A'.repeat(40))).rejects.toThrow('Invalid session key');
+    await expect(new FileSessionStore(directory()).destroy('../escape')).rejects.toThrow('Invalid session key');
+    await expect(new FileSessionStore(directory()).read('A'.repeat(40))).rejects.toThrow('Invalid session key');
   });
 
   it('memory: expires by lifetime', async () => {

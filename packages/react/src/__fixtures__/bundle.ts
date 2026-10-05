@@ -366,8 +366,6 @@ export type Scenario = keyof typeof SCENARIOS;
 export interface BudgetLine {
   /** The ratchet: the size may not grow over it, and it only ever goes down. */
   readonly limit: number;
-  /** What Wave 5c ended at (informational: the limit is the ratchet). */
-  readonly target?: number;
   /** A ceiling, not a ratchet: no request to lower it when the size shrinks (totals that may shift between chunks). */
   readonly ceiling?: boolean;
 }
@@ -383,39 +381,64 @@ export const BUDGET_FILE = fileURLToPath(new URL('../../size-budget.json', impor
 export const BUDGET_WHERE = 'packages/react/size-budget.json';
 export const readBudget = (): Budget => JSON.parse(readFileSync(BUDGET_FILE, 'utf8')) as Budget;
 
-/** Lowers limits in place, so the file keeps its layout: `"emptyApp": { "limit": 23.0` → `"emptyApp": { "limit": 22.4`. */
-export function lowerLimits(limits: Readonly<Record<string, number>>): void {
-  let text = readFileSync(BUDGET_FILE, 'utf8');
+/**
+ * Lowers limits in place, so the file keeps its layout: `"emptyApp": { "limit": 14.08` → `"emptyApp": { "limit": 13.95`. Never
+ * raises one — a limit that would go up stays as it is (E75).
+ */
+export function lowerLimits(limits: Readonly<Record<string, number>>, file = BUDGET_FILE): void {
+  let text = readFileSync(file, 'utf8');
   for (const [name, limit] of Object.entries(limits)) {
-    text = text.replace(new RegExp(`("${name}":\\s*\\{\\s*"limit":\\s*)[\\d.]+`), `$1${limit.toFixed(1)}`);
+    text = text.replace(new RegExp(`("${name}":\\s*\\{\\s*"limit":\\s*)([\\d.]+)`), (whole, head: string, current: string) =>
+      limit < Number(current) ? `${head}${limit.toFixed(2)}` : whole,
+    );
   }
-  writeFileSync(BUDGET_FILE, text);
+  writeFileSync(file, text);
 }
 
-/** Room above today's size, so a limit is not broken by every byte. */
-export const TOLERANCE_KB = 0.1;
-/** A size this far under its limit asks for a lower limit — a ratchet only holds if it follows every gain. */
-export const SHRINK_KB = 0.3;
+/**
+ * The reserve above the measured size that every limit keeps (E186, Wave 9: "the reserve stays"). Set once at the start of Wave 9
+ * (every limit = measured + 0.5); a saving lowers a limit to the new size + 0.5, extra cost eats the reserve and is never refilled.
+ */
+export const RESERVE_KB = 0.5;
+/**
+ * A size this far under its limit asks for a lower limit — a ratchet only holds if it follows every gain. More than the reserve
+ * (0.6 > 0.5): a limit at measured + 0.5 holds, one with a hidden extra reserve (over measured + 0.6) fails.
+ */
+export const SHRINK_KB = 0.6;
+/** The rule, for the messages. */
+export const BUDGET_RULE =
+  `E75/E186: limits only go down; a limit is the measured size + ${RESERVE_KB} KB at most — BESPOKE_SIZE_BUDGET=update lowers it ` +
+  'to that after a saving and never raises one; extra cost eats the reserve, which is never refilled';
 
 export const kb = (bytes: number): number => Math.round((bytes / 1024) * 100) / 100;
 
-/** The limit for a size of `size` KB: `size` plus the tolerance, rounded up to 0.1 KB. */
+/** The limit for a size of `size` KB: `size` plus the reserve, to 0.01 KB. */
 export function limitFor(size: number): number {
-  return Math.ceil(Math.round((size + TOLERANCE_KB) * 1000) / 100) / 10;
+  return Math.round((size + RESERVE_KB) * 100) / 100;
+}
+
+/**
+ * What `BESPOKE_SIZE_BUDGET=update` writes for a size of `size` KB: its {@link limitFor} when that is lower than the line's limit,
+ * otherwise `undefined` — the limit stays (a ceiling is never moved, and no limit ever goes up).
+ */
+export function loweredLimit(size: number, line: BudgetLine): number | undefined {
+  if (line.ceiling) return undefined;
+  const limit = limitFor(size);
+  return limit < line.limit ? limit : undefined;
 }
 
 /** Why `size` (KB gzip) breaks its budget line — or `undefined` when it holds. */
 export function budgetProblem(name: string, size: number, line: BudgetLine): string | undefined {
   if (size > line.limit) {
     return (
-      `${name} grew to ${size} KB gzip, over its limit of ${line.limit} KB (${BUDGET_WHERE}). Limits only go down: ` +
-      'find what grew (`pnpm size` attributes every byte to its module) instead of raising the limit.'
+      `${name} grew to ${size} KB gzip, over its limit of ${line.limit} KB (${BUDGET_WHERE}). ` +
+      `Find what grew (\`pnpm size\` attributes every byte to its module) instead of raising the limit (${BUDGET_RULE}).`
     );
   }
-  if (!line.ceiling && size < line.limit - SHRINK_KB) {
+  if (!line.ceiling && size < Math.round((line.limit - SHRINK_KB) * 100) / 100) {
     return (
-      `${name} shrank to ${size} KB gzip — lower its limit in ${BUDGET_WHERE} from ${line.limit} to ` +
-      `${limitFor(size).toFixed(1)} so the gain is kept (or run with BESPOKE_SIZE_BUDGET=update).`
+      `${name} shrank to ${size} KB gzip, more than ${SHRINK_KB} KB under its limit of ${line.limit} KB — lower it in ${BUDGET_WHERE} ` +
+      `to ${limitFor(size).toFixed(2)} so the gain is kept (or run with BESPOKE_SIZE_BUDGET=update; ${BUDGET_RULE}).`
     );
   }
   return undefined;

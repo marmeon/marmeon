@@ -1,5 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sql, type Kysely } from 'kysely';
@@ -7,6 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, PGSQL_URL, silent } from './__fixtures__/databases.ts';
 import { Connections, InfrastructureTransactionError, outsideTransaction, TransactionError } from './index.ts';
 import type { ConnectionOptions } from './config.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 // The infrastructure connection (E108): the cache, rate limits, locks and sessions never join the app's transactions.
 
@@ -74,14 +74,13 @@ describe('connections.infrastructure() on SQLite', () => {
     (open = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'app.sqlite') }, ...named }, root: directory, logger: silent }));
 
   beforeAll(() => {
-    directory = mkdtempSync(join(tmpdir(), 'bespoke-infrastructure-'));
+    directory = tempDir('bespoke-infrastructure-');
   });
   afterEach(async () => {
     await open?.destroy();
     open = undefined;
     for (const file of ['app.sqlite', 'system.sqlite']) for (const suffix of ['', '-wal', '-shm']) rmSync(join(directory, `${file}${suffix}`), { force: true });
   });
-  afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
   it('without a file of its own: refuses loudly inside a transaction of that file — never joins, never hangs', async () => {
     const connections = connect({});

@@ -1,15 +1,13 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApplication, HealthChecks, Logger } from '@bespokecore/core';
 import * as v from 'valibot';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { defineConnection } from './config.ts';
 import { DatabaseHealthCheck } from './health.ts';
 import { DatabaseServiceProvider } from './provider.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = mkdtempSync(join(tmpdir(), 'bespoke-db-health-'));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir('bespoke-db-health-');
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
 const boot = (extra: ReturnType<typeof defineConnection>[] = []) =>

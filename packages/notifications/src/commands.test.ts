@@ -1,17 +1,11 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MakeNotificationsTableCommand, NOTIFICATIONS_MIGRATION } from './commands.ts';
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const directory of temporary) rmSync(directory, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function app(): string {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-notifications-table-'));
-  temporary.push(root);
+  const root = tempDir('bespoke-notifications-table-');
   mkdirSync(join(root, 'bootstrap'));
   writeFileSync(
     join(root, 'bootstrap/app.ts'),

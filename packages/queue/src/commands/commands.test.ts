@@ -1,22 +1,17 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CliServiceProvider, CommandRegistry, DevProcesses } from '@bespokecore/cli';
 import { Clock, createApplication, Logger, TestClock, type Application } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider } from '@bespokecore/database';
 import { EncryptionServiceProvider } from '@bespokecore/encryption';
 import * as v from 'valibot';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { migrate, silent } from '../__fixtures__/targets.ts';
 import { QueueConnections } from '../connections.ts';
 import { Queue, QueueServiceProvider } from '../index.ts';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './failed.ts';
 import { QueueWorkCommand } from './work.ts';
-
-const temporary: string[] = [];
-afterEach(() => {
-  for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 class PingJob {
   static readonly job = 'test.ping';
@@ -145,8 +140,7 @@ describe('the queue commands', () => {
   });
 
   it('make:queue-table writes the migration of jobs and failed_jobs into the system module (E96)', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-queue-table-'));
-    temporary.push(root);
+    const root = tempDir('bespoke-queue-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@bespokecore/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
     const { input: run, lines } = input(root);

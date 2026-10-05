@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as v from 'valibot';
@@ -7,6 +7,7 @@ import { createApplication } from '../application.ts';
 import { Container } from '../container.ts';
 import { ConfigError, defineConfig, loadEnv, resolveConfig, type ConfigOf } from './config.ts';
 import type { StandardSchemaV1 } from './standard-schema.ts';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 export const AppConfig = defineConfig('app', {
   env: v.object({
@@ -81,7 +82,7 @@ describe('configuration', () => {
 
 describe('loadEnv', () => {
   it('layers .env, .env.{mode} and the real environment, without touching process.env', () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-env-')));
+    const root = realpathSync(tempDir('bespoke-env-'));
     writeFileSync(join(root, '.env'), 'A=from-env\nB=from-env\n# comment\nQUOTED="x y"\n');
     writeFileSync(join(root, '.env.test'), 'B=from-env-test\nC=from-env-test\n');
 

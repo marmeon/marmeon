@@ -6,7 +6,7 @@ import { MailFake, Mailer, type Mailable, type MailMessage } from '@bespokecore/
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { UserFactory } from './factories/UserFactory.ts';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { User } from './users.ts';
 import { UserRepository } from './UserRepository.ts';
@@ -22,6 +22,10 @@ import { EmailChangedMail } from './mail/EmailChangedMail.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
 beforeEach(async () => {

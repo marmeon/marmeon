@@ -4,8 +4,12 @@ import { channels, type ChannelName, type DbQueryMessage, type HttpRequestMessag
 import { Database, sql } from '@bespokecore/database';
 import { ScheduledTaskFailed } from '@bespokecore/scheduler';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { WARM_UP_TIMEOUT, warmUp } from '../auth/warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 /** Records the `end` of every traced channel named, for one app; `stop()` ends the subscriptions. */
 function record(app: TestApp, names: readonly ChannelName[]) {

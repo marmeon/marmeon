@@ -1,25 +1,20 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { inspectApp } from './commands/make-docker.ts';
 import { HEALTHCHECK_SCRIPT, TESTED_PNPM } from './docker.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const bin = join(repo, 'packages/cli/bin/bespoke.js');
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
 
 function app(files: Record<string, string>): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-docker-')));
-  temporary.push(root);
+  const root = realpathSync(tempDir('bespoke-docker-'));
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(join(root, file), content);

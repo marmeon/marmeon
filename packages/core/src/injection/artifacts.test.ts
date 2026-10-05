@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { injectConstructorDependencies } from './analyze.ts';
 import { computeInjectionArtifacts, INJECTIONS_FILE, PrecomputedInjections, writeInjectionArtifacts } from './artifacts.ts';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 const decode = (source: Uint8Array) => new TextDecoder().decode(source);
 const webApp = fileURLToPath(new URL('../../../../apps/web-app', import.meta.url));
@@ -25,10 +25,9 @@ describe('injection artifacts (E138)', () => {
   };
 
   beforeEach(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-injections-')));
+    root = realpathSync(tempDir('bespoke-injections-'));
     write('package.json', JSON.stringify({ type: 'module', bespoke: { browser: ['client/**'] } }));
   });
-  afterEach(() => rmSync(root, { recursive: true, force: true }));
 
   it('covers the modules of the app that mention a constructor — no tests, browser sources, node_modules, dist or storage', () => {
     write('modules/users/ShowUserController.ts', controller);

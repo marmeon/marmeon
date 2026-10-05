@@ -1,17 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createApplication } from '@bespokecore/core';
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { HttpServiceProvider } from '@bespokecore/http';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { startServer } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = mkdtempSync(join(tmpdir(), 'bespoke-serve-'));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir('bespoke-serve-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
 // The app's own Vite (an optional peer of the server); no vite.config.ts, so the SSR entry is passed explicitly.

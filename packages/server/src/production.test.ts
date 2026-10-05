@@ -1,11 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createProductionRenderer } from './production.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = mkdtempSync(join(tmpdir(), 'bespoke-prod-'));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir('bespoke-prod-');
 
 function build(asset: string): void {
   mkdirSync(join(root, 'dist/client'), { recursive: true });

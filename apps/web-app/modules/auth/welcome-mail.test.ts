@@ -3,12 +3,16 @@ import { EventRegistry } from '@bespokecore/core';
 import { Connections, sql } from '@bespokecore/database';
 import { Queue, QueueConnections } from '@bespokecore/queue';
 import { createTestApp } from '@bespokecore/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import { WelcomeMail } from './mail/WelcomeMail.ts';
 import { UserRepository } from './UserRepository.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 const register = (app: Awaited<ReturnType<typeof createTestApp>>, language = 'en') =>
   app.post('/register', {

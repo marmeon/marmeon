@@ -27,6 +27,9 @@ export const SCENARIOS = {
 } as const;
 export type ScenarioName = keyof typeof SCENARIOS;
 
+/** The modules a measured process imports first, relative to its checkout — `requests.ts` smoke-tests them before a run. */
+export const WORKER_MODULES = ['packages/testing/src/index.ts', 'apps/web-app/bootstrap/app.ts', 'apps/web-app/modules/auth/index.ts', 'packages/server/src/index.ts'] as const;
+
 const repo = process.argv[2];
 if (repo !== undefined && process.env.BENCH_WORKER === '1') await run(repo);
 
@@ -37,10 +40,11 @@ async function run(repo: string): Promise<void> {
   const without = new Set((process.env.BENCH_WITHOUT ?? '').split(',').filter(Boolean));
   const imp = (path: string) => import(pathToFileURL(join(repo, path)).href);
 
-  const { createTestApp } = await imp('packages/testing/src/index.ts');
-  const { default: application } = await imp('apps/web-app/bootstrap/app.ts');
-  const { UserRepository } = await imp('apps/web-app/modules/auth/index.ts');
-  const { createHttpKernel } = await imp('packages/server/src/index.ts');
+  const [testing, bootstrap, auth, server] = WORKER_MODULES;
+  const { createTestApp } = await imp(testing);
+  const { default: application } = await imp(bootstrap);
+  const { UserRepository } = await imp(auth);
+  const { createHttpKernel } = await imp(server);
 
   // Without the CSP measure (W8 step 4): the app as it was before — no contentSecurityPolicy() among its global middleware.
   const definition =

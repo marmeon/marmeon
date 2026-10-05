@@ -186,6 +186,8 @@ apps/docs         these docs: the READMEs and docs/*.md as a BespokeCore app (pn
 docs              the guides: getting started, deployment, security, versions
 scripts/ci.ts     pnpm run ci — its 14 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
+scripts/gegen     pnpm gegen — the Gegenproben of each step: a measure taken out, its test red for its reason (never a gate)
+scripts/test      the test suite's temporary directory per run and tempDir() (pnpm test fails when a test leaves one behind)
 deploy/docs       the docs' Compose file and Caddyfile (one server, E142)
 UPGRADING.md      what changes for apps from one version to the next
 .changeset        Changesets: the pending changes, one fixed group (pnpm changeset; scripts/check-changesets.ts checks the release rules)
@@ -201,6 +203,7 @@ pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or lefto
 pnpm pack:smoke        # create-bespoke-app from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-bespoke-app (a test fails while they differ)
 pnpm changeset         # a changeset for your change (CONTRIBUTING.md); pnpm check-changesets checks the release rules
+pnpm gegen w9/s01      # the Gegenproben of a step (CONTRIBUTING.md): every case red for its reason; --control: all green without the patches
 ```
 
 `pnpm run ci` runs 14 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
@@ -225,7 +228,8 @@ pnpm bench login --profile --base f785159             # CPU profiles of the meas
 
 The request benchmarks boot the web app in-process (SQLite in memory, `SESSION_DRIVER=memory`) and send the requests through the
 kernel as a browser would — the cookies as the server set them, the body read; none of the test helpers' work per response. Each
-side runs from a `git worktree` under `$TMPDIR/bespoke-bench/` (this checkout as a snapshot with its uncommitted changes), the sides
+side runs from a `git worktree` under `$TMPDIR/bespoke-bench/` (this checkout as a snapshot with its uncommitted changes; before a
+run each one must import what a measured process imports — a missing module reinstalls its `node_modules`), the sides
 alternate in fresh processes, and the report gives the median, the mean's 95 % confidence interval and Welch's test per pair.
 `--without <measure>` (`session-hash`, `fetch-metadata`, `csp`, `epoch`; `w8` for all four) switches Wave 8's security measures off
 in one variant — counted, and refused when one still runs — so their cost shows on its own (E154). The numbers and the machine

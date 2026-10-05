@@ -1,17 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const vitePackage = dirname(createRequire(import.meta.url).resolve('vite/package.json'));
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
 
 function write(root: string, files: Record<string, string>): void {
   for (const [path, content] of Object.entries(files)) {
@@ -25,8 +21,7 @@ function write(root: string, files: Record<string, string>): void {
  * package whose `@bespokecore/source` condition points at different code than its build.
  */
 function app({ vite = true, plugin = true, typescript, files = {} }: { vite?: boolean; plugin?: boolean; typescript?: string; files?: Record<string, string> } = {}): string {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-vite-'));
-  temporary.push(root);
+  const root = tempDir('bespoke-vite-');
   write(root, {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', dependencies: { '@bespokecore/fake': '*' } }),
     'index.html': '<!doctype html><html><head><!--app-head--></head><body><div id="app"><!--app-html--></div></body></html>',

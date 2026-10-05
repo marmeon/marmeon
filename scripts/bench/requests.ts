@@ -11,7 +11,9 @@
  * Every side runs from a `git worktree` under `$TMPDIR/bespoke-bench/` — the base at its commit, this checkout as a snapshot (HEAD
  * plus the working tree's changes and untracked files; `--in-place` measures the checkout itself). Same place, same conditions: the
  * repository's own `apps/web-app/.env` (read under `.env.test`) and its location changed results by several per cent (W8 step 7).
- * Worktrees are kept for the next run (`git worktree remove` cleans up). A run: `--rounds` × `--requests` per scenario after a
+ * Worktrees are kept for the next run (`git worktree remove` cleans up); before a run each one is smoke-tested — it imports what a
+ * measured process imports, and a missing module (macOS cleans `$TMPDIR` file by file) removes its `node_modules` and installs
+ * again (`integrity.ts`). A run: `--rounds` × `--requests` per scenario after a
  * warm-up of 500; the run's number is the median of its rounds, in µs per request. Noise on a laptop is ±3–5 % between runs —
  * compare sides measured in the same `pnpm bench` call only.
  *
@@ -24,9 +26,10 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { SCENARIOS, type ScenarioName } from './request-worker.ts';
+import { ensureImportable, importProblem, type ImportProbe } from './integrity.ts';
+import { SCENARIOS, WORKER_MODULES, type ScenarioName } from './request-worker.ts';
 import { MEASURES, parseMeasures, type Measure } from './shims.ts';
 import { welch } from './stats.ts';
 
@@ -77,7 +80,11 @@ export async function main(name: string, argv: string[]): Promise<number> {
   for (const given of values.checkout ?? []) {
     // A checkout prepared by hand (installed): `label=dir` — measured like this one, its `--without` variants too.
     const [label, dir] = given.includes('=') ? [given.slice(0, given.indexOf('=')), given.slice(given.indexOf('=') + 1)] : [given, given];
-    sides.push({ label: label!, checkout: realpathSync(resolve(dir!)), without: [], base: false, encrypt });
+    const checkout = realpathSync(resolve(dir!));
+    // Prepared by hand: checked, never repaired — its node_modules are not ours to remove.
+    const problem = importProblem(probeOf(checkout));
+    if (problem !== undefined) throw new Error(`--checkout ${given}: it cannot import what a measured process imports — install it first:\n${problem}`);
+    sides.push({ label: label!, checkout, without: [], base: false, encrypt });
   }
   const variants: Variant[] = [];
   for (const side of sides) {
@@ -140,6 +147,7 @@ function baseWorktree(ref: string): string {
     git(['worktree', 'add', '--detach', dir, sha]);
     install(dir);
   }
+  ensureImportable(dir, probeOf(dir), { install, log });
   return dir;
 }
 
@@ -165,19 +173,38 @@ function snapshot(): string {
   }
   const fingerprint = createHash('sha256').update(readFileSync(join(dir, 'pnpm-lock.yaml'))).digest('hex');
   const marker = join(dir, 'node_modules', '.bench-lock');
-  if (!existsSync(marker) || readFileSync(marker, 'utf8') !== fingerprint) {
-    install(dir);
+  const installed = (checkout: string) => {
+    install(checkout);
     writeFileSync(marker, fingerprint);
-  }
+  };
+  if (!existsSync(marker) || readFileSync(marker, 'utf8') !== fingerprint) installed(dir);
+  // The marker only knows the lockfile: files under node_modules can be gone all the same.
+  ensureImportable(dir, probeOf(dir), { install: installed, log });
   return dir;
+}
+
+/** The import smoke test of a checkout: what `request-worker.ts` imports first, the way `worker()` starts it. */
+function probeOf(checkout: string): ImportProbe {
+  return {
+    cwd: join(checkout, 'apps/web-app'),
+    args: ['--conditions=@bespokecore/source', `--import=${pathToFileURL(join(checkout, 'packages/core/src/register.ts')).href}`],
+    env: { ...workerEnvironment(), NODE_ENV: 'test' },
+    specifiers: WORKER_MODULES.map((path) => pathToFileURL(join(checkout, path)).href),
+  };
+}
+
+/** The environment of a measured process: none of pnpm's, Vitest's or this process's own variables. */
+function workerEnvironment(): NodeJS.ProcessEnv {
+  const clean: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) if (!/^(npm_|PNPM_|BESPOKE_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) clean[key] = value;
+  return clean;
 }
 
 // --- Processes ------------------------------------------------------------------------------------------------------------
 
 /** One measured process for `variant`; its last line of output is the result. */
 function worker(variant: Variant, env: Record<string, string>, { shims = variant.without.length > 0 } = {}): Promise<RunResult> {
-  const clean: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) if (!/^(npm_|PNPM_|BESPOKE_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) clean[key] = value;
+  const clean = workerEnvironment();
   const args = ['--expose-gc', '--conditions=@bespokecore/source'];
   if (shims) args.push(`--import=${join(here, 'shims.ts')}`);
   args.push(`--import=${join(variant.checkout, 'packages/core/src/register.ts')}`, join(here, 'request-worker.ts'), variant.checkout);

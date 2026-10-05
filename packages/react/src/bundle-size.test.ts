@@ -8,7 +8,7 @@ import {
   BUDGET_WHERE,
   budgetProblem,
   kb,
-  limitFor,
+  loweredLimit,
   lowerLimits,
   PACKAGES,
   readBudget,
@@ -145,12 +145,12 @@ describe('the client bundle stays within its budget (E75: a ratchet)', () => {
     const line = budget.gzipKB[name];
     expect(line, `${BUDGET_WHERE} has no limit for "${name}"`).toBeDefined();
     const size = kb(bundle(name).gzip);
-    let problem = budgetProblem(name, size, line);
-    if (problem && update && size < line.limit) {
-      lowered[name] = limitFor(size);
-      problem = undefined;
-    }
-    expect(problem).toBeUndefined();
+    // update: a saving lowers the limit to the size + the reserve (E186); a size over its limit stays red — never raised.
+    const lower = update ? loweredLimit(size, line) : undefined;
+    if (lower !== undefined) lowered[name] = lower;
+    const problem = budgetProblem(name, size, lower === undefined ? line : { ...line, limit: lower });
+    // The whole message as the assertion's (Vitest shortens the value it prints).
+    expect(problem, problem).toBeUndefined();
   });
 
   it('the budget file only names scenarios this test builds', () => {

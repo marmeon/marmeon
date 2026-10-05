@@ -1,9 +1,9 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from './config/config.ts';
 import { DOTENV_MARKER, environment, resolveEnvironment } from './environment.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 describe('environment (E115, E139)', () => {
   const cases = [
@@ -42,7 +42,7 @@ describe('environment (E115, E139)', () => {
 
 describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
   const app = (files: Record<string, string>) => {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-env-'));
+    const root = tempDir('bespoke-env-');
     for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
     return root;
   };

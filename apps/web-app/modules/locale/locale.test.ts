@@ -1,11 +1,15 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
 import { LOCATION_HEADER } from '@bespokecore/http';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { LoginController } from '../auth/controllers/LoginController.ts';
 import type { RegisterController } from '../auth/controllers/RegisterController.ts';
 import { ResetPasswordMail } from '../auth/mail/ResetPasswordMail.ts';
+import { WARM_UP_TIMEOUT, warmUp } from '../auth/warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
 beforeEach(async () => {

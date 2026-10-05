@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineRoutes, Router } from '@bespokecore/router';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { BROWSER_ROUTES_FILE, browserRoutes, writeBrowserRoutes } from './browser-routes.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const web = defineRoutes((Route) => {
   Route.get('/users/:user', () => 'profile').name('users.show');
@@ -24,11 +24,6 @@ const api = defineRoutes((Route) => {
 });
 
 const router = new Router().load({ group: 'web' }, web).load({ group: 'api', prefix: '/api' }, api);
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
 
 describe('browserRoutes', () => {
   it('lets the browser learn the named web routes — never .internal() ones, alone or by group', () => {
@@ -52,8 +47,7 @@ describe('browserRoutes', () => {
   });
 
   it('is written to .bespoke/routes.json only when it changed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-browser-routes-'));
-    temporary.push(root);
+    const root = tempDir('bespoke-browser-routes-');
     const routes = browserRoutes(router.routes);
     expect(writeBrowserRoutes(root, routes)).toBe(true);
     expect(writeBrowserRoutes(root, routes)).toBe(false);

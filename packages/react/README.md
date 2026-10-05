@@ -339,8 +339,9 @@ hook, and which load lazily: [features](../http/README.md#features).
 `everything` ceiling, and the real apps' marginal cost in `appsGzipKB`), with the history of every change in its `$comment`.
 
 - `bundle-size.test.ts` (part of `pnpm test`) builds the scenarios and fails when one grows over its limit — and when one is
-  more than 0.3 KB under it, until the limit follows: `BESPOKE_SIZE_BUDGET=update` lowers limits, never raises them. **Limits
-  only go down;** raising one is a decision on record, not a fix.
+  more than 0.6 KB under it, until the limit follows: `BESPOKE_SIZE_BUDGET=update` lowers a limit to the measured size + 0.5 KB
+  and never raises one (E186: since Wave 9 every limit keeps that 0.5 KB reserve — a saving lowers the limit, extra cost eats the
+  reserve, and it is never refilled). **Limits only go down;** raising one is a decision on record, not a fix.
 - The same test is the **leak test**: a feature is in a bundle only with its own import, a lazy one only in a lazy chunk
   (`stillLeaking` is empty everywhere); no devtools code and no injection metadata ship; a production bundle carries codes,
   not explanations.

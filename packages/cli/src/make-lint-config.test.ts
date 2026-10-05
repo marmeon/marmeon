@@ -1,24 +1,19 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { LINT_CONFIG_FILE, lintConfig, MakeLintConfigCommand } from './commands/make-lint-config.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const oxlint = join(repo, 'node_modules/.bin/oxlint');
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
 
 const CONTROLLER = 'export class ShowLoginController {}\n';
 
 /** An app's files: a controller, a repository, a module entry — and the imports under test. */
 function app(files: Record<string, string>): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-lint-')));
-  temporary.push(root);
+  const root = realpathSync(tempDir('bespoke-lint-'));
   const all: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module', imports: { '#modules/*': './modules/*/index.ts' } }),
     'config/app.ts': 'export const AppConfig = {};\n',

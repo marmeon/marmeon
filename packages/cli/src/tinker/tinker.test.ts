@@ -1,6 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -9,6 +8,7 @@ import { defineRoutes, Router } from '@bespokecore/router';
 import { completer } from './repl.ts';
 import { TinkerSession } from './session.ts';
 import { toJavaScript } from './typescript.ts';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const bin = join(repo, 'packages/cli/bin/bespoke.js');
@@ -70,7 +70,7 @@ describe('a tinker session (in-process)', () => {
   let app: Application;
 
   beforeAll(async () => {
-    root = mkdtempSync(join(tmpdir(), 'bespoke-tinker-'));
+    root = tempDir('bespoke-tinker-');
     // Repositories are found by file name and told apart by shape — without importing @bespokecore/database.
     const repository = (name: string, table: string) => `export class ${name} { static table = '${table}'; query() {} find() {} }\n`;
     mkdirSync(join(root, 'modules/shop'), { recursive: true });
@@ -88,7 +88,6 @@ describe('a tinker session (in-process)', () => {
       override: (container) => container.instance(Router, router).instance(Mailer, { send: () => 'sent' }),
     });
   });
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   it('knows classes and tokens by name — bound ones and those a module lists', () => {
     const tinker = new TinkerSession(app);
@@ -144,12 +143,11 @@ describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
   const count = (extra: Record<string, string> = {}) => Number(bespoke(['tinker', '--execute', 'await repos.users.count()'], { ...env, ...extra }).stdout.trim());
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), 'bespoke-tinker-app-'));
+    dir = tempDir('bespoke-tinker-app-');
     env = { DB_DATABASE: join(dir, 'app.sqlite') };
     const fresh = bespoke(['migrate:fresh', '--seed', '--no-types'], env);
     expect(fresh.code, fresh.stderr).toBe(0);
   });
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   it('prints the value of --execute — the number of users', () => {
     const { code, stdout, stderr } = bespoke(['tinker', '--execute', 'await repos.users.count()'], env);

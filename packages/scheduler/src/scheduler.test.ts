@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@bespokecore/cache';
 import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from '@bespokecore/cli';
@@ -9,14 +7,10 @@ import { Connections, DatabaseServiceProvider, Schema } from '@bespokecore/datab
 import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
 import { QUEUE_MIGRATION, Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@bespokecore/queue';
 import * as v from 'valibot';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, ScheduleTester, ScheduleWorker, type TaskResult } from './index.ts';
 import { MINUTE } from './time.ts';
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 /** Log entries, for assertions — and silence. */
 class Recorder implements Logger {
@@ -372,7 +366,7 @@ describe('onOneServer', () => {
         s.call(SlowTask).everyMinute().name('slow').withoutOverlapping();
         s.call(CountRun).everyMinute().name('count');
       }),
-      { env: { CACHE_DRIVER: 'file', CACHE_PATH: mkdtempSync(join(tmpdir(), 'bespoke-schedule-')) } },
+      { env: { CACHE_DRIVER: 'file', CACHE_PATH: tempDir('bespoke-schedule-') } },
     );
     await expect(file.scheduler.checkProcess()).resolves.toBeUndefined();
     expect(file.scheduler.lockWarning()).toBe(
@@ -508,8 +502,7 @@ describe('the schedule.task channel (E118)', () => {
 
 describe('s.job()', () => {
   async function withQueue(schedule: ModuleDefinition['schedule']) {
-    const dir = mkdtempSync(join(tmpdir(), 'bespoke-schedule-queue-'));
-    temporary.push(dir);
+    const dir = tempDir('bespoke-schedule-queue-');
     const booted = await boot(schedule, {
       providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
       env: { APP_KEY: generateKey(), DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database' },

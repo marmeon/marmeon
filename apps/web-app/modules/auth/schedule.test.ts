@@ -2,10 +2,14 @@ import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, REMEMB
 import { Connections } from '@bespokecore/database';
 import { SessionLottery } from '@bespokecore/session';
 import { createTestApp } from '@bespokecore/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+// Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
+beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // The web app's schedule (W6 step 6, E88): the nightly token prune (finding 5 — expired API tokens were never deleted),
 // the housekeeping of modules/system and the hourly member numbers — with the test clock (E97).

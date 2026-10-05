@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, coreSolutions, createApplication, defineModule, ErrorSolutions, EventDispatcher, EventFake, EventRegistry, Logger, type ServiceProviderClass } from '@bespokecore/core';
@@ -13,14 +12,10 @@ import { Queue, QueueServiceProvider } from '@bespokecore/queue';
 import { defineRoutes, type HttpContext } from '@bespokecore/router';
 import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
 import * as v from 'valibot';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { DevtoolsStore, enableDevtoolsForTests, FileStore, MemoryStore, Recorder, type AnyEntry, type DevtoolsTester } from './index.ts';
 import { DevtoolsServiceProvider } from './provider.ts';
-
-const roots: string[] = [];
-afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const API_TOKEN = `bc_7|${randomBytes(30).toString('hex').slice(0, 40)}`;
@@ -159,8 +154,7 @@ interface Booted {
 }
 
 async function boot(env: Record<string, string> = {}, options: { test?: boolean; config?: string; providers?: ServiceProviderClass[] } = {}): Promise<Booted> {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-devtools-'));
-  roots.push(root);
+  const root = tempDir('bespoke-devtools-');
   if (options.config) {
     mkdirSync(join(root, 'config'));
     writeFileSync(join(root, 'config', 'devtools.ts'), options.config);

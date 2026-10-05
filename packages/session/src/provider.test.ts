@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@bespokecore/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@bespokecore/database';
@@ -8,7 +7,7 @@ import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokeco
 import { RedisConnections, RedisServiceProvider } from '@bespokecore/redis';
 import { createHttpKernel } from '@bespokecore/server';
 import * as v from 'valibot';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SessionConfig } from './config.ts';
@@ -19,11 +18,7 @@ import { sessionKey, SessionStore } from './store.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
 import { RedisSessionStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
-
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 class CountController extends Controller {
   readonly #session: Session;
@@ -132,8 +127,7 @@ describe('SESSION_DRIVER', () => {
   });
 
   it('a new APP_KEY with the old one in APP_PREVIOUS_KEYS keeps encrypted sessions — without it, everybody starts afresh (E169)', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'bespoke-session-rotation-'));
-    temporary.push(directory);
+    const directory = tempDir('bespoke-session-rotation-');
     const [oldKey, newKey] = [generateKey(), generateKey()];
     const files = { SESSION_DRIVER: 'file', SESSION_FILES: directory, SESSION_ENCRYPT: 'true' };
     const before = await boot({ ...files, APP_KEY: oldKey }, []);
@@ -222,8 +216,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', 
   });
 
   it('SQLite with a file of its own (SESSION_CONNECTION): a session written inside a transaction survives its rollback', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'bespoke-session-system-'));
-    temporary.push(directory);
+    const directory = tempDir('bespoke-session-system-');
     const app = await boot(
       { SESSION_DRIVER: 'database', SESSION_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
       [DatabaseServiceProvider],
@@ -296,8 +289,7 @@ describe('session:prune', () => {
 
 describe('make:session-table', () => {
   function app(): string {
-    const root = mkdtempSync(join(tmpdir(), 'bespoke-session-table-'));
-    temporary.push(root);
+    const root = tempDir('bespoke-session-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(
       join(root, 'bootstrap/app.ts'),

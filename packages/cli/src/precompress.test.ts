@@ -1,12 +1,11 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { precompressAssets } from './precompress.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'bespoke-precompress-'));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+const dir = tempDir('bespoke-precompress-');
 
 describe('bespoke build — precompressed assets (E162)', () => {
   it('writes .br and .gz next to the compressible files — the same bytes once decompressed; never for images or what does not shrink', async () => {

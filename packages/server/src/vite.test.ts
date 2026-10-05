@@ -1,24 +1,19 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { Redactor } from '@bespokecore/core';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { bespokeEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const vitePackage = dirname(createRequire(import.meta.url).resolve('vite/package.json'));
-const temporary: string[] = [];
-afterAll(() => {
-  for (const dir of temporary) rmSync(dir, { recursive: true, force: true });
-});
 
 /** A UI-free app: `bespoke()` with its own entries, a page, and Vite + @bespokecore/vite linked in (or not). */
 function app({ vite = true, framework = true, config }: { vite?: boolean; framework?: boolean; config?: string } = {}): string {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-vite-dev-'));
-  temporary.push(root);
+  const root = tempDir('bespoke-vite-dev-');
   const files: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
     'index.html': '<html><head><!--app-head--></head><body><!--app-html--></body></html>',

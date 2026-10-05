@@ -344,10 +344,10 @@ await navigator.load(loadInstant);                           // async: fetch the
 
 **The size budget** (E75). `packages/react/size-budget.json` holds a limit per scenario, in KB gzip of the initial download,
 measured in Vite's app mode against `dist/` (minified, production defines, React and i18n left out, and without Vite's preload
-helper — the first `import()` of any client build brings it, so it is no framework code). The limits are where Wave 5c ended
-(core 11.2, `emptyApp` 13.6, `minimalApp` 18.2, `blank-app` 14.1, `web-app` 22.6 KB gzip; the `everything` ceiling 31.1 since
-E110 — Wave 6 added uploads and live props as lazy features, and the core's server-driven live trigger costs every app ≈ 40 B)
-and only go down:
+helper — the first `import()` of any client build brings it, so it is no framework code). Wave 9 set every limit once to the
+measured size + 0.5 KB (E186: core 11.57, `emptyApp` 14.08, `minimalApp` 18.61, `blank-app` 14.57, `web-app` 23.15, `docs`
+17.76 KB gzip; the `everything` ceiling 31.62) — the reserve stays: a saving lowers a limit to the new size + 0.5, extra cost eats
+the reserve and is never refilled. The limits only go down:
 
 | Scenario | What |
 | --- | --- |
@@ -358,10 +358,10 @@ and only go down:
 | `blank-app`, `web-app` (`appsGzipKB`) | the real apps' client builds: the marginal cost of core + adapter in the initial load (what the download loses without their bytes) |
 
 - `bundle-size.test.ts` (part of `pnpm test`) builds the scenarios and fails when one grows over its limit — and when one is
-  more than 0.3 KB under it, until the limit follows (`BESPOKE_SIZE_BUDGET=update` lowers limits in place, never raises them).
-  Limits only go down: raising one is a decision on record (E78, E79, E81), not a fix. The same test is the **leak test**: every
-  feature has markers (its modules) and must be in a bundle only with its own import — a lazy one only in a lazy chunk
-  (`stillLeaking` is `[]` in every scenario).
+  more than 0.6 KB under it, until the limit follows (`BESPOKE_SIZE_BUDGET=update` lowers limits in place to the measured
+  size + 0.5 KB, never raises them). Limits only go down: raising one is a decision on record (E78, E79, E81, E186), not a fix.
+  The same test is the **leak test**: every feature has markers (its modules) and must be in a bundle only with its own
+  import — a lazy one only in a lazy chunk (`stillLeaking` is `[]` in every scenario).
 - `pnpm size` attributes every byte of the scenarios and of the real apps to its module (source maps), prints the marginal cost
   of core + adapter, and checks the apps against `appsGzipKB`; `pnpm size web-app` lists every module. Both measure `dist/`:
   run `pnpm build` first.

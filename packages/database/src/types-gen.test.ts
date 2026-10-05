@@ -1,11 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@bespokecore/core';
 import type { TableMetadata } from 'kysely';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { drivers, freshConnections, silent } from './__fixtures__/databases.ts';
 import { columnType, renderTypes, TypeGenerator } from './index.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -60,8 +60,7 @@ declare module '@bespokecore/database' {
 `;
 
 describe.each(drivers)('TypeGenerator on %s', (driver) => {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-types-'));
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const root = tempDir('bespoke-types-');
 
   it('generates the same file from the migrations on every driver — without touching the app database', async () => {
     const { connections, close } = await freshConnections(driver);

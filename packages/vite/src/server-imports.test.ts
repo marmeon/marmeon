@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createServer, isRunnableDevEnvironment, type ViteDevServer } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
 import { bespoke, type BespokeOptions } from './index.ts';
 import { valueImports } from './server-imports.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const temporary: string[] = [];
 const servers: ViteDevServer[] = [];
@@ -17,7 +17,7 @@ const CONTROLLER = "export class ShowHomeController {\n  handle() {\n    return 
 
 /** A tiny app: a controller (server code) and a page; `files` overrides or adds. */
 function app(files: Record<string, string>): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-server-imports-')));
+  const root = realpathSync(tempDir('bespoke-server-imports-'));
   temporary.push(root);
   const all: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),

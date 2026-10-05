@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@bespokecore/core';
@@ -19,6 +17,7 @@ import * as v from 'valibot';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadOtelApi, OtelServiceProvider, redactedPath } from './index.ts';
 import { ErrorSolutions, Redactor } from '@bespokecore/core';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 // The SDK, as an app's bootstrap/telemetry.ts would register it — with an in-memory exporter (SDK 3 names: `TracerProvider`).
 const exporter = new InMemorySpanExporter();
@@ -34,8 +33,7 @@ afterAll(() => {
   propagation.disable();
 });
 
-const root = mkdtempSync(join(tmpdir(), 'bespoke-otel-'));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir('bespoke-otel-');
 
 class ReportJob {
   static readonly job = 'test.report';

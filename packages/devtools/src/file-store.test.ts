@@ -1,19 +1,13 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { EntryIds, type AnyEntry } from './entry.ts';
 import { FileStore } from './file-store.ts';
-
-const roots: string[] = [];
-afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
-});
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function directory(): string {
-  const root = mkdtempSync(join(tmpdir(), 'bespoke-devtools-store-'));
-  roots.push(root);
+  const root = tempDir('bespoke-devtools-store-');
   return join(root, 'storage', 'framework', 'devtools');
 }
 

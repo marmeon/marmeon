@@ -1,16 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { PackageBuildCommand } from './commands/package-build.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const silent = { line: () => {}, success: () => {}, error: () => {}, info: () => {}, warn: () => {}, table: () => {} };
 
 /** A package outside the repository: one source, TypeScript linked in, and the leftovers of an earlier build. */
 function fixture(outDir = 'dist'): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-package-build-')));
+  const dir = realpathSync(tempDir('bespoke-package-build-'));
   mkdirSync(join(dir, 'src'));
   mkdirSync(join(dir, 'node_modules'));
   symlinkSync(realpathSync(join(repo, 'node_modules/typescript')), join(dir, 'node_modules/typescript'));
@@ -32,7 +32,6 @@ describe('bespoke package:build --clean (E156)', () => {
   beforeEach(() => {
     dir = fixture();
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   it('removes what a deleted source left in dist/ — a plain build keeps it, and a tarball would carry it', () => {
     expect(build(dir)).toBe(0);
