@@ -256,7 +256,8 @@ language files from `virtual:bespoke/lang` and the route manifest from `virtual:
 
 Where the browser has it (Chrome 102+, Firefox 147+, Safari 26.2+), the navigator writes and follows the history through the
 [Navigation API](https://developer.mozilla.org/docs/Web/API/Navigation_API) — `window.navigation`, no polyfill; elsewhere through
-the History fallback (below). What changes for an app:
+the History fallback (below) — the guide: [navigation, history and view transitions](../../docs/navigation.md). What changes for
+an app:
 
 - **Its own navigations only.** A visit commits its entry with `navigation.navigate(url, { state, history, info })` — the `info`
   marks it as the navigator's — once the answer is there (as before: the URL never shows a page that has not landed); the

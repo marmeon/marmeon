@@ -83,6 +83,38 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
 - Policies and the `Gate` decide what a user may do
   ([authorization](../packages/auth/README.md#authorization-policies-and-the-gate-e28)).
 
+## Tables and exports
+
+A table of [@bespokecore/table](../packages/table/README.md) is one definition the server enforces on every request — the attacks of
+hand-written tables, and what stops each ([the whole model](tables.md#the-security-model)):
+
+- **Hidden columns stay hidden.** A column the policy hides is not selected — not in the SQL, so not in the props, the devtools'
+  query log, a cursor or an export — and the props are picked by name besides (two measures, each tested on its own).
+- **No sort oracle.** Sorting, filtering or searching by a column the user cannot see is a 400, as is any sort, filter or page size
+  the definition does not name (`?sort=password`, `?per_page=10000`): an order by a secret tells its values without showing them.
+  Nothing from the URL reaches `ORDER BY` or `WHERE` that the definition did not name.
+- **Bulk IDOR.** A bulk action acts on the keys sent **∩ the base query ∩ the policy per row** — another tenant's or a made-up key
+  is left out (`missing`), a row the policy refuses too (`skipped`). "All matching" sends the filter state, never keys; the server
+  parses it again and refuses more than the action's `max` (422). Put the tenant into the base query: it is the boundary every
+  endpoint starts from. The endpoints inherit the page registrar's middleware (`tableRoutes`), not the page controller's
+  `authorize` — a table that needs one declares it.
+- **CSV injection.** Exported text cells that start with `=`, `+`, `-`, `@`, a tab, CR or LF get a `'` in front (OWASP), every field
+  quoted. An export has its own `authorize`, a row limit (`max`, 10 000 — over it a 422 before the first byte) and should be
+  throttled: it reads the whole filtered table.
+- **Keys are parsed by their declared type** before any query — text never reaches an integer column.
+
+Cursors of `cursorPaginate` (and of cursor tables) are encrypted with the app key: a hidden sort column's value never shows in a
+URL, and a changed or made-up cursor is a 400 ([lists](lists.md#cursors-and-load-more)).
+
+## Live updates
+
+Live props send **hints, never data** ([real time](realtime.md)): a tab reloads through the page's route, its middleware and its
+policies, so a hint can never show what the user may not see. Subscriptions are signed for the session (`APP_KEY`, E90); another
+channel or another session's token is a 403. **Limits** keep one user from exhausting a process: at most 16 streams per session
+(`LIVE_MAX_STREAMS_PER_SESSION`, beyond it 429 and a `warn` log line), 1000 per process (`LIVE_MAX_STREAMS`, 503), 20 channels per
+stream. The per-session limit is keyed by the session, not the IP address; a flood of fresh sessions meets the process limit — rate
+limit connections at the proxy as well.
+
 ## Logs and recordings
 
 Passwords, tokens, cookies and keys are redacted wherever the framework writes something down — the log, the request log line, the
@@ -99,5 +131,7 @@ names of your own secrets to it. The devtools exist in development only and refu
 - `TRUSTED_PROXIES` set to exactly your proxy (`*` — the direct peer only — when nothing else can reach the app); the proxy sets
   `X-Forwarded-*` itself and does not compress documents.
 - Sessions in `file`, `database` or `redis` (not `cookie`) for apps with sign-in; `SESSION_ENCRYPT=true` if the store is shared.
+- Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the table's
+  routes.
 - Update in lockstep and read [UPGRADING.md](../UPGRADING.md); security fixes go to the latest minor version
   ([versions](versioning.md)).

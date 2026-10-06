@@ -79,7 +79,8 @@ describe('every page', () => {
         if (anchor !== undefined && anchor !== '' && !found.ids.has(anchor)) broken.push(`${path}: ${href} — no #${anchor} on ${page}`);
       }
     }
-    expect(broken).toEqual([]);
+    // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
+    expect(broken, broken.join('\n')).toEqual([]);
     expect(internal).toBeGreaterThan(600);
   });
 

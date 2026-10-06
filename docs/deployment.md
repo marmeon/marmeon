@@ -28,7 +28,9 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
 
 - **One role per container** (or per systemd unit) is the model: the same image, another command. Scale the web role with more
   containers, or on a machine with several cores with `bespoke start --workers=N` (`node:cluster`: one port, N servers, the
-  primary passes signals on, each worker drains, exit 0 when all exited 0). Run **one scheduler** per deployment (or per server
+  primary passes signals on, each worker drains, exit 0 when all exited 0). Workers share nothing in memory: with live props a
+  cluster needs `LIVE_DRIVER=redis` — with `memory` a worker refuses to start and the cluster stops (W9 step 4) — and the
+  other drivers follow [More than one instance](#more-than-one-instance). Run **one scheduler** per deployment (or per server
   with `onOneServer()` tasks and a shared cache) and as many workers as the queue needs.
 - **The worker's queues:** without `--queue` a worker takes only `default` — the auth module's mails wait on `mail`. Name every
   queue the app uses, in priority order (`--queue=mail,default`), or `--queue=*`. An idle worker names a queue nobody takes in a
@@ -97,6 +99,13 @@ into the image: Node uses a cache directory only when it can write to it.
 | `SHUTDOWN_DELAY` | `5` behind a load balancer that learns from its probes — see [Stopping](#stopping-without-dropped-requests) |
 | `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; `pnpm add nodemailer`) |
 
+**`HOST` — set it.** Without `HOST` the server listens on every interface (`::`, IPv6 and IPv4 together). In a container that is
+what `HOST=0.0.0.0` in the image says anyway; on a machine of its own, behind a proxy there, set `HOST=127.0.0.1` so nothing but the
+proxy reaches the app (the systemd units do). There is a second reason: macOS (and other systems that allow it) lets a server on
+`::` start beside another program that already holds the same port on `127.0.0.1` alone — no `EADDRINUSE`, both run, and requests
+to `127.0.0.1:<port>` reach the other program while `localhost` may reach this one. With `HOST` set to the address you use the start
+fails loudly instead. `PORT=0` takes a free port; the start line names the address and the port it got.
+
 **Rotating `APP_KEY`:** generate a new key, move the current one into `APP_PREVIOUS_KEYS`, deploy every instance with both;
 remove the old key once the longest-lived session or signed link has expired. Replacing the key without that signs everybody out
 and breaks every signed link.
@@ -150,9 +159,9 @@ terminationGracePeriodSeconds: 30   # > SHUTDOWN_DELAY + 10 s drain
 
 ## Proxies and HTTP/2
 
-**Live updates need HTTP/2 at the browser.** Live streams (`useLive`, Server-Sent Events) hold a connection open per tab. Over
-HTTP/1.1 a browser opens at most **6 connections per host — across all tabs** — so the seventh tab with a stream would hang
-every further request. The client notices HTTP/1.1 (`nextHopProtocol`) and keeps a stream only while its tab is visible (E104);
+**Live updates need HTTP/2 at the browser.** Live streams (live props — [real time](realtime.md), Server-Sent Events) hold a
+connection open per tab. Over HTTP/1.1 a browser opens at most **6 connections per host — across all tabs** — so the seventh tab
+with a stream would hang every further request. The client notices HTTP/1.1 (`nextHopProtocol`) and keeps a stream only while its tab is visible (E104);
 over HTTP/2 (typically 100 streams per connection) every tab keeps its stream. Terminate TLS with HTTP/2 at the proxy — the app
 itself speaks HTTP/1.1 to the proxy, which is fine.
 
@@ -207,12 +216,15 @@ a shared store:
 | Sessions (`SESSION_DRIVER`) | `file` on several machines, `memory` | `redis`, `database` (or `cookie`) |
 | Cache, rate limits, locks (`CACHE_DRIVER`) | `file` on several machines, `memory` | `redis`, `database` |
 | Queue (`QUEUE_CONNECTION`) | `sync` for real work; `database` on SQLite across machines | `redis`, `database` on Postgres |
-| Live (`LIVE_DRIVER`) | `memory` (a broadcast reaches only its own process — with `--workers` the start fails, W9 step 4) | `redis` |
+| Live (`LIVE_DRIVER`) | `memory` (a hint reaches only its own process — with `--workers` the start fails, W9 step 4) | `redis` |
 | Database | SQLite across machines | Postgres |
 | Uploads | the local disks on several machines | an S3 disk ([@bespokecore/storage](../packages/storage/README.md)) |
 
 On one machine the Compose template shares one `storage` volume between web, worker and scheduler — SQLite and the `file`
 drivers work there (one kernel, one file system). `onOneServer()` scheduler tasks need a cache every scheduler shares.
+
+Limits are per process: `LIVE_MAX_STREAMS` (1000) and `LIVE_MAX_STREAMS_PER_SESSION` (16) count each worker's and each container's
+streams on their own — with four workers a session may hold 16 streams in each ([limits](realtime.md#limits)).
 
 ## Without Docker: systemd
 
@@ -250,10 +262,13 @@ beyond the template:
 - [ ] `NODE_ENV=production` (image) — no developer `.env` on the server; `APP_KEY` set, the same everywhere; `APP_URL` is `https://`
 - [ ] `bespoke migrate --force` once per deployment (a one-off container: `docker compose run --rm web migrate --force`)
 - [ ] the proxy speaks HTTP/2 to browsers, does not buffer event streams, sets `X-Forwarded-*`; `TRUSTED_PROXIES` names it
+- [ ] `HOST` set (`0.0.0.0` in a container, `127.0.0.1` behind a proxy on the same machine); `KEEP_ALIVE_TIMEOUT` above the proxy's
+  idle timeout to the app
 - [ ] `MAIL_MAILER=smtp`
 - [ ] web, worker and scheduler each under a supervisor that restarts them; grace periods longer than the drain
 - [ ] the worker takes every queue the app uses (`--queue=mail,default`, or `--queue=*`)
 - [ ] HSTS once the site is HTTPS only (the app's `SecurityHeaders` switch or the proxy); the rest of the list: [security](security.md#your-checklist)
 - [ ] `SHUTDOWN_DELAY` (≈ 5) behind a probing load balancer or in Kubernetes
-- [ ] more than one instance: shared drivers for sessions, cache, queue, live and uploads; Postgres instead of SQLite
+- [ ] more than one instance — or `--workers`: shared drivers for sessions, cache, queue, live (`LIVE_DRIVER=redis`) and uploads;
+  Postgres instead of SQLite
 - [ ] `storage/` on a volume

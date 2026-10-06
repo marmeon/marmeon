@@ -11,7 +11,21 @@ version and install. Two versions of a framework package in one app mean two con
 
 ## Upgrading to 0.2.0 from 0.1.0
 
-The changes of Wave 9 (client and navigation), collected as they land.
+The changes of Wave 9 (client and navigation). Nothing is High: no app must act. The entries come by impact, and within an
+impact by area:
+
+| Area | Medium | Low |
+| --- | --- | --- |
+| Lists and data | [revalidations replace merged props](#medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone) · [`paginate(…, ctx.query)`](#medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated) · [`<Pagination>`](#medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels) | [GET arrays](#low-a-list-in-a-gets-data-is-the-key-repeated) · [`merge()` of a paginator](#low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up) · [encrypted cursors](#low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400) |
+| Live updates | [16 streams per session](#medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429) · [a cluster needs Redis](#medium-a-cluster-bespoke-start-with-workers-needs-live_driverredis) | — |
+| Navigation | [the Navigation API](#medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible) | [the guard](#low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key) · [optimistic patches on first use](#low-userouter-loads-the-pages-optimistic-patches-on-first-use) · [the kit's `Confirm`](#low-the-starter-kit-asks-in-the-pages-language--its-own-confirm) · [view transitions](#low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition) |
+| Accounts | [pending change of address](#medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns) | — |
+| Server and deployment | — | [`KEEP_ALIVE_TIMEOUT`](#low-the-server-keeps-idle-connections-65-s-keep_alive_timeout) · [build without `.env`](#low-bespoke-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile) · [tini](#low-the-image-runs-bespoke-under-tini--rebuild-it) · [pnpm 12.9.1](#low-pnpm-1291) · [`<title>`](#low-a-new-apps-title-is-its-name-not-bespokecore) |
+
+*Estimated upgrade time:* minutes for most apps (read the Medium entries of the features you use); about an hour for an app with
+`merge()`d lists that load more, `paginationFrom`, live props under `--workers`, or private registration (its migration and
+controllers). The guides of the wave: [lists](docs/lists.md), [tables](docs/tables.md), [navigation](docs/navigation.md),
+[real time](docs/realtime.md).
 
 ### Wave 9 — client and navigation
 
@@ -46,7 +60,9 @@ and `paginate(db, q, ctx.query)`. `{ page, perPage }` written out is still accep
 the schema needs the page's field — spread `pageQuery()` into it (development warns: R17); a route without a schema keeps its
 query string as before. Its texts are English unless the app passes its own words: `labels={{ navigation, previous, next, page:
 (n) => … }}`, from the app's language files (`useTranslation`, E38) — best in a small wrapper component of the app (see the web
-app's `layouts/Pagination.tsx`); before, every text was a fixed English literal. An app without `labels` looks as before.
+app's `layouts/Pagination.tsx`); before, every text was a fixed English literal. An app without `labels` looks as before. The old links — the address's query string carried along —
+remain for a route without a query schema; with one there is no switch back (a key the schema does not know was never the page's
+state).
 
 #### Medium: one session holds at most 16 live streams per process — the 17th tab gets a 429
 
@@ -80,7 +96,8 @@ only, as before, E36); code that read `history.state.key` or `.url` reads it the
 reach the app's own listeners** (`navigationType` `push`/`replace`, the navigator's `info`): a listener that intercepts or cancels
 every `navigate` now also catches visits — leave the ones with an `info` you did not set alone. A plain `<a href>`, a plain form,
 another site and entries without the navigator's state stay the browser's, as before. Without the API (Safari before 26.2) nothing
-changes: the History fallback writes `history.state` as before — a chunk `createBespokeApp` loads only then.
+changes: the History fallback writes `history.state` as before — a chunk `createBespokeApp` loads only then. There is no switch
+back to the History API in a browser that has the Navigation API (the two would follow the same Back twice).
 **For an adapter of your own:** load the fallback where `!window.navigation` and pass it with the features from the start
 (`new Navigator({ …, features: [await loadHistoryFallback()] })`; development warns `[bespoke:C13]`). **For a client feature:**
 `HistoryState.index` and `HistoryWriter.index` are gone (the fallback counts for itself); a feature that wrote a field into every
@@ -121,6 +138,7 @@ request on a connection the app was just closing, and the browser got a 502. The
 AWS load balancer's idle timeout (60 s). Behind a proxy that keeps them longer (Google's load balancer: 600 s) set
 `KEEP_ALIVE_TIMEOUT` above it; an nginx config of your own with a longer `keepalive_timeout` keeps it below. Nothing to do otherwise —
 an idle connection stays open a minute longer than before (the drain on shutdown closes idle connections at once, as before).
+The old behaviour: `KEEP_ALIVE_TIMEOUT=5`.
 
 #### Low: `bespoke build` needs no `.env` and no key — drop the throwaway key from your Dockerfile
 
@@ -167,14 +185,16 @@ existing app changes the `<title>` in its `index.html` by hand.
 *Likelihood of impact: low — `visit`/`reload`/`useForm` GETs with a list in `data`.* `reload({ data: { role: ['admin', 'owner'] } })`
 asks for `?role=admin&role=owner` — what a query schema reads as a list and what `toSearchParams`/`<Link query>` write. Before, the
 list was joined with commas (`?role=admin%2Cowner`): one value, which a `v.array(…)` field read as a list of one. A server that
-split the commas itself reads the repeated key now (`searchParams.getAll`, or a query schema).
+split the commas itself reads the repeated key now (`searchParams.getAll`, or a query schema). Where a server of your own needs
+the old form, join the list yourself: `data: { role: roles.join(',') }`.
 
 #### Low: `merge()` of a paginator appends its data, `matchOn` takes paths, merge marks no longer pile up
 
 *Likelihood of impact: low.* `merge({ data, meta })` (a paginator) appends `data` and takes the new `meta` — before, a shallow merge
 replaced `data`, so "load more" needed `deepMerge()`; `merge(page).matchOn('data.id')` is typed now. `matchOn('user.id')` matches
 the items of a list by a path into them. A page's `mergeProps`/`deepMergeProps`/`matchPropsOn` are the latest answer's for the
-props it brought — before, they collected every answer's (only the devtools showed it). `deepMerge()` lists keep working unchanged.
+props it brought — before, they collected every answer's (only the devtools showed it). `deepMerge()` lists keep working unchanged;
+a paginator that should be replaced on "load more" is not `merge()`d at all.
 
 #### Low: cursors are encrypted — `cursorPaginate` needs the `Encrypter`, an old cursor is a 400
 
@@ -185,7 +205,8 @@ value from the URL nor make up a cursor. `cursorPaginate(query, { …, encrypter
 was rotated away, or **the base64url format before Wave 9** (bookmarked "load more" URLs) — answers **400** instead of the first
 page. Also: the unique `key` (default `id`) is added as the last order by itself (`{ column: 'name' }` orders by `(name, id)`),
 a nullable sort column orders `NULLS LAST` and a NULL is a cursor like any other (before: "load more" started over), and an
-`orderBy` of the query is taken out (before it came first).
+`orderBy` of the query is taken out (before it came first). There is no way back to readable cursors — they showed the values of
+the sort columns, hidden ones included.
 
 #### Low: the guard cancels a Back where the browser lets it — and goes back by the browser's key
 
@@ -194,7 +215,8 @@ changes is now **cancelled** where the browser allows it — right after a click
 and the address bar never changes; before, the browser always moved and the guard moved back. Without an activation (a Back a while
 after the last click, or the second of two quick Backs) the browser still moves first: the guard goes back to the entry it left by the
 browser's key — right after a reload or a session restore too, where the old counted index could be off — and asks; Leave goes
-again. Nothing to change: the question, its words and `beforeunload` are the same.
+again. Nothing to change: the question, its words and `beforeunload` are the same. There is no switch back to "move, then
+undo" for a Back the browser lets the page cancel.
 
 #### Low: `useRouter()` loads the page's optimistic patches on first use
 
@@ -202,7 +224,8 @@ again. Nothing to change: the question, its words and `beforeunload` are the sam
 is no longer in the first download of every app with a router (W9 step 7, ≈ 0.6 KB gzip): it loads with the first
 `router.optimistic()`/`reloading()` call, a chunk of its own. That first patch of a page shows a moment later — the time to fetch the
 chunk — every later one at once; a chunk that cannot load shows no patch, and the action's reload ends without one (its answer still
-lands). A test that asserts a patch synchronously after the first call awaits a tick.
+lands). A test that asserts a patch synchronously after the first call awaits a tick. There is no switch to bundle the patches
+statically again (they were ≈ 0.6 KB of every app's first download).
 
 #### Low: the starter kit asks in the page's language — its own `Confirm`
 

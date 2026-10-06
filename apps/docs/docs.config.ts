@@ -78,6 +78,10 @@ export const GUIDES_GROUP = 'Guides';
 export default defineDocs({
   guides: [
     { slug: 'getting-started', file: 'docs/getting-started.md', label: 'Getting started' },
+    { slug: 'lists', file: 'docs/lists.md', label: 'Lists and pagination' },
+    { slug: 'tables', file: 'docs/tables.md', label: 'Tables' },
+    { slug: 'navigation', file: 'docs/navigation.md', label: 'Navigation and view transitions' },
+    { slug: 'realtime', file: 'docs/realtime.md', label: 'Real time' },
     { slug: 'deployment', file: 'docs/deployment.md', label: 'Deployment' },
     { slug: 'security', file: 'docs/security.md', label: 'Security' },
     { slug: 'versioning', file: 'docs/versioning.md', label: 'Versions and deprecations' },

@@ -88,7 +88,7 @@ describe('pages', () => {
 describe('the guides (docs/*.md and the policies at the root, E168)', () => {
   it('are pages under /guides — with their own neighbours, in the search, and an unknown one is a 404', async () => {
     const deployment = (await app.navigating().get('/guides/deployment').assertOk().assertPage('docs/Page')).page()!;
-    expect(deployment.props).toMatchObject({ title: 'Deploying a BespokeCore app', group: 'Guides', previous: { path: '/guides/getting-started' }, next: { path: '/guides/security' } });
+    expect(deployment.props).toMatchObject({ title: 'Deploying a BespokeCore app', group: 'Guides', previous: { path: '/guides/realtime' }, next: { path: '/guides/security' } });
     const upgrading = (await app.navigating().get('/guides/upgrading').assertOk()).page()!;
     expect(upgrading.props).toMatchObject({ title: 'Upgrading' });
     await app.get('/guides/no-such-guide').assertNotFound();

@@ -190,5 +190,5 @@ app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // al
 
 **Broadcasting over WebSockets** — data events, presence channels, client events, a Pusher-compatible protocol — is not part of
 BespokeCore: it is in the backlog until its design is settled (E191). Live props are hints over Server-Sent Events, and stay so.
-A Postgres `LISTEN/NOTIFY` backend is noted for later. A hint sent while Redis is unreachable is not retried. Channel tokens do
+A Postgres `LISTEN/NOTIFY` backend is noted for later ([real time](../../docs/realtime.md#what-there-is-not), the guide). A hint sent while Redis is unreachable is not retried. Channel tokens do
 not expire (a hint carries no data, and the reload goes through the route's policy; signing in or out ends the streams).

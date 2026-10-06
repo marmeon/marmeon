@@ -165,9 +165,10 @@ vulnerability reporting, as [SECURITY.md](SECURITY.md) describes (security fixes
 
 ## Guides
 
-[Getting started](docs/getting-started.md) · [Deployment](docs/deployment.md) · [Security](docs/security.md) ·
-[Versions and deprecations](docs/versioning.md) · [Upgrading](UPGRADING.md) · [Contributing](CONTRIBUTING.md) — in the docs app
-under `/guides/…`, beside the packages' READMEs.
+[Getting started](docs/getting-started.md) · [Lists and pagination](docs/lists.md) · [Tables](docs/tables.md) ·
+[Navigation and view transitions](docs/navigation.md) · [Real time](docs/realtime.md) · [Deployment](docs/deployment.md) ·
+[Security](docs/security.md) · [Versions and deprecations](docs/versioning.md) · [Upgrading](UPGRADING.md) ·
+[Contributing](CONTRIBUTING.md) — in the docs app under `/guides/…`, beside the packages' READMEs.
 
 ## Contributing
 

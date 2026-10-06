@@ -52,7 +52,8 @@ tableRoutes(members, MembersTable);
 ```
 
 The web app's members page (`apps/web-app/modules/members`) is the example in full: an e-mail column only administrators see, a row
-action, a bulk action and a CSV export — rendered with plain, accessible markup.
+action, a bulk action and a CSV export — rendered with plain, accessible markup. The guide [tables](../../docs/tables.md) builds it
+step by step and goes through the security model attack by attack.
 
 ## Defining a table
 
