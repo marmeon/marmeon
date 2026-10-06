@@ -14,7 +14,7 @@ const members = (name: string) => ({ vitest: 'apps/web-app/modules/members/membe
 const TABLES = 'packages/table/src/tables.ts';
 const STATE = 'packages/table/src/state.ts';
 /** The table's endpoints registered on a registrar of their own — without the page's authenticate() and verified(). */
-const ROUTES_OUTSIDE = { file: 'apps/web-app/modules/members/routes.ts', find: '  tableRoutes(members, MembersTable);', replace: "  tableRoutes(Route.prefix('/members') as never, MembersTable);" };
+const ROUTES_OUTSIDE = { file: 'apps/web-app/modules/members/routes.ts', find: "  tableRoutes(members.middleware(throttle('members-table')), MembersTable);", replace: "  tableRoutes(Route.prefix('/members') as never, MembersTable);" };
 
 /** The props filter off: a row goes to the browser as the database returned it. */
 const NO_PICK = { file: TABLES, find: '  for (const [alias] of view.columns) out[alias] = row[alias];', replace: '  Object.assign(out, row);' };
@@ -165,8 +165,8 @@ export default defineGegenproben({
       patch: [
         {
           file: TABLES,
-          find: "    const found = await project(definition, this.#base(definition, ctx), view).where(definition.key, '=', keyValue(body.key, kind))",
-          replace: "    const found = await project(definition, this.#base(definition, ctx).clearWhere(), view).where(definition.key, '=', keyValue(body.key, kind))",
+          find: "    const found = await project(definition, this.#base(definition, ctx), view).where(definition.key, '=', key)",
+          replace: "    const found = await project(definition, this.#base(definition, ctx).clearWhere(), view).where(definition.key, '=', key)",
         },
       ],
       run: table('looks the row up in the base query'),
@@ -278,6 +278,35 @@ export default defineGegenproben({
       patch: [ROUTES_OUTSIDE],
       run: members('a guest never reaches the page or the table'),
       expect: /a guest was not sent to sign in by the action/,
+    },
+    // --- Follow-up (06.10.): keys by type, the export's limit and its transaction boundary, the app's throttle ----------------------
+    {
+      id: 'G17',
+      title: 'without parsing by the key type, text reaches the integer key column (Postgres: a 500)',
+      patch: [{ file: TABLES, find: '    const key = parseKey(definition.keyType, body.key);', replace: '    const key = body.key as string | number;' }],
+      run: table('an integer key never sends text to the database'),
+      expect: /text reached an integer key column/,
+    },
+    {
+      id: 'G18',
+      title: 'an export over its limit is streamed (the whole filtered table) without the limit',
+      patch: [{ file: TABLES, find: '    if (Number(count) > entry.limit) {', replace: '    if (false as boolean) {' }],
+      run: table('refuses an export over its limit'),
+      expect: /an export over its limit was streamed/,
+    },
+    {
+      id: 'G19',
+      title: 'later export batches run in the transaction the handler answered in — finished by then: the stream breaks',
+      patch: [{ file: TABLES, find: '        const rows = await inRequest(() => outsideTransaction(() => batch(offset)));', replace: '        const rows = await inRequest(() => batch(offset));' }],
+      run: table('streams its later batches outside the transaction'),
+      expect: /a later batch ran in the finished transaction/,
+    },
+    {
+      id: 'G20',
+      title: 'the members table’s endpoints without the throttle: the 61st export of a minute is served',
+      patch: [{ file: 'apps/web-app/modules/members/routes.ts', find: "  tableRoutes(members.middleware(throttle('members-table')), MembersTable);", replace: '  tableRoutes(members, MembersTable);' }],
+      run: members('throttles the table'),
+      expect: /the 61st request of a minute was served/,
     },
   ],
 });

@@ -61,8 +61,11 @@ action, a bulk action and a CSV export — rendered with plain, accessible marku
   **alias**: the only name the URL, the props and the export ever use. `.sortable()`, `.searchable()` (case-insensitive `LIKE`,
   wildcards taken literally), `.label(text)` (otherwise the app labels a column by its alias, in its own translations) and
   `.visible(Policy, 'ability')` / `.visible((ctx) => …)`.
-- **The key** identifies a row — a string or number column; it is what actions send. A row in the props has the key under its
-  column's name (`users.id` → `id`).
+- **The key** identifies a row — what actions send. By name for a number column (`key: 'users.id'`, read as an integer); a text key
+  names its type: `key: { column: 'users.uuid', type: 'uuid' }` (`integer`, `bigint` — digits within Postgres' `bigint` —, `string`,
+  `uuid`; a text key by name alone is a compile error). Every key the browser sends is **parsed by that type before any query**: one
+  that does not parse is no row (404, or `missing` in a bulk action) — text never reaches an integer column (on Postgres a 500), and
+  no query guesses the type. A row in the props has the key under its column's name (`users.id` → `id`).
 - **Filters** are an allowlist too: `filter.select(column, options)` (`?filter[role]=admin`) and `filter.dateRange(column)`
   (`?filter[joined]=2026-01-01..2026-03-31`, either end may be empty, both days included). `.visible(…)` like columns.
 - **Pagination:** by number with a total (the default; `?page=`, `?per_page=` from `perPage`, default `[25, 50, 100]`), or by an
@@ -91,7 +94,7 @@ action, a bulk action and a CSV export — rendered with plain, accessible marku
   state: { sort: '-joined', 'filter[role]': 'admin' },                                              // the URL's state, no defaults
   actions: [{ name: 'deactivate', url: '/members/_tables/members/actions/deactivate', confirm: true }],
   bulk: [{ name: 'deactivate', url: '/members/_tables/members/bulk/deactivate', confirm: false, max: 1000 }],
-  exports: [{ name: 'csv', format: 'csv', url: '/members/_tables/members/export/csv?sort=-joined&filter%5Brole%5D=admin' }],
+  exports: [{ name: 'csv', format: 'csv', url: '/members/_tables/members/export/csv?sort=-joined&filter%5Brole%5D=admin', max: 10000 }],
 }
 ```
 
@@ -141,7 +144,12 @@ a form posted without JavaScript, or a page visit, goes back to the page (303). 
 a `Response` answers for itself; anything else it returns is `data`.
 
 An **export** has its own `authorize` (without it, whoever sees the table may download what they see), exports the visible columns
-only, as the URL filters and sorts them, and streams them in batches of 500 — `Content-Disposition: attachment` with a safe file name
+only, as the URL filters and sorts them, takes at most `max` rows (`exportCsv().max(rows)`, default **10 000**: one count first, an
+export over it is a 422 before a byte is streamed — never a file cut short), and streams them in batches of 500. The first batch runs
+in the handler; the later ones run once it has answered — a framework boundary (E107): in the request's context (logging, request id),
+**outside** any transaction that was open around the handler (`outsideTransaction`). An export reads the whole filtered table:
+**throttle the table's routes** — `tableRoutes(members.middleware(throttle('members-table')), MembersTable)` with a limiter of
+@bespokecore/cache (the web app: 60 a minute per user) — `Content-Disposition: attachment` with a safe file name
 (`members-2026-10-06.csv`), `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, a UTF-8 byte order mark (spreadsheets need it
 for umlauts). **Formula injection** (OWASP "CSV Injection") is escaped: a text cell that starts with `=`, `+`, `-`, `@`, a tab, a
 carriage return or a line feed gets a `'` in front; every field is quoted, quotes doubled. Numbers stay numbers (`-5` is no formula).
@@ -183,6 +191,7 @@ Mistakes in a definition are compile errors with readable messages, for example:
 column('emial')            // 'emial' is not a column of the table's query — it has avatar_path, bio, created_at, email, …
 column('password')         // 'password' is a secret column — a table never reads it (its migration marked it .secret())
 key: 'uuid'                // 'uuid' is not a column of the table's query — it has …
+key: 'email'               // the key 'email' holds text — say how to read it: key: { column: 'email', type: 'string' } (or 'uuid', 'bigint')
 defaultSort: '-email'      // '-email' is not a sortable column — it sorts by -name, name
 action(NeedsRole)          // 'promote': its handler's handle(row, ctx) takes other rows than the table's — they have id, name
 .authorize(MemberPolicy, 'deactivat')    // 'deactivat' is not an ability of this policy — it has deactivate, export, …

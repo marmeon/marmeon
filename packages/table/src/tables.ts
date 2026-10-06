@@ -1,13 +1,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@bespokecore/auth';
-import { cursorPaginate, paginate, sql, type CursorEncrypter } from '@bespokecore/database';
+import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@bespokecore/database';
 import { isJsonResult, isRedirectResult, json, RedirectResult, type JsonResult } from '@bespokecore/http';
 import { expectsJson, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@bespokecore/router';
 import type { Kysely, SelectQueryBuilder } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
-import type { AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, Table, TableDefinition, TableExport, TableProps, Visibility } from './define.ts';
+import type { AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, Table, TableDefinition, TableExport, TableProps, Visibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
@@ -137,7 +137,7 @@ export class Tables {
       state: query,
       actions: view.actions.map(([name, entry]) => ({ name, url: urls.action(name), confirm: entry.confirms })),
       bulk: view.bulk.map(([name, entry]) => ({ name, url: urls.bulk(name), confirm: entry.confirms, max: entry.limit })),
-      exports: view.exports.map(([name]) => ({ name, format: 'csv' as const, url: urls.export(name, query) })),
+      exports: view.exports.map(([name, entry]) => ({ name, format: 'csv' as const, url: urls.export(name, query), max: entry.limit })),
     };
     return data as unknown as TableProps<T>;
   }
@@ -150,10 +150,11 @@ export class Tables {
     if (!(await this.#visible(entry.visibility, ctx))) throw forbidden(); // a hidden action: refused when called directly too
     const body = await parseBody(ActionBody, ctx);
     const view = await this.#view(definition, ctx);
-    const kind = await this.#keyKind(definition, ctx);
-    if (!keyFits(body.key, kind)) throw new HttpError(404);
+    // Parsed by the key's type first: a key that is none (text for an integer key) is no row — it never reaches the database.
+    const key = parseKey(definition.keyType, body.key);
+    if (key === undefined) throw new HttpError(404);
     const keyName = keyNameOf(definition);
-    const found = await project(definition, this.#base(definition, ctx), view).where(definition.key, '=', keyValue(body.key, kind)).limit(1).executeTakeFirst();
+    const found = await project(definition, this.#base(definition, ctx), view).where(definition.key, '=', key).limit(1).executeTakeFirst();
     // Not a row of this table for this user — another tenant's, gone, made up: the same 404 either way.
     if (!found) throw new HttpError(404);
     const row = pick(found as Row, view, keyName);
@@ -181,9 +182,9 @@ export class Tables {
     let rows: Row[];
     let missing = 0;
     if (!('all' in body)) {
-      const kind = await this.#keyKind(definition, ctx);
       const keys = [...new Set(body.keys.map(String))];
-      const usable = [...new Set(keys.filter((key) => keyFits(key, kind)).map((key) => keyValue(key, kind)))];
+      // Keys that do not parse by the key's type are no rows of the table: counted as missing, never sent to the database.
+      const usable = [...new Set(keys.map((key) => parseKey(definition.keyType, key)).filter((key) => key !== undefined))];
       const found = usable.length === 0 ? [] : await project(definition, this.#base(definition, ctx), view).where(definition.key, 'in', usable).execute();
       rows = (found as Row[]).map((row) => pick(row, view, keyName));
       missing = keys.length - rows.length;
@@ -222,7 +223,16 @@ export class Tables {
     const view = await this.#view(definition, ctx); // the export's columns: the visible ones
     const state = parseState(definition, new URL(ctx.request.url).searchParams);
     checkState(definition, state, view);
-    const query = ordered(definition, project(definition, this.#filtered(definition, ctx, state, view), view), state);
+    const filtered = this.#filtered(definition, ctx, state, view);
+    // Its limit first (one count): an export over it is refused before a byte is streamed — never a file cut short.
+    const { count } = (await this.#db
+      .selectFrom(filtered.select(sql<number>`1`.as('row')).as('exported'))
+      .select(sql<number | string>`count(*)`.as('count'))
+      .executeTakeFirstOrThrow()) as { count: number | string };
+    if (Number(count) > entry.limit) {
+      throw new HttpError(422, `More than ${entry.limit} rows match — narrow the filter (an export takes at most ${entry.limit}).`);
+    }
+    const query = ordered(definition, project(definition, filtered, view), state);
     const names = view.columns.map(([alias]) => alias);
     const header = csvLine(view.columns.map(([alias, col]) => col.text ?? alias));
     const batch = async (offset: number) => (await query.limit(EXPORT_BATCH).offset(offset).execute()) as Row[];
@@ -230,7 +240,8 @@ export class Tables {
     const lines = (rows: readonly Row[]) => rows.map((row) => csvLine(names.map((alias) => row[alias]))).join('');
     // The first batch before the answer: a failing query is an error page, not a cut-off file.
     const first = await batch(0);
-    // Later batches run in this request's context (its log context, its transaction if it had one — a finished one fails loudly, E107).
+    // Later batches run once the handler has answered — a framework boundary (E107): in the request's context (its log context, its
+    // request id) but outside any transaction that was open around the handler (it may have finished by then).
     const inRequest = AsyncLocalStorage.snapshot();
     let offset = first.length;
     let more = first.length === EXPORT_BATCH;
@@ -241,7 +252,7 @@ export class Tables {
       },
       async pull(controller) {
         if (!more) return;
-        const rows = await inRequest(() => batch(offset));
+        const rows = await inRequest(() => outsideTransaction(() => batch(offset)));
         offset += rows.length;
         more = rows.length === EXPORT_BATCH;
         if (rows.length > 0) controller.enqueue(encoder.encode(lines(rows)));
@@ -351,15 +362,6 @@ export class Tables {
     return can;
   }
 
-  /** Whether the table's keys are numbers, strings of digits or other strings — so a key of the wrong kind never reaches the database. */
-  async #keyKind(definition: TableDefinition, ctx: HttpContext): Promise<'number' | 'digits' | 'string' | 'empty'> {
-    const sample = await this.#base(definition, ctx).select((eb) => eb.ref(definition.key).as('table_key')).limit(1).executeTakeFirst();
-    const key = (sample as { table_key?: unknown } | undefined)?.table_key;
-    if (key === undefined || key === null) return 'empty';
-    if (typeof key === 'number' || typeof key === 'bigint') return 'number';
-    return /^\d+$/.test(String(key)) ? 'digits' : 'string';
-  }
-
   /** The URLs of the table's endpoints for this page — from the routes `tableRoutes` registered, with the page's own parameters. */
   #endpoints(definition: TableDefinition, ctx: HttpContext, view: View) {
     const needed = view.actions.length + view.bulk.length + view.exports.length > 0;
@@ -457,16 +459,29 @@ function nextDay(day: string): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** A key as the database compares it: a number for a numeric key column (a form sends text). */
-function keyValue(key: string | number, kind: 'number' | 'digits' | 'string' | 'empty'): string | number {
-  return kind === 'number' ? Number(key) : String(key);
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INT8_MAX = 9223372036854775807n;
 
-function keyFits(key: string | number, kind: 'number' | 'digits' | 'string' | 'empty'): boolean {
-  if (kind === 'empty') return false;
-  if (kind === 'number') return typeof key === 'number' || /^\d{1,15}$/.test(key);
-  if (kind === 'digits') return /^\d{1,30}$/.test(String(key));
-  return typeof key === 'string';
+/**
+ * A key from the browser, parsed by the table's key type — `undefined` when it is none: an integer key takes a safe integer (or its
+ * digits), a `bigint` key digits within Postgres' `bigint`, a `uuid` key a UUID, a `string` key text up to 200 characters.
+ */
+export function parseKey(type: KeyType, value: unknown): string | number | undefined {
+  const text = typeof value === 'number' ? (Number.isSafeInteger(value) ? String(value) : undefined) : typeof value === 'string' ? value : undefined;
+  if (text === undefined || text.length === 0 || text.length > 200) return undefined;
+  switch (type) {
+    case 'integer': {
+      if (!/^-?\d{1,16}$/.test(text)) return undefined;
+      const number = Number(text);
+      return Number.isSafeInteger(number) ? number : undefined;
+    }
+    case 'bigint':
+      return /^-?\d{1,19}$/.test(text) && BigInt(text) <= INT8_MAX && BigInt(text) >= -INT8_MAX - 1n ? String(BigInt(text)) : undefined;
+    case 'uuid':
+      return UUID.test(text) ? text.toLowerCase() : undefined;
+    case 'string':
+      return text;
+  }
 }
 
 function bulkBody(max: number) {

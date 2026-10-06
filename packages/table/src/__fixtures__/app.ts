@@ -78,6 +78,19 @@ export class DeactivateMany {
 
 type TeamContext = TableContext<Authenticated & { team: number }>;
 
+/** A row action of the text-keyed table: records the key. */
+export class DeactivateByEmail {
+  readonly #recorder: Recorder;
+
+  constructor(recorder: Recorder) {
+    this.#recorder = recorder;
+  }
+
+  handle(row: { readonly email: string }) {
+    this.#recorder.deactivated.push(row.email);
+  }
+}
+
 /** The team's members — the tenant is the base query. */
 export const MembersTable = defineTable({
   name: 'members',
@@ -115,6 +128,24 @@ export const LeakyTable = defineTable({
   query: (db, ctx: TeamContext) => db.selectFrom('members').select(['members.email']).where('members.team_id', '=', ctx.team),
   key: 'members.id',
   columns: { name: column('members.name').sortable(), email: column('members.email').visible(MemberPolicy, 'viewEmails') },
+});
+
+/** Exports of at most three rows — the limit refuses, it never cuts. */
+export const SmallExportTable = defineTable({
+  name: 'small',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable() },
+  export: { csv: exportCsv().max(3) },
+});
+
+/** Keyed by text (the e-mail): keys are parsed as text, never as numbers. */
+export const ByEmailTable = defineTable({
+  name: 'by-email',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: { column: 'members.email', type: 'string' },
+  columns: { name: column('members.name').sortable() },
+  actions: { deactivate: action(DeactivateByEmail) },
 });
 
 export const MembersRequest = defineRequest({ query: MembersTable.query });
@@ -164,6 +195,22 @@ export class LeakyPage extends Controller {
   }
 }
 
+/** The export, answered from inside a transaction the controller opened — its later batches run after it finished. */
+export class ExportInTransaction extends Controller {
+  readonly #tables: Tables;
+  readonly #connections: Connections;
+
+  constructor(tables: Tables, connections: Connections) {
+    super();
+    this.#tables = tables;
+    this.#connections = connections;
+  }
+
+  handle(ctx: HttpContext<Authenticated & { team: number }>) {
+    return this.#connections.transaction(() => this.#tables.export(MembersTable.definition, 'csv', ctx as unknown as HttpContext));
+  }
+}
+
 /** A page that forgot the table's query schema. */
 export class NoSchemaPage extends Controller {
   readonly #tables: Tables;
@@ -185,6 +232,9 @@ const routes = defineRoutes((Route) => {
   team.get('/feed', FeedPage);
   team.get('/leaky', LeakyPage);
   team.get('/no-schema', NoSchemaPage);
+  team.get('/export-in-transaction', ExportInTransaction);
+  tableRoutes(team, SmallExportTable);
+  tableRoutes(team, ByEmailTable);
 });
 
 export interface TableTestApp {

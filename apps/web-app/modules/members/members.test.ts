@@ -180,6 +180,12 @@ describe('the members table (/members) — @bespokecore/table in the app', () =>
     expect(await linksOf(member)).toBe(0);
   });
 
+  it('throttles the table\'s endpoints (60 a minute per user) — an export reads the whole filtered table', async () => {
+    for (let request = 1; request <= 60; request++) await app.actingAs(ada).get('/members/_tables/members/export/csv').assertOk();
+    const over = await app.actingAs(ada).get('/members/_tables/members/export/csv');
+    expect(over.status, 'the 61st request of a minute was served').toBe(429);
+  });
+
   it('pages: ten to a page, the sizes the table offers', async () => {
     await app.factory(UserFactory).count(12).create();
     const first = await members(ada);

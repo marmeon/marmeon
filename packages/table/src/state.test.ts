@@ -4,6 +4,7 @@ import './__fixtures__/schema.ts';
 import { FeedTable, MembersTable } from './__fixtures__/app.ts';
 import { column, defineTable, filter } from './index.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError } from './state.ts';
+import { parseKey } from './tables.ts';
 
 const members = MembersTable.definition;
 const search = (query: string) => new URLSearchParams(query);
@@ -68,5 +69,29 @@ describe('defineTable at runtime (what the types cannot see)', () => {
 
   it('refuses a column that has the key\'s name but reads another column', () => {
     expect(() => defineTable({ ...base, name: 'x', columns: { id: column('team_id') } } as never)).toThrow(/rename the column/);
+  });
+});
+
+describe('keys from the browser, parsed by the key\'s type', () => {
+  it.each([
+    ['integer', 7, 7],
+    ['integer', '7', 7],
+    ['integer', '-3', -3],
+    ['integer', 'abc', undefined],
+    ['integer', '7.5', undefined],
+    ['integer', 2.5, undefined],
+    ['integer', '99999999999999999', undefined],
+    ['integer', '', undefined],
+    ['bigint', '9223372036854775807', '9223372036854775807'],
+    ['bigint', '9223372036854775808', undefined],
+    ['bigint', 42, '42'],
+    ['bigint', '1e3', undefined],
+    ['uuid', 'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'],
+    ['uuid', 'not-a-uuid', undefined],
+    ['string', 'ada@example.com', 'ada@example.com'],
+    ['string', 'x'.repeat(201), undefined],
+    ['string', { a: 1 }, undefined],
+  ] as const)('%s %j → %j', (type, value, expected) => {
+    expect(parseKey(type, value)).toEqual(expected);
   });
 });

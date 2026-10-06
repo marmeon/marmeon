@@ -269,12 +269,26 @@ export function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unkno
 }
 
 /** An export — built by {@link exportCsv}. */
+/** The most rows an export takes by default — more is refused (422), never cut short. */
+export const DEFAULT_EXPORT_MAX = 10_000;
+
 export class TableExport {
   readonly format = 'csv' as const;
   readonly visibility: Visibility | undefined;
+  readonly limit: number;
 
-  constructor(visibility?: Visibility) {
+  constructor(visibility?: Visibility, max: number = DEFAULT_EXPORT_MAX) {
+    if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;
+    this.limit = max;
+  }
+
+  /**
+   * At most `rows` rows per export (default 10 000): an export over more is refused with a 422 before a byte is streamed — narrow
+   * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @bespokecore/cache).
+   */
+  max(rows: number): TableExport {
+    return new TableExport(this.visibility, rows);
   }
 
   /**
@@ -284,7 +298,7 @@ export class TableExport {
   authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
   authorize(check: VisibilityCheck): TableExport;
   authorize(...args: unknown[]): TableExport {
-    return new TableExport(visibility(args, 'exportCsv()'));
+    return new TableExport(visibility(args, 'exportCsv()'), this.limit);
   }
 }
 
@@ -315,6 +329,8 @@ export interface TableDefinition {
   readonly authorize: ((ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
   readonly query: (db: any, ctx: any) => SelectQueryBuilder<any, any, any>;
   readonly key: string;
+  /** How keys from the browser are parsed (`integer` for a key given by name). */
+  readonly keyType: KeyType;
   readonly columns: Readonly<Record<string, AnyColumn>>;
   readonly filters: Readonly<Record<string, AnyFilter>>;
   readonly defaultSort: string | undefined;
@@ -416,8 +432,32 @@ export type CheckFilters<DB, TB extends keyof DB, Filters> = {
 
 type ScalarKey = string | number;
 
-/** The key: a column of the query whose values are strings or numbers. */
+/**
+ * How a key arrives from the browser and is parsed before it reaches the database — a value that does not parse is no row (404,
+ * or `missing` in a bulk action), so text never meets an integer column: `integer` (a safe integer), `bigint` (digits, as text —
+ * Postgres `bigint`), `string` (any text up to 200 characters), `uuid`.
+ */
+export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
+
+/** The key as written: a number column by name (`'id'`, an integer key), or `{ column, type }`. */
+export type KeyInput = string | { readonly column: string; readonly type: KeyType };
+
+/** The key's column in a {@link KeyInput}. */
+export type KeyColumn<K> = K extends { readonly column: infer C extends string } ? C : K & string;
+
+/** The key by name only: a column of the query whose values are numbers (an integer key) — a text key names its type. */
 export type CheckKey<DB, TB extends keyof DB, K extends string> = string extends K
+  ? StringReference<DB, TB>
+  : [ColumnProblem<DB, TB, K>] extends [never]
+    ? ExtractTypeFromReferenceExpression<DB, TB, K> extends number
+      ? K
+      : ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey
+        ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')`
+        : `the key '${K}' is no string or number column — rows are acted on by their key`
+    : ColumnProblem<DB, TB, K>;
+
+/** The key with its type: a string or number column of the query. */
+export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K
   ? StringReference<DB, TB>
   : [ColumnProblem<DB, TB, K>] extends [never]
     ? ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey
@@ -515,8 +555,11 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
    * all start from it. Select nothing: the table selects its visible columns itself (whatever the query selects stays on the server).
    */
   readonly query: Q;
-  /** The column that identifies a row (a string or number column) — what actions send. */
-  readonly key: CheckKey<DbOf<Q>, TbOf<Q>, K>;
+  /**
+   * The column that identifies a row — what actions send: a number column by name (`'users.id'`, read as an integer), or with its
+   * type (`{ column: 'uuid', type: 'uuid' }`, see {@link KeyType}) — every key the browser sends is parsed by it first.
+   */
+  readonly key: CheckKey<DbOf<Q>, TbOf<Q>, K> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>; readonly type: KeyType };
   readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols>>;
   readonly filters?: Filters & NoInfer<CheckFilters<DbOf<Q>, TbOf<Q>, Filters>>;
   /** The sort without `?sort=` — `'-joined'`; default: the first sortable column. The key is always the last order. */
@@ -615,8 +658,11 @@ function normalize(input: RawInput): TableDefinition {
   }
   if (typeof input.query !== 'function') throw new TypeError(`defineTable('${name}'): query is (db, ctx) => db.selectFrom(…).`);
   if (input.authorize !== undefined && typeof input.authorize !== 'function') throw new TypeError(`defineTable('${name}'): authorize is (ctx, resolve) => boolean.`);
-  const key = input.key;
+  const keyInput = input.key as KeyInput;
+  const key = typeof keyInput === 'string' ? keyInput : keyInput?.column;
+  const keyType: KeyType = typeof keyInput === 'string' ? 'integer' : keyInput?.type;
   if (typeof key !== 'string' || !/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$/.test(key)) throw new TypeError(`defineTable('${name}'): key is a column of the query.`);
+  if (!['integer', 'bigint', 'string', 'uuid'].includes(keyType)) throw new TypeError(`defineTable('${name}'): key type ${JSON.stringify(keyType)} — 'integer', 'bigint', 'string' or 'uuid'.`);
   const columns = entries(input.columns, 'column', Column, name);
   if (Object.keys(columns).length === 0) throw new TypeError(`defineTable('${name}'): a table needs a column.`);
   if ('can' in columns) throw new TypeError(`defineTable('${name}'): the name 'can' is taken — a row's abilities are its 'can'.`);
@@ -645,6 +691,7 @@ function normalize(input: RawInput): TableDefinition {
     authorize: input.authorize as TableDefinition['authorize'],
     query: input.query as TableDefinition['query'],
     key,
+    keyType,
     columns,
     filters,
     defaultSort: defaultSort as string | undefined,

@@ -72,6 +72,27 @@ describe('defineTable — typed from the query', () => {
     defineTable({
       name: 'x',
       query: (db) => db.selectFrom('members'),
+      // @ts-expect-error — a text key names its type (keys are parsed by it)
+      key: 'email',
+      columns: { name: column('name') },
+    });
+    const byEmail = defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: { column: 'email', type: 'string' },
+      columns: { name: column('name') },
+    });
+    expectTypeOf<TableProps<typeof byEmail>['rows'][number]['email']>().toEqualTypeOf<string>();
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      // @ts-expect-error — not a column
+      key: { column: 'mail', type: 'string' },
+      columns: { name: column('name') },
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
       key: 'id',
       columns: { name: column('name').sortable(), email: column('email') },
       // @ts-expect-error — not sortable

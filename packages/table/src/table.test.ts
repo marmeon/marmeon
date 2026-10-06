@@ -123,14 +123,14 @@ describe.each(drivers)('@bespokecore/table on %s', (driver) => {
       ]);
       expect(admin.actions).toEqual([{ name: 'deactivate', url: '/teams/1/_tables/members/actions/deactivate', confirm: true }]);
       expect(admin.bulk).toEqual([{ name: 'deactivate', url: '/teams/1/_tables/members/bulk/deactivate', confirm: false, max: 5 }]);
-      expect(admin.exports).toEqual([{ name: 'csv', format: 'csv', url: '/teams/1/_tables/members/export/csv' }]);
+      expect(admin.exports).toEqual([{ name: 'csv', format: 'csv', url: '/teams/1/_tables/members/export/csv', max: 10_000 }]);
       const member = (await page(application, ALAN, 'per_page=10&sort=-joined&filter[role]=member')).members;
       expect(member.actions).toEqual([]);
       expect(member.bulk).toEqual([]);
       expect(member.exports).toEqual([]);
       expect(member.rows.every((row) => JSON.stringify(row.can) === '{}')).toBe(true);
       const exporter = (await page(application, EDSGER, 'per_page=10&sort=-joined&filter[role]=member')).members;
-      expect(exporter.exports).toEqual([{ name: 'csv', format: 'csv', url: '/teams/1/_tables/members/export/csv?sort=-joined&filter%5Brole%5D=member' }]);
+      expect(exporter.exports).toEqual([{ name: 'csv', format: 'csv', url: '/teams/1/_tables/members/export/csv?sort=-joined&filter%5Brole%5D=member', max: 10_000 }]);
     });
 
     it('pages by an encrypted cursor when asked to — a changed cursor is a 400', async () => {
@@ -227,6 +227,27 @@ describe.each(drivers)('@bespokecore/table on %s', (driver) => {
       expect((await run(application, undefined, 2)).status).toBe(401);
       expect((await run(application, MALLORY, 2)).status).toBe(404); // not her team: the tenant middleware
       expect(application.recorder.deactivated).toEqual([]);
+    });
+  });
+
+  describe('keys are parsed by the key\'s type before any query', () => {
+    it('a text key (`{ column, type: \'string\' }`) takes text — a number is just text that matches no row', async () => {
+      const application = await app(driver);
+      const run = (key: unknown) => application.request('/teams/1/_tables/by-email/actions/deactivate', { method: 'POST', user: ADA, json: { key } });
+      expect((await run('alan@example.com')).status).toBe(200);
+      expect((await run(2)).status).toBe(404);
+      expect(application.recorder.deactivated).toEqual(['alan@example.com']);
+    });
+
+    it('an integer key never sends text to the database (Postgres would fail: a 500) — no row, no query for it', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      const response = await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: { key: 'abc' } });
+      expect(response.status, 'text reached an integer key column').toBe(404);
+      expect(application.queries.some((query) => query.parameters.includes('abc')), 'text reached an integer key column').toBe(false);
+      const bulk = await application.request('/teams/1/_tables/members/bulk/deactivate', { method: 'POST', user: ADA, json: { keys: ['abc', '2', '2.5', '99999999999999999'] } });
+      expect(await bulk.json()).toMatchObject({ done: 1, missing: 3 });
+      expect(application.queries.some((query) => query.parameters.includes('abc')), 'text reached an integer key column').toBe(false);
     });
   });
 
@@ -327,6 +348,28 @@ describe.each(drivers)('@bespokecore/table on %s', (driver) => {
       const lines = (await (await csv(application, ADA, 'search=bulk')).text()).split('\r\n').filter(Boolean);
       expect(lines).toHaveLength(1204);
       expect(new Set(lines).size).toBe(1204);
+    });
+
+    it('refuses an export over its limit (422) before streaming a byte — never a file cut short', async () => {
+      const application = await app(driver);
+      const response = await application.request('/teams/1/_tables/small/export/csv', { user: ADA });
+      expect(response.status, 'an export over its limit was streamed').toBe(422);
+      expect(await response.text()).toContain('More than 3 rows match');
+    });
+
+    it('streams its later batches outside the transaction the handler answered in (a framework boundary, E107)', async () => {
+      const application = await app(driver);
+      await application.insert(Array.from({ length: 1203 }, (_, index) => ({ ...MEMBERS[1]!, id: 100 + index, name: `Bulk ${index}`, email: `b${index}@example.com` })));
+      const response = await application.request('/teams/1/export-in-transaction', { user: ADA });
+      expect(response.status).toBe(200);
+      let text = '';
+      try {
+        text = await response.text();
+      } catch (error) {
+        text = `the stream failed: ${String(error)}`;
+      }
+      expect(text, 'a later batch ran in the finished transaction').not.toContain('the stream failed');
+      expect(text.split('\r\n').filter(Boolean)).toHaveLength(1208); // header + 4 members + 1 203
     });
 
     it('has its own authorization: who may see the table but not export gets a 403 — a guest the middleware\'s 401', async () => {

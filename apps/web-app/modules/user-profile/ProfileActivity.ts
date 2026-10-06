@@ -24,11 +24,18 @@ export class ProfileActivity {
 
   async recent(userId: number, limit = 5): Promise<ActivityEntry[]> {
     if (this.#config.activityDelay > 0) await new Promise((done) => setTimeout(done, this.#config.activityDelay));
-    const [user, login, links] = await Promise.all([
-      this.#db.selectFrom('users').select('created_at').where('id', '=', userId).executeTakeFirst(),
-      this.#db.selectFrom('login_activity').select('last_login_at').where('user_id', '=', userId).executeTakeFirst(),
-      this.#db.selectFrom('profile_links').select(['label', 'created_at']).where('user_id', '=', userId).orderBy('created_at', 'desc').orderBy('id', 'desc').limit(limit).execute(),
-    ]);
+    // One after the other: inside a transaction (a test's, or a caller's) the three share one connection — queries sent at once
+    // would queue on it (pg warns: an error from pg 9 on).
+    const user = await this.#db.selectFrom('users').select('created_at').where('id', '=', userId).executeTakeFirst();
+    const login = await this.#db.selectFrom('login_activity').select('last_login_at').where('user_id', '=', userId).executeTakeFirst();
+    const links = await this.#db
+      .selectFrom('profile_links')
+      .select(['label', 'created_at'])
+      .where('user_id', '=', userId)
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .limit(limit)
+      .execute();
     const entries: ActivityEntry[] = [
       ...links.map((link) => ({ kind: 'link' as const, at: link.created_at, label: link.label })),
       ...(login ? [{ kind: 'signed-in' as const, at: login.last_login_at }] : []),

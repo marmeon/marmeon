@@ -95,6 +95,8 @@ export interface TableExportEntry<E extends string = string> {
   readonly name: E;
   readonly format: 'csv';
   readonly url: string;
+  /** The most rows it takes — an export over more is refused (422): narrow the filter first. */
+  readonly max: number;
 }
 
 /**
