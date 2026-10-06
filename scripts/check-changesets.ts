@@ -59,6 +59,7 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-an-s3-temporary-url-names-the-content-type-by-the-file-name',
     'low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start',
     'low-verified-treats-a-user-without-email_verified_at-as-unverified',
+    'medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls', // E192
   ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',

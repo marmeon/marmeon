@@ -33,11 +33,14 @@ MAIL_MAILER=log               # log (default: written to the log, nothing sent) 
 MAIL_FROM_ADDRESS=hello@example.com   # the default sender (default hello@example.com)
 MAIL_FROM_NAME=               # its name (default: none — then the address alone)
 MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASSWORD=   # smtp (these are the defaults)
+MAIL_REQUIRE_TLS=true         # without MAIL_SECURE: STARTTLS or no mail (E192, default true)
 ```
 
-`MAIL_SECURE=true` means TLS from the first byte (port 465); otherwise STARTTLS when the server offers it — and plain text when
-it does not: a server without STARTTLS, or someone on the way who strips the offer, gets the credentials and the mails (reset
-links included) unencrypted. Use port 465 with `MAIL_SECURE=true` where the provider has it. `MailConfig`
+`MAIL_SECURE=true` means TLS from the first byte (port 465). Otherwise the connection is upgraded with STARTTLS — and **required**
+(E192): a server that does not offer it, or someone on the way who strips the offer, gets no credentials and no mail; the send fails
+(the queued mail is retried like any failed job) instead of going out in plain text. `MAIL_REQUIRE_TLS=false` turns that off — only
+for a local server without TLS (Mailpit on port 1025, a relay on the same machine); `SmtpTransport` takes `requireTls` the same way.
+Use port 465 with `MAIL_SECURE=true` where the provider has it. `MailConfig`
 (`config.mailer`, `config.from`, `config.smtp`, `config.previews`, `config.protected`) is the package's config class. The web
 app's `.env.test` sets `MAIL_MAILER=array`.
 

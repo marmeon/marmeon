@@ -29,8 +29,10 @@ export const MailConfig = defineConfig('mail', {
     MAIL_FROM_NAME: v.optional(v.string(), ''),
     MAIL_HOST: v.optional(v.string(), '127.0.0.1'),
     MAIL_PORT: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(65_535)), '587'),
-    /** `true`: TLS from the first byte (port 465). Otherwise STARTTLS when the server offers it. */
+    /** `true`: TLS from the first byte (port 465). Otherwise STARTTLS (required unless MAIL_REQUIRE_TLS=false). */
     MAIL_SECURE: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'false'),
+    // Without MAIL_SECURE: STARTTLS or no mail (E192) — `false` only for a local server without TLS (Mailpit).
+    MAIL_REQUIRE_TLS: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'true'),
     MAIL_USERNAME: v.optional(v.string(), ''),
     MAIL_PASSWORD: v.optional(v.string(), ''),
     NODE_ENV: v.optional(v.string()),
@@ -38,7 +40,7 @@ export const MailConfig = defineConfig('mail', {
   resolve: (env) => ({
     mailer: env.MAIL_MAILER,
     from: env.MAIL_FROM_NAME ? { address: env.MAIL_FROM_ADDRESS, name: env.MAIL_FROM_NAME } : env.MAIL_FROM_ADDRESS,
-    smtp: { host: env.MAIL_HOST, port: env.MAIL_PORT, secure: env.MAIL_SECURE, username: env.MAIL_USERNAME, password: env.MAIL_PASSWORD },
+    smtp: { host: env.MAIL_HOST, port: env.MAIL_PORT, secure: env.MAIL_SECURE, requireTls: env.MAIL_REQUIRE_TLS, username: env.MAIL_USERNAME, password: env.MAIL_PASSWORD },
     /**
      * The mail previews under `/_bespoke/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
      * a test, staging or a server without `NODE_ENV` has no such routes.

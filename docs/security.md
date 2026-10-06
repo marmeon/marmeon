@@ -80,6 +80,9 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   confirmed address (`verified()`), and a change of address stays pending until the link sent to the new address is clicked —
   the same answer for a free and a taken address, a note to the owner of a taken one
   ([private registration](../packages/auth/README.md#private-registration---private-registration-e146)).
+- **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS
+  (`MAIL_REQUIRE_TLS`, default `true`, E192) — a server without it, or someone who strips the offer, never sees the credentials or a
+  reset link ([mail](../packages/mail/README.md)).
 - Policies and the `Gate` decide what a user may do
   ([authorization](../packages/auth/README.md#authorization-policies-and-the-gate-e28)).
 

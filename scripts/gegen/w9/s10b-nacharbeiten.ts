@@ -18,6 +18,8 @@ import { defineGegenproben } from '../define.ts';
  *   chosen interface fails the start with Node's error (G9b).
  * - **No inline styles** in the web app's server markup (G10).
  * - **E146 timing** with runs of four and ABBA pairs still finds a sign-up that skips the hash for a known address (G11).
+ * - **SMTP requires STARTTLS** (E192, Max 06.10.): without the measure a server that does not upgrade gets the mail in plain text (G12),
+ *   and the configuration's default asks for it (G12b).
  */
 const PGSQL = { BESPOKE_TEST_PGSQL_URL: 'postgres://bespoke:secret@localhost:55432/bespoke', DB_CONNECTION: 'pgsql', DB_URL: 'postgres://bespoke:secret@localhost:55432/bespoke' };
 const SERIAL = 'packages/database/src/serial-queries.test.ts';
@@ -147,6 +149,21 @@ export default defineGegenproben({
       ],
       run: { vitest: 'apps/web-app/modules/auth/auth.test.ts', name: 'takes as long for a known address as for a new one' },
       expect: /median of 21 paired ratios 0\.\d+ .* expected 0\.\d+ to be greater than 0\.75/,
+    },
+    {
+      id: 'G12',
+      title: 'SMTP without requireTLS: a server that does not offer STARTTLS gets the mail in plain text',
+      patch: [{ file: 'packages/mail/src/transports.ts', find: 'requireTLS: !secure && requireTls,', replace: 'requireTLS: false,' }],
+      run: { vitest: 'packages/mail/src/mail.test.ts', name: 'smtp sends nothing to a server that does not upgrade to TLS' },
+      expect: /a mail went out without TLS: expected 'undefined' to match/,
+    },
+    {
+      id: 'G12b',
+      title: 'MAIL_REQUIRE_TLS defaults to false: an app that sets nothing sends in plain text',
+      patch: [{ file: 'packages/mail/src/index.ts', find: "v.transform((value) => value === 'true')), 'true'),", replace: "v.transform((value) => value === 'true')), 'false')," }],
+      run: { vitest: 'packages/mail/src/mail.test.ts', name: 'asks nodemailer for STARTTLS unless MAIL_REQUIRE_TLS=false' },
+      // Vitest shortens the strings: the reason is the default's line, its value cut after "fa…" (false).
+      expect: /the default: expected 'port 587, secure false, requireTLS fa…' to be 'port 587, secure false, requireTLS tr…'/,
     },
   ],
 });

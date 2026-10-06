@@ -113,7 +113,8 @@ and breaks every signed link.
 
 **Mail (E135):** the default `MAIL_MAILER=log` sends nothing — it writes each mail, password-reset and verification links
 included, into the log. A protected app warns about it at boot. Production needs `smtp`; queued mails then go out through the
-worker (`--queue=mail,default`).
+worker (`--queue=mail,default`). SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, otherwise STARTTLS is required
+(`MAIL_REQUIRE_TLS`, default `true`, E192) — set it to `false` only for a relay without TLS on the same machine.
 
 ## Stopping without dropped requests
 

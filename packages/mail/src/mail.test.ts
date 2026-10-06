@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:net';
 import { ConsoleLogger, createApplication, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   ArrayTransport,
   compose,
@@ -146,7 +146,8 @@ describe('transports', () => {
 
   it('smtp: hands the message to an SMTP server through nodemailer — text and HTML parts', async () => {
     const received = await withSmtpServer(async (port) => {
-      const transport = new SmtpTransport({ host: '127.0.0.1', port, secure: false });
+      // The test server has no TLS: the opt-out (a local server like Mailpit).
+      const transport = new SmtpTransport({ host: '127.0.0.1', port, secure: false, requireTls: false });
       await transport.send(await compose(new WelcomeMail('Ada'), { address: 'hello@app.test', name: 'App' }));
       await transport.close();
     });
@@ -155,6 +156,37 @@ describe('transports', () => {
     expect(received.data).toMatch(/^From: App <hello@app\.test>$/m);
     expect(received.data).toContain('Content-Type: text/plain');
     expect(received.data).toContain('Content-Type: text/html');
+  });
+
+  it('counter-check: smtp sends nothing to a server that does not upgrade to TLS — STARTTLS is required by default (E192)', async () => {
+    let failure: unknown;
+    const received = await withSmtpServer(async (port) => {
+      const transport = new SmtpTransport({ host: '127.0.0.1', port, secure: false });
+      failure = await transport.send(await compose(new WelcomeMail('Ada'), 'hello@app.test')).then(() => undefined, (error: unknown) => error);
+      await transport.close();
+    });
+    expect(String(failure), 'a mail went out without TLS').toMatch(/STARTTLS/i);
+    expect(received.envelope).toEqual([]);
+    expect(received.data).toBe('');
+  });
+
+  it('asks nodemailer for STARTTLS unless MAIL_REQUIRE_TLS=false — implicit TLS (MAIL_SECURE) as before', async () => {
+    const created: Record<string, unknown>[] = [];
+    vi.doMock('nodemailer', () => ({ default: { createTransport: (options: Record<string, unknown>) => (created.push(options), { sendMail: async () => {}, close() {} }) } }));
+    try {
+      const send = async (env: Record<string, string>) => {
+        const app = await createApplication({ root: import.meta.dirname, discover: false, env: { LOG_LEVEL: 'silent', MAIL_MAILER: 'smtp', ...env }, providers: [MailServiceProvider] });
+        await app.container.make(Mailer).send(new WelcomeMail('Ada'));
+        await app.shutdown();
+        return created.at(-1)!;
+      };
+      const tls = (options: Record<string, unknown>) => `port ${options.port}, secure ${options.secure}, requireTLS ${options.requireTLS}`;
+      expect(tls(await send({})), 'the default').toBe('port 587, secure false, requireTLS true');
+      expect(tls(await send({ MAIL_REQUIRE_TLS: 'false' })), 'the opt-out').toBe('port 587, secure false, requireTLS false');
+      expect(tls(await send({ MAIL_SECURE: 'true', MAIL_PORT: '465' })), 'implicit TLS').toBe('port 465, secure true, requireTLS false');
+    } finally {
+      vi.doUnmock('nodemailer');
+    }
   });
 });
 
@@ -247,7 +279,9 @@ export function mailTypes() {
 /** A tiny SMTP server: answers every command with success and keeps what it was told. */
 async function withSmtpServer(run: (port: number) => Promise<void>): Promise<{ envelope: string[]; data: string }> {
   const received = { envelope: [] as string[], data: '' };
+  const sockets = new Set<import('node:net').Socket>();
   const server: Server = createServer((socket) => {
+    sockets.add(socket);
     let buffer = '';
     let inData = false;
     socket.write('220 test ESMTP\r\n');
@@ -275,6 +309,9 @@ async function withSmtpServer(run: (port: number) => Promise<void>): Promise<{ e
         } else if (command === 'DATA') {
           inData = true;
           socket.write('354 go ahead\r\n');
+        } else if (command === 'STAR') {
+          // STARTTLS: this server has no TLS (or someone on the way stripped it).
+          socket.write('454 TLS not available\r\n');
         } else if (command === 'QUIT') {
           socket.end('221 bye\r\n');
         } else socket.write('250 ok\r\n');
@@ -285,6 +322,8 @@ async function withSmtpServer(run: (port: number) => Promise<void>): Promise<{ e
   try {
     await run((server.address() as { port: number }).port);
   } finally {
+    // A client that gave up (no STARTTLS) may leave its connection open.
+    for (const socket of sockets) socket.destroy();
     await new Promise((resolve) => server.close(resolve));
   }
   return received;

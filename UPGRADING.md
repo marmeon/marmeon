@@ -19,7 +19,7 @@ impact by area:
 | Lists and data | [revalidations replace merged props](#medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone) · [`paginate(…, ctx.query)`](#medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated) · [`<Pagination>`](#medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels) | [GET arrays](#low-a-list-in-a-gets-data-is-the-key-repeated) · [`merge()` of a paginator](#low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up) · [encrypted cursors](#low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400) · [queries take turns on a shared connection](#low-queries-on-a-shared-connection-take-turns--a-transactions-a-tests-pinned-one) · [a filter on a hidden column](#low-a-tables-filter-on-a-hidden-column-is-hidden-with-it) |
 | Live updates | [16 streams per session](#medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429) · [a cluster needs Redis](#medium-a-cluster-bespoke-start-with-workers-needs-live_driverredis) | — |
 | Navigation | [the Navigation API](#medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible) | [the guard](#low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key) · [optimistic patches on first use](#low-userouter-loads-the-pages-optimistic-patches-on-first-use) · [the kit's `Confirm`](#low-the-starter-kit-asks-in-the-pages-language--its-own-confirm) · [view transitions](#low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition) · [`reset()` after saving](#low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty) · [reloads built while rendering](#low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again) |
-| Accounts | [pending change of address](#medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns) | — |
+| Accounts | [pending change of address](#medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns) · [SMTP requires TLS](#medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls) | — |
 | Server and deployment | — | [`KEEP_ALIVE_TIMEOUT`](#low-the-server-keeps-idle-connections-65-s-keep_alive_timeout) · [build without `.env`](#low-bespoke-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile) · [tini](#low-the-image-runs-bespoke-under-tini--rebuild-it) · [pnpm 12.9.1](#low-pnpm-1291) · [`<title>`](#low-a-new-apps-title-is-its-name-not-bespokecore) · [a program on 127.0.0.1 at the port](#low-the-start-warns-when-another-program-holds-127001-at-its-port--and-a-taken-port-fails-startserver) |
 | Security | — | [no CORS in `bespoke dev`](#low-bespoke-dev-answers-other-origins-without-cors-headers) · [S3 content type](#low-an-s3-temporary-url-names-the-content-type-by-the-file-name) · [S3 disks sharing a prefix](#low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start) · [`verified()` fails closed](#low-verified-treats-a-user-without-email_verified_at-as-unverified) |
 
@@ -129,6 +129,16 @@ told as before). Your `modules/auth` is yours, so the update does not change it 
    `mail.confirm_new_email.*`, `mail.email_in_use.*`).
 
 Until then the old controller keeps working — and keeps telling "taken".
+
+#### Medium: SMTP requires TLS — STARTTLS or no mail (`MAIL_REQUIRE_TLS`)
+
+*Likelihood of impact: medium — apps with `MAIL_MAILER=smtp` on a server without TLS (a local relay, Mailpit).* Without
+`MAIL_SECURE=true` the SMTP transport upgraded with STARTTLS only when the server offered it — and sent in plain text when it did not:
+a server without STARTTLS, or someone on the network who strips the offer, got the credentials and every mail, reset links
+included. Now STARTTLS is required (E192): such a send fails (a queued mail is retried and lands with the failed jobs) instead of going
+out unencrypted. `MAIL_SECURE=true` (TLS from the first byte, port 465) is unchanged. A server without TLS that you trust — Mailpit on
+port 1025, a relay on the same machine — takes `MAIL_REQUIRE_TLS=false` (commented in `.env.example`); `new SmtpTransport({ …,
+requireTls: false })` the same. The old behaviour: `MAIL_REQUIRE_TLS=false`.
 
 #### Low: the server keeps idle connections 65 s (`KEEP_ALIVE_TIMEOUT`)
 

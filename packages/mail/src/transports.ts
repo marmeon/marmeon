@@ -41,8 +41,14 @@ export class ArrayTransport implements MailTransport {
 export interface SmtpOptions {
   readonly host: string;
   readonly port: number;
-  /** Implicit TLS from the first byte (port 465). Otherwise STARTTLS is used when the server offers it. */
+  /** Implicit TLS from the first byte (port 465). Otherwise the connection is upgraded with STARTTLS. */
   readonly secure: boolean;
+  /**
+   * Without `secure`: refuse to send unless the server upgrades to TLS (STARTTLS) — default `true` (E192). Without it, a server
+   * that does not offer STARTTLS — or someone on the network who strips the offer — gets the credentials and the mails (reset
+   * links) in plain text. `false` only for a local server without TLS (Mailpit): `MAIL_REQUIRE_TLS=false`.
+   */
+  readonly requireTls?: boolean;
   readonly username?: string;
   readonly password?: string;
 }
@@ -98,7 +104,7 @@ export class SmtpTransport implements MailTransport {
     } catch {
       throw new Error('MAIL_MAILER=smtp needs nodemailer: pnpm add nodemailer');
     }
-    const { host, port, secure, username, password } = this.#options;
-    return nodemailer.createTransport({ host, port, secure, ...(username ? { auth: { user: username, pass: password ?? '' } } : {}) });
+    const { host, port, secure, requireTls = true, username, password } = this.#options;
+    return nodemailer.createTransport({ host, port, secure, requireTLS: !secure && requireTls, ...(username ? { auth: { user: username, pass: password ?? '' } } : {}) });
   }
 }
