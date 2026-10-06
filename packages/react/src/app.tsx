@@ -496,7 +496,7 @@ export function BespokeApp({
       // What the app attaches from the start: tab sync (E149), before the navigator takes over the history.
       features,
       // View transitions (E185): the core's, or React's (the core hands the types to `render`).
-      viewTransition: viewTransition === 'react' ? 'adapter' : viewTransition,
+      viewTransition,
     });
     // A deep link's layers: their code was loaded before hydrating (createBespokeApp) — attached before the navigator stacks them.
     if (stackModule?.value) navigator.current.use(stackModule.value.layers);

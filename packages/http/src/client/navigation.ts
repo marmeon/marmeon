@@ -263,10 +263,11 @@ export interface NavigatorOptions {
   /**
    * View transitions for every page change (E185): each visit that takes the page off the screen (not a partial reload, not one in the
    * background, not a form's errors) and each Back/Forward between pages — see `VisitOptions.viewTransition`. A visit's own wins.
-   * `'adapter'`: on, and the adapter starts them itself (React 19.3's `<ViewTransition>`) — the core never calls
-   * `document.startViewTransition` then, it hands the render the types (`RenderOptions.transition`): never two for one page change.
+   * `'adapter'` (React's adapter says `'react'`): on, and the adapter starts them itself (React 19.3's `<ViewTransition>`) — the core
+   * never calls `document.startViewTransition` then, it hands the render the types (`RenderOptions.transition`): never two for one page
+   * change.
    */
-  viewTransition?: ViewTransitionOption | 'adapter';
+  viewTransition?: ViewTransitionOption | 'adapter' | 'react';
 }
 
 /** The core while the navigator builds it: what is made after it joins it once. */
@@ -851,8 +852,8 @@ export class Navigator {
     }
     try {
       try {
-        // In a view transition's update when one runs (E185) — the history entry and the scroll follow once it is swapped in.
-        await this.#swap(() => this.#draw(core.paint(key, page), { preserveState, owner, layers: [] }), history, keep);
+        // In a view transition's update when one runs (E185) — the history entry and the scroll follow once it is in.
+        await this.#draw(core.paint(key, page), { preserveState, owner, layers: [] }, history, keep);
       } catch {
         // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
         if (owner !== core.owner) owner.close();
@@ -874,14 +875,6 @@ export class Navigator {
     } finally {
       core.transitioning = false;
     }
-  }
-
-  /**
-   * Renders a page that takes the screen (`run`) — a feature runs it inside a view transition's update (E185). The history entry and
-   * the scroll follow once the new page is swapped in.
-   */
-  #swap(run: () => Promise<void>, how: 'push' | 'replace' | 'traverse', keep = false): Promise<void> {
-    return this.#first('swap', run, how, keep) ?? run();
   }
 
   // -- Back/Forward -----------------------------------------------------------------------------------------------------
@@ -980,7 +973,7 @@ export class Navigator {
     const core = this.#core;
     core.transitioning = true;
     try {
-      await this.#swap(() => this.#draw(core.paint(core.key!, page), { preserveState: false, owner }), 'traverse');
+      await this.#draw(core.paint(core.key!, page), { preserveState: false, owner }, 'traverse');
       core.scroll.apply(position);
       core.props.load();
       this.#all('deferred');
@@ -1197,11 +1190,14 @@ export class Navigator {
 
   /**
    * Renders — the owner on screen and what the features contribute (the layers) filled in — then fires what the rendered answer
-   * brought (E60): the page's layout shows a toast over the new page, not the old.
+   * brought (E60): the page's layout shows a toast over the new page, not the old. A page taking the screen (`how`: a visit's
+   * `push`/`replace`, Back/Forward's `traverse`; `keep`: it keeps its state) may be swapped in by a feature (`swap`: in a view
+   * transition's update, E185) — the history entry and the scroll follow once it is in.
    */
-  async #draw(page: PageObject, options: DrawOptions): Promise<void> {
+  async #draw(page: PageObject, options: DrawOptions, how?: 'push' | 'replace' | 'traverse', keep = false): Promise<void> {
     this.#all('draw');
-    await this.#render(page, { owner: this.#core.owner, layers: [], ...this.#extras(), ...options });
+    const run = () => this.#render(page, { owner: this.#core.owner, layers: [], ...this.#extras(), ...options });
+    await ((how && this.#first('swap', run, how, keep)) ?? run());
     this.#flushFlash();
   }
 

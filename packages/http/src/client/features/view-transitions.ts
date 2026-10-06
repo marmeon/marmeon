@@ -35,8 +35,8 @@ const ENTERED = slot(
 );
 
 /** The types an option asks for — none when it is off. */
-const typesOf = (option: ViewTransitionOption | 'adapter' | undefined): readonly string[] | undefined =>
-  option === true || option === 'adapter' ? [] : option ? (option.types ?? []) : undefined;
+const typesOf = (option: ViewTransitionOption | 'adapter' | 'react' | undefined): readonly string[] | undefined =>
+  option === true || typeof option === 'string' ? [] : option ? (option.types ?? []) : undefined;
 
 export const viewTransitions = defineFeature(
   'viewTransitions',
@@ -97,7 +97,8 @@ export const viewTransitions = defineFeature(
 
     /** Runs the swap in a view transition — the adapter's (it starts it), or the core's. */
     function transition(run: () => Promise<void>, types: readonly string[]): Promise<void> {
-      if (options.viewTransition === 'adapter') {
+      // The adapter starts them (`'adapter'`, React's `'react'`).
+      if (typeof options.viewTransition === 'string') {
         // The render reads the types when it starts — synchronously, at the swap's first step.
         handed = types;
         try {
