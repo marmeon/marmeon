@@ -4,6 +4,8 @@
  * Query state in the client core (E55), driven by a plain-DOM adapter: the adapter renders `state.value()` and calls
  * `set()` — debouncing, partial reloads, history and Back/Forward are the core's.
  */
+// happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there (E184).
+import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../page.ts';
 import { assertQueryPage, linkQuery, Navigator, pageQuery, queryState, queryUrl, withoutDefaults } from './index.ts';
@@ -34,7 +36,7 @@ function start(url = '/people') {
   window.history.replaceState(null, '', url);
   const initialPage: PageObject = { component: 'people/List', url, props: { people: PEOPLE, title: 'People' }, query: {}, queryDefaults: DEFAULTS, mergeProps: ['people'] };
   let rendered = initialPage;
-  const navigator = new Navigator({ initialPage, render: async (page) => void (rendered = page) });
+  const navigator = new Navigator({ features: [historyFallback], initialPage, render: async (page) => void (rendered = page) });
   const stop = navigator.start();
   return { navigator, page: () => rendered, stop };
 }

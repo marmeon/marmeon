@@ -100,7 +100,9 @@ every page without markup.
   component, the messages of its locale and — for a deep link with layers — the layer stack and the layers' views, so the
   first render matches the server's HTML — and, beside them, **tab sync** (E149): a chunk of its own, attached to the navigator
   from the start, so no other tab's sign-out is missed ([Tab sync](../http/README.md#tab-sync-w8-step-8); `tabSync: false` leaves
-  it out). With server markup it hydrates, without (SSR failed, `ssr = false`) it renders.
+  it out). Where the browser has no Navigation API (`!window.navigation`: Safari before 26.2), the History fallback loads in the
+  same round trip, attached from the start too — elsewhere it is never fetched ([The Navigation API](../http/README.md#the-navigation-api-e184),
+  E184). With server markup it hydrates, without (SSR failed, `ssr = false`) it renders.
   A hydration mismatch is reported to the console; in development with the page's name and a dismissible notice on the page.
 - **`createSsrRenderer(resolve, options)`** returns the `SsrRender` the server calls per page. Pages stream
   (`renderToReadableStream`): the promise resolves with the shell and its `<Head>` content, Suspense boundaries follow in the
@@ -177,7 +179,8 @@ Edit.layer = 'slideover';                                           // as a laye
   `user-profile.*`, `*`, or a list) for every page of those routes; the link being visited gets `data-pending`.
 - **`useRouter<Controller>()`** — `visit(url, options)`, `reload({ only: ['stats'] })` (prop names checked), `prefetch(url)`,
   `on('start' | 'progress' | 'success' | 'error' | 'exception' | 'cancel' | 'finish' | 'version', listener)` (returns the stop
-  function), and for actions `optimistic(patch)` / `reloading({ only, except, reset, islands })`.
+  function), and for actions `optimistic(patch)` / `reloading({ only, except, reset, islands })` — their code (the page's patches)
+  loads with the first call, a chunk of its own (W9): the first patch of a page shows a moment later, every one after it at once.
 - **`usePage()`** — the page object (`component`, `props` with the shared ones typed by `interface SharedProps`, `url`,
   `locale`, `flash` …); inside a layer, the layer's. **`useRoute()`** — `route('user-profile.show', { user: 7 })` → a URL.
 - **`usePending(name, { delay: 'short' })`** — a visit or action of that route under way. **`useBlocker({ when, message })`**
@@ -196,7 +199,8 @@ const form = useForm('user-profile.update', { user: profile.id }, { name: profil
   `progress` (an upload), `wasSuccessful`, `recentlySuccessful` (2 s), `isDirty(path?)`, `dirty` (the paths that differ),
   `reset(...fields)`; `submit(options)` with `onSuccess`, `onError(errors)`, `onFinish` and the visit options.
 - **`guard`** (E64): while dirty, leaving asks first — a visit, Back/Forward, closing its layer; the tab gets the browser's
-  question. **`validate`** (E62): `true` or `{ on: 'blur' | 'change', debounce, fields }` — fields are checked against the
+  question. Back right after a click is cancelled (the URL stays); without a recent click — or a second Back right after the
+  first — the browser goes and the guard comes back at once, then asks ([The Navigation API](../http/README.md#the-navigation-api-e184)). **`validate`** (E62): `true` or `{ on: 'blur' | 'change', debounce, fields }` — fields are checked against the
   server's schema (`form.validate(field)`, `form.validating(field)`); password fields are never sent. **`remember`** (E63):
   the input survives Back/Forward, in memory only; passwords, token-, secret- and card-like fields and files are never kept.
 - **By controller**, to any URL: `useForm<UpdateUserProfileController>(initial)` then `form.put(url)`.

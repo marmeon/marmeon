@@ -44,6 +44,10 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429', // W9.4, E182
     'medium-a-cluster-bespoke-start-with-workers-needs-live_driverredis',
     'low-the-server-keeps-idle-connections-65-s-keep_alive_timeout',
+    'medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible', // W9.7, E184
+    'low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key',
+    'low-userouter-loads-the-pages-optimistic-patches-on-first-use',
+    'low-the-starter-kit-asks-in-the-pages-language--its-own-confirm',
   ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',

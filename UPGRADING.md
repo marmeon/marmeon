@@ -69,6 +69,25 @@ workers — use LIVE_DRIVER=redis …"), and the cluster stops with the worker's
 [@bespokecore/redis](packages/redis/README.md)) — the web app's `.env.example` does — or start one process without `--workers`.
 One process with `memory` (`bespoke start`, `bespoke dev`) is unchanged.
 
+#### Medium: the navigator uses the Navigation API — `history.state` is null, its `navigate` events are visible
+
+*Likelihood of impact: medium — code that reads or writes `history.state`, listens to `navigation`'s `navigate` event, or builds its
+own adapter or client feature.* Where the browser has the Navigation API (Chrome, Edge, Firefox 147+, Safari 26.2+), the navigator
+writes and follows the history through it (E184): a visit commits its entry with `navigation.navigate(url, { state, info })` and
+intercepts that navigation, Back/Forward to its own entries are intercepted (`navigation.transition` — the browser's loading indicator
+while one asks the server). So **`history.state` is `null`** — an entry's state is `navigation.currentEntry.getState()` (positions
+only, as before, E36); code that read `history.state.key` or `.url` reads it there, or not at all. **The `navigate` events of visits
+reach the app's own listeners** (`navigationType` `push`/`replace`, the navigator's `info`): a listener that intercepts or cancels
+every `navigate` now also catches visits — leave the ones with an `info` you did not set alone. A plain `<a href>`, a plain form,
+another site and entries without the navigator's state stay the browser's, as before. Without the API (Safari before 26.2) nothing
+changes: the History fallback writes `history.state` as before — a chunk `createBespokeApp` loads only then.
+**For an adapter of your own:** load the fallback where `!window.navigation` and pass it with the features from the start
+(`new Navigator({ …, features: [await loadHistoryFallback()] })`; development warns `[bespoke:C13]`). **For a client feature:**
+`HistoryState.index` and `HistoryWriter.index` are gone (the fallback counts for itself); a feature that wrote a field into every
+entry by wrapping `host.history.push`/`replace` gives it a value instead — `host.history.field(name, check, (entry) => value)`; the
+`popState` hook gets the navigator's `HistoryState` (no longer any `history.state`), and a new `navigate` hook sees Back/Forward before
+the navigator intercepts it (the guard's).
+
 #### Low: the server keeps idle connections 65 s (`KEEP_ALIVE_TIMEOUT`)
 
 *Likelihood of impact: low — apps behind a proxy or a load balancer.* Node closes an idle keep-alive connection after 5 s; nginx (the
@@ -143,6 +162,31 @@ was rotated away, or **the base64url format before Wave 9** (bookmarked "load mo
 page. Also: the unique `key` (default `id`) is added as the last order by itself (`{ column: 'name' }` orders by `(name, id)`),
 a nullable sort column orders `NULLS LAST` and a NULL is a cursor like any other (before: "load more" started over), and an
 `orderBy` of the query is taken out (before it came first).
+
+#### Low: the guard cancels a Back where the browser lets it — and goes back by the browser's key
+
+*Likelihood of impact: low — apps with a navigation guard (`useBlocker`, `useForm(…, { guard })`).* Back or Forward with unsaved
+changes is now **cancelled** where the browser allows it — right after a click or a key press (a user activation), or from a script —
+and the address bar never changes; before, the browser always moved and the guard moved back. Without an activation (a Back a while
+after the last click, or the second of two quick Backs) the browser still moves first: the guard goes back to the entry it left by the
+browser's key — right after a reload or a session restore too, where the old counted index could be off — and asks; Leave goes
+again. Nothing to change: the question, its words and `beforeunload` are the same.
+
+#### Low: `useRouter()` loads the page's optimistic patches on first use
+
+*Likelihood of impact: low — pages that call `router.optimistic()` or `router.reloading()`.* The code of the page's optimistic patches
+is no longer in the first download of every app with a router (W9 step 7, ≈ 0.6 KB gzip): it loads with the first
+`router.optimistic()`/`reloading()` call, a chunk of its own. That first patch of a page shows a moment later — the time to fetch the
+chunk — every later one at once; a chunk that cannot load shows no patch, and the action's reload ends without one (its answer still
+lands). A test that asserts a patch synchronously after the first call awaits a tick.
+
+#### Low: the starter kit asks in the page's language — its own `Confirm`
+
+*Likelihood of impact: low — apps created with the starter kit of 0.1.0.* A new starter kit has its own dialog (`bootstrap/confirm.tsx`,
+`createBespokeApp({ confirm: Confirm })`) with the app's words in `lang/en.ts` and `lang/de.ts` (namespace `app`): a link's or an
+action's `confirm`, the question before unsaved changes are left — and tab sync's question when another tab signed in or out
+(`reason: 'session'`), which was English before. An app of 0.1.0 copies the three files from a new kit (`pnpm create bespoke-app`)
+and adds `confirm: Confirm` to `bootstrap/client.tsx` — or keeps the browser's own dialog.
 
 ## Upgrading to 0.1.0 from the development snapshots
 

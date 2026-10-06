@@ -14,8 +14,8 @@
  *   loaded again: the server says what it shows now (the login page, the new language). With unsaved changes on screen (a
  *   navigation guard holds) the page stays: pages fetched ahead are dropped, and the user is asked (when the tab is visible)
  *   whether to load it again — no, and the next answer of the server takes it over (then the entries of the old epoch go).
- * - **Back/Forward:** every history entry holds the epoch it was written under (`history.state.epoch`, a registered field — a
- *   position, never data, E36); Back or Forward to an entry of another epoch loads it from the server, never from memory.
+ * - **Back/Forward:** every history entry holds the epoch it was written under (its state's `epoch`, a field the history writer
+ *   writes into every entry — a position, never data, E36); Back or Forward to an entry of another epoch loads it again.
  * - **Flash messages stay with their tab** (E165): every request names its document (`x-bespoke-document`), and the server
  *   binds a message to the document whose request flashed it — another tab's poll or visit never takes it.
  *
@@ -24,7 +24,7 @@
 import { DOCUMENT_HEADER, SESSION_PATH, TAB_SYNC_CHANNEL, type TabSyncMessage } from '../../tab-sync-protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
-import { isHistoryState, newKey, type HistoryState } from '../history.ts';
+import { isHistoryState, newKey } from '../history.ts';
 import { notify } from '../notify.ts';
 
 /** What the user is asked when another tab changed the session and unsaved changes are on screen. */
@@ -100,16 +100,13 @@ export const tabSync = defineFeature(
     const init = state();
     init.epoch = init.known = first;
 
-    // Every history entry holds the epoch it was written under (E36: a position — registered, checked as a string).
-    history.field('epoch', (value) => typeof value === 'string' && EPOCH.test(value));
-    for (const method of ['push', 'replace'] as const) {
-      const write = history[method].bind(history);
-      history[method] = (entry: HistoryState, url: string) => {
-        const current = state();
-        (current.keys ??= new Set()).add(entry.key);
-        write(current.epoch === undefined ? entry : ({ ...entry, epoch: current.epoch } as HistoryState), url);
-      };
-    }
+    // Every history entry holds the epoch it was written under (E36: a position — registered, checked as a string): the writer
+    // asks for it with every entry it writes (no wrapping of the writer).
+    history.field('epoch', (value) => typeof value === 'string' && EPOCH.test(value), (entry) => {
+      const current = state();
+      (current.keys ??= new Set()).add(entry.key);
+      return current.epoch;
+    });
 
     const post = (): void => {
       const { channel, epoch } = state();
@@ -151,7 +148,7 @@ export const tabSync = defineFeature(
         forgetHidden();
         // A page of the newest session is on screen (also after the user kept one of an older): nothing waits for it any more.
         host.fire('stale', false);
-        const entry: unknown = win.history.state;
+        const entry: unknown = history.state;
         if (isHistoryState(entry)) history.replace(entry, win.location.href);
         post();
         return;
@@ -196,7 +193,7 @@ export const tabSync = defineFeature(
 
     // Back/Forward to an entry of another epoch: from the server, never from memory — the whole document, as it is now.
     host.on('popState', (entry) => {
-      const epoch = isHistoryState(entry) ? (entry as { epoch?: unknown }).epoch : undefined;
+      const epoch = (entry as { epoch?: unknown }).epoch;
       if (typeof epoch !== 'string' || epoch === state().known) return undefined;
       reload();
       return true;

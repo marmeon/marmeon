@@ -14,7 +14,7 @@
 import type { PageObject } from '../page.ts';
 import type { Visit } from './events.ts';
 import type { NavigationGuard } from './features/guard.ts';
-import type { HistoryState } from './history.ts';
+import type { HistoryState, NavigateEvent } from './history.ts';
 import type { RenderOptions, VisitMethod, VisitOptions } from './navigation.ts';
 import type { FeatureHost, PlaceOptions } from './core.ts';
 import type { Layer, LayerControl } from './layer.ts';
@@ -149,10 +149,15 @@ export interface FeatureHooks {
   pinned(): readonly string[];
   /** The document came with more than its page (a deep link of a layer): those go over `key`'s page — returns the page's key. */
   adopt(key: string, position: Scroll): string | void;
-  /** A popstate a feature caused itself (a layer closing by going back): the visit under way is not cancelled by it. */
+  /** A Back/Forward a feature caused itself (a layer closing by going back): the visit under way is not cancelled by it. */
   own(): boolean | void;
-  /** A popstate, before the navigator follows it: `true` — a feature took it (the guard undid it, or it is its own). */
-  popState(state: unknown, own: boolean): boolean | void;
+  /**
+   * Back/Forward to an entry of this navigator (the Navigation API's `navigate`, E184), before the navigator intercepts it: `true`
+   * — a feature took it (the guard cancelled it, or goes back). Not in the History fallback (its `popstate` comes after the move).
+   */
+  navigate(event: NavigateEvent, state: HistoryState, own: boolean): boolean | void;
+  /** Back/Forward to an entry of this navigator, before it follows it: `true` — a feature took it (tab sync: an entry of another epoch). */
+  popState(state: HistoryState, own: boolean): boolean | void;
   /** What memory has of entry `key`'s stack — `false`: a part of it is gone (then it is asked for again). */
   stack(key: string): EntryStack | false | void;
   /** Back/Forward to the page on screen: only what features put over it changes (layers) — the page stays. */
@@ -188,7 +193,7 @@ export interface FeatureHooks {
   page(): void;
   /** Back/Forward brings entry `stack.page`'s page from memory: features put back what they had over it. */
   arrive(stack: EntryStack): void;
-  /** A popstate's arrival is done (or it asked the server). */
+  /** A Back/Forward's arrival is done (or it asked the server). */
   popped(): void;
   /** What is on screen was rendered without some props: load them (layers load theirs). */
   deferred(): void;

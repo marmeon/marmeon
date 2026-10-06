@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { loadPageMessages } from '@bespokecore/http/client';
+import { loadHistoryFallback, loadPageMessages } from '@bespokecore/http/client';
 import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
 import { createMessageLoader } from '@bespokecore/i18n/messages';
 import { act } from 'react';
@@ -10,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BespokeApp, useRouter } from './app.tsx';
 import { useLocale, useTranslation } from './i18n.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,7 +60,7 @@ describe('useTranslation', () => {
     const first = page('/a', 'en');
     const catalog = await loadPageMessages(first, messages);
     root = createRoot(container);
-    await act(async () => root.render(<BespokeApp initialPage={first} initialComponent={pages.Greeting!} resolve={resolve} messages={messages} initialCatalog={catalog} />));
+    await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={first} initialComponent={pages.Greeting!} resolve={resolve} messages={messages} initialCatalog={catalog} />));
     expect(container.textContent).toBe('Hello Ada · 1,234.5');
     expect(loads).toEqual(['/modules/shop/lang/en.ts']);
 

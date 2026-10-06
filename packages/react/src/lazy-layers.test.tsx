@@ -4,6 +4,10 @@ import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject, type RouteManifest } from
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadHistoryFallback } from '@bespokecore/http/client';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 /**
  * Layers as a chunk of their own (Wave 5c step 5, E71): the core loads them — with the React layer stack, one round trip —
@@ -94,7 +98,7 @@ async function mount(initial: PageObject) {
   const { createRoot } = await import('react-dom/client');
   const Component = await resolve(initial.component);
   root = createRoot($('#app')!);
-  await act(async () => root!.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
+  await act(async () => root!.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 describe('layers loaded on demand in React (E71)', () => {

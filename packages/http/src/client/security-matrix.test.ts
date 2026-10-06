@@ -1,5 +1,5 @@
 import { readdirSync } from 'node:fs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type FlashMessage, type PageObject, type RegionObject } from '../page.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
@@ -19,13 +19,14 @@ import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal } 
 import { hooks, type ClientHooks } from './features/hooks.ts';
 import { tabSync } from './features/tab-sync.ts';
 import { selection, type SelectionFeature } from './features/selection.ts';
+import { historyFallback } from './features/history-fallback.ts';
 import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
 import { REGIONS } from './owner.ts';
 import { islands, type IslandsFeature } from './features/islands.ts';
 import { REMEMBERED } from './remember.ts';
-import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, settle, type FakeEventSource } from './test-window.ts';
+import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, type FakeEventSource } from './test-window.ts';
 import { TOP } from './scroll.ts';
 
 /**
@@ -200,7 +201,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync, selection];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync, selection, historyFallback];
 
 /**
  * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
@@ -221,7 +222,8 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   win.confirmAnswer = true;
   const records: Recorded[] = [];
   // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves (E71).
-  const features = [...ALL_FEATURES.filter((feature) => feature !== live && (!lazyLayers || feature !== layers)), ...extra].map((feature) => recorded(feature, records));
+  // The History fallback (E184) only where the tab has no Navigation API — as createBespokeApp attaches it.
+  const features = [...ALL_FEATURES.filter((feature) => feature !== live && (!lazyLayers || feature !== layers) && (!win.navigation || feature !== historyFallback)), ...extra].map((feature) => recorded(feature, records));
   const restoreLive = recordInPlace(live, records);
   const loadLayers = lazyLayers && (async () => (await lazyLayers, recorded(layers, records) as Feature<LayerStack>));
   win.XMLHttpRequest = PendingXhr as never;
@@ -314,384 +316,394 @@ function coreLeftovers({ core, navigator, host, submissions, prefetched }: Await
 }
 
 /** Every history entry as the browser keeps it (serialized, written to disk) — with the canary in it, or not. */
-const historyWithCanary = (win: FakeWindow) => win.entries.filter((entry) => entry.state.includes(CANARY)).map((entry) => entry.url);
+const historyWithCanary = (win: FakeWindow) => win.entries.filter((entry) => entry.disk.includes(CANARY)).map((entry) => entry.url);
 
-describe('the security matrix — every feature × every event that must forget the signed-in user (E70, E36)', () => {
-  it('every feature holds something before (or the matrix would prove nothing)', async () => {
-    const tab = await stocked();
-    expect(tab.core.once.size).toBe(1);
-    expect(tab.core.regions.size).toBe(1);
-    expect(tab.navigator.regionOwner.live.size).toBe(1);
-    expect(tab.submissions()).toHaveLength(1);
-    expect(tab.prefetched()).toBe(1);
-    // What each default feature keeps — so every row of the matrix below checks real data. (Probing takes the prefetched page.)
-    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^prefetch: its slot "prefetched"/),
-        expect.stringMatching(/^remember: its slot "remembered"/),
-        expect.stringMatching(/^layers: its slot "layers"/),
-        expect.stringMatching(/^optimistic: its slot "patches"/),
-        expect.stringMatching(/^actions: its slot "submissions"/),
-        expect.stringMatching(/^layers: its hook "extras" hands out/),
-        expect.stringMatching(/^optimistic: its hook "paint" hands out/),
-        expect.stringMatching(/^prefetch: its hook "start" hands out/),
-        expect.stringMatching(/^uploads: its slot "uploads"/),
-        expect.stringMatching(/^live: its slot "live"/),
-        expect.stringMatching(/^devtools: its slot "devtools-timeline"/),
-        expect.stringMatching(/^devtools: its slot "devtools-snapshots"/),
-        expect.stringMatching(/^devtools: its slot "devtools-hydration"/),
-        expect.stringMatching(/^devtools: its slot "devtools-cache"/),
-        expect.stringMatching(/^devtools: its API still shows/),
-        expect.stringMatching(/^tabSync: its slot "tab-sync"/),
-        expect.stringMatching(/^selection: its slot "selections" of entry /),
-      ]),
-    );
-    // The live stream is open (W6.10), its URL holds the signed-in user's token.
-    expect([tab.stream.closed, tab.stream.url.includes(CANARY)]).toEqual([false, true]);
-    // The upload is on its way: its progress came, its XHR is open.
-    expect([tab.uploaded.at(-1)?.status, tab.uploaded.at(-1)?.progress]).toEqual(['uploading', 0.5]);
-    expect(PendingXhr.opened.at(-1)?.url).toContain(CANARY);
-  });
+describe.each(PATHS)('%s path (E184)', (path) => {
+  beforeEach(() => void (FakeWindow.path = path));
+  afterEach(() => void (FakeWindow.path = 'navigation'));
 
-  it('holds every feature module of the core to its rules — a feature left out of the matrix is one nobody checks (W9 step 4)', async () => {
-    const directory = new URL('./features/', import.meta.url);
-    const modules = readdirSync(directory).filter((file) => file.endsWith('.ts') && !file.includes('.test.'));
-    const features: string[] = [];
-    for (const file of modules) {
-      for (const value of Object.values(await import(new URL(file, directory).href))) {
-        if (typeof value === 'object' && value !== null && typeof (value as Feature).setup === 'function' && typeof (value as Feature).name === 'string') features.push((value as Feature).name);
-      }
-    }
-    const missing = features.filter((name) => !ALL_FEATURES.some((feature) => feature.name === name));
-    expect(missing, `not in ALL_FEATURES: ${missing.join(', ')}`).toEqual([]);
-    expect(features.length).toBeGreaterThanOrEqual(17);
-  });
-
-  it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload (W6.9)', async () => {
-    const tab = await stocked();
-    const xhr = PendingXhr.opened.at(-1)!;
-    const upload = tab.uploaded.at(-1)!;
-    expect(xhr.aborted).toBe(false);
-    tab.win.handler = () => conflict('history');
-    await tab.navigator.visit('/users/3');
-    expect(tab.win.loads).toEqual(['assign /login']);
-    expect(xhr.aborted).toBe(true);
-    expect(JSON.stringify(upload)).toBe('""'); // what a form would send now
-    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
-  });
-
-  it('a 409 in the background (signed out in another tab): the live stream is closed, its slot empty — no hint reloads anything (W6.10)', async () => {
-    const tab = await stocked();
-    expect(tab.stream.closed).toBe(false);
-    tab.win.handler = () => conflict('history');
-    await tab.navigator.reload({ async: true });
-    expect(tab.win.loads).toEqual(['replace /login']);
-    expect(tab.stream.closed).toBe(true);
-    expect(await leftovers(tab.records.filter((record) => record.feature === 'live'), [tab.pageKey], [])).toEqual([]);
-    // What still arrives on the closed stream, or a tab coming back, opens nothing and reloads nothing.
-    const requests = tab.win.requests.length;
-    tab.stream.emit('refresh', { channel: 'users.1', only: ['secret'], seq: 3 });
-    tab.win.show();
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(tab.win.sources).toHaveLength(1);
-    expect(tab.win.requests).toHaveLength(requests);
-    expect(tab.navigator.use(live).updates.pending).toBe(false);
-  });
-
-  it('counter-check: an upload that arrived holds its token until the document is left — then its Upload sends nothing', async () => {
-    const tab = await stocked();
-    const done: (Upload | null)[] = [];
-    class AnsweringXhr extends PendingXhr {
-      override send() {
-        Object.assign(this, { status: 200, responseText: '{"size":3}' });
-        this.dispatchEvent(new Event('load'));
-      }
-    }
-    tab.win.XMLHttpRequest = AnsweringXhr as never;
-    tab.navigator.use(uploads).start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: new File(['png'], 'b.png'), onChange: (upload) => done.push(upload) });
-    for (let i = 0; i < 6; i++) await settle();
-    const arrived = done.at(-1)!;
-    expect([arrived.status, arrived.progress]).toEqual(['uploaded', 1]);
-    expect(JSON.stringify({ avatar: arrived })).toBe(`{"avatar":"tu_${CANARY}"}`);
-    // Never a property of the Upload — only what it hands to JSON.
-    expect(holdsCanary(Object.fromEntries(Object.entries(arrived)))).toBe(false);
-    tab.win.handler = () => conflict('history');
-    await tab.navigator.visit('/users/3');
-    expect(JSON.stringify({ avatar: arrived })).toBe('{"avatar":""}');
-  });
-
-  for (const reason of ['history', 'version'] as const) {
-    it(`a 409 (${reason === 'history' ? 'signed out' : 'a new build'}) leaves nothing of it — in no feature, not in the core, not in history.state`, async () => {
+  describe('the security matrix — every feature × every event that must forget the signed-in user (E70, E36)', () => {
+    it('every feature holds something before (or the matrix would prove nothing)', async () => {
       const tab = await stocked();
-      tab.win.handler = () => conflict(reason);
+      expect(tab.core.once.size).toBe(1);
+      expect(tab.core.regions.size).toBe(1);
+      expect(tab.navigator.regionOwner.live.size).toBe(1);
+      expect(tab.submissions()).toHaveLength(1);
+      expect(tab.prefetched()).toBe(1);
+      // What each default feature keeps — so every row of the matrix below checks real data. (Probing takes the prefetched page.)
+      expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^prefetch: its slot "prefetched"/),
+          expect.stringMatching(/^remember: its slot "remembered"/),
+          expect.stringMatching(/^layers: its slot "layers"/),
+          expect.stringMatching(/^optimistic: its slot "patches"/),
+          expect.stringMatching(/^actions: its slot "submissions"/),
+          expect.stringMatching(/^layers: its hook "extras" hands out/),
+          expect.stringMatching(/^optimistic: its hook "paint" hands out/),
+          expect.stringMatching(/^prefetch: its hook "start" hands out/),
+          expect.stringMatching(/^uploads: its slot "uploads"/),
+          expect.stringMatching(/^live: its slot "live"/),
+          expect.stringMatching(/^devtools: its slot "devtools-timeline"/),
+          expect.stringMatching(/^devtools: its slot "devtools-snapshots"/),
+          expect.stringMatching(/^devtools: its slot "devtools-hydration"/),
+          expect.stringMatching(/^devtools: its slot "devtools-cache"/),
+          expect.stringMatching(/^devtools: its API still shows/),
+          expect.stringMatching(/^tabSync: its slot "tab-sync"/),
+          expect.stringMatching(/^selection: its slot "selections" of entry /),
+        ]),
+      );
+      // The live stream is open (W6.10), its URL holds the signed-in user's token.
+      expect([tab.stream.closed, tab.stream.url.includes(CANARY)]).toEqual([false, true]);
+      // The upload is on its way: its progress came, its XHR is open.
+      expect([tab.uploaded.at(-1)?.status, tab.uploaded.at(-1)?.progress]).toEqual(['uploading', 0.5]);
+      expect(PendingXhr.opened.at(-1)?.url).toContain(CANARY);
+    });
+
+    it('holds every feature module of the core to its rules — a feature left out of the matrix is one nobody checks (W9 step 4)', async () => {
+      const directory = new URL('./features/', import.meta.url);
+      const modules = readdirSync(directory).filter((file) => file.endsWith('.ts') && !file.includes('.test.'));
+      const features: string[] = [];
+      for (const file of modules) {
+        for (const value of Object.values(await import(new URL(file, directory).href))) {
+          if (typeof value === 'object' && value !== null && typeof (value as Feature).setup === 'function' && typeof (value as Feature).name === 'string') features.push((value as Feature).name);
+        }
+      }
+      const missing = features.filter((name) => !ALL_FEATURES.some((feature) => feature.name === name));
+      expect(missing, `not in ALL_FEATURES: ${missing.join(', ')}`).toEqual([]);
+      expect(features.length).toBeGreaterThanOrEqual(17);
+    });
+
+    it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload (W6.9)', async () => {
+      const tab = await stocked();
+      const xhr = PendingXhr.opened.at(-1)!;
+      const upload = tab.uploaded.at(-1)!;
+      expect(xhr.aborted).toBe(false);
+      tab.win.handler = () => conflict('history');
       await tab.navigator.visit('/users/3');
       expect(tab.win.loads).toEqual(['assign /login']);
-      const problems = await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2']);
-      // The problems as the assertion's message (Vitest shortens the list it prints).
-      expect(problems, problems.join('; ')).toEqual([]);
-      expect(coreLeftovers(tab)).toEqual([]);
-      expect(historyWithCanary(tab.win)).toEqual([]);
-      // The action under way ends without its answer — it lands nowhere.
-      expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
+      expect(xhr.aborted).toBe(true);
+      expect(JSON.stringify(upload)).toBe('""'); // what a form would send now
+      expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
     });
-  }
 
-  it('another tab changed the session’s epoch (signed out there, W8 step 8): nothing of it is left — in no feature, not in the core, not in history.state', async () => {
-    const tab = await stocked();
-    // What the core keeps, held from before: it forgets its slot maps when the document is left (a later look would find new ones).
-    const { core } = tab;
-    tab.server.epoch = 'e2';
-    tab.channels.inject({ v: 1, epoch: 'e2' });
-    for (let i = 0; i < 6; i++) await settle();
-    expect(tab.win.loads).toEqual(['reload']);
-    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
-    expect(coreLeftovers({ ...tab, core })).toEqual([]);
-    expect(historyWithCanary(tab.win)).toEqual([]);
-    // The action under way ends without its answer, the live stream is closed.
-    expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
-    expect(tab.stream.closed).toBe(true);
-  });
+    it('a 409 in the background (signed out in another tab): the live stream is closed, its slot empty — no hint reloads anything (W6.10)', async () => {
+      const tab = await stocked();
+      expect(tab.stream.closed).toBe(false);
+      tab.win.handler = () => conflict('history');
+      await tab.navigator.reload({ async: true });
+      expect(tab.win.loads).toEqual(['replace /login']);
+      expect(tab.stream.closed).toBe(true);
+      expect(await leftovers(tab.records.filter((record) => record.feature === 'live'), [tab.pageKey], [])).toEqual([]);
+      // What still arrives on the closed stream, or a tab coming back, opens nothing and reloads nothing.
+      const requests = tab.win.requests.length;
+      tab.stream.emit('refresh', { channel: 'users.1', only: ['secret'], seq: 3 });
+      tab.win.show();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(tab.win.sources).toHaveLength(1);
+      expect(tab.win.requests).toHaveLength(requests);
+      expect(tab.navigator.use(live).updates.pending).toBe(false);
+    });
 
-  it('memory letting go of an entry (LRU) empties what every feature kept of it — the page’s and the layer’s', async () => {
-    const tab = await stocked({ cacheSize: 3 });
-    // The action ends first (see the next test for one still under way).
-    tab.liking.abort();
-    await tab.action;
-    // Away from the layer and the page, until memory lets go of both.
-    tab.win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Other'));
-    for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
-    expect(tab.navigator.cachedPages).toBe(3);
-    const gone = new Set([tab.pageKey, tab.layerKey]);
-    const problems = await leftovers(perEntry(tab.records), [...gone], [], (key) => key !== undefined && gone.has(key));
-    expect(problems, problems.join('; ')).toEqual([]);
-    expect(tab.core.regions.size).toBe(0);
-    expect(tab.core.remembered.size).toBe(0);
-    for (const key of gone) expect([tab.host.peek(REGIONS, key), tab.host.peek(REMEMBERED, key)]).toEqual([undefined, undefined]);
-    // Back to the page: the server is asked — nothing comes back from memory.
-    tab.win.index = 0;
-    tab.win.dispatch('popstate', { state: tab.win.history.state });
-    await settle();
-    await settle();
-    expect(tab.win.requests.at(-1)?.url).toBe(`${ORIGIN}/users/1`);
-    expect(tab.navigator.page).toMatchObject({ url: '/users/1', props: {} });
-    expect(tab.navigator.use(remember).of(tab.tab.owner().entry!).has('draft')).toBe(false);
-  });
+    it('counter-check: an upload that arrived holds its token until the document is left — then its Upload sends nothing', async () => {
+      const tab = await stocked();
+      const done: (Upload | null)[] = [];
+      class AnsweringXhr extends PendingXhr {
+        override send() {
+          Object.assign(this, { status: 200, responseText: '{"size":3}' });
+          this.dispatchEvent(new Event('load'));
+        }
+      }
+      tab.win.XMLHttpRequest = AnsweringXhr as never;
+      tab.navigator.use(uploads).start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: new File(['png'], 'b.png'), onChange: (upload) => done.push(upload) });
+      for (let i = 0; i < 6; i++) await settle();
+      const arrived = done.at(-1)!;
+      expect([arrived.status, arrived.progress]).toEqual(['uploaded', 1]);
+      expect(JSON.stringify({ avatar: arrived })).toBe(`{"avatar":"tu_${CANARY}"}`);
+      // Never a property of the Upload — only what it hands to JSON.
+      expect(holdsCanary(Object.fromEntries(Object.entries(arrived)))).toBe(false);
+      tab.win.handler = () => conflict('history');
+      await tab.navigator.visit('/users/3');
+      expect(JSON.stringify({ avatar: arrived })).toBe('{"avatar":""}');
+    });
 
-  it('an action still under way keeps its optimistic patch on an entry memory let go of — the user’s own change, until it ends', async () => {
-    const tab = await stocked({ cacheSize: 3 });
-    tab.win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Other'));
-    for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
-    // Per document, not per entry (the action settles it on the entry whether it is in memory or not): Back to the entry while
-    // the action is under way shows it over the server's page again.
-    expect(await leftovers(perEntry(tab.records), [tab.pageKey], [], () => false)).toEqual(['optimistic: its hook "paint" hands out signed-in data']);
-    tab.liking.abort();
-    await tab.action;
-    expect(await leftovers(perEntry(tab.records), [tab.pageKey], [], () => false)).toEqual([]);
-  });
-
-  it('a page of another scope (someone else signed in, in another tab) drops every once prop kept — never put back', async () => {
-    const tab = await stocked();
-    tab.win.handler = () => pageResponse({ ...page('/users/3', {}, 'pages/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'grace' });
-    const shown = await tab.navigator.visit('/users/3');
-    expect(shown?.props).toEqual({});
-    expect(tab.core.once.size).toBe(0);
-    // Not a document change: the other features keep their data — the 409 of signing in or out takes it (E66: no tab sync).
-  });
-
-  it('counter-check: catches a feature that keeps data outside its slots (a module-level map) and hands it out again', async () => {
-    const kept = new Map<string, unknown>();
-    const leaky = defineFeature('leaky', (host) => {
-      host.on('paint', (key, shown) => {
-        if (!kept.has(key)) kept.set(key, shown.props);
-        return { ...shown, props: { ...shown.props, earlier: kept.get(key) } };
+    for (const reason of ['history', 'version'] as const) {
+      it(`a 409 (${reason === 'history' ? 'signed out' : 'a new build'}) leaves nothing of it — in no feature, not in the core, not in history.state`, async () => {
+        const tab = await stocked();
+        tab.win.handler = () => conflict(reason);
+        await tab.navigator.visit('/users/3');
+        expect(tab.win.loads).toEqual(['assign /login']);
+        const problems = await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2']);
+        // The problems as the assertion's message (Vitest shortens the list it prints).
+        expect(problems, problems.join('; ')).toEqual([]);
+        expect(coreLeftovers(tab)).toEqual([]);
+        expect(historyWithCanary(tab.win)).toEqual([]);
+        // The action under way ends without its answer — it lands nowhere.
+        expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
       });
+    }
+
+    it('another tab changed the session’s epoch (signed out there, W8 step 8): nothing of it is left — in no feature, not in the core, not in history.state', async () => {
+      const tab = await stocked();
+      // What the core keeps, held from before: it forgets its slot maps when the document is left (a later look would find new ones).
+      const { core } = tab;
+      tab.server.epoch = 'e2';
+      tab.channels.inject({ v: 1, epoch: 'e2' });
+      for (let i = 0; i < 6; i++) await settle();
+      expect(tab.win.loads).toEqual(['reload']);
+      expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
+      expect(coreLeftovers({ ...tab, core })).toEqual([]);
+      expect(historyWithCanary(tab.win)).toEqual([]);
+      // The action under way ends without its answer, the live stream is closed.
+      expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
+      expect(tab.stream.closed).toBe(true);
     });
-    const tab = await stocked({ extra: [leaky] });
-    tab.win.handler = () => conflict('history');
-    await tab.navigator.visit('/users/3');
-    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['leaky: its hook "paint" hands out signed-in data']);
-  });
 
-  it('counter-check: catches a feature whose slot does not empty', async () => {
-    const FORGETFUL = slot('forgetful', () => new Map<string, unknown>(), () => undefined);
-    const forgetful = defineFeature('forgetful', (host) => host.on('paint', (key, shown) => (host.document(FORGETFUL).set(key, shown.props), shown)));
-    const tab = await stocked({ extra: [forgetful] });
-    tab.win.handler = () => conflict('history');
-    await tab.navigator.visit('/users/3');
-    expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['forgetful: its slot "forgetful" still holds data']);
-  });
-});
-
-/**
- * Layers loaded on demand (Wave 5c step 5, E71): the server answers with a layer and the layers' code is not here yet. While it
- * loads, the answer is held by the visit alone — no slot, no memory, no history entry — so whatever happens meanwhile (a 409:
- * signing out) leaves nothing of it once the code arrives; a code that cannot load is a full load, never a half state.
- */
-describe('the security matrix — a layer answer while the layers’ code loads (E71)', () => {
-  /** A stocked tab without the layers attached — and the server answering the edit link with a layer full of the canary. */
-  async function waiting() {
-    let release!: () => void;
-    let fail!: () => void;
-    const arrival = new Promise<void>((resolve, reject) => {
-      release = resolve;
-      fail = () => reject(new Error('Failed to fetch dynamically imported module'));
+    it('memory letting go of an entry (LRU) empties what every feature kept of it — the page’s and the layer’s', async () => {
+      const tab = await stocked({ cacheSize: 3 });
+      // The action ends first (see the next test for one still under way).
+      tab.liking.abort();
+      await tab.action;
+      // Away from the layer and the page, until memory lets go of both.
+      tab.win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Other'));
+      for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
+      expect(tab.navigator.cachedPages).toBe(3);
+      const gone = new Set([tab.pageKey, tab.layerKey]);
+      const problems = await leftovers(perEntry(tab.records), [...gone], [], (key) => key !== undefined && gone.has(key));
+      expect(problems, problems.join('; ')).toEqual([]);
+      expect(tab.core.regions.size).toBe(0);
+      expect(tab.core.remembered.size).toBe(0);
+      for (const key of gone) expect([tab.host.peek(REGIONS, key), tab.host.peek(REMEMBERED, key)]).toEqual([undefined, undefined]);
+      // Back to the page: the server is asked — nothing comes back from memory.
+      tab.win.goTo(0);
+      await settle();
+      await settle();
+      expect(tab.win.requests.at(-1)?.url).toBe(`${ORIGIN}/users/1`);
+      expect(tab.navigator.page).toMatchObject({ url: '/users/1', props: {} });
+      expect(tab.navigator.use(remember).of(tab.tab.owner().entry!).has('draft')).toBe(false);
     });
-    const tab = await stocked({ lazyLayers: arrival });
-    expect(tab.navigator.layers).toEqual([]);
-    const answer = { ...secretPage('/users/1/edit', 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada' };
-    answer.props.roles = [CANARY];
-    answer.flash = [{ id: 'saved', key: 'toast', data: CANARY } as unknown as FlashMessage];
-    tab.win.handler = (url) => (new URL(url).pathname === '/users/1/edit' ? pageResponse(answer) : conflict('history'));
-    const opening = tab.navigator.visit('/users/1/edit');
-    // The answer is here; the code is not.
-    await settle();
-    await settle();
-    expect(tab.records.some((record) => record.feature === 'layers')).toBe(false);
-    return { ...tab, opening, release, fail };
-  }
 
-  it('a 409 (signed out) while the code loads: once it arrives, nothing of the layer is shown or kept — in no feature, not in the core, not in history.state', async () => {
-    const tab = await waiting();
-    await tab.navigator.reload({ async: true });
-    expect(tab.win.loads).toEqual(['replace /login']);
-    tab.release();
-    expect(await tab.opening).toBeUndefined();
-    await settle();
-    // The layers attached once their code came — and hold nothing.
-    expect(tab.records.some((record) => record.feature === 'layers')).toBe(true);
-    expect(tab.navigator.layers).toEqual([]);
-    expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
-    expect(coreLeftovers(tab)).toEqual([]);
-    expect(historyWithCanary(tab.win)).toEqual([]);
-    expect(tab.win.entries).toHaveLength(1);
-    expect(tab.win.loads).toEqual(['replace /login']);
-  });
-
-  it('the code cannot load: the browser loads the layer’s URL — and nothing of the signed-in tab survives here', async () => {
-    const tab = await waiting();
-    tab.fail();
-    expect(await tab.opening).toBeUndefined();
-    expect(tab.win.loads).toEqual(['assign /users/1/edit']);
-    expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
-    expect(coreLeftovers(tab)).toEqual([]);
-    expect(historyWithCanary(tab.win)).toEqual([]);
-    expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
-  });
-});
-
-/**
- * The same rows with the core alone (Wave 5c step 4): no feature attached — what an app is before it uses any. The security
- * invariants are the core's (E72), not a feature's: the hard switch of a 409, memory and once props dropped with the document,
- * a flash message fired once by its id, no page in `history.state`.
- */
-describe('the security matrix — the core alone, no feature attached', () => {
-  const toast = (id: string): FlashMessage => ({ id, key: 'toast', data: `${CANARY} ${id}` }) as unknown as FlashMessage;
-
-  /** A signed-in tab with the core alone: pages in memory, once props, a flash message nobody listens to yet. */
-  async function bare() {
-    const win = new FakeWindow(`${ORIGIN}/users/1`);
-    win.handler = (url) => pageResponse(secretPage(new URL(url).pathname));
-    const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada', flash: [toast('unheard')] };
-    initial.props.locales = [CANARY];
-    const tab = boot(win, initial, { features: [] });
-    for (const url of ['/users/2', '/users/3']) await tab.navigator.visit(url);
-    return { win, ...tab };
-  }
-
-  for (const reason of ['history', 'version'] as const) {
-    it(`a 409 (${reason === 'history' ? 'signed out' : 'a new build'}) loads the page fully and leaves nothing — not in memory, not in history.state`, async () => {
-      const { win, navigator } = await bare();
-      expect(navigator.cachedPages).toBeGreaterThan(0);
-      expect(win.requests.at(-1)!.headers).toMatchObject({ [ONCE_HEADER]: 'locales' });
-      win.handler = () => conflict(reason);
-      await navigator.visit('/users/4');
-      expect(win.loads).toEqual(['assign /login']);
-      expect(navigator.cachedPages).toBe(0);
-      expect(historyWithCanary(win)).toEqual([]);
-      // Nobody listened before the document was left: the message is gone, not waiting for the first listener.
-      const heard: unknown[] = [];
-      navigator.on('flash', (message) => heard.push(message));
-      expect(heard).toEqual([]);
+    it('an action still under way keeps its optimistic patch on an entry memory let go of — the user’s own change, until it ends', async () => {
+      const tab = await stocked({ cacheSize: 3 });
+      tab.win.handler = (url) => pageResponse(page(new URL(url).pathname, {}, 'pages/Other'));
+      for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
+      // Per document, not per entry (the action settles it on the entry whether it is in memory or not): Back to the entry while
+      // the action is under way shows it over the server's page again.
+      expect(await leftovers(perEntry(tab.records), [tab.pageKey], [], () => false)).toEqual(['optimistic: its hook "paint" hands out signed-in data']);
+      tab.liking.abort();
+      await tab.action;
+      expect(await leftovers(perEntry(tab.records), [tab.pageKey], [], () => false)).toEqual([]);
     });
-  }
+
+    it('a page of another scope (someone else signed in, in another tab) drops every once prop kept — never put back', async () => {
+      const tab = await stocked();
+      tab.win.handler = () => pageResponse({ ...page('/users/3', {}, 'pages/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'grace' });
+      const shown = await tab.navigator.visit('/users/3');
+      expect(shown?.props).toEqual({});
+      expect(tab.core.once.size).toBe(0);
+      // Not a document change: the other features keep their data — the 409 of signing in or out takes it (E66: no tab sync).
+    });
+
+    it('counter-check: catches a feature that keeps data outside its slots (a module-level map) and hands it out again', async () => {
+      const kept = new Map<string, unknown>();
+      const leaky = defineFeature('leaky', (host) => {
+        host.on('paint', (key, shown) => {
+          if (!kept.has(key)) kept.set(key, shown.props);
+          return { ...shown, props: { ...shown.props, earlier: kept.get(key) } };
+        });
+      });
+      const tab = await stocked({ extra: [leaky] });
+      tab.win.handler = () => conflict('history');
+      await tab.navigator.visit('/users/3');
+      expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['leaky: its hook "paint" hands out signed-in data']);
+    });
+
+    it('counter-check: catches a feature whose slot does not empty', async () => {
+      const FORGETFUL = slot('forgetful', () => new Map<string, unknown>(), () => undefined);
+      const forgetful = defineFeature('forgetful', (host) => host.on('paint', (key, shown) => (host.document(FORGETFUL).set(key, shown.props), shown)));
+      const tab = await stocked({ extra: [forgetful] });
+      tab.win.handler = () => conflict('history');
+      await tab.navigator.visit('/users/3');
+      expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual(['forgetful: its slot "forgetful" still holds data']);
+    });
+  });
 
   /**
-   * Signed out by a request in the background (a poll, an island, a deferred prop) while the user's own visit is still under
-   * way (W5c.6): the document is left — and that visit, started before, never lands. Its answer is what the signed-in user was
-   * about to see: not rendered, not in memory, not in history.state, its once props and flash messages not taken.
+   * Layers loaded on demand (Wave 5c step 5, E71): the server answers with a layer and the layers' code is not here yet. While it
+   * loads, the answer is held by the visit alone — no slot, no memory, no history entry — so whatever happens meanwhile (a 409:
+   * signing out) leaves nothing of it once the code arrives; a code that cannot load is a full load, never a half state.
    */
-  for (const kind of ['a visit', 'Back to an entry not in memory'] as const) {
-    it(`a 409 (signed out) of a background request while ${kind} is under way: it never lands — nothing of it shown, kept or in history.state`, async () => {
-      const { win, navigator, shown } = await bare();
-      const host = navigator.use(defineFeature('probe', (given: FeatureHost) => given));
-      let answer!: (response: Response) => void;
-      win.handler = (url) => (new URL(url).pathname === '/users/9' ? new Promise<Response>((resolve) => (answer = resolve)) : conflict('history'));
-      const rendered = shown.length;
-      const under = kind === 'a visit' ? navigator.visit('/users/9') : (win.dispatch('popstate', { state: { component: 'users/Show', url: '/users/9', key: 'gone' } }), undefined);
+  describe('the security matrix — a layer answer while the layers’ code loads (E71)', () => {
+    /** A stocked tab without the layers attached — and the server answering the edit link with a layer full of the canary. */
+    async function waiting() {
+      let release!: () => void;
+      let fail!: () => void;
+      const arrival = new Promise<void>((resolve, reject) => {
+        release = resolve;
+        fail = () => reject(new Error('Failed to fetch dynamically imported module'));
+      });
+      const tab = await stocked({ lazyLayers: arrival });
+      expect(tab.navigator.layers).toEqual([]);
+      const answer = { ...secretPage('/users/1/edit', 'users/Edit', { layer: { key: 'edit', base: '/users/1' } }), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada' };
+      answer.props.roles = [CANARY];
+      answer.flash = [{ id: 'saved', key: 'toast', data: CANARY } as unknown as FlashMessage];
+      tab.win.handler = (url) => (new URL(url).pathname === '/users/1/edit' ? pageResponse(answer) : conflict('history'));
+      const opening = tab.navigator.visit('/users/1/edit');
+      // The answer is here; the code is not.
       await settle();
-      expect(win.requests.at(-1)!.url).toBe(`${ORIGIN}/users/9`);
-      await navigator.reload({ async: true });
-      expect(win.loads).toEqual(['replace /login']);
-      // The protected page still arrives — after the document was left.
-      answer(pageResponse({ ...secretPage('/users/9'), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada', flash: [toast('late')] }));
-      expect(await under).toBeUndefined();
       await settle();
-      await settle();
-      expect(shown).toHaveLength(rendered);
-      expect(navigator.page.url).not.toBe('/users/9');
-      expect(navigator.cachedPages).toBe(0);
-      expect(host.once.size).toBe(0);
-      expect(host.inbox).toEqual([]);
-      expect(historyWithCanary(win)).toEqual([]);
-      expect(win.entries.some((entry) => entry.url.endsWith('/users/9'))).toBe(false);
-      const heard: unknown[] = [];
-      navigator.on('flash', (message) => heard.push(message));
-      expect(heard).toEqual([]);
-      expect(win.loads).toEqual(['replace /login']);
-    });
-  }
-
-  it('a page of another scope drops the once props kept — never put back into it, and the next request names none', async () => {
-    const { win, navigator } = await bare();
-    win.handler = () => pageResponse({ ...page('/users/9', {}, 'pages/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'grace' });
-    const shown = await navigator.visit('/users/9');
-    expect(shown?.props).toEqual({});
-    await navigator.visit('/users/1');
-    expect(win.requests.at(-1)!.headers[ONCE_HEADER]).toBeUndefined();
-  });
-
-  it('a flash message fires once, by its id — the same one delivered again (a race, a partial reload) does not fire again', async () => {
-    const { win, navigator } = await bare();
-    const fired: string[] = [];
-    navigator.on('flash', (message) => fired.push(message.id));
-    win.handler = () => pageResponse({ ...secretPage('/users/3'), flash: [toast('saved')] });
-    await navigator.visit('/users/3', { method: 'put', data: {} });
-    await navigator.reload({ only: ['secret'] });
-    expect(fired).toEqual(['unheard', 'saved']);
-  });
-
-  it('a visit’s own confirmation is asked by the core — a no sends nothing, with no guard attached (4i)', async () => {
-    const win = new FakeWindow(`${ORIGIN}/users/1`);
-    win.handler = () => pageResponse(page('/logout-done'));
-    const asked: string[] = [];
-    const { navigator } = boot(win, page('/users/1'), { features: [], confirm: (request) => (asked.push(request.message), false) });
-    expect(await navigator.visit('/users/1/delete', { method: 'delete', confirm: 'Delete your account?' })).toBeUndefined();
-    expect(asked).toEqual(['Delete your account?']);
-    expect(win.requests).toEqual([]);
-  });
-
-  it('history.state holds where an entry is, never what it showed — Back and Forward included', async () => {
-    const { win, navigator } = await bare();
-    win.back();
-    await settle();
-    win.forward();
-    await settle();
-    expect(navigator.page.url).toBe('/users/3');
-    expect(historyWithCanary(win)).toEqual([]);
-    for (const { state } of win.entries.filter((entry) => entry.state !== 'null')) {
-      expect(Object.keys(JSON.parse(state) as object).sort()).toEqual(expect.arrayContaining(['component', 'key', 'url']));
-      expect(Object.keys(JSON.parse(state) as object).every((field) => ['component', 'url', 'key', 'index', 'scroll', 'scrollRegions'].includes(field))).toBe(true);
+      expect(tab.records.some((record) => record.feature === 'layers')).toBe(false);
+      return { ...tab, opening, release, fail };
     }
+
+    it('a 409 (signed out) while the code loads: once it arrives, nothing of the layer is shown or kept — in no feature, not in the core, not in history.state', async () => {
+      const tab = await waiting();
+      await tab.navigator.reload({ async: true });
+      expect(tab.win.loads).toEqual(['replace /login']);
+      tab.release();
+      expect(await tab.opening).toBeUndefined();
+      await settle();
+      // The layers attached once their code came — and hold nothing.
+      expect(tab.records.some((record) => record.feature === 'layers')).toBe(true);
+      expect(tab.navigator.layers).toEqual([]);
+      expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
+      expect(coreLeftovers(tab)).toEqual([]);
+      expect(historyWithCanary(tab.win)).toEqual([]);
+      expect(tab.win.entries).toHaveLength(1);
+      expect(tab.win.loads).toEqual(['replace /login']);
+    });
+
+    it('the code cannot load: the browser loads the layer’s URL — and nothing of the signed-in tab survives here', async () => {
+      const tab = await waiting();
+      tab.fail();
+      expect(await tab.opening).toBeUndefined();
+      expect(tab.win.loads).toEqual(['assign /users/1/edit']);
+      expect(await leftovers(tab.records, [tab.pageKey], ['/users/2'])).toEqual([]);
+      expect(coreLeftovers(tab)).toEqual([]);
+      expect(historyWithCanary(tab.win)).toEqual([]);
+      expect(await tab.action).toEqual({ ok: false, kind: 'cancelled' } satisfies ActionOutcome);
+    });
+  });
+
+  /**
+   * The same rows with the core alone (Wave 5c step 4): no feature attached — what an app is before it uses any. The security
+   * invariants are the core's (E72), not a feature's: the hard switch of a 409, memory and once props dropped with the document,
+   * a flash message fired once by its id, no page in `history.state`.
+   */
+  describe('the security matrix — the core alone, no feature attached', () => {
+    const toast = (id: string): FlashMessage => ({ id, key: 'toast', data: `${CANARY} ${id}` }) as unknown as FlashMessage;
+
+    /** A signed-in tab with the core alone: pages in memory, once props, a flash message nobody listens to yet. */
+    async function bare() {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      win.handler = (url) => pageResponse(secretPage(new URL(url).pathname));
+      const initial: PageObject = { ...secretPage('/users/1', 'users/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'ada', flash: [toast('unheard')] };
+      initial.props.locales = [CANARY];
+      const tab = boot(win, initial, { features: [] });
+      for (const url of ['/users/2', '/users/3']) await tab.navigator.visit(url);
+      return { win, ...tab };
+    }
+
+    for (const reason of ['history', 'version'] as const) {
+      it(`a 409 (${reason === 'history' ? 'signed out' : 'a new build'}) loads the page fully and leaves nothing — not in memory, not in history.state`, async () => {
+        const { win, navigator } = await bare();
+        expect(navigator.cachedPages).toBeGreaterThan(0);
+        expect(win.requests.at(-1)!.headers).toMatchObject({ [ONCE_HEADER]: 'locales' });
+        win.handler = () => conflict(reason);
+        await navigator.visit('/users/4');
+        expect(win.loads).toEqual(['assign /login']);
+        expect(navigator.cachedPages).toBe(0);
+        expect(historyWithCanary(win)).toEqual([]);
+        // Nobody listened before the document was left: the message is gone, not waiting for the first listener.
+        const heard: unknown[] = [];
+        navigator.on('flash', (message) => heard.push(message));
+        expect(heard).toEqual([]);
+      });
+    }
+
+    /**
+     * Signed out by a request in the background (a poll, an island, a deferred prop) while the user's own visit is still under
+     * way (W5c.6): the document is left — and that visit, started before, never lands. Its answer is what the signed-in user was
+     * about to see: not rendered, not in memory, not in history.state, its once props and flash messages not taken.
+     */
+    for (const kind of ['a visit', 'Back to an entry not in memory'] as const) {
+      it(`a 409 (signed out) of a background request while ${kind} is under way: it never lands — nothing of it shown, kept or in history.state`, async () => {
+        const { win, navigator, shown } = await bare();
+        const host = navigator.use(defineFeature('probe', (given: FeatureHost) => given));
+        let answer!: (response: Response) => void;
+        win.handler = (url) => (new URL(url).pathname === '/users/9' ? new Promise<Response>((resolve) => (answer = resolve)) : conflict('history'));
+        const rendered = shown.length;
+        if (kind !== 'a visit') {
+          // An entry whose page memory let go of, right before the one on screen.
+          win.entries.splice(win.index, 0, win.entryOf(`${ORIGIN}/users/9`, { component: 'users/Show', url: '/users/9', key: 'gone', scroll: { x: 0, y: 0 } }));
+          win.index++;
+        }
+        const under = kind === 'a visit' ? navigator.visit('/users/9') : (win.back(), undefined);
+        await settle();
+        expect(win.requests.at(-1)!.url).toBe(`${ORIGIN}/users/9`);
+        await navigator.reload({ async: true });
+        expect(win.loads).toEqual(['replace /login']);
+        // The protected page still arrives — after the document was left.
+        answer(pageResponse({ ...secretPage('/users/9'), onceProps: { roles: { key: 'roles' } }, onceScope: 'ada', flash: [toast('late')] }));
+        expect(await under).toBeUndefined();
+        await settle();
+        await settle();
+        expect(shown).toHaveLength(rendered);
+        expect(navigator.page.url).not.toBe('/users/9');
+        expect(navigator.cachedPages).toBe(0);
+        expect(host.once.size).toBe(0);
+        expect(host.inbox).toEqual([]);
+        expect(historyWithCanary(win)).toEqual([]);
+        // No entry written for it — Back's own entry (there before) keeps what it held.
+        expect(win.entries.filter((entry) => entry.url.endsWith('/users/9')).map((entry) => JSON.parse(entry.state).key)).toEqual(kind === 'a visit' ? [] : ['gone']);
+        const heard: unknown[] = [];
+        navigator.on('flash', (message) => heard.push(message));
+        expect(heard).toEqual([]);
+        expect(win.loads).toEqual(['replace /login']);
+      });
+    }
+
+    it('a page of another scope drops the once props kept — never put back into it, and the next request names none', async () => {
+      const { win, navigator } = await bare();
+      win.handler = () => pageResponse({ ...page('/users/9', {}, 'pages/Show'), onceProps: { locales: { key: 'locales' } }, onceScope: 'grace' });
+      const shown = await navigator.visit('/users/9');
+      expect(shown?.props).toEqual({});
+      await navigator.visit('/users/1');
+      expect(win.requests.at(-1)!.headers[ONCE_HEADER]).toBeUndefined();
+    });
+
+    it('a flash message fires once, by its id — the same one delivered again (a race, a partial reload) does not fire again', async () => {
+      const { win, navigator } = await bare();
+      const fired: string[] = [];
+      navigator.on('flash', (message) => fired.push(message.id));
+      win.handler = () => pageResponse({ ...secretPage('/users/3'), flash: [toast('saved')] });
+      await navigator.visit('/users/3', { method: 'put', data: {} });
+      await navigator.reload({ only: ['secret'] });
+      expect(fired).toEqual(['unheard', 'saved']);
+    });
+
+    it('a visit’s own confirmation is asked by the core — a no sends nothing, with no guard attached (4i)', async () => {
+      const win = new FakeWindow(`${ORIGIN}/users/1`);
+      win.handler = () => pageResponse(page('/logout-done'));
+      const asked: string[] = [];
+      const { navigator } = boot(win, page('/users/1'), { features: [], confirm: (request) => (asked.push(request.message), false) });
+      expect(await navigator.visit('/users/1/delete', { method: 'delete', confirm: 'Delete your account?' })).toBeUndefined();
+      expect(asked).toEqual(['Delete your account?']);
+      expect(win.requests).toEqual([]);
+    });
+
+    it('history.state holds where an entry is, never what it showed — Back and Forward included', async () => {
+      const { win, navigator } = await bare();
+      win.back();
+      await settle();
+      win.forward();
+      await settle();
+      expect(navigator.page.url).toBe('/users/3');
+      expect(historyWithCanary(win)).toEqual([]);
+      for (const { state } of win.entries.filter((entry) => entry.state !== 'null')) {
+        expect(Object.keys(JSON.parse(state) as object).sort()).toEqual(expect.arrayContaining(['component', 'key', 'url']));
+        expect(Object.keys(JSON.parse(state) as object).every((field) => ['component', 'url', 'key', 'index', 'scroll', 'scrollRegions'].includes(field))).toBe(true);
+      }
+    });
   });
 });
 

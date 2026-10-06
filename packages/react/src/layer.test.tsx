@@ -12,6 +12,10 @@ import { useLayer } from './layer.tsx';
 import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
+import { loadHistoryFallback } from '@bespokecore/http/client';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -138,7 +142,7 @@ async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   await Promise.all((initial.layers ?? []).map((layered) => loadView(resolve, layered.component)));
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
+  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector);

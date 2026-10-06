@@ -8,6 +8,10 @@ import { BespokeApp, usePage } from './app.tsx';
 import { useLiveUpdates } from './live.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useBlocker } from './state.ts';
+import { loadHistoryFallback } from '@bespokecore/http/client';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -81,7 +85,7 @@ const wait = (ms = 20) => act(async () => void (await new Promise((resolve) => s
 async function mount() {
   const initial = board(['a']);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={await resolve(initial.component)} resolve={resolve} />));
+  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={await resolve(initial.component)} resolve={resolve} />));
   for (let i = 0; i < 50 && FakeSource.opened.length === 0; i++) await wait(5);
 }
 

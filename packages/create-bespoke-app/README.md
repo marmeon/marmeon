@@ -61,7 +61,9 @@ A thin shell around the framework's own generators (E150) — the app's code com
 1. **The template** — `template/base` is the repository's blank app (`apps/blank-app`, copied by `pnpm template:sync`): the
    `system` module, `bootstrap/`, `config/app.ts`, `middleware/SecurityHeaders.ts` with a strict Content-Security-Policy, the
    lint preset (`bespoke make:lint-config`), `vitest.config.ts`, a standalone `tsconfig.json`, `.env.example`, `.env.test` and
-   the `storage/` skeleton. The starter kit adds `template/kit`: the home module (`/`, its page and its test).
+   the `storage/` skeleton. The starter kit adds `template/kit`: the home module (`/`, its page and its test) and the app's dialog
+   (`bootstrap/confirm.tsx` with its words in `lang/en.ts` and `lang/de.ts` — the guard's question and tab sync's in the page's
+   language; its `bootstrap/client.tsx` is the blank app's plus `confirm: Confirm`).
 2. **`package.json`** — every `@bespokecore/*` package at exactly this package's version (the framework is versioned in
    lockstep, E152), `@bespokecore/cli` among the `dependencies` (it runs on the server, E159), `packageManager: pnpm@12.9.1` —
    with `--npm` nothing of pnpm's. Next to it the app's `README.md`: its commands with the chosen package manager (production

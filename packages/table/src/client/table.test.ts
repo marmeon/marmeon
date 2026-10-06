@@ -6,9 +6,12 @@
  * bulk actions (the actions feature, then the table's prop reloaded — replacing what the page had) and an export URL. No UI framework.
  */
 import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@bespokecore/http/page';
-import { Navigator, selection } from '@bespokecore/http/client';
+import { loadHistoryFallback, Navigator, selection } from '@bespokecore/http/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TableController, tableStatus, type TableData } from './index.ts';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 type Row = { id: number; name: string; joined: string; email?: string };
 type Members = TableData<Row, 'name' | 'joined' | 'email', 'locale' | 'joined', 'removeLinks', 'removeLinks', 'csv', 'name' | 'joined'>;
@@ -98,7 +101,7 @@ function textApp() {
   };
   const initialPage = pageOf(new URL('https://app.test/members'));
   void render(initialPage);
-  const navigator = new Navigator({ initialPage, render, confirm: () => true });
+  const navigator = new Navigator({ initialPage, render, confirm: () => true, features: HISTORY });
   const stop = navigator.start();
   const table = () => new TableController(navigator, navigator.page.props.members as Members);
   return { navigator, root, shown, table, stop };
@@ -256,7 +259,7 @@ describe('the headless table on the client core alone', () => {
     const asked: string[] = [];
     app.stop();
     const initialPage = pageOf(new URL('https://app.test/members'));
-    const navigator = new Navigator({ initialPage, render: async () => {}, confirm: (request) => (asked.push(request.message), false) });
+    const navigator = new Navigator({ initialPage, render: async () => {}, confirm: (request) => (asked.push(request.message), false), features: HISTORY });
     app.stop = navigator.start();
     const table = new TableController(navigator, initialPage.props.members as Members);
     table.confirmText = (action, rows) => `${action}: ${rows}?`;

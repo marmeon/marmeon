@@ -3,7 +3,8 @@ import {
   loadPageMessages,
   markBusy,
   Navigator,
-  optimistic as optimisticFeature,
+  laterTarget,
+  loadOptimistic,
   pageLocale,
   prefetchWith,
   RegionOwner,
@@ -274,10 +275,15 @@ export function useRouter<T = unknown>(): Router<T> {
   return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as Router<T>, [visit, reload, prefetch, on, optimistic, reloading]);
 }
 
-/** The optimistic patches of the page on screen — its history entry's (E59), the feature attached on first use. */
+/**
+ * The optimistic patches of the page on screen — its history entry's (E59). Their code loads with the first use (a chunk of its
+ * own): until it is there, a target that does what is asked of it once it is.
+ */
 function pagePatches(navigator: Navigator | null): PatchTarget {
   if (!navigator) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R11] Visits run in the browser, not while rendering on the server.' : '[bespoke:R11]');
-  return navigator.use(optimisticFeature).page;
+  const loaded = navigator.loaded(loadOptimistic);
+  const key = navigator.regionOwner.entry!;
+  return loaded ? loaded.target(key) : laterTarget(navigator.load(loadOptimistic).then((feature) => feature.target(key)));
 }
 
 /** What `progress` took before E82 (`{ delay }`, `false`), as a type error that says what to write now. */

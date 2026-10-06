@@ -1,4 +1,4 @@
-import { hasServerMarkup, loadPageMessages, loadTabSync, readInitialPage, rootElement, type DevtoolsGlobal, type Feature, type TitleTemplate } from '@bespokecore/http/client';
+import { hasServerMarkup, loadHistoryFallback, loadPageMessages, loadTabSync, readInitialPage, rootElement, type DevtoolsGlobal, type Feature, type TitleTemplate } from '@bespokecore/http/client';
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
@@ -70,11 +70,13 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
   // A deep link's layers (E53) too: the layer stack with the core's layers (E71) and their views render in the server's markup.
   // Tab sync (E149) loads beside them — a chunk of its own, attached from the start: no message of another tab is missed. A chunk
   // that cannot load leaves it out (the page works without it).
-  const [Component, catalog, root, synced] = await Promise.all([
+  const [Component, catalog, root, synced, fallback] = await Promise.all([
     resolve(page.component),
     loadPageMessages(page, messages),
     rootElement(rootId),
     tabSync === false ? undefined : loadTabSync().catch(() => undefined),
+    // Without the Navigation API (E184): the History fallback, a chunk of its own.
+    window.navigation ? undefined : loadHistoryFallback(),
     ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
   ]);
   const app = (
@@ -90,7 +92,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
       initialCatalog={catalog}
       layer={layer}
       confirm={confirm}
-      features={synced && [synced as Feature]}
+      features={[fallback, synced].filter(Boolean) as Feature[]}
     />
   );
 

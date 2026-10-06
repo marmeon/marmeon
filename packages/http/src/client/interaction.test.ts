@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ACTION_HEADER, ACTION_REDIRECT_HEADER, FLASH_HEADER, FLASH_WAITING_HEADER, LAYER_CLOSE_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, type FlashMessage, type PageObject } from '../page.ts';
 import type { ConfirmRequest } from './confirm.ts';
 import { dirtyPaths, isDirtyPath } from './forms.ts';
 import { isCurrentLink } from './links.ts';
-import { boot, FakeWindow, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
+import { boot, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle, withActions } from './test-window.ts';
 import { prefetch } from './features/prefetch.ts';
 import { guard } from './features/guard.ts';
 
@@ -164,95 +164,100 @@ describe('state attributes in the core (E64)', () => {
   });
 });
 
-describe('the navigation guard (E64)', () => {
-  const asking = (answers: boolean[]) => {
-    const asked: ConfirmRequest[] = [];
-    return { asked, confirm: (request: ConfirmRequest) => (asked.push(request), answers.shift() ?? false) };
-  };
+describe.each(PATHS)('the guard on the %s path (E184)', (path) => {
+  beforeEach(() => void (FakeWindow.path = path));
+  afterEach(() => void (FakeWindow.path = 'navigation'));
 
-  it('counter-check: blocks a visit while dirty — Stay sends nothing, Leave goes; after saving it lets the visit through', async () => {
-    const { asked, confirm } = asking([false, true]);
-    const { win, navigator, visible } = tab(page('/users/1/edit'), undefined, { confirm });
-    win.handler = (url) => pageResponse(page(new URL(url).pathname));
-    let dirty = true;
-    navigator.use(guard).add({ message: 'Unsaved changes.', active: () => dirty });
-    expect(await navigator.visit('/people')).toBeUndefined();
-    expect(win.requests).toEqual([]);
-    expect(asked).toEqual([{ kind: 'leave', message: 'Unsaved changes.' }]);
-    await navigator.visit('/people');
-    expect(visible().url).toBe('/people');
-    win.handler = () => pageResponse(page('/users/1/edit'));
-    await navigator.visit('/users/1/edit', { ignoreGuards: true });
-    dirty = false; // saved
-    await navigator.visit('/dashboard');
-    expect(asked).toHaveLength(2);
-  });
+  describe('the navigation guard (E64)', () => {
+    const asking = (answers: boolean[]) => {
+      const asked: ConfirmRequest[] = [];
+      return { asked, confirm: (request: ConfirmRequest) => (asked.push(request), answers.shift() ?? false) };
+    };
 
-  it('a form’s own submit passes its guard — a partial reload, a poll, a reload of the page ask nothing', async () => {
-    const { asked, confirm } = asking([]);
-    const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
-    win.handler = () => pageResponse(page('/users/1/edit'));
-    const own = { message: 'Unsaved.' };
-    navigator.use(guard).add(own);
-    await navigator.visit('/users/1/edit', { method: 'put', data: {}, ignoreGuards: [own] });
-    await navigator.reload({ only: ['profile'] });
-    await navigator.reload();
-    await navigator.visit('/users/1/edit', { async: true, only: ['x'] });
-    expect(asked).toEqual([]);
-    expect(win.requests).toHaveLength(4);
-  });
+    it('counter-check: blocks a visit while dirty — Stay sends nothing, Leave goes; after saving it lets the visit through', async () => {
+      const { asked, confirm } = asking([false, true]);
+      const { win, navigator, visible } = tab(page('/users/1/edit'), undefined, { confirm });
+      win.handler = (url) => pageResponse(page(new URL(url).pathname));
+      let dirty = true;
+      navigator.use(guard).add({ message: 'Unsaved changes.', active: () => dirty });
+      expect(await navigator.visit('/people')).toBeUndefined();
+      expect(win.requests).toEqual([]);
+      expect(asked).toEqual([{ kind: 'leave', message: 'Unsaved changes.' }]);
+      await navigator.visit('/people');
+      expect(visible().url).toBe('/people');
+      win.handler = () => pageResponse(page('/users/1/edit'));
+      await navigator.visit('/users/1/edit', { ignoreGuards: true });
+      dirty = false; // saved
+      await navigator.visit('/dashboard');
+      expect(asked).toHaveLength(2);
+    });
 
-  it('counter-check: Back while dirty — the core goes forward again, asks, and Leave does the Back after all', async () => {
-    const { asked, confirm } = asking([false, true]);
-    const { win, navigator, visible } = tab(page('/users/1'), undefined, { confirm });
-    win.handler = () => pageResponse(page('/users/1/edit', {}, 'user-profile/Edit'));
-    await navigator.visit('/users/1/edit');
-    const stop = navigator.use(guard).add({ message: 'Unsaved.' });
-    win.back();
-    await settle();
-    await settle();
-    // Stay: back where it was — in the history too.
-    expect(asked).toHaveLength(1);
-    expect(win.current.url).toBe(`${ORIGIN}/users/1/edit`);
-    expect(visible().url).toBe('/users/1/edit');
-    win.back();
-    await settle();
-    await settle();
-    await settle();
-    expect(asked).toHaveLength(2);
-    expect(win.current.url).toBe(`${ORIGIN}/users/1`);
-    expect(visible().url).toBe('/users/1');
-    stop();
-  });
+    it('a form’s own submit passes its guard — a partial reload, a poll, a reload of the page ask nothing', async () => {
+      const { asked, confirm } = asking([]);
+      const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
+      win.handler = () => pageResponse(page('/users/1/edit'));
+      const own = { message: 'Unsaved.' };
+      navigator.use(guard).add(own);
+      await navigator.visit('/users/1/edit', { method: 'put', data: {}, ignoreGuards: [own] });
+      await navigator.reload({ only: ['profile'] });
+      await navigator.reload();
+      await navigator.visit('/users/1/edit', { async: true, only: ['x'] });
+      expect(asked).toEqual([]);
+      expect(win.requests).toHaveLength(4);
+    });
 
-  it('a guard in a layer asks when the layer closes (Escape, Back) — not when a link elsewhere on the page opens another layer over it', async () => {
-    const { asked, confirm } = asking([false]);
-    const { win, navigator } = tab(page('/users/1'), undefined, { confirm });
-    win.handler = (url) => pageResponse({ ...page(new URL(url).pathname, {}, 'user-profile/Edit'), layer: { key: new URL(url).pathname, base: '/users/1' } });
-    await navigator.visit('/users/1/edit', { layer: true });
-    const layer = navigator.layers[0]!;
-    navigator.use(guard).add({ message: 'Unsaved.', layer });
-    await layer.close();
-    expect(asked).toHaveLength(1);
-    expect(navigator.layers).toHaveLength(1);
-    // Stay — and it can still be closed afterwards (no stuck "closing").
-    await navigator.layers[0]!.visit('/users/1/links/1/remove', { layer: true });
-    expect(navigator.layers).toHaveLength(2);
-    expect(asked).toHaveLength(1);
-  });
+    it('counter-check: Back while dirty — the core goes forward again, asks, and Leave does the Back after all', async () => {
+      const { asked, confirm } = asking([false, true]);
+      const { win, navigator, visible } = tab(page('/users/1'), undefined, { confirm });
+      win.handler = () => pageResponse(page('/users/1/edit', {}, 'user-profile/Edit'));
+      await navigator.visit('/users/1/edit');
+      const stop = navigator.use(guard).add({ message: 'Unsaved.' });
+      win.back();
+      await settle();
+      await settle();
+      // Stay: back where it was — in the history too.
+      expect(asked, 'Back was not asked about').toHaveLength(1);
+      expect(win.current.url).toBe(`${ORIGIN}/users/1/edit`);
+      expect(visible().url).toBe('/users/1/edit');
+      win.back();
+      await settle();
+      await settle();
+      await settle();
+      expect(asked).toHaveLength(2);
+      expect(win.current.url).toBe(`${ORIGIN}/users/1`);
+      expect(visible().url).toBe('/users/1');
+      stop();
+    });
 
-  it('counter-check: closing the tab or reloading while dirty gets the browser’s question — never after a 409 (signed out, a new build): the server wins', async () => {
-    const { asked, confirm } = asking([]);
-    const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
-    expect(win.unload()).toBe(false);
-    navigator.use(guard).add({ message: 'Unsaved.' });
-    expect(win.unload()).toBe(true);
-    // Signed out in another tab: the next request is a 409 — the document goes, unasked, and leaving is not stopped.
-    win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
-    await navigator.reload({ only: ['profile'] });
-    expect(win.loads).toEqual(['replace /login']);
-    expect(asked).toEqual([]);
-    expect(win.unload()).toBe(false);
+    it('a guard in a layer asks when the layer closes (Escape, Back) — not when a link elsewhere on the page opens another layer over it', async () => {
+      const { asked, confirm } = asking([false]);
+      const { win, navigator } = tab(page('/users/1'), undefined, { confirm });
+      win.handler = (url) => pageResponse({ ...page(new URL(url).pathname, {}, 'user-profile/Edit'), layer: { key: new URL(url).pathname, base: '/users/1' } });
+      await navigator.visit('/users/1/edit', { layer: true });
+      const layer = navigator.layers[0]!;
+      navigator.use(guard).add({ message: 'Unsaved.', layer });
+      await layer.close();
+      expect(asked).toHaveLength(1);
+      expect(navigator.layers).toHaveLength(1);
+      // Stay — and it can still be closed afterwards (no stuck "closing").
+      await navigator.layers[0]!.visit('/users/1/links/1/remove', { layer: true });
+      expect(navigator.layers).toHaveLength(2);
+      expect(asked).toHaveLength(1);
+    });
+
+    it('counter-check: closing the tab or reloading while dirty gets the browser’s question — never after a 409 (signed out, a new build): the server wins', async () => {
+      const { asked, confirm } = asking([]);
+      const { win, navigator } = tab(page('/users/1/edit'), undefined, { confirm });
+      expect(win.unload()).toBe(false);
+      navigator.use(guard).add({ message: 'Unsaved.' });
+      expect(win.unload()).toBe(true);
+      // Signed out in another tab: the next request is a 409 — the document goes, unasked, and leaving is not stopped.
+      win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
+      await navigator.reload({ only: ['profile'] });
+      expect(win.loads).toEqual(['replace /login']);
+      expect(asked).toEqual([]);
+      expect(win.unload()).toBe(false);
+    });
   });
 });
 

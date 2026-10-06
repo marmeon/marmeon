@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LOCATION_HEADER, RELOAD_HEADER } from '../page.ts';
 import { defineFeature, slot, type FeatureHost } from './feature.ts';
-import { HistoryWriter, type HistoryState } from './history.ts';
+import { HistoryWriter, OWN, type HistoryState, type NavigateEvent } from './history.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, settle } from './test-window.ts';
 
 /** The feature host (Wave 5c step 3, E70/E73): `use`, the slots the core empties, the history writer that refuses props. */
@@ -146,11 +146,50 @@ describe('the history writer — positions only, never props (E36)', () => {
     process.env.NODE_ENV = original;
   });
 
-  it('writes what an entry is: component, URL, key, its place and where it was scrolled', () => {
+  /** A writer on a fake tab — whose `navigate` events are intercepted as the navigator does (else the browser would load the URL). */
+  const writerOn = (win: FakeWindow): HistoryWriter => {
+    win.navigation?.addEventListener('navigate', (event) => (event as unknown as NavigateEvent).intercept());
+    return new HistoryWriter(win);
+  };
+
+  it('writes what an entry is: component, URL, key and where it was scrolled — the Navigation API’s state; history.state stays null (E184)', () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
-    const writer = new HistoryWriter(win);
-    writer.push(state({ scrollRegions: [{ x: 0, y: 40 }] }), '/a');
+    const writer = writerOn(win);
+    writer.push(state({ scrollRegions: [{ x: 0, y: 40 }] }), '/b');
+    const written = { component: 'pages/A', url: '/a', key: 'k', scroll: { x: 0, y: 0 }, scrollRegions: [{ x: 0, y: 40 }] };
+    expect(writer.state).toEqual(written);
+    expect(win.navigation!.currentEntry.getState()).toEqual(written);
+    expect(win.history.state).toBeNull();
+    expect(win.current.url).toBe(`${ORIGIN}/b`);
+    // Its own navigation (`info`) — what the navigator intercepts, and nothing else.
+    expect(win.navigation!.events.map((event) => [event.navigationType, event.info === OWN])).toEqual([['push', true]]);
+    // The same URL replaced: the entry's state only — no navigation at all.
+    writer.replace(state({ key: 'k2' }), '/b');
+    expect(writer.state).toMatchObject({ key: 'k2' });
+    expect(win.navigation!.events).toHaveLength(1);
+    expect(win.entries).toHaveLength(2);
+  });
+
+  it('without the Navigation API, the History fallback writes history.state — with the entry’s place, counted (`index`)', () => {
+    const win = new FakeWindow(`${ORIGIN}/a`, undefined, 'history');
+    const { navigator } = boot(win, page('/a'));
+    hostOf(navigator).history.push(state({ scrollRegions: [{ x: 0, y: 40 }] }), '/b');
     expect(win.history.state).toEqual({ component: 'pages/A', url: '/a', key: 'k', scroll: { x: 0, y: 0 }, scrollRegions: [{ x: 0, y: 40 }], index: 1 });
+    expect(hostOf(navigator).history.state).toEqual(win.history.state);
+  });
+
+  it('writes what a feature’s field says into every entry — no wrapping of the writer (tab sync’s epoch, P4)', () => {
+    const win = new FakeWindow(`${ORIGIN}/a`);
+    const writer = writerOn(win);
+    let step = 1;
+    const seen: string[] = [];
+    writer.field('step', Number.isInteger, (entry) => (seen.push(entry.key), step));
+    writer.push(state(), '/b');
+    step = 2;
+    writer.replace(state({ key: 'k2' }), '/b');
+    expect(JSON.parse(win.entries[1]!.state)).toMatchObject({ key: 'k2', step: 2 });
+    expect(seen).toEqual(['k', 'k2']);
+    expect(writer.push).toBe(HistoryWriter.prototype.push);
   });
 
   it('counter-check: refuses props in development — with what to do instead', () => {
@@ -169,19 +208,36 @@ describe('the history writer — positions only, never props (E36)', () => {
 
   it('takes a field a feature registers — checked by the feature’s own rule', () => {
     const win = new FakeWindow(`${ORIGIN}/a`);
-    const writer = new HistoryWriter(win);
+    const writer = writerOn(win);
     writer.field('step', Number.isInteger);
     writer.push(state({ step: 2 }), '/a');
-    expect(win.history.state).toMatchObject({ step: 2 });
+    expect(writer.state).toMatchObject({ step: 2 });
     expect(() => writer.push(state({ step: { props: {} } }), '/a')).toThrow('"step" is not a position');
   });
 
   it('in production leaves out what it refuses — the entry is written without it', () => {
     process.env.NODE_ENV = 'production';
     const win = new FakeWindow(`${ORIGIN}/a`);
-    new HistoryWriter(win).push(state({ props: { email: 'ada@example.com' } }), '/a');
-    expect(win.current.state).not.toContain('ada@example.com');
-    expect(win.history.state).toEqual({ component: 'pages/A', url: '/a', key: 'k', scroll: { x: 0, y: 0 }, index: 1 });
+    writerOn(win).push(state({ props: { email: 'ada@example.com' } }), '/a');
+    expect(win.current.disk).not.toContain('ada@example.com');
+    expect(JSON.parse(win.current.state)).toEqual({ component: 'pages/A', url: '/a', key: 'k', scroll: { x: 0, y: 0 } });
+  });
+
+  it('types (W9 step 7, E184): no counted place in an entry any more — and a field’s value comes from the entry it goes into', () => {
+    const entry = state();
+    // @ts-expect-error — the browser's key undoes a Back now; the History fallback keeps its count to itself
+    void entry.index;
+    const writer = new HistoryWriter(new FakeWindow(`${ORIGIN}/a`));
+    // @ts-expect-error — what a field writes is computed per entry, never a fixed value
+    writer.field('step', Number.isInteger, 2);
+    writer.field('step', Number.isInteger, (written) => written.key.length);
+    defineFeature('probe', (host) => {
+      // A Back/Forward's state is the navigator's — checked before any feature hears of it.
+      host.on('popState', (written) => void written.key.toUpperCase());
+      // @ts-expect-error — the Navigation API's event comes with the entry's state, which may be a layer's
+      host.on('navigate', (event, written) => void written.layer.depth);
+      host.on('navigate', (event, written) => event.cancelable && written.layer?.depth === 1);
+    });
   });
 
   it('is the only way into the history: a feature writing props through the host throws (no feature can put props on disk)', async () => {

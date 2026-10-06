@@ -9,6 +9,8 @@ import type { InstantVisits } from './features/instant.ts';
 import type { LayerStack } from './features/layers.ts';
 import type { Prefetches, PrefetchOptions } from './features/prefetch.ts';
 import type { TabSync } from './features/tab-sync.ts';
+import type { PagePatches } from './features/optimistic.ts';
+import type { PatchTarget } from './optimistic.ts';
 import type { LiveValidation, LiveValidationOptions } from './live-validation.ts';
 import type { Navigator } from './navigation.ts';
 
@@ -24,6 +26,37 @@ export const loadLayers = (): Promise<Feature<LayerStack>> => import('./features
  * page's component and messages, before it hydrates, and attaches it from the start (`NavigatorOptions.features`).
  */
 export const loadTabSync = (): Promise<Feature<TabSync>> => import('./features/tab-sync.ts').then((module) => module.tabSync);
+
+/**
+ * The History fallback (E184) — where the browser has no Navigation API: the adapter loads it before the navigator writes its first
+ * entry and attaches it from the start (`NavigatorOptions.features`; createBespokeApp loads it beside the first page's component,
+ * only when `window.navigation` is missing).
+ */
+export const loadHistoryFallback = (): Promise<Feature> => import('./features/history-fallback.ts').then((module) => module.historyFallback);
+
+/** The optimistic patches of the pages (E59) — loaded with the first `router.optimistic()`/`reloading()` of an adapter (W9 step 7). */
+export const loadOptimistic = (): Promise<Feature<PagePatches>> => import('./features/optimistic.ts').then((module) => module.optimistic);
+
+/**
+ * A patch target whose code is still loading (`loadOptimistic`): what is asked of it happens once it is there, in order — the
+ * first patch of a page shows a moment later. A chunk that cannot load shows nothing, and its reloads end at once (the action's
+ * answer still lands).
+ */
+export function laterTarget(loading: Promise<PatchTarget>): PatchTarget {
+  /** The ids the target gave the patches added before it was there (by the negative id handed out instead). */
+  const ids: number[] = [];
+  const later = <T>(run: (target: PatchTarget) => T): Promise<T | undefined> => loading.then(run, () => undefined);
+  const own = (list: readonly number[]) => list.map((id) => (id < 0 ? ids[-id - 1]! : id));
+  return {
+    add: (patch) => {
+      const id = -ids.push(0);
+      void later((target) => (ids[-id - 1] = target.add(patch)));
+      return id;
+    },
+    settle: (list, commit, options) => void later((target) => target.settle(own(list), commit, options)),
+    revalidate: async (spec, list) => void (await later((target) => target.revalidate(spec, own(list)))),
+  };
+}
 
 /** Live validation (E62) — `navigator.load(loadLiveValidation)`. */
 export const loadLiveValidation = (): Promise<Feature<LiveValidationFeature>> => import('./features/live-validation.ts').then((module) => module.liveValidation);

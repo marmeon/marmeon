@@ -249,6 +249,16 @@ describe('create-bespoke-app — the framework from tarballs (BESPOKE_CREATE_TAR
   });
 });
 
+describe('the starter kit’s own files', () => {
+  it('its client is the blank app’s — with its dialog (`confirm: Confirm`, W9 step 7) and nothing else', () => {
+    const base = readFileSync(join(TEMPLATE, 'base/bootstrap/client.tsx'), 'utf8');
+    const kit = readFileSync(join(TEMPLATE, 'kit/bootstrap/client.tsx'), 'utf8');
+    const dialog = /^import \{ Confirm \} from '\.\/confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
+    expect(kit).not.toBe(base);
+    expect(kit.replace(dialog, '')).toBe(base);
+  });
+});
+
 /**
  * The starter kit as a user gets it (E150): the template and the home module, then the app's own `make:auth` and `migrate` —
  * type-checked, linted with the app's preset, and its tests (auth, home, system) pass. The framework from the workspace (the
@@ -279,8 +289,12 @@ it(
     expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
     const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
     expect(tests.out).toContain('modules/home/home.test.ts');
-    expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
-    expect(tests.out).not.toMatch(/Tests\s+\d+ failed/);
+    // The app's dialog in the page's language (W9 step 7): the guard's question — and tab sync's — in German too.
+    expect(tests.out).toContain('modules/home/confirm.test.ts');
+    // The failing tests by name — the message (Vitest shortens a long output it prints).
+    const failed = tests.out.split('\n').filter((line) => /^\s*(×|FAIL)/.test(line)).join('\n');
+    expect(tests.out, `the kit's tests failed:\n${failed}`).toMatch(/Tests\s+\d+ passed \(\d+\)/);
+    expect(tests.out, `the kit's tests failed:\n${failed}`).not.toMatch(/Tests\s+\d+ failed/);
     expect(tests.code).toBe(0);
   },
   300_000,

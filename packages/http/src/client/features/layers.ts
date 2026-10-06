@@ -509,7 +509,7 @@ export class LayerStack implements LayerHost {
     const closing = controls.slice(keep);
     const target = keep === 0 ? this.#core.key! : controls[keep - 1]!.layer.entry;
     const forget = new Set(closing.map((control) => control.layer.entry));
-    const state: unknown = this.#core.window.history.state;
+    const state: unknown = this.#core.history.state;
     const onTop = isHistoryState(state) && state.key === this.top();
     const back = this.#core.window.history.go !== undefined && onTop && closing.every((control) => this.#core.peek(PLACE, control.layer.entry)?.pushed === true);
     const reload = close.reload ?? (closing.some((control) => control.layer.once) ? true : undefined);

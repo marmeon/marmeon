@@ -7,7 +7,7 @@
  * it is used — and the core loads the layers itself when the server answers with one (E71).
  * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
  */
-import { isPageObject, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type PageObject, type ValidationErrors } from '../page.ts';
+import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type PageObject, type ValidationErrors } from '../page.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
 import type { DrawOptions, NavigatorCore, PlaceOptions, ReadOptions, SendInit } from './core.ts';
@@ -21,7 +21,7 @@ import type { DevtoolsGlobal } from './features/devtools.ts';
 import type { LayerStack } from './features/layers.ts';
 import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
 import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
-import { entry, HistoryWriter, isHistoryState, newKey, withPosition, type HistoryState } from './history.ts';
+import { entry, HistoryWriter, isHistoryState, newKey, OWN, withPosition, type HistoryState, type NavigateEvent, type NavigationLike } from './history.ts';
 import type { Layer, LayerControl } from './layer.ts';
 import { loadLayers } from './lazy.ts';
 import { mergePage, withQueryOf } from './merge.ts';
@@ -48,6 +48,9 @@ export { mergePage } from './merge.ts';
 export { xsrfToken } from './request.ts';
 export { SCROLL_REGION_ATTRIBUTE } from './scroll.ts';
 export type { ScrollPosition, ScrollRegion } from './scroll.ts';
+
+/** Scroll and focus stay the navigator's (`ScrollMemory`, the adapter's focus handling) in what it intercepts. */
+const MANUAL = { scroll: 'manual', focusReset: 'manual' } as const;
 
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -156,6 +159,8 @@ export interface NavigatorWindow {
     addEventListener?(type: 'DOMContentLoaded' | 'visibilitychange' | 'resume', listener: () => void, options?: AddEventListenerOptions): void;
     removeEventListener?(type: 'visibilitychange' | 'resume', listener: () => void): void;
   };
+  /** The Navigation API — without it, the History fallback feature (`loadHistoryFallback`) writes and follows the history. */
+  readonly navigation?: NavigationLike;
   /** Live hints (W6.10): one stream per document — without it, none. */
   readonly EventSource?: new (url: string) => EventSource;
   /** Tab sync (W8 step 8): the tabs of the browser hear each other's session epoch — without it, a tab checks when it becomes visible. */
@@ -371,12 +376,22 @@ export class Navigator {
       visit: (from, url, visitOptions) => this.#visit(from, url, visitOptions),
       show: (page, history, showOptions) => this.#show(page, history, showOptions),
       restorePage: (page, key, position) => this.#restorePage(page, key, position),
+      traverse: (state, own) => this.#traverse(state, own),
+      own: () => this.#first('own') === true,
     } satisfies Partial<NavigatorCore> as Partial<Writable<NavigatorCore>> as Writable<NavigatorCore>;
     this.#core = core;
     core.version = initialPage.version ?? null;
     core.documentChange = new DocumentChange(core);
     // What the adapter attaches from the start (a deep link's layers take theirs from `initial`, until the history is taken over).
     for (const feature of features) this.use(feature);
+    // Development only: without the Navigation API, the History fallback follows Back/Forward (E184) — it must be there before the
+    // first entry is written.
+    if (process.env.NODE_ENV !== 'production' && !win.navigation && !this.#has('history')) {
+      console.warn(
+        '[bespoke:C13] This browser has no Navigation API, and the History fallback is not attached — the navigator writes its entries, but nothing follows Back/Forward. ' +
+          'Load it before the navigator is made and pass it with the features: features: [await loadHistoryFallback()] (createBespokeApp does).',
+      );
+    }
     // The first page's flash messages (E60) fire once the app has started — never kept with the page.
     const { layers: _layers, ...withFlash } = initialPage;
     const page = this.#collect(withFlash);
@@ -470,7 +485,9 @@ export class Navigator {
     // The first render is on screen — now the props it was sent without (the layers' too).
     core.props.load();
     this.#all('deferred');
-    core.window.addEventListener('popstate', this.#onPopState);
+    // Back/Forward and the navigator's own commits (E184): the Navigation API's `navigate` — without it, the History fallback
+    // feature follows `popstate` (it is attached before, `loadHistoryFallback`).
+    core.window.navigation?.addEventListener('navigate', this.#onNavigate);
     core.window.addEventListener('pageshow', this.#onPageShow);
     // Capturing: scroll events of elements do not bubble, but pass the window on their way down.
     core.window.addEventListener('scroll', this.#onScroll, { capture: true, passive: true });
@@ -480,7 +497,7 @@ export class Navigator {
     this.#flushFlash();
     return () => {
       core.started = false;
-      core.window.removeEventListener('popstate', this.#onPopState);
+      core.window.navigation?.removeEventListener('navigate', this.#onNavigate);
       core.window.removeEventListener('pageshow', this.#onPageShow);
       core.window.removeEventListener('scroll', this.#onScroll, { capture: true });
       this.#all('stopped');
@@ -745,11 +762,9 @@ export class Navigator {
   #adopt(): HistoryState | undefined {
     const core = this.#core;
     if (core.key !== undefined) return undefined;
-    const state: unknown = core.window.history.state;
+    const state: unknown = core.history.state;
     // A reload or session restore keeps the entry's key (and scroll); the page itself came fresh from the server.
     const restored = isHistoryState(state) ? state : undefined;
-    // Where the entry is: kept by a reload or a session restore, else the last (a fresh load pushes its entry at the end).
-    core.history.index = typeof restored?.index === 'number' ? restored.index : Math.max(0, (core.window.history.length ?? 1) - 1);
     const key = restored?.key ?? newKey();
     const position = restored ? core.scroll.of(restored) : TOP;
     // A deep link (a layer's URL): the layers take the entry — the page under them gets a key of its own, in memory only.
@@ -775,8 +790,8 @@ export class Navigator {
     { preserveScroll, preserveState, hash }: { preserveScroll: boolean; preserveState: boolean; hash: string },
   ): Promise<PageObject | undefined> {
     const core = this.#core;
-    // Under an instant visit's placeholder (E64), the page being left was scrolled where it was before it showed.
-    const leaving = this.#first('position') ?? core.scroll.current();
+    // Back restores where the page being left was scrolled to.
+    if (history === 'push') this.#save();
     core.scroll.cancelSave();
     core.transitioning = true;
     const keep = preserveState && page.component === core.page.component;
@@ -803,11 +818,6 @@ export class Navigator {
         return undefined;
       }
       const arrived = preserveScroll ? core.scroll.current() : TOP;
-      if (history === 'push') {
-        // Remember where the page being left was scrolled to — Back restores it.
-        core.scroll.set(top, leaving);
-        core.history.replace(this.#first('state', top, leaving) ?? entry(core.page, top, leaving), core.window.location.href);
-      }
       core.key = key;
       core.history[history](entry(page, key, arrived), page.url + hash);
       this.#all('page');
@@ -826,49 +836,66 @@ export class Navigator {
 
   // -- Back/Forward -----------------------------------------------------------------------------------------------------
 
-  readonly #onPopState = (event: Event): void => {
-    const state: unknown = (event as PopStateEvent).state;
-    // `null`: an entry of a fragment link (`#section`) on the same page.
-    if (state === null || state === undefined) return;
+  /**
+   * The entry being left keeps where it was scrolled to (under an instant visit's placeholder, E64: where it was before it
+   * showed) — written again as a whole: another script's `history.replaceState` erases the Navigation API's state of an entry.
+   */
+  #save(): void {
     const core = this.#core;
-    if (isHistoryState(state) && state.layer) {
+    const top = core.top();
+    const leaving = this.#first('position') ?? core.scroll.current();
+    core.scroll.set(top, leaving);
+    core.history.replace(this.#first('state', top, leaving) ?? entry(core.page, top, leaving), core.window.location.href);
+  }
+
+  /**
+   * The Navigation API's `navigate` (E184): the navigator's own commits (its `info`: the URL changes, nothing loads), and
+   * Back/Forward to its own entries (same-document, a state of its own) — nothing else: a plain link, a form, another site, an
+   * entry without its state (a fragment's, another script's, one an older client wrote with the History API — never shown from
+   * what it holds) stay the browser's. Back/Forward to the entry on screen (a fragment's that kept its state; the guard going
+   * back to it) changes nothing.
+   */
+  readonly #onNavigate = (event: Event): void => {
+    const navigate = event as unknown as NavigateEvent;
+    const core = this.#core;
+    if (navigate.info === OWN) return navigate.intercept(MANUAL);
+    const state: unknown = navigate.destination.getState();
+    if (navigate.navigationType !== 'traverse' || !navigate.canIntercept || core.left || !isHistoryState(state) || state.key === core.top()) return;
+    // A traversal a feature caused itself (a layer closing by going back): the visit under way is not cancelled by it.
+    const own = this.#first('own') === true;
+    // A feature takes it (E64: the guard cancels it, or goes back when it cannot be cancelled).
+    if (this.#first('navigate', navigate, state, own)) return;
+    if (!core.transitioning) this.#save();
+    // The browser's loading indicator shows while it runs (`navigation.transition`) — long only when the server is asked.
+    navigate.intercept({ ...MANUAL, handler: () => this.#traverse(state, own) });
+  };
+
+  /** Back/Forward to an entry of this navigator — from the Navigation API (`navigate`) or the History fallback (`popstate`). */
+  async #traverse(state: HistoryState, own: boolean): Promise<void> {
+    const core = this.#core;
+    if (state.layer) {
       const loading = this.#layers();
       if (loading !== true) {
         // A layer's entry, and the layers' code is not here (the document was loaded since, E71): it loads first, then the
         // entry is followed — unless Back/Forward went on meanwhile. The visit under way is left, as by any Back.
         this.#inFlight?.abort();
-        void loading.then((loaded) => {
-          const now: unknown = core.window.history.state;
-          if (core.left || !isHistoryState(now) || now.key !== state.key) return;
-          if (loaded) this.#onPopState(event);
-          // Like a page's code that cannot load: the browser loads the entry.
-          else this.#away();
-        });
-        return;
+        const loaded = await loading;
+        const now: unknown = core.history.state;
+        if (core.left || !isHistoryState(now) || now.key !== state.key) return;
+        // Like a page's code that cannot load: the browser loads the entry.
+        if (!loaded) return this.#away();
       }
     }
-    // A popstate a feature caused itself (a layer closing by going back): the visit that caused it is not cancelled by it.
-    const own = this.#first('own') === true;
-    // A feature takes it (E64: the guard's own popstate, or a Back/Forward it stops); others follow it (an instant visit ends).
+    // A feature takes it (a layer closing by going back, tab sync: an entry of another epoch); others follow it (an instant visit ends).
     if (this.#first('popState', state, own)) return;
-    if (isHistoryState(state) && typeof state.index === 'number') core.history.index = state.index;
     if (!own) this.#inFlight?.abort();
     // A save still pending belongs to the entry just left; the browser already switched to the new one.
     core.scroll.cancelSave();
-    if (isHistoryState(state)) {
-      const stack = this.#first('stack', state.key) ?? (core.cache.get(state.key) && { page: state.key });
-      if (stack) {
-        void this.#arriveAt(state, stack, own);
-        return;
-      }
-      this.#all('popped');
-      if (!this.#first('restore', state)) void this.#restore(state.url, state.key, core.scroll.of(state));
-      return;
-    }
+    const stack = this.#first('stack', state.key) ?? (core.cache.get(state.key) && { page: state.key });
+    if (stack) return this.#arriveAt(state, stack, own);
     this.#all('popped');
-    // An entry of an older client, which kept whole pages in the history: never shown — the server is asked.
-    if (isPageObject(state)) void this.#restore(state.url, newKey(), TOP);
-  };
+    if (!this.#first('restore', state)) await this.#restore(state.url, state.key, core.scroll.of(state));
+  }
 
   /**
    * Back/Forward to an entry in memory: its page and what features put over it (layers). When it is the page on screen (a
@@ -964,7 +991,7 @@ export class Navigator {
     // Into the entry too, for a reload or a session restore — debounced: browsers throttle replaceState.
     core.scroll.saveLater(() => {
       const key = core.key;
-      const state: unknown = core.window.history.state;
+      const state: unknown = core.history.state;
       if (core.transitioning || key === undefined || !isHistoryState(state) || state.key !== key) return;
       const position = core.scroll.get(key);
       if (position) core.history.replace(withPosition(state, position), core.window.location.href);

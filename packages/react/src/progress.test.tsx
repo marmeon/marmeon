@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BespokeApp, progressIndicator, useRouter } from './app.tsx';
 import { progressBar, type ProgressIndicator } from './index.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
+import { loadHistoryFallback } from '@bespokecore/http/client';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,7 +45,7 @@ afterEach(async () => {
 async function mount(progress?: ProgressIndicator) {
   root = createRoot(container);
   const Component = await resolve('app/A');
-  await act(async () => root.render(<BespokeApp initialPage={page('A', '/a')} initialComponent={Component} resolve={resolve} {...(progress ? { progress } : {})} />));
+  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={page('A', '/a')} initialComponent={Component} resolve={resolve} {...(progress ? { progress } : {})} />));
 }
 const wait = (ms: number) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const bar = () => document.querySelector('[data-bespoke-progress]');

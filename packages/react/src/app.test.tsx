@@ -9,6 +9,10 @@ import { Deferred } from './deferred.tsx';
 import { Head } from './head.tsx';
 import { resolveModulePages, type DefaultLayout, type PageComponent } from './pages.ts';
 import { useForm } from './use-form.ts';
+import { loadHistoryFallback } from '@bespokecore/http/client';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -138,7 +142,7 @@ async function mount(initial: PageObject, options: { layout?: DefaultLayout; tit
   const Component = await resolve(initial.component);
   root = createRoot(container);
   await act(async () => {
-    root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} {...options} />);
+    root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} {...options} />);
   });
 }
 
@@ -205,7 +209,7 @@ describe('persistent layouts (E35)', () => {
     const inline = resolveModulePages({ '../modules/app/views/Inline.tsx': async () => ({ default: Inline }) });
     server = () => respond({ component: 'app/Inline', props: { name: 'b' }, url: '/b', version: null });
     root = createRoot(container);
-    await act(async () => root.render(<BespokeApp initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));
+    await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));
     await click('count');
     await click('to-b');
     await settle();

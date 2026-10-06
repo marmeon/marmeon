@@ -7,7 +7,9 @@ import { Navigator, type NavigatorWindow, type ScrollRegion } from './navigation
 import type { OptimisticUpdate, PropsPatch, Reloading, ReloadSpec } from './optimistic.ts';
 import type { Layer } from './layer.ts';
 import { REGIONS, type RegionOwner } from './owner.ts';
-import { defineFeature } from './feature.ts';
+import { defineFeature, type Feature } from './feature.ts';
+import { historyFallback } from './features/history-fallback.ts';
+import type { NavigateEvent, NavigationEntry, NavigationLike } from './history.ts';
 import type { KeptRegion } from './region.ts';
 
 export const ORIGIN = 'https://app.test';
@@ -99,18 +101,281 @@ export class FakeChannels {
   }
 }
 
+/** Which way the navigator writes the history in a fake tab: the Navigation API (E184), or the History fallback without it. */
+export type HistoryPath = 'navigation' | 'history';
+
+/** Both ways — a suite that runs on each (`describe.each(PATHS)`). */
+export const PATHS: readonly HistoryPath[] = ['navigation', 'history'];
+
+let nextKey = 0;
+
+/**
+ * One entry of a tab's history, as the browser keeps it: its URL, its `history.state` and its Navigation API state — each stored
+ * *serialized* (structured clone, written to disk for session restore): the test reads exactly what would end up there. `key`
+ * is the browser's (the Navigation API's `entry.key`), kept by a reload and a session restore.
+ */
+export class FakeEntry {
+  url: string;
+  /** `history.state`, serialized — `null` for an entry the Navigation API wrote (E184). */
+  history: string;
+  /** The Navigation API's state, serialized — undefined when it has none (a `pushState` entry, one a `replaceState` rewrote). */
+  navigation: string | undefined;
+  readonly key: string;
+  /** An entry of another document (a full load came in between, another site): Back to it loads that document — nothing intercepts it. */
+  crossDocument = false;
+
+  constructor(url: string, history = 'null', navigation?: string, key = `entry-${nextKey++}`) {
+    this.url = url;
+    this.history = history;
+    this.navigation = navigation;
+    this.key = key;
+  }
+
+  /** The state the navigator wrote into it — the Navigation API's, or (in the History fallback) `history.state`. */
+  get state(): string {
+    return this.navigation ?? this.history;
+  }
+
+  /** Everything the browser writes to disk for it. */
+  get disk(): string {
+    return `${this.history} ${this.navigation ?? ''}`;
+  }
+}
+
+/** A `navigate` event as the browser fires it (Chrome 154), with what a test reads afterwards. */
+class FakeNavigateEvent extends Event implements NavigateEvent {
+  readonly navigationType: NavigateEvent['navigationType'];
+  readonly canIntercept: boolean;
+  readonly userInitiated: boolean;
+  readonly info: unknown;
+  readonly hashChange: boolean;
+  readonly destination: NavigationEntry & { readonly url: string; readonly sameDocument: boolean };
+  /** What `intercept()` was given, in order — empty: not intercepted. */
+  readonly intercepted: { scroll?: string; focusReset?: string; handler?: () => unknown; precommitHandler?: unknown }[] = [];
+
+  constructor(init: Pick<FakeNavigateEvent, 'navigationType' | 'canIntercept' | 'userInitiated' | 'info' | 'hashChange' | 'destination'> & { cancelable: boolean }) {
+    super('navigate', { cancelable: init.cancelable });
+    this.navigationType = init.navigationType;
+    this.canIntercept = init.canIntercept;
+    this.userInitiated = init.userInitiated;
+    this.info = init.info;
+    this.hashChange = init.hashChange;
+    this.destination = init.destination;
+  }
+
+  /** Every call of `intercept()`, also those the browser refused (`canIntercept` false: a SecurityError). */
+  attempts = 0;
+
+  intercept(options: FakeNavigateEvent['intercepted'][number] = {}): void {
+    this.attempts++;
+    if (!this.canIntercept) throw new DOMException('Cannot intercept', 'SecurityError');
+    this.intercepted.push(options);
+  }
+}
+
+/** What `navigate()`/`traverseTo()` return. */
+interface FakeNavigationResult {
+  readonly committed: Promise<NavigationEntry>;
+  readonly finished: Promise<NavigationEntry>;
+}
+
+/** An early error (an unknown key, a traversal refused): both promises reject — nobody catching them is an unhandled rejection. */
+const early = (name: string, message: string): FakeNavigationResult => {
+  const error = new DOMException(message, name);
+  return { committed: Promise.reject(error), finished: Promise.reject(error) };
+};
+
+/** A result whose rejections nobody needs to catch. */
+const handled = (result: FakeNavigationResult): FakeNavigationResult => {
+  result.committed.catch(() => undefined);
+  result.finished.catch(() => undefined);
+  return result;
+};
+
+/**
+ * The Navigation API of a fake tab (`window.navigation`, E184), over the tab's entries — modelled on what Chrome 154 does (spike
+ * W9 7a): `navigate()` fires `navigate` (push/replace, cancelable), commits a same-document entry when a listener intercepted it
+ * (else the document is loaded — a spy entry in `loads`), its handlers run after the commit (`transition` meanwhile). Traversals
+ * (`back`/`forward`/`traverseTo`, `history.go`) run a task later and are always cancelable from a script; the user's own Back
+ * (`win.back()`) is cancelable only with a fresh activation (`win.activate()`), which it uses up. `traverseTo` right after a
+ * cancelled traversal (in the same task) refuses: `InvalidStateError`, as in Chrome. `precommitHandler` is only there to be
+ * detected (`intercept` takes it; nothing runs it).
+ */
+export class FakeNavigation extends EventTarget implements NavigationLike {
+  readonly #win: FakeWindow;
+  /** A traversal was cancelled in this task: another one is refused until the next. */
+  #refusing = false;
+  transition: { readonly navigationType: string; readonly from: NavigationEntry; readonly finished: Promise<void> } | null = null;
+  /** Every `navigate` event fired, in order. */
+  readonly events: FakeNavigateEvent[] = [];
+
+  constructor(win: FakeWindow) {
+    super();
+    this.#win = win;
+  }
+
+  #view(entry: FakeEntry): NavigationEntry & { readonly url: string; readonly sameDocument: boolean; readonly id: string } {
+    const index = this.#win.entries.indexOf(entry);
+    return {
+      key: entry.key,
+      id: `${entry.key}:${entry.navigation ?? ''}`,
+      index,
+      url: entry.url,
+      sameDocument: true,
+      getState: () => (entry.navigation === undefined ? undefined : JSON.parse(entry.navigation)),
+    };
+  }
+
+  entries(): NavigationEntry[] {
+    return this.#win.entries.map((entry) => this.#view(entry));
+  }
+
+  get currentEntry(): NavigationEntry {
+    return this.#view(this.#win.current);
+  }
+
+  get canGoBack(): boolean {
+    return this.#win.index > 0;
+  }
+
+  get canGoForward(): boolean {
+    return this.#win.index < this.#win.entries.length - 1;
+  }
+
+  navigate(url: string, { state, history = 'auto', info }: { state?: unknown; history?: 'auto' | 'push' | 'replace'; info?: unknown } = {}, userInitiated = false): FakeNavigationResult {
+    const win = this.#win;
+    const to = new URL(url, win.current.url);
+    const replace = history === 'replace';
+    const serialized = state === undefined ? undefined : JSON.stringify(state);
+    const event = this.fire({
+      navigationType: replace ? 'replace' : 'push',
+      canIntercept: to.origin === new URL(win.current.url).origin,
+      cancelable: true,
+      userInitiated,
+      info,
+      hashChange: isHashChange(win.current.url, to.href),
+      destination: { key: replace ? win.current.key : '', index: replace ? win.index : win.index + 1, url: to.href, sameDocument: false, getState: () => (serialized === undefined ? undefined : JSON.parse(serialized)) },
+    });
+    if (event.defaultPrevented) return handled(early('AbortError', 'Navigation was aborted'));
+    if (event.intercepted.length === 0 && !event.hashChange) {
+      // Not intercepted: the browser loads the document — whose promises never settle (it is gone).
+      win.loads.push(`${replace ? 'replace' : 'assign'} ${to.href}`);
+      return { committed: new Promise(() => {}), finished: new Promise(() => {}) };
+    }
+    const from = this.currentEntry;
+    const entry = new FakeEntry(to.href, 'null', serialized, replace ? win.current.key : undefined);
+    win.commit(entry, replace);
+    return this.#run(event, entry, from);
+  }
+
+  updateCurrentEntry({ state }: { state: unknown }): void {
+    this.#win.current.navigation = JSON.stringify(state);
+    this.dispatchEvent(new Event('currententrychange'));
+  }
+
+  back(): FakeNavigationResult {
+    return this.traverseTo(this.#win.entries[this.#win.index - 1]?.key ?? '');
+  }
+
+  forward(): FakeNavigationResult {
+    return this.traverseTo(this.#win.entries[this.#win.index + 1]?.key ?? '');
+  }
+
+  /** A traversal from a script: a task later, always cancelable (same document). */
+  traverseTo(key: string): FakeNavigationResult {
+    if (this.#refusing) return early('InvalidStateError', 'Invalid key');
+    const target = this.#win.entries.findIndex((entry) => entry.key === key);
+    if (target < 0) return early('InvalidStateError', 'Invalid key');
+    let done!: (result: FakeNavigationResult | undefined) => void;
+    const result = new Promise<FakeNavigationResult | undefined>((resolve) => (done = resolve));
+    setTimeout(() => done(this.traverse(target, { userInitiated: false, cancelable: true })));
+    const finished = result.then((inner) => inner?.finished);
+    finished.catch(() => undefined);
+    return { committed: result.then((inner) => inner?.committed) as Promise<NavigationEntry>, finished: finished as Promise<NavigationEntry> };
+  }
+
+  /** Traverses to the entry at `target` now: `navigate` (traverse), then — unless cancelled — the commit, `popstate`, the handlers. */
+  traverse(target: number, { userInitiated, cancelable }: { userInitiated: boolean; cancelable: boolean }): FakeNavigationResult | undefined {
+    const win = this.#win;
+    const entry = win.entries[target];
+    if (!entry || target === win.index) return undefined;
+    const event = this.fire({
+      navigationType: 'traverse',
+      canIntercept: !entry.crossDocument,
+      cancelable: cancelable && !entry.crossDocument,
+      userInitiated,
+      info: undefined,
+      hashChange: isHashChange(win.current.url, entry.url),
+      destination: this.#view(entry),
+    });
+    if (event.defaultPrevented) {
+      this.#refusing = true;
+      setTimeout(() => (this.#refusing = false));
+      // Its promises reject (AbortError) — the browser's Back has none, a script's may not listen: nothing unhandled.
+      return handled(early('AbortError', 'Navigation was aborted'));
+    }
+    if (entry.crossDocument) {
+      // Another document: the browser loads it (this one is gone).
+      win.loads.push(`traverse ${entry.url}`);
+      return { committed: new Promise(() => {}), finished: new Promise(() => {}) };
+    }
+    const from = this.currentEntry;
+    win.moveTo(target);
+    return this.#run(event, entry, from);
+  }
+
+  fire(init: ConstructorParameters<typeof FakeNavigateEvent>[0]): FakeNavigateEvent {
+    const event = new FakeNavigateEvent(init);
+    this.events.push(event);
+    this.dispatchEvent(event);
+    return event;
+  }
+
+  /** The handlers of an intercepted navigation run after its commit — `transition` is set until they settle. */
+  #run(event: FakeNavigateEvent, entry: FakeEntry, from: NavigationEntry): FakeNavigationResult {
+    const handlers = event.intercepted.flatMap((options) => (options.handler ? [options.handler] : []));
+    const view = this.#view(entry);
+    if (handlers.length === 0) return { committed: Promise.resolve(view), finished: Promise.resolve(view) };
+    const finished = Promise.resolve()
+      .then(() => Promise.all(handlers.map((handler) => handler())))
+      .then(() => view)
+      .finally(() => {
+        if (this.transition?.finished === done) this.transition = null;
+      });
+    const done = finished.then(() => undefined, () => undefined);
+    this.transition = { navigationType: event.navigationType, from, finished: done };
+    finished.catch(() => undefined);
+    return { committed: Promise.resolve(view), finished };
+  }
+}
+
+/** Whether `to` differs from `from` only in its fragment (and has one). */
+function isHashChange(from: string, to: string): boolean {
+  const [a, b] = [new URL(from), new URL(to)];
+  return b.hash !== '' && a.href.replace(a.hash, '') === b.href.replace(b.hash, '');
+}
+
 /**
  * One tab's history, as the browser keeps it: states are stored *serialized* (structured clone, written to
- * disk for session restore) — the test reads exactly what would end up there.
+ * disk for session restore) — the test reads exactly what would end up there. With the Navigation API (`navigation`, the default
+ * path) or without it — the History fallback (`new FakeWindow(url, channels, 'history')`, or `FakeWindow.path`).
  */
 export class FakeWindow implements NavigatorWindow {
-  readonly entries: { url: string; state: string }[] = [];
+  /** The path a new fake tab takes when none is given — a suite that runs on both sets it (`PATHS`). */
+  static path: HistoryPath = 'navigation';
+  readonly entries: FakeEntry[] = [];
   index = -1;
+  /** Every URL the address bar showed, in order (each commit, each Back/Forward) — a Back the guard cancels shows none. */
+  readonly shownUrls: string[] = [];
   readonly requests: { url: string; method: string; headers: Record<string, string> }[] = [];
   readonly loads: string[] = [];
   scrollX = 0;
   scrollY = 0;
   scrollRestoration: ScrollRestoration = 'auto';
+  /** The Navigation API (E184) — undefined on the History fallback's path. */
+  readonly navigation: FakeNavigation | undefined;
+  /** The user just clicked or typed (a fresh user activation): their next Back/Forward is cancelable — and uses it up. */
+  #activated = false;
   /** The page's `[scroll-region]` elements. */
   regions: ScrollRegion[] = [];
   /** `loading` while the document "still streams" (E49) — `finishLoading()` ends it. */
@@ -146,9 +411,11 @@ export class FakeWindow implements NavigatorWindow {
     return this.promptAnswer;
   };
 
-  constructor(url: string, channels?: FakeChannels) {
-    this.entries.push({ url, state: 'null' });
+  constructor(url: string, channels?: FakeChannels, path: HistoryPath = FakeWindow.path) {
+    this.entries.push(new FakeEntry(url));
+    this.shownUrls.push(url);
     if (channels) this.BroadcastChannel = channels.constructorFor(this);
+    this.navigation = path === 'navigation' ? new FakeNavigation(this) : undefined;
     this.index = 0;
     const self = this;
     this.document = {
@@ -215,22 +482,23 @@ export class FakeWindow implements NavigatorWindow {
     const win = this;
     return {
       get state(): unknown {
-        return JSON.parse(win.current.state);
+        return JSON.parse(win.current.history);
       },
+      // With the Navigation API, these fire `navigate` too (push/replace, never intercepted by the navigator) — and the entry has no
+      // Navigation API state then: `replaceState` erases the one it had (spike W9 7a).
       pushState(state: unknown, _title: string, url?: string | URL | null) {
-        win.entries.splice(win.index + 1);
-        win.entries.push({ url: win.#resolve(url), state: JSON.stringify(state) });
-        win.index++;
+        win.#write(state, url, false);
       },
       replaceState(state: unknown, _title: string, url?: string | URL | null) {
-        win.entries[win.index] = { url: win.#resolve(url), state: JSON.stringify(state) };
+        win.#write(state, url, true);
       },
-      // Like the browser's: asynchronous — the entry changes a task later, then popstate.
+      // Like the browser's: asynchronous — the entry changes a task later (then `navigate`, or popstate without the Navigation API).
       go(delta: number) {
         setTimeout(() => {
           const index = win.index + delta;
           if (delta === 0 || index < 0 || index >= win.entries.length) return;
-          win.index = index;
+          if (win.navigation) return void win.navigation.traverse(index, { userInitiated: false, cancelable: true });
+          win.moveTo(index);
           win.dispatch('popstate', { state: win.history.state });
         }, 0);
       },
@@ -244,6 +512,63 @@ export class FakeWindow implements NavigatorWindow {
         win.scrollRestoration = value;
       },
     } as NavigatorWindow['history'];
+  }
+
+  #write(state: unknown, url: string | URL | null | undefined, replace: boolean): void {
+    const to = this.#resolve(url);
+    if (this.navigation) {
+      const event = this.navigation.fire({
+        navigationType: replace ? 'replace' : 'push',
+        canIntercept: true,
+        cancelable: true,
+        userInitiated: false,
+        info: undefined,
+        hashChange: false,
+        destination: { key: replace ? this.current.key : '', index: replace ? this.index : this.index + 1, url: to, sameDocument: true, getState: () => undefined },
+      });
+      if (event.defaultPrevented) return;
+    }
+    this.commit(new FakeEntry(to, JSON.stringify(state), undefined, replace ? this.current.key : undefined), replace);
+  }
+
+  /** A same-document entry is committed: pushed (the entries after the current one go), or in the current one's place. */
+  commit(entry: FakeEntry, replace: boolean): void {
+    if (replace) this.entries[this.index] = entry;
+    else {
+      this.entries.splice(this.index + 1);
+      this.entries.push(entry);
+      this.index++;
+    }
+    this.shownUrls.push(entry.url);
+    this.navigation?.dispatchEvent(new Event('currententrychange'));
+  }
+
+  /** Back/Forward lands on the entry at `index` (same document): the address bar shows it, then `popstate` (also with the Navigation API). */
+  moveTo(index: number): void {
+    this.index = index;
+    this.shownUrls.push(this.current.url);
+    this.navigation?.dispatchEvent(new Event('currententrychange'));
+    if (this.navigation) this.dispatch('popstate', { state: this.history.state });
+  }
+
+  /** An entry as the navigator writes it on this tab's path — its state the Navigation API's, or `history.state` without it. */
+  entryOf(url: string, state: unknown): FakeEntry {
+    return this.navigation ? new FakeEntry(url, 'null', JSON.stringify(state)) : new FakeEntry(url, JSON.stringify(state));
+  }
+
+  /**
+   * The user follows a plain link or sends a plain GET form (`<a href>`, `<form>` the navigator does not handle): a fresh activation,
+   * the browser's `navigate` (push, `userInitiated`, no `info`) — and, unless a listener intercepted it, the document loads (`loads`).
+   */
+  follow(url: string): void {
+    this.activate();
+    if (this.navigation) return void this.navigation.navigate(url, {}, true);
+    this.loads.push(`assign ${new URL(url, this.current.url).href}`);
+  }
+
+  /** The user clicks or types: a fresh user activation — their next Back or Forward can be cancelled (it uses it up). */
+  activate(): void {
+    this.#activated = true;
   }
 
   get current() {
@@ -301,14 +626,29 @@ export class FakeWindow implements NavigatorWindow {
     return event.defaultPrevented;
   }
 
-  /** Back within the same document: the browser fires popstate with the entry's (deserialized) state. */
+  /**
+   * The user's Back (the browser's button) within the same document. With the Navigation API: `navigate` (traverse,
+   * `userInitiated`), cancelable only with a fresh activation (`activate()`, used up by it) — then, unless cancelled, the entry
+   * changes and the handlers run. Without it: the entry changes, then `popstate` with its (deserialized) state.
+   */
   back() {
-    this.index--;
-    this.dispatch('popstate', { state: this.history.state });
+    this.goTo(this.index - 1);
   }
 
   forward() {
-    this.index++;
+    this.goTo(this.index + 1);
+  }
+
+  /** The user picks entry `index` from the browser's history menu (a long press on Back) — a Back or Forward over several entries. */
+  goTo(index: number): void {
+    if (this.navigation) {
+      const cancelable = this.#activated;
+      this.#activated = false;
+      this.navigation.traverse(index, { userInitiated: true, cancelable });
+      return;
+    }
+    this.index = index;
+    this.shownUrls.push(this.current.url);
     this.dispatch('popstate', { state: this.history.state });
   }
 
@@ -324,6 +664,9 @@ export class FakeWindow implements NavigatorWindow {
   }
 }
 
+/** The features an adapter attaches to a navigator on this tab from the start: the History fallback, where it has no Navigation API (E184). */
+export const historyFeatures = (win: FakeWindow): Feature[] => (win.navigation ? [] : [historyFallback]);
+
 export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm' | 'features' | 'loadLayers'> = {}) {
   const shown: PageObject[] = [];
   /** The region owner handed with each page rendered (islands live there). */
@@ -332,6 +675,8 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
   const stacks: (readonly Layer[])[] = [];
   /** Every render in order — an instant visit's placeholder too (E64), which `shown` leaves out (it is no page). */
   const renders: { page: PageObject; placeholder: boolean }[] = [];
+  // Without the Navigation API, the adapter attaches the History fallback from the start (createBespokeApp does, E184).
+  const features = win.navigation || options.features?.some((feature) => feature.name === 'history') ? options.features : [historyFallback, ...(options.features ?? [])];
   const navigator = new Navigator({
     initialPage: initial,
     window: win,
@@ -343,6 +688,7 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
       stacks.push(layers);
     },
     ...options,
+    features,
   });
   const stop = navigator.start();
   const { layers: _layers, ...base } = initial;

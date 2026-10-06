@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BespokeApp } from './app.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useForm } from './use-form.ts';
+import { loadHistoryFallback } from '@bespokecore/http/client';
+
+// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -68,7 +72,7 @@ afterEach(async () => {
 async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
+  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 const $ = (testId: string) => container.querySelector(`[data-testid="${testId}"]`)! as HTMLInputElement;

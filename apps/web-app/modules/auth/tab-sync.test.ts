@@ -1,11 +1,14 @@
 import { DOCUMENT_HEADER, SESSION_PATH } from '@bespokecore/http';
 import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { Navigator, tabSync, type NavigatorWindow } from '@bespokecore/http/client';
+import { loadHistoryFallback, Navigator, tabSync, type NavigatorWindow } from '@bespokecore/http/client';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+
+// The tabs below are browsers without the Navigation API (History, popstate): the History fallback, as createBespokeApp attaches it (E184).
+const HISTORY = await loadHistoryFallback();
 
 /**
  * Tab sync (W8 step 8, E148, E165) against the real app: the session's epoch on every page and at `/_bespoke/session`, flash
@@ -271,7 +274,7 @@ class Tab {
     this.visible = page;
     const navigator = new Navigator({
       initialPage: page,
-      features: [tabSync],
+      features: [HISTORY, tabSync],
       window: this.#window(),
       render: async (next) => void (this.visible = next),
     });

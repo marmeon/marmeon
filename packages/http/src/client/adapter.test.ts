@@ -8,6 +8,8 @@
  * once, the navigation guard, an instant visit's placeholder, remembered state and a postponed new build — with no UI
  * framework anywhere. A Vue (or Svelte, or Solid) adapter is this plus components.
  */
+// happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there (E184).
+import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ACTION_HEADER,
@@ -66,7 +68,7 @@ async function createTextApp(rootId = 'app') {
   };
   // "Hydrating" plain text means keeping the server's; without markup the adapter renders the page itself.
   if (!hasServerMarkup(root)) await render(initialPage);
-  const navigator = new Navigator({ initialPage, render });
+  const navigator = new Navigator({ features: [historyFallback], initialPage, render });
   const stops = [navigator.start(), showProgress(navigator, { delay: 0 })];
   return { navigator, root, stop: () => stops.forEach((stop) => stop()) };
 }
@@ -193,6 +195,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       void region.load();
     };
     navigator = new Navigator({
+      features: [historyFallback],
       initialPage,
       render: async (next, { owner }) => {
         root.innerHTML = `<p>${next.component}</p><div id="island"></div><div id="admins"></div>`;
@@ -236,6 +239,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     // The adapter: the page as before — and, when only the layers change (the same page), the layers alone.
     let shown: PageObject | undefined;
     const navigator = new Navigator({
+      features: [historyFallback],
       initialPage,
       render: async (next, { layers }) => {
         if (next !== shown) {
@@ -287,6 +291,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       void region.load();
     };
     navigator = new Navigator({
+      features: [historyFallback],
       initialPage,
       render: async (next, { owner }) => {
         root.innerHTML = `<p>${next.component}</p><div id="island"></div>`;
@@ -317,6 +322,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
     const root = await rootElement('app');
     const navigator = new Navigator({
+      features: [historyFallback],
       initialPage: readInitialPage(),
       render: async (next, { layers }) => {
         root.innerHTML = `<p>${next.component}</p>${layers.map((layer) => `<dialog open>${layer.page.component} ${JSON.stringify(layer.view.props)}</dialog>`).join('')}`;
@@ -419,6 +425,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const asked: string[] = [];
     let answer = false;
     const navigator = new Navigator({
+      features: [historyFallback],
       initialPage: readInitialPage(),
       render: async (next) => void (root.textContent = `${next.component} ${JSON.stringify(next.props)}`),
       confirm: (request) => (asked.push(`${request.kind}: ${request.message}`), answer),
@@ -467,6 +474,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const root = await rootElement('app');
     let owner!: RegionOwner;
     const navigator = new Navigator({
+      features: [historyFallback],
       initialPage: readInitialPage(),
       // The adapter: a placeholder is the view's own (`users/Show` → "Loading <name> …"), never the view with partial props.
       render: async (next, options) => {
@@ -514,6 +522,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     const root = await rootElement('app');
     const placeholders: string[] = [];
     const navigator = new Navigator({
+      features: [historyFallback],
       initialPage: readInitialPage(),
       render: async (next, options) => {
         if (options.placeholder) placeholders.push(next.url);
@@ -553,6 +562,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
       const root = await rootElement('app');
       const navigator = new Navigator({
+        features: [historyFallback],
         initialPage: readInitialPage(),
         render: async (next) => void (root.textContent = `${next.component} ${JSON.stringify(next.props)}`),
         // The view says so (React: `Show.revalidateOnBack = ['stats']`) — read by the feature, when it is attached.

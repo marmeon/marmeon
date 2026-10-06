@@ -142,9 +142,10 @@ describe('createBespokeApp — tab sync (W8 step 8, E149)', () => {
     await start();
     expect(attached(use)).toContain('tabSync');
     // Attached while the navigator was made (NavigatorOptions.features) — before any other feature a component attaches.
-    // (The test's own server render made a navigator too — happy-dom has a window.) The app's: tab sync is its first feature.
+    // (The test's own server render made a navigator too — happy-dom has a window.) The app's first features: the History fallback
+    // (happy-dom has no Navigation API, E184), then tab sync.
     const app = use.mock.contexts[use.mock.calls.findIndex(([feature]) => (feature as { name: string }).name === 'tabSync')];
-    expect(use.mock.calls.filter((_, index) => use.mock.contexts[index] === app).map(([feature]) => (feature as { name: string }).name)[0]).toBe('tabSync');
+    expect(use.mock.calls.filter((_, index) => use.mock.contexts[index] === app).map(([feature]) => (feature as { name: string }).name).slice(0, 2)).toEqual(['history', 'tabSync']);
   });
 
   it('tabSync: false leaves it out — and its chunk is never loaded (the known risk E66, by choice)', async () => {
@@ -159,5 +160,46 @@ describe('createBespokeApp — tab sync (W8 step 8, E149)', () => {
     });
     expect(attached(use)).not.toContain('tabSync');
     expect(lazy.loadTabSync).toBeTypeOf('function');
+  });
+});
+
+describe('createBespokeApp — the History fallback (W9 step 7, E184)', () => {
+  const attached = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([feature]) => (feature as { name: string }).name);
+
+  it('loads it beside the first page where the browser has no Navigation API — attached from the start', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const use = vi.spyOn(Navigator.prototype, 'use');
+    const sent = page({ name: 'Ada', lastLoginAt: at.toISOString() });
+    serve(sent, await ssr(sent));
+    await start();
+    expect(window.navigation).toBeUndefined();
+    expect(attached(use), 'no History fallback attached').toContain('history');
+  });
+
+  it('counter-check: with the Navigation API it is never loaded — the navigator writes and follows the history itself', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The parts of a browser's `window.navigation` a hydration uses: it writes the first entry (in place) and listens.
+    const written: unknown[] = [];
+    const navigation = {
+      currentEntry: { key: 'k', index: 0, getState: () => written.at(-1) },
+      updateCurrentEntry: ({ state }: { state: unknown }) => void written.push(state),
+      navigate: () => ({}),
+      traverseTo: () => ({}),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+    Object.defineProperty(window, 'navigation', { value: navigation, configurable: true });
+    try {
+      const use = vi.spyOn(Navigator.prototype, 'use');
+      const sent = page({ name: 'Ada', lastLoginAt: at.toISOString() });
+      serve(sent, await ssr(sent));
+      await start();
+      expect(attached(use)).not.toContain('history');
+      // The first entry, written through the Navigation API — positions only (E36).
+      expect(written.at(-1)).toMatchObject({ component: 'users/Profile', url: '/' });
+      expect(JSON.stringify(written)).not.toContain('Ada');
+    } finally {
+      delete (window as { navigation?: unknown }).navigation;
+    }
   });
 });

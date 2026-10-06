@@ -60,9 +60,10 @@ const FEATURES = {
   layers: { markers: ['http/client/features/layers', 'http/client/layer', 'react/layer-stack'], use: inApp('Link'), lazy: true },
   islands: { markers: ['http/client/features/islands', 'http/client/region', 'react/island'], use: inApp('Island'), brings: ['poll'] }, // <Island poll>
   actions: { markers: ['http/client/features/actions', 'http/client/action', 'react/use-action'], use: inApp('useAction') },
-  // The page's patches (E59): with `useRouter()` (`router.optimistic`/`reloading`), attached on first use (W5c.6). `optimistic.ts`
-  // (the patch queue) is no marker: layers and islands keep their own patches with it; the core applies a visit's (`patches.ts`).
-  optimistic: { markers: ['http/client/features/optimistic'], use: inApp('useRouter') },
+  // The page's patches (E59): with `useRouter()` (`router.optimistic`/`reloading`), loaded with the first use (W9 step 7), in a chunk of
+  // its own. `optimistic.ts` (the patch queue) is no marker: layers and islands keep their own patches with it; the core applies a
+  // visit's (`patches.ts`).
+  optimistic: { markers: ['http/client/features/optimistic'], use: inApp('useRouter'), lazy: true },
   // useForm(…, { validate }): on a form's first use (E74), in a chunk of its own. useForm remembers (static).
   liveValidation: { markers: ['http/client/live-validation', 'http/client/features/live-validation'], use: inApp('useForm'), brings: ['guard', 'remember'], lazy: true },
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
@@ -92,6 +93,9 @@ const FEATURES = {
   // Tab sync (W8 step 8, E149): a default feature of `createBespokeApp` — loaded with the first page, before hydrating, in a chunk of
   // its own; `createBespokeApp({ tabSync: false })` never loads it. The core alone carries none of it.
   tabSync: { markers: ['http/client/features/tab-sync', 'http/tab-sync-protocol'], use: inApp(), lazy: true },
+  // The History fallback (W9 step 7, E184): `createBespokeApp` loads it beside the first page only where the browser has no Navigation
+  // API — a chunk of its own, never in a first download. The core alone carries none of it (an adapter loads it).
+  history: { markers: ['http/client/features/history-fallback'], use: inApp(), lazy: true },
   // The headless table (W9 step 6, E183): `@bespokecore/react/table` and what it builds on — the core's row selection (a slot of the
   // entry) and the table's UI-free controller. Only with its own import: never in an app without tables (its subpath, an optional peer).
   table: { markers: ['http/client/features/selection', 'table/client/table', 'react/table'], use: { base: 'emptyApp' as const, entry: tableEntry() }, brings: ['queryState'] },
@@ -233,6 +237,24 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('tabSync');
     expect(featuresIn(built, true)).toContain('tabSync');
+  });
+
+  // W9 step 7 (E184): the History fallback only where the browser has no Navigation API — a chunk createBespokeApp loads then.
+  it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the History fallback is a chunk of its own in %s — never in the first download', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built)).not.toContain('history');
+    expect(featuresIn(built, true)).toContain('history');
+  });
+
+  it('the core alone carries no History fallback — not in its first download, not in a chunk (the adapter loads it)', () => {
+    expect([...featuresIn(bundle('core')), ...featuresIn(bundle('core'), true)]).not.toContain('history');
+  });
+
+  // W9 step 7: useRouter() loads the page's optimistic patches with the first router.optimistic()/reloading() — every app with a router
+  // (the docs app's header search) carries only the loader.
+  it('the page’s optimistic patches are a chunk of their own in everything — loaded with the first router.optimistic()', () => {
+    expect(featuresIn(bundle('everything'))).not.toContain('optimistic');
+    expect(featuresIn(bundle('everything'), true)).toContain('optimistic');
   });
 
   it('the core alone carries no tab sync — not in its first download, not in a chunk', () => {

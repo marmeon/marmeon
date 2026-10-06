@@ -7,7 +7,7 @@
 import { DEFAULT_LEAVE_MESSAGE } from '../confirm.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, type PendingVisit } from '../feature.ts';
-import { isHistoryState, type HistoryState } from '../history.ts';
+import type { HistoryState, NavigateEvent } from '../history.ts';
 import type { Layer } from '../layer.ts';
 
 /**
@@ -25,17 +25,15 @@ export interface NavigationGuard {
   active?(): boolean;
 }
 
-type GuardCore = Pick<FeatureHost, 'window' | 'history' | 'key' | 'layers' | 'left' | 'started' | 'top' | 'ask' | 'mayLeave'>;
+type GuardCore = Pick<FeatureHost, 'window' | 'key' | 'layers' | 'left' | 'started' | 'ask' | 'mayLeave'>;
 
 /** The guards of one navigator. */
 export class Guards {
   readonly #core: GuardCore;
   /** Unsaved changes (E64): what a navigation asks about first. */
   readonly #guards = new Set<NavigationGuard>();
-  /** The guard undid a Back/Forward (`history.go`): the popstate that brings the entry back is not a navigation. */
-  #undoing: string | undefined;
-  /** The user chose to leave: the popstate that redoes the Back/Forward passes the guards. */
-  #redoing = false;
+  /** The user chose to leave: the traversal to this entry (the Navigation API's key) passes the guards. */
+  #passing: string | undefined;
   /** The user chose to leave for another site (or a full load): the browser's own question does not ask again. */
   #unloadAllowed = false;
 
@@ -92,41 +90,34 @@ export class Guards {
   }
 
   /**
-   * A popstate, before the navigator follows it: whether the guard takes it — the one that brings back the entry it undid,
-   * or a Back/Forward it stops (unsaved changes on what it would take off the screen). `closing`: a layer closes by going
-   * back — its close asked already.
+   * Back/Forward to `state` (the Navigation API's `navigate`, E184), before the navigator follows it: whether the guard takes it —
+   * unsaved changes on what it would take off the screen. Cancelled where the browser lets it (the same document, with a fresh
+   * user activation — or from a script): the URL never changes. Otherwise it goes, and goes back at once to the entry it left
+   * (`traverseTo` by the browser's key — no counted index: right after a reload or a session restore too). Then it asks; Leave
+   * traverses again. Two Backs in a row escape the cancel (the activation is used up) — never the guard. `closing`: a layer closes
+   * by going back — its close asked already.
    */
-  popState(state: unknown, closing: boolean): boolean {
-    // The guard undid a Back/Forward (E64): this brings the entry on screen back — nothing changes.
-    if (this.#undoing !== undefined && isHistoryState(state) && state.key === this.#undoing) {
-      this.#undoing = undefined;
-      return true;
-    }
-    // Unsaved changes on what Back/Forward takes off the screen (E64): the browser moved already — so go back to where it
-    // was, then ask; Leave does the Back/Forward again.
-    if (!closing && !this.#redoing && isHistoryState(state) && this.#guards.size > 0 && this.#undo(state)) return true;
-    this.#redoing = false;
-    return false;
-  }
-
-  /**
-   * Back/Forward to `state` would take guarded changes off the screen: undoes it (`history.go` the other way) and asks —
-   * Leave goes again. Returns whether it stopped the popstate. An entry without a position (of an older client) cannot be
-   * undone: it passes.
-   */
-  #undo(state: HistoryState): boolean {
-    const { window, history, layers } = this.#core;
+  navigate(event: NavigateEvent, state: HistoryState, closing: boolean): boolean {
+    const { window, layers, key } = this.#core;
+    const to = event.destination.key;
+    const passing = this.#passing === to;
+    this.#passing = undefined;
+    if (closing || passing) return false;
     const target = new Set<string>([state.key, ...(state.layer?.below ?? [])]);
-    const blocking = this.blocking((level) => !target.has(level === 0 ? this.#core.key! : layers[level - 1]!.entry));
-    const delta = typeof state.index === 'number' ? state.index - history.index : undefined;
-    const go = window.history.go?.bind(window.history);
-    if (blocking.length === 0 || delta === undefined || delta === 0 || !go) return false;
-    this.#undoing = this.#core.top();
-    go(-delta);
+    const blocking = this.blocking((level) => !target.has(level === 0 ? key! : layers[level - 1]!.entry));
+    if (blocking.length === 0) return false;
+    const navigation = window.navigation!;
+    if (event.cancelable) event.preventDefault();
+    else {
+      // It commits first — then back where it was (the navigator lets that traversal pass: the entry is on screen).
+      const from = navigation.currentEntry!.key;
+      event.intercept({ scroll: 'manual', focusReset: 'manual', handler: () => navigation.traverseTo(from) });
+    }
     void this.#core.ask({ kind: 'leave', message: blocking[0]!.message ?? DEFAULT_LEAVE_MESSAGE }).then((leave) => {
       if (!leave || this.#core.left) return;
-      this.#redoing = true;
-      go(delta);
+      this.#passing = to;
+      // A task later: a traversal the browser is still cancelling refuses another one (`InvalidStateError`, Chrome 154).
+      setTimeout(() => navigation.traverseTo(to));
     });
     return true;
   }
@@ -147,15 +138,15 @@ export class Guards {
 }
 
 /**
- * The navigation guard (E64) as a feature: asks before a visit (its confirmation, unsaved changes), undoes a Back/Forward it
- * stops, says what is unsaved to the core (a postponed new build, closing a layer) and the browser's own question. Holds no
+ * The navigation guard (E64) as a feature: asks before a visit (its confirmation, unsaved changes), cancels (or undoes) a
+ * Back/Forward it stops, says what is unsaved to the core (a postponed new build, closing a layer) and the browser's own question. Holds no
  * data — only the guards the app registers.
  */
 export const guard = defineFeature('guard', (host) => {
   const guards = new Guards(host);
   host.on('visit', (visit) => guards.check(visit));
   host.on('unsaved', (leaving, ignore) => guards.blocking(leaving, ignore));
-  host.on('popState', (state, own) => guards.popState(state, own) || undefined);
+  host.on('navigate', (event, state, own) => guards.navigate(event, state, own) || undefined);
   host.on('started', () => guards.start());
   host.on('stopped', () => guards.stop());
   host.on('unload', () => guards.allowUnload());

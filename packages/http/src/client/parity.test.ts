@@ -55,7 +55,7 @@ describe('remembered state (E63) — in memory, per history entry', () => {
     win.back();
     await tick();
     expect(win.entries.length).toBe(2);
-    for (const entry of win.entries) expect(entry.state).not.toContain('MARKER');
+    for (const entry of win.entries) expect(entry.disk).not.toContain('MARKER');
   });
 
   it('counter-check: forgotten on a 409 (signing out) — also in an entry a component still holds', async () => {
@@ -80,8 +80,7 @@ describe('remembered state (E63) — in memory, per history entry', () => {
     await navigator.visit('/b');
     await navigator.visit('/c');
     await navigator.visit('/d');
-    win.index = 0;
-    win.dispatch('popstate', { state: win.history.state });
+    win.goTo(0);
     await tick();
     expect(navigator.page.url).toBe('/a');
     expect(remembered().has('draft')).toBe(false);

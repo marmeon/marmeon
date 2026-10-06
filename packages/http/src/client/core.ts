@@ -13,7 +13,7 @@ import type { Visit, VisitCallbacks, VisitEmitter, VisitProgress } from './event
 import type { FeatureHook, FeatureHooks, Slot } from './feature.ts';
 import type { FlashChannel } from './flash.ts';
 import type { NavigationGuard } from './features/guard.ts';
-import type { HistoryWriter } from './history.ts';
+import type { HistoryState, HistoryWriter } from './history.ts';
 import type { Layer, LayerControl } from './layer.ts';
 import type { Navigator, NavigatorOptions, NavigatorWindow, RenderOptions, VisitMethod, VisitOptions } from './navigation.ts';
 import type { OnceStore } from './once.ts';
@@ -148,6 +148,10 @@ export interface FeatureHost {
   show(page: PageObject, history: 'push' | 'replace', options: { preserveScroll: boolean; preserveState: boolean; hash: string }): Promise<PageObject | undefined>;
   /** The entry `key` shows `page` now — the server's answer for an entry not in memory. */
   restorePage(page: PageObject, key: string, position: Scroll): Promise<void>;
+  /** Back/Forward to an entry of this navigator (the History fallback's popstate comes in here). */
+  traverse(state: HistoryState, own: boolean): Promise<void>;
+  /** Whether a feature caused the Back/Forward under way itself (a layer closing). */
+  own(): boolean;
 
   /** Props that load in the background (deferred, streamed, reloads) — fixed in the core (E72). */
   readonly props: PropLoader;

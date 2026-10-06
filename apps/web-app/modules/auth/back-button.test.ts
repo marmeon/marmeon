@@ -1,11 +1,14 @@
 import { NO_STORE } from '@bespokecore/auth';
 import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { actions, layers, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
+import { actions, layers, loadHistoryFallback, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
 import { createHttpKernel } from '@bespokecore/server';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+
+// The tab below is a browser without the Navigation API (History, popstate): the History fallback, as createBespokeApp attaches it (E184).
+const HISTORY = await loadHistoryFallback();
 
 /**
  * Back after signing out (W5 step 3, E36) — the real app behind a simulated browser tab that keeps what a
@@ -227,7 +230,7 @@ class FakeTab {
         initialPage: page,
         // A deep link's document: the layers attached before it is shown, as an adapter does (createBespokeApp loads them first,
         // E71). Any other document loads them when an answer is a layer.
-        features: page.layers ? [layers] : [],
+        features: page.layers ? [HISTORY, layers] : [HISTORY],
         window: this.#window(listeners),
         render: async (next, { layers }) => {
           doc.visible = next;
