@@ -5,6 +5,7 @@ import auth from '#modules/auth';
 import dashboard from '#modules/dashboard';
 import lab from '#modules/lab';
 import locale from '#modules/locale';
+import members from '#modules/members';
 import notifications from '#modules/notifications';
 import system from '#modules/system';
 import userProfile from '#modules/user-profile';
@@ -22,7 +23,7 @@ import { ShareAppProps } from '../middleware/ShareAppProps.ts';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig, SystemDatabase, AppStorage],
-  modules: [auth, userProfile, dashboard, notifications, locale, lab, system],
+  modules: [auth, userProfile, dashboard, members, notifications, locale, lab, system],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {

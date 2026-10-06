@@ -35,6 +35,7 @@
     "@bespokecore/server": "workspace:*",
     "@bespokecore/session": "workspace:*",
     "@bespokecore/storage": "workspace:*",
+    "@bespokecore/table": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "2.11.0",
     "@opentelemetry/core": "2.11.0",

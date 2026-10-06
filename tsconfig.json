@@ -62,6 +62,9 @@
       "path": "packages/auth"
     },
     {
+      "path": "packages/table"
+    },
+    {
       "path": "packages/i18n"
     },
     {

@@ -4,4 +4,11 @@ import { Repository } from '@bespokecore/database';
 export class ProfileLinkRepository extends Repository<'profile_links'> {
   static table = 'profile_links' as const;
   static timestamps = true;
+
+  /** Removes every link of these users (moderation, the members table) — how many there were. */
+  async removeAllOf(userIds: readonly number[]): Promise<number> {
+    if (userIds.length === 0) return 0;
+    const result = await this.db.deleteFrom('profile_links').where('user_id', 'in', userIds).executeTakeFirst();
+    return Number(result.numDeletedRows);
+  }
 }

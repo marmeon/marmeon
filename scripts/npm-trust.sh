@@ -30,6 +30,7 @@ packages=(
   @bespokecore/server
   @bespokecore/session
   @bespokecore/storage
+  @bespokecore/table
   @bespokecore/testing
   @bespokecore/vite
 )

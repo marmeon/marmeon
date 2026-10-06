@@ -23,6 +23,7 @@ const en = {
     hidden: 'Only administrators with a confirmed address see the member numbers.',
   },
   people: 'All people',
+  members_table: 'Members table',
 } as const;
 
 export default en;

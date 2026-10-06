@@ -9,6 +9,7 @@ import type { DeleteNotificationController } from '../modules/notifications/cont
 import type { DeleteProfileLinkController } from '../modules/user-profile/controllers/DeleteProfileLinkController.ts';
 import type { EditUserProfileController } from '../modules/user-profile/controllers/EditUserProfileController.ts';
 import type { ExportMyDataController } from '../modules/user-profile/controllers/ExportMyDataController.ts';
+import type { ListMembersController } from '../modules/members/controllers/ListMembersController.ts';
 import type { ListPeopleController } from '../modules/user-profile/controllers/ListPeopleController.ts';
 import type { ListUsersController } from '../modules/user-profile/controllers/ListUsersController.ts';
 import type { LoginController } from '../modules/auth/controllers/LoginController.ts';
@@ -76,6 +77,7 @@ declare module '@bespokecore/router' {
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
+    'members.index': { method: 'get'; path: '/members'; controller: typeof ListMembersController };
     'notifications.destroy': { method: 'delete'; path: '/notifications/:notification'; controller: typeof DeleteNotificationController };
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };
     'notifications.read': { method: 'post'; path: '/notifications/:notification/read'; controller: typeof MarkNotificationReadController };
@@ -117,6 +119,7 @@ declare module '@bespokecore/http/page' {
     'lab/Errors': true;
     'lab/LateError': true;
     'lab/Streaming': true;
+    'members/Index': true;
     'notifications/Index': true;
     'user-profile/Edit': true;
     'user-profile/People': true;

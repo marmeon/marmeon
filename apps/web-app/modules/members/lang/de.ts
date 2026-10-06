@@ -1,0 +1,35 @@
+import type { Messages } from '@bespokecore/i18n/messages';
+import type en from './en.ts';
+
+export default {
+  title: 'Mitglieder',
+  intro: 'Alle mit bestätigter Adresse. Administratoren sehen auch die E-Mail-Adressen, entfernen Profil-Links und laden die Liste herunter.',
+  caption: 'Mitglieder — sortierbar über die Links in den Spaltenköpfen',
+  search: 'Mitglieder suchen',
+  locale: 'Sprache',
+  locale_option: '{locale, select, en {Englisch} de {Deutsch} other {Alle}}',
+  joined_from: 'Beigetreten ab',
+  joined_to: 'Beigetreten bis',
+  apply: 'Anwenden',
+  reset: 'Zurücksetzen',
+  count: '{total, plural, =0 {Keine Mitglieder gefunden.} one {# Mitglied} other {# Mitglieder}}',
+  sorted: '{total, plural, =0 {Keine Mitglieder gefunden.} one {# Mitglied} other {# Mitglieder}}, sortiert nach {column} ({direction, select, asc {aufsteigend} other {absteigend}})',
+  column: {
+    name: 'Name',
+    email: 'E-Mail',
+    joined: 'Beigetreten',
+    links: 'Links',
+  },
+  sort_by: 'Nach {column} sortieren',
+  actions: 'Aktionen',
+  remove_links: 'Links entfernen',
+  remove_links_of: 'Links von {name} entfernen',
+  confirm_remove: 'Alle Profil-Links von {name} entfernen?',
+  select: '{name} auswählen',
+  select_page: 'Alle Mitglieder dieser Seite auswählen',
+  bulk_remove: 'Links der Ausgewählten entfernen ({count})',
+  bulk_all: 'Links aller {total} Treffer entfernen',
+  confirm_bulk: '{count, plural, one {Die Profil-Links von # Mitglied entfernen?} other {Die Profil-Links von # Mitgliedern entfernen?}}',
+  export: 'Als CSV herunterladen',
+  none: 'Keine Mitglieder gefunden.',
+} satisfies Messages<typeof en>;

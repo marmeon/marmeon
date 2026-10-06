@@ -435,6 +435,9 @@ importers:
       '@bespokecore/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@bespokecore/table':
+        specifier: workspace:*
+        version: link:../../packages/table
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -1110,6 +1113,37 @@ importers:
       '@bespokecore/http':
         specifier: workspace:*
         version: link:../http
+      '@bespokecore/server':
+        specifier: workspace:*
+        version: link:../server
+
+  packages/table:
+    dependencies:
+      '@bespokecore/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@bespokecore/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bespokecore/database':
+        specifier: workspace:*
+        version: link:../database
+      '@bespokecore/encryption':
+        specifier: workspace:*
+        version: link:../encryption
+      '@bespokecore/http':
+        specifier: workspace:*
+        version: link:../http
+      '@bespokecore/router':
+        specifier: workspace:*
+        version: link:../router
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
       '@bespokecore/server':
         specifier: workspace:*
         version: link:../server

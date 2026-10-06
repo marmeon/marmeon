@@ -28,6 +28,7 @@ export const PACKAGES = [
   'server',
   'session',
   'storage',
+  'table',
   'testing',
   'vite',
 ] as const;
@@ -87,7 +88,7 @@ export default defineDocs({
   groups: [
     { title: 'Core', packages: ['core', 'cli', 'create-bespoke-app', 'bespokecore', 'log', 'encryption', 'testing'] },
     { title: 'HTTP', packages: ['router', 'http', 'server', 'session', 'vite', 'i18n'] },
-    { title: 'Data', packages: ['database', 'cache', 'redis'] },
+    { title: 'Data', packages: ['database', 'cache', 'redis', 'table'] },
     { title: 'Auth & Mail', packages: ['auth', 'mail', 'notifications'] },
     { title: 'Background', packages: ['queue', 'scheduler', 'storage', 'live'] },
     { title: 'Frontend', packages: ['react'] },

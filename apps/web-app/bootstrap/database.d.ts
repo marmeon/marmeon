@@ -154,6 +154,7 @@ declare module '@bespokecore/database' {
     dashboard: true;
     lab: true;
     locale: true;
+    members: true;
     notifications: true;
     system: true;
     'user-profile': true;

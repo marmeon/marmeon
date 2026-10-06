@@ -25,4 +25,5 @@ export default {
     hidden: 'Die Mitgliederzahlen sehen nur Administratoren mit bestätigter Adresse.',
   },
   people: 'Alle Personen',
+  members_table: 'Mitgliedertabelle',
 } satisfies Messages<typeof en>;

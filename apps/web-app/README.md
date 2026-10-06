@@ -1,7 +1,9 @@
 # BespokeCore test app
 
 The app every framework feature is shown and tested in (`modules/auth`, `modules/user-profile`, `modules/dashboard`,
-`modules/notifications`, `modules/locale`, `modules/lab`, `modules/system`).
+`modules/members`, `modules/notifications`, `modules/locale`, `modules/lab`, `modules/system`). `/members` is a server-driven table
+([@bespokecore/table](../../packages/table/README.md)): Ada (an administrator, `DASHBOARD_ADMINS`) sees the e-mail column, removes
+profile links (one member or many) and downloads the list as CSV; Alan and Grace see the table without them.
 
 ```bash
 cp .env.example .env && pnpm exec bespoke key:generate

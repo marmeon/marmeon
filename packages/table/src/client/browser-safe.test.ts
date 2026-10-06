@@ -1,0 +1,42 @@
+import { relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build, type Rolldown } from 'vite';
+import { describe, expect, it } from 'vitest';
+
+const packages = fileURLToPath(new URL('../../../', import.meta.url));
+
+/** The page contract — the only code outside `table/src/client/` the table's browser half may run (it imports `http/page` at most). */
+const ALLOWED = ['http/src/page.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
+
+describe('@bespokecore/table/client is browser-safe', () => {
+  it('bundles nothing but itself and the page contract — no server code, no Node built-ins, no dependency', async () => {
+    const externals = new Set<string>();
+    const output = (await build({
+      configFile: false,
+      logLevel: 'silent',
+      resolve: { conditions: ['@bespokecore/source', 'browser', 'module', 'import', 'default'] },
+      build: {
+        write: false,
+        minify: false,
+        lib: { entry: fileURLToPath(new URL('./index.ts', import.meta.url)), formats: ['es'], fileName: 'entry' },
+        rolldownOptions: {
+          external: (id, importer) => {
+            const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@bespokecore/');
+            if (bare || id.startsWith('node:')) {
+              externals.add(id);
+              return true;
+            }
+            return false;
+          },
+        },
+      },
+    })) as Rolldown.RolldownOutput[];
+    const modules = new Set<string>();
+    for (const { output: chunks } of output) {
+      for (const chunk of chunks) if (chunk.type === 'chunk') for (const id of chunk.moduleIds) if (!id.startsWith('\0')) modules.add(relative(packages, id).replaceAll('\\', '/'));
+    }
+    expect([...externals]).toEqual([]);
+    expect([...modules].filter((id) => !id.startsWith('table/src/client/') && !ALLOWED.includes(id))).toEqual([]);
+    expect([...modules]).toContain('table/src/client/index.ts');
+  }, 30_000);
+});

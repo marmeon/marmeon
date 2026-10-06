@@ -14,6 +14,7 @@ import { schedule } from './schedule.ts';
 export { MemberStats, type MemberNumbers } from './MemberStats.ts';
 export { ProfileActivity, type ActivityEntry } from './ProfileActivity.ts';
 export { ProfileDirectory } from './ProfileDirectory.ts';
+export { ProfileLinkRepository } from './ProfileLinkRepository.ts';
 export { ProfilePolicy } from './policies/ProfilePolicy.ts';
 export { profileChannel, SIGN_INS_CHANNEL } from './live.ts';
 

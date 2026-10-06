@@ -37,6 +37,9 @@ export default function Show(_props: Props) {
       </div>
       <p>
         <Link route="user-profile.people">{t('people')}</Link>
+        {' · '}
+        {/* By URL, not by route name: a name client code writes goes into the route manifest of the first download (W9.5). */}
+        <Link href="/members">{t('members_table')}</Link>
       </p>
       {/* Further down on purpose: it loads once it scrolls into view, then polls (paused while the tab is hidden). */}
       <section aria-labelledby="activity" style={{ marginTop: '70vh' }}>
