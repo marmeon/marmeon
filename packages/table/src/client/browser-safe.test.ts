@@ -5,11 +5,15 @@ import { describe, expect, it } from 'vitest';
 
 const packages = fileURLToPath(new URL('../../../', import.meta.url));
 
-/** The page contract — the only code outside `table/src/client/` the table's browser half may run (it imports `http/page` at most). */
+/**
+ * The page contract and the client core — the only code outside `table/src/client/` the table's browser half may run (it imports
+ * `http/page` and `http/client`, W9 step 6), never the server's.
+ */
 const ALLOWED = ['http/src/page.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
+const CLIENT_CORE = 'http/src/client/';
 
 describe('@bespokecore/table/client is browser-safe', () => {
-  it('bundles nothing but itself and the page contract — no server code, no Node built-ins, no dependency', async () => {
+  it('bundles nothing but itself, the page contract and the client core — no server code, no Node built-ins, no dependency', async () => {
     const externals = new Set<string>();
     const output = (await build({
       configFile: false,
@@ -36,7 +40,7 @@ describe('@bespokecore/table/client is browser-safe', () => {
       for (const chunk of chunks) if (chunk.type === 'chunk') for (const id of chunk.moduleIds) if (!id.startsWith('\0')) modules.add(relative(packages, id).replaceAll('\\', '/'));
     }
     expect([...externals]).toEqual([]);
-    expect([...modules].filter((id) => !id.startsWith('table/src/client/') && !ALLOWED.includes(id))).toEqual([]);
-    expect([...modules]).toContain('table/src/client/index.ts');
+    expect([...modules].filter((id) => !id.startsWith('table/src/client/') && !id.startsWith(CLIENT_CORE) && !ALLOWED.includes(id))).toEqual([]);
+    expect([...modules]).toEqual(expect.arrayContaining(['table/src/client/index.ts', 'table/src/client/table.ts', 'http/src/client/features/selection.ts']));
   }, 30_000);
 });

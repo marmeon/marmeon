@@ -8,21 +8,25 @@ const en = {
   locale_option: '{locale, select, en {English} de {German} other {Any}}',
   joined_from: 'Joined from',
   joined_to: 'Joined until',
+  per_page: 'Per page',
+  select_none: 'Clear the selection',
   apply: 'Apply',
   reset: 'Reset',
   // The live region: read out after every change of the list.
   count: '{total, plural, =0 {No members match.} one {# member} other {# members}}',
   sorted: '{total, plural, =0 {No members match.} one {# member} other {# members}}, sorted by {column} ({direction, select, asc {ascending} other {descending}})',
+  page_of: ', page {page} of {lastPage}',
+  removed: '{done, plural, =0 {No links removed} one {Links of # member removed} other {Links of # members removed}}{skipped, plural, =0 {} other {, # left out}}.',
+  remove_failed: 'The links could not be removed — please try again.',
   column: {
     name: 'Name',
     email: 'E-mail',
     joined: 'Joined',
     links: 'Links',
   },
-  sort_by: 'Sort by {column}',
   actions: 'Actions',
   remove_links: 'Remove links',
-  remove_links_of: 'Remove the links of {name}',
+  remove_links_of: 'Remove links: {name}',
   confirm_remove: 'Remove every profile link of {name}?',
   select: 'Select {name}',
   select_page: 'Select every member on this page',
@@ -30,7 +34,6 @@ const en = {
   bulk_all: 'Remove the links of all {total} matching',
   confirm_bulk: '{count, plural, one {Remove the profile links of # member?} other {Remove the profile links of # members?}}',
   export: 'Download as CSV',
-  none: 'No members match.',
 } as const;
 
 export default en;

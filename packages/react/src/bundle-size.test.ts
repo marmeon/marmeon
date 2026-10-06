@@ -13,6 +13,7 @@ import {
   PACKAGES,
   readBudget,
   SCENARIOS,
+  tableEntry,
   type AppBundle,
   type Scenario,
 } from './__fixtures__/bundle.ts';
@@ -27,13 +28,21 @@ import {
  */
 
 const budget = readBudget();
-type LeakScenario = Exclude<Scenario, 'everything'>;
+type LeakScenario = 'core' | 'emptyApp' | 'minimalApp';
 
 /**
  * What each scenario uses on purpose: `useForm` remembers a form's input and guards it while dirty (`remember`, `guard`:
  * static in it — a guard loaded later could not stop a navigation that came first; E74 loads only `validate` on first use).
  */
-const USES: Record<Scenario, readonly string[]> = { core: [], emptyApp: [], minimalApp: ['guard', 'remember'], everything: [] };
+const USES: Record<Scenario, readonly string[]> = {
+  core: [],
+  emptyApp: [],
+  minimalApp: ['guard', 'remember'],
+  everything: [],
+  // The headless table (W9 step 6): sorting and filters are query state; its actions (the actions feature, the page's reloads) are
+  // a chunk loaded with the first run.
+  table: ['table', 'queryState'],
+};
 
 /** A feature's entry: the scenario it adds to, plus its import. */
 const inApp = (...names: string[]) => ({ base: 'emptyApp' as const, entry: appEntry(...names) });
@@ -83,12 +92,28 @@ const FEATURES = {
   // Tab sync (W8 step 8, E149): a default feature of `createBespokeApp` — loaded with the first page, before hydrating, in a chunk of
   // its own; `createBespokeApp({ tabSync: false })` never loads it. The core alone carries none of it.
   tabSync: { markers: ['http/client/features/tab-sync', 'http/tab-sync-protocol'], use: inApp(), lazy: true },
+  // The headless table (W9 step 6, E183): `@bespokecore/react/table` and what it builds on — the core's row selection (a slot of the
+  // entry) and the table's UI-free controller. Only with its own import: never in an app without tables (its subpath, an optional peer).
+  table: { markers: ['http/client/features/selection', 'table/client/table', 'react/table'], use: { base: 'emptyApp' as const, entry: tableEntry() }, brings: ['queryState'] },
+  // The TanStack Table bridge (`@bespokecore/react/table-tanstack`, TanStack v9 an optional peer): TanStack only where the app imports it.
+  tanstack: {
+    markers: ['react/table-tanstack', 'node_modules/@tanstack/'],
+    use: {
+      base: 'emptyApp' as const,
+      entry: tableEntry(
+        "import { toTanStack } from '@bespokecore/react/table-tanstack';\n",
+        "import { useTable as useTanStackTable, tableFeatures } from '@tanstack/react-table';\n",
+        'globalThis.__tanstack = { toTanStack, useTanStackTable, tableFeatures };\n',
+      ),
+    },
+    brings: ['table', 'queryState'],
+  },
 } satisfies Record<string, { markers: readonly (string | RegExp)[]; use: { base: LeakScenario; entry: string }; brings?: readonly string[]; lazy?: true }>;
 type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -100,7 +125,9 @@ function featuresIn({ modules, lazyModules, code }: AppBundle, lazy = false): st
   const keys = new Set((lazy ? lazyModules : modules).map(moduleKey));
   if (lazy) code = '';
   const markers: Record<string, readonly (string | RegExp)[]> = Object.fromEntries(FEATURE_NAMES.map((feature) => [feature, FEATURES[feature].markers]));
-  return sorted(FEATURE_NAMES.filter((feature) => markers[feature]!.some((marker) => (typeof marker === 'string' ? keys.has(marker) : marker.test(code)))));
+  // A marker ending in "/" is a directory — a third-party package (`node_modules/@tanstack/`): any module of it.
+  const has = (marker: string) => (marker.endsWith('/') ? [...keys].some((key) => key.startsWith(marker)) : keys.has(marker));
+  return sorted(FEATURE_NAMES.filter((feature) => markers[feature]!.some((marker) => (typeof marker === 'string' ? has(marker) : marker.test(code)))));
 }
 
 /**
@@ -213,6 +240,26 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect(featuresIn(bundle('core'), true)).not.toContain('tabSync');
   });
 
+  // W9 step 6 (E183, E186): the headless table and the TanStack bridge come with their own imports only — in no other scenario, not
+  // even in `everything` (all of the adapter's main entry: their subpaths have optional peers), and TanStack not with `useTable` alone.
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('the headless table and TanStack are in no bundle of %s — first download or lazy', (name) => {
+    const built = bundle(name);
+    expect([...featuresIn(built), ...featuresIn(built, true)].filter((feature) => feature === 'table' || feature === 'tanstack')).toEqual([]);
+  });
+
+  it('the bridge’s scenario carries TanStack itself — the marker sees its modules, not only the bridge', () => {
+    expect(bundle('feature:tanstack').modules.filter((id) => id.startsWith('node_modules/@tanstack/')).length).toBeGreaterThan(0);
+  });
+
+  it('the table scenario carries the headless table, but no TanStack — only the bridge’s import brings it', () => {
+    expect([...featuresIn(bundle('table')), ...featuresIn(bundle('table'), true)], 'TanStack without the bridge’s import').not.toContain('tanstack');
+    expect(featuresIn(bundle('table'))).toEqual(sorted(USES.table));
+    // Its actions: the actions feature and the page's reloads load with the first run, in a chunk of their own.
+    expect(featuresIn(bundle('table'), true)).toEqual(expect.arrayContaining(['actions', 'optimistic']));
+    expect(bundle('table').lazyModules).toContain('table/dist/client/run.js');
+    expect(bundle('table').modules.filter((id) => id.startsWith('node_modules/@tanstack/'))).toEqual([]);
+  });
+
   it('a view that asks useLayer() and an app frame of LayerDialog bring no layer code into the first download', async () => {
     const built = await appBundle(appEntry('useLayer', 'LayerDialog'));
     expect(featuresIn(built)).toEqual(sorted(USES.emptyApp));
@@ -227,6 +274,10 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
       expect(built.lazyModules).toEqual(expect.arrayContaining(['http/dist/client/features/layers.js', 'http/dist/client/layer.js', 'react/dist/layer-stack.js']));
       // E115 (W7 step 8): the devtools — pages, link, recorder — are never in a client chunk, first download or lazy.
       expect(devtoolsIn(built), 'web-app').toEqual([]);
+      // W9 step 6: the members table (useTable) comes with its page — a lazy chunk; TanStack is in no chunk (the app has no bridge).
+      expect(featuresIn(built)).not.toContain('table');
+      expect(featuresIn(built, true)).toContain('table');
+      expect([...featuresIn(built), ...featuresIn(built, true)]).not.toContain('tanstack');
     } finally {
       process.env.NODE_ENV = node;
     }
@@ -294,9 +345,12 @@ describe('a production bundle says codes, not explanations (E80)', () => {
     'needs an interval above 0 ms',
     'is for the view of an island',
     'there is no navigator while rendering on the server',
+    'does not sort by',
+    'offers no row action',
+    'it changes something only in the browser',
   ];
 
-  it.each(['core', 'emptyApp', 'minimalApp', 'everything'] as const)('%s', (name) => {
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything', 'table'] as const)('%s', (name) => {
     const { code, lazyCode } = bundle(name);
     expect(EXPLANATIONS.filter((text) => `${code}\n${lazyCode}`.includes(text))).toEqual([]);
   });
@@ -311,7 +365,7 @@ describe('a production bundle says codes, not explanations (E80)', () => {
       readdirSync(join(PACKAGES, dir), { recursive: true, encoding: 'utf8' })
         .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$|__fixtures__|test-window/.test(file))
         .map((file) => readFileSync(join(PACKAGES, dir, file), 'utf8'));
-    const used = sorted([...sources('http/src/client'), ...sources('react/src')].flatMap((text) => [...text.matchAll(/\[bespoke:([CR]\d+)\]/g)].map((match) => match[1]!)));
+    const used = sorted([...sources('http/src/client'), ...sources('react/src'), ...sources('table/src/client')].flatMap((text) => [...text.matchAll(/\[bespoke:([CR]\d+)\]/g)].map((match) => match[1]!)));
     const rows = [...readFileSync(join(PACKAGES, 'http/README.md'), 'utf8').matchAll(/^\| ([CR]\d+) \|/gm)].map((match) => match[1]!);
     expect(rows.length, 'a code listed twice in packages/http/README.md').toBe(new Set(rows).size);
     expect(sorted(rows)).toEqual(used);

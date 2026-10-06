@@ -18,6 +18,7 @@ import { liveValidation } from './features/live-validation.ts';
 import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal } from './features/devtools.ts';
 import { hooks, type ClientHooks } from './features/hooks.ts';
 import { tabSync } from './features/tab-sync.ts';
+import { selection, type SelectionFeature } from './features/selection.ts';
 import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
@@ -199,7 +200,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync, selection];
 
 /**
  * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a
@@ -263,6 +264,9 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   const action = api<ActionsFeature>('actions').run('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: { target: api<PagePatches>('optimistic').target(pageKey), patch: (props) => ({ ...props, liked: CANARY }) } });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   if (!lazyLayers) await navigator.visit('/users/1/edit', { layer: true });
+  // Rows ticked in a table (W9 step 6): their keys are the signed-in user's — on the page's entry and on the layer's.
+  api<SelectionFeature>('selection').of('members', pageKey).set([CANARY, 7], true);
+  if (!lazyLayers) api<SelectionFeature>('selection').of('members', navigator.layers[0]!.entry).selectMatching();
   api<Guards>('guard').add({ message: 'Unsaved', active: () => false });
   // The hook API keeps listeners only (E132); the devtools' bar (W7 step 9) records every request above — and, through its dev
   // hook, the action's optimistic patch and a hydration error with the page's text.
@@ -339,6 +343,7 @@ describe('the security matrix — every feature × every event that must forget 
         expect.stringMatching(/^devtools: its slot "devtools-cache"/),
         expect.stringMatching(/^devtools: its API still shows/),
         expect.stringMatching(/^tabSync: its slot "tab-sync"/),
+        expect.stringMatching(/^selection: its slot "selections" of entry /),
       ]),
     );
     // The live stream is open (W6.10), its URL holds the signed-in user's token.
@@ -359,7 +364,7 @@ describe('the security matrix — every feature × every event that must forget 
     }
     const missing = features.filter((name) => !ALL_FEATURES.some((feature) => feature.name === name));
     expect(missing, `not in ALL_FEATURES: ${missing.join(', ')}`).toEqual([]);
-    expect(features.length).toBeGreaterThanOrEqual(16);
+    expect(features.length).toBeGreaterThanOrEqual(17);
   });
 
   it('an upload under way when the user signs out in another tab (a 409): aborted, its token nowhere — not in the slot, not in its Upload (W6.9)', async () => {
@@ -421,7 +426,9 @@ describe('the security matrix — every feature × every event that must forget 
       tab.win.handler = () => conflict(reason);
       await tab.navigator.visit('/users/3');
       expect(tab.win.loads).toEqual(['assign /login']);
-      expect(await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2'])).toEqual([]);
+      const problems = await leftovers(tab.records, [tab.pageKey, tab.layerKey], ['/users/2']);
+      // The problems as the assertion's message (Vitest shortens the list it prints).
+      expect(problems, problems.join('; ')).toEqual([]);
       expect(coreLeftovers(tab)).toEqual([]);
       expect(historyWithCanary(tab.win)).toEqual([]);
       // The action under way ends without its answer — it lands nowhere.
@@ -455,7 +462,8 @@ describe('the security matrix — every feature × every event that must forget 
     for (const url of ['/b', '/c', '/d', '/e']) await tab.navigator.visit(url);
     expect(tab.navigator.cachedPages).toBe(3);
     const gone = new Set([tab.pageKey, tab.layerKey]);
-    expect(await leftovers(perEntry(tab.records), [...gone], [], (key) => key !== undefined && gone.has(key))).toEqual([]);
+    const problems = await leftovers(perEntry(tab.records), [...gone], [], (key) => key !== undefined && gone.has(key));
+    expect(problems, problems.join('; ')).toEqual([]);
     expect(tab.core.regions.size).toBe(0);
     expect(tab.core.remembered.size).toBe(0);
     for (const key of gone) expect([tab.host.peek(REGIONS, key), tab.host.peek(REMEMBERED, key)]).toEqual([undefined, undefined]);

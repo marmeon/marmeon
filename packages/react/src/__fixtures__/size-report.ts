@@ -36,6 +36,8 @@ const budget = readBudget();
 function groupOf(module: string): string {
   if (/^http\/(dist|src)\/(client\/|page\.)/.test(module) || /^router\/(dist|src)\/url\./.test(module)) return 'client core';
   if (module.startsWith('react/')) return 'React adapter';
+  // The table's browser half (W9 step 6): framework code an app has with `useTable`.
+  if (/^table\/(dist|src)\/client\//.test(module)) return 'table (client)';
   if (module.startsWith('i18n/')) return 'i18n';
   if (/^node_modules\/(react-dom|scheduler)\//.test(module)) return 'react-dom';
   if (module.startsWith('node_modules/react/')) return 'react';
@@ -44,7 +46,7 @@ function groupOf(module: string): string {
   return 'app';
 }
 
-const FRAMEWORK = new Set(['client core', 'React adapter']);
+const FRAMEWORK = new Set(['client core', 'React adapter', 'table (client)']);
 const format = (share: ModuleShare) => `${(share.min / 1024).toFixed(1).padStart(6)} min ${(share.gzip / 1024).toFixed(2).padStart(6)} gzip`;
 
 function groups(attribution: ReadonlyMap<string, ModuleShare>): Map<string, ModuleShare> {

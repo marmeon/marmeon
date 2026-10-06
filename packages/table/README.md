@@ -9,8 +9,9 @@ once, here, instead of in every app.
 
 `bespoke discover` registers its `TableServiceProvider` like any installed package. It builds on
 [@bespokecore/database](../database/README.md) (Kysely), [@bespokecore/auth](../auth/README.md) (policies, the `Gate`) and
-[@bespokecore/http](../http/README.md). The browser half — the props' types and small helpers, nothing of the server — is
-`@bespokecore/table/client`; the headless React hook (`useTable`) lives in [@bespokecore/react](../react/README.md).
+[@bespokecore/http](../http/README.md). The browser half — the props' types and the UI-free table controller, nothing of the
+server — is `@bespokecore/table/client`; the headless React hook (`useTable`) lives in
+[@bespokecore/react](../react/README.md#tables) — see [In the browser](#in-the-browser).
 
 ```ts
 // modules/members/tables/MembersTable.ts
@@ -169,17 +170,63 @@ carriage return or a line feed gets a `'` in front; every field is quoted, quote
 Policies that decide per row see the row as the table hands it out — the key and the visible columns (by alias). One that needs
 more looks it up by the key, or the column becomes part of the table.
 
+## In the browser
+
+`useTable(props.members)` (`@bespokecore/react/table`) renders nothing — it gives a component what the props allow, typed by them
+(`TableProps<typeof MembersTable>`: only sortable columns sort, only the table's filters filter, only its actions run):
+
+```tsx
+const table = useTable(members, { labels: { column: (name) => t(`column.${name}`), row: (row) => row.name } });
+table.columns        // the visible ones: label, headerProps (aria-sort on the sorted one only), sortLinkProps, toggleSort()
+table.sort('joined'); table.filter('locale', 'de'); table.filterBy({ locale: null, joined: '2026-01-01..' }); table.setSearch('ada')
+table.goTo(2); table.perPage(25); table.next()                  // pages by number, page size, the next cursor
+table.select(row); table.selectAll(); table.selectMatching()    // "all matching" is the table's state, never a list of keys
+await table.run('removeLinks', row); await table.runBulk('removeLinks')
+table.exportUrl('csv'); table.status                           // a download; the live region's text
+```
+
+- **The URL:** sorting, filters, search (after a pause in typing, one history entry) and pages are visits of the page's URL with the
+  props' keys (`query`, `filter[…]` with the prefix) and the columns' **aliases** — the browser never names a database column, and
+  asking for what the props do not offer throws before a request goes out (`[bespoke:C9]`–`[bespoke:C12]`). Only the table's prop
+  reloads; the server parses the state again, as strictly as ever.
+- **The selection** is the core's (`navigator.use(selection)`, a slot of the history entry): a sort, a filter or another page is a
+  visit with an entry of its own and starts with nothing selected — Back brings the old one back from memory; the core empties it
+  with the entry and when the document is left (signing out, a new build). Never in `history.state` or storage.
+- **Actions** are action requests (E59: CSRF, JSON, never cached), then the table's prop reloads — a revalidation, so it **replaces**
+  what the page had, a `merge()`d table too ([Merged props](../http/README.md#merged-props-revalidations-replace-load-more-appends-w9)).
+  A bulk action clears the selection. Their code (the actions feature, the page's reloads) loads with a table's first run, in a chunk
+  of its own. An action defined with `.confirm()` asks first (`labels.confirm`, or the run's `confirm`).
+- **UI-free:** `TableController` (`@bespokecore/table/client`) is all of this without React — `new TableController(navigator,
+  props, { entry })`, `update(props)` after a render; React's hook is a thin layer over it, a plain-DOM adapter its test.
+- **TanStack Table v9**, for an app that wants its column model: `toTanStack(table, { features })` (`@bespokecore/react/table-tanstack`,
+  `@tanstack/react-table` an optional peer) gives TanStack's `useTable` the rows, the columns and the state the server owns in
+  manual mode — its sorting, pagination and row selection go back through `useTable`. The bridge has no TanStack code of its own:
+  TanStack is in a bundle only where the app imports it.
+
+The table's browser code is only where it is imported (the page's chunk); its size has a scenario of its own in the React
+adapter's budget (`table`, E186).
+
 ## Accessible markup
 
-The headless `useTable` (and any markup built on the props) follows the WAI-ARIA Authoring Practices for sortable tables:
+Any markup built on the props follows the WAI-ARIA Authoring Practices for sortable tables — `useTable` hands out the attributes
+for it (`headerProps`, `sortLinkProps`, `checkboxProps`, `pageCheckboxProps`, `actionLabel`, `statusProps` + `status`):
 
 - A **native `<table>`** with a **`<caption>`** that names it — and says once that it can be sorted, instead of on every heading.
 - **`aria-sort` only on the heading the table is sorted by** (`ascending`/`descending`) — never `none` on the others.
 - The sort control is a **button (or a link to the sorted URL) inside the `<th>`**, named after its column.
-- The number of rows after a filter or sort goes into a **live region** (`role="status"`, polite) — "42 members, sorted by joined
-  (descending)".
+- The number of rows after a filter, sort or page goes into a **live region** (`role="status"`, polite) — "42 members, sorted by
+  joined (descending), page 2 of 5" (the page too: the same count and sort would otherwise say nothing). Not the selection: a
+  checkbox says its own state.
 - **Selection checkboxes have names** ("Select Ada Lovelace"; "Select every member on this page"), row actions are buttons named
-  after their row ("Remove the links of Ada Lovelace").
+  after their row — the name **starting with the visible text** ("Remove links: Ada Lovelace" for a button that says "Remove links",
+  WCAG 2.5.3), so a voice user can say what they see.
+- **The row has a header:** the cell that names the row is a `<th scope="row">` — moving down a column, a screen reader says whose
+  value it is.
+- **What an action did** goes into a live region of its own ("Links of 2 members removed, 1 left out" — or why it failed): the
+  list's count often stays the same, so its region would say nothing.
+- **Focus is never dropped:** a control that cannot be used right now stays focusable (`aria-disabled`, its click does nothing)
+  instead of `disabled` or unmounted — a confirmation dialog gives focus back to the button that opened it, which a disabled button
+  cannot take. Bulk controls come after the table, where the rows were ticked.
 - **No `role="grid"`** without real cell navigation (roving tabindex and arrow keys) — a table that is read and sorted is a table.
 - `aria-busy` while a page loads is already on the document (the client core sets it during visits).
 

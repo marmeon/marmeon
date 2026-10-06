@@ -83,6 +83,7 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@bespokecore/server": "workspace:*"
+    "@bespokecore/server": "workspace:*",
+    "happy-dom": "^20.14.5"
   }
 }

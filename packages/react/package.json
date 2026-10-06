@@ -34,6 +34,16 @@
       "@bespokecore/source": "./src/server.tsx",
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
+    },
+    "./table": {
+      "@bespokecore/source": "./src/table.ts",
+      "types": "./dist/table.d.ts",
+      "default": "./dist/table.js"
+    },
+    "./table-tanstack": {
+      "@bespokecore/source": "./src/table-tanstack.ts",
+      "types": "./dist/table-tanstack.d.ts",
+      "default": "./dist/table-tanstack.js"
     }
   },
   "publishConfig": {
@@ -47,6 +57,14 @@
       "./server": {
         "types": "./dist/server.d.ts",
         "default": "./dist/server.js"
+      },
+      "./table": {
+        "types": "./dist/table.d.ts",
+        "default": "./dist/table.js"
+      },
+      "./table-tanstack": {
+        "types": "./dist/table-tanstack.d.ts",
+        "default": "./dist/table-tanstack.js"
       }
     }
   },
@@ -69,6 +87,8 @@
   },
   "devDependencies": {
     "@bespokecore/i18n": "workspace:*",
+    "@bespokecore/table": "workspace:*",
+    "@tanstack/react-table": "^9.2.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "happy-dom": "^20.14.5",
@@ -78,11 +98,19 @@
   },
   "peerDependencies": {
     "@bespokecore/i18n": "workspace:*",
+    "@bespokecore/table": "workspace:*",
+    "@tanstack/react-table": "^9.2.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "peerDependenciesMeta": {
     "@bespokecore/i18n": {
+      "optional": true
+    },
+    "@bespokecore/table": {
+      "optional": true
+    },
+    "@tanstack/react-table": {
       "optional": true
     }
   },

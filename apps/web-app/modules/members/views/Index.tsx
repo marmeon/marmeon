@@ -1,6 +1,7 @@
 import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useRouter, useTranslation } from '@bespokecore/react';
-import { useState, type FormEvent } from 'react';
+import { Head, Link, useTranslation } from '@bespokecore/react';
+import { useTable, type TableRunOutcome } from '@bespokecore/react/table';
+import { useState, type FormEvent, type MouseEvent } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListMembersController } from '../controllers/ListMembersController.ts';
 
@@ -8,52 +9,63 @@ type Props = PageProps<ListMembersController>;
 
 /**
  * The page's path — links by URL, not by route name (`<Link route="members.index">`): a name client code writes goes into the route
- * manifest of the app's first download, and this page must not make that any larger (W9.5). The headless `useTable` (W9.6) builds
- * these URLs itself.
+ * manifest of the app's first download, and this page must not make that any larger (W9.5).
  */
 const PAGE = '/members';
 
 /**
- * The members table — plain, accessible markup from the server's props (the headless `useTable` follows in W9 step 6):
- * a native `<table>` with a `<caption>`, `aria-sort` only on the sorted heading, the sort as a link in the heading, the count in a
- * live region, every checkbox and button named after its row. Without JavaScript every part works as an ordinary link or form.
+ * The members table on the headless `useTable` (W9.6): a native `<table>` with a `<caption>`, `aria-sort` only on the sorted heading,
+ * the sort as a link in the heading, the member's name as each row's header, the list's count (and page) in a live region and what an
+ * action did in another, every checkbox and button named after its row — the name starting with the button's visible text (WCAG
+ * 2.5.3). Sorting, filtering and paging are visits of the page's URL; the selection lives with the history entry; actions are action
+ * requests, after which the table reloads. Controls stay where they are while something runs (`aria-disabled`, never `disabled`:
+ * focus is never dropped). Without JavaScript every part still works as an ordinary link or form.
  */
 export default function Index({ members }: Props) {
   const t = useTranslation('members');
-  const router = useRouter<ListMembersController>();
-  const [selected, setSelected] = useState<readonly number[]>([]);
-  const date = (iso: string) => t.format.date(iso, { dateStyle: 'medium', timeZone: 'UTC' });
   const label = (column: string) => t(`column.${column as 'name'}`);
-  const total = members.page.type === 'offset' ? members.page.total : members.rows.length;
-  const remove = members.actions.find((entry) => entry.name === 'removeLinks');
-  const removeMany = members.bulk.find((entry) => entry.name === 'removeLinks');
-  const csv = members.exports.find((entry) => entry.name === 'csv');
-  const filters = Object.fromEntries(members.filters.map((entry) => [entry.name, entry]));
+  const table = useTable(members, {
+    labels: {
+      column: label,
+      row: (row) => row.name,
+      status: ({ total, shown, sort, page }) =>
+        (sort && (total ?? shown) > 0 ? t('sorted', { total: total ?? shown, column: sort.label, direction: sort.direction }) : t('count', { total: total ?? shown })) +
+        (page ? t('page_of', page) : ''),
+      select: (name) => t('select', { name }),
+      selectPage: () => t('select_page'),
+      action: (_action, name) => t('remove_links_of', { name }),
+      confirm: (_action, count) => t('confirm_bulk', { count }),
+    },
+  });
+  // What the last action did — read out in a live region of its own (the list's count may not change at all).
+  const [notice, setNotice] = useState('');
+  const date = (iso: string) => t.format.date(iso, { dateStyle: 'medium', timeZone: 'UTC' });
+  const total = table.page.type === 'offset' ? table.page.total : table.rows.length;
+  const remove = table.actions.find((entry) => entry.name === 'removeLinks');
+  const removeMany = table.bulk.find((entry) => entry.name === 'removeLinks');
+  const csv = table.exports.find((entry) => entry.name === 'csv');
+  const filters = Object.fromEntries(table.filters.map((entry) => [entry.name, entry]));
   const [joinedFrom = '', joinedTo = ''] = (filters.joined?.value ?? '').split('..');
-  const onPage = members.rows.map((row) => row.id);
-  const allOnPage = onPage.length > 0 && onPage.every((id) => selected.includes(id));
 
-  // The table's state is the URL (the server parses it strictly): the filter form builds the query, a visit loads it.
+  // "Apply": the page size and every filter of the form — the URL is the table's state, the server parses it strictly.
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const query = new URLSearchParams();
-    const sort = members.state[members.query.sort];
-    if (sort) query.set(members.query.sort, sort);
-    const search = String(form.get(members.query.search) ?? '').trim();
-    if (search) query.set(members.query.search, search);
-    const locale = String(form.get(filters.locale!.key) ?? '');
-    if (locale) query.set(filters.locale!.key, locale);
+    const size = Number(form.get(members.query.perPage));
+    if (size !== table.page.perPage) table.perPage(size);
     const from = String(form.get('joined_from') ?? '');
     const to = String(form.get('joined_to') ?? '');
-    if (from || to) query.set(filters.joined!.key, `${from}..${to}`);
-    void router.visit(`${PAGE}${query.size > 0 ? `?${query}` : ''}`, { preserveScroll: true });
+    table.filterBy({ locale: String(form.get(filters.locale?.key ?? '') ?? '') || null, joined: from || to ? `${from}..${to}` : null });
   };
 
-  // Actions post to the table's endpoints; without JavaScript as a form (the server answers with this page again).
-  const post = (event: FormEvent<HTMLFormElement>, url: string, data: Record<string, unknown>, confirm: string | undefined) => {
+  const report = (outcome: TableRunOutcome) => {
+    if (outcome.kind === 'cancelled') return;
+    setNotice(outcome.kind === 'data' ? t('removed', { done: outcome.data.done, skipped: outcome.data.skipped + outcome.data.missing }) : t('remove_failed'));
+  };
+  /** A control that cannot be used right now stays focusable (aria-disabled) — a click does nothing. */
+  const unless = (blocked: boolean, run: () => void) => (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    void router.visit(url, { method: 'post', data, preserveScroll: true, ...(confirm ? { confirm } : {}) }).then(() => setSelected([]));
+    if (!blocked) run();
   };
 
   return (
@@ -63,10 +75,11 @@ export default function Index({ members }: Props) {
       <p>{t('intro')}</p>
       {/* Without JavaScript an ordinary GET form: the date range then goes as two fields the server does not know — apply needs JavaScript. */}
       <form method="get" role="search" onSubmit={applyFilters} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
-        {members.search && (
+        {table.search && (
           <label>
             {t('search')}{' '}
-            <input type="search" name={members.query.search} defaultValue={members.search.value} maxLength={100} />
+            {/* Searches as you type (after a pause; one history entry for it). */}
+            <input type="search" name={members.query.search} defaultValue={table.search.value} maxLength={100} onChange={(event) => table.setSearch(event.target.value.trim())} />
           </label>
         )}
         {filters.locale?.type === 'select' && (
@@ -92,78 +105,47 @@ export default function Index({ members }: Props) {
             </label>
           </>
         )}
+        {table.page.perPageOptions.length > 1 && (
+          <label>
+            {t('per_page')}{' '}
+            <select name={members.query.perPage} defaultValue={table.page.perPage}>
+              {table.page.perPageOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button type="submit">{t('apply')}</button>
         <Link href={PAGE}>{t('reset')}</Link>
       </form>
 
-      {/* The count, read out after every change (a live region) — with the sort, when there is one. */}
-      <p role="status" aria-live="polite" data-count="">
-        {members.sort && total > 0
-          ? t('sorted', { total, column: label(members.sort.column), direction: members.sort.direction })
-          : t('count', { total })}
+      {/* The count (and page), read out after every change of the list — with the sort, when there is one. "None match" is said here. */}
+      <p {...table.statusProps} data-count="">
+        {table.status}
       </p>
 
-      {removeMany && (
-        <form
-          id="members-bulk"
-          method="post"
-          action={removeMany.url}
-          onSubmit={(event) => post(event, removeMany.url, { keys: selected }, removeMany.confirm ? t('confirm_bulk', { count: selected.length }) : undefined)}
-        >
-          <button type="submit" disabled={selected.length === 0}>
-            {t('bulk_remove', { count: selected.length })}
-          </button>{' '}
-          {total > 0 && total <= removeMany.max && (
-            <button
-              type="submit"
-              formAction={`${removeMany.url}?${new URLSearchParams(members.state)}`}
-              name="all"
-              value="1"
-              onClick={(event) => {
-                // "All matching" is the filter state — the server parses it again; never a list of keys from here.
-                event.preventDefault();
-                const message = removeMany.confirm ? t('confirm_bulk', { count: total }) : undefined;
-                void router
-                  .visit(removeMany.url, { method: 'post', data: { all: true, query: members.state }, preserveScroll: true, ...(message ? { confirm: message } : {}) })
-                  .then(() => setSelected([]));
-              }}
-            >
-              {t('bulk_all', { total })}
-            </button>
-          )}
-        </form>
-      )}
-
-      {members.rows.length === 0 ? (
-        <p>{t('none')}</p>
-      ) : (
+      {table.rows.length > 0 && (
         <table>
           <caption>{t('caption')}</caption>
           <thead>
             <tr>
               {removeMany && (
                 <th scope="col">
-                  <input
-                    type="checkbox"
-                    aria-label={t('select_page')}
-                    checked={allOnPage}
-                    onChange={(event) => setSelected(event.target.checked ? [...new Set([...selected, ...onPage])] : selected.filter((id) => !onPage.includes(id)))}
-                  />
+                  <input {...table.pageCheckboxProps()} />
                 </th>
               )}
-              {members.columns.map((column) => (
+              {table.columns.map((column) => (
                 // aria-sort only on the heading the table is sorted by (WAI-ARIA APG) — never "none" on the others.
-                <th key={column.name} scope="col" aria-sort={column.sort === 'asc' ? 'ascending' : column.sort === 'desc' ? 'descending' : undefined}>
-                  {column.sortable ? (
-                    <Link
-                      href={`${PAGE}?${new URLSearchParams({ ...members.state, [members.query.sort]: column.sort === 'asc' ? `-${column.name}` : column.name })}`}
-                      preserveScroll
-                      aria-label={t('sort_by', { column: label(column.name) })}
-                    >
-                      {label(column.name)} {column.sort === 'asc' ? '▲' : column.sort === 'desc' ? '▼' : ''}
-                    </Link>
+                <th key={column.name} {...column.headerProps}>
+                  {column.sortLinkProps ? (
+                    <a {...column.sortLinkProps}>
+                      {column.label}
+                      <span aria-hidden="true">{column.sort === 'asc' ? ' ▲' : column.sort === 'desc' ? ' ▼' : ''}</span>
+                    </a>
                   ) : (
-                    label(column.name)
+                    column.label
                   )}
                 </th>
               ))}
@@ -171,32 +153,34 @@ export default function Index({ members }: Props) {
             </tr>
           </thead>
           <tbody>
-            {members.rows.map((row) => (
+            {table.rows.map((row) => (
               <tr key={row.id}>
                 {removeMany && (
                   <td>
-                    <input
-                      type="checkbox"
-                      form="members-bulk"
-                      name="keys[]"
-                      value={row.id}
-                      aria-label={t('select', { name: row.name })}
-                      checked={selected.includes(row.id)}
-                      onChange={(event) => setSelected(event.target.checked ? [...selected, row.id] : selected.filter((id) => id !== row.id))}
-                    />
+                    <input {...table.checkboxProps(row)} form="members-bulk" name="keys[]" value={row.id} />
                   </td>
                 )}
-                {members.columns.map((column) => (
-                  <td key={column.name}>
-                    {column.name === 'joined' ? date(row.joined) : column.name === 'links' ? (row.links ?? 0) : String(row[column.name as 'name' | 'email'] ?? '')}
-                  </td>
-                ))}
+                {table.columns.map((column) =>
+                  // The member's name heads the row: moving down a column, a screen reader says whose value it is.
+                  column.name === 'name' ? (
+                    <th key={column.name} scope="row">
+                      {row.name}
+                    </th>
+                  ) : (
+                    <td key={column.name}>{column.name === 'joined' ? date(row.joined) : column.name === 'links' ? (row.links ?? 0) : String(row.email ?? '')}</td>
+                  ),
+                )}
                 {remove && (
                   <td>
-                    {row.can.removeLinks && (
-                      <form method="post" action={remove.url} onSubmit={(event) => post(event, remove.url, { key: row.id }, remove.confirm ? t('confirm_remove', { name: row.name }) : undefined)}>
+                    {table.can('removeLinks', row) && (
+                      <form method="post" action={remove.url}>
                         <input type="hidden" name="key" value={row.id} />
-                        <button type="submit" aria-label={t('remove_links_of', { name: row.name })}>
+                        <button
+                          type="submit"
+                          aria-label={table.actionLabel('removeLinks', row)}
+                          aria-disabled={table.pending || undefined}
+                          onClick={unless(table.pending, () => void table.run('removeLinks', row, { confirm: t('confirm_remove', { name: row.name }) }).then(report))}
+                        >
                           {t('remove_links')}
                         </button>
                       </form>
@@ -209,11 +193,46 @@ export default function Index({ members }: Props) {
         </table>
       )}
 
-      {members.page.type === 'offset' && <Pagination meta={members.page} />}
+      {/* After the table: where the rows were ticked. The buttons stay (aria-disabled) — a click on one that cannot run does nothing. */}
+      {removeMany && table.rows.length > 0 && (
+        <form id="members-bulk" method="post" action={removeMany.url}>
+          <button
+            type="submit"
+            aria-disabled={table.selectedCount === 0 || table.pending || undefined}
+            onClick={unless(table.selectedCount === 0 || table.pending, () => void table.runBulk('removeLinks').then(report))}
+          >
+            {t('bulk_remove', { count: table.selectedCount })}
+          </button>{' '}
+          {total <= removeMany.max && (
+            <button
+              type="submit"
+              formAction={`${removeMany.url}?${new URLSearchParams(members.state)}`}
+              name="all"
+              value="1"
+              aria-disabled={table.pending || undefined}
+              onClick={unless(table.pending, () => {
+                // "All matching" is the filter state — the server parses it again; never a list of keys from here.
+                table.selectMatching();
+                void table.runBulk('removeLinks').then(report);
+              })}
+            >
+              {t('bulk_all', { total })}
+            </button>
+          )}{' '}
+          <button type="button" aria-disabled={table.selectedCount === 0 || undefined} onClick={unless(table.selectedCount === 0, () => table.clearSelection())}>
+            {t('select_none')}
+          </button>
+        </form>
+      )}
+      <p role="status" aria-live="polite" data-notice="">
+        {notice}
+      </p>
+
+      {table.page.type === 'offset' && <Pagination meta={table.page} />}
       {csv && (
         <p>
           {/* A download, not a visit: the server answers a file (no-store), with the table's sort and filters. */}
-          <a href={csv.url} download data-export="">
+          <a href={table.exportUrl('csv')} download data-export="">
             {t('export')}
           </a>
         </p>

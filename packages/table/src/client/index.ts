@@ -101,7 +101,8 @@ export interface TableExportEntry<E extends string = string> {
 
 /**
  * The prop a table sends (`TableProps<typeof MembersTable>` on the server). `R` is the row — the visible columns by name plus the
- * key; `can` holds, per row, whether each row action is allowed for it (booleans only — never a policy's reason).
+ * key; `can` holds, per row, whether each row action is allowed for it (booleans only — never a policy's reason). `C` names the
+ * columns, `S` the sortable ones, `F` the filters, `A`/`B`/`E` the row actions, bulk actions and exports.
  */
 export interface TableData<
   R extends object = Record<string, unknown>,
@@ -110,6 +111,7 @@ export interface TableData<
   A extends string = string,
   B extends string = string,
   E extends string = string,
+  S extends string = C,
 > {
   /** The table's name — unique on its page. */
   readonly name: string;
@@ -117,7 +119,8 @@ export interface TableData<
   readonly key: string;
   readonly columns: readonly TableColumn<C>[];
   readonly rows: readonly (R & { readonly can: { readonly [K in A]: boolean } })[];
-  readonly sort: { readonly column: C; readonly direction: SortDirection } | null;
+  /** How the table is sorted — always by a sortable column (`S`: the names of those). */
+  readonly sort: { readonly column: S; readonly direction: SortDirection } | null;
   /** The search, when a visible column is searchable — null otherwise. */
   readonly search: { readonly value: string } | null;
   readonly filters: readonly TableFilter<F>[];
@@ -154,3 +157,19 @@ export function parseSort<C extends string>(value: string): { column: C; directi
 export function sortValue(column: string, direction: SortDirection): string {
   return direction === 'desc' ? `-${column}` : column;
 }
+
+export { exportUrl, keyOf, propOf, sortUrl, TableController, tableStatus } from './table.ts';
+export type {
+  ActionOf,
+  AnyTableData,
+  BulkOf,
+  ColumnOf,
+  ExportOf,
+  FilterOf,
+  RowOf,
+  SortableOf,
+  TableControllerOptions,
+  TableRunOptions,
+  TableRunOutcome,
+  TableStatusInfo,
+} from './table.ts';

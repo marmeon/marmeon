@@ -43,6 +43,30 @@ describe('@bespokecore/react in the browser', () => {
     expect(modules).toEqual(expect.arrayContaining(['react/src/app.tsx', 'http/src/client/navigation.ts']));
   }, 30_000);
 
+  it('the table subpaths (W9 step 6): the table’s browser half and the client core, no server code — TanStack only in the bridge, and only as an import', async () => {
+    const core = (id: string) => id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts';
+    const table = await bundled(fileURLToPath(new URL('./table.ts', import.meta.url)));
+    expect(table.modules.filter((id) => !id.startsWith('react/src/') && !id.startsWith('table/src/client/') && !core(id))).toEqual([]);
+    expect(table.modules).toEqual(expect.arrayContaining(['react/src/table.ts', 'table/src/client/table.ts']));
+    expect(table.externals.filter((id) => !/^react(-dom)?(\/|$)/.test(id))).toEqual([]);
+    // The bridge has no TanStack code of its own (types only): an app that imports it has TanStack because it imports TanStack.
+    const bridge = await bundled(fileURLToPath(new URL('./table-tanstack.ts', import.meta.url)));
+    expect(bridge.externals).toEqual([]);
+    expect(bridge.modules).toEqual(['react/src/table-tanstack.ts']);
+    // The main entry knows neither.
+    const main = await bundled(fileURLToPath(new URL('./index.ts', import.meta.url)));
+    expect(main.modules.filter((id) => id.startsWith('table/') || id.includes('table'))).toEqual([]);
+  }, 30_000);
+
+  it('needs @bespokecore/table and TanStack Table only for their subpaths: optional peers, so discovery does not add the table package to every React app', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as Record<string, Record<string, unknown> | undefined>;
+    for (const peer of ['@bespokecore/table', '@tanstack/react-table']) {
+      expect(manifest.dependencies).not.toHaveProperty(peer);
+      expect(manifest.peerDependencies).toHaveProperty(peer);
+      expect(manifest.peerDependenciesMeta).toEqual(expect.objectContaining({ [peer]: { optional: true } }));
+    }
+  });
+
   it('needs @bespokecore/i18n only when the app translates: an optional peer, so discovery does not add it (nor its session) to every React app', () => {
     const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as Record<string, Record<string, unknown> | undefined>;
     expect(manifest.dependencies).not.toHaveProperty('@bespokecore/i18n');

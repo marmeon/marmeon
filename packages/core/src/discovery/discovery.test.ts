@@ -122,6 +122,13 @@ describe('bespoke discover', () => {
     expect(summary).toMatchObject({ injectable: 3, unresolvable: 1, providers: 3 });
   });
 
+  it('lists only the modules whose classes it injects — a subpath for an optional peer that is not installed is never imported at boot (W9 step 6)', () => {
+    const { manifest } = generateManifest({ root: app, conditions: PROD });
+    expect(manifest.modules.filter((path) => path.endsWith('/optional.js')), 'a subpath without a class to inject is listed — imported at boot').toEqual([]);
+    // The app starts: nothing imports @acme/optional-peer.
+    expect(run().sent).toBe('SMTP → ada@example.com at 09:00');
+  });
+
   it('regenerates atomically — processes racing to rewrite the manifest never read half a file', async () => {
     // The dev server, `bespoke` commands and test workers all regenerate after `pnpm add`.
     writeFileSync(

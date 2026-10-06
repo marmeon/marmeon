@@ -356,8 +356,9 @@ export interface Table<
   B extends string = string,
   E extends string = string,
   QV extends object = TableQueryValues,
+  S extends string = C,
 > {
-  readonly [TABLE_TYPES]?: { readonly row: Row; readonly ctx: Ctx; readonly columns: C; readonly filters: F; readonly actions: A; readonly bulk: B; readonly exports: E };
+  readonly [TABLE_TYPES]?: { readonly row: Row; readonly ctx: Ctx; readonly columns: C; readonly sortable: S; readonly filters: F; readonly actions: A; readonly bulk: B; readonly exports: E };
   readonly definition: TableDefinition;
   /**
    * The table's state in the URL as a query schema (Valibot): `?sort=`, `?page=` (or `?cursor=`), `?per_page=`, `?search=`,
@@ -392,7 +393,7 @@ export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<
 >;
 
 /** What the browser gets for table `T`: the page prop `tables.resolve(T, ctx)` resolves to. */
-export type TableProps<T> = T extends Table<infer Row, any, infer C, infer F, infer A, infer B, infer E> ? TableData<Row, C, F, A, B, E> : never;
+export type TableProps<T> = T extends Table<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
 
 /** A row of table `T` as the server hands it to actions and policies: the key and the visible columns (by name). */
 export type RowOfTable<T> = T extends Table<infer Row> ? Row : never;
@@ -579,7 +580,9 @@ type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P exten
   keyof Actions & string,
   keyof Bulk & string,
   keyof Exports & string,
-  QueryValuesOf<P, Cols, Filters, Pg>
+  QueryValuesOf<P, Cols, Filters, Pg>,
+  // The names spelled out (a key-remapped type, no alias): a wrong sort in the browser reads "… not assignable to '"name" | "joined"'".
+  keyof { [A in keyof Cols as Cols[A] extends Column<string, true> ? A : never]: 0 } & string
 >;
 
 /**

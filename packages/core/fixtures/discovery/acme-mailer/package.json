@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./testing": { "types": "./dist/testing.d.ts", "import": "./dist/testing.js" }
+    "./testing": { "types": "./dist/testing.d.ts", "import": "./dist/testing.js" },
+    "./optional": { "types": "./dist/optional.d.ts", "import": "./dist/optional.js" }
   },
   "dependencies": { "@acme/clock": "1.0.0" },
   "bespoke": { "providers": ["MailServiceProvider"] }

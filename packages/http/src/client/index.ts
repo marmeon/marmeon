@@ -80,6 +80,8 @@ export type { LayerCloseOptions, LayerControl, LayerHost } from './layer.ts';
 export type { KeptRegion, RegionInitial, RegionFailure, RegionReloadOptions, RegionResponse, RegionSnapshot, RegionStatus, RegionTransport } from './region.ts';
 export { assertQueryPage, linkQuery, pageQuery, QueryState, queryUrl, withoutDefaults } from './query-state.ts';
 export { queryState } from './features/query-state.ts';
+export { Selection, SELECTIONS, selection } from './features/selection.ts';
+export type { SelectionFeature, SelectionKey } from './features/selection.ts';
 export type { QueryStateFeature } from './features/query-state.ts';
 export type { QueryStateOptions, QueryUpdate } from './query-state.ts';
 export type { ActionException, ActionHost, ActionMethod, ActionOptions, ActionOutcome, Submission } from './action.ts';

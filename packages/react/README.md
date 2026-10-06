@@ -30,6 +30,8 @@ export default function People({ people }: PageProps<ListPeopleController>) {
 | --- | --- | --- |
 | `@bespokecore/react` | browser and the SSR entry | `createBespokeApp`, components and hooks, `progressBar` |
 | `@bespokecore/react/server` | server (the SSR entry) | `createSsrRenderer` — so `react-dom/server` never ends up in the client bundle |
+| `@bespokecore/react/table` | browser and the SSR entry | `useTable` — the headless table of [@bespokecore/table](../table/README.md#in-the-browser) (an optional peer) |
+| `@bespokecore/react/table-tanstack` | browser | `toTanStack` — `useTable` for TanStack Table v9 (`@tanstack/react-table`, an optional peer; types only) |
 
 ## Installation
 
@@ -39,6 +41,8 @@ pnpm add @bespokecore/react react react-dom
 
 - **Peers:** `react` and `react-dom` 19 come from the app. `@bespokecore/i18n` is an optional peer — needed only for
   `useTranslation`/`useLocale` (an app that does not translate gets neither it nor its session through discovery).
+  `@bespokecore/table` and `@tanstack/react-table` are optional peers too — for the `table` and `table-tanstack` subpaths only: the
+  main entry never imports them, so discovery adds no table to a React app without tables.
 - **No provider:** `"bespoke": { "browser": ["src/**"] }` marks every source as browser code — discovery registers nothing
   for it, and `bespoke package:build` embeds no injection lists into it (E76). A test bundles the package for the browser and
   fails on any module outside its own sources, the client core, `@bespokecore/http/page` and `@bespokecore/router/url`, and on
@@ -244,6 +248,44 @@ deleted is gone, the list starts over at its first page. `reloading({ only: ['pe
 (`<Link query={{ cursor }} only={['people']} preserveUrl>`, `reload({ data: { cursor }, only })`) always appends. See
 [Merged props](../http/README.md#merged-props-revalidations-replace-load-more-appends-w9).
 
+## Tables
+
+`useTable(props.members)` (`@bespokecore/react/table`) is the headless side of a server-driven table
+([@bespokecore/table](../table/README.md)): typed by the props, it renders nothing and hands out what accessible markup needs —
+in the app's words (`labels`, English by default):
+
+```tsx
+const table = useTable(members, {
+  labels: { column: (name) => t(`column.${name}`), row: (row) => row.name, status: (info) => t('sorted', info), select: (name) => t('select', { name }) },
+});
+<table>
+  <caption>{t('caption')}</caption>
+  <thead>
+    <tr>
+      <th scope="col"><input {...table.pageCheckboxProps()} /></th>
+      {table.columns.map((column) => (
+        <th key={column.name} {...column.headerProps}>
+          {column.sortLinkProps ? <a {...column.sortLinkProps}>{column.label}</a> : column.label}
+        </th>
+      ))}
+    </tr>
+  </thead>
+  <tbody>{table.rows.map((row) => (<tr key={row.id}><td><input {...table.checkboxProps(row)} /></td>…</tr>))}</tbody>
+</table>
+<p {...table.statusProps}>{table.status}</p>
+```
+
+- `headerProps` puts `aria-sort` on the heading the table is sorted by — never `none` on the others; `sortLinkProps` is a link to the
+  sorted URL that sorts in place on a plain click (without JavaScript, or in a new tab, it is the link); `sortUrl` and `toggleSort()`
+  for a button of your own.
+- `sort`, `filter`, `filterBy`, `setSearch`, `goTo`, `perPage`, `next` visit the page's URL (the table's prop only); `select`,
+  `toggle`, `selectAll`, `selectMatching`, `clearSelection` keep the selection with the history entry; `run(action, row)` and
+  `runBulk(name)` are action requests, after which the table reloads (replacing what it showed); `can(action, row)`, `actionLabel`,
+  `pending`, `exportUrl(name)`.
+- On the server it renders from the props alone (nothing selected); changing something there throws `[bespoke:R18]`.
+- `toTanStack(table, { features })` (`@bespokecore/react/table-tanstack`) turns it into the options of TanStack Table v9's
+  `useTable` in manual mode — see [In the browser](../table/README.md#in-the-browser).
+
 ## Props that arrive later
 
 ```tsx
@@ -344,7 +386,8 @@ hook, and which load lazily: [features](../http/README.md#features).
 ## The size budget (E75)
 
 `size-budget.json` holds a limit per scenario in KB gzip of the initial download (`core`, `emptyApp`, `minimalApp`, the
-`everything` ceiling, and the real apps' marginal cost in `appsGzipKB`), with the history of every change in its `$comment`.
+`everything` ceiling — all of the main entry —, `table` for an app with `useTable`, and the real apps' marginal cost in
+`appsGzipKB`), with the history of every change in its `$comment`.
 
 - `bundle-size.test.ts` (part of `pnpm test`) builds the scenarios and fails when one grows over its limit — and when one is
   more than 0.6 KB under it, until the limit follows: `BESPOKE_SIZE_BUDGET=update` lowers a limit to the measured size + 0.5 KB

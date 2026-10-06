@@ -73,13 +73,17 @@ function appDirectory(): string {
   if (workspace) return workspace;
   const dir = join(realpathSync(tmpdir()), `bespoke-bundle-${createHash('sha256').update(PACKAGES).digest('hex').slice(0, 12)}`);
   mkdirSync(join(dir, 'node_modules', '@bespokecore'), { recursive: true });
-  for (const name of ['http', 'i18n', 'react']) {
+  const link = (target: string, path: string) => {
     try {
-      symlinkSync(join(PACKAGES, name), join(dir, 'node_modules', '@bespokecore', name), 'dir');
+      symlinkSync(target, path, 'dir');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; // made by an earlier (or a parallel) run
     }
-  }
+  };
+  for (const name of ['http', 'i18n', 'react', 'table']) link(join(PACKAGES, name), join(dir, 'node_modules', '@bespokecore', name));
+  // TanStack Table (W9 step 6): an optional peer of the React adapter, for its bridge's scenario — where the adapter has it installed.
+  mkdirSync(join(dir, 'node_modules', '@tanstack'), { recursive: true });
+  link(realpathSync(join(PACKAGES, 'react/node_modules/@tanstack/react-table')), join(dir, 'node_modules', '@tanstack', 'react-table'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'bundle-measurement', private: true, type: 'module' }));
   return (workspace = dir);
 }
@@ -349,6 +353,10 @@ export const coreEntry = (...names: string[]) => entryOf('@bespokecore/http/clie
 /** An entry with `createBespokeApp` and `names` from `@bespokecore/react`. */
 export const appEntry = (...names: string[]) => entryOf('@bespokecore/react', ['createBespokeApp', ...names]);
 
+/** An app without pages that renders a server-driven table (`useTable`, W9 step 6) — on top of {@link appEntry}. */
+export const tableEntry = (...extra: string[]) =>
+  `${appEntry()}import { useTable } from '@bespokecore/react/table';\n${extra.join('')}globalThis.__table = useTable;\n`;
+
 /** The measured scenarios; `size-budget.json` holds a limit for each. */
 export const SCENARIOS = {
   /** The client core alone. */
@@ -357,8 +365,10 @@ export const SCENARIOS = {
   emptyApp: appEntry(),
   /** Pages with links and forms. */
   minimalApp: appEntry('Link', 'useForm', 'usePage', 'Head'),
-  /** All of `@bespokecore/react`. */
+  /** All of `@bespokecore/react` — its main entry: subpaths with optional peers (`./table`, `./table-tanstack`) are not part of it. */
   everything: `import * as all from '@bespokecore/react';\nglobalThis.__keep = all;\n`,
+  /** An app without pages and the headless table (`@bespokecore/react/table`, W9 step 6, E186: its own limit). */
+  table: tableEntry(),
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
 
@@ -374,7 +384,7 @@ export interface Budget {
   readonly gzipKB: Readonly<Record<Scenario, BudgetLine>>;
   /** The client core and the React adapter in an app's initial chunks (`pnpm size`; their attributed share). */
   readonly appsGzipKB: Readonly<Record<string, BudgetLine>>;
-  readonly stillLeaking: Readonly<Record<Exclude<Scenario, 'everything'>, readonly string[]>>;
+  readonly stillLeaking: Readonly<Record<'core' | 'emptyApp' | 'minimalApp', readonly string[]>>;
 }
 
 export const BUDGET_FILE = fileURLToPath(new URL('../../size-budget.json', import.meta.url));

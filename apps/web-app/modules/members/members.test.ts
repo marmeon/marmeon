@@ -157,11 +157,13 @@ describe('the members table (/members) — @bespokecore/table in the app', () =>
     for (const user of [alan, grace]) await app.factory(ProfileLinkFactory).create({ user_id: user.id, label: 'Site' });
     const html = (await app.actingAs(ada).get('/members?sort=-joined', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates()).body;
     expect(html).toContain('<caption>');
-    expect(html.match(/aria-sort=/g)).toHaveLength(1);
+    expect(html.match(/aria-sort=/g), 'aria-sort on a heading the table is not sorted by').toHaveLength(1);
     expect(html).toContain('aria-sort="descending"');
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-label="Select Alan Turing"');
-    expect(html).toContain('aria-label="Remove the links of Alan Turing"');
+    // The button's name starts with its visible text (WCAG 2.5.3) — the member's name heads the row.
+    expect(html).toContain('aria-label="Remove links: Alan Turing"');
+    expect(html).toContain('<th scope="row">Alan Turing</th>');
     expect(html).not.toContain('role="grid"');
     // A member's page: no e-mail anywhere in the table, no actions, no export.
     const asAlan = (await app.actingAs(alan).get('/members', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered()).body;

@@ -111,7 +111,9 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
       const jsEntry = resolveExports(pkg, subpath, conditions);
       const typesEntry = jsEntry && resolveTypes(pkg, subpath, jsEntry);
       if (!jsEntry || !typesEntry) continue;
-      const module = moduleIndex(pathToFileURL(jsEntry).href);
+      // Listed (and imported at boot) only when one of its classes is injected: a subpath without any — the React adapter's
+      // `./table`, whose optional peer an app without tables does not install (W9 step 6) — is never loaded on the server.
+      const module = () => moduleIndex(pathToFileURL(jsEntry).href);
 
       for (const [publicName, location] of reader.read(typesEntry).exports) {
         const params = reader.read(location.file).classes.get(location.name);
@@ -122,7 +124,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
         const required = params.slice(0, firstOptional(params));
         if (required.length === 0) continue;
 
-        const target: ExportRef = [module, publicName];
+        const target: ExportRef = [module(), publicName];
         try {
           const inject = required.map((param): ExportRef => {
             const where = `${pkg.name}/${relative(pkg.dir, location.file)}:${param.line} — ${location.name}, parameter "${param.text}"`;
