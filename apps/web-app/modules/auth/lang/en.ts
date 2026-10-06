@@ -71,6 +71,13 @@ const en = {
     verified: 'Your e-mail address is verified.',
     wrong_account: 'This verification link is not for your account.',
   },
+  // Private registration (E146): the link to a new address.
+  email_change: {
+    wrong_account: 'This link is for another account. Sign in with that one, then open the link again.',
+    invalid: 'This link no longer works — it was used, a newer one replaced it, or it expired. Change your address again on the security page.',
+    taken: 'Another account uses this address by now. Your address stays as it was.',
+    done: 'Your e-mail address is now {email}.',
+  },
   settings: {
     label: 'Settings',
     security: 'Security',
@@ -84,7 +91,9 @@ const en = {
     email: 'E-mail',
     unconfirmed: '(not confirmed yet)',
     change_email: 'Change e-mail',
-    email_changed: 'E-mail address changed. Please confirm the new one — we sent you a link.',
+    // Private registration (E146): a new address is pending until the link sent to it is clicked.
+    email_change_sent: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.',
+    email_pending: 'Waiting for confirmation: {email}. Until the link we sent there is clicked, your address stays {current}.',
     password_heading: 'Change password',
     current_password: 'Current password',
     new_password: 'New password (at least {min} characters)',
@@ -177,6 +186,20 @@ const en = {
       button: 'Sign in',
       forgot: 'Forgot your password? Choose a new one:',
       outro: 'If that was not you, ignore this mail: nothing has changed.',
+    },
+    // Private registration (E146): a change of address — the link to the new one, or a note to the owner of a taken one.
+    confirm_new_email: {
+      subject: 'Confirm your new e-mail address',
+      preview: 'One click, and your account uses this address',
+      intro: 'you asked to use {email} for your account from now on. Confirm it while you are signed in:',
+      button: 'Use this address',
+      outro: 'The link works for 60 minutes. If you did not ask for it, ignore this mail: nothing changes.',
+    },
+    email_in_use: {
+      subject: 'Someone wanted to use your e-mail address',
+      preview: 'Nothing has changed for your account',
+      intro: 'someone signed in to another account asked to change its e-mail address to this one — yours. Your account keeps it; nothing has changed.',
+      outro: 'There is nothing to do. If you see this mail again and again, let us know.',
     },
     email_changed: {
       subject: 'Your e-mail address was changed',

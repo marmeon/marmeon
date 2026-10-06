@@ -71,6 +71,13 @@ export default {
     verified: 'Deine E-Mail-Adresse ist bestätigt.',
     wrong_account: 'Dieser Bestätigungslink gehört nicht zu deinem Konto.',
   },
+  // Private Registrierung (E146): der Link an eine neue Adresse.
+  email_change: {
+    wrong_account: 'Dieser Link gehört zu einem anderen Konto. Melde dich mit diesem an und öffne den Link noch einmal.',
+    invalid: 'Dieser Link funktioniert nicht mehr — er wurde schon benutzt, ein neuerer hat ihn ersetzt, oder er ist abgelaufen. Ändere deine Adresse noch einmal auf der Sicherheitsseite.',
+    taken: 'Diese Adresse gehört inzwischen einem anderen Konto. Deine Adresse bleibt, wie sie war.',
+    done: 'Deine E-Mail-Adresse ist jetzt {email}.',
+  },
   settings: {
     label: 'Einstellungen',
     security: 'Sicherheit',
@@ -84,7 +91,9 @@ export default {
     email: 'E-Mail',
     unconfirmed: '(noch nicht bestätigt)',
     change_email: 'E-Mail ändern',
-    email_changed: 'E-Mail-Adresse geändert. Bitte bestätige die neue — wir haben dir einen Link geschickt.',
+    // Private Registrierung (E146): eine neue Adresse wartet, bis der Link an sie angeklickt ist.
+    email_change_sent: 'Wir haben dir einen Link an die neue Adresse geschickt. Deine Adresse ändert sich, sobald du ihn dort anklickst — innerhalb von 60 Minuten, angemeldet.',
+    email_pending: 'Wartet auf Bestätigung: {email}. Bis der Link dorthin angeklickt ist, bleibt deine Adresse {current}.',
     password_heading: 'Passwort ändern',
     current_password: 'Aktuelles Passwort',
     new_password: 'Neues Passwort (mindestens {min} Zeichen)',
@@ -177,6 +186,20 @@ export default {
       button: 'Anmelden',
       forgot: 'Passwort vergessen? Wähle ein neues:',
       outro: 'Warst du das nicht, ignoriere diese Mail: Es hat sich nichts geändert.',
+    },
+    // Private Registrierung (E146): eine Adressänderung — der Link an die neue Adresse oder ein Hinweis an den Inhaber einer vergebenen.
+    confirm_new_email: {
+      subject: 'Bestätige deine neue E-Mail-Adresse',
+      preview: 'Ein Klick, und dein Konto nutzt diese Adresse',
+      intro: 'du möchtest ab jetzt {email} für dein Konto verwenden. Bestätige es, während du angemeldet bist:',
+      button: 'Diese Adresse verwenden',
+      outro: 'Der Link funktioniert 60 Minuten lang. Wenn du das nicht wolltest, ignoriere diese Mail: Es ändert sich nichts.',
+    },
+    email_in_use: {
+      subject: 'Jemand wollte deine E-Mail-Adresse verwenden',
+      preview: 'An deinem Konto hat sich nichts geändert',
+      intro: 'jemand, der bei einem anderen Konto angemeldet ist, wollte dessen E-Mail-Adresse in diese ändern — deine. Dein Konto behält sie; es hat sich nichts geändert.',
+      outro: 'Es ist nichts zu tun. Wenn du diese Mail immer wieder bekommst, melde dich bei uns.',
     },
     email_changed: {
       subject: 'Deine E-Mail-Adresse wurde geändert',

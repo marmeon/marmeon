@@ -198,7 +198,12 @@ describe('mails without a request', () => {
     await (await createTestApp(application)).get('/_bespoke/mail').assertNotFound();
     const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development' } });
     const index = await app.get('/_bespoke/mail').assertOk();
-    for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail']) expect(index.body).toContain(`/_bespoke/mail/${name}`);
+    for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail', 'auth/ConfirmNewEmailMail', 'auth/EmailInUseMail']) {
+      expect(index.body).toContain(`/_bespoke/mail/${name}`);
+    }
+    // The change of address (private registration, E146): the link to the new address, the note to the owner of a taken one.
+    expect((await app.get('/_bespoke/mail/auth/ConfirmNewEmailMail?locale=de').assertOk()).body).toContain('<th>Subject</th><td>Bestätige deine neue E-Mail-Adresse</td>');
+    expect((await app.get('/_bespoke/mail/auth/EmailInUseMail').assertOk()).body).toContain('<th>Subject</th><td>Someone wanted to use your e-mail address</td>');
     const preview = await app.get('/_bespoke/mail/auth/VerifyEmailMail?locale=de').assertOk();
     expect(preview.body).toContain('<th>Subject</th><td>Bestätige deine E-Mail-Adresse</td>');
     expect(preview.body).toContain('Ada Lovelace');

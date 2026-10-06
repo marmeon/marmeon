@@ -13,6 +13,6 @@ export function previewData({ make, locale }: MailPreviewContext) {
   const t = make(Translators).for(locale);
   const { name, email } = make(Factories).for(UserFactory).make({ name: 'Ada Lovelace', email: 'ada@example.com' });
   const now = new Date().toISOString();
-  const user: User = { id: 1, name, email, bio: '', created_at: now, updated_at: now, email_verified_at: null, locale: t.locale, avatar_path: null };
+  const user: User = { id: 1, name, email, bio: '', created_at: now, updated_at: now, email_verified_at: null, locale: t.locale, avatar_path: null, pending_email: null, pending_email_expires_at: null };
   return { t, user, url: (path: string) => new URL(path, make(AppConfig).url).href };
 }

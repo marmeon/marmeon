@@ -30,11 +30,13 @@ describe('the schedule', () => {
     const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { expiresIn: '365d' });
 
     // (The data exports are cleared every ten minutes — W6.9.)
-    expect(app.schedule.due('2026-10-05T03:10:00+02:00')).toEqual(['auth:prune-tokens', 'user-profile.prune-data-exports']);
+    // (The changes of address nobody confirmed are cleared at the same time — email-change.test.ts.)
+    expect(app.schedule.due('2026-10-05T03:10:00+02:00')).toEqual(['auth:prune-tokens', 'auth.prune-email-changes', 'user-profile.prune-data-exports']);
     expect(app.schedule.due('2026-10-05T03:10:00Z')).toEqual(['user-profile.prune-data-exports']); // 05:10 in Berlin
     const results = await app.schedule.run('2026-10-05T03:10:00+02:00');
     expect(results.map((result) => [result.task, result.outcome])).toEqual([
       ['auth:prune-tokens', 'ran'],
+      ['auth.prune-email-changes', 'ran'],
       ['user-profile.prune-data-exports', 'ran'],
     ]);
 
@@ -50,6 +52,7 @@ describe('the schedule', () => {
     const app = await createTestApp(application);
     expect(app.schedule.tasks).toEqual([
       'auth:prune-tokens',
+      'auth.prune-email-changes',
       'user-profile.rebuild-member-stats',
       'user-profile.prune-data-exports',
       'session:prune',

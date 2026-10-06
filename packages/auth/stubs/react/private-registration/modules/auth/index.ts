@@ -2,6 +2,7 @@ import { Registered } from '@bespokecore/auth';
 import { defineModule, listen } from '@bespokecore/core';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
+import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
 import apiRoutes from './api-routes.ts';
@@ -21,14 +22,15 @@ export default defineModule({
   // A queued listener (static queue): a worker sends the verification mail once the registration committed.
   listeners: [listen(Registered, SendEmailVerification)],
   // Queued work — a worker (`bespoke queue:work`, started by `bespoke dev`) runs only registered jobs.
-  // Private registration (E146): the note to an account's owner that someone signed up with its address.
-  jobs: [SendPasswordResetLinkJob, SendAccountExistsMailJob],
+  // Private registration (E146): the note to an account's owner that someone signed up with its address; the link to a new
+  // address, or the note to the owner of a taken one.
+  jobs: [SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob],
   migrations: new URL('./migrations/', import.meta.url),
   // Other modules may read and join `users` — writing goes through the UserRepository.
   exposes: ['users'],
   seeders: [UserSeeder],
   routes,
   apiRoutes,
-  // Scheduled work: the nightly token prune (bespoke schedule:work).
+  // Scheduled work: the nightly prune of tokens and expired changes of address (bespoke schedule:work).
   schedule,
 });

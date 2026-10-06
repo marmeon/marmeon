@@ -44,9 +44,66 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     await this.update(id, { email_verified_at: new Date() });
   }
 
-  /** A new address, unverified — `'duplicate'` when another account has it. */
-  async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
-    return this.tryUpdate(id, { email, email_verified_at: null });
+  /**
+   * A change of address, pending (private registration, E146): the new address waits beside the account's own — with the hash of
+   * its link's token and when it expires — until the link is clicked. A newer request replaces it (and so its link). Written the
+   * same for a free address and a taken one: whether another account has it is never asked here.
+   */
+  async requestEmailChange(id: number, change: { email: string; tokenHash: string; expiresAt: Date }): Promise<void> {
+    await this.update(id, { pending_email: change.email, pending_email_token: change.tokenHash, pending_email_expires_at: change.expiresAt });
+  }
+
+  /** When the pending change of `id` to `email` with this token expires — `undefined` once it is replaced, used, cancelled or pruned. */
+  async pendingEmailChange(id: number, email: string, tokenHash: string): Promise<Date | undefined> {
+    const row = await this.query()
+      .select('pending_email_expires_at')
+      .where('id', '=', id)
+      .where('pending_email', '=', email)
+      .where(sql.ref('pending_email_token'), '=', tokenHash)
+      .executeTakeFirst();
+    return row?.pending_email_expires_at ? new Date(row.pending_email_expires_at) : undefined;
+  }
+
+  /**
+   * The click on a change link: the pending address becomes the account's, confirmed `now`. Only for the account `id` (the signed-in
+   * user), only with the token of its current request, only before it expires — and only once: the token is claimed in the same
+   * statement that checks it, so two clicks at once change it once. `'taken'` when another account has the address by now: the
+   * unique index decides (`tryUpdate`), the request is dropped. The previous address comes back for the note to it.
+   */
+  async confirmEmailChange(id: number, tokenHash: string, now: Date): Promise<{ user: User; previous: string } | 'invalid' | 'taken'> {
+    return this.transaction(async (users) => {
+      const claimed = await users.db
+        .updateTable('users')
+        .set({ pending_email_token: null })
+        .where('id', '=', id)
+        .where(sql.ref('pending_email_token'), '=', tokenHash)
+        .where('pending_email_expires_at', '>', now.toISOString())
+        .returning(['email', 'pending_email'])
+        .executeTakeFirst();
+      if (!claimed?.pending_email) return 'invalid';
+      const changes = { pending_email: null, pending_email_expires_at: null };
+      const changed = await users.tryUpdate(id, { email: claimed.pending_email, email_verified_at: now, ...changes });
+      if (changed === 'duplicate') {
+        await users.update(id, changes);
+        return 'taken';
+      }
+      return changed ? { user: changed, previous: claimed.email } : 'invalid';
+    });
+  }
+
+  /** Drops a pending change of address (its link stops working). */
+  async cancelEmailChange(id: number): Promise<void> {
+    await this.update(id, { pending_email: null, pending_email_token: null, pending_email_expires_at: null });
+  }
+
+  /** Clears the pending changes of address that expired before `now` (the schedule) — how many. */
+  async pruneEmailChanges(now: Date): Promise<number> {
+    const result = await this.db
+      .updateTable('users')
+      .set({ pending_email: null, pending_email_token: null, pending_email_expires_at: null })
+      .where('pending_email_expires_at', '<=', now.toISOString())
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows);
   }
 
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {

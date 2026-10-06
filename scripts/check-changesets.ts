@@ -49,6 +49,7 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-userouter-loads-the-pages-optimistic-patches-on-first-use',
     'low-the-starter-kit-asks-in-the-pages-language--its-own-confirm',
     'low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition', // W9.8, E185
+    'medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns', // W9.9, E187
   ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',

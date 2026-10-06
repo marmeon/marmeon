@@ -154,6 +154,13 @@ describe('make:auth', () => {
       expect(readFileSync(join(root, 'modules/auth', file), 'utf8')).toBe(readFileSync(join(overlay, file), 'utf8'));
     }
     expect(readFileSync(join(root, 'modules/auth/controllers/RegisterController.ts'), 'utf8')).not.toContain('emailTaken');
+    // The change of address is pending (W9 step 9): its own migration, controllers, job, mails and prune — the default has none of it.
+    expect(readFileSync(join(root, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8')).toContain('requestEmailChange');
+    const defaults = blankApp();
+    expect(await new MakeAuthCommand().handle(fakeInput(defaults).input)).toBe(0);
+    expect(existsSync(join(defaults, 'modules/auth/email-change.ts'))).toBe(false);
+    expect(existsSync(join(defaults, 'modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts'))).toBe(false);
+    expect(readFileSync(join(defaults, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8')).toContain('changeEmail');
   });
 
   /**
@@ -258,14 +265,20 @@ describe('make:auth', () => {
       expect(generated.out).toContain('private registration');
       expect(generated.code).toBe(0);
       expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
-      expect(bespoke('migrate').code).toBe(0);
+      expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };");
+      const migrated = bespoke('migrate');
+      expect(migrated.out).toContain('add_pending_email_to_users_table');
+      expect(migrated.code).toBe(0);
+      // The link's token hash is secret — never in `Row<'users'>`.
+      expect(readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8')).toContain('pending_email_token: Secret<string | null>;');
       const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
       expect(typecheck.out).toBe('');
       expect(bespoke('make:lint-config', '--boundaries', '--force').code).toBe(0);
       expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
-      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
+      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
-      expect(tests.out).not.toMatch(/failed/);
+      expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
+      expect(tests.out.match(/✓ modules\/auth\/email-change\.test\.ts > /g)).toHaveLength(7); // the pending change of address (W9 step 9)
       expect(tests.code).toBe(0);
     },
     300_000,

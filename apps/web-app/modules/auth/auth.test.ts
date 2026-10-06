@@ -18,7 +18,6 @@ import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { AccountExistsMail } from './mail/AccountExistsMail.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
-import { EmailChangedMail } from './mail/EmailChangedMail.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
@@ -637,31 +636,16 @@ describe('e-mail verification', () => {
     await app.actingAs(kj).post('/email/verification-notification').assertStatus(429);
   });
 
-  it('changing the address needs the password again, unverifies it, mails both addresses — the old link dies', async () => {
+  it('changing the address needs a confirmed address and the password again — then it is pending (email-change.test.ts)', async () => {
     await register('kj@example.com');
     const kj = await userBy('kj@example.com');
-    const oldLink = verificationLink('kj@example.com');
     await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertForbidden(); // unconfirmed (E146)
-    await app.actingAs(kj).get(oldLink).assertRedirect('/users/me'); // confirmed: the app opens
+    await app.actingAs(kj).get(verificationLink('kj@example.com')).assertRedirect('/users/me'); // confirmed: the app opens
     await app.actingAs(kj).expectingJson().put('/settings/email', { json: { email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
     const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
     const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
-    await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'E-mail address changed. Please confirm the new one — we sent you a link.' });
-    expect(await userBy('katherine@nasa.example')).toMatchObject({ id: kj.id, email_verified_at: null });
-    app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
-    app.mail.assertQueued(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
-    await session.expectingJson().get(oldLink).assertForbidden(); // the link for the old address
-    await session.get(verificationLink('katherine@nasa.example')).assertRedirect('/users/me');
-  });
-
-  it('refuses an address another account has — a field error, not a 500', async () => {
-    await app.factory(UserFactory).create({ email: 'taken@example.com' });
-    const kj = await app.factory(UserFactory).create();
-    const login = await app.post('/login', credentialsOf(kj));
-    await app
-      .withCookie('bespoke_session', login.cookie('bespoke_session')!)
-      .put('/settings/email', { form: { email: 'TAKEN@example.com' }, headers: { referer: 'http://localhost/settings/security' } })
-      .assertInvalid(['email']);
+    await session.put('/settings/email', { form: { email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.' });
+    expect(await userBy('kj@example.com')).toMatchObject({ id: kj.id, pending_email: 'katherine@nasa.example' });
   });
 });
 

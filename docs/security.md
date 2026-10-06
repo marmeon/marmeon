@@ -77,7 +77,8 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   per session (`block()`).
 - Registration tells by default whether an address is taken (like Laravel's starter kits). `make:auth --private-registration`
   answers every registration the same way, in the same time, and mails the owner instead; the app's routes then ask for a
-  confirmed address (`verified()`)
+  confirmed address (`verified()`), and a change of address stays pending until the link sent to the new address is clicked —
+  the same answer for a free and a taken address, a note to the owner of a taken one
   ([private registration](../packages/auth/README.md#private-registration---private-registration-e146)).
 - Policies and the `Gate` decide what a user may do
   ([authorization](../packages/auth/README.md#authorization-policies-and-the-gate-e28)).

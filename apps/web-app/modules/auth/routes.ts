@@ -1,6 +1,7 @@
 import { authenticate, confirmedPassword, guest, verified } from '@bespokecore/auth';
 import { throttle } from '@bespokecore/cache';
 import { defineRoutes, signed } from '@bespokecore/http';
+import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import { CreateAccessTokenController, ShowCreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
 import { LoginController } from './controllers/LoginController.ts';
@@ -54,7 +55,9 @@ export default defineRoutes((Route) => {
   // time (block(), E145) — two at once could leave the session with the other's fingerprint, and sign it out.
   confirmed.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
   confirmed.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();
-  confirmed.middleware(confirmedPassword()).put('/settings/email', UpdateEmailController).name('auth.email.update');
+  // Private registration (E146): a new address is pending until the link sent to it is clicked — the same answer for every
+  // address; a few requests a minute per user (each one sends a mail somewhere).
+  confirmed.middleware(confirmedPassword()).middleware(throttle('email-change')).put('/settings/email', UpdateEmailController).name('auth.email.update');
   // API tokens: as good as a session — sudo mode for all of it.
   const sudo = confirmed.middleware(confirmedPassword());
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
@@ -68,4 +71,6 @@ export default defineRoutes((Route) => {
   signedIn.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
   signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
   signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
+  // The link to a new address (private registration, E146): signed, expiring, for its own user and request only — internal too.
+  signedIn.middleware(signed()).get('/email/change/:id/:token', ConfirmEmailChangeController).name('auth.email.confirm').internal();
 });

@@ -88,6 +88,30 @@ entry by wrapping `host.history.push`/`replace` gives it a value instead — `ho
 `popState` hook gets the navigator's `HistoryState` (no longer any `history.state`), and a new `navigate` hook sees Back/Forward before
 the navigator intercepts it (the guard's).
 
+#### Medium: with private registration a change of address is pending until its link is clicked — migrate the new columns
+
+*Likelihood of impact: medium — apps made with `make:auth --private-registration` (or `create-bespoke-app --private-registration`);
+the default registration is unchanged.* The security page told whether an address has an account: "taken" for one, an address
+change for a free one (W9 step 9, E146/E187). Now a new address is **pending** — kept beside the account's own until the link sent
+to it is clicked while signed in; a free and a taken address get the same answer in the same time; the owner of a taken one gets a
+note (`EmailInUseMail`) and nothing changes for anybody. The account changes only with the click (then confirmed, the old address
+told as before). Your `modules/auth` is yours, so the update does not change it — take the variant over by hand:
+
+1. A migration that adds `pending_email` (string 255, nullable), `pending_email_token` (string 64, nullable, **`.secret()`**) and
+   `pending_email_expires_at` (timestamp, nullable) to `users` — `stubs/react/private-registration/modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts`
+   of `@bespokecore/auth`; `bespoke migrate`, then the regenerated `bootstrap/database.d.ts` (a `User` literal of yours — mail
+   previews, test doubles — needs `pending_email` and `pending_email_expires_at`).
+2. From the same directory: `email-change.ts`, the new methods of `UserRepository.ts` (`requestEmailChange`, `pendingEmailChange`,
+   `confirmEmailChange`, `cancelEmailChange`, `pruneEmailChanges`; `changeEmail` goes), `controllers/UpdateEmailController.ts`,
+   `controllers/ConfirmEmailChangeController.ts`, `controllers/ShowSecurityController.ts` and `views/Security.tsx` (the pending
+   address), `jobs/SendEmailChangeMailJob.ts` (in `jobs` of `index.ts`), `mail/ConfirmNewEmailMail.ts`, `mail/EmailInUseMail.ts`,
+   `tasks/PruneEmailChanges.ts` (in `schedule.ts`), the two routes of `routes.ts` (`throttle('email-change')` on `PUT
+   /settings/email`, the signed `/email/change/:id/:token`) and `email-change.test.ts`; the `email-change` limiter of the default
+   `AuthServiceProvider.ts` and the texts of `lang/en.ts` (`security.email_change_sent`, `security.email_pending`, `email_change.*`,
+   `mail.confirm_new_email.*`, `mail.email_in_use.*`).
+
+Until then the old controller keeps working — and keeps telling "taken".
+
 #### Low: the server keeps idle connections 65 s (`KEEP_ALIVE_TIMEOUT`)
 
 *Likelihood of impact: low — apps behind a proxy or a load balancer.* Node closes an idle keep-alive connection after 5 s; nginx (the

@@ -81,15 +81,27 @@ being a cheap way to find out who has an account. `--private-registration` write
   verification notice until it clicks the link from its inbox while signed in — `verified()` on every route of the module except
   `/logout` and the verification notice, link and resend (`/dashboard`, `/confirm-password`, the settings and the tokens). Whoever
   signed up first with somebody else's address cannot confirm it — and the owner takes it over with a password reset.
+- **A pending change of address:** a new address on the security page (sudo mode, `throttle('email-change')`: six a minute per
+  user) is kept aside — `users.pending_email`, the SHA-256 hash of its link's token (`pending_email_token`, a secret column) and
+  `pending_email_expires_at` (60 minutes) — and the account keeps its address. The answer is the same for a free and a taken
+  address, in the same time: the request writes the pending change and queues one job, `SendEmailChangeMailJob` (encrypted
+  payload), whatever was typed. The worker decides: a free address gets `ConfirmNewEmailMail` with a signed link
+  (`/email/change/:id/:token`, internal); the owner of a taken one gets `EmailInUseMail` ("someone wanted to use your address")
+  and nothing changes for anybody. The link works only for the signed-in account it names, only with the token of that account's
+  latest request, only before it expires and only once (the token is claimed in the statement that checks it); then the pending
+  address becomes the account's, confirmed, and the old address gets `EmailChangedMail`. Taken in the meantime → refused (409:
+  the unique index decides, `tryUpdate`). `pending_email` signs nobody in and gets no reset link; typing the account's own address
+  again drops a pending change; `PruneEmailChanges` clears expired ones nightly (the schedule).
 
 It writes `controllers/RegisterController.ts`, `controllers/ShowRegistrationSentController.ts`, `views/Register.tsx`,
 `views/RegistrationSent.tsx`, `jobs/SendAccountExistsMailJob.ts`, `mail/AccountExistsMail.ts`, `routes.ts`, `index.ts` and
-`registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`); the texts are in the default `lang/en.ts`.
-**What it does not cover yet — the address change.** The security page still answers "taken" for an address with an account, so
-it tells whether an address has one: only to a signed-in user with a confirmed address in sudo mode, whose own address changes
-(and needs confirming again) whenever the new one is free — a slow, self-locking probe, but a leak. Wave 9 closes it with a
-pending address change: the new address is kept aside and a confirmation link goes to it, the answer is the same for a free and
-a taken address, the owner of a taken one gets a note — and the account's address changes only once the link is used.
+`registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`) — and for the change of address
+`migrations/0001_01_01_000004_add_pending_email_to_users_table.ts`, `email-change.ts`, `UserRepository.ts`,
+`controllers/UpdateEmailController.ts`, `controllers/ConfirmEmailChangeController.ts`, `controllers/ShowSecurityController.ts`,
+`views/Security.tsx`, `jobs/SendEmailChangeMailJob.ts`, `mail/ConfirmNewEmailMail.ts`, `mail/EmailInUseMail.ts`,
+`mail/preview-data.ts`, `tasks/PruneEmailChanges.ts`, `schedule.ts` and `email-change.test.ts`; the texts are in the default
+`lang/en.ts`, the `email-change` limiter in the default `AuthServiceProvider.ts`.
+
 The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
 queue worker run. The web app runs it — `verified()` on every page of its modules; an unconfirmed account sees the notice.
 

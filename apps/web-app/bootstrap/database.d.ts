@@ -129,6 +129,9 @@ declare module '@bespokecore/database' {
       email_verified_at: Timestamp | null;
       locale: string | null;
       avatar_path: string | null;
+      pending_email: string | null;
+      pending_email_token: Secret<string | null>;
+      pending_email_expires_at: Timestamp | null;
     };
   }
   interface TableOwners {

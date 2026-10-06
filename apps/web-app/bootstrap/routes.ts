@@ -2,6 +2,7 @@
 // `bespoke dev` and `bespoke build` keep it current; CI checks it with `bespoke route:types --check`.
 
 import type { AddProfileLinkController } from '../modules/user-profile/controllers/AddProfileLinkController.ts';
+import type { ConfirmEmailChangeController } from '../modules/auth/controllers/ConfirmEmailChangeController.ts';
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
@@ -50,6 +51,7 @@ declare module '@bespokecore/router' {
   interface Routes {
     'api.users.index': { method: 'get'; path: '/api/users'; controller: typeof ListUsersController; browser: false };
     'auth.devices.logout': { method: 'post'; path: '/settings/devices/logout'; controller: typeof LogoutOtherDevicesController };
+    'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };
     'auth.email.update': { method: 'put'; path: '/settings/email'; controller: typeof UpdateEmailController };
     'auth.login': { method: 'get'; path: '/login'; controller: typeof ShowLoginController };
     'auth.login.store': { method: 'post'; path: '/login'; controller: typeof LoginController };

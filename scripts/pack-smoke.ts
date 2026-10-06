@@ -3,7 +3,8 @@
  * from them OUTSIDE the monorepo by the `create-bespoke-app` tarball — twice. A part of `pnpm run ci`.
  *
  *   create-bespoke-app without a directory and without a terminal → exit 2 at once (never a prompt that waits)
- *   create-bespoke-app app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
+ *   create-bespoke-app app --yes --private-registration (the starter kit, pnpm, git) → package.json at exact versions, .env with
+ *     APP_KEY, one clean commit
  *     → migrate (development from .env) → vitest run → lint → build without .env (E187: no key; nothing shaped like an APP_KEY and
  *     not the app's own in dist/ or .bespoke/) → start → GET /login 200
  *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
@@ -392,13 +393,13 @@ async function main(): Promise<number> {
       if (result.status !== 2 || !result.stderr.includes(NO_DIRECTORY)) throw new SmokeError(`create-bespoke-app without a directory ended with ${result.status}, expected 2 and "${NO_DIRECTORY}":\n${result.stdout}${result.stderr}`);
     });
 
-    // ── The starter kit with pnpm (the defaults) ──
+    // ── The starter kit with pnpm (the defaults — and private registration, E146: the variant writes the most templates) ──
     const app = pnpmApp.app;
-    await pnpmApp.step('create-bespoke-app app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
-      const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
+    await pnpmApp.step('create-bespoke-app app --yes --private-registration (starter kit, pnpm, install, make:auth, migrate, git)', () => {
+      const output = scaffold(bin, work, ['app', '--yes', '--private-registration'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
       if (!output.includes('bespoke make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-bespoke-app skipped a step:\n${output}`);
       checkManifest(app, 'pnpm');
-      for (const file of ['modules/auth/routes.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite']) {
+      for (const file of ['modules/auth/routes.ts', 'modules/auth/controllers/ConfirmEmailChangeController.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite']) {
         if (!existsSync(join(app, file))) throw new SmokeError(`the starter kit has no ${file}.`);
       }
       // One commit, nothing left over — and none of what the app writes or keeps secret in it (.gitignore of the template).
@@ -417,6 +418,7 @@ async function main(): Promise<number> {
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
       if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);
+      if (!/modules\/auth\/email-change\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the private registration's tests (email-change.test.ts):\n${output}`);
       return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
     await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));

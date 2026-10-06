@@ -6,7 +6,7 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, auth }: Props) {
+export default function Security({ viaRemember, email, pendingEmail, auth }: Props) {
   const t = useTranslation('auth');
   const route = useRoute();
   // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
@@ -41,6 +41,11 @@ export default function Security({ viaRemember, email, auth }: Props) {
             {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
             {auth?.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
           </p>
+          {pendingEmail && (
+            <p role="status">
+              <small>{t('security.email_pending', { email: pendingEmail, current: email })}</small>
+            </p>
+          )}
           <button type="submit" disabled={emailForm.processing || !emailForm.isDirty}>
             {t('security.change_email')}
           </button>
