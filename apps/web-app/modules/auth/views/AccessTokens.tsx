@@ -48,7 +48,7 @@ export default function AccessTokens({ tokens }: Props) {
         <p>{t('tokens.none')}</p>
       ) : (
         // A scrolling list of its own: Back and Forward restore its position, like the window's.
-        <ul scroll-region="" style={{ maxHeight: '12rem', overflowY: 'auto' }}>
+        <ul scroll-region="" className="scroll-list">
           {tokens.map((token) => (
             <li key={token.id}>
               <strong>{token.name}</strong> — {token.abilities.join(', ')} ·{' '}

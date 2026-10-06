@@ -56,7 +56,7 @@ export default function Edit({ profile, old }: Props) {
         <p>
           <span id={`${id}-avatar-label`}>{t('edit.avatar')}</span>
           <br />
-          {(avatar?.preview ?? profile.avatar) && <img src={avatar?.preview ?? profile.avatar ?? undefined} alt="" width={96} height={96} style={{ objectFit: 'cover', borderRadius: '50%' }} />}
+          {(avatar?.preview ?? profile.avatar) && <img src={avatar?.preview ?? profile.avatar ?? undefined} alt="" width={96} height={96} className="avatar" />}
           <br />
           <label htmlFor={`${id}-avatar`}>{t('edit.avatar_choose')}</label>
           <br />

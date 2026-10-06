@@ -39,10 +39,11 @@ bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | sched
   scheduler process checks at its start that every `s.command()` exists and every `s.job()` is a registered job — except one limited
   to other environments: it never runs here, and its package may be a dev dependency
   (`s.command('devtools:prune').hourlyAt(40).environments('development')`).
-- **`onOneServer()`:** the first scheduler to take the lock `schedule:<name>:<minute>` in the app's cache runs it. Needs a
-  cache all servers share — `CACHE_DRIVER=database` or `redis` — when more than one scheduler runs.
-- **`withoutOverlapping(minutes = 1440)`:** a run is skipped while the previous one still runs (on any server). A
-  scheduler that stops before its runs end frees their locks. Not for `s.job()` (queuing never overlaps — a type error):
+- **`onOneServer()`:** the first scheduler to take the lock `schedule:<name>:<minute>` (the minute in UTC, `2026-10-04T01:10`) in
+  the app's cache runs it; the lock is kept an hour, never released. Needs a cache all servers share — `CACHE_DRIVER=database` or `redis` — when more than one scheduler runs.
+- **`withoutOverlapping(minutes = 1440)`:** a run is skipped while the previous one still runs (on any server) — at most
+  `minutes`: then the lock expires, so a crashed scheduler cannot block the task forever, and a run that takes longer no longer
+  holds it. A scheduler that stops before its runs end frees their locks. Not for `s.job()` (queuing never overlaps — a type error):
   overlapping runs of the job itself are the job's `withoutOverlapping()` middleware
   ([unique jobs, chains, middleware](../queue/README.md#unique-jobs-chains-middleware)).
 - **Locks in a cache that is not shared (E123):** with `CACHE_DRIVER=file` the locks hold on this machine only, with

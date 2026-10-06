@@ -18,13 +18,13 @@ export function AppLayout({ children }: LayoutProps) {
 
   return (
     <>
-      <header style={{ display: 'flex', gap: 16, alignItems: 'baseline', justifyContent: 'space-between', borderBottom: '1px solid #ddd', paddingBottom: 8 }}>
+      <header className="app-header">
         <strong>
           {user ? <Link route="user-profile.me">{t('name')}</Link> : <Link route="auth.login">{t('name')}</Link>}
         </strong>
         {/* The link to the page on screen gets aria-current="page" and data-current by itself (E64). */}
         {user && (
-          <nav aria-label={t('main')} style={{ display: 'flex', gap: 12 }}>
+          <nav aria-label={t('main')} className="row">
             {/* Instant visits (E64): the page's placeholder shows at once, inside this layout — then the page. */}
             <Link route="dashboard.show" instant>
               {t('dashboard')}
@@ -38,7 +38,7 @@ export function AppLayout({ children }: LayoutProps) {
         {/* A POST with the CSRF token (a GET would let any site switch it): the choice goes into the session. An uncontrolled
             `<Form>` (E64): the pressed button's `locale` is the field — without JavaScript a real form (`_token` included). */}
         {locales && (
-          <Form route="locale.update" aria-label={t('language')} style={{ display: 'flex', gap: 4 }}>
+          <Form route="locale.update" aria-label={t('language')} className="row row-tight">
             {(form) =>
               locales.map((code) =>
                 code === locale ? (
@@ -106,7 +106,7 @@ function NewVersionBanner() {
   const waiting = useNewVersion();
   if (!waiting) return null;
   return (
-    <p role="status" data-new-version="" style={{ background: '#fff4ce', padding: '8px 12px', borderRadius: 4 }}>
+    <p role="status" data-new-version="" className="notice">
       {t('new_version')}{' '}
       <button type="button" onClick={() => waiting.reload()}>
         {t('new_version_reload')}

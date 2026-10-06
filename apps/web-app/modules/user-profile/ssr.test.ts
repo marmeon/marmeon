@@ -55,6 +55,20 @@ describe('view transitions (E185): the avatars the list and the profile share, r
   });
 });
 
+describe('the app’s pages, rendered on the server (W9 step 10b)', () => {
+  it('counter-check: carry no style attribute — the views name classes of styles/app.css (a strict style-src would block one)', async () => {
+    // Signed in for real: a fresh sign-in counts as a confirmed password (the settings pages are in sudo mode).
+    const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me');
+    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    for (const url of ['/dashboard', '/people', `/users/${ada.id}`, `/users/${ada.id}/edit`, '/members', '/notifications', '/settings/security', '/settings/tokens']) {
+      const { body } = await session.get(url, page).assertOk().assertServerRendered();
+      // The framework's LayerDialog brings its default look inline (the dialog, its content box, the close button) — not the app's.
+      const styled = (body.match(/<[^>]+\sstyle="[^>]*>/g) ?? []).filter((tag) => !/data-bespoke-layer|style="padding:1\.5rem;padding-inline-end:3rem"/.test(tag));
+      expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
+    }
+  });
+});
+
 describe('the people list, rendered on the server — its query state included (E55)', () => {
   it('renders the filtered, sorted list from the URL, and it hydrates: useQueryState reads the parsed query of the page', async () => {
     const response = await app.actingAs(ada).get('/people?q=a&sort=-name', page).assertServerRendered().assertHydrates();

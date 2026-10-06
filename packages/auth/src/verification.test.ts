@@ -48,6 +48,11 @@ describe('verified()', () => {
     expect([away.status, away.headers.get('location')]).toEqual([302, '/email/verify']);
     expect((await run({ email_verified_at: null }, 'application/json')).status).toBe(403);
   });
+
+  it('counter-check: a user without the column (a provider that did not select it) is not verified — fail closed', async () => {
+    expect((await run({ email_verified_at: undefined as never })).status).toBe(302);
+    expect((await run({ email_verified_at: undefined as never }, 'application/json')).status).toBe(403);
+  });
 });
 
 // --- Type guarantees (never called) -----------------------------------------------------------

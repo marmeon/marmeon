@@ -72,7 +72,8 @@ export function verified<const N extends RouteNameInput = never>(options: Verifi
     }
 
     handle(ctx: HttpContext<{ readonly user: VerifiableUser }>, next: Next<{}>): Promise<Response> | Response {
-      if (ctx.user.email_verified_at !== null) return next();
+      // Fail closed: a user whose provider did not load the column (undefined) is not verified either.
+      if (ctx.user.email_verified_at != null) return next();
       if (ctx.expectsJson()) return Response.json({ message: 'Your e-mail address is not verified.' }, { status: 403 });
       return new Response(null, { status: 302, headers: { location: urlFor(this.#router, noticeRoute) } });
     }

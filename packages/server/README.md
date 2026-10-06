@@ -76,6 +76,15 @@ await server.close({ immediately: true });    // without SHUTDOWN_DELAY (bespoke
 await app.shutdown();
 ```
 
+`startServer(options)` takes `app` and, all optional: `port` and `host` (`ServerConfig`: `PORT`, `HOST`), `mode`
+(`'development'` | `'production'`), `ssrEntry` (development: the SSR entry relative to the root, default the `bespoke()`
+plugin's), `drainTimeoutMs` (8000), `shutdownDelayMs` (`SHUTDOWN_DELAY`) and `keepAliveTimeoutMs` (`KEEP_ALIVE_TIMEOUT`; the
+server's `headersTimeout` is a second longer, between 60 s and 300 s). It resolves with a `RunningServer` — `{ server, port,
+close(options?) }`, `server` being Node's `http.Server`; it rejects with Node's error when it cannot listen (`EADDRINUSE`). On every
+interface (no `host`, `::`, `0.0.0.0`) with a fixed port it first looks whether another program holds `127.0.0.1:<port>` — macOS lets
+both listen, and requests to 127.0.0.1 would reach that program — and logs a warning if so (`heldOnLoopback(port, host)`; a cluster's
+primary asks once for its workers).
+
 - **development** (`mode: 'development'`; the default only with `NODE_ENV=development`, E115 — never "anything but production"):
   the app's Vite in middleware mode — HMR, source modules, `/__open-in-editor`, the SSR entry of the `bespoke()` plugin
   (`bootstrap/ssr.tsx`). Without Vite or without the plugin it fails with a `ViteSetupError` that says what to install. `bespoke
@@ -96,8 +105,8 @@ The start line names the environment and what is served (E139): `BespokeCore in 
 close`, so a client's next request opens a new connection, which the load balancer, told by the failing probe, gives to another
 instance; `/up` stays 200. Then the drain (E102): live streams end first (a tab connects to the next server), no new
 connections, idle keep-alive connections close, requests in flight finish, then the work they deferred until after their
-response — at most `drainTimeoutMs` (8 s) — before the caller shuts the app down and its pools close. From then on `/up`
-answers 503 too. `bespoke` exits after 10 s (plus the delay) at the latest; it installs its signal handlers before the server
+response — at most `drainTimeoutMs` (8 s) — before the caller shuts the app down and its pools close. `/up` answers 503 from
+the moment the drain begins (after the delay), on connections still open. `bespoke` exits after 10 s (plus the delay) at the latest; it installs its signal handlers before the server
 listens, so a SIGTERM during the start is answered once it listens (Node's default would end the process without a drain — and
 Node as PID 1 would ignore it).
 
@@ -251,7 +260,8 @@ env: [{ name: SHUTDOWN_DELAY, value: '5' }]     # instead of a preStop sleep; te
 ## The request log line
 
 Every request writes one entry on the `http` channel — `GET /users/7 200` with `{ requestId, route: 'users.show', ms }`
-(`route` only for a named route). The kernel answers with the request's id (`x-request-id`, taken from the request when it
+(`route` only for a named route). It is built only when it goes somewhere: the kernel asks `logger.enabled?.('info')` first
+(E187) — with `LOG_LEVEL=silent` or `warn` neither the line nor its redacted path is made. The kernel answers with the request's id (`x-request-id`, taken from the request when it
 is a sane one, else generated); every log entry of the request carries it — and, with `@bespokecore/otel`, the request span's
 `trace_id` and `span_id` (the line is written inside the span). Its path is redacted (E125): a sensitive route parameter
 (`/reset-password/:token`) and a token-like segment of a path without a route become `[redacted]`.
@@ -316,7 +326,9 @@ Everything on it — page and Markdown — passes the app's `Redactor` first (E1
 tokens, hashes and the parameters of statements on secret columns never show.
 
 It is one self-contained HTML document — its own CSS (light and dark), no React, no Vite, no app code — so it renders when
-the views or server rendering are what broke. A client-side visit (`x-bespoke`) gets it as HTML too; the visit dialog
+the views or server rendering are what broke. It goes out with `Cache-Control: no-store`, `X-Robots-Tag: noindex` and a
+`Content-Security-Policy` of its own (`default-src 'none'`, its inline style and script by hash, `frame-ancestors 'self'`),
+which an app's `contentSecurityPolicy()` leaves alone. A client-side visit (`x-bespoke`) gets it as HTML too; the visit dialog
 (`VisitFailure`) shows it in its sandboxed frame. The frame runs no scripts (`sandbox=""`, unchanged): there the Markdown is a
 text field to select, and the editor links work through a named frame inside the page. A JSON request keeps `{ message,
 exception }` and gets the first `solution` beside them. 4xx errors, actions, islands and uploads keep their answers; an app's

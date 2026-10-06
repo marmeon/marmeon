@@ -161,7 +161,10 @@ export interface CursorOptions<C extends string> {
   readonly encrypter: CursorEncrypter;
 }
 
-/** Each cursor's own context: one of another list (other columns, the other direction) does not decrypt here. */
+/**
+ * Each order's own context: a cursor of other columns or the other direction does not decrypt here. Per order, not per list — one
+ * of another list with the same order is a position among this list's rows (its filters still apply).
+ */
 const CURSOR_CONTEXT = 'bespoke:cursor';
 
 /**

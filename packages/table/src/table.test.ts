@@ -173,6 +173,17 @@ describe.each(drivers)('@bespokecore/table on %s', (driver) => {
       expect(status, `${query} answered ${status}`).toBe(400);
     });
 
+    it('counter-check: a filter on a hidden column is hidden with it (400) — its counts would tell the values (W9 step 10b)', async () => {
+      const application = await app(driver);
+      const hidden = await application.request('/teams/1/leaky?filter[since]=2026-02-01..', { user: ALAN });
+      expect(hidden.status, 'a filter on a hidden column was used').toBe(400);
+      const { leaky } = (await (await application.request('/teams/1/leaky', { user: ALAN })).json()) as { leaky: Members };
+      expect(leaky.filters, 'a filter on a hidden column was offered').toEqual([]);
+      const shown = await application.request('/teams/1/leaky?filter[since]=2026-02-01..', { user: ADA });
+      expect(shown.status).toBe(200);
+      expect(((await shown.json()) as { leaky: Members }).leaky.rows.map((row) => row.name)).not.toContain('Ada');
+    });
+
     it('a hidden column cannot be sorted by (400) — the order would tell its values', async () => {
       const application = await app(driver);
       expect((await page(application, ALAN, 'sort=email')).status, 'a hidden column was sortable').toBe(400);

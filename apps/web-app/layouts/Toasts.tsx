@@ -32,7 +32,7 @@ export function Toasts() {
             </p>
           ))}
       </noscript>
-      <section aria-label={t('notifications')} aria-live="polite" style={{ position: 'fixed', insetInlineEnd: 16, bottom: 16, display: 'grid', gap: 8, zIndex: 10, maxWidth: 'min(24rem, calc(100vw - 2rem))' }}>
+      <section aria-label={t('notifications')} aria-live="polite" className="toasts">
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} onDismiss={() => dismiss(toast.id)} closeLabel={t('close')} />
         ))}
@@ -40,8 +40,6 @@ export function Toasts() {
     </>
   );
 }
-
-const COLORS: Record<Toast['kind'], string> = { success: '#166534', error: '#991b1b', info: '#1e3a8a' };
 
 function ToastItem({ toast, onDismiss, closeLabel }: { toast: Toast; onDismiss: () => void; closeLabel: string }) {
   useEffect(() => {
@@ -52,10 +50,10 @@ function ToastItem({ toast, onDismiss, closeLabel }: { toast: Toast; onDismiss: 
     <div
       role={toast.kind === 'error' ? 'alert' : undefined}
       data-toast={toast.kind}
-      style={{ display: 'flex', gap: 12, alignItems: 'baseline', padding: '10px 14px', borderRadius: 8, color: '#fff', background: COLORS[toast.kind], boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)' }}
+      className="toast"
     >
-      <span style={{ flex: 1 }}>{toast.message}</span>
-      <button type="button" aria-label={closeLabel} onClick={onDismiss} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit' }}>
+      <span>{toast.message}</span>
+      <button type="button" aria-label={closeLabel} onClick={onDismiss}>
         ×
       </button>
     </div>

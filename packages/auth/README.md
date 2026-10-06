@@ -45,7 +45,7 @@ What the module holds:
 | | |
 |---|---|
 | `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the job, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
-| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP) and `verification` ([@bespokecore/cache](../cache/README.md)) |
+| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user — only the private registration's routes use it) ([@bespokecore/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
 | `routes.ts` | `/login`, `/register`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…` (behind `authenticate()`) |
 | `api-routes.ts` | `GET /api/user` behind `authenticate('api')` — Sanctum's `/api/user` |
@@ -69,7 +69,8 @@ neither header needs the token — `<Form>` renders `page.csrf` for that when th
 
 By default the registration works like Laravel Breeze's: a taken address is a field error — when the field is checked live (E62)
 and on submit — and a new account is signed in at once; the throttle (`register`, 10/min per IP, E100) is what keeps it from
-being a cheap way to find out who has an account. `--private-registration` writes a variant over the module that never tells:
+being a cheap way to find out who has an account. A new address on the security page takes effect at once (unconfirmed until
+its link is clicked; the old address gets `EmailChangedMail`) — a taken one is a field error there too. `--private-registration` writes a variant over the module that never tells:
 
 - **The same answer, in the same time:** a new and a known address both get a redirect to `/register/sent` ("check your inbox")
   — no session, no cookie, byte for byte alike. The password is hashed either way (the hash is what takes the time), and either
@@ -79,7 +80,7 @@ being a cheap way to find out who has an account. `--private-registration` write
 - **No live check of the address:** the schema asks no database — live validation checks the e-mail's form only.
 - **A confirmed address first:** nobody is signed in by registering; the new account signs in like any other and sees only the
   verification notice until it clicks the link from its inbox while signed in — `verified()` on every route of the module except
-  `/logout` and the verification notice, link and resend (`/dashboard`, `/confirm-password`, the settings and the tokens). Whoever
+  `/logout`, the verification notice, link and resend and the change-of-address link (`/dashboard`, `/confirm-password`, the settings and the tokens). Whoever
   signed up first with somebody else's address cannot confirm it — and the owner takes it over with a password reset.
 - **A pending change of address:** a new address on the security page (sudo mode, `throttle('email-change')`: six a minute per
   user) is kept aside — `users.pending_email`, the SHA-256 hash of its link's token (`pending_email_token`, a secret column) and

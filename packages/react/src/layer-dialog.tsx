@@ -5,7 +5,10 @@ export interface LayerDialogProps extends LayerFrameProps {
   /** The close button's accessible name (default `Close` — pass the app's translation). */
   closeLabel?: string;
   className?: string;
-  /** Merged over the default look (a few inline properties: a strict CSP blocks no inline style property). */
+  /**
+   * Merged over the default look — a few inline properties. Rendered on the server (a deep link to a layer) they are a `style`
+   * attribute, which a strict `style-src` blocks: an app with one styles the frame by `data-bespoke-layer`/`data-variant` instead.
+   */
   style?: CSSProperties;
 }
 

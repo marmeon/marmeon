@@ -5,7 +5,7 @@ Notifications (E92): a class per notification — a stable name, the schema of i
 channels `mail` and `database`, read back from an **Inbox that is always bound to its recipient**. The channel contract is
 open: `live` comes with [@bespokecore/live](../live/README.md#notifications-the-live-channel) (W6.10: once the delivery
 committed, a hint on `notificationsChannel(recipient)` — the bell and the list of the recipient's open tabs reload); Web Push
-is planned with `@bespokecore/pwa` (E93) — not part of 0.1.0.
+is planned with `@bespokecore/pwa` (E93) — not part of BespokeCore yet.
 
 ```ts
 // modules/auth/notifications/NewSignInNotification.ts — and `notifications: [NewSignInNotification]` in defineModule
@@ -121,8 +121,9 @@ be per notification and explicit.
 ## The Inbox — always bound to the recipient
 
 Every method takes **whose** notifications it reads or changes — `unread(r, { limit = 20 })`, `latest(r, { limit = 50 })`,
-`page(r, { cursor, perPage = 20, encrypter })` (newest first, for "load more": keyset by `created_at` and `id`, the cursor encrypted
-with the app key — inject `Encrypter`; a forged one answers 400), `count(r)` (unread), `markRead(r, id)`, `markAllRead(r)` (how
+`page(r, { cursor, perPage = 20, encrypter })` (newest first, for "load more": keyset by `created_at` and `id`, at most 500 a page,
+the cursor encrypted with the app key — inject `Encrypter`; a forged one answers 400, and one of another recipient's list only
+says where to go on: every page is that recipient's), `count(r)` (unread), `markRead(r, id)`, `markAllRead(r)` (how
 many), `delete(r, id)` — and every statement carries `recipient_type`/`recipient_id`: an id of somebody else's notification finds
 nothing (`markRead`/`delete` → `false` → the controller answers 404). Ids that are no UUID
 are refused before any query. The recipient comes from who is signed in, never from the request's input.

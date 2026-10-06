@@ -169,15 +169,17 @@ Filters (`?status=4xx&route=auth.login&tag=failed&requestId=…&search=…`) are
   production, staging, tests without the opt-in or without `NODE_ENV` they are **not registered** (404); `DEVTOOLS_ENABLED=true`
   where the app is protected (production, staging, no `NODE_ENV`) fails the start.
 - **Host check (DNS rebinding):** a request whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or the host of `APP_URL` gets
-  **403** — a page on `evil.example` whose name was pointed at 127.0.0.1 cannot read the devtools as same-origin. No CORS header
-  is ever set.
+  **403** — a page on `evil.example` whose name was pointed at 127.0.0.1 cannot read the devtools as same-origin. In `bespoke dev`
+  Vite's own host check (`server.allowedHosts`) runs first, for the whole app: a host Vite does not know (the `APP_URL` host
+  included, unless the app's Vite config allows it) gets Vite's 403. No CORS header is ever set.
 - **Read-only, GET only:** no route accepts POST, PUT, PATCH or DELETE, and none runs anything (E113, E130) — retrying a failed
   job, running a task, clearing the store are commands to copy.
 - **No session, no cookies:** the routes are in no middleware group (no session, no CSRF, nothing written).
 - **Headers:** `Cache-Control: no-store`, `Content-Security-Policy: default-src 'none'; style-src/script-src` the pages' own
   inline code by hash; `img-src 'self' data:; connect-src 'self'; frame-src 'self'; form-action 'self'; base-uri 'none';
   frame-ancestors 'self'` (only this origin may frame them), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`,
-  `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`. An app's
+  `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`, `X-Robots-Tag: noindex` — on every answer, the 403 and the
+  error answers included (one without a policy of its own gets `frame-ancestors 'self'`). An app's
   [`contentSecurityPolicy()`](../http/README.md#content-security-policy-e147) leaves this policy alone (a response's own is kept).
 - **Escaping:** what the entries hold is redacted already (E125); the pages still escape every value — a `<script>` in a
   recorded path, query or log line is text. A recorded mail's HTML is shown only in the sandboxed frame (opaque origin, no

@@ -69,12 +69,35 @@ function Edit({ name }: { name: string }) {
 }
 Edit.layout = Layout;
 
+// A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent (W9 step 10b).
+function Secret({ name }: { name: string }) {
+  const form = useForm('profile.update', {}, { name, password: '' }, { guard: 'Unsaved changes.' });
+  return (
+    <form
+      data-testid="form"
+      data-dirty={form.isDirty() || undefined}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.submit({ onFinish: () => form.reset('password') });
+      }}
+    >
+      <input data-testid="name" value={String(form.data.name)} onChange={(event) => form.set('name', event.target.value)} />
+      <input data-testid="password" value={String(form.data.password)} onChange={(event) => form.set('password', event.target.value)} />
+      <button data-testid="save">Save</button>
+      <button type="button" data-testid="undo" onClick={() => form.reset()}>
+        Undo
+      </button>
+    </form>
+  );
+}
+Secret.layout = Layout;
+
 function People() {
   return <p data-testid="people">People</p>;
 }
 People.layout = Layout;
 
-const pages: Record<string, PageComponent> = { Edit, People };
+const pages: Record<string, PageComponent> = { Edit, Secret, People };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'profile.edit': { method: 'get', path: '/users/1/edit' },
@@ -175,6 +198,46 @@ describe('state attributes (E64)', () => {
     expect($('saving').textContent).toBe('false');
     // Saved: where the form starts over — not dirty.
     expect($('form').hasAttribute('data-dirty')).toBe(false);
+  });
+});
+
+describe('reset() in a submit callback', () => {
+  it('counter-check: resets to the defaults before the submit, and the saved form is not dirty — no question on leaving', async () => {
+    server = (url) => json(url.startsWith('/people') ? page('People', '/people') : page('Secret', '/users/1/edit', { name: 'Ada King' }));
+    await mount(page('Secret', '/users/1/edit', { name: 'Ada' }));
+    await type($('name') as HTMLInputElement, 'Ada King');
+    await type($('password') as HTMLInputElement, 'secret password');
+    await click('save');
+    await wait();
+    expect(requests).toEqual(['PUT /users/1']);
+    // The password is empty again, the name stays as sent — and that is where the form starts over.
+    expect(($('password') as HTMLInputElement).value).toBe('');
+    expect(($('name') as HTMLInputElement).value).toBe('Ada King');
+    expect($('form').hasAttribute('data-dirty')).toBe(false);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+    // A later reset() goes back to the saved state, not to the first one.
+    await type($('name') as HTMLInputElement, 'Ada Lovelace');
+    await click('undo');
+    expect(($('name') as HTMLInputElement).value).toBe('Ada King');
+    expect($('form').hasAttribute('data-dirty')).toBe(false);
+    await click('nav-people-exact');
+    await wait();
+    expect(dialog()).toBeNull();
+    expect($('people')).not.toBeNull();
+  });
+
+  it('after a failed submit the reset field is back, the rest stays dirty', async () => {
+    server = () => json(page('Secret', '/users/1/edit', { name: 'Ada', errors: { name: 'Taken.' } }));
+    await mount(page('Secret', '/users/1/edit', { name: 'Ada' }));
+    await type($('name') as HTMLInputElement, 'Ada King');
+    await type($('password') as HTMLInputElement, 'secret password');
+    await click('save');
+    await wait();
+    expect(($('password') as HTMLInputElement).value).toBe('');
+    expect(($('name') as HTMLInputElement).value).toBe('Ada King');
+    expect($('form').hasAttribute('data-dirty')).toBe(true);
   });
 });
 

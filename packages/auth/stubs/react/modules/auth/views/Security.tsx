@@ -40,7 +40,7 @@ export default function Security({ viaRemember, email, auth }: Props) {
             {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
             {auth?.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
           </p>
-          <button type="submit" disabled={emailForm.processing || !emailForm.isDirty}>
+          <button type="submit" disabled={emailForm.processing || !emailForm.isDirty()}>
             {t('security.change_email')}
           </button>
         </form>

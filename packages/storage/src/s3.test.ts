@@ -30,6 +30,14 @@ describe.skipIf(!S3_ENDPOINT)('the s3 disk against an S3-compatible store', () =
     expect([png.status, png.headers.get('content-type'), png.headers.get('content-disposition')?.split(';')[0]]).toEqual([200, 'image/png', 'inline']);
   });
 
+  it('counter-check: the presigned URL names the type by the file name — never the stored type (HTML stored under .png stays an image)', async () => {
+    const disk = await make();
+    await disk.put('avatars/8.png', '<script>alert(1)</script>', { contentType: 'text/html' });
+    const shown = await fetch(await disk.temporaryUrl('avatars/8.png', { expiresIn: 60 }));
+    await shown.arrayBuffer();
+    expect([shown.headers.get('content-type'), shown.headers.get('content-disposition')?.split(';')[0]]).toEqual(['image/png', 'inline']);
+  });
+
   it('counter-check: a presigned URL with an altered signature, key, expiry or disposition — 403 from the store', async () => {
     const disk = await make();
     await disk.put('exports/7.json', 'mine');

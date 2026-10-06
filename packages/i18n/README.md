@@ -193,8 +193,12 @@ export const messages = createMessageLoader(lang);
 
 - **`virtual:bespoke/lang`** (the `bespoke()` Vite plugin of [@bespokecore/vite](../vite/README.md), option `lang`) is every
   language file as a lazy import — one chunk per file. Default: `modules/*/lang/*.ts` and `lang/*.ts`.
+- **Only the app's namespaces:** the browser's catalog holds the modules' namespaces and `app` — never the framework's `bespoke`
+  namespace, which stays on the server (status pages, server errors, validation messages arrive translated). Framework UI in the
+  browser takes its words from the app: the kit's dialog from `lang/<locale>.ts`, `<Pagination labels>` and the like as props.
 - **`load(locale, { fallback })`** loads, for every namespace, its file in the page's locale, else in the locale's language, else
-  in the fallback locale the page names — nothing else. Once per locale; a failed load (a lost chunk) may be tried again.
+  in the fallback locale the page names (or its language) — nothing else. Once per locale; a failed load (a lost chunk) may be
+  tried again.
 - **A locale is only ever a key** into the files, checked to be a language tag first: a page's `locale` cannot load anything
   but the app's own files.
 - **`Translate`** — what `useTranslation(namespace)` returns: `t(key, params)` with keys of that namespace, typed like the

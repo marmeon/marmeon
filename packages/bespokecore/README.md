@@ -25,8 +25,8 @@ Not in it, on purpose:
 - **development tools** — [vite](../vite/README.md), [testing](../testing/README.md) and [devtools](../devtools/README.md) belong
   in `devDependencies` (a production install leaves them out; the devtools never reach a server);
 - **opt-in packages** — [redis](../redis/README.md), [storage](../storage/README.md), [live](../live/README.md),
-  [notifications](../notifications/README.md) and [otel](../otel/README.md): installed packages register themselves (discovery),
-  so each is added when the app wants it (`pnpm add @bespokecore/storage`).
+  [notifications](../notifications/README.md), [table](../table/README.md) and [otel](../otel/README.md): installed packages
+  register themselves (discovery), so each is added when the app wants it (`pnpm add @bespokecore/storage`).
 
 `pnpm run ci` keeps this list honest (`scripts/check-changesets.ts`): the blank app's runtime packages minus the UI adapters,
 nothing else.

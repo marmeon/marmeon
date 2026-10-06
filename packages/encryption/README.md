@@ -2,7 +2,7 @@
 
 Symmetric, authenticated encryption with the application key — Laravel's `Encrypter`: AES-256-GCM, keyed by `APP_KEY`, with
 previous keys for rotation. `@bespokecore/http` encrypts every cookie with it, `@bespokecore/queue` encrypted job payloads,
-`@bespokecore/session` the session data with `SESSION_ENCRYPT=true`; the
+`@bespokecore/session` the session data with `SESSION_ENCRYPT=true`, `@bespokecore/database` the cursors of `cursorPaginate`; the
 key itself (`EncryptionConfig`) is what signed URLs, live tokens, upload tokens and the tabs' session epoch derive keys of their
 own from.
 
@@ -35,7 +35,7 @@ set: `APP_KEY is already set. Replacing it makes existing sessions and encrypted
 ## Configuration
 
 ```sh
-APP_KEY=base64:…                      # required — every environment, tests included
+APP_KEY=base64:…                      # required — every environment, tests included (not by `bespoke build`, below)
 APP_PREVIOUS_KEYS=base64:…,base64:…   # optional, comma-separated: former keys that still decrypt
 ```
 
@@ -47,7 +47,10 @@ APP_PREVIOUS_KEYS=base64:…,base64:…   # optional, comma-separated: former ke
 • encryption: APP_KEY — Expected "base64:" followed by 32 base64-encoded bytes — run "bespoke key:generate"
 ```
 
-A broken entry in `APP_PREVIOUS_KEYS` fails the same way.
+A broken entry in `APP_PREVIOUS_KEYS` fails the same way. `bespoke build` needs neither (E187): its build phase registers the
+providers without booting them and leaves a configuration that does not validate out — the `Encrypter` is only made when
+something resolves it, and reading `EncryptionConfig` then throws a `ConfigError` that names `APP_KEY`
+([the build phase](../core/README.md#modules-definemodule)).
 
 ## The `Encrypter`
 
@@ -61,7 +64,8 @@ A broken entry in `APP_PREVIOUS_KEYS` fails the same way.
 - **Authenticated:** a payload cannot be read or changed without the key. Tampered bytes, another key, garbage or an empty
   string all end in the same `DecryptError` (`The payload is invalid.`) — it never says which.
 - **`context` binds a payload to its use** (additional authenticated data, default `''`): a value encrypted for the cookie
-  `session` does not decrypt as the cookie `remember`. The framework's contexts are `cookie:<name>`, `queue:<job name>` and `session:<key>`;
+  `session` does not decrypt as the cookie `remember`. The framework's contexts are `cookie:<name>`, `queue:<job name>`, `session:<key>` and
+  `bespoke:cursor:<direction>:<columns>`;
   pick your own for your own payloads (`exports:download`).
 - **Strings in, strings out:** serialize yourself (`JSON.stringify`) — there is no implicit serialization like Laravel's.
 - **Outside the container:** `new AesGcmEncrypter(key, previousKeys)` takes raw 32-byte keys (anything else is a `TypeError`),
@@ -81,7 +85,7 @@ and reloads once ([tab sync](../http/README.md#tab-sync-w8-step-8)).
 2. Deploy, with both variables on every server.
 3. Remove the old key once nothing encrypted or signed with it is still around: sessions and remember-me cookies (their
    lifetime; encrypted session data, `SESSION_ENCRYPT`, is re-encrypted with the new key at the session's next write), queued and
-   failed jobs, signed links (their expiry).
+   failed jobs, signed links (their expiry). A "load more" cursor made with the old key answers 400 from then on.
 
 Replacing `APP_KEY` **without** keeping the old one signs everybody out (the session cookie no longer decrypts — it counts as
 absent), invalidates every signed link and turns encrypted jobs still waiting into poison (failed at once:
@@ -94,6 +98,7 @@ absent), invalidates every signed link and turns encrypted jobs still waiting in
 | [@bespokecore/http](../http/README.md) | `EncryptCookies` in the `web` group: every cookie the app sets and reads | the `Encrypter`, context `cookie:<name>` |
 | [@bespokecore/queue](../queue/README.md#secrets-in-payloads-e105) | jobs with `static encrypted = true`, the framework's own jobs | the `Encrypter`, context `queue:<job name>` |
 | [@bespokecore/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145) | the session data in its store with `SESSION_ENCRYPT=true` (off by default) | the `Encrypter`, context `session:<key>` (the session's store key) |
+| [@bespokecore/database](../database/README.md#pagination) | `cursorPaginate`'s `nextCursor` (W9: the last row's values — hidden sort columns too — neither readable nor made up; one that does not decrypt is a 400) | the `Encrypter` (its `encrypter` option), context `bespoke:cursor:<direction>:<columns>` |
 | [@bespokecore/http](../http/README.md) | `UrlSigner` — signed URLs, HMAC-SHA-256 | HKDF-SHA-256 of each key, info `bespokecore:signed-url` |
 | [@bespokecore/live](../live/README.md#the-guarantees) | the tokens of the channels a page follows | HKDF-SHA-256, info `bespokecore:live` |
 | [@bespokecore/storage](../storage/README.md#uploads) | upload tokens | HKDF-SHA-256, info `bespokecore:upload-token` |

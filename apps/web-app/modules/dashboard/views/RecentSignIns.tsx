@@ -11,7 +11,7 @@ export default function RecentSignIns({ entries, now }: IslandProps<ShowRecentSi
   const t = useTranslation('dashboard');
   return (
     <>
-      <p role="group" aria-label={t('sign_ins.range')} style={{ display: 'flex', gap: 4 }}>
+      <p role="group" aria-label={t('sign_ins.range')} className="row row-tight">
         {RANGES.map((range) => (
           <button
             key={range}

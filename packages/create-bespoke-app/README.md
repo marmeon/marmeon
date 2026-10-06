@@ -23,7 +23,7 @@ Register an account: in development the mails go to the log (`MAIL_MAILER=log`),
 
 | Option | |
 |---|---|
-| `<dir>` | the new app's directory — it must not exist or be empty; its name becomes the package name (`My App` → `my-app`) and `APP_NAME` |
+| `<dir>` | the new app's directory — it must not exist or be empty; its name becomes the package name (`My App` → `my-app`), `APP_NAME` and the document's `<title>` (`My App`) |
 | `-y`, `--yes` | take the defaults, ask nothing |
 | `--minimal` | a blank app: no auth module, no home page — exactly `apps/blank-app` of the repository |
 | `--private-registration` | the starter kit's registration never tells whether an address has an account (`bespoke make:auth --private-registration`) |
@@ -31,7 +31,7 @@ Register an account: in development the mails go to the log (`MAIL_MAILER=log`),
 | `--npm`, `--pnpm` | the package manager — pnpm by default |
 | `--no-install` | only the files: install yourself, then run the generators the output names |
 | `--no-git` | no git repository |
-| `-h`, `--help` · `-v`, `--version` | |
+| `-h`, `--help` · `-v`, `--version` | the help; the version (every `@bespokecore/*` package of the app gets it) |
 
 On a terminal a missing directory is asked for (also with `--yes`). Without a terminal (CI, a pipe) nothing is asked: the flags
 and the defaults decide, and a missing directory ends the run with exit code 2 — `create-bespoke-app needs a directory:
@@ -62,8 +62,9 @@ A thin shell around the framework's own generators (E150) — the app's code com
    `system` module, `bootstrap/`, `config/app.ts`, `middleware/SecurityHeaders.ts` with a strict Content-Security-Policy, the
    lint preset (`bespoke make:lint-config`), `vitest.config.ts`, a standalone `tsconfig.json`, `.env.example`, `.env.test` and
    the `storage/` skeleton. The starter kit adds `template/kit`: the home module (`/`, its page and its test) and the app's dialog
-   (`bootstrap/confirm.tsx` with its words in `lang/en.ts` and `lang/de.ts` — the guard's question and tab sync's in the page's
-   language; its `bootstrap/client.tsx` is the blank app's plus `confirm: Confirm`).
+   (`bootstrap/confirm.tsx`, the framework's `ConfirmDialog` with the app's words in `lang/en.ts` and `lang/de.ts` — a `confirm`,
+   the guard's question and tab sync's in the page's language; its `bootstrap/client.tsx` is the blank app's plus
+   `confirm: Confirm`).
 2. **`package.json`** — every `@bespokecore/*` package at exactly this package's version (the framework is versioned in
    lockstep, E152), `@bespokecore/cli` among the `dependencies` (it runs on the server, E159), `packageManager: pnpm@12.9.1` —
    with `--npm` nothing of pnpm's. Next to it the app's `README.md`: its commands with the chosen package manager (production

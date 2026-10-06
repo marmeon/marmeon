@@ -182,7 +182,9 @@ export default defineGegenproben({
         },
       ],
       run: { vitest: 'packages/cli/src/cli.test.ts', name: 'a worker that cannot start stops the cluster with its exit code' },
-      expect: /ended before it listened/,
+      // Since W9 step 10b a port that is taken fails `startServer()` with a rejection (no longer an uncaught exception): the test's
+      // first half — workers that cannot listen — then hangs on the same channel and runs into the test's timeout first.
+      expect: /ended before it listened|Test timed out in 30000ms/,
     },
     // --- Keep-alive ---------------------------------------------------------------------------------------------------------
     {

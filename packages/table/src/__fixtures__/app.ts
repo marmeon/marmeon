@@ -127,7 +127,13 @@ export const LeakyTable = defineTable({
   name: 'leaky',
   query: (db, ctx: TeamContext) => db.selectFrom('members').select(['members.email']).where('members.team_id', '=', ctx.team),
   key: 'members.id',
-  columns: { name: column('members.name').sortable(), email: column('members.email').visible(MemberPolicy, 'viewEmails') },
+  columns: {
+    name: column('members.name').sortable(),
+    email: column('members.email').visible(MemberPolicy, 'viewEmails'),
+    joined: column('members.created_at').visible(MemberPolicy, 'viewEmails'),
+  },
+  // A filter without a visibility of its own, on a column some may not see (named without its table): hidden with the column.
+  filters: { since: filter.dateRange('created_at') },
 });
 
 /** Exports of at most three rows — the limit refuses, it never cuts. */

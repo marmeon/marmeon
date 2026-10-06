@@ -1,5 +1,7 @@
+import cluster from 'node:cluster';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
+import { heldOnLoopback } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@bespokecore/core';
@@ -839,8 +841,17 @@ export async function startServer({
     if (!settled) app.container.make(Logger).warn(`Work after responses still ran ${drainTimeoutMs} ms after the server closed; shutting down anyway`);
   };
 
-  return new Promise((resolve) => {
+  // Every interface beside a program on 127.0.0.1 (macOS): said before listening — a cluster's primary said it for its workers.
+  const beside = cluster.isWorker ? undefined : await heldOnLoopback(port, host);
+  if (beside) app.container.make(Logger).warn(beside);
+
+  return new Promise((resolve, reject) => {
+    // A port that is taken (EADDRINUSE) or not allowed (EACCES): the start fails with Node's error — not an uncaught exception,
+    // and without a Vite left running.
+    const failed = (error: Error) => void (closeVite?.() ?? Promise.resolve()).finally(() => reject(error));
+    server.once('error', failed);
     server.listen(port, host, () => {
+      server.off('error', failed);
       // The port it got — `0` asks the system for a free one.
       const listening = (server.address() as { port?: number } | null)?.port ?? port;
       const routes = app.container.make(Router).routes.length;

@@ -162,9 +162,8 @@ Policies that decide per row see the row as the table hands it out — the key a
 up by the key, or the column becomes part of the table.
 
 **Testing:** `app.actingAs(user).acting().post(url, { json: { key } })` runs an action as the browser would;
-`app.actingAs(user).get(exportUrl)` downloads the CSV. Under the test isolation (one pinned connection per test) an export's later
-batches have no connection outside the test's transaction — keep exports in app tests under 500 rows (the package's own tests stream
-1 203).
+`app.actingAs(user).get(exportUrl)` downloads the CSV — of any length: under the test isolation (one pinned connection per test)
+the later batches run on the test's connection like everything else (the package's own tests stream 1 203 rows, on SQLite and Postgres).
 
 ## Accessible markup
 

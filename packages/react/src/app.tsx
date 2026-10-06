@@ -296,7 +296,9 @@ export function useRouter<T = unknown>(): Router<T> {
  * own): until it is there, a target that does what is asked of it once it is.
  */
 function pagePatches(navigator: Navigator | null): PatchTarget {
-  if (!navigator) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R11] Visits run in the browser, not while rendering on the server.' : '[bespoke:R11]');
+  // Rendering on the server: a page may build its reloads while it renders (`router.reloading(…)`) — a target nothing uses
+  // there (actions run in the browser), never an error that fails the server render.
+  if (!navigator) return laterTarget(new Promise(() => {}));
   const loaded = navigator.loaded(loadOptimistic);
   const key = navigator.regionOwner.entry!;
   return loaded ? loaded.target(key) : laterTarget(navigator.load(loadOptimistic).then((feature) => feature.target(key)));

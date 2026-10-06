@@ -50,6 +50,15 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-the-starter-kit-asks-in-the-pages-language--its-own-confirm',
     'low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition', // W9.8, E185
     'medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns', // W9.9, E187
+    'low-the-start-warns-when-another-program-holds-127001-at-its-port--and-a-taken-port-fails-startserver', // W9.10b
+    'low-queries-on-a-shared-connection-take-turns--a-transactions-a-tests-pinned-one',
+    'low-a-tables-filter-on-a-hidden-column-is-hidden-with-it',
+    'low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty',
+    'low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again',
+    'low-bespoke-dev-answers-other-origins-without-cors-headers',
+    'low-an-s3-temporary-url-names-the-content-type-by-the-file-name',
+    'low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start',
+    'low-verified-treats-a-user-without-email_verified_at-as-unverified',
   ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',

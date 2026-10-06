@@ -1,6 +1,6 @@
 import { Suspense, use, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { usePage } from './app.tsx';
+import { usePage, useRouter } from './app.tsx';
 import { Head } from './head.tsx';
 import { resolveModulePages } from './pages.ts';
 import { Pagination, pagesAround } from './pagination.tsx';
@@ -35,7 +35,16 @@ function Titled({ name }: { name: string }) {
   );
 }
 
+/** A page that builds its reloads and patches while it renders — for its actions, which run in the browser. */
+function Inbox({ count }: { count: number }) {
+  const router = useRouter<{ count: number }>();
+  const reload = router.reloading({ only: ['count'] });
+  const patch = router.optimistic(() => ({ count: 0 }));
+  return <p>{count} {reload.length} {typeof patch}</p>;
+}
+
 const resolve = resolveModulePages({
+  '../modules/greeting/views/Inbox.tsx': async () => ({ default: Inbox }),
   '../modules/greeting/views/Titled.tsx': async () => ({ default: Titled }),
   '../modules/greeting/views/Hello.tsx': async () => ({ default: Greeting }),
   '../modules/broken/views/NoDefault.tsx': async () => ({}),
@@ -65,6 +74,12 @@ describe('createSsrRenderer', () => {
     const render = createSsrRenderer(resolve);
     const { html } = await renderAll(render, { component: 'greeting/Hello', props: { name: 'Ada' }, url: '/hi' });
     expect(html).toBe('<p>Hello <!-- -->Ada<!-- --> at <!-- -->/hi</p>');
+  });
+
+  it('counter-check: renders a page that builds reloads and optimistic patches while rendering (W9 step 10b: it failed with R11)', async () => {
+    const render = createSsrRenderer(resolve);
+    const { html } = await renderAll(render, { component: 'greeting/Inbox', props: { count: 3 }, url: '/inbox' });
+    expect(html).toBe('<p>3<!-- --> <!-- -->1<!-- --> <!-- -->object</p>');
   });
 });
 

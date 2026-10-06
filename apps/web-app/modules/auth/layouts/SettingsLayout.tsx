@@ -8,9 +8,9 @@ export function SettingsLayout({ children }: LayoutProps) {
   const t = useTranslation('auth');
 
   return (
-    <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
-      <nav aria-label={t('settings.label')} style={{ minWidth: 140, paddingTop: 16 }}>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, lineHeight: 2 }}>
+    <div className="settings">
+      <nav aria-label={t('settings.label')} className="settings-nav">
+        <ul>
           <li>
             <Link route="auth.security">
               {t('settings.security')}
@@ -23,7 +23,7 @@ export function SettingsLayout({ children }: LayoutProps) {
           </li>
         </ul>
       </nav>
-      <div style={{ flex: 1 }}>{children}</div>
+      <div className="settings-page">{children}</div>
     </div>
   );
 }

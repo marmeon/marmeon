@@ -16,8 +16,9 @@ it (E170) — the switch for
 everything that exists only in development (E115): the error page and `Server-Timing`
 ([@bespokecore/server](../server/README.md#error-page-e119--development-only)), the [devtools](../devtools/README.md), the
 [mail previews](../mail/README.md#previews-e106). Next to the server it starts what packages add to
-`DevProcesses` — a queue worker on every queue (`queue:work --queue=*`, [@bespokecore/queue](../queue/README.md)) and the
-scheduler (`schedule:work`, [@bespokecore/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
+`DevProcesses` — a queue worker on every queue (`queue:work --queue=*`, unless the default connection is `sync`,
+[@bespokecore/queue](../queue/README.md)) and the scheduler (`schedule:work`, when the app schedules tasks,
+[@bespokecore/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
 when one ends on its own. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed. All of
 this — Vite's dev server included — needs `NODE_ENV=development`: with another `NODE_ENV` set (`staging`, `test`), `bespoke dev`
 says so and serves the build, without workers or watchers (never "anything but production", E115).
@@ -25,7 +26,7 @@ says so and serves the build, without workers or watchers (never "anything but p
 ### `bespoke build` and `bespoke start`
 
 ```sh
-bespoke build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), the manifest
+bespoke build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), .br/.gz of the assets, the manifest
 bespoke build --no-typecheck   # without the type check
 bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless set (environment, then .env)
 NODE_ENV=staging bespoke start # staging: protected like production (E139) — the environment wins over .env (E170)
@@ -38,7 +39,9 @@ SHUTDOWN_DELAY=5 bespoke start # SIGTERM: /up/ready 503 at once, 5 more seconds 
 generated route types (a renamed route or a missing view fails the build) and builds with the app's own Vite config and the
 `bespoke()` plugin ([@bespokecore/vite](../vite/README.md)). A route name the browser's manifest cannot know and client code
 that imports server code as a value fail it too, each with file and line
-([Server code in the browser](../vite/README.md#server-code-in-the-browser-e121)). Last, `build` writes the production
+([Server code in the browser](../vite/README.md#server-code-in-the-browser-e121)). Then it compresses the client's assets once —
+a `.br` and a `.gz` next to each file in `dist/client/assets`, which the server sends by `Accept-Encoding` (E162; it never
+compresses per request). Last, `build` writes the production
 discovery manifest (`.bespoke/manifest.json`, [Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)),
 so the first `start` rewrites nothing and `.bespoke/` may be read-only on the server.
 
@@ -66,7 +69,9 @@ second; one that ends before it listened (a taken port, a missing build) stops t
 forever. The warnings of the boot (a log mailer in production, cookies without `Secure`, stale build artifacts, a development
 `.env`) are said once, by the primary — the workers boot the same app and keep them to themselves; what a worker warns about
 later is its own. With `PORT=0` the system picks the port and all workers share the one the start line names. Each worker has its own readiness, rate-limit memory and `memory` stores — use `redis` or `database` drivers for
-sessions, cache, locks and live (as with several containers). One process per container (more containers) is the default
+sessions, cache and locks, and `LIVE_DRIVER=redis` for live hints (as with several containers). `LIVE_DRIVER=memory` with
+`--workers` fails the start ([@bespokecore/live](../live/README.md#configuration)): a hint would reach the streams of one worker
+only. One process per container (more containers) is the default
 model; `--workers` is for a machine with several cores and one service. `bespoke dev` refuses it.
 
 ### Production files: `make:docker` (E141)
@@ -90,16 +95,20 @@ bespoke make:docker --nginx --systemd  # … nginx on the host (deploy/nginx.con
   a stuck job's exit 70 is restarted by `restart: unless-stopped`), `scheduler` (`schedule:work`); `env_file:
   .env.production`, a `storage` volume, the health check off for worker and scheduler, `stop_grace_period` longer than the drain.
 - **Proxies** — `--caddy` adds a Caddy service (certificates, HTTP/2 and 3; live streams unbuffered) and `TRUSTED_PROXIES: '*'`
-  for the unpublished web container; `--nginx` the same with nginx (`http2 on`, `X-Forwarded-*` set, `proxy_read_timeout` above
-  the live heartbeat). With `--systemd` the proxy is for the host, in front of `127.0.0.1:3000`.
-- **systemd** — `deploy/systemd/{web,worker,scheduler}.service`: `Restart=always`, `KillSignal=SIGTERM`, `TimeoutStopSec`
-  longer than the drain or the worker's `--stop-timeout`, `ProtectSystem=strict` with `storage/` writable, the web server on
+  for the unpublished web container; `--nginx` the same with nginx (`http2 on`; `X-Forwarded-For` set to `$remote_addr`,
+  `-Proto` and `-Host` set too — replaced, never a client's passed on; `proxy_read_timeout` above the live heartbeat; an upstream
+  that keeps 16 idle connections and closes them after 60 s, before the app's `KEEP_ALIVE_TIMEOUT` of 65 s —
+  [Behind a proxy](../server/README.md#behind-a-proxy-e162)). Neither compresses documents (no `encode`, `gzip off`: BREACH);
+  the assets arrive compressed. With `--systemd` the proxy is for the host, in front of `127.0.0.1:3000`; the web container then
+  publishes its port on `127.0.0.1` only and trusts no proxy until you name its address.
+- **systemd** — `deploy/systemd/{web,worker,scheduler}.service`: `Restart=always`, `KillSignal=SIGTERM`, `TimeoutStopSec=30`
+  (longer than the drain or the worker's `--stop-timeout`), `ProtectSystem=strict` with `storage/` writable, the web server on
   `127.0.0.1` trusting the local proxy.
 
 The files are the app's afterwards; an existing one is overwritten only with `--force`. The image of the blank app with
 `make:auth` is about 320 MB (`node:26-slim` alone 271 MB; its production `node_modules` 97 MB) — `pnpm run ci` builds and runs it
-(`image`). The whole story — roles, Kubernetes, proxies, mail, drivers with more than one instance, keys — is the deployment guide
-(`docs/deployment.md` in the repository).
+(`image`). The whole story — roles, Kubernetes, proxies, mail, drivers with more than one instance, keys — is the
+[deployment guide](../../docs/deployment.md).
 
 ### One process (E159)
 
@@ -147,7 +156,7 @@ file without `--force`:
 | --- | --- |
 | `make:module <name>` | `modules/<name>/index.ts` and `routes.ts` — then add it to `modules` in `bootstrap/app.ts` |
 | `make:controller <Name> --module=<m> [--view] [--request]` | an invokable controller (`--view`: and its view; `--request`: with a query or body schema) |
-| `make:event`, `make:listener <Name> --event=<Event>`, `make:job`, `make:notification`, `make:middleware` | the class in the module's folder of that kind |
+| `make:event`, `make:job`, `make:notification`, `make:middleware` `<Name> --module=<m>`; `make:listener <Name> --event=<Event> --module=<m>` | the class in the module's folder of that kind |
 | `make:migration <snake_case_name> --module=<m>` | a timestamped migration in `modules/<m>/migrations/` |
 
 ### Commands of the packages
@@ -161,7 +170,7 @@ file without `--force`:
 | [@bespokecore/session](../session/README.md) | `session:prune`, `make:session-table` |
 | [@bespokecore/storage](../storage/README.md) | `uploads:prune`, `make:uploads-table` |
 | [@bespokecore/notifications](../notifications/README.md) | `notifications:prune`, `make:notifications-table` |
-| [@bespokecore/auth](../auth/README.md) | `make:auth`, `auth:prune-tokens` |
+| [@bespokecore/auth](../auth/README.md) | `make:auth [--adapter=react] [--private-registration] [--force]` ([private registration](../auth/README.md#private-registration---private-registration-e146), E146), `auth:prune-tokens` |
 | [@bespokecore/devtools](../devtools/README.md) | `devtools:clear`, `devtools:prune` |
 
 ### Writing a command
@@ -192,8 +201,8 @@ export class PruneTokensCommand {
 An app's module lists its commands in `defineModule({ commands: [...] })`; a package adds its own in its provider's `boot()`
 (`app.container.make(CommandRegistry).add([PruneTokensCommand])`). `static usage` shows in errors and help,
 `static boots = false` runs a command without booting the app (generators), `static boots = 'build'` with the app as `bespoke build`
-has it (registered, not booted, no runtime secret — `route:types`, E187; read for the built-in commands), `static hidden` keeps it
-out of `bespoke list`. The
+has it (registered, not booted, no runtime secret — `route:types`, E187) — both read for the built-in commands only: an app's or
+a package's commands are found by booting the app, so they always run in a booted one. `static hidden` keeps it out of `bespoke list`. The
 scheduler runs commands as tasks (`s.command('auth:prune-tokens').daily()`), each in a scope of its own. Each run is reported on
 the `command.run` channel ([Diagnostics](../core/README.md#diagnostics-bespokecorecorediagnostics-e118)).
 
@@ -281,7 +290,7 @@ The banner names the driver, host and database, never a user or password. `--san
 
 ### History
 
-The inputs of interactive sessions are kept in `storage/framework/tinker_history` (1000 lines, readable only by its owner).
+The inputs of interactive sessions are kept in `storage/framework/tinker_history` (1000 lines; Node creates it readable only by its owner — a file that exists already keeps its mode).
 **It is plain text:** whatever you type — a password you hash, a token you paste — is in it. `--no-history` keeps none.
 Values the REPL prints are not redacted: they are what you asked for (a `secret()` column you selected shows); the history
 holds inputs only, never output, and the banner never shows a secret.

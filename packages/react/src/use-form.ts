@@ -241,6 +241,13 @@ export function useForm(...args: unknown[]): unknown {
   const kept = remember && store?.has(rememberKey) ? (store.get(rememberKey) as KeptForm | undefined) : undefined;
   const [defaults, setDefaults] = useState(initial);
   const [data, setData] = useState(() => (kept ? { ...initial, ...kept.data } : initial));
+  // Saved: the form starts over where it is once the submit's callbacks ran — what was sent, but what they `reset()` back at the
+  // defaults it had before (a password field empty again). Taken in the next render, so a reset inside `onSuccess`/`onFinish` counts.
+  const [saved, setSaved] = useState(false);
+  if (saved) {
+    setSaved(false);
+    setDefaults(data);
+  }
   const dirty = useMemo(() => dirtyPaths(defaults, data), [defaults, data]);
   // The navigation guard (E64), while dirty — its own submit passes it. A remembered input that differs is dirty, too.
   const guard = useGuard(options.guard !== undefined && options.guard !== false && dirty.length > 0, typeof options.guard === 'string' ? options.guard : undefined);
@@ -290,8 +297,8 @@ export function useForm(...args: unknown[]): unknown {
         if (Object.keys(failed).length > 0) {
           onError?.(failed);
         } else {
-          // Saved: what was sent is where the form starts over — not dirty any more (the guard lets go).
-          setDefaults(data);
+          // Saved: not dirty any more (the guard lets go) — see `saved`.
+          setSaved(true);
           live?.reset();
           setWasSuccessful(true);
           setRecentlySuccessful(true);

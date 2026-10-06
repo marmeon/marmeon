@@ -1,5 +1,5 @@
 import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@bespokecore/core';
-import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type TransactionSettings } from 'kysely';
+import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import type { SchemaMetadata } from './metadata.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
@@ -29,6 +29,9 @@ export interface DriverContext {
  *   refused ({@link TransactionFinishedError}) instead of running outside it.
  * - **One connection at a time on SQLite** — Kysely's lock, moved here so a query inside the transaction
  *   does not wait for the transaction that holds the lock (the hang W3 warned about).
+ * - **One query at a time per connection.** A transaction's connection (and a test's isolated one) is
+ *   shared by everything inside it — `Promise.all` over a page's props, two requests of a test — so its
+ *   queries take turns: a driver like `pg` must not be sent a query while another is under way.
  * - **Connection failures say which connection** failed and where it points.
  * - **Schema metadata is loaded on the connection being handed out** — never through the pool,
  *   which a transaction may be holding.
@@ -70,6 +73,8 @@ export class BespokeDriver implements Driver {
 
   /** A pool that never joins an ambient transaction: an infrastructure connection's own pool (E108). */
   readonly #detached: boolean;
+  /** Each connection of the dialect's driver as handed out here: its queries take turns ({@link serialQueries}). */
+  readonly #serial = new WeakMap<DatabaseConnection, DatabaseConnection>();
 
   constructor(driver: Driver, context: DriverContext, options: { single?: boolean; detached?: boolean } = {}) {
     this.#driver = driver;
@@ -160,7 +165,7 @@ export class BespokeDriver implements Driver {
     if (this.#single) await this.#lock.obtain();
     let connection: DatabaseConnection;
     try {
-      connection = this.#pinned ?? (await this.#connecting(() => this.#driver.acquireConnection(options)));
+      connection = this.#pinned ?? this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection(options)));
     } catch (error) {
       if (this.#single) this.#lock.release();
       throw error;
@@ -211,7 +216,7 @@ export class BespokeDriver implements Driver {
   async isolate(): Promise<{ rollback(): Promise<void> }> {
     if (this.#pinned) throw new Error(`The database connection "${this.#context.name}" is already isolated.`);
     await this.init();
-    const connection = await this.#connecting(() => this.#driver.acquireConnection());
+    const connection = this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection()));
     await this.#driver.beginTransaction(connection, {});
     this.#depth.set(connection, 1);
     this.#pinned = connection;
@@ -273,6 +278,12 @@ export class BespokeDriver implements Driver {
     return depth;
   }
 
+  #serialOf(connection: DatabaseConnection): DatabaseConnection {
+    let serial = this.#serial.get(connection);
+    if (!serial) this.#serial.set(connection, (serial = serialQueries(connection)));
+    return serial;
+  }
+
   async #connecting<T>(open: () => Promise<T>): Promise<T> {
     try {
       return await open();
@@ -296,6 +307,60 @@ export function multipleConnections(adapter: DialectAdapter): DialectAdapter {
       if (property === 'supportsMultipleConnections') return true;
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+const ignore = () => {};
+
+/**
+ * The connection, but its queries take turns — in the order they were sent, a failed one passing the turn on. `pg` warns about a
+ * query sent while another is under way ("client.query() when the client is already executing a query") and pg 9 refuses it. A
+ * stream holds the turn until it ends. Everything else is the connection itself, bound to it (private fields, the driver's symbols).
+ * What is set on the wrapper stays on it: Kysely puts its query log around `executeQuery` that way — around the turn, so the
+ * connection's own method is never replaced underneath it.
+ */
+export function serialQueries(connection: DatabaseConnection): DatabaseConnection {
+  const execute = connection.executeQuery.bind(connection);
+  const stream = connection.streamQuery.bind(connection);
+  const own = new Map<PropertyKey, unknown>();
+  let tail: Promise<unknown> | undefined;
+  const turn = <T>(run: () => Promise<T>): Promise<T> => {
+    const result = tail ? tail.then(run, run) : run();
+    const settled = result.then(ignore, ignore);
+    tail = settled;
+    void settled.then(() => {
+      if (tail === settled) tail = undefined;
+    });
+    return result;
+  };
+  const executeQuery: DatabaseConnection['executeQuery'] = (...args) => turn(() => execute(...args));
+  async function* streamQuery<R>(...args: Parameters<DatabaseConnection['streamQuery']>): AsyncIterableIterator<QueryResult<R>> {
+    let done!: () => void;
+    const finished = new Promise<void>((resolve) => (done = resolve));
+    await new Promise<void>((started) =>
+      void turn(() => {
+        started();
+        return finished;
+      }),
+    );
+    try {
+      yield* stream<R>(...args);
+    } finally {
+      done();
+    }
+  }
+  return new Proxy(connection, {
+    get(target, property) {
+      if (own.has(property)) return own.get(property);
+      if (property === 'executeQuery') return executeQuery;
+      if (property === 'streamQuery') return streamQuery;
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+    set(_target, property, value) {
+      own.set(property, value);
+      return true;
     },
   });
 }

@@ -5,7 +5,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
 import { Application, CLUSTER_WORKER, environment, Logger } from '@bespokecore/core';
-import { ServerConfig, startServer, ViteSetupError } from '@bespokecore/server';
+import { heldOnLoopback, ServerConfig, startServer, ViteSetupError } from '@bespokecore/server';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startBespoke } from '../spawn.ts';
@@ -172,6 +172,12 @@ export class ServeCommand {
 
     // Kept until the process ends: Ctrl+C reaches the primary again (the terminal signals every process of the group).
     process.on('SIGINT', () => stop('SIGINT')).on('SIGTERM', () => stop('SIGTERM'));
+    // Said once, here: a worker's own look would go through this process (the workers share its port).
+    if (this.#app.container.has(ServerConfig)) {
+      const { port, host } = this.#app.container.make(ServerConfig);
+      const beside = await heldOnLoopback(port, host);
+      if (beside) logger.warn(beside);
+    }
     logger.info(`Starting ${count} worker${count === 1 ? '' : 's'} (node:cluster, primary ${process.pid})`);
     for (let n = 0; n < count; n++) fork();
     await finished;

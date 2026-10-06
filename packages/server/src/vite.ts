@@ -103,7 +103,9 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
       // file first, which `node --watch` sees disappear and answers with a restart.
       configLoader: 'native',
       appType: 'custom',
-      server: { middlewareMode: true, ...(httpServer ? { hmr: { server: httpServer } } : { hmr: false, ws: false }) },
+      // No CORS: Vite's default answers any page on localhost (any port) with `Access-Control-Allow-Origin` — on the app's answers
+      // too (the devtools' API, mail previews, the error page). The app and its modules share one origin; nothing needs it.
+      server: { middlewareMode: true, cors: false, ...(httpServer ? { hmr: { server: httpServer } } : { hmr: false, ws: false }) },
     });
   } catch (error) {
     throw explainConfigError(error);

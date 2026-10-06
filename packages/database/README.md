@@ -88,7 +88,8 @@ export default defineMigration({
   A migration without `down` stops a rollback there.
 - **Where the app is protected** (E139, E164 — every `NODE_ENV` but `development` and `test`: production, staging and a
   missing `NODE_ENV`) `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed` refuse without `--force`:
-  `The application is protected (staging (protected)). Pass --force to migrate.` Each first names the environment it assumed
+  `The application is protected (staging (protected)). Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).`
+  Each first names the environment it assumed
   (`Environment: staging (protected)`). A deployment runs `bespoke migrate --force` (with `make:docker`'s files a one-off
   container: `docker compose -f compose.production.yaml run --rm web migrate --force`), in the one Node process `bespoke`
   started (E159). On a development machine the `.env`'s `NODE_ENV=development` (E170) needs no `--force` —
@@ -223,8 +224,10 @@ this.#db.selectFrom('users').selectAll('users').select((eb) => [
     NULL is a cursor like any other — the next page goes on among the NULLs instead of starting over.
   - **Encrypted cursors:** `meta.nextCursor` is the last row's values encrypted and authenticated with the app key — inject
     `Encrypter` (`@bespokecore/encryption`) and pass it. A client can neither read a hidden sort column's value from the URL nor
-    make up a cursor. One that does not decrypt — changed, made up, another list's, another key's, or the base64url format before
-    Wave 9 — answers **400** (`InvalidCursorError`), never the first page again.
+    make up a cursor. Each order has its own encryption context (the columns and the direction): one that does not decrypt —
+    changed, made up, of another order, of a key that is gone, or the base64url format before Wave 9 — answers **400**
+    (`InvalidCursorError`), never the first page again. (A cursor of another list with the same columns and direction does
+    decrypt; it is only a position in this list.)
 
 ```ts
 constructor(db: Database<'blog'>, encrypter: Encrypter) { … }
@@ -378,7 +381,10 @@ boundaries (work after the response, jobs, the worker; the helper is `outsideTra
 The database driver hands the transaction's connection to every query of the call chain; on SQLite, the connection lock
 (Kysely's, moved into the driver) is held by the transaction, so queries inside it do not wait for themselves. In a test
 with `database: 'refresh'`, transactions are savepoints in the test's transaction; concurrent ones take turns on the one
-connection.
+connection. Queries take turns on a connection, too: a `Promise.all` of plain queries inside a transaction (a page's props) or two
+requests on a test's connection run one after the other, in the order they were sent — a driver like `pg` must not be sent a query
+while another is under way (pg 9 refuses it). A stream (`.stream()`) holds the connection until it ends: inside one, query
+another connection.
 
 ## Infrastructure connections (E108)
 
@@ -427,7 +433,7 @@ parameters.
 
 With `@bespokecore/testing`, `createTestApp(App, { database: 'refresh' })` gives a real database, reset for every test
 (Laravel's `RefreshDatabase`, E21): each test worker gets its own — a temporary SQLite file, or a Postgres database named after
-the app's with `_test_<worker>` — migrated once; every test app runs inside one transaction that is rolled back when the test
+the app's with `_test_<app hash>_<worker>` — migrated once; every test app runs inside one transaction that is rolled back when the test
 ends. `seed: true` also runs the modules' seeders for every test. More in [the database](../testing/README.md#the-database).
 
 ```ts

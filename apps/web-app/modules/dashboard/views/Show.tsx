@@ -7,8 +7,6 @@ type Props = PageProps<ShowDashboardController>;
 /** How often "My activity" refreshes itself while it is on screen (ms). */
 const ACTIVITY_POLL = 15_000;
 
-const grid = { display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(16rem, 1fr))', alignItems: 'start' } as const;
-
 /**
  * A page of islands (E48): the page renders at once, each panel loads by itself — in parallel, each through its own
  * route's middleware and authorization. On a full load the server resolves them in-process and streams them into the
@@ -23,7 +21,7 @@ export default function Show(_props: Props) {
       <Head title={t('title')} />
       <h1>{t('title')}</h1>
       <p>{t('intro')}</p>
-      <div style={grid}>
+      <div className="panels">
         <section aria-labelledby="sign-ins">
           <h2 id="sign-ins">{t('sign_ins.title')}</h2>
           {/* Its own query: the range picker inside reloads only this island (`useIsland().reload({ query })`). */}
@@ -42,7 +40,7 @@ export default function Show(_props: Props) {
         <Link href="/members">{t('members_table')}</Link>
       </p>
       {/* Further down on purpose: it loads once it scrolls into view, then polls (paused while the tab is hidden). */}
-      <section aria-labelledby="activity" style={{ marginTop: '70vh' }}>
+      <section aria-labelledby="activity" className="below-the-fold">
         <h2 id="activity">{t('activity.title')}</h2>
         <Island route="dashboard.activity" load="visible" buffer={100} poll={ACTIVITY_POLL} fallback={loading} />
       </section>
@@ -57,7 +55,7 @@ function DashboardPlaceholder() {
     <main aria-busy="true" data-placeholder="">
       <Head title={t('title')} />
       <h1>{t('title')}</h1>
-      <p style={{ opacity: 0.5 }}>{t('loading')}</p>
+      <p className="muted">{t('loading')}</p>
     </main>
   );
 }

@@ -172,7 +172,9 @@ export const ListPeopleRequest = defineRequest({
   one value where the schema wants a list is tried as a list of one (`?tag=a`), a repeated key is a list (`?tag=a&tag=b`) —
   what `toSearchParams` writes for a list, and what the browser sends for a list in a GET's `data` (`reload({ data: { tag:
   ['a', 'b'] } })`, since Wave 9; before, `?tag=a%2Cb`); unknown keys are ignored; `__proto__` is no key. `/people?sort=DROP
-  TABLE` is the list by name, 200.
+  TABLE` is the list by name, 200. A schema that **throws** instead of reporting an issue stops the request with its error —
+  what the keys of a server-driven table do on purpose ([@bespokecore/table](../table/README.md#the-url--strict-on-purpose):
+  an unknown sort, filter or page size is a 400, W9).
 - **`queryOptions: { onInvalid: 'redirect' }`**: a GET with an invalid or unknown field is answered `302` to its canonical
   URL — only the valid fields that differ from their defaults — so the address bar shows what the page shows. Other methods
   always fall back. Default `'fallback'`.

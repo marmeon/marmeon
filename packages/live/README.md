@@ -39,7 +39,7 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   schema). What a tab shows next comes from its own request — the route's middleware, policies and props decide, as for any
   partial reload. A hint for something the user may no longer see reloads into a 403 or the login page, never into data.
 - **Signed by the answer that declares it (E90).** `.live()` puts the channel into the page object with a token: an HMAC over
-  the channel and a hash of the session's id, keyed from `APP_KEY` (HKDF, context `live`; `APP_PREVIOUS_KEYS` still verify).
+  the channel and a hash of the session's id, keyed from `APP_KEY` (HKDF, context `bespokecore:live`; `APP_PREVIOUS_KEYS` still verify; compared in constant time).
   Whoever may see the page may hear its hints — the same policy, in one place. The stream (`GET /_bespoke/live`) refuses any
   token that does not fit — a channel rewritten (`users.1` → `users.2`), a token of another session or of one that ended — with
   a 403 and no stream at all. The tokens travel in the stream's query (`EventSource` sends no headers of its own): without the
@@ -191,4 +191,6 @@ app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // al
 **Broadcasting over WebSockets** — data events, presence channels, client events, a Pusher-compatible protocol — is not part of
 BespokeCore: it is in the backlog until its design is settled (E191). Live props are hints over Server-Sent Events, and stay so.
 A Postgres `LISTEN/NOTIFY` backend is noted for later ([real time](../../docs/realtime.md#what-there-is-not), the guide). A hint sent while Redis is unreachable is not retried. Channel tokens do
-not expire (a hint carries no data, and the reload goes through the route's policy; signing in or out ends the streams).
+not expire: a token is valid as long as its session (a hint carries no data, and the reload goes through the route's policy;
+signing in or out ends the streams). A user who loses access to a channel while their session lives keeps hearing *that* it
+changed — the channel's name and when — until the session ends; the reloads it causes meet the route's policy (a 403), never data.

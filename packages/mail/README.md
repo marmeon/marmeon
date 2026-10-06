@@ -35,7 +35,9 @@ MAIL_FROM_NAME=               # its name (default: none — then the address alo
 MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASSWORD=   # smtp (these are the defaults)
 ```
 
-`MAIL_SECURE=true` means TLS from the first byte (port 465); otherwise STARTTLS when the server offers it. `MailConfig`
+`MAIL_SECURE=true` means TLS from the first byte (port 465); otherwise STARTTLS when the server offers it — and plain text when
+it does not: a server without STARTTLS, or someone on the way who strips the offer, gets the credentials and the mails (reset
+links included) unencrypted. Use port 465 with `MAIL_SECURE=true` where the provider has it. `MailConfig`
 (`config.mailer`, `config.from`, `config.smtp`, `config.previews`, `config.protected`) is the package's config class. The web
 app's `.env.test` sets `MAIL_MAILER=array`.
 

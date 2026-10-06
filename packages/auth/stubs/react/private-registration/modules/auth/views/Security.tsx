@@ -30,7 +30,8 @@ export default function Security({ viaRemember, email, pendingEmail, auth }: Pro
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void emailForm.submit();
+            // The address stays the current one until the link is clicked: the field shows it again (the request waits below).
+            void emailForm.submit({ onSuccess: () => emailForm.reset() });
           }}
         >
           <p>
@@ -45,7 +46,7 @@ export default function Security({ viaRemember, email, pendingEmail, auth }: Pro
               <small>{t('security.email_pending', { email: pendingEmail, current: email })}</small>
             </p>
           )}
-          <button type="submit" disabled={emailForm.processing || !emailForm.isDirty}>
+          <button type="submit" disabled={emailForm.processing || !emailForm.isDirty()}>
             {t('security.change_email')}
           </button>
         </form>

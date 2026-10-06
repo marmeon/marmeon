@@ -268,6 +268,23 @@ describe('configuration', () => {
     await expect(boot(aliased)).rejects.toThrow(StorageSetupError);
   });
 
+  it('counter-check: a private S3 disk whose prefix nests with a public one in the same bucket fails the start (W9 step 10b)', async () => {
+    const s3 = (root: string | undefined, visibility: 'public' | 'private', bucket = 'files') => ({ driver: 's3' as const, bucket, root, visibility });
+    for (const [closed, open] of [
+      ['private', undefined],
+      [undefined, 'public'],
+      ['files/private', 'files'],
+      ['same', '/same/'],
+    ] as const) {
+      const config = defineStorage({ default: 'a', disks: { a: s3(closed, 'private'), b: s3(open, 'public') } });
+      await expect(boot(config)).rejects.toThrow(/The private disk "a" and the public disk "b" share a prefix of one bucket/);
+    }
+    // Separate prefixes, or another bucket: fine.
+    await boot(defineStorage({ default: 'a', disks: { a: s3('private', 'private'), b: s3('public', 'public') } }));
+    await boot(defineStorage({ default: 'a', disks: { a: s3(undefined, 'private'), b: s3(undefined, 'public', 'avatars') } }));
+    await boot(defineStorage({ default: 'a', disks: { a: s3('files-private', 'private'), b: s3('files', 'public') } }));
+  });
+
   it('a private disk with a url, an unknown default, an unknown driver — startup errors that say what to do', async () => {
     await expect(boot(defineStorage({ default: 'local', disks: { local: { driver: 'local', root: 'x', url: '/files' } } }))).rejects.toThrow(
       'The disk "local" is private but has a url — private files are never public',

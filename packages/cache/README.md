@@ -11,8 +11,10 @@ if (!(await this.#limiter.attempt(`password-check:${userId}`, 5, 60))) abort(429
 await this.#cache.lock(`report:${id}`, 60).block(5, () => this.#reports.build(id));
 ```
 
-`add`, `increment` and `lock` are atomic in every store (E103): counting and deciding is one step of the store, so
-concurrent requests in any number of processes never get past a limit together.
+`add`, `increment` and `lock` are atomic in every store (E103): counting and deciding is one step of the store — one SQL
+statement, a Lua script or `SET NX`, a per-key guard file — so concurrent requests in any number of processes never get past a
+limit together. (The `file` store takes over a guard older than 2 s, left by a crashed process: one that stalls longer than that
+inside its few-microsecond step loses its exclusivity.)
 
 `bespoke discover` registers its `CacheServiceProvider` through the `"bespoke"` field of its package.json: the `Cache` of
 `CACHE_DRIVER` and the `RateLimiter` (singletons), the live-validation limit in the global middleware stack, a readiness check,

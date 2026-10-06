@@ -25,8 +25,8 @@ It has no provider of its own and is not discovered — it is what discovery run
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig, SystemDatabase, AppStorage],
-  modules: [auth, userProfile, dashboard, notifications, locale, lab, system],
-  middleware: { global: [SecurityHeaders], web: [ShareAppProps] },
+  modules: [auth, userProfile, dashboard, members, notifications, locale, lab, system],
+  middleware: { global: [SecurityHeaders, contentSecurityPolicy({ frameAncestors: ["'none'"] })], web: [ShareAppProps] },
 });
 ```
 
@@ -40,6 +40,7 @@ export default defineApplication({
 | `health` | app-level readiness checks for `/up/ready` ([Health checks](#health-checks-e126)) |
 | `env` | the environment to validate against (default: `.env`, `.env.{NODE_ENV}`, then the real one — [Configuration](#configuration)) |
 | `discover` | register the providers of installed packages (default `true`, [Discovery](#discovery-the-bespoke-field-and-bespoke-discover)) |
+| `phase` | `'run'` (the default) or `'build'` — registered, never booted ([the build phase](#modules-definemodule), `ApplicationPhase`) |
 | `override` | runs after every provider registered and before any boots — replace bindings there (tests) |
 | `container` | a container to use instead of a new one |
 
@@ -260,7 +261,9 @@ container.has(Mailer);                                   // bound here or in a p
   ([The container's errors](#the-containers-errors)): a singleton is built in the root and must never capture a request.
 - **Tokens:** an interface has no runtime value, so it is bound and injected through a token of the same name —
   `export interface Mailer { … }` plus `export const Mailer = token<Mailer>('Mailer')`; one import gives both. The core's
-  contracts are tokens: `Logger` (a console fallback until [@bespokecore/log](../log/README.md) binds pino), `Clock`,
+  contracts are tokens: `Logger` (a console fallback until [@bespokecore/log](../log/README.md) binds pino; its optional
+  `enabled?(level)` says whether an entry at that level would go anywhere — written, or seen on the `log` channel —, asked
+  before building a costly one: the request line with `LOG_LEVEL=silent`; a logger without it counts as enabled), `Clock`,
   `Translator` (bound per request by [@bespokecore/i18n](../i18n/README.md#on-the-server-translator)).
 - **Re-binding** replaces a cached singleton — `override` (tests) sees every binding before anything is built.
 - `container.keys()` lists what is bound, for tooling ([tinker](../cli/README.md#tinker)).

@@ -232,7 +232,9 @@ export class S3Disk implements Disk {
     const command = new modules.client.GetObjectCommand({
       Bucket: this.#bucket,
       Key: this.#key(key),
-      // Only raster images are shown; everything else is a download.
+      // Only raster images are shown; everything else is a download. The type goes with it: what the object was stored as (an
+      // upload's claim) never decides how the store's origin serves it — a `.png` stored as `text/html` is still an image.
+      ResponseContentType: type,
       ResponseContentDisposition: contentDisposition(isInlineType(type) ? 'inline' : 'attachment', filename),
     });
     return modules.presigner.getSignedUrl(client, command, { expiresIn: secondsOf(options.expiresIn), signingDate: new Date(this.#clock.now()) });

@@ -103,7 +103,7 @@ function PeoplePlaceholder() {
     <main aria-busy="true" data-placeholder="">
       <Head title={t('people.title')} />
       <h1>{t('people.title')}</h1>
-      <p style={{ opacity: 0.5 }}>{t('people.loading')}</p>
+      <p className="muted">{t('people.loading')}</p>
     </main>
   );
 }

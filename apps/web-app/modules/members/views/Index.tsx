@@ -1,7 +1,7 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Link, useTranslation } from '@bespokecore/react';
 import { useTable, type TableRunOutcome } from '@bespokecore/react/table';
-import { useState, type FormEvent, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListMembersController } from '../controllers/ListMembersController.ts';
 
@@ -46,6 +46,14 @@ export default function Index({ members }: Props) {
   const csv = table.exports.find((entry) => entry.name === 'csv');
   const filters = Object.fromEntries(table.filters.map((entry) => [entry.name, entry]));
   const [joinedFrom = '', joinedTo = ''] = (filters.joined?.value ?? '').split('..');
+  // The form's fields are the page's state: after "Reset" or Back (the page stays mounted) they show it again. The others are new
+  // fields per state (their `key`); the search field follows unless it is being typed into — its own visits bring what was typed.
+  const searchValue = table.search?.value ?? '';
+  const searchField = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const field = searchField.current;
+    if (field && field !== document.activeElement && field.value !== searchValue) field.value = searchValue;
+  }, [searchValue]);
 
   // "Apply": the page size and every filter of the form — the URL is the table's state, the server parses it strictly.
   const applyFilters = (event: FormEvent<HTMLFormElement>) => {
@@ -74,18 +82,18 @@ export default function Index({ members }: Props) {
       <h1>{t('title')}</h1>
       <p>{t('intro')}</p>
       {/* Without JavaScript an ordinary GET form: the date range then goes as two fields the server does not know — apply needs JavaScript. */}
-      <form method="get" role="search" onSubmit={applyFilters} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+      <form method="get" role="search" onSubmit={applyFilters} className="filters">
         {table.search && (
           <label>
             {t('search')}{' '}
             {/* Searches as you type (after a pause; one history entry for it). */}
-            <input type="search" name={members.query.search} defaultValue={table.search.value} maxLength={100} onChange={(event) => table.setSearch(event.target.value.trim())} />
+            <input ref={searchField} type="search" name={members.query.search} defaultValue={table.search.value} maxLength={100} onChange={(event) => table.setSearch(event.target.value.trim())} />
           </label>
         )}
         {filters.locale?.type === 'select' && (
           <label>
             {t('locale')}{' '}
-            <select name={filters.locale.key} defaultValue={filters.locale.value ?? ''}>
+            <select key={filters.locale.value ?? ''} name={filters.locale.key} defaultValue={filters.locale.value ?? ''}>
               <option value="">{t('locale_option', { locale: 'any' })}</option>
               {filters.locale.options.map((option) => (
                 <option key={option} value={option}>
@@ -98,17 +106,17 @@ export default function Index({ members }: Props) {
         {filters.joined && (
           <>
             <label>
-              {t('joined_from')} <input type="date" name="joined_from" defaultValue={joinedFrom} />
+              {t('joined_from')} <input key={joinedFrom} type="date" name="joined_from" defaultValue={joinedFrom} />
             </label>
             <label>
-              {t('joined_to')} <input type="date" name="joined_to" defaultValue={joinedTo} />
+              {t('joined_to')} <input key={joinedTo} type="date" name="joined_to" defaultValue={joinedTo} />
             </label>
           </>
         )}
         {table.page.perPageOptions.length > 1 && (
           <label>
             {t('per_page')}{' '}
-            <select name={members.query.perPage} defaultValue={table.page.perPage}>
+            <select key={table.page.perPage} name={members.query.perPage} defaultValue={table.page.perPage}>
               {table.page.perPageOptions.map((size) => (
                 <option key={size} value={size}>
                   {size}

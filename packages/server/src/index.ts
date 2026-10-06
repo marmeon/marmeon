@@ -1,4 +1,5 @@
 export { createHttpKernel, startServer } from './kernel.ts';
+export { heldOnLoopback } from './loopback.ts';
 export type { CloseOptions, HttpKernel, KernelOptions, RunningServer, ServeOptions } from './kernel.ts';
 export { createDocumentRenderer, createResponseFactory, isBot, shellRenderer } from './render.ts';
 export type { DocumentRendererOptions, LayerBaseResult, PageRenderer, PageRenderOptions, RenderFailureDetails, ResponseFactoryOptions, ScopedResponseFactory } from './render.ts';

@@ -84,8 +84,9 @@ const page = await cursorPaginate(this.#db.selectFrom('articles').select(['id', 
 
 - **The key breaks ties** by itself (`{ column: 'name' }` orders by `(name, id)`), NULLs come last in both directions and a NULL is a
   cursor like any other — the next page goes on among them instead of starting over.
-- **Cursors are encrypted** with the app key, with their own context per list (columns, direction): a client can neither read a
-  hidden sort column's value from the URL nor make one up. One that does not decrypt — changed, made up, another list's, a key
+- **Cursors are encrypted** with the app key, with their own context per order (columns, direction): a client can neither read a
+  hidden sort column's value from the URL nor make one up (one of another list with the same order decrypts — as a position among
+  that list's own rows, its filters apply). One that does not decrypt — changed, made up, another order's, a key
   rotated away, the unencrypted format before Wave 9 — is a **400** (`InvalidCursorError`), never the first page again.
 
 "Load more" appends the next page to what the page has. Mark the prop `merge()` on the server — a paginator's `data` is appended,

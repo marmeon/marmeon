@@ -81,7 +81,8 @@ pnpm dev                              # bespoke dev: the server with Vite, a que
 `create-bespoke-app` copies the template, writes `.env` with a fresh `APP_KEY`, installs, and runs the app's own generators:
 `bespoke make:auth` puts a complete auth module into `modules/auth/` — the pages, routes and rules are the app's from then on
 ([@bespokecore/auth](packages/auth/README.md#bespoke-makeauth)) — and `bespoke migrate` creates the tables. `--minimal` makes a
-blank app instead, `--docker` adds the files to run it in containers, `--npm` uses npm; without a terminal nothing is asked
+blank app instead, `--private-registration` a registration that never tells whether an address has an account, `--docker`
+adds the files to run it in containers, `--npm` uses npm; without a terminal nothing is asked
 ([create-bespoke-app](packages/create-bespoke-app/README.md), and the longer walk-through in
 [docs/getting-started.md](docs/getting-started.md)).
 
@@ -122,14 +123,15 @@ Installed framework packages register themselves (discovery through the `"bespok
 | | [encryption](packages/encryption/README.md) | `APP_KEY`, authenticated encryption, key rotation |
 | | [testing](packages/testing/README.md) | `createTestApp`, requests and assertions, database refresh, fakes |
 | HTTP | [router](packages/router/README.md) | routes, invokable controllers, requests with schemas, query schemas, route binding, middleware |
-| | [http](packages/http/README.md) | the page protocol, props (deferred, optional, merged, once, live), the UI-free client core |
+| | [http](packages/http/README.md) | the page protocol, props (deferred, optional, merged, once, live), the UI-free client core and its navigator (the Navigation API, view transitions) |
 | | [server](packages/server/README.md) | the kernel, SSR, health endpoints, the development error page |
 | | [session](packages/session/README.md) | sessions with drivers, CSRF protection |
 | | [vite](packages/vite/README.md) | the Vite plugin: entries, virtual modules, the route manifest, the server-import check |
 | | [i18n](packages/i18n/README.md) | translations, the request's locale, formatting |
-| Data | [database](packages/database/README.md) | Kysely, migrations, generated table types, repositories, factories, transactions |
+| Data | [database](packages/database/README.md) | Kysely, migrations, generated table types, repositories, factories, transactions, pagination |
 | | [cache](packages/cache/README.md) | the cache, atomic locks, rate limits |
 | | [redis](packages/redis/README.md) | Redis connections for cache, session, queue and live |
+| | [table](packages/table/README.md) | server-driven tables: one definition, columns by policy, a strict URL state, row and bulk actions, CSV export |
 | Auth & Mail | [auth](packages/auth/README.md) | `make:auth`, guards, password hashing, reset, verification, API tokens, policies |
 | | [mail](packages/mail/README.md) | mails with MJML, queued mails, previews |
 | | [notifications](packages/notifications/README.md) | notifications over mail, database and live channels |
@@ -137,7 +139,7 @@ Installed framework packages register themselves (discovery through the `"bespok
 | | [scheduler](packages/scheduler/README.md) | scheduled tasks, `onOneServer()`, events |
 | | [storage](packages/storage/README.md) | disks (local, S3), signed URLs, uploads |
 | | [live](packages/live/README.md) | live props: reload hints over server-sent events |
-| Frontend | [react](packages/react/README.md) | the React adapter: pages, layouts, `<Link>`, forms, islands, layers |
+| Frontend | [react](packages/react/README.md) | the React adapter: pages, layouts, `<Link>`, forms, islands, layers, `useTable` |
 | Tools | [devtools](packages/devtools/README.md) | the recorder, `/_bespoke/devtools` and the in-page bar — development only |
 | | [otel](packages/otel/README.md) | OpenTelemetry spans from the diagnostics channels |
 
@@ -184,11 +186,12 @@ packages/*        the framework packages (each with its README — these pages)
 apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: what create-bespoke-app --minimal writes (pnpm template:sync), and what make:auth is tested against
 apps/docs         these docs: the READMEs and docs/*.md as a BespokeCore app (pnpm docs:dev; apps/docs/Dockerfile, deploy/docs)
-docs              the guides: getting started, deployment, security, versions
+docs              the guides: getting started, lists, tables, navigation, real time, deployment, security, versions
 scripts/ci.ts     pnpm run ci — its 14 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 scripts/gegen     pnpm gegen — the Gegenproben of each step: a measure taken out, its test red for its reason (never a gate)
-scripts/test      the test suite's temporary directory per run and tempDir() (pnpm test fails when a test leaves one behind)
+scripts/test      the test suite's temporary directory per run and tempDir() — the repository's own, not exported by a package
+                  (pnpm test fails when a test leaves an entry behind)
 deploy/docs       the docs' Compose file and Caddyfile (one server, E142)
 UPGRADING.md      what changes for apps from one version to the next
 .changeset        Changesets: the pending changes, one fixed group (pnpm changeset; scripts/check-changesets.ts checks the release rules)
@@ -209,7 +212,7 @@ pnpm gegen w9/s01      # the Gegenproben of a step (CONTRIBUTING.md): every case
 
 `pnpm run ci` runs 14 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `test`, then `test:pgsql`, `test:redis` and `test:s3` against this repository's containers (`compose.yaml`,
-started as needed), `size` (the bundle limits), `types:check` (the apps' generated route and table types are current), `docs:check`,
+started as needed), `size` (the bundle limits — they only go down, each keeps a 0.5 KB reserve, E186), `types:check` (the apps' generated route and table types are current), `docs:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-changesets`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `ci.yml` splits the parts

@@ -42,7 +42,7 @@ export default function CreateAccessToken({ abilities }: Props) {
             <fieldset>
               <legend>{t('tokens.may')}</legend>
               {Object.entries(abilities).map(([ability, description]) => (
-                <label key={ability} style={{ display: 'block' }}>
+                <label key={ability} className="block">
                   <input type="checkbox" {...form.field('abilities[]')} value={ability} /> <code>{ability}</code> — {description}
                 </label>
               ))}

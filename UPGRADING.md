@@ -16,11 +16,12 @@ impact by area:
 
 | Area | Medium | Low |
 | --- | --- | --- |
-| Lists and data | [revalidations replace merged props](#medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone) · [`paginate(…, ctx.query)`](#medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated) · [`<Pagination>`](#medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels) | [GET arrays](#low-a-list-in-a-gets-data-is-the-key-repeated) · [`merge()` of a paginator](#low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up) · [encrypted cursors](#low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400) |
+| Lists and data | [revalidations replace merged props](#medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone) · [`paginate(…, ctx.query)`](#medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated) · [`<Pagination>`](#medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels) | [GET arrays](#low-a-list-in-a-gets-data-is-the-key-repeated) · [`merge()` of a paginator](#low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up) · [encrypted cursors](#low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400) · [queries take turns on a shared connection](#low-queries-on-a-shared-connection-take-turns--a-transactions-a-tests-pinned-one) · [a filter on a hidden column](#low-a-tables-filter-on-a-hidden-column-is-hidden-with-it) |
 | Live updates | [16 streams per session](#medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429) · [a cluster needs Redis](#medium-a-cluster-bespoke-start-with-workers-needs-live_driverredis) | — |
-| Navigation | [the Navigation API](#medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible) | [the guard](#low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key) · [optimistic patches on first use](#low-userouter-loads-the-pages-optimistic-patches-on-first-use) · [the kit's `Confirm`](#low-the-starter-kit-asks-in-the-pages-language--its-own-confirm) · [view transitions](#low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition) |
+| Navigation | [the Navigation API](#medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible) | [the guard](#low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key) · [optimistic patches on first use](#low-userouter-loads-the-pages-optimistic-patches-on-first-use) · [the kit's `Confirm`](#low-the-starter-kit-asks-in-the-pages-language--its-own-confirm) · [view transitions](#low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition) · [`reset()` after saving](#low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty) · [reloads built while rendering](#low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again) |
 | Accounts | [pending change of address](#medium-with-private-registration-a-change-of-address-is-pending-until-its-link-is-clicked--migrate-the-new-columns) | — |
-| Server and deployment | — | [`KEEP_ALIVE_TIMEOUT`](#low-the-server-keeps-idle-connections-65-s-keep_alive_timeout) · [build without `.env`](#low-bespoke-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile) · [tini](#low-the-image-runs-bespoke-under-tini--rebuild-it) · [pnpm 12.9.1](#low-pnpm-1291) · [`<title>`](#low-a-new-apps-title-is-its-name-not-bespokecore) |
+| Server and deployment | — | [`KEEP_ALIVE_TIMEOUT`](#low-the-server-keeps-idle-connections-65-s-keep_alive_timeout) · [build without `.env`](#low-bespoke-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile) · [tini](#low-the-image-runs-bespoke-under-tini--rebuild-it) · [pnpm 12.9.1](#low-pnpm-1291) · [`<title>`](#low-a-new-apps-title-is-its-name-not-bespokecore) · [a program on 127.0.0.1 at the port](#low-the-start-warns-when-another-program-holds-127001-at-its-port--and-a-taken-port-fails-startserver) |
+| Security | — | [no CORS in `bespoke dev`](#low-bespoke-dev-answers-other-origins-without-cors-headers) · [S3 content type](#low-an-s3-temporary-url-names-the-content-type-by-the-file-name) · [S3 disks sharing a prefix](#low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start) · [`verified()` fails closed](#low-verified-treats-a-user-without-email_verified_at-as-unverified) |
 
 *Estimated upgrade time:* minutes for most apps (read the Medium entries of the features you use); about an hour for an app with
 `merge()`d lists that load more, `paginationFrom`, live props under `--workers`, or private registration (its migration and
@@ -154,7 +155,8 @@ reads such a configuration in `register()` fails the build with `The configurati
 it in `boot()` or later; and named routes belong where `register()` sees them — a module's `routes` (the http provider now loads
 them while registering, no longer in `boot()`) or a provider's own `register()`: routes loaded in `boot()` still serve requests
 but are no longer in `bootstrap/routes.ts`. `bespoke route:types` runs so everywhere — also `route:types --check` in CI, without
-a key. A command of your own can ask for the same with `static boots = 'build'`.
+a key. (`static boots = 'build'` is read for the built-in commands only: an app's own commands are found by booting the app, so
+they run in a booted one.)
 
 #### Low: the image runs `bespoke` under tini — rebuild it
 
@@ -180,6 +182,16 @@ lockfile).
 blank app's is a neutral `<title>App</title>`); before, every new app was titled "BespokeCore" until a page set its own. An
 existing app changes the `<title>` in its `index.html` by hand.
 
+#### Low: the start warns when another program holds 127.0.0.1 at its port — and a taken port fails `startServer`
+
+*Likelihood of impact: low — servers on every interface (no `HOST`, `::`, `0.0.0.0`), mostly on macOS.* macOS lets a server on every
+interface listen beside a program that holds the same port on 127.0.0.1 only — requests to `127.0.0.1:<port>` then reach that program,
+not the app (W9 step 2: `/up` answered 501). `bespoke start`/`dev` (and a cluster's primary, once) now look before listening and log a
+warning: "Another program holds 127.0.0.1:<port> — … Set HOST … or another PORT." The start goes on (elsewhere it fails with
+EADDRINUSE right after). Not looked at with `PORT=0` or a single interface in `HOST`. `startServer()` now rejects with Node's error
+(`EADDRINUSE`, `EACCES`) when it cannot listen — before, the error was an uncaught exception; `bespoke start` reports both the same
+way. No switch: set `HOST` (127.0.0.1 behind a proxy on the machine, 0.0.0.0 in a container) and the warning has nothing to say.
+
 #### Low: a list in a GET's data is the key repeated
 
 *Likelihood of impact: low — `visit`/`reload`/`useForm` GETs with a list in `data`.* `reload({ data: { role: ['admin', 'owner'] } })`
@@ -199,14 +211,32 @@ a paginator that should be replaced on "load more" is not `merge()`d at all.
 #### Low: cursors are encrypted — `cursorPaginate` needs the `Encrypter`, an old cursor is a 400
 
 *Likelihood of impact: low — apps that use `cursorPaginate`.* `meta.nextCursor` is now the last row's values encrypted and
-authenticated with the app key, its own context per list (columns, direction) — a client can neither read a hidden sort column's
-value from the URL nor make up a cursor. `cursorPaginate(query, { …, encrypter })` takes the `Encrypter` (inject it from
-`@bespokecore/encryption`; without it a type error); a cursor that does not decrypt — changed, of another list, of a key that
+authenticated with the app key, its own context per order (columns, direction) — a client can neither read a hidden sort column's
+value from the URL nor make up a cursor (one of another list with the same order decrypts there, as a position among that list's
+own rows). `cursorPaginate(query, { …, encrypter })` takes the `Encrypter` (inject it from
+`@bespokecore/encryption`; without it a type error); a cursor that does not decrypt — changed, of another order, of a key that
 was rotated away, or **the base64url format before Wave 9** (bookmarked "load more" URLs) — answers **400** instead of the first
 page. Also: the unique `key` (default `id`) is added as the last order by itself (`{ column: 'name' }` orders by `(name, id)`),
 a nullable sort column orders `NULLS LAST` and a NULL is a cursor like any other (before: "load more" started over), and an
 `orderBy` of the query is taken out (before it came first). There is no way back to readable cursors — they showed the values of
 the sort columns, hidden ones included.
+
+#### Low: queries on a shared connection take turns — a transaction's, a test's pinned one
+
+*Likelihood of impact: low — nothing to do.* Inside `connections.transaction(…)` every query of the call chain shares the transaction's
+connection, and under the test isolation every request shares the test's one — a `Promise.all` over a page's props or two requests of
+a test sent `pg` a query while another was under way ("client.query() when the client is already executing a query", deprecated in
+pg 8, an error in pg 9). The database driver now runs the queries of one connection one after the other, in the order they were sent
+(a failed one passes the turn on; a stream holds it until it ends). Results and transactions are unchanged; the logged duration of a
+query that waited includes its wait. No switch: it is what `pg` did internally, made explicit.
+
+#### Low: a table's filter on a hidden column is hidden with it
+
+*Likelihood of impact: low — tables whose filters read a column with `.visible(…)`.* A filter had only its own visibility: on a column
+a user may not see (`email: column('users.email').visible(…)`, `filters: { domain: filter.select('users.email', …) }`) it was offered
+and applied, and the number of rows it left told the hidden values. Now such a filter is hidden with its column for that request —
+not in the props, and `?filter[domain]=…` is a 400, like a sort by a hidden column. The same column counts with or without its
+table (`created_at`, `users.created_at`). No switch; a filter that should stay give a column of its own that the user may see.
 
 #### Low: the guard cancels a Back where the browser lets it — and goes back by the browser's key
 
@@ -247,6 +277,48 @@ screen keeps the old page until it is ready (instead of showing the fallback), R
 `<ViewTransition>`, and a page change waits for an async action of React's under way. A custom adapter that starts transitions itself
 passes `NavigatorOptions.viewTransition: 'adapter'` and renders `RenderOptions.transition` (the types) in its own; every other adapter
 ignores it. A custom feature can take a page's swap (`host.on('swap', (run, how, keep) => …)`).
+
+#### Low: a `reset()` in a submit's `onSuccess`/`onFinish` resets to the defaults before the submit — the saved form is not dirty
+
+*Likelihood of impact: low — forms that reset fields after saving (`submit({ onFinish: () => form.reset('password') })`, `<Form
+resetOnSuccess>`).* A saved form takes what was sent as its new defaults. The callbacks used to run against the defaults of before the
+submit while the form had already taken the new ones: a reset field went back to its old value, differed from the new defaults, and
+the form stayed dirty — the guard asked on leaving (and `beforeunload` too). Now the new defaults are taken after the callbacks ran:
+what they reset (a password emptied) is where the form starts over, the rest is what was sent; not dirty. No switch — the old state
+was a bug; a later `reset()` goes back to the saved state.
+
+#### Low: a page that builds its reloads while rendering renders on the server again
+
+*Likelihood of impact: low — pages that call `router.reloading(…)` or `router.optimistic(…)` in their body.* Since `useRouter()` loads
+the optimistic patches on first use, such a page failed its server render with `[bespoke:R11]` (the browser then rendered it — the
+web app's `/notifications`). On the server both now hand out a target nothing uses (actions run in the browser). Nothing to do.
+
+#### Low: `bespoke dev` answers other origins without CORS headers
+
+*Likelihood of impact: low — development only.* Vite's development server answered any page on `localhost`, `127.0.0.1` or `[::1]` — at
+any port — with `Access-Control-Allow-Origin`, also on the app's own answers: a page of another local project could read the devtools'
+API, mail previews or the error page. Vite runs with `cors: false` now. The app and its modules share one origin; nothing of the
+framework needed it. No switch.
+
+#### Low: an S3 temporary URL names the content type by the file name
+
+*Likelihood of impact: low — S3 disks.* `temporaryUrl(key, …)` decided inline (raster images) or download by the file name, but the store
+sent the type the object was stored with: an object stored as `text/html` under `avatar.png` was shown inline — as HTML, on the
+bucket's origin. The presigned URL now carries the type of the file name too (`response-content-type`), as the local disk serves it.
+No switch; a file that should keep its stored type gets a file name of that type.
+
+#### Low: a private S3 disk that shares a prefix of one bucket with a public one fails the start
+
+*Likelihood of impact: low — several S3 disks in one bucket.* The start refused a private local disk inside (or around) a public one;
+now also a private S3 disk whose `root` nests with a public S3 disk's in the same bucket on the same endpoint (or either has none) —
+the public disk's URLs (and the bucket policy that makes them public) would reach the private files. Give the disks separate
+prefixes (`root`) or buckets.
+
+#### Low: `verified()` treats a user without `email_verified_at` as unverified
+
+*Likelihood of impact: low — custom user providers that select columns.* The middleware let through every user whose
+`email_verified_at` was not `null` — also one whose provider did not load the column (`undefined`). It fails closed now: the notice page
+(403 for JSON). Load the column with the user.
 
 ## Upgrading to 0.1.0 from the development snapshots
 

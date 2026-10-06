@@ -381,7 +381,9 @@ const layer = useLayer<EditUserProfileController>();     // isLayer, depth, isTo
 
 The frame is `LayerDialog` by default — a native modal `<dialog>`: focus kept inside and returned to the opener, Escape and the
 backdrop close it, the page beneath inert. Wrap it for the app's label (`<LayerDialog {...props} closeLabel={t('close')} />`) and
-pass it as `layer`; a view's own `layer` static wins. The layer stack is a chunk of its own, loaded where a layer link renders or
+pass it as `layer`; a view's own `layer` static wins. Its default look is a few inline properties — server-rendered (a deep link
+to a layer) a `style` attribute, which a strict `style-src` would block: with one, style the frame by `[data-bespoke-layer]` and
+`[data-variant]` in the app's stylesheet. The layer stack is a chunk of its own, loaded where a layer link renders or
 when the server answers with a layer (E71).
 
 ## Flash messages, head and translations

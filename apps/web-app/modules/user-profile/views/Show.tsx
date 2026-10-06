@@ -146,7 +146,7 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
               </li>
             ))}
             {adding.map((call) => (
-              <li key={`adding-${call.id}`} aria-busy="true" style={{ opacity: 0.5 }} data-pending-link="">
+              <li key={`adding-${call.id}`} aria-busy="true" className="muted" data-pending-link="">
                 {call.input.label} <small>{t('show.adding')}</small>
               </li>
             ))}
@@ -188,7 +188,7 @@ function ShowPlaceholder({ name }: { name: string }) {
     <main aria-busy="true" data-placeholder="">
       <Head title={name} />
       <h1>{name}</h1>
-      <p style={{ opacity: 0.5 }}>{t('show.loading')}</p>
+      <p className="muted">{t('show.loading')}</p>
     </main>
   );
 }

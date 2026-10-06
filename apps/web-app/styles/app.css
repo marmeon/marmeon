@@ -1,11 +1,143 @@
 /*
- * The web app's styles — linked from index.html (a stylesheet of its own: no inline styles needed for any of this).
+ * The web app's styles — linked from index.html (a stylesheet of its own: no inline styles needed for any of this). The views name
+ * classes, never `style` props: a `style` attribute in the server's markup is what a strict `style-src` blocks (docs/navigation.md).
  *
  * View transitions (E185): `createBespokeApp({ viewTransition: 'react' })` (bootstrap/client.tsx) — each page change renders in a
  * React transition with its direction as a type, and React 19.3 animates the views' <ViewTransition>. The framework ships no
  * animation of its own; what moves and how is said here. Under prefers-reduced-motion the navigator starts none at all.
  */
 
+/* Layout */
+.app-header {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 8px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+}
+
+.row-tight {
+  gap: 4px;
+}
+
+.block {
+  display: block;
+}
+
+.muted,
+[data-notification][data-read] {
+  opacity: 0.6;
+}
+
+.notice {
+  background: #fff4ce;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scroll-list {
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+/* The dashboard's activity panel: further down on purpose — it loads once it scrolls into view. */
+.below-the-fold {
+  margin-top: 70vh;
+}
+
+/* The dashboard's panels, side by side as far as they fit. */
+.panels {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  align-items: start;
+}
+
+/* The settings pages: their navigation beside the page. */
+.settings {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.settings-nav {
+  min-width: 140px;
+  padding-top: 16px;
+}
+
+.settings-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  line-height: 2;
+}
+
+.settings-page {
+  flex: 1;
+}
+
+/* The members table's filters in one row. */
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+/* Toasts (layouts/Toasts.tsx): bottom right, coloured by kind. */
+.toasts {
+  position: fixed;
+  inset-inline-end: 16px;
+  bottom: 16px;
+  display: grid;
+  gap: 8px;
+  z-index: 10;
+  max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.toast {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: #fff;
+  background: #1e3a8a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.toast[data-toast='success'] {
+  background: #166534;
+}
+
+.toast[data-toast='error'] {
+  background: #991b1b;
+}
+
+.toast > span {
+  flex: 1;
+}
+
+.toast > button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Avatars */
 .avatar {
   object-fit: cover;
   border-radius: 50%;

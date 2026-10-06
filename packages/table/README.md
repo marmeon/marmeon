@@ -116,8 +116,10 @@ sort, a raw column name (`?sort=password`, `?sort=created_at` instead of `joined
 value its filter does not offer, a page size not in `perPage` (`?per_page=10000`), a page that is none, a repeated key, a search
 longer than 100 characters — all **400**. A table says out loud what it cannot do, and nothing from the URL gets near `ORDER BY` or
 `WHERE` that the definition did not name: a sort or filter is an alias, looked up, and only its column goes into the query.
-Visibility counts as well: sorting, searching or filtering by a column the user cannot see is a 400 (the order alone would tell its
-values) — and the search looks only into visible columns.
+Visibility counts as well: sorting or searching by a column the user cannot see is a 400 (the order alone would tell its values) —
+the search looks only into visible columns — and so is a filter the user cannot see. A filter on the column of a hidden one is
+hidden with it, whatever its own visibility (the number of rows it leaves would tell that column's values; the same column counts
+with or without its table, `created_at` and `users.created_at`); a filter's own `.visible(…)` can hide it further.
 
 ## Actions, bulk actions, exports
 

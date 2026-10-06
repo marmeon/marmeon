@@ -304,9 +304,15 @@ export class Tables {
       for (const [name, entry] of Object.entries(record)) if (await ask(entry.visibility)) out.push([name, entry]);
       return out;
     };
+    const columns = await keep(definition.columns);
+    // A filter reads its column: on a column this request may not see it is hidden too — whatever its own visibility says (a filter
+    // on a hidden column would answer, by its counts, what the column hides).
+    const shown = new Set(columns.map(([, col]) => col));
+    const hidden = Object.values(definition.columns).filter((col) => !shown.has(col));
+    const filters = (await keep(definition.filters)).filter(([, filter]) => !hidden.some((col) => sameColumn(col.ref, filter.ref)));
     return {
-      columns: await keep(definition.columns),
-      filters: await keep(definition.filters),
+      columns,
+      filters,
       actions: await keep(definition.actions),
       bulk: await keep(definition.bulk),
       exports: await keep(definition.exports),
@@ -428,6 +434,13 @@ function pick(row: Row, view: View, keyName: string): Row {
   for (const [alias] of view.columns) out[alias] = row[alias];
   out[keyName] = row[keyName];
   return out;
+}
+
+/** Whether two references name the same column: equal, or the same name where one of them leaves the table out. */
+function sameColumn(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.includes('.') && b.includes('.')) return false;
+  return a.slice(a.lastIndexOf('.') + 1) === b.slice(b.lastIndexOf('.') + 1);
 }
 
 /** The state may use only what is visible: a hidden column cannot be sorted by, a hidden filter not used (400). */

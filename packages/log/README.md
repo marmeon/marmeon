@@ -30,7 +30,8 @@ only for a pretty logger — JSON logs never import it, E138); **`json`** one JS
 (30 = info), `time` (ms), `msg`, then the context, no `pid`/`hostname`. The web app's tests run with `LOG_LEVEL=silent`
 (`.env.test`). `logger.enabled(level)` says whether an entry would go anywhere — written at this level, or seen on the `log`
 channel (the devtools listen to every level): the kernel asks before it builds the request line and redacts its path, so
-`silent` (or `warn`) costs no request anything (E187).
+`silent` (or `warn`) costs no request anything (E187). On the `Logger` contract it is optional (`enabled?`): a logger of your
+own without it counts as enabled, and so does the core's `ConsoleLogger`, which knows no `LOG_LEVEL`.
 
 ```json
 {"level":30,"time":1759574400000,"channel":"http","requestId":"9f1c…","route":"users.show","ms":12,"msg":"GET /users/7 200"}

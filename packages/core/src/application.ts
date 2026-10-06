@@ -48,7 +48,7 @@ export interface ApplicationOptions {
   env?: Readonly<Record<string, string | undefined>>;
   /**
    * `build`: registered, not booted, without the configuration that does not validate (E187) — what `bespoke build` boots the
-   * app with (`static boots = 'build'` on a command). Default: `run`.
+   * app with (`static boots = 'build'` on a built-in command). Default: `run`.
    */
   phase?: ApplicationPhase;
   /** Register providers of installed packages (`bespoke discover`). Default: true. */

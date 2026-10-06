@@ -103,7 +103,8 @@ into the image: Node uses a cache directory only when it can write to it.
 what `HOST=0.0.0.0` in the image says anyway; on a machine of its own, behind a proxy there, set `HOST=127.0.0.1` so nothing but the
 proxy reaches the app (the systemd units do). There is a second reason: macOS (and other systems that allow it) lets a server on
 `::` start beside another program that already holds the same port on `127.0.0.1` alone — no `EADDRINUSE`, both run, and requests
-to `127.0.0.1:<port>` reach the other program while `localhost` may reach this one. With `HOST` set to the address you use the start
+to `127.0.0.1:<port>` reach the other program while `localhost` may reach this one. The start looks before it listens and says so
+("Another program holds 127.0.0.1:<port> — …", also on `0.0.0.0`; not with `PORT=0`). With `HOST` set to the address you use the start
 fails loudly instead. `PORT=0` takes a free port; the start line names the address and the port it got.
 
 **Rotating `APP_KEY`:** generate a new key, move the current one into `APP_PREVIOUS_KEYS`, deploy every instance with both;

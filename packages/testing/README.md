@@ -59,8 +59,10 @@ elsewhere `await app.close()` or `await using app = await createTestApp(…)`. C
 **The environment** is `.env`, then `.env.test` (for `NODE_ENV=test`, which Vitest sets), then the process environment, then
 `options.env` — and with `database: 'refresh'` the worker database's connection on top. A definition with its own `env` (a
 fixture app) skips the files. Every test app runs as `NODE_ENV=test` unless its environment names another — without one it would
-count as protected, like production (E139); `env: { NODE_ENV: 'production' }` tests the protections. The devtools stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=false`), also one that runs
-as development (`env: { NODE_ENV: 'development' }`).
+count as protected, like production (E139); `env: { NODE_ENV: 'production' }` tests the protections. Under Vitest the process's
+`NODE_ENV=test` wins over the `NODE_ENV=development` of a new app's `.env` (E170); outside Vitest that `.env` decides. The devtools
+stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=false`), also one that runs as development
+(`env: { NODE_ENV: 'development' }`).
 
 **Always in place:** a `TestClock` as the app's `Clock`, an `EventFake` that records every dispatch, and — with
 `@bespokecore/live` — a `BroadcastRecorder` (`app.broadcast`). The app itself is `app.application`, its container
@@ -160,9 +162,13 @@ await app.assertDatabaseCount('users', 4);
 
 `database: 'refresh'` is Laravel's `RefreshDatabase` (E21): each test worker (`VITEST_POOL_ID`) gets a database of its own —
 a SQLite file in the system's temporary directory, or on Postgres `<database>_test_<hash of the app's root>_<worker>`, dropped and created from
-the configured `DB_URL` — migrated once per process. Every refreshed test app then runs inside one transaction that is
-rolled back when the test ends: each test starts empty, and the app's own transactions become savepoints in it
-([transactions](../database/README.md#transactions)). Only one refreshed app may be open at a time. The database assertions
+the configured `DB_URL` — migrated once per process. Every refreshed test app then pins one connection of its `default`
+database connection and runs every query on it, inside one transaction that is rolled back when the test ends: each test
+starts empty, the app's own transactions become savepoints in it ([transactions](../database/README.md#transactions)), and
+requests a test sends at the same time share it, like Laravel's single test connection (their queries take turns on it). A database store on that connection
+(cache, locks, rate limits, sessions, uploads) works outside the app's transactions and is rolled back with the test; inside one
+it throws `InfrastructureTransactionError` ([E108](../database/README.md#infrastructure-connections-e108)). Only one refreshed
+app may be open at a time (the second one throws). The database assertions
 are typed by the table and, when they fail, show what the table holds. Needs `@bespokecore/database`.
 
 ## Fakes
@@ -225,7 +231,9 @@ arrives with `app.stream(path)`. Without `ssr` a response carries the page objec
 
 ## The framework's own suites: Postgres, Redis, S3
 
-In this repository `pnpm test` runs every package's tests and the web app's on SQLite and in memory. The cases for other
+In this repository `pnpm test` runs every package's tests and the web app's on SQLite and in memory. Each run gets a temporary
+directory of its own (`TMPDIR` points into it) and fails when a test leaves a `bespoke-*` entry behind; the framework's tests make
+theirs with `tempDir()` of `scripts/test/temp-dir.js` — the repository's own, not part of this package. The cases for other
 backends run when their variable is set — the services come from `compose.yaml` (`docker compose up -d`, own ports):
 
 ```sh

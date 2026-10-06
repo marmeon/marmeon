@@ -19,7 +19,7 @@ export default function NewAccessToken({ name, plainText }: Props) {
       <p data-layer-description="">
         <strong>{t('tokens.copy')}</strong>
       </p>
-      <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+      <pre className="wrap">
         <code>{plainText}</code>
       </pre>
       <p>

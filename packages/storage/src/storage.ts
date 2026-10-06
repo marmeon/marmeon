@@ -95,6 +95,20 @@ export function checkStorage(options: StorageOptions, appRoot: string): void {
       }
     }
   }
+  // The same on S3: one bucket (on one endpoint), the prefix of one inside the other's — the public one's URLs (and the bucket policy
+  // that makes them public) reach the private files.
+  const buckets = Object.entries(options.disks).flatMap(([name, disk]) =>
+    disk.driver === 's3' && disk.bucket ? [{ name, visibility: visibilityOf(disk), at: `${disk.endpoint ?? ''} ${disk.bucket}`, root: (disk.root ?? '').replace(/^\/+|\/+$/g, '') }] : [],
+  );
+  for (const open of buckets.filter((disk) => disk.visibility === 'public')) {
+    for (const closed of buckets.filter((disk) => disk.visibility === 'private' && disk.at === open.at)) {
+      if (open.root === '' || closed.root === '' || nests(`${open.root}/`, `${closed.root}/`)) {
+        throw new StorageSetupError(
+          `The private disk "${closed.name}" and the public disk "${open.name}" share a prefix of one bucket ("${closed.root}" / "${open.root}") — private files would be served as public. Give them separate prefixes (root) or buckets.`,
+        );
+      }
+    }
+  }
 }
 
 /** The `Storage` of the app: builds each disk on first use from its configuration. */

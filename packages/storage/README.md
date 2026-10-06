@@ -99,8 +99,10 @@ if missing (`pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner`). A disk
 fails on first use, not at startup. With an `endpoint`, the bucket goes into the path and the SDK's newer default checksums
 are only sent when required (S3-compatible stores). Visibility is the disk's, not the object's: a public S3 disk needs a
 bucket policy that makes it readable — the disk sets no ACLs. `temporaryUrl()` presigns a GET with
-`response-content-disposition` (attachment unless a raster image). Streams of unknown length are read into memory before
-the `PutObject` (multipart uploads: later).
+`response-content-disposition` (attachment unless the file's name — `filename`, else the key — has a raster image's extension;
+the stored `Content-Type` goes out as it is). The store serves these files itself: the headers of [Serving](#serving)
+(`nosniff`, `sandbox`) are the app's and do not apply — keep the bucket on an origin of its own, never the app's. Streams of
+unknown length are read into memory before the `PutObject` (multipart uploads: later).
 
 The S3 tests run against an S3-compatible container: `docker compose up -d` (service `s3`, SeaweedFS on 56333 — MinIO's
 community edition is archived and LocalStack's image needs an account token), then `pnpm test:s3`. They are not part of

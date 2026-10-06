@@ -66,7 +66,7 @@ export default function Index({ notifications }: Props) {
       ) : (
         <ul data-notifications="">
           {list.map((notification) => (
-            <li key={notification.id} data-notification={notification.id} data-read={notification.read ? '' : undefined} style={{ opacity: notification.read ? 0.6 : 1 }}>
+            <li key={notification.id} data-notification={notification.id} data-read={notification.read ? '' : undefined}>
               <strong>{notification.title}</strong>
               {!notification.read && <span aria-label={t('unread')}> ●</span>} — <time dateTime={notification.at}>{at(notification.at)} UTC</time>
               {notification.body && <div>{notification.body}</div>}
