@@ -360,6 +360,17 @@ function isHashChange(from: string, to: string): boolean {
  * disk for session restore) — the test reads exactly what would end up there. With the Navigation API (`navigation`, the default
  * path) or without it — the History fallback (`new FakeWindow(url, channels, 'history')`, or `FakeWindow.path`).
  */
+type StartViewTransition = NonNullable<NonNullable<NavigatorWindow['document']>['startViewTransition']>;
+
+/** A view transition the fake document started (E185): its types, and what became of it. */
+export interface FakeViewTransition {
+  readonly types: readonly string[];
+  /** Its update ran (the swap is in). */
+  updated: boolean;
+  /** Skipped while it animated (`skipTransition`). */
+  skipped: boolean;
+}
+
 export class FakeWindow implements NavigatorWindow {
   /** The path a new fake tab takes when none is given — a suite that runs on both sets it (`PATHS`). */
   static path: HistoryPath = 'navigation';
@@ -394,6 +405,12 @@ export class FakeWindow implements NavigatorWindow {
   BroadcastChannel?: new (name: string) => BroadcastChannel;
   /** A frozen tab (Page Lifecycle): it hears nothing on the channels. */
   frozen = false;
+  /** The user prefers reduced motion (`prefers-reduced-motion: reduce`, E185). */
+  reducedMotion = false;
+  /** The view transitions the document started (E185) — once it has them (`supportViewTransitions()`). */
+  readonly transitions: FakeViewTransition[] = [];
+  /** What happened, in order, for tests that follow a view transition (E185): `transition`, `updated`, `animated`, the scroll. */
+  readonly log: string[] = [];
   readonly performance: NonNullable<NavigatorWindow['performance']>;
   readonly #documentListeners = new Map<string, Set<() => void>>();
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
@@ -442,6 +459,37 @@ export class FakeWindow implements NavigatorWindow {
         sources.push(this);
       }
     } as never;
+  }
+
+  matchMedia(query: string): { readonly matches: boolean } {
+    return { matches: this.reducedMotion && query === '(prefers-reduced-motion: reduce)' };
+  }
+
+  /**
+   * The document gets view transitions (E185), as Chrome has them: `startViewTransition` captures the old state first (a task later),
+   * then runs the update (`updateCallbackDone` once it is in) and animates (another task) — a newer one or `skipTransition` skips the
+   * animation. `types: false`: a browser without types (Chrome before 125) — an object as the argument throws.
+   */
+  supportViewTransitions({ types = true }: { types?: boolean } = {}): void {
+    const { transitions, log } = this;
+    (this.document as { startViewTransition?: StartViewTransition }).startViewTransition = (options) => {
+      if (!types) throw new TypeError("Failed to execute 'startViewTransition' on 'Document': The callback provided as parameter 1 is not a function.");
+      // A newer transition skips the one still animating.
+      const previous = transitions.at(-1) as (FakeViewTransition & { animated?: boolean }) | undefined;
+      if (previous && !previous.animated) previous.skipped = true;
+      const started: FakeViewTransition & { animated?: boolean } = { types: [...options.types], updated: false, skipped: false };
+      transitions.push(started);
+      log.push(`transition ${options.types.join(' ')}`);
+      const updateCallbackDone = new Promise<void>((resolve) => setTimeout(resolve)).then(options.update).then(() => {
+        started.updated = true;
+        log.push('updated');
+      });
+      const finished = updateCallbackDone.then(() => new Promise<void>((resolve) => setTimeout(resolve, 5))).then(() => {
+        started.animated = true;
+        if (!started.skipped) log.push('animated');
+      });
+      return { updateCallbackDone, ready: updateCallbackDone, finished, skipTransition: () => void (started.skipped ||= !started.animated) };
+    };
   }
 
   /** The live stream open now (the last one, unless it was closed). */
@@ -540,6 +588,7 @@ export class FakeWindow implements NavigatorWindow {
       this.index++;
     }
     this.shownUrls.push(entry.url);
+    this.log.push(`${replace ? 'replace' : 'push'} ${new URL(entry.url).pathname}`);
     this.navigation?.dispatchEvent(new Event('currententrychange'));
   }
 
@@ -591,6 +640,7 @@ export class FakeWindow implements NavigatorWindow {
   scrollTo(x: number, y: number) {
     this.scrollX = x;
     this.scrollY = y;
+    this.log.push(`scroll ${y}`);
   }
 
   async fetch(input: string, init: RequestInit = {}): Promise<Response> {
@@ -667,21 +717,22 @@ export class FakeWindow implements NavigatorWindow {
 /** The features an adapter attaches to a navigator on this tab from the start: the History fallback, where it has no Navigation API (E184). */
 export const historyFeatures = (win: FakeWindow): Feature[] => (win.navigation ? [] : [historyFallback]);
 
-export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm' | 'features' | 'loadLayers'> = {}) {
+export function boot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'cacheSize' | 'confirm' | 'features' | 'loadLayers' | 'viewTransition'> = {}) {
   const shown: PageObject[] = [];
   /** The region owner handed with each page rendered (islands live there). */
   const owners: RegionOwner[] = [];
   /** The layers handed with each render (E53). */
   const stacks: (readonly Layer[])[] = [];
   /** Every render in order — an instant visit's placeholder too (E64), which `shown` leaves out (it is no page). */
-  const renders: { page: PageObject; placeholder: boolean }[] = [];
+  const renders: { page: PageObject; placeholder: boolean; transition?: readonly string[] }[] = [];
   // Without the Navigation API, the adapter attaches the History fallback from the start (createBespokeApp does, E184).
   const features = win.navigation || options.features?.some((feature) => feature.name === 'history') ? options.features : [historyFallback, ...(options.features ?? [])];
   const navigator = new Navigator({
     initialPage: initial,
     window: win,
-    render: async (next, { owner, layers, placeholder = false }) => {
-      renders.push({ page: next, placeholder });
+    render: async (next, { owner, layers, placeholder = false, transition }) => {
+      renders.push({ page: next, placeholder, ...(transition ? { transition } : {}) });
+      win.log.push(`render ${next.url}`);
       if (placeholder) return;
       shown.push(next);
       owners.push(owner);

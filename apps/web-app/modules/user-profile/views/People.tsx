@@ -1,5 +1,6 @@
 import type { PageProps } from '@bespokecore/http';
 import { Head, Island, Link, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
+import { ViewTransition } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListPeopleController } from '../controllers/ListPeopleController.ts';
 
@@ -61,11 +62,17 @@ export default function People({ people, now }: Props) {
         <ul>
           {people.data.map((person) => (
             <li key={person.id}>
-              {/* The avatar (W6.9), from the public disk — decorative next to the name, so no alt text of its own. */}
-              {person.avatar && <img src={person.avatar} alt="" width={24} height={24} loading="lazy" style={{ objectFit: 'cover', borderRadius: '50%', verticalAlign: 'middle' }} />}{' '}
-              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once. If it is not here yet, an instant
-                  visit (E64) shows the profile's placeholder with the name the list knows — then the profile. */}
-              <Link route="user-profile.show" params={{ user: person.id }} prefetch instant={{ name: person.name }}>
+              {/* The avatar (W6.9), from the public disk — decorative next to the name, so no alt text of its own. The profile shows
+                  the same one (E185): a view transition moves it there and back. */}
+              {person.avatar && (
+                <ViewTransition name={`avatar-${person.id}`} share="avatar">
+                  <img src={person.avatar} alt="" width={24} height={24} loading="lazy" className="avatar avatar-small" />
+                </ViewTransition>
+              )}{' '}
+              {/* Fetched ahead while the pointer rests on it: the click shows the profile at once, the avatar moving into it (E185).
+                  No instant placeholder here (E64): it would take the list's place at once, before the transition — and the avatar
+                  with it (the main navigation's links have one). */}
+              <Link route="user-profile.show" params={{ user: person.id }} prefetch>
                 {person.name}
               </Link>
               {person.isMe && ` ${t('people.you')}`}{' '}

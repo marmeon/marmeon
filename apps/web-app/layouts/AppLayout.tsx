@@ -1,5 +1,5 @@
 import { Form, Link, useNewVersion, usePage, useRouter, useTranslation, type LayoutProps } from '@bespokecore/react';
-import { useEffect } from 'react';
+import { useEffect, ViewTransition } from 'react';
 import { Toasts } from './Toasts.tsx';
 
 /** A language's name in itself — "Deutsch", "English" (the same in Node and the browser: both have ICU). */
@@ -87,7 +87,8 @@ export function AppLayout({ children }: LayoutProps) {
         )}
       </header>
       <NewVersionBanner />
-      {children}
+      {/* The page, apart from the layout (E185): it slides on a page change — forward or back (styles/app.css). */}
+      <ViewTransition name="page">{children}</ViewTransition>
       {/* Flash messages (E60): each once, as a toast. */}
       <Toasts />
     </>

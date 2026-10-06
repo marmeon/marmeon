@@ -88,6 +88,7 @@ export const render = createSsrRenderer(resolvePage, { title, routes, layout, la
 | `progress` | ✓ | | a visit indicator (E82, opt-in): `progressBar({ delay: 250 })` or the app's own; none by default |
 | `confirm` | ✓ | | the dialog that asks (E64): `ConfirmDialog` or the app's own; default the browser's `confirm()`/`prompt()` |
 | `tabSync` | ✓ | | tab sync (W8 step 8, E149) — on by default; `false` leaves it out (the known risk E66: a tab keeps what it showed after a sign-out in another tab) |
+| `viewTransition` | ✓ | | view transitions for every page change (E185, [below](#view-transitions)) — off by default: `true` (or `{ types }`) the core's, `'react'` React's `<ViewTransition>` |
 | `rootId` | ✓ | | the element the server rendered into; default `app` |
 | `onRecoverableError` | ✓ | | errors React recovered from while hydrating; default: the console, and in development the page's name and a notice on the page |
 
@@ -183,8 +184,44 @@ Edit.layer = 'slideover';                                           // as a laye
   loads with the first call, a chunk of its own (W9): the first patch of a page shows a moment later, every one after it at once.
 - **`usePage()`** — the page object (`component`, `props` with the shared ones typed by `interface SharedProps`, `url`,
   `locale`, `flash` …); inside a layer, the layer's. **`useRoute()`** — `route('user-profile.show', { user: 7 })` → a URL.
+- **View transitions** (E185): `<Link viewTransition>` (or `viewTransition={{ types: ['slide'] }}`), `router.visit(url, {
+  viewTransition: true })`, or every page change with `createBespokeApp({ viewTransition })` — [View transitions](#view-transitions).
 - **`usePending(name, { delay: 'short' })`** — a visit or action of that route under way. **`useBlocker({ when, message })`**
   — the navigation guard (E64). **`useNewVersion()`** — a new build whose full load was postponed: `{ location, reload() }`.
+
+### View transitions
+
+A page change animates in a view transition (E185) — the page loaded first, only its swap in the transition, its direction as a type
+(`forward`, `back`, `replace`) for `:active-view-transition-type()`; none under `prefers-reduced-motion: reduce` or in a hidden tab.
+Two ways, one at a time — never two transitions for one page change:
+
+```tsx
+createBespokeApp({ /* … */, viewTransition: true });       // the core's: document.startViewTransition around the swap — the browser crossfades the page
+createBespokeApp({ /* … */, viewTransition: 'react' });    // React 19.3's: the page change in startTransition, the views' <ViewTransition> animate
+
+<ViewTransition name={`avatar-${person.id}`} share="avatar">   {/* the list's avatar … */}
+  <img src={person.avatar} alt="" className="avatar" />
+</ViewTransition>                                             {/* … moves into the profile's (the same name there) */}
+```
+
+- **`true`** (or `{ types: ['slide'] }`): the core starts the transition around the render; name what should move in the app's
+  stylesheet (`view-transition-name`), animate it with `::view-transition-*` — [the client core](../http/README.md#view-transitions-e185).
+  React renders the page change as before (a plain update): a `<ViewTransition>` in the views does nothing then.
+- **`'react'`**: the page change renders in `startTransition`, each type added with `addTransitionType` — React starts the
+  transition for the `<ViewTransition>` components of the views (enter, exit, update, share — `name`, `share`, `enter`, … as React
+  documents them), the core starts none. React animates only those (the page outside them does not crossfade): wrap the page in one
+  in the layout (`<ViewTransition name="page">{children}</ViewTransition>`) to animate it as a whole. The render still resolves once
+  the page is committed — the history entry, the scroll and the page event come after it.
+- **Only with the option does a page change run in a transition** — without it nothing changes: a page that suspends inside a
+  boundary already on screen shows that boundary's fallback, as before. With `'react'` it keeps the old page until the new one is
+  ready (React's transition), and React waits up to ~0.8 s for a new image inside a `<ViewTransition>` before it commits. A page
+  change while an async action of React's (`startTransition(async …)`, a form `action`) is under way waits for it (React entangles
+  transitions).
+- **React's own transitions:** React also reveals streamed Suspense boundaries in a view transition when a `<ViewTransition>` is on
+  the page — not the navigator's, so `prefers-reduced-motion` does not stop those: stop their animation in CSS (the web app's
+  `styles/app.css`: `@media (prefers-reduced-motion: reduce) { ::view-transition-group(*) … { animation: none } }`).
+- **CSP:** React names the elements through the CSSOM during the transition (a strict `style-src` allows it); the server's markup
+  has no inline style for them (`vt-name` attributes). The animations live in the app's stylesheet.
 
 ## Forms
 

@@ -6,7 +6,7 @@
 export { BespokeApp, useFeature, usePage, useRouter } from './app.tsx';
 // The progress bar (E82, opt-in): `createBespokeApp({ progress: progressBar({ delay: 250 }) })`.
 export { progressBar } from '@bespokecore/http/client';
-export type { ProgressIndicator } from '@bespokecore/http/client';
+export type { ProgressIndicator, ViewTransitionOption } from '@bespokecore/http/client';
 export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {

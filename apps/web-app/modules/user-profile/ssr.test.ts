@@ -41,6 +41,20 @@ describe('the profile page, rendered on the server', () => {
   });
 });
 
+describe('view transitions (E185): the avatars the list and the profile share, rendered on the server', () => {
+  it('without inline styles — view-transition-name only through the CSSOM (React, during a transition): a strict style-src blocks none', async () => {
+    await app.make(UserRepository).update(ada.id, { avatar_path: 'avatars/ada.png' });
+    for (const url of ['/people', `/users/${ada.id}`]) {
+      const { body } = await app.actingAs(ada).get(url, page).assertOk().assertServerRendered();
+      const avatars = body.match(/<img[^>]*avatars\/ada\.png[^>]*>/g) ?? [];
+      expect(avatars.length, `${url}: no avatar rendered`).toBeGreaterThan(0);
+      const styled = [...avatars, ...(body.match(/<[^>]+view-transition[^>]*>/g) ?? [])].filter((tag) => /\sstyle=|view-transition-name/.test(tag));
+      expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
+      expect(body, 'the app’s stylesheet (the animations live there, not inline)').toMatch(/<link rel="stylesheet" href="[^"]*app[^"]*\.css"/);
+    }
+  });
+});
+
 describe('the people list, rendered on the server — its query state included (E55)', () => {
   it('renders the filtered, sorted list from the URL, and it hydrates: useQueryState reads the parsed query of the page', async () => {
     const response = await app.actingAs(ada).get('/people?q=a&sort=-name', page).assertServerRendered().assertHydrates();

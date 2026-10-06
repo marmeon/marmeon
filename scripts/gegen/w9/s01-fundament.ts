@@ -75,10 +75,10 @@ export default defineGegenproben({
     {
       id: 'G7',
       title: 'SHRINK_KB back at 0.3: every reset limit (measured + 0.5) counts as shrunk',
-      // The core's limit as the reset set it — its measured size + 0.5 (11.27 since W9.7, which ate 0.17 of the reserve).
+      // The core's limit as the reset set it — its measured size + 0.5 (11.36 since W9.8, which ate another 0.09 of the reserve).
       patch: [
         { file: BUNDLE, find: 'export const SHRINK_KB = 0.6;', replace: 'export const SHRINK_KB = 0.3;' },
-        { file: 'packages/react/size-budget.json', find: '"core": { "limit": 11.57 }', replace: '"core": { "limit": 11.77 }' },
+        { file: 'packages/react/size-budget.json', find: '"core": { "limit": 11.57 }', replace: '"core": { "limit": 11.86 }' },
       ],
       run: coreSize,
       expect: /core shrank to [\d.]+ KB gzip, more than 0\.3 KB under its limit/,
@@ -86,10 +86,10 @@ export default defineGegenproben({
     {
       id: 'G8',
       title: 'a limit more than measured + 0.6 (a hidden extra reserve) fails the size test',
-      // Measured + 0.61 (the core measures 11.27 since W9.7).
-      patch: [{ file: 'packages/react/size-budget.json', find: '"core": { "limit": 11.57 }', replace: '"core": { "limit": 11.88 }' }],
+      // Measured + 0.61 (the core measures 11.36 since W9.8).
+      patch: [{ file: 'packages/react/size-budget.json', find: '"core": { "limit": 11.57 }', replace: '"core": { "limit": 11.97 }' }],
       run: coreSize,
-      expect: /core shrank to [\d.]+ KB gzip, more than 0\.6 KB under its limit of 11\.88 KB/,
+      expect: /core shrank to [\d.]+ KB gzip, more than 0\.6 KB under its limit of 11\.97 KB/,
     },
     {
       id: 'G9',

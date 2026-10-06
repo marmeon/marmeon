@@ -188,6 +188,19 @@ action's `confirm`, the question before unsaved changes are left — and tab syn
 (`reason: 'session'`), which was English before. An app of 0.1.0 copies the three files from a new kit (`pnpm create bespoke-app`)
 and adds `confirm: Confirm` to `bootstrap/client.tsx` — or keeps the browser's own dialog.
 
+#### Low: view transitions are opt-in — with `viewTransition: 'react'` a page change is a React transition
+
+*Likelihood of impact: low — apps that turn view transitions on (W9 step 8, E185).* Nothing changes without the option: a page change
+renders as the plain update it was. `viewTransition: true` (`createBespokeApp`, a `<Link>`, a visit) wraps the swap of a page in
+`document.startViewTransition` — the page is loaded first, its history entry and scroll follow once it is swapped in, and Back/Forward
+carry the type `back`/`forward`; none under `prefers-reduced-motion: reduce` or in a hidden tab, none for a layer. With
+`createBespokeApp({ viewTransition: 'react' })` every page change renders in React's `startTransition` (with `addTransitionType`) so
+the views' `<ViewTransition>` animate — and transition semantics apply: a page that suspends inside a Suspense boundary already on
+screen keeps the old page until it is ready (instead of showing the fallback), React waits briefly for a new image inside a
+`<ViewTransition>`, and a page change waits for an async action of React's under way. A custom adapter that starts transitions itself
+passes `NavigatorOptions.viewTransition: 'adapter'` and renders `RenderOptions.transition` (the types) in its own; every other adapter
+ignores it. A custom feature can take a page's swap (`host.on('swap', (run, how, keep) => …)`).
+
 ## Upgrading to 0.1.0 from the development snapshots
 
 0.1.0 is the first release. An app made from it (`pnpm create bespoke-app`) has nothing to upgrade. This section is for apps

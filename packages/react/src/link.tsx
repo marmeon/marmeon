@@ -9,6 +9,7 @@ import {
   visitUrlOf,
   type Confirm,
   type PrefetchTrigger,
+  type ViewTransitionOption,
   type VisitMethod,
   type VisitOptions,
 } from '@bespokecore/http/client';
@@ -32,6 +33,12 @@ interface LinkOptions {
    * `confirm={{ message: 'Delete the project?', prompt: 'DELETE' }}`. A no sends nothing.
    */
   confirm?: Confirm;
+  /**
+   * A view transition around the page change (E185): `viewTransition`, or with types of the app's own — `viewTransition={{ types:
+   * ['slide'] }}` for `:active-view-transition-type(slide)`. Back from the page animates alike. `false`: not this one, though the
+   * app has them on.
+   */
+  viewTransition?: ViewTransitionOption;
 }
 
 /** `user-profile.*` for every name `user-profile.…` (and deeper prefixes) — the patterns of `activeMatch`. */
@@ -191,6 +198,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     layer,
     instant,
     confirm,
+    viewTransition,
     activeMatch,
     onClick,
     onMouseEnter,
@@ -210,6 +218,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     reset,
     ...(layer ? { layer: true } : {}),
     ...(confirm !== undefined ? { confirm } : {}),
+    ...(viewTransition !== undefined ? { viewTransition } : {}),
     // The route's name goes with the visit: `usePending(name)` (E64).
     ...(route !== undefined ? { name: route } : {}),
     // An instant visit (E64): the view the route renders (the manifest knows it when it is written out) shows its placeholder.

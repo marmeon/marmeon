@@ -23,7 +23,7 @@ import type { DeclaredRevalidation } from './features/revalidate-on-back.ts';
 import { FLASH, INBOX, takeFlash, type FlashListener } from './flash.ts';
 import { entry, HistoryWriter, isHistoryState, newKey, OWN, withPosition, type HistoryState, type NavigateEvent, type NavigationLike } from './history.ts';
 import type { Layer, LayerControl } from './layer.ts';
-import { loadLayers } from './lazy.ts';
+import { loadLayers, loadViewTransitions } from './lazy.ts';
 import { mergePage, withQueryOf } from './merge.ts';
 import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
@@ -48,6 +48,12 @@ export { mergePage } from './merge.ts';
 export { xsrfToken } from './request.ts';
 export { SCROLL_REGION_ATTRIBUTE } from './scroll.ts';
 export type { ScrollPosition, ScrollRegion } from './scroll.ts';
+
+/**
+ * A view transition (E185): on (`true`), off (`false`), or on with types of the app's own — beside the direction the navigator adds
+ * (`'forward'`, `'back'`, `'replace'`) for `:active-view-transition-type()` in the app's CSS.
+ */
+export type ViewTransitionOption = boolean | { readonly types?: readonly string[] };
 
 /** Scroll and focus stay the navigator's (`ScrollMemory`, the adapter's focus handling) in what it intercepts. */
 const MANUAL = { scroll: 'manual', focusReset: 'manual' } as const;
@@ -125,6 +131,14 @@ export interface VisitOptions extends VisitCallbacks {
    * still the one in the address bar — a failed visit shows it again, Back goes where it would have gone.
    */
   instant?: InstantVisit;
+  /**
+   * A view transition around the page change (E185): `document.startViewTransition` around the swap of the page — after it loaded,
+   * so nothing freezes while the server answers — with the types `'forward'` (or `'replace'`) and the app's own (`{ types: ['slide'] }`).
+   * Back from the page it shows (and Forward to it) animates alike, with `'back'` (`'forward'`). Skipped when the user prefers reduced
+   * motion, the tab is hidden or the browser has none. `false` turns the app's (`NavigatorOptions.viewTransition`) off for this visit.
+   * Its code loads with the first (a chunk of its own).
+   */
+  viewTransition?: ViewTransitionOption;
 }
 
 type WindowEvent = 'popstate' | 'pageshow' | 'scroll' | 'beforeunload';
@@ -158,7 +172,11 @@ export interface NavigatorWindow {
     readonly visibilityState?: DocumentVisibilityState;
     addEventListener?(type: 'DOMContentLoaded' | 'visibilitychange' | 'resume', listener: () => void, options?: AddEventListenerOptions): void;
     removeEventListener?(type: 'visibilitychange' | 'resume', listener: () => void): void;
+    /** View transitions (E185) — without them, a page changes without one. */
+    startViewTransition?(options: { update: () => Promise<void>; types: string[] }): ViewTransitionLike;
   };
+  /** For `prefers-reduced-motion` (E185: no view transition then). */
+  matchMedia?(query: string): { readonly matches: boolean };
   /** The Navigation API — without it, the History fallback feature (`loadHistoryFallback`) writes and follows the history. */
   readonly navigation?: NavigationLike;
   /** Live hints (W6.10): one stream per document — without it, none. */
@@ -189,6 +207,20 @@ export interface RenderOptions {
    * placeholder: nothing changes. A later render replaces it — one that resolves after a later render started is dropped.
    */
   readonly placeholder?: boolean;
+  /**
+   * A view transition's types (E185) — only for an adapter that starts them itself (`NavigatorOptions.viewTransition: 'adapter'`): render
+   * this page in one, with these types (React 19.3: in `startTransition`, each type by `addTransitionType` — `<ViewTransition>`
+   * animates). Undefined: a plain render.
+   */
+  readonly transition?: readonly string[];
+}
+
+/** The parts of a running view transition the navigator uses (E185). */
+export interface ViewTransitionLike {
+  readonly updateCallbackDone: Promise<void>;
+  readonly ready: Promise<void>;
+  readonly finished: Promise<void>;
+  skipTransition(): void;
 }
 
 export interface NavigatorOptions {
@@ -228,6 +260,13 @@ export interface NavigatorOptions {
    * same loader where layers open (`navigator.load(…)` for `<Link layer>`), so the navigator knows it is loaded.
    */
   loadLayers?: () => Promise<Feature<LayerStack>>;
+  /**
+   * View transitions for every page change (E185): each visit that takes the page off the screen (not a partial reload, not one in the
+   * background, not a form's errors) and each Back/Forward between pages — see `VisitOptions.viewTransition`. A visit's own wins.
+   * `'adapter'`: on, and the adapter starts them itself (React 19.3's `<ViewTransition>`) — the core never calls
+   * `document.startViewTransition` then, it hands the render the types (`RenderOptions.transition`): never two for one page change.
+   */
+  viewTransition?: ViewTransitionOption | 'adapter';
 }
 
 /** The core while the navigator builds it: what is made after it joins it once. */
@@ -660,6 +699,8 @@ export class Navigator {
       if (go instanceof Promise) go = await go;
       if (go === false) return undefined;
     }
+    // A view transition (E185): its code before the visit starts — the first time (a chunk of its own; one that cannot load: none).
+    if (options.viewTransition ?? core.options.viewTransition) await this.load(loadViewTransitions).catch(() => undefined);
     if (target.origin !== core.window.location.origin) {
       // Another site: the browser goes there. Visits only ever read answers of this one.
       this.#all('unload');
@@ -810,7 +851,8 @@ export class Navigator {
     }
     try {
       try {
-        await this.#draw(core.paint(key, page), { preserveState, owner, layers: [] });
+        // In a view transition's update when one runs (E185) — the history entry and the scroll follow once it is swapped in.
+        await this.#swap(() => this.#draw(core.paint(key, page), { preserveState, owner, layers: [] }), history, keep);
       } catch {
         // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
         if (owner !== core.owner) owner.close();
@@ -832,6 +874,14 @@ export class Navigator {
     } finally {
       core.transitioning = false;
     }
+  }
+
+  /**
+   * Renders a page that takes the screen (`run`) — a feature runs it inside a view transition's update (E185). The history entry and
+   * the scroll follow once the new page is swapped in.
+   */
+  #swap(run: () => Promise<void>, how: 'push' | 'replace' | 'traverse', keep = false): Promise<void> {
+    return this.#first('swap', run, how, keep) ?? run();
   }
 
   // -- Back/Forward -----------------------------------------------------------------------------------------------------
@@ -930,7 +980,7 @@ export class Navigator {
     const core = this.#core;
     core.transitioning = true;
     try {
-      await this.#draw(core.paint(core.key!, page), { preserveState: false, owner });
+      await this.#swap(() => this.#draw(core.paint(core.key!, page), { preserveState: false, owner }), 'traverse');
       core.scroll.apply(position);
       core.props.load();
       this.#all('deferred');

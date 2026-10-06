@@ -121,6 +121,7 @@ are here.
 | `NavigatorOptions.revalidateOnBack(component)` + `navigator.use(revalidateOnBack)` | E58, a feature (React: `resolveModulePages` brings it and `<BespokeApp>` attaches it — `ResolvePage.features`): what a view declares to reload when Back/Forward shows it from memory (`true` or prop names) — the page, a layer Forward opens again, an island of a restored entry (`RegionOwner({ onBack })`): shown at once, then reloaded in the background (no events, no progress bar). Never on a first load, a visit or a refetch |
 | `navigator.use(remember).of(owner.entry)` → `Remembered`, `rememberable(value, include)` | Remembered state (E63), a feature (attached where a component remembers): per history entry (a page's owner, a layer's `layer.owner`: their `entry`) — the entry's slot `REMEMBERED`, next to its islands — **memory only**, never `history.state` or storage. Gone with the entry (evicted, a layer closed for good) and with the document (every 409, a reload — and another tab's sign-in, sign-out or language switch: [tab sync](#tab-sync-w8-step-8)). `rememberable` leaves out fields named like a password (always), a token, a secret or a card (`include` lets those in) and files, at any depth |
 | once props (automatic) | E64: page objects with `onceProps` (+ `onceScope`) are kept by the navigator (`OnceStore`); every page request names what it holds (`x-bespoke-once`, `x-bespoke-once-scope`), the server skips those and the navigator puts them back before `render`. A page of another scope drops them; every 409 clears them |
+| `visit(url, { viewTransition })`, `NavigatorOptions.viewTransition`, `loadViewTransitions` | View transitions (E185, [View transitions](#view-transitions-e185)): `document.startViewTransition` around the swap of a page, with its direction as a type (`forward`, `back`, `replace`) and the app's own (`{ types: ['slide'] }`) — per visit, or for every page change; skipped under `prefers-reduced-motion: reduce`, in a hidden tab and without the API. A chunk of its own the navigator loads before the first page change that asks for one; `'adapter'`: the adapter starts them (React's `<ViewTransition>`) |
 | `visit(url, { instant: { component, props } })`, `navigator.load(loadInstant)` | Instant visits (E64), a feature loaded where an instant link renders (E74: a chunk of its own — a visit before it is there goes without its placeholder): `render(page, { placeholder: true })` with `{ component, props }` = the target view and what the link hands its placeholder — shown at once, the page when its answer lands; the history entry is pushed only then. Failed or cancelled: the page on screen again (scroll kept); Back during it cancels it; a page fetched ahead shows at once instead |
 | `on('version', event)`, `newVersion` + `subscribeNewVersion`, `reloadForNewVersion()` | The asset-version 409 (E64, `x-bespoke-reload: version` — exactly that value): `event.preventDefault()` keeps the page (`newVersion` says where the full load waits; the user's next GET visit makes it); without it, unsaved changes nobody agreed to leave ask first (`event.unsaved`). Every other 409 (`history`: signing in or out, or no reason) is never cancelable and never asks |
 | `formObject(entries)`, `defaultFormEntries(form)`, `formEntries(form)`, `restoreFormEntries(form, entries, names)`, `fieldPath(name)` | Uncontrolled forms (E64, `<Form>`): the data the server builds from a form's entries (bracket notation), where a form starts (its controls' defaults — "dirty"), its entries now, remembered entries put back, `links[0][url]` → `links.0.url` |
@@ -180,7 +181,11 @@ query schema reads as a list, and what `toSearchParams` writes; the key's earlie
    and pass `revalidateOnBack` to the navigator (the adapter knows the views: React reads `View.revalidateOnBack`).
    Instant visits (E64): `render(page, { placeholder: true })` shows the placeholder of `page.component`'s view (React:
    `View.placeholder`) with `page.props` inside that view's layouts — never the view itself, and the page context stays the page
-   on screen; no placeholder → nothing changes; one that resolves after a later render started is dropped. Remembered state
+   on screen; no placeholder → nothing changes; one that resolves after a later render started is dropped. View transitions
+   (E185): an adapter that starts them itself (`NavigatorOptions.viewTransition: 'adapter'`, React 19.3's `<ViewTransition>`) gets
+   `render(page, { transition: types })` for a page change — render it in its transition with these types (React: `startTransition`
+   + `addTransitionType`) and resolve, as always, once it is committed; any other adapter ignores it (the core starts the
+   transition around the render then). Remembered state
    (E63): keep it with the entry of the level it renders in (`navigator.use(remember).of(owner.entry)`, a layer's `layer.entry`), keyed by
    the app (an island's apart). Forms without JavaScript (E64): `_method` for PUT/PATCH/DELETE (the kernel spoofs the method
    from a POST body, never from the query) and, when the page has one, `page.csrf` as `_token` — a browser's plain post passes
@@ -285,6 +290,52 @@ never in a first download (the leak test). Without it and without the API the na
 API (development: `[bespoke:C13]`), but nothing follows Back/Forward. Old entries with whole pages (a client before E36) are asked
 of the server there, never shown.
 
+### View transitions (E185)
+
+A page change can animate: `visit(url, { viewTransition: true })` (React: `<Link viewTransition>`, `router.visit(url, { viewTransition:
+true })`), or every page change — `NavigatorOptions.viewTransition` (React: `createBespokeApp({ viewTransition: true })`). The page is
+loaded first; then only its **swap** runs in `document.startViewTransition({ update, types })`: the browser captures the old page,
+the update renders the new one, and its history entry and its scroll position follow at once (after `updateCallbackDone`, before the
+browser captures the new state — the new page is never shown at the old one's scroll, the old one never at the new one's). The
+browser crossfades the two — its default; the framework ships no animation of its own.
+
+- **Types**, for `:active-view-transition-type()` in the app's CSS: `forward` (a visit's new entry), `replace` (`replace: true`, a
+  redirect back to the same URL), `back` and `forward` on Back/Forward — plus the app's own: `viewTransition: { types: ['slide'] }`.
+  Back from a page a visit entered with its own transition (and Forward to it) animates alike, with its types.
+- **What animates:** with the app's option, every visit that takes the page off the screen and every Back/Forward between pages — not
+  a partial reload, "load more", a request in the background, a form that comes back with its errors (the page keeps its state);
+  `viewTransition: false` leaves one out. A layer opening, closing or coming back by Back/Forward is no page change (its frame — a
+  `<dialog>` — animates itself in CSS); a page change that takes the layers off the screen is.
+- **Skipped** — the swap runs as without — when the user prefers reduced motion (`prefers-reduced-motion: reduce`: no transition at
+  all, not just no animation — a transition freezes the page until the swap), in a hidden tab, and without the API (Chrome before
+  111, Safari before 18, or without types — Chrome before 125, Safari before 18.2: none either).
+- **Before it:** the navigation guard (E64) asks before the visit starts — a page change it stops starts no transition. A new
+  visit skips the animation still running (`skipTransition()`): the page it showed is in place already.
+- **Instant visits** (E64): the placeholder takes the page's place at once, without a transition; the transition runs from it to
+  the page. An element shared by two pages (the same `view-transition-name`) moves only between pages — leave `instant` off a link
+  whose target shares one.
+- **Never two.** An adapter that starts transitions itself (`viewTransition: 'adapter'` — React 19.3's `<ViewTransition>`:
+  `createBespokeApp({ viewTransition: 'react' })`) gets the types with the render (`RenderOptions.transition`); the core calls no
+  `startViewTransition` then. And without it, an adapter renders a page change as a plain update — React starts none beside the
+  core's.
+- **CSP:** nothing inline. The core sets no `view-transition-name` and adds no `<style>`; name elements in the app's stylesheet —
+  or, per element (a list where each row has its own name), through the CSSOM (`element.style.viewTransitionName = …`, which a
+  strict `style-src` allows; React's `<ViewTransition name>` does that during the transition). A `style` attribute in the server's
+  markup is what a strict `style-src` blocks.
+
+A recipe — the page sliding by direction, in the app's stylesheet with keyframes of its own (the web app's `styles/app.css` does this
+for its React views):
+
+```css
+::view-transition-old(root) { animation: 150ms ease-in both slide-out; }
+::view-transition-new(root) { animation: 220ms ease-out both slide-in; }
+html:active-view-transition-type(back)::view-transition-old(root) { animation-name: slide-out-back; }
+html:active-view-transition-type(back)::view-transition-new(root) { animation-name: slide-in-back; }
+```
+
+The code is a chunk of its own (`features/view-transitions.ts`, ≈ 0.8 KB gzip): the navigator loads it before the first page change
+that asks for one; an app that never asks carries only its loader (the leak test).
+
 ### Features
 
 An app pays in the browser only for what it uses (Wave 5c, E70–E75). The navigator alone is the **fixed core**; everything
@@ -294,7 +345,7 @@ Nothing is attached by default (`NavigatorOptions.features` is empty). A feature
 | How | Features | Attached by (React) |
 | --- | --- | --- |
 | **Where it is used** — a static import of the hook or component that uses it, attached on its first use (`navigator.use`) | query state, remembered state, actions + submissions, the navigation guard, islands, `revalidateOnBack`, the progress bar (E82), the client hook API (E132), row selection (W9) | `useQueryState`; `useRemember`, `useForm({ remember })`, `<Form remember>`; `useAction`, `usePendingSubmissions`; `useBlocker`, `useForm({ guard })`, `<Form guard>`; `<Island>`, `useIsland`; `resolveModulePages` (`ResolvePage.features`, attached by `<BespokeApp>`); `createBespokeApp({ progress: progressBar() })`; `useFeature(hooks)`; `useTable` (`@bespokecore/react/table` — its actions load with a table's first run) |
-| **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open, uploads (W6.9), the page's optimistic patches (W9: `loadOptimistic`) | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `useRouter().optimistic`/`.reloading` on the first call (`laterTarget` holds what is asked until the chunk is there); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders; a `<FileInput>` when it renders (`loadUploads`) |
+| **Lazy, on first use** (E74) — a chunk of its own, fetched when a prop or an option asks for it (`navigator.load(loader)`) | live validation, prefetching, instant visits, the layers where they open, uploads (W6.9), the page's optimistic patches (W9: `loadOptimistic`), view transitions (W9, E185: the navigator loads them before the first page change that asks for one) | `useForm(…, { validate })` on a form's first change (what happens meanwhile is replayed); `useRouter().optimistic`/`.reloading` on the first call (`laterTarget` holds what is asked until the chunk is there); `<Link prefetch>`/`router.prefetch` with the first prefetch; a `<Link instant>` when it renders; a `<Link layer>` when it renders; a `<FileInput>` when it renders (`loadUploads`); view transitions: the navigator itself, before the first page change a visit, a `<Link viewTransition>` or `createBespokeApp({ viewTransition })` asks for |
 | **Lazy, by default** (E149) — `createBespokeApp` loads it beside the first page, before hydrating, and attaches it from the start | tab sync (W8 step 8); the History fallback (W9, E184 — only without the Navigation API) | `createBespokeApp` (`tabSync: false` leaves tab sync out — [Tab sync](#tab-sync-w8-step-8); the fallback: `!window.navigation` — [The Navigation API](#the-navigation-api-e184)) |
 | **Lazy, triggered by the server** (E71) — the core loads it itself, because an answer may need it whatever the client imported | the layers, live props (W6.10) | layers: an answer that is a layer (E53: any visit may get one), a layer's request, Back/Forward to a layer's entry — and the adapter before the first render of a deep link (`createBespokeApp`, the SSR entry); live props: a page, a layer or an island that follows a channel (`PageObject.live`) — and `useLiveUpdates()` where it renders |
 

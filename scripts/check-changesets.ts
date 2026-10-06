@@ -48,6 +48,7 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key',
     'low-userouter-loads-the-pages-optimistic-patches-on-first-use',
     'low-the-starter-kit-asks-in-the-pages-language--its-own-confirm',
+    'low-view-transitions-are-opt-in--with-viewtransition-react-a-page-change-is-a-react-transition', // W9.8, E185
   ],
   'Wave 8': [
     'high-bespokecorecli-is-a-dependency-of-the-app',

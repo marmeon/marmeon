@@ -96,6 +96,9 @@ const FEATURES = {
   // The History fallback (W9 step 7, E184): `createBespokeApp` loads it beside the first page only where the browser has no Navigation
   // API — a chunk of its own, never in a first download. The core alone carries none of it (an adapter loads it).
   history: { markers: ['http/client/features/history-fallback'], use: inApp(), lazy: true },
+  // View transitions (W9 step 8, E185): the core loads them before the first page change that asks for one (a visit's, a link's, the
+  // app's `viewTransition`) — a chunk of its own, never in a first download; only the loader is.
+  viewTransitions: { markers: ['http/client/features/view-transitions'], use: inApp(), lazy: true },
   // The headless table (W9 step 6, E183): `@bespokecore/react/table` and what it builds on — the core's row selection (a slot of the
   // entry) and the table's UI-free controller. Only with its own import: never in an app without tables (its subpath, an optional peer).
   table: { markers: ['http/client/features/selection', 'table/client/table', 'react/table'], use: { base: 'emptyApp' as const, entry: tableEntry() }, brings: ['queryState'] },
@@ -117,7 +120,7 @@ type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack', 'viewTransitions'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -244,6 +247,13 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('history');
     expect(featuresIn(built, true)).toContain('history');
+  });
+
+  // W9 step 8 (E185): whatever an app imports, view transitions are a chunk the core loads with the first visit that asks for one.
+  it.each(['core', 'emptyApp', 'minimalApp', 'everything', 'table'] as const)('view transitions are a chunk of their own in %s — never in the first download', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built), 'view transitions in the first download').not.toContain('viewTransitions');
+    expect(featuresIn(built, true)).toContain('viewTransitions');
   });
 
   it('the core alone carries no History fallback — not in its first download, not in a chunk (the adapter loads it)', () => {

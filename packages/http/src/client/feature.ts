@@ -32,7 +32,7 @@ export interface Feature<API = unknown> {
    * Where its hooks run among those of the other features: lower first; without one, after all that have one. Then in the
    * order the features were attached. The core's own: guard 1 (it sees a Back first, and may stop it), prefetch 2 (a page
    * fetched ahead is known before an instant visit decides on its placeholder), instant 3, layers 4, optimistic 5, actions 6,
-   * islands 7, revalidateOnBack 8.
+   * islands 7, revalidateOnBack 8; the History fallback and view transitions 0 (they see a Back/Forward before anyone takes it).
    */
   readonly order?: number;
 }
@@ -160,6 +160,12 @@ export interface FeatureHooks {
   popState(state: HistoryState, own: boolean): boolean | void;
   /** What memory has of entry `key`'s stack — `false`: a part of it is gone (then it is asked for again). */
   stack(key: string): EntryStack | false | void;
+  /**
+   * A page takes the screen — a visit's (`push`, `replace`) or Back/Forward's (`traverse`): `run` renders it. A feature runs it itself
+   * and resolves once it ran (in a view transition's update, E185) — else the core runs it; the history entry and the scroll follow.
+   * `keep`: the page keeps its state (a partial reload, a form's errors).
+   */
+  swap(run: () => Promise<void>, how: 'push' | 'replace' | 'traverse', keep: boolean): Promise<void> | void;
   /** Back/Forward to the page on screen: only what features put over it changes (layers) — the page stays. */
   rearrange(stack: EntryStack, own: boolean): Promise<void> | void;
   /** Back/Forward to an entry not in memory that is a feature's (a layer's): it asks for it itself. */

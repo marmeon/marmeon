@@ -1,0 +1,79 @@
+/*
+ * The web app's styles — linked from index.html (a stylesheet of its own: no inline styles needed for any of this).
+ *
+ * View transitions (E185): `createBespokeApp({ viewTransition: 'react' })` (bootstrap/client.tsx) — each page change renders in a
+ * React transition with its direction as a type, and React 19.3 animates the views' <ViewTransition>. The framework ships no
+ * animation of its own; what moves and how is said here. Under prefers-reduced-motion the navigator starts none at all.
+ */
+
+.avatar {
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.avatar-small {
+  vertical-align: middle;
+}
+
+/* The page beside the layout (<ViewTransition name="page"> in layouts/AppLayout.tsx): forward it comes in from the right, Back from the left. */
+@keyframes page-out-to-left {
+  to {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}
+
+@keyframes page-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+
+@keyframes page-out-to-right {
+  to {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+
+@keyframes page-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}
+
+html:active-view-transition-type(forward)::view-transition-old(page) {
+  animation: 150ms ease-in both page-out-to-left;
+}
+
+html:active-view-transition-type(forward)::view-transition-new(page) {
+  animation: 220ms ease-out both page-in-from-right;
+}
+
+html:active-view-transition-type(back)::view-transition-old(page) {
+  animation: 150ms ease-in both page-out-to-right;
+}
+
+html:active-view-transition-type(back)::view-transition-new(page) {
+  animation: 220ms ease-out both page-in-from-left;
+}
+
+/* A person's avatar is shared by the list and the profile (<ViewTransition name="avatar-4" share="avatar">): it moves and grows. */
+::view-transition-group(.avatar) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * Reduced motion: the navigator starts no view transition then — but React also reveals streamed Suspense boundaries in one when a
+ * <ViewTransition> is on the page (its own, not a page change): those end at once, without animating.
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

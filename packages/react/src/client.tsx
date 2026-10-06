@@ -1,4 +1,14 @@
-import { hasServerMarkup, loadHistoryFallback, loadPageMessages, loadTabSync, readInitialPage, rootElement, type DevtoolsGlobal, type Feature, type TitleTemplate } from '@bespokecore/http/client';
+import {
+  hasServerMarkup,
+  loadHistoryFallback,
+  loadPageMessages,
+  loadTabSync,
+  readInitialPage,
+  rootElement,
+  type DevtoolsGlobal,
+  type Feature,
+  type TitleTemplate,
+} from '@bespokecore/http/client';
 import type { RouteManifest } from '@bespokecore/http/page';
 import type { MessageLoader } from '@bespokecore/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
@@ -50,6 +60,15 @@ export interface CreateBespokeAppOptions {
    */
   tabSync?: false;
   /**
+   * View transitions for every page change (E185) — off by default; a visit (`router.visit(url, { viewTransition: true })`) or a link
+   * (`<Link viewTransition>`) turns one on for itself. `true` (or `{ types: ['slide'] }`): the core's — `document.startViewTransition`
+   * around each page swap, the browser crossfades the page, the app's CSS animates the rest (`::view-transition-*`,
+   * `:active-view-transition-type(back)`). `'react'`: React 19.3's — each page change renders in `startTransition` with its types
+   * (`addTransitionType`), the `<ViewTransition>` components of the views animate (enter, exit, share); React starts the transition,
+   * the core never does. Both skip it under `prefers-reduced-motion: reduce` and in a hidden tab. Its code loads with the first page change.
+   */
+  viewTransition?: BespokeAppProps['viewTransition'];
+  /**
    * Errors React recovered from while hydrating: the server's markup did not match (React rendered that part again in
    * the browser), or a part failed on the server (the browser rendered it). Default: reported to the console — in
    * development with the page's name and a notice on the page, so a mismatch is not missed.
@@ -61,7 +80,7 @@ export interface CreateBespokeAppOptions {
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
  */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, tabSync, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
+export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, tabSync, viewTransition, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
   const page = readInitialPage();
 
   // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
@@ -93,6 +112,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
       layer={layer}
       confirm={confirm}
       features={[fallback, synced].filter(Boolean) as Feature[]}
+      viewTransition={viewTransition}
     />
   );
 

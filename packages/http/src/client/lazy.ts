@@ -9,6 +9,7 @@ import type { InstantVisits } from './features/instant.ts';
 import type { LayerStack } from './features/layers.ts';
 import type { Prefetches, PrefetchOptions } from './features/prefetch.ts';
 import type { TabSync } from './features/tab-sync.ts';
+import type { ViewTransitions } from './features/view-transitions.ts';
 import type { PagePatches } from './features/optimistic.ts';
 import type { PatchTarget } from './optimistic.ts';
 import type { LiveValidation, LiveValidationOptions } from './live-validation.ts';
@@ -33,6 +34,12 @@ export const loadTabSync = (): Promise<Feature<TabSync>> => import('./features/t
  * only when `window.navigation` is missing).
  */
 export const loadHistoryFallback = (): Promise<Feature> => import('./features/history-fallback.ts').then((module) => module.historyFallback);
+
+/**
+ * View transitions (E185) — the navigator loads them before the first page change that asks for one (a visit's `viewTransition`, or
+ * the app's); an adapter whose app turns them on for every page change loads them with the first page.
+ */
+export const loadViewTransitions = (): Promise<Feature<ViewTransitions>> => import('./features/view-transitions.ts').then((module) => module.viewTransitions);
 
 /** The optimistic patches of the pages (E59) — loaded with the first `router.optimistic()`/`reloading()` of an adapter (W9 step 7). */
 export const loadOptimistic = (): Promise<Feature<PagePatches>> => import('./features/optimistic.ts').then((module) => module.optimistic);

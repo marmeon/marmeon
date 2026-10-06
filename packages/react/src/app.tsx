@@ -21,6 +21,7 @@ import {
   type RegionOwner as RegionOwnerType,
   type ProgressIndicator,
   type TitleTemplate,
+  type ViewTransitionOption,
   type VisitException,
   type VisitEvent,
   type VisitEvents,
@@ -28,7 +29,22 @@ import {
 } from '@bespokecore/http/client';
 import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@bespokecore/http/page';
 import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
-import { createContext, Suspense, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import {
+  addTransitionType,
+  createContext,
+  startTransition,
+  Suspense,
+  use,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
@@ -340,6 +356,12 @@ export interface BespokeAppProps {
   confirm?: ConfirmComponent;
   /** Client features attached from the start (`NavigatorOptions.features`) — `createBespokeApp` passes tab sync (E149). */
   features?: readonly Feature[] | undefined;
+  /**
+   * View transitions for every page change (E185) — `true` (or `{ types }`): the core's, `document.startViewTransition` around each
+   * page swap (the browser crossfades the page). `'react'`: React's — each page change renders in `startTransition` with its types
+   * (`addTransitionType`), and the `<ViewTransition>` components of the views animate; React starts the transition, the core never does.
+   */
+  viewTransition?: ViewTransitionOption | 'react' | undefined;
 }
 
 interface Current {
@@ -382,6 +404,7 @@ export function BespokeApp({
   layer: frame,
   confirm: Confirm,
   features,
+  viewTransition,
 }: BespokeAppProps) {
   // A deep link's document brings the layers over its page (E53): rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
@@ -394,7 +417,10 @@ export function BespokeApp({
   // Renders in order of the calls: a placeholder that resolves after a later render started is dropped (E64).
   const renders = useRef(0);
   const render = useCallback(
-    async (page: PageObject, { preserveState, owner, layers, placeholder }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[]; placeholder?: boolean }) => {
+    async (
+      page: PageObject,
+      { preserveState, owner, layers, placeholder, transition }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[]; placeholder?: boolean; transition?: readonly string[] },
+    ) => {
       const turn = ++renders.current;
       if (placeholder) {
         // An instant visit (E64): the target view's placeholder — never the view itself, with props it does not have yet.
@@ -416,13 +442,18 @@ export function BespokeApp({
       ]);
       await new Promise<void>((done) => {
         committed.current.push(done);
-        // Only the layers changed: the page stays exactly as it is (no render of it, nothing above it changes).
-        setCurrent((previous) =>
-          previous.page === page && previous.owner === owner && preserveState && !previous.placeholder
-            ? previous
-            : { page, Component, catalog, key: preserveState && previous.Component === Component && !previous.placeholder ? previous.key : previous.key + 1, owner },
-        );
-        setLayers(layers.map(entryOf));
+        // A view transition by React (E185, `viewTransition: 'react'`): the page changes in a transition with its types — the views'
+        // <ViewTransition> animate. Resolved, as any render, once it is committed (the layout effect below).
+        (transition ? startTransition : (swap: () => void) => swap())(() => {
+          transition?.forEach((type) => addTransitionType(type));
+          // Only the layers changed: the page stays exactly as it is (no render of it, nothing above it changes).
+          setCurrent((previous) =>
+            previous.page === page && previous.owner === owner && preserveState && !previous.placeholder
+              ? previous
+              : { page, Component, catalog, key: preserveState && previous.Component === Component && !previous.placeholder ? previous.key : previous.key + 1, owner },
+          );
+          setLayers(layers.map(entryOf));
+        });
       });
     },
     [resolve, messages],
@@ -464,6 +495,8 @@ export function BespokeApp({
       loadLayers,
       // What the app attaches from the start: tab sync (E149), before the navigator takes over the history.
       features,
+      // View transitions (E185): the core's, or React's (the core hands the types to `render`).
+      viewTransition: viewTransition === 'react' ? 'adapter' : viewTransition,
     });
     // A deep link's layers: their code was loaded before hydrating (createBespokeApp) — attached before the navigator stacks them.
     if (stackModule?.value) navigator.current.use(stackModule.value.layers);

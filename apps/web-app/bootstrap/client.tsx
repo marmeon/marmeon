@@ -8,4 +8,6 @@ import { resolvePage } from './pages.ts';
 
 // `confirm`: the app's dialog asks (E64) — before a link, an action or a form with `confirm`, and before unsaved changes are left.
 // `progress`: the progress bar for visits slower than 250 ms (E82: opt-in — an app without it carries none of its code).
-void createBespokeApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm });
+// `viewTransition: 'react'` (E185): each page change renders in a React transition with its direction — the views' <ViewTransition>
+// animate (the avatar from the list into the profile, the page sliding by direction: styles/app.css); none under reduced motion.
+void createBespokeApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm, viewTransition: 'react' });

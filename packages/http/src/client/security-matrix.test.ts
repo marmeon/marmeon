@@ -20,6 +20,7 @@ import { hooks, type ClientHooks } from './features/hooks.ts';
 import { tabSync } from './features/tab-sync.ts';
 import { selection, type SelectionFeature } from './features/selection.ts';
 import { historyFallback } from './features/history-fallback.ts';
+import { viewTransitions } from './features/view-transitions.ts';
 import { SESSION_PATH } from '../tab-sync-protocol.ts';
 import type { Upload } from '../page.ts';
 import type { ActionOutcome } from './action.ts';
@@ -201,7 +202,7 @@ async function leftovers(records: readonly Recorded[], keys: readonly string[], 
  * Every feature a navigator can attach — an adapter attaches each where it is used (Wave 5c, E70), the core loads the layers
  * itself when the server answers with one (E71): the matrix holds them all to the same rules.
  */
-const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync, selection, historyFallback];
+const ALL_FEATURES: readonly Feature[] = [layers, optimistic, actions, remember, queryState, prefetch, revalidateOnBack, instant, guard, islands, uploads, live, liveValidation, hooks, devtools, tabSync, selection, historyFallback, viewTransitions];
 
 /**
  * Live props (W6.10) are server-driven: the core attaches the feature object it imports (`features/live.ts`) when a page follows a

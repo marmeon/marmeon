@@ -77,6 +77,8 @@ export interface NavigationLike {
   navigate(url: string, options: { state: unknown; history: 'push' | 'replace'; info: unknown }): unknown;
   updateCurrentEntry(options: { state: unknown }): void;
   traverseTo(key: string): unknown;
+  /** The navigation under way (its handler runs): the entry it came from — a Back's direction (E185). */
+  readonly transition?: { readonly from: NavigationEntry } | null;
   addEventListener(type: 'navigate', listener: (event: Event) => void): void;
   removeEventListener(type: 'navigate', listener: (event: Event) => void): void;
 }

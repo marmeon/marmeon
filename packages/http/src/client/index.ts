@@ -26,6 +26,8 @@ export type {
   RevalidateOnBack,
   ScrollPosition,
   ScrollRegion,
+  ViewTransitionLike,
+  ViewTransitionOption,
   Visit,
   VisitCallbacks,
   VisitEvent,
@@ -99,7 +101,9 @@ export type { BeforeVisit, ClientHooks, HookEvent, HookEvents, InvalidAnswer } f
 // Development only (W7 step 9): what the devtools' in-page bar records — attached by its client alone, never by an app (E115).
 export { devtools, devtoolsReports, TIMELINE_LIMIT } from './features/devtools.ts';
 export type { DevtoolsFeature, DevtoolsGlobal, DevtoolsHook, HydrationIssue, PatchSnapshot, TimelineEntry, TimelineKind, TimelineOutcome } from './features/devtools.ts';
-export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadLiveValidation, loadOptimistic, loadPrefetch, loadTabSync, prefetchWith } from './lazy.ts';
+export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadLiveValidation, loadOptimistic, loadPrefetch, loadTabSync, loadViewTransitions, prefetchWith } from './lazy.ts';
+export { viewTransitions } from './features/view-transitions.ts';
+export type { ViewTransitions } from './features/view-transitions.ts';
 export { DEFAULT_SESSION_CHANGED_MESSAGE, isTabSyncMessage, tabSync } from './features/tab-sync.ts';
 export type { EpochChange, EpochOrigin, TabSync } from './features/tab-sync.ts';
 export { loadUploads } from './load-uploads.ts';

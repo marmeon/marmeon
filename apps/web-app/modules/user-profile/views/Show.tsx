@@ -13,6 +13,7 @@ import {
   type Placeholder,
   type RevalidateOnBack,
 } from '@bespokecore/react';
+import { ViewTransition } from 'react';
 import { ActionFailure } from '../../../layouts/ActionFailure.tsx';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';
 
@@ -50,7 +51,12 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
       <Head title={profile.name}>
         <meta name="description" content={profile.bio} />
       </Head>
-      {profile.avatar && <img src={profile.avatar} alt={t('show.avatar', { name: profile.name })} width={96} height={96} style={{ objectFit: 'cover', borderRadius: '50%' }} />}
+      {/* The avatar the list showed small (E185): it moves here and grows — and back to the list with Back. */}
+      {profile.avatar && (
+        <ViewTransition name={`avatar-${profile.id}`} share="avatar">
+          <img src={profile.avatar} alt={t('show.avatar', { name: profile.name })} width={96} height={96} className="avatar" />
+        </ViewTransition>
+      )}
       <h1>{profile.name}</h1>
       <p>{profile.bio}</p>
       {email !== null && <p>{email}</p>}
