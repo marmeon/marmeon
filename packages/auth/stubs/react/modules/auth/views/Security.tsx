@@ -6,7 +6,7 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, auth }: Props) {
+export default function Security({ viaRemember, email, emailChangeWaits, pendingEmail, auth }: Props) {
   const t = useTranslation('auth');
   // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
   // is still there after Back/Forward (remembered in memory, E63).
@@ -30,7 +30,9 @@ export default function Security({ viaRemember, email, auth }: Props) {
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void emailForm.submit();
+            // Private registration (E146): the address stays the current one until the link is clicked — the field shows it again
+            // (the request waits below). Otherwise the new address is the account's: it stays in the field.
+            void emailForm.submit({ onSuccess: () => (emailChangeWaits ? emailForm.reset() : undefined) });
           }}
         >
           <p>
@@ -40,6 +42,11 @@ export default function Security({ viaRemember, email, auth }: Props) {
             {emailForm.errors.email && <small role="alert"> {emailForm.errors.email}</small>}
             {auth?.user && !auth.user.verified && <small> {t('security.unconfirmed')}</small>}
           </p>
+          {pendingEmail && (
+            <p role="status">
+              <small>{t('security.email_pending', { email: pendingEmail, current: email })}</small>
+            </p>
+          )}
           <button type="submit" disabled={emailForm.processing || !emailForm.isDirty()}>
             {t('security.change_email')}
           </button>

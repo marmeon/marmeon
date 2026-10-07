@@ -34,7 +34,7 @@ const en = {
     checking: 'Checking …',
     registered: 'Already registered?',
     login: 'Sign in',
-    // Private registration (`bespoke make:auth --private-registration`, E146): one answer for new and known addresses.
+    // Private registration (E146, the default — AUTH_PRIVATE_REGISTRATION): one answer for new and known addresses.
     confirm_hint: 'We send you a link to confirm your address.',
     sent_title: 'Check your inbox',
     sent_intro: 'We sent a message to the address you entered. Click the link in it to confirm your address — then sign in.',
@@ -96,8 +96,9 @@ const en = {
     email: 'E-mail',
     unconfirmed: '(not confirmed yet)',
     change_email: 'Change e-mail',
+    // With AUTH_PRIVATE_REGISTRATION=false (E193): the new address is the account's at once.
     email_changed: 'E-mail address changed. Please confirm the new one — we sent you a link.',
-    // Private registration (E146): a new address is pending until the link sent to it is clicked.
+    // Private registration (E146, the default): a new address is pending until the link sent to it is clicked.
     email_change_sent: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.',
     email_pending: 'Waiting for confirmation: {email}. Until the link we sent there is clicked, your address stays {current}.',
     password_heading: 'Change password',

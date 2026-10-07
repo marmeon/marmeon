@@ -10,7 +10,7 @@ import { defineGegenproben } from '../define.ts';
  * different cost, with the probe G2c: the byte test stays green under G2); the account's id in the link ↔ the change keyed by the
  * signed-in user (G4 both off; G4c/G4d each alone stays green — either holds on its own); the signature's expiry ↔ the request's
  * (G5a/G5b, each test keeps the other one valid); the claimed token ↔ the cleared pending change (G6 both off; G6c the claim alone off
- * stays green). Run on the web app's module (`apps/web-app/modules/auth`); the template of `make:auth --private-registration` is the
+ * stays green). Run on the web app's module (`apps/web-app/modules/auth`); the template of `make:auth` (private by default, E193) is the
  * same code, proven by its own generated tests in the fixture test (packages/auth/src/make-auth.test.ts) and pack:smoke.
  */
 const test = (name: string) => ({ vitest: 'apps/web-app/modules/auth/email-change.test.ts', name: `changing the address (private registration, E146) > ${name}` });
@@ -21,13 +21,9 @@ const ROUTES = 'apps/web-app/modules/auth/routes.ts';
 const JOB = 'apps/web-app/modules/auth/jobs/SendEmailChangeMailJob.ts';
 
 /** The request decides and composes the link mail itself for a free address (the old way: rendered here, queued for a worker). */
+// (The controller has a Mailer since E193 — the switched-off path mails at once.)
 const COMPOSED_IN_THE_REQUEST = [
-  { file: UPDATE, find: "import { Queue } from '@bespokecore/queue';", replace: "import { Queue } from '@bespokecore/queue';\nimport { Mailer } from '@bespokecore/mail';\nimport { ConfirmNewEmailMail } from '../mail/ConfirmNewEmailMail.ts';" },
-  {
-    file: UPDATE,
-    find: '  constructor(connections: Connections, users: UserRepository, queue: Queue, clock: Clock, translator: Translator) {\n    super();',
-    replace: '  readonly #mailer: Mailer;\n\n  constructor(connections: Connections, users: UserRepository, queue: Queue, clock: Clock, translator: Translator, mailer: Mailer) {\n    super();\n    this.#mailer = mailer;',
-  },
+  { file: UPDATE, find: "import { Queue } from '@bespokecore/queue';", replace: "import { Queue } from '@bespokecore/queue';\nimport { ConfirmNewEmailMail } from '../mail/ConfirmNewEmailMail.ts';" },
   {
     file: UPDATE,
     find: "      await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email, token, locale: this.#translator.locale }, { queue: 'mail' });",
@@ -52,7 +48,7 @@ export default defineGegenproben({
       id: 'G1',
       title: 'the request tells "taken" again (a field error): the answer for a taken address differs from a free one’s',
       patch: [
-        { file: UPDATE, find: "import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';", replace: "import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@bespokecore/http';" },
+        // (ValidationError is imported since E193 — the switched-off path says "taken".)
         { file: UPDATE, find: '    const { token, hash } = newEmailChangeToken();', replace: "    if (await this.#users.emailTaken(email)) throw new ValidationError({ email: ['This e-mail address is already registered.'] }, { email });\n    const { token, hash } = newEmailChangeToken();" },
       ],
       run: test('answers a free address and a taken one byte for byte alike — the answer, and the page it leads to'),

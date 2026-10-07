@@ -16,8 +16,8 @@ pnpm dev                     # http://localhost:3000 — Redis for live updates:
 
 What the starter kit has, and a little more — each part tested here:
 
-- **Private registration** (`make:auth --private-registration`, E146): a new address and a known one get the same answer in the
-  same time; the owner of a known one gets a mail instead. Every page of the app's modules — dashboard, people, profiles,
+- **Private registration** (E146, the default of `make:auth` since E193 — `AUTH_PRIVATE_REGISTRATION`): a new address and a known one
+  get the same answer in the same time; the owner of a known one gets a mail instead. Every page of the app's modules — dashboard, people, profiles,
   notifications, settings, tokens — sits behind `verified()`: an unconfirmed account reaches the notice, the link, resend and
   sign-out only. Its forms carry no `_token`: Fetch Metadata and `Origin` vouch for them (E143).
 - **Sessions** in the `database` driver on a SQLite file of their own (`SESSION_CONNECTION=system`), under hashed keys and with

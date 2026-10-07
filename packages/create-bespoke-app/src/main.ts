@@ -51,7 +51,6 @@ const USAGE_TEXT = `Usage: create-bespoke-app <dir> [options]
 Options:
   -y, --yes                 the defaults, nothing asked: the starter kit, pnpm, install, git
       --minimal             a blank app — no auth module, no home page (the starter kit is the default)
-      --private-registration  the starter kit's registration never tells whether an address has an account (make:auth)
       --docker              a Dockerfile, .dockerignore and compose.production.yaml (bespoke make:docker)
       --npm | --pnpm        the package manager (pnpm by default)
       --no-install          only the files: install and run the generators yourself (the next steps say how)
@@ -62,10 +61,14 @@ Options:
 
 export const NO_DIRECTORY = 'create-bespoke-app needs a directory: create-bespoke-app <dir> [--yes]';
 
+/** What `--private-registration` says since it is gone (E193) — the app is made all the same. */
+export const PRIVATE_REGISTRATION_FLAG_GONE =
+  'create-bespoke-app: --private-registration is gone — the starter kit\'s registration is private by default now (it never tells ' +
+  'whether an address has an account). Set AUTH_PRIVATE_REGISTRATION=false in the app\'s .env to turn it off.';
+
 interface Choices {
   readonly directory: string;
   readonly kit: boolean;
-  readonly privateRegistration: boolean;
   readonly docker: boolean;
   readonly packageManager: PackageManager;
   readonly install: boolean;
@@ -91,6 +94,7 @@ export async function main(io: Io = processIo()): Promise<number> {
       options: {
         yes: { type: 'boolean', short: 'y' },
         minimal: { type: 'boolean' },
+        // Gone (E193) — parsed only to say so.
         'private-registration': { type: 'boolean' },
         docker: { type: 'boolean' },
         npm: { type: 'boolean' },
@@ -122,10 +126,7 @@ export async function main(io: Io = processIo()): Promise<number> {
     err('create-bespoke-app: choose one package manager — --npm or --pnpm.');
     return USAGE;
   }
-  if (values.minimal && values['private-registration']) {
-    err('create-bespoke-app: --private-registration is an option of the starter kit (make:auth) — leave out --minimal.');
-    return USAGE;
-  }
+  if (values['private-registration'] !== undefined) err(PRIVATE_REGISTRATION_FLAG_GONE);
 
   // Asked only on a terminal, and never with --yes: without one a run never waits for an answer (E167).
   const interactive = io.stdin.isTTY === true && io.stdout.isTTY === true;
@@ -161,7 +162,7 @@ export async function main(io: Io = processIo()): Promise<number> {
   }
 
   const shown = relative(io.cwd, target) || '.';
-  out(`Creating ${paint('bold', name)} in ${shown} — ${choices.kit ? `the starter kit${choices.privateRegistration ? ' (private registration)' : ''}` : 'a blank app'}${choices.docker ? ', Docker files' : ''}, ${pm}`);
+  out(`Creating ${paint('bold', name)} in ${shown} — ${choices.kit ? 'the starter kit' : 'a blank app'}${choices.docker ? ', Docker files' : ''}, ${pm}`);
   const step = (text: string) => out(`  ${paint('green', '✓')} ${text}`);
   const fail = (text: string, output?: string) => {
     err(`  ${paint('red', '✗')} ${text}`);
@@ -189,12 +190,12 @@ export async function main(io: Io = processIo()): Promise<number> {
   writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   writeEnv(target, title);
   writeTitle(target, title);
-  writeFileSync(join(target, 'README.md'), readme({ name, title, packageManager: pm, kit: choices.kit, privateRegistration: choices.privateRegistration, docker: choices.docker }));
+  writeFileSync(join(target, 'README.md'), readme({ name, title, packageManager: pm, kit: choices.kit, docker: choices.docker }));
   step(`the files${choices.kit ? ' (with the home module)' : ''}, package.json${'version' in source ? ` (@bespokecore/* ${source.version})` : ' (the framework from BESPOKE_CREATE_TARBALLS)'}, .env with a new APP_KEY`);
 
   // 2 · Install, then the app's own generators (they come with @bespokecore/cli).
   const generators: string[][] = [
-    ...(choices.kit ? [['make:auth', ...(choices.privateRegistration ? ['--private-registration'] : [])]] : []),
+    ...(choices.kit ? [['make:auth']] : []),
     // .env says NODE_ENV=development: no --force, and it writes bootstrap/database.d.ts (the tables' types the build checks).
     ['migrate'],
     ...(choices.docker ? [['make:docker']] : []),
@@ -255,12 +256,12 @@ async function choose(values: Record<string, boolean | undefined>, directory: st
     const question = async (text: string, fallback: string) => (await questions!.question(`${text} `)).trim() || fallback;
     const yesNo = async (text: string, fallback: boolean) => (await question(`${text} (${fallback ? 'Y/n' : 'y/N'})`, fallback ? 'y' : 'n')).toLowerCase().startsWith('y');
     const dir = directory ?? (await question('Directory of the new app (my-app):', 'my-app'));
-    const kit = values.minimal === true ? false : values['private-registration'] === true || !ask ? true : await yesNo('The starter kit — sign-in and registration, a layout, a home page?', true);
+    const kit = values.minimal === true ? false : !ask ? true : await yesNo('The starter kit — sign-in and registration, a layout, a home page?', true);
     const docker = values.docker ?? (ask ? await yesNo('Docker files (Dockerfile, compose.production.yaml)?', false) : false);
     const packageManager: PackageManager =
       values.npm === true ? 'npm' : values.pnpm === true || !ask ? 'pnpm' : (await question('Package manager — pnpm or npm (pnpm):', 'pnpm')).toLowerCase().startsWith('n') ? 'npm' : 'pnpm';
     const git = values.git ?? (ask ? await yesNo('A git repository with a first commit?', true) : true);
-    return { directory: dir, kit, privateRegistration: values['private-registration'] === true, docker, packageManager, install: values.install !== false, git };
+    return { directory: dir, kit, docker, packageManager, install: values.install !== false, git };
   } finally {
     questions?.close();
   }

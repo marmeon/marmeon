@@ -26,7 +26,6 @@ Register an account: in development the mails go to the log (`MAIL_MAILER=log`),
 | `<dir>` | the new app's directory — it must not exist or be empty; its name becomes the package name (`My App` → `my-app`), `APP_NAME` and the document's `<title>` (`My App`) |
 | `-y`, `--yes` | take the defaults, ask nothing |
 | `--minimal` | a blank app: no auth module, no home page — exactly `apps/blank-app` of the repository |
-| `--private-registration` | the starter kit's registration never tells whether an address has an account (`bespoke make:auth --private-registration`) |
 | `--docker` | a Dockerfile, `.dockerignore` and `compose.production.yaml` (`bespoke make:docker`) — [deployment](../../docs/deployment.md) |
 | `--npm`, `--pnpm` | the package manager — pnpm by default |
 | `--no-install` | only the files: install yourself, then run the generators the output names |
@@ -35,8 +34,11 @@ Register an account: in development the mails go to the log (`MAIL_MAILER=log`),
 
 On a terminal a missing directory is asked for (also with `--yes`). Without a terminal (CI, a pipe) nothing is asked: the flags
 and the defaults decide, and a missing directory ends the run with exit code 2 — `create-bespoke-app needs a directory:
-create-bespoke-app <dir> [--yes]`. Every wrong call is exit code 2: an unknown flag, two directories, `--npm` with `--pnpm`,
-`--private-registration` with `--minimal`. A failed step is exit code 1, with the output of the step; the directory stays as it
+create-bespoke-app <dir> [--yes]`. Every wrong call is exit code 2: an unknown flag, two directories, `--npm` with `--pnpm`.
+The starter kit's registration is private — it never tells whether an address has an account
+([private registration](../auth/README.md#private-registration-e146-e193)); the former `--private-registration` is gone (E193):
+passed anyway, it is named on stderr and the app is made as without it — `AUTH_PRIVATE_REGISTRATION=false` in `.env` turns the
+private registration off. A failed step is exit code 1, with the output of the step; the directory stays as it
 was then. A directory that is not empty, a missing pnpm and a Node older than 26.10 are exit code 1 before anything is written;
 Ctrl+C at a question is 130.
 

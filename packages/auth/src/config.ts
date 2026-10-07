@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, environment, type ConfigOf } from '@bespokecore/core';
 import * as v from 'valibot';
 
 const whole = (fallback: number, min: number) => v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(min)), String(fallback));
@@ -17,6 +17,14 @@ export const AuthConfig = defineConfig('auth', {
     AUTH_RESET_THROTTLE: whole(60, 0),
     /** The prefix of API tokens (`bc_12|…`) — secret scanners recognize leaked tokens by it. */
     AUTH_TOKEN_PREFIX: v.optional(v.pipe(v.string(), v.regex(/^[a-z0-9_]{0,16}$/, 'lower-case letters, digits and _ only')), 'bc_'),
+    /**
+     * Private registration (E146, the default since E193): registration and the change of address never tell whether an address
+     * has an account — the same answer in the same time, a note to the owner instead. `false` (and only `false`: anything but
+     * `true`/`false` stops the boot) makes them say "taken", like Laravel's starter kits; outside development and tests the boot
+     * then warns ({@link PRIVATE_REGISTRATION_OFF_WARNING}). The auth module `bespoke make:auth` writes reads it.
+     */
+    AUTH_PRIVATE_REGISTRATION: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'true'),
+    NODE_ENV: v.optional(v.string()),
   }),
   resolve: (env) => ({
     rememberDays: env.AUTH_REMEMBER_DAYS,
@@ -25,6 +33,18 @@ export const AuthConfig = defineConfig('auth', {
     resetExpire: env.AUTH_RESET_EXPIRE,
     resetThrottle: env.AUTH_RESET_THROTTLE,
     tokenPrefix: env.AUTH_TOKEN_PREFIX,
+    privateRegistration: env.AUTH_PRIVATE_REGISTRATION,
+    /** Protected (E139 — every `NODE_ENV` but `development` and `test`): turning private registration off is warned about at boot. */
+    protected: environment.isProtected(env),
   }),
 });
 export type AuthConfig = ConfigOf<typeof AuthConfig>;
+
+/**
+ * What the boot logs, once per process, when a protected environment (production, staging, no `NODE_ENV` — E139) runs with
+ * `AUTH_PRIVATE_REGISTRATION=false` (E193).
+ */
+export const PRIVATE_REGISTRATION_OFF_WARNING =
+  'AUTH_PRIVATE_REGISTRATION=false outside development and tests: registration and the change of address tell whether an address ' +
+  'has an account ("already registered") — anyone can test a list of addresses against your users. Remove the line (private ' +
+  'registration is the default) unless the accounts of your app are public anyway.';

@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symli
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, STUBS } from './make-auth.ts';
+import { MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, PRIVATE_REGISTRATION_FLAG_GONE, STUBS } from './make-auth.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -32,6 +32,7 @@ function fakeInput(root: string, options: Record<string, unknown> = {}) {
   const spawned: string[][] = [];
   const output = {
     success: (line: string) => lines.push(`✓ ${line}`),
+    warn: (line: string) => lines.push(`! ${line}`),
     error: (line: string) => lines.push(`✗ ${line}`),
     line: (line = '') => lines.push(line),
   };
@@ -143,24 +144,28 @@ describe('make:auth', () => {
     expect(lines[0]).toBe('✗ There are no auth templates for the UI adapter "vue". Known: react.');
   });
 
-  it('--private-registration writes the variant over the module (E146): its controller, views, routes, job, mail and tests', async () => {
+  it('makes one module, private by default (E146, E193) — the old --private-registration only says so and is otherwise ignored', async () => {
     const root = blankApp();
     const { input, lines } = fakeInput(root, { 'private-registration': true });
     expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files, private registration\)$/);
-    const overlay = join(STUBS, 'react', 'private-registration', 'modules', 'auth');
-    for (const file of readdirSync(overlay, { recursive: true }) as string[]) {
-      if (!/\.\w+$/.test(file)) continue;
-      expect(readFileSync(join(root, 'modules/auth', file), 'utf8')).toBe(readFileSync(join(overlay, file), 'utf8'));
-    }
-    expect(readFileSync(join(root, 'modules/auth/controllers/RegisterController.ts'), 'utf8')).not.toContain('emailTaken');
-    // The change of address is pending (W9 step 9): its own migration, controllers, job, mails and prune — the default has none of it.
-    expect(readFileSync(join(root, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8')).toContain('requestEmailChange');
+    expect(lines[0]).toBe(`! ${PRIVATE_REGISTRATION_FLAG_GONE}`);
+    expect(PRIVATE_REGISTRATION_FLAG_GONE).toContain('private registration is the default now');
+    expect(PRIVATE_REGISTRATION_FLAG_GONE).toContain('AUTH_PRIVATE_REGISTRATION=false');
+    expect(lines[1]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
+    // The same files as without the flag: one set of templates, both behaviours in it — the switch decides at run time.
     const defaults = blankApp();
-    expect(await new MakeAuthCommand().handle(fakeInput(defaults).input)).toBe(0);
-    expect(existsSync(join(defaults, 'modules/auth/email-change.ts'))).toBe(false);
-    expect(existsSync(join(defaults, 'modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts'))).toBe(false);
-    expect(readFileSync(join(defaults, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8')).toContain('changeEmail');
+    const plain = fakeInput(defaults);
+    expect(await new MakeAuthCommand().handle(plain.input)).toBe(0);
+    expect(plain.lines.filter((line) => line.startsWith('!'))).toEqual([]);
+    const files = (dir: string) => (readdirSync(join(dir, 'modules/auth'), { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file)).sort();
+    expect(files(root)).toEqual(files(defaults));
+    expect(existsSync(join(STUBS, 'react', 'private-registration'))).toBe(false);
+    // The change of address is pending by default (W9 step 9) and immediate with the switch off: both in the one controller.
+    const controller = readFileSync(join(defaults, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8');
+    expect(controller).toContain('requestEmailChange');
+    expect(controller).toContain('changeEmail');
+    expect(existsSync(join(defaults, 'modules/auth/migrations/0001_01_01_000004_add_pending_email_to_users_table.ts'))).toBe(true);
+    expect(plain.lines).toContain('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
   });
 
   /**
@@ -192,11 +197,18 @@ describe('make:auth', () => {
       expect(routeTypes).toContain("'auth.login.store': { method: 'post'; path: '/login'; controller: typeof LoginController };");
       expect(routeTypes).toContain("'api.user': { method: 'get'; path: '/api/user'; browser: false };");
       expect(routeTypes).toContain("'auth/Dashboard': true;");
+      // Private registration (E146, the default): its page and the change link — answered with 404 when the switch is off.
+      expect(routeTypes).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
+      expect(routeTypes).toContain("'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };");
       expect(bespoke('route:types', '--check').code).toBe(0);
       const migrated = bespoke('migrate');
       expect(migrated.out).toContain('create_personal_access_tokens_table');
+      expect(migrated.out).toContain('add_pending_email_to_users_table');
       expect(migrated.code).toBe(0);
-      expect(readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8')).toContain('password: Secret<string>;');
+      const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
+      expect(tables).toContain('password: Secret<string>;');
+      // The link's token hash is secret — never in `Row<'users'>`.
+      expect(tables).toContain('pending_email_token: Secret<string | null>;');
 
       const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
       expect(typecheck.out).toBe('');
@@ -209,9 +221,17 @@ describe('make:auth', () => {
       expect(bespoke('make:lint-config', '--boundaries', '--force').code).toBe(0);
       expect(lint()).toMatchObject({ code: 0 });
 
-      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
+      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
+      const failed = [...tests.out.matchAll(/^\s*× (modules\/\S+ > .+?)(?: \d+ms)?$/gm)].map((match) => match[1]);
+      expect(failed, `generated tests failed: ${failed.join(' | ')}`).toEqual([]);
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
-      expect(tests.out).not.toMatch(/failed/);
+      expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
+      // Both values of the switch (E193): the private default and AUTH_PRIVATE_REGISTRATION=false, registration and change of address.
+      const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
+      expect(ran('registration', 'private registration (E146) — the default')).toBe(6);
+      expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(4);
+      expect(ran('email-change', 'changing the address (private registration, E146) — the default')).toBe(7); // W9 step 9
+      expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(2);
       expect(tests.code).toBe(0);
 
       // A stale bootstrap/routes.ts fails the CI check.
@@ -242,44 +262,6 @@ describe('make:auth', () => {
       expect(client).not.toContain('/email/verify/:id/:hash');
       expect(client).not.toContain('api.user');
       expect(client).not.toMatch(/["'`]\/api\/user["'`]/); // the page text mentions /api/users — the pattern itself must be absent
-    },
-    300_000,
-  );
-
-  /** The private registration (E146) as a user gets it: generated, migrated, type-checked, linted — and its own tests pass. */
-  it(
-    'gives a new app a working auth area with private registration: its generated tests pass',
-    () => {
-      const root = blankApp();
-      const env = { ...process.env };
-      for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST') delete env[key];
-      const run = (command: string, args: string[], extra: Record<string, string> = {}, base = env) => {
-        const result = spawnSync(command, args, { cwd: root, env: { ...base, ...extra }, encoding: 'utf8', timeout: 240_000 });
-        return { code: result.status, out: `${result.stdout}${result.stderr}` };
-      };
-      const { DB_CONNECTION: _connection, DB_URL: _url, ...sqliteEnv } = env;
-      const bespoke = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/bespoke.js'), ...args], { NODE_ENV: 'development' }, sqliteEnv);
-
-      expect(bespoke('discover').code).toBe(0);
-      const generated = bespoke('make:auth', '--private-registration');
-      expect(generated.out).toContain('private registration');
-      expect(generated.code).toBe(0);
-      expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
-      expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };");
-      const migrated = bespoke('migrate');
-      expect(migrated.out).toContain('add_pending_email_to_users_table');
-      expect(migrated.code).toBe(0);
-      // The link's token hash is secret — never in `Row<'users'>`.
-      expect(readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8')).toContain('pending_email_token: Secret<string | null>;');
-      const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
-      expect(typecheck.out).toBe('');
-      expect(bespoke('make:lint-config', '--boundaries', '--force').code).toBe(0);
-      expect(run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings'])).toMatchObject({ code: 0 });
-      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
-      expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
-      expect(tests.out).not.toMatch(/\d+ failed/); // (verbose: a test's name may say "failed")
-      expect(tests.out.match(/✓ modules\/auth\/email-change\.test\.ts > /g)).toHaveLength(7); // the pending change of address (W9 step 9)
-      expect(tests.code).toBe(0);
     },
     300_000,
   );

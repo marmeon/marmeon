@@ -3,12 +3,12 @@
  * from them OUTSIDE the monorepo by the `create-bespoke-app` tarball — twice. A part of `pnpm run ci`.
  *
  *   create-bespoke-app without a directory and without a terminal → exit 2 at once (never a prompt that waits)
- *   create-bespoke-app app --yes --private-registration (the starter kit, pnpm, git) → package.json at exact versions, .env with
- *     APP_KEY, one clean commit
+ *   create-bespoke-app app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
  *     → migrate (development from .env) → vitest run → lint → build without .env (E187: no key; nothing shaped like an APP_KEY and
  *     not the app's own in dist/ or .bespoke/) → start → GET /login 200
  *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
- *     .br, immutable), GET / 200 → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
+ *     .br, immutable), GET / 200, a sign-up with a known address answered like a new one (private registration, E146) → start
+ *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns (E193) → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
  *   create-bespoke-app app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
  *     node_modules finds every package the pnpm app's does (E151)
  *
@@ -248,7 +248,7 @@ class Smoke {
    * `bespoke start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
    * answers, its process group must be exactly one process, and that one Node (E159).
    */
-  async serve(path: string, check?: (base: string) => Promise<void>): Promise<void> {
+  async serve(path: string, check?: (base: string, output: () => string) => Promise<void>, env: NodeJS.ProcessEnv = {}): Promise<void> {
     const port = await freePort();
     const loads = join(dirname(this.app), 'loads.mjs');
     const loaded = join(dirname(this.app), 'loaded.json');
@@ -262,7 +262,7 @@ class Smoke {
     const child = spawn(join(this.app, 'node_modules/.bin/bespoke'), ['start'], {
       cwd: this.app,
       // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example (E170).
-      env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}` },
+      env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}`, ...env },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -287,7 +287,7 @@ class Smoke {
             if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node$/.test(group[0]![2] ?? '')) {
               throw new SmokeError(`bespoke start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
             }
-            await check?.(`http://127.0.0.1:${port}`);
+            await check?.(`http://127.0.0.1:${port}`, () => output);
             await this.#checkLoads(child, exited, loaded, () => output);
             return;
           }
@@ -359,6 +359,44 @@ async function checkProductionHttp(base: string): Promise<void> {
   if (!asset.headers.get('cache-control')?.includes('immutable')) throw new SmokeError(`${entry[1]} is not cached as immutable: ${asset.headers.get('cache-control')}`);
 }
 
+/**
+ * The registration of the starter kit (E146, E193): private by default — a sign-up with an address that has an account is answered
+ * like one with a new address (303 to /register/sent); with `AUTH_PRIVATE_REGISTRATION=false` the second sign-up with an address is
+ * told "already registered", and the boot of a production server warns once.
+ */
+function checkRegistration(privately: boolean) {
+  return async (base: string, output: () => string): Promise<void> => {
+    const email = privately ? 'private@example.com' : 'open@example.com';
+    const register = async (cookie?: string) => {
+      const response = await fetch(`${base}/register`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { origin: base, referer: `${base}/register`, 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
+        body: new URLSearchParams({ name: 'Katherine Johnson', email, password: 'orbital mechanics', password_confirmation: 'orbital mechanics' }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      await response.arrayBuffer();
+      return response;
+    };
+    const first = await register();
+    const second = await register();
+    const where = (response: Response) => `${response.status} → ${response.headers.get('location')}`;
+    if (privately) {
+      for (const response of [first, second]) {
+        if (response.status !== 303 || !response.headers.get('location')?.endsWith('/register/sent')) throw new SmokeError(`A sign-up answered ${where(response)}, expected 303 → /register/sent for a new and a known address alike (E146).`);
+      }
+      if (second.headers.getSetCookie().length > 0) throw new SmokeError('A sign-up with a known address set a cookie — the private registration answers without a session (E146).');
+      return;
+    }
+    if (first.status !== 303 || !first.headers.get('location')?.endsWith('/dashboard')) throw new SmokeError(`With AUTH_PRIVATE_REGISTRATION=false a sign-up answered ${where(first)}, expected 303 → /dashboard (signed in).`);
+    if (!second.headers.get('location')?.endsWith('/register')) throw new SmokeError(`With AUTH_PRIVATE_REGISTRATION=false a second sign-up answered ${where(second)}, expected back to /register with an error.`);
+    const cookie = second.headers.getSetCookie().map((line) => line.split(';')[0]).join('; ');
+    const page = await fetch(`${base}/register`, { headers: { accept: 'text/html', cookie }, signal: AbortSignal.timeout(5_000) });
+    if (!(await page.text()).includes('This e-mail address is already registered.')) throw new SmokeError('With AUTH_PRIVATE_REGISTRATION=false the form did not say "already registered" for a known address.');
+    if (!output().includes('AUTH_PRIVATE_REGISTRATION=false outside development and tests')) throw new SmokeError(`A production start with AUTH_PRIVATE_REGISTRATION=false did not warn (E193):\n${output()}`);
+  };
+}
+
 async function main(): Promise<number> {
   const { values } = parseArgs({ options: { keep: { type: 'boolean' }, offline: { type: 'boolean' }, 'store-dir': { type: 'string' } } });
   const started = performance.now();
@@ -393,10 +431,10 @@ async function main(): Promise<number> {
       if (result.status !== 2 || !result.stderr.includes(NO_DIRECTORY)) throw new SmokeError(`create-bespoke-app without a directory ended with ${result.status}, expected 2 and "${NO_DIRECTORY}":\n${result.stdout}${result.stderr}`);
     });
 
-    // ── The starter kit with pnpm (the defaults — and private registration, E146: the variant writes the most templates) ──
+    // ── The starter kit with pnpm (the defaults — its registration private, E146/E193) ──
     const app = pnpmApp.app;
-    await pnpmApp.step('create-bespoke-app app --yes --private-registration (starter kit, pnpm, install, make:auth, migrate, git)', () => {
-      const output = scaffold(bin, work, ['app', '--yes', '--private-registration'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
+    await pnpmApp.step('create-bespoke-app app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
+      const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
       if (!output.includes('bespoke make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-bespoke-app skipped a step:\n${output}`);
       checkManifest(app, 'pnpm');
       for (const file of ['modules/auth/routes.ts', 'modules/auth/controllers/ConfirmEmailChangeController.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite']) {
@@ -418,7 +456,8 @@ async function main(): Promise<number> {
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
       if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);
-      if (!/modules\/auth\/email-change\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the private registration's tests (email-change.test.ts):\n${output}`);
+      if (!/modules\/auth\/email-change\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the change of address's tests (email-change.test.ts):\n${output}`);
+      if (!/AUTH_PRIVATE_REGISTRATION=false/.test(output)) throw new SmokeError(`vitest did not run the tests with AUTH_PRIVATE_REGISTRATION=false (E193):\n${output}`);
       return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
     await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));
@@ -429,7 +468,15 @@ async function main(): Promise<number> {
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
       if (listed.length < 5) throw new SmokeError(`bespoke build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
     });
-    await pnpmApp.step('bespoke start → GET /login 200 (CSP nonce, precompressed assets), GET / 200', () => pnpmApp.serve('/login', checkProductionHttp));
+    await pnpmApp.step('bespoke start → GET /login 200 (CSP nonce, precompressed assets), GET / 200, private registration', () =>
+      pnpmApp.serve('/login', async (base, output) => {
+        await checkProductionHttp(base);
+        await checkRegistration(true)(base, output);
+      }),
+    );
+    await pnpmApp.step('bespoke start with AUTH_PRIVATE_REGISTRATION=false → "already registered", a boot warning (E193)', () =>
+      pnpmApp.serve('/login', checkRegistration(false), { AUTH_PRIVATE_REGISTRATION: 'false' }),
+    );
     const discovered = await pnpmApp.step('bespoke discover (pnpm, nothing hoisted)', () => discoveredPackages(pnpmApp.bespoke('discover')));
     // Production installs without the dev dependencies (E159): `bespoke` is a dependency, and the app starts without the rest.
     await pnpmApp.step('pnpm install --prod → node_modules/.bin/bespoke', () => {

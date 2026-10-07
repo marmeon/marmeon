@@ -1,5 +1,6 @@
 import { Limit, RateLimiter } from '@bespokecore/cache';
 import { Connections } from '@bespokecore/database';
+import { UrlSigner } from '@bespokecore/http';
 import type { Mailable } from '@bespokecore/mail';
 import { createTestApp, type TestApp } from '@bespokecore/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -10,6 +11,7 @@ import { ConfirmNewEmailMail } from './mail/ConfirmNewEmailMail.ts';
 import { EmailChangedMail } from './mail/EmailChangedMail.ts';
 import { EmailInUseMail } from './mail/EmailInUseMail.ts';
 import { ResetPasswordMail } from './mail/ResetPasswordMail.ts';
+import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { User } from './users.ts';
 import { UserRepository } from './UserRepository.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
@@ -22,8 +24,9 @@ beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
 });
 
-// The change of address with private registration (E146, W9 step 9): pending until the link sent to the new address is clicked;
-// a free and a taken address get the same answer in the same time; the owner of a taken one gets a note.
+// The change of address with private registration (E146, W9 step 9 — the default): pending until the link sent to the new address
+// is clicked; a free and a taken address get the same answer in the same time; the owner of a taken one gets a note. With
+// AUTH_PRIVATE_REGISTRATION=false (E193) it changes at once and says "taken".
 
 type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
@@ -259,5 +262,35 @@ describe('changing the address (private registration, E146)', () => {
     expect(results.find((result) => result.task === 'auth.prune-email-changes')?.outcome).toBe('ran');
     expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null, pending_email_expires_at: null });
     expect(await reload(dv)).toMatchObject({ pending_email: 'fresh-request@example.com' });
+  });
+});
+
+describe('changing the address with AUTH_PRIVATE_REGISTRATION=false (E193)', () => {
+  beforeEach(async () => {
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+  });
+
+  it('changes it at once, unconfirmed — a link to the new address, a note to the old one; the settings stay open to fix a typo', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    await change(session, 'katherine@nasa.example').assertRedirect('/settings/security').assertFlashed('toast', { message: 'E-mail address changed. Please confirm the new one — we sent you a link.' });
+    expect(await reload(kj)).toMatchObject({ email: 'katherine@nasa.example', email_verified_at: null, pending_email: null });
+    app.queue.assertNotDispatched(SendEmailChangeMailJob);
+    app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
+    app.mail.assertQueued(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
+    expect(await pendingOn(session)).toBeNull();
+    await change(session, 'katherine@nasa.example.com').assertRedirect('/settings/security');
+    expect((await reload(kj)).email).toBe('katherine@nasa.example.com');
+  });
+
+  it('says that an address is taken — and has no change links', async () => {
+    await app.factory(UserFactory).create({ email: 'ada@example.com' });
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    await change(session, 'ada@example.com').assertInvalid({ email: 'This e-mail address is already registered.' });
+    expect((await reload(kj)).email).toBe('kj@example.com');
+    const link = new URL(app.make(UrlSigner).temporarySignedRoute('auth.email.confirm', { id: kj.id, token: 'token' }, 600), 'http://localhost');
+    await session.expectingJson().get(link.pathname + link.search).assertNotFound();
   });
 });

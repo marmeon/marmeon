@@ -218,7 +218,7 @@ describe('registration', () => {
       const send = (email: string) => client.post('/register', { form: { name: 'Ada Lovelace', email, password: 'correct horse', password_confirmation: 'correct horse' }, headers: { referer: 'http://localhost/register' } });
       const fresh = answer(await send(visit ? 'grace@example.com' : 'alan@example.com'));
       const known = answer(await send('ada@example.com'));
-      expect(known).toEqual(fresh);
+      expect(known, 'a known address is answered differently from a new one').toEqual(fresh);
       expect(fresh.headers.filter(([name]) => name === 'set-cookie')).toEqual([]);
     }
   });
@@ -236,6 +236,35 @@ describe('registration', () => {
     await session.get(link.pathname + link.search).assertRedirect('/users/me');
     await session.navigating().get('/people').assertOk();
     await session.post('/logout').assertRedirect('/login');
+  });
+
+  describe('with AUTH_PRIVATE_REGISTRATION=false (E193) — like Laravel Breeze', () => {
+    beforeEach(async () => {
+      await app.close();
+      app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    });
+
+    it('signs a new account in at once and mails the verification link — no "check your inbox" page', async () => {
+      const response = await register({ email: 'grace@example.com' }).assertRedirect('/users/me');
+      const grace = await app.make(UserRepository).findByEmail('grace@example.com');
+      // Signed in, unconfirmed: the security settings stay open (a typo in the address can be fixed) — the profile pages ask for a confirmed address.
+      const session = app.withCookie('bespoke_session', response.cookie('bespoke_session')!);
+      expect((await session.get('/settings/security', { headers: { accept: 'text/html' } })).headers.get('location')).not.toBe('/email/verify');
+      await session.get('/users/me').assertRedirect('/email/verify');
+      expect(grace).toMatchObject({ email_verified_at: null });
+      await app.queue.work();
+      app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'grace@example.com');
+      await app.get('/register/sent').assertNotFound();
+    });
+
+    it('says that an address is taken — on submit and when the field is checked live; no note to the owner', async () => {
+      await app.factory(UserFactory).create({ email: 'ada@example.com' });
+      await register({ email: 'ADA@example.com' }).assertInvalid({ email: 'This e-mail address is already registered.' }).assertGuest();
+      const live = await app.validating('email').post('/register', { json: { email: 'ada@example.com' } }).assertUnprocessable();
+      expect(live.json<{ errors: unknown }>().errors).toEqual({ email: ['This e-mail address is already registered.'] });
+      app.queue.assertNotDispatched(SendAccountExistsMailJob);
+      await app.assertDatabaseCount('users', 1);
+    });
   });
 
   it('takes as long for a known address as for a new one — the password is hashed either way (E146, the configured costs)', async () => {

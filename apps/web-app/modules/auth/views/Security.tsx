@@ -6,7 +6,7 @@ import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
 
 type Props = PageProps<ShowSecurityController>;
 
-export default function Security({ viaRemember, email, pendingEmail, auth }: Props) {
+export default function Security({ viaRemember, email, emailChangeWaits, pendingEmail, auth }: Props) {
   const t = useTranslation('auth');
   const route = useRoute();
   // Leaving with a changed address or typed passwords asks first (the navigation guard, E64); the address — never a password —
@@ -31,8 +31,9 @@ export default function Security({ viaRemember, email, pendingEmail, auth }: Pro
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            // The address stays the current one until the link is clicked: the field shows it again (the request waits below).
-            void emailForm.submit({ onSuccess: () => emailForm.reset() });
+            // Private registration (E146): the address stays the current one until the link is clicked — the field shows it again
+            // (the request waits below). Otherwise the new address is the account's: it stays in the field.
+            void emailForm.submit({ onSuccess: () => (emailChangeWaits ? emailForm.reset() : undefined) });
           }}
         >
           <p>

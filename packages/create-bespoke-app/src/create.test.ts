@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
+import { main, NO_DIRECTORY, PRIVATE_REGISTRATION_FLAG_GONE, USAGE, type Io } from './main.ts';
 import { appManifest, filesUnder, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_TITLE, writeTitle } from './template.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -65,13 +65,11 @@ describe('create-bespoke-app — the call', () => {
     expect(stderr.trim()).toBe(NO_DIRECTORY);
   }, 15_000);
 
-  it('refuses wrong calls with exit 2 — an unknown flag, two directories, two package managers, --private-registration with --minimal', async () => {
+  it('refuses wrong calls with exit 2 — an unknown flag, two directories, two package managers', async () => {
     const cwd = workspace();
     expect((await create(cwd, ['app', '--yse'])).code).toBe(USAGE);
     expect((await create(cwd, ['one', 'two'])).code).toBe(USAGE);
     expect((await create(cwd, ['app', '--npm', '--pnpm'])).err).toContain('choose one package manager');
-    const both = await create(cwd, ['app', '--minimal', '--private-registration']);
-    expect([both.code, both.err.trim()]).toEqual([USAGE, 'create-bespoke-app: --private-registration is an option of the starter kit (make:auth) — leave out --minimal.']);
     expect(existsSync(join(cwd, 'app'))).toBe(false);
     const help = await create(cwd, ['--help']);
     expect([help.code, help.out]).toEqual([0, expect.stringContaining('Usage: create-bespoke-app <dir> [options]')]);
@@ -171,13 +169,16 @@ describe('create-bespoke-app — the app', () => {
 
   it('the starter kit adds the home module, registered — and names the generators when it does not install', async () => {
     const cwd = workspace();
+    // The old --private-registration (E193): said to be the default now, the kit made all the same.
     const run = await create(cwd, ['kit', '--private-registration', '--docker', '--no-install', '--no-git']);
     expect(run.code).toBe(0);
+    expect(run.err.trim()).toBe(PRIVATE_REGISTRATION_FLAG_GONE);
+    expect(PRIVATE_REGISTRATION_FLAG_GONE).toContain('AUTH_PRIVATE_REGISTRATION=false');
     for (const file of ['modules/home/index.ts', 'modules/home/routes.ts', 'modules/home/views/Home.tsx', 'modules/home/home.test.ts']) expect(existsSync(join(cwd, 'kit', file)), file).toBe(true);
     const app = readFileSync(join(cwd, 'kit/bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import home from '#modules/home';\nimport system from '#modules/system';");
     expect(app).toContain('modules: [home, system]');
-    expect(run.out).toContain('pnpm install\n  pnpm exec bespoke make:auth --private-registration\n  pnpm exec bespoke migrate\n  pnpm exec bespoke make:docker');
+    expect(run.out).toContain('pnpm install\n  pnpm exec bespoke make:auth\n  pnpm exec bespoke migrate\n  pnpm exec bespoke make:docker');
     expect(readFileSync(join(cwd, 'kit/README.md'), 'utf8')).toContain('private: one answer for new and known addresses');
   });
 

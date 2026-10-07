@@ -1,4 +1,4 @@
-import { authenticate, confirmedPassword, guest, verified } from '@bespokecore/auth';
+import { authenticate, confirmedPassword, guest } from '@bespokecore/auth';
 import { throttle } from '@bespokecore/cache';
 import { defineRoutes, signed } from '@bespokecore/http';
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
@@ -24,6 +24,7 @@ import { ShowVerifyEmailNoticeController } from './controllers/ShowVerifyEmailNo
 import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
 import { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
 import { VerifyEmailController } from './controllers/VerifyEmailController.ts';
+import { ConfirmedAddress } from './middleware/ConfirmedAddress.ts';
 
 // Loaded into the `web` middleware group: encrypted cookies and the session come with it.
 export default defineRoutes((Route) => {
@@ -35,7 +36,8 @@ export default defineRoutes((Route) => {
   guests.get('/register', ShowRegisterController).name('auth.register');
   // A few sign-ups per minute and address (E100) — live validation of the form does not count (E62).
   guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
-  // Private registration (E146): every sign-up ends here — a new address and a known one alike.
+  // Private registration (E146, the default): every sign-up ends here — a new address and a known one alike (404 with
+  // AUTH_PRIVATE_REGISTRATION=false: a sign-up signs in then).
   guests.get('/register/sent', ShowRegistrationSentController).name('auth.register.sent');
   guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
   guests.middleware(throttle('password-reset')).post('/forgot-password', SendPasswordResetLinkController).name('auth.password.email');
@@ -44,9 +46,11 @@ export default defineRoutes((Route) => {
 
   const signedIn = Route.middleware(authenticate());
   signedIn.post('/logout', LogoutController).name('auth.logout');
-  // Private registration (E146): the app is for confirmed addresses only — whoever signed up with somebody else's address (it
-  // was free then) signs in, but sees nothing but the notice until the link from that inbox is clicked while signed in.
-  const confirmed = signedIn.middleware(verified());
+  // Private registration (E146, the default): the app is for confirmed addresses only — whoever signed up with somebody else's
+  // address (it was free then) signs in, but sees nothing but the notice until the link from that inbox is clicked while signed
+  // in. With AUTH_PRIVATE_REGISTRATION=false (E193) the settings stay open to an unconfirmed address (a typo in a new address can be
+  // fixed); the other modules ask for a confirmed one either way (`verified()`).
+  const confirmed = signedIn.middleware(ConfirmedAddress);
   confirmed.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
   confirmed.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
   // "Sudo mode": the security page asks for the password again unless it was typed within 15 minutes.
@@ -56,7 +60,7 @@ export default defineRoutes((Route) => {
   confirmed.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
   confirmed.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();
   // Private registration (E146): a new address is pending until the link sent to it is clicked — the same answer for every
-  // address; a few requests a minute per user (each one sends a mail somewhere).
+  // address; a few requests a minute per user (each one sends a mail somewhere). With AUTH_PRIVATE_REGISTRATION=false it changes at once.
   confirmed.middleware(confirmedPassword()).middleware(throttle('email-change')).put('/settings/email', UpdateEmailController).name('auth.email.update');
   // API tokens: as good as a session — sudo mode for all of it.
   const sudo = confirmed.middleware(confirmedPassword());
@@ -71,6 +75,7 @@ export default defineRoutes((Route) => {
   signedIn.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
   signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
   signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
-  // The link to a new address (private registration, E146): signed, expiring, for its own user and request only — internal too.
+  // The link to a new address (private registration, E146): signed, expiring, for its own user and request only — internal too
+  // (404 with AUTH_PRIVATE_REGISTRATION=false).
   signedIn.middleware(signed()).get('/email/change/:id/:token', ConfirmEmailChangeController).name('auth.email.confirm').internal();
 });

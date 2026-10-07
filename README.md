@@ -81,8 +81,8 @@ pnpm dev                              # bespoke dev: the server with Vite, a que
 `create-bespoke-app` copies the template, writes `.env` with a fresh `APP_KEY`, installs, and runs the app's own generators:
 `bespoke make:auth` puts a complete auth module into `modules/auth/` — the pages, routes and rules are the app's from then on
 ([@bespokecore/auth](packages/auth/README.md#bespoke-makeauth)) — and `bespoke migrate` creates the tables. `--minimal` makes a
-blank app instead, `--private-registration` a registration that never tells whether an address has an account, `--docker`
-adds the files to run it in containers, `--npm` uses npm; without a terminal nothing is asked
+blank app instead (the starter kit's registration never tells whether an address has an account — `AUTH_PRIVATE_REGISTRATION=false`
+turns that off), `--docker` adds the files to run it in containers, `--npm` uses npm; without a terminal nothing is asked
 ([create-bespoke-app](packages/create-bespoke-app/README.md), and the longer walk-through in
 [docs/getting-started.md](docs/getting-started.md)).
 

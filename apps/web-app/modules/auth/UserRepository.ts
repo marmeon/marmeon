@@ -45,6 +45,14 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
+   * A new address at once, unverified — `'duplicate'` when another account has it. Only with `AUTH_PRIVATE_REGISTRATION=false`
+   * (E193): the default keeps a change pending (`requestEmailChange`) until its link is clicked.
+   */
+  async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
+    return this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
+  }
+
+  /**
    * A change of address, pending (private registration, E146): the new address waits beside the account's own — with the hash of
    * its link's token and when it expires — until the link is clicked. A newer request replaces it (and so its link). Written the
    * same for a free address and a taken one: whether another account has it is never asked here.

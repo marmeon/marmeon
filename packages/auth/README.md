@@ -20,7 +20,7 @@ the commands `make:auth` and `auth:prune-tokens`. It needs [@bespokecore/session
 ## `bespoke make:auth`
 
 ```text
-bespoke make:auth [--adapter=react] [--private-registration] [--force]
+bespoke make:auth [--adapter=react] [--force]
 ```
 
 Copies `stubs/<adapter>/modules/auth` of this package to the app's `modules/auth/` (`react` is the only adapter with templates),
@@ -38,39 +38,40 @@ Content-Security-Policy belong to the app, not to the module — `make:auth` nam
 `bespoke make:lint-config` ([Lint](../cli/README.md#lint)), `pnpm add -D @bespokecore/devtools`
 ([@bespokecore/devtools](../devtools/README.md)) and `contentSecurityPolicy()` of [@bespokecore/http](../http/README.md) among
 the global middleware of `bootstrap/app.ts` (a nonce per page, E147). An app from `create-bespoke-app` has all three (E150) —
-its starter kit is this module, a home page and the blank app ([create-bespoke-app](../create-bespoke-app/README.md)).
+its starter kit is this module, a home page and the blank app ([create-bespoke-app](../create-bespoke-app/README.md)). Its
+registration is [private](#private-registration-e146-e193) unless `AUTH_PRIVATE_REGISTRATION=false`; the old
+`--private-registration` flag is gone (E193) — passed anyway, `make:auth` says so and writes the same module.
 
 What the module holds:
 
 | | |
 |---|---|
-| `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the job, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
-| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user — only the private registration's routes use it) ([@bespokecore/cache](../cache/README.md)) |
+| `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the jobs, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
+| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user) ([@bespokecore/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
-| `routes.ts` | `/login`, `/register`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…` (behind `authenticate()`) |
+| `routes.ts` | `/login`, `/register`, `/register/sent`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…`, `/email/change…` (behind `authenticate()`; the app's pages also behind `ConfirmedAddress`) |
 | `api-routes.ts` | `GET /api/user` behind `authenticate('api')` — Sanctum's `/api/user` |
-| `controllers/` | 22 single-action controllers with their requests (`LoginController`: throttled per e-mail and IP, counted before the check) |
-| `views/`, `layouts/` | `Login`, `Register`, `ForgotPassword`, `ResetPassword`, `ConfirmPassword`, `VerifyEmail`, `Dashboard`, `Security`, `AccessTokens`; `AppLayout`, `SettingsLayout` |
-| `mail/` | `VerifyEmailMail`, `ResetPasswordMail`, `EmailChangedMail` (MJML) and their preview data |
-| `listeners/`, `jobs/` | `SendEmailVerification` (queued), `SendPasswordResetLinkJob` (encrypted payload) |
-| `middleware/ShareAuthProps.ts` | the shared `auth` prop (`{ user: { id, name, verified } \| null }`) and the `toast` flash type |
-| `migrations/` | `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens` (prefixed `0001_01_01_…`: they run first) |
+| `controllers/` | 24 single-action controllers with their requests (`LoginController`: throttled per e-mail and IP, counted before the check) |
+| `views/`, `layouts/` | `Login`, `Register`, `RegistrationSent`, `ForgotPassword`, `ResetPassword`, `ConfirmPassword`, `VerifyEmail`, `Dashboard`, `Security`, `AccessTokens`; `AppLayout`, `SettingsLayout` |
+| `mail/` | `VerifyEmailMail`, `ResetPasswordMail`, `EmailChangedMail`, `AccountExistsMail`, `ConfirmNewEmailMail`, `EmailInUseMail` (MJML) and their preview data |
+| `listeners/`, `jobs/`, `tasks/` | `SendEmailVerification` (queued); `SendPasswordResetLinkJob`, `SendAccountExistsMailJob`, `SendEmailChangeMailJob` (encrypted payloads); `PruneEmailChanges` |
+| `middleware/` | `ShareAuthProps.ts`: the shared `auth` prop (`{ user: { id, name, verified } \| null }`) and the `toast` flash type; `ConfirmedAddress.ts`: `verified()` while the registration is private |
+| `migrations/` | `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, the pending change of address on `users` (prefixed `0001_01_01_…`: they run first) |
 | `factories/`, `seeders/` | `UserFactory` (password `password`, hashed once at the test costs), `UserSeeder` (`test@example.com`) |
-| `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()` |
-| `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
-| `auth.test.ts`, `registration.test.ts` | the module's own tests (SQLite and Postgres) |
+| `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`, and `PruneEmailChanges` at the same hour |
+| `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts`, `email-change.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
+| `auth.test.ts`, `registration.test.ts`, `email-change.test.ts` | the module's own tests (SQLite and Postgres) — registration and change of address with both values of `AUTH_PRIVATE_REGISTRATION` |
 
 The generated forms carry no `_token` field: with JavaScript the client core sends `X-XSRF-TOKEN` when the session has one, and a
 plain form post (no JavaScript) passes by the browser's word — Fetch Metadata, or `Origin` over plain HTTP (E143,
 [CSRF](../session/README.md#csrf-protection)). A guest's pages hand out no token and keep no session. Only a browser that sends
 neither header needs the token — `<Form>` renders `page.csrf` for that when there is a session.
 
-### Private registration (`--private-registration`, E146)
+### Private registration (E146, E193)
 
-By default the registration works like Laravel Breeze's: a taken address is a field error — when the field is checked live (E62)
-and on submit — and a new account is signed in at once; the throttle (`register`, 10/min per IP, E100) is what keeps it from
-being a cheap way to find out who has an account. A new address on the security page takes effect at once (unconfirmed until
-its link is clicked; the old address gets `EmailChangedMail`) — a taken one is a field error there too. `--private-registration` writes a variant over the module that never tells:
+The module's registration and change of address never tell whether an address has an account — the default since E193
+(`AUTH_PRIVATE_REGISTRATION`, on unless set to `false`; only `true` and `false` boot). Every controller reads the switch from
+`AuthConfig.privateRegistration`, never from the input, so both kinds of address take the same path:
 
 - **The same answer, in the same time:** a new and a known address both get a redirect to `/register/sent` ("check your inbox")
   — no session, no cookie, byte for byte alike. The password is hashed either way (the hash is what takes the time), and either
@@ -79,9 +80,10 @@ its link is clicked; the old address gets `EmailChangedMail`) — a taken one is
   what was typed into the form is thrown away.
 - **No live check of the address:** the schema asks no database — live validation checks the e-mail's form only.
 - **A confirmed address first:** nobody is signed in by registering; the new account signs in like any other and sees only the
-  verification notice until it clicks the link from its inbox while signed in — `verified()` on every route of the module except
-  `/logout`, the verification notice, link and resend and the change-of-address link (`/dashboard`, `/confirm-password`, the settings and the tokens). Whoever
-  signed up first with somebody else's address cannot confirm it — and the owner takes it over with a password reset.
+  verification notice until it clicks the link from its inbox while signed in — `ConfirmedAddress` (`verified()` while the
+  registration is private) on every route of the module except `/logout`, the verification notice, link and resend and the
+  change-of-address link (`/dashboard`, `/confirm-password`, the settings and the tokens). Whoever signed up first with
+  somebody else's address cannot confirm it — and the owner takes it over with a password reset.
 - **A pending change of address:** a new address on the security page (sudo mode, `throttle('email-change')`: six a minute per
   user) is kept aside — `users.pending_email`, the SHA-256 hash of its link's token (`pending_email_token`, a secret column) and
   `pending_email_expires_at` (60 minutes) — and the account keeps its address. The answer is the same for a free and a taken
@@ -94,17 +96,17 @@ its link is clicked; the old address gets `EmailChangedMail`) — a taken one is
   the unique index decides, `tryUpdate`). `pending_email` signs nobody in and gets no reset link; typing the account's own address
   again drops a pending change; `PruneEmailChanges` clears expired ones nightly (the schedule).
 
-It writes `controllers/RegisterController.ts`, `controllers/ShowRegistrationSentController.ts`, `views/Register.tsx`,
-`views/RegistrationSent.tsx`, `jobs/SendAccountExistsMailJob.ts`, `mail/AccountExistsMail.ts`, `routes.ts`, `index.ts` and
-`registration.test.ts` over the default module (`stubs/<adapter>/private-registration/`) — and for the change of address
-`migrations/0001_01_01_000004_add_pending_email_to_users_table.ts`, `email-change.ts`, `UserRepository.ts`,
-`controllers/UpdateEmailController.ts`, `controllers/ConfirmEmailChangeController.ts`, `controllers/ShowSecurityController.ts`,
-`views/Security.tsx`, `jobs/SendEmailChangeMailJob.ts`, `mail/ConfirmNewEmailMail.ts`, `mail/EmailInUseMail.ts`,
-`mail/preview-data.ts`, `tasks/PruneEmailChanges.ts`, `schedule.ts` and `email-change.test.ts`; the texts are in the default
-`lang/en.ts`, the `email-change` limiter in the default `AuthServiceProvider.ts`.
-
 The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
-queue worker run. The web app runs it — `verified()` on every page of its modules; an unconfirmed account sees the notice.
+queue worker run.
+
+**Turning it off — `AUTH_PRIVATE_REGISTRATION=false`** makes the module Laravel Breeze's: a taken address is a field error — when
+the field is checked live (E62) and on submit — and a new account is signed in at once (the verification mail goes out as
+before, but the app's pages no longer wait for it: `ConfirmedAddress` lets everyone signed in through — use `verified()` in its
+place to keep that); a new address on the security page takes effect at once (unconfirmed until its link is clicked; the old
+address gets `EmailChangedMail`), and a taken one is a field error there too. `/register/sent` and `/email/change/…` answer 404;
+the `pending_email` columns stay (unused). The throttle (`register`, 10/min per IP, E100) is then all that keeps the form from
+being a cheap way to find out who has an account — so outside development and tests the boot warns once
+(`PRIVATE_REGISTRATION_OFF_WARNING`). Turn it off only when the accounts of your app are public anyway.
 
 From then on the app owns all of it: change the pages, the routes, the user table, the rules. What stays in the package — and
 what updates bring — is the mechanics below. `apps/web-app/modules/auth/` is such a module, grown further (private registration,

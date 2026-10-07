@@ -91,6 +91,8 @@ export default {
     email: 'E-Mail',
     unconfirmed: '(noch nicht bestätigt)',
     change_email: 'E-Mail ändern',
+    // Mit AUTH_PRIVATE_REGISTRATION=false (E193): die neue Adresse gilt sofort.
+    email_changed: 'E-Mail-Adresse geändert. Bitte bestätige die neue — wir haben dir einen Link geschickt.',
     // Private Registrierung (E146): eine neue Adresse wartet, bis der Link an sie angeklickt ist.
     email_change_sent: 'Wir haben dir einen Link an die neue Adresse geschickt. Deine Adresse ändert sich, sobald du ihn dort anklickst — innerhalb von 60 Minuten, angemeldet.',
     email_pending: 'Wartet auf Bestätigung: {email}. Bis der Link dorthin angeklickt ist, bleibt deine Adresse {current}.',

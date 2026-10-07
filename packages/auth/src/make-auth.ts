@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import type { CommandInput } from '@bespokecore/cli';
 
 /**
- * The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth` — and `stubs/<adapter>/private-registration/modules/auth`,
- * the files `--private-registration` writes over them (E146).
+ * The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth`. One set: its registration and change of address are
+ * private by default and say "taken" with `AUTH_PRIVATE_REGISTRATION=false` (E146, E193) — decided at run time, not here.
  */
 export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
@@ -37,6 +37,11 @@ export const NEEDED = [
 /** What only the module's tests import — reported as dev dependencies. */
 export const NEEDED_FOR_TESTS = ['@bespokecore/testing', 'vitest'];
 
+/** What `make:auth --private-registration` says since the flag is gone (E193) — the module is made all the same. */
+export const PRIVATE_REGISTRATION_FLAG_GONE =
+  '--private-registration is gone: private registration is the default now — the module never tells whether an address has an ' +
+  'account. Set AUTH_PRIVATE_REGISTRATION=false in .env to turn it off.';
+
 /**
  * `bespoke make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
  * remember-me, password reset, e-mail verification, password confirmation, API tokens, with views,
@@ -46,7 +51,8 @@ export const NEEDED_FOR_TESTS = ['@bespokecore/testing', 'vitest'];
 export class MakeAuthCommand {
   static command = 'make:auth';
   static description = 'Create the auth module (sign-in, registration, reset, verification, API tokens) — yours to change';
-  static usage = '[--adapter=react] [--private-registration] [--force]';
+  static usage = '[--adapter=react] [--force]';
+  // `private-registration` only to name what replaced it (E193): the module is private by default, the switch lives in the env.
   static options = { force: { type: 'boolean' }, adapter: { type: 'string' }, 'private-registration': { type: 'boolean' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
@@ -66,12 +72,11 @@ export class MakeAuthCommand {
       return 1;
     }
 
+    if (input.options['private-registration'] !== undefined) input.output.warn(PRIVATE_REGISTRATION_FLAG_GONE);
+
     cpSync(source, target, { recursive: true, force: true });
-    // Private registration (E146): the same answer for new and known addresses, a note to the owner, a confirmed address first.
-    const isPrivate = input.options['private-registration'] === true;
-    if (isPrivate) cpSync(join(STUBS, adapter, 'private-registration', 'modules', 'auth'), target, { recursive: true, force: true });
     const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));
-    input.output.success(`Created modules/auth (${files.length} files${isPrivate ? ', private registration' : ''})`);
+    input.output.success(`Created modules/auth (${files.length} files)`);
 
     const registered = register(join(input.root, 'bootstrap', 'app.ts'));
     if (registered === 'added') input.output.success('Registered the module in bootstrap/app.ts');
@@ -97,6 +102,7 @@ export class MakeAuthCommand {
     input.output.line('Then: bespoke migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one; in production: bespoke queue:work --queue=mail,default).');
     input.output.line('Expired tokens are pruned at night by the scheduler (bespoke dev starts it; in production: bespoke schedule:work or schedule:run from cron).');
+    input.output.line('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
     // The lint preset and the devtools belong to the app, not to the module (W7.6) — named when the app has neither yet.
     if (!existsSync(join(input.root, '.oxlintrc.json'))) {

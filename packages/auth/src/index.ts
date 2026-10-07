@@ -1,9 +1,9 @@
-import { defineConfig, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
 import { MiddlewarePriority, Router } from '@bespokecore/router';
 import * as v from 'valibot';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
-import { AuthConfig } from './config.ts';
+import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
@@ -17,7 +17,7 @@ import { UserProvider } from './user.ts';
 // Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
 export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
 export type { LoginOptions } from './auth.ts';
-export { AuthConfig } from './config.ts';
+export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';
 export type { LoginVia } from './events.ts';
@@ -108,6 +108,9 @@ export class AuthServiceProvider implements ServiceProvider {
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     warnAboutCookieSessions(app.container);
+    // Private registration turned off where it counts (E193): said once, at boot — like the log mailer and the cookie driver.
+    const config = app.container.make(AuthConfig);
+    if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
     const cli = await import('@bespokecore/cli').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand]);
   }

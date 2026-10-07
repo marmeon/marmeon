@@ -8,8 +8,9 @@ type Props = PageProps<ShowRegisterController>;
 export default function Register({ old }: Props) {
   const route = useRoute();
   const t = useTranslation('auth');
-  // Live validation (E62): name and e-mail are checked against the server's schema when you leave them — a taken address
-  // shows before you send. Password fields never are (never sent for a check): their rules are checked on submit.
+  // Live validation (E62): name and e-mail are checked against the server's schema when you leave them — the e-mail's form
+  // only: whether an address has an account is never told (private registration, E146; with AUTH_PRIVATE_REGISTRATION=false a
+  // taken address shows before you send). Password fields never are (never sent for a check): their rules are checked on submit.
   const form = useForm(
     'auth.register.store',
     {},
@@ -46,6 +47,7 @@ export default function Register({ old }: Props) {
     <main>
       <Head title={t('register.title')} />
       <h1>{t('register.title')}</h1>
+      <p>{t('register.confirm_hint')}</p>
       <form
         method="post"
         action={route('auth.register.store')}

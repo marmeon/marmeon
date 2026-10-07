@@ -170,7 +170,7 @@ file without `--force`:
 | [@bespokecore/session](../session/README.md) | `session:prune`, `make:session-table` |
 | [@bespokecore/storage](../storage/README.md) | `uploads:prune`, `make:uploads-table` |
 | [@bespokecore/notifications](../notifications/README.md) | `notifications:prune`, `make:notifications-table` |
-| [@bespokecore/auth](../auth/README.md) | `make:auth [--adapter=react] [--private-registration] [--force]` ([private registration](../auth/README.md#private-registration---private-registration-e146), E146), `auth:prune-tokens` |
+| [@bespokecore/auth](../auth/README.md) | `make:auth [--adapter=react] [--force]` ([private registration](../auth/README.md#private-registration-e146-e193) by default, E146/E193), `auth:prune-tokens` |
 | [@bespokecore/devtools](../devtools/README.md) | `devtools:clear`, `devtools:prune` |
 
 ### Writing a command

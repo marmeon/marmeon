@@ -20,8 +20,10 @@ On a terminal it asks four things — the starter kit (yes), Docker files (no), 
 - a strict Content-Security-Policy with a nonce per response, security headers, no session for guests;
 - a git repository with one commit.
 
-`--minimal` makes a blank app (only the `system` module), `--private-registration` a registration that never tells whether an
-address has an account, `--docker` the files of [deployment](deployment.md), `--npm` an npm app. Without a terminal — in CI, in a
+`--minimal` makes a blank app (only the `system` module), `--docker` the files of [deployment](deployment.md), `--npm` an npm app.
+The starter kit's registration never tells whether an address has an account (a note goes to the owner instead, and the app opens
+for a confirmed address only); `AUTH_PRIVATE_REGISTRATION=false` in `.env` makes it say "taken" and sign a new account in at once,
+like Laravel's starter kits — and gives away who has an account ([private registration](../packages/auth/README.md#private-registration-e146-e193)). Without a terminal — in CI, in a
 script — nothing is asked and a missing directory is exit code 2. All options:
 [create-bespoke-app](../packages/create-bespoke-app/README.md) — also what to do in the first day after a release, when pnpm's
 `minimumReleaseAge` still holds the new versions back.

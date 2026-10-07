@@ -75,11 +75,13 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   and a signed-in user's password checks — confirmation, password change, "sign out other devices" (per user)
   ([rate limits](../packages/cache/README.md#rate-limits)). The password change and "sign out other devices" run one at a time
   per session (`block()`).
-- Registration tells by default whether an address is taken (like Laravel's starter kits). `make:auth --private-registration`
-  answers every registration the same way, in the same time, and mails the owner instead; the app's routes then ask for a
-  confirmed address (`verified()`), and a change of address stays pending until the link sent to the new address is clicked —
-  the same answer for a free and a taken address, a note to the owner of a taken one
-  ([private registration](../packages/auth/README.md#private-registration---private-registration-e146)).
+- **Registration never tells whether an address has an account** (the default since E193): the module of `make:auth` answers
+  every registration the same way, in the same time, and mails the owner instead; the app's routes ask for a confirmed address,
+  and a change of address stays pending until the link sent to the new address is clicked — the same answer for a free and a
+  taken address, a note to the owner of a taken one. `AUTH_PRIVATE_REGISTRATION=false` turns it off (registration and the
+  change of address say "taken", like Laravel's starter kits, a new account is signed in at once) — then only the throttle stands
+  between the form and a list of addresses, and the boot warns outside development and tests
+  ([private registration](../packages/auth/README.md#private-registration-e146-e193)).
 - **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS
   (`MAIL_REQUIRE_TLS`, default `true`, E192) — a server without it, or someone who strips the offer, never sees the credentials or a
   reset link ([mail](../packages/mail/README.md)).
