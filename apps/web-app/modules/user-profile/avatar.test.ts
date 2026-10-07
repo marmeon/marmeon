@@ -220,6 +220,29 @@ describe('the avatar (W6.9: uploaded ahead, a token in the form, checked by its 
     await send(as, ada, fresh).assertRedirect(); // an hour old: kept by the prune, and it still works
   });
 
+  it('uploads:prune --hours below UPLOADS_LIFETIME refuses without --force — a token that still works keeps its file (W10 step 8)', async () => {
+    const { ada, as } = await setUp();
+    app.freeze();
+    const token = await as.upload(ROUTE, 'avatar', png('open-form.png'), { user: ada.id });
+    app.travel({ minutes: 30 }); // the form is still open: the token works for 120 minutes (UPLOADS_LIFETIME)
+    const errors: string[] = [];
+    const run = (options: Record<string, unknown>) => app.make(PruneUploadsCommand).handle({ options, args: [], output: { success: () => {}, error: (line: string) => errors.push(line) } } as never);
+    expect(await run({ hours: '0' })).toBe(1);
+    expect(errors[0], errors[0]).toBe(
+      '--hours=0 would delete uploads whose token still works: a token works for 120 minutes (UPLOADS_LIFETIME), so --hours must be at least 2 — or pass --force to delete them anyway (a form still open loses its files).',
+    );
+    expect(await run({ hours: '1.5' })).toBe(1);
+    expect((await uploadRows()).map((row) => row.id)).toEqual([token.slice(3, 39)]);
+    app.storage.disk('uploads').assertCount(1);
+    await send(as, ada, token).assertRedirect(); // still works
+    // At the lifetime it is allowed — and --force takes the user's word.
+    const second = await as.upload(ROUTE, 'avatar', png('second.png'), { user: ada.id });
+    expect(await run({ hours: '2' })).toBe(0);
+    expect(await run({ hours: '0', force: true })).toBe(0);
+    expect(await uploadRows()).toEqual([]);
+    (await send(as, ada, second).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
+  });
+
   it('the system schedule runs uploads:prune hourly, the user-profile schedule clears old data exports', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     expect(app.schedule.due('2026-10-03T12:00:00Z')).toEqual(expect.arrayContaining(['uploads:prune', 'user-profile.prune-data-exports']));

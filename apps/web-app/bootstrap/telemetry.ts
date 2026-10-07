@@ -36,7 +36,8 @@ if (process.env.OTEL_SDK_DISABLED?.toLowerCase() !== 'true') {
     .merge(detectResources({ detectors: [envDetector] }));
   // OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318), OTEL_EXPORTER_OTLP_HEADERS, …
   const provider = new TracerProvider({ resource, spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })] });
-  // Spans nest through the async context; a caller's `traceparent` header continues its trace.
+  // Spans nest through the async context; a caller's `traceparent` header is a link of the request's span — its parent only with
+  // OTEL_TRUST_TRACEPARENT=true (behind an edge that sets the header, packages/otel/README.md).
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
   propagation.setGlobalPropagator(new W3CTraceContextPropagator());
   trace.setGlobalTracerProvider(provider);

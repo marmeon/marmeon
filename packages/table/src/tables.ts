@@ -98,6 +98,8 @@ export class Tables {
         perPage: state.perPage,
         direction: sort.direction,
         encrypter: this.#encrypter(),
+        // The table's own cursors only: another table's with the same order does not decrypt here.
+        name: `table:${definition.name}`,
       });
       rows = result.data;
       page = { type: 'cursor', perPage: state.perPage, perPageOptions: definition.perPage, nextCursor: result.meta.nextCursor };

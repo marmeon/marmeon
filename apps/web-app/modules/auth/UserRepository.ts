@@ -114,6 +114,38 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return Number(result.numUpdatedRows);
   }
 
+  /**
+   * Up to `limit` accounts (oldest first) whose address was never confirmed and that nothing changed since `since` — what
+   * `auth:prune-unverified` deletes (E203). The last change counts (`updated_at`): an address changed unconfirmed (with
+   * `AUTH_PRIVATE_REGISTRATION=false`) gets its days from the change, not from the sign-up.
+   */
+  async unconfirmedSince(since: Date, limit: number): Promise<number[]> {
+    const at = since.toISOString();
+    const rows = await this.query()
+      .select('id')
+      .where('email_verified_at', 'is', null)
+      .where('created_at', '<=', at)
+      .where(sql<string>`coalesce(updated_at, created_at)`, '<=', at)
+      .orderBy('id')
+      .limit(limit)
+      .execute();
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Deletes the accounts `ids` — through `AccountDeletion`, which clears what belongs to them. With `unconfirmedSince`, only
+   * those still unconfirmed and unchanged since then — decided by this statement, so one confirmed meanwhile stays. Their
+   * remember-me and API tokens go with them (the foreign keys cascade). The deleted accounts come back.
+   */
+  async deleteAccounts(ids: readonly number[], only?: { unconfirmedSince: Date }): Promise<User[]> {
+    let query = this.db.deleteFrom('users').where('id', 'in', [...ids]);
+    if (only) {
+      const at = only.unconfirmedSince.toISOString();
+      query = query.where('email_verified_at', 'is', null).where('created_at', '<=', at).where(sql<string>`coalesce(updated_at, created_at)`, '<=', at);
+    }
+    return (await query.returningAll().execute()) as User[];
+  }
+
   async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
     await this.update(id, { password: hash });
   }

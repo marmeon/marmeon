@@ -242,8 +242,9 @@ In a transaction the 422 rolls it back.
     `Encrypter` (`@marmeon/encryption`) and pass it. A client can neither read a hidden sort column's value from the URL nor
     make up a cursor. Each order has its own encryption context (the columns and the direction): one that does not decrypt —
     changed, made up, of another order, of a key that is gone, or the base64url format before Wave 9 — answers **400**
-    (`InvalidCursorError`), never the first page again. (A cursor of another list with the same columns and direction does
-    decrypt; it is only a position in this list.)
+    (`InvalidCursorError`), never the first page again. `name` binds the cursors to one list (`name: 'articles'` — a table passes
+    its name, an inbox its recipient): a cursor of another list with the same columns and direction does not decrypt either.
+    Without a name it does — it is only a position in this list.
 
 ```ts
 constructor(db: Database<'blog'>, encrypter: Encrypter) { … }

@@ -1,0 +1,55 @@
+import { AuthConfig } from '@marmeon/auth';
+import { Clock, Logger } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
+import { AccountDeletion } from '../AccountDeletion.ts';
+import { UserRepository } from '../UserRepository.ts';
+
+const DAY = 86_400_000;
+
+/**
+ * `marmeon auth:prune-unverified` (E203): deletes the accounts whose address was never confirmed within `AUTH_UNVERIFIED_DAYS`
+ * (default 7; `0` keeps them) — counted from the last change of the account, so an address changed a day ago gets its days too.
+ * Whoever signed up with somebody else's address stops holding it, and the data of sign-ups nobody finished goes (pre-hijacked
+ * accounts, data minimization). Through `AccountDeletion`, in batches; the number goes to the log. Scheduled nightly
+ * (schedule.ts). Irreversible: with `AUTH_PRIVATE_REGISTRATION=false` such accounts were signed in and may have used the app.
+ */
+export class PruneUnverifiedCommand {
+  static command = 'auth:prune-unverified';
+  static description = 'Delete accounts whose address was not confirmed within AUTH_UNVERIFIED_DAYS';
+  /** How many accounts one transaction deletes. */
+  static batch = 100;
+
+  readonly #users: UserRepository;
+  readonly #accounts: AccountDeletion;
+  readonly #config: AuthConfig;
+  readonly #clock: Clock;
+  readonly #logger: Logger;
+
+  constructor(users: UserRepository, accounts: AccountDeletion, config: AuthConfig, clock: Clock, logger: Logger) {
+    this.#users = users;
+    this.#accounts = accounts;
+    this.#config = config;
+    this.#clock = clock;
+    this.#logger = logger;
+  }
+
+  async handle({ output }: CommandInput): Promise<number> {
+    const days = this.#config.unverifiedDays;
+    if (days === 0) {
+      output.success('AUTH_UNVERIFIED_DAYS=0: accounts without a confirmed address are kept.');
+      return 0;
+    }
+    const since = new Date(this.#clock.now() - days * DAY);
+    let pruned = 0;
+    for (;;) {
+      const ids = await this.#users.unconfirmedSince(since, PruneUnverifiedCommand.batch);
+      const deleted = ids.length === 0 ? 0 : (await this.#accounts.delete(ids, { unconfirmedSince: since })).length;
+      pruned += deleted;
+      // A short batch was the last; one that deleted nothing (all confirmed meanwhile) would only find the same ones again.
+      if (ids.length < PruneUnverifiedCommand.batch || deleted === 0) break;
+    }
+    if (pruned > 0) this.#logger.info('Deleted accounts whose address was never confirmed', { pruned, days });
+    output.success(`Deleted ${pruned} ${pruned === 1 ? 'account' : 'accounts'} whose address was not confirmed within ${days} ${days === 1 ? 'day' : 'days'}.`);
+    return 0;
+  }
+}

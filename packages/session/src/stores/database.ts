@@ -81,6 +81,13 @@ export class DatabaseSessionStore implements SessionStore {
     await sql`delete from sessions where id = ${key}`.execute(db);
   }
 
+  /** Every session of the user `userId` — a deleted account's (E203). */
+  async destroyUser(userId: string): Promise<number> {
+    const { db, sql } = await this.#use();
+    const result = await sql`delete from sessions where user_id = ${userId}`.execute(db);
+    return Number(result.numAffectedRows ?? 0n);
+  }
+
   async gc(lifetimeSeconds: number): Promise<number> {
     const { db, sql } = await this.#use();
     const result = await sql`delete from sessions where last_activity <= ${this.#clock.now() - lifetimeSeconds * 1000}`.execute(db);

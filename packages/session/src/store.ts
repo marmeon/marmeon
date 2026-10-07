@@ -50,6 +50,12 @@ export interface SessionStore {
   destroy(key: string): Promise<void>;
   /** Removes expired sessions; returns how many (0 for stores that expire on their own: Redis, cookies). */
   gc(lifetimeSeconds: number): Promise<number>;
+  /**
+   * Removes every session of the user `userId` (its id as text) — how many. Only a store that knows whose a session is has it
+   * (`database`: the `user_id` column). Without it a deleted user's sessions end at their next request anyway — the guard of
+   * `@marmeon/auth` finds no user and invalidates them — and expire with their lifetime.
+   */
+  destroyUser?(userId: string): Promise<number>;
 }
 export const SessionStore = token<SessionStore>('SessionStore');
 

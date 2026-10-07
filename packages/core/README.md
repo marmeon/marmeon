@@ -608,7 +608,8 @@ spans. It is on by default, also locally:
 - **statements** that touch a table with secret columns (`DbQueryMessage.secret`) show none of their parameters;
 - **encrypted payloads** (a job with `static encrypted`, a queued mail or listener) only as `[encrypted]` (`payload(value, encrypted)`);
 - **paths and URLs** by their route: the values of sensitive route parameters (`/reset/:token`) replaced (`path(path, pattern)`,
-  `url(url, pattern)`);
+  `url(url, pattern)`); a `URL` object in a value goes through `url()`, `URLSearchParams` through the text rules — on the log
+  path (`redact()`) both are masked as text;
 - **files and bytes** only by their size; every string is cut at 64 KB, a recorded entry as a whole too (`fit(value)`).
 
 ```ts

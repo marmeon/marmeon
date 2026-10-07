@@ -78,16 +78,18 @@ For long lists and feeds: keyset pagination — no count, no offset, nobody show
 constructor(db: Database<'blog'>, encrypter: Encrypter) { … }      // Encrypter from @marmeon/encryption
 
 const page = await cursorPaginate(this.#db.selectFrom('articles').select(['id', 'title', 'published_at']), {
-  column: 'published_at', direction: 'desc', cursor: ctx.query.cursor, perPage: 20, encrypter: this.#encrypter,
+  column: 'published_at', direction: 'desc', cursor: ctx.query.cursor, perPage: 20, encrypter: this.#encrypter, name: 'articles',
 });   // ordered by (published_at desc nulls last, id desc); page.meta.nextCursor — null on the last page
 ```
 
 - **The key breaks ties** by itself (`{ column: 'name' }` orders by `(name, id)`), NULLs come last in both directions and a NULL is a
   cursor like any other — the next page goes on among them instead of starting over.
 - **Cursors are encrypted** with the app key, with their own context per order (columns, direction): a client can neither read a
-  hidden sort column's value from the URL nor make one up (one of another list with the same order decrypts — as a position among
-  that list's own rows, its filters apply). One that does not decrypt — changed, made up, another order's, a key
-  rotated away, the unencrypted format before Wave 9 — is a **400** (`InvalidCursorError`), never the first page again.
+  hidden sort column's value from the URL nor make one up. Name the list (`name: 'articles'`) and a cursor of another list with
+  the same order does not decrypt either — a table does it with its name, an inbox with its recipient; without a name one of
+  another list with the same order decrypts, as a position among that list's own rows (its filters apply). One that does not
+  decrypt — changed, made up, another order's or another named list's, a key rotated away, the unencrypted format before Wave 9 —
+  is a **400** (`InvalidCursorError`), never the first page again.
 
 "Load more" appends the next page to what the page has. Mark the prop `merge()` on the server — a paginator's `data` is appended,
 its `meta` replaced, items matched on their key — and ask for the next page with the cursor in the query:

@@ -4,6 +4,7 @@ import { EncryptedSessionCodec, plainSessionCodec, type SessionCodec } from '../
 import type { SessionConfig } from '../config.ts';
 import { Session } from '../session.ts';
 import { createSessionId, SESSION_USER_KEY, sessionKey, type SessionPayload, type SessionStore, type SessionWrite } from '../store.ts';
+import { UserSessions } from '../user-sessions.ts';
 import { LIFETIME, storeKinds, storeUnderTest, type StoreUnderTest } from '../__fixtures__/stores.ts';
 
 const config = { lifetime: LIFETIME / 60 } as SessionConfig;
@@ -81,6 +82,27 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     expect(await store.read(k)).toEqual({ data: '{"note":"y"}', version: 4 });
     await store.destroy(k);
     expect(await store.read(k)).toBeUndefined();
+  });
+
+  it("ends a user's sessions as a whole where it knows whose they are (database) — a deleted account's (E203); others keep them", async () => {
+    const { store } = await open();
+    const ada = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, 7));
+    const adaPhone = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, 7));
+    const alan = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, 8));
+    const guest = await request(store, undefined, (session) => session.put('visits' as never, 1 as never));
+    const sessions = new UserSessions(() => store);
+    if (kind === 'sqlite' || kind === 'pgsql') {
+      expect(await sessions.end(7)).toBe(2);
+      expect(await payload(store, ada.id)).toBeUndefined();
+      expect(await payload(store, adaPhone.id)).toBeUndefined();
+    } else {
+      expect(store.destroyUser).toBeUndefined();
+      expect(await sessions.end(7)).toBe(0);
+      expect(await payload(store, ada.id)).toBeDefined();
+    }
+    expect(await payload(store, alan.id)).toMatchObject({ [SESSION_USER_KEY]: 8 });
+    expect(await payload(store, guest.id)).toBeDefined();
+    expect(await new UserSessions(undefined).end(8)).toBe(0); // the cookie driver: nothing on the server
   });
 
   it('compares and sets: a write over an older version is a conflict and writes nothing — a new key never replaces a session', async () => {

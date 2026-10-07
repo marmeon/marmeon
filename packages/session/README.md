@@ -98,7 +98,10 @@ host, port, no path (`https://admin.example.com`); a value with a path stops the
 
 **Guests need no session to post** (E143): the login form of a visitor passes by the browser's word — the page hands out no
 token, and no session is started just for one ([below](#new-sessions-are-only-kept-when-used)). `page.csrf` and the
-`XSRF-TOKEN` cookie come with a session only; a signed-in user's forms still carry the token.
+`XSRF-TOKEN` cookie come with a session only; a signed-in user's forms still carry the token. **The token itself is made on
+demand** (E203): a new session draws none at start — the first `session.token()`, a page of a session that is kept (`page.csrf`)
+or the `XSRF-TOKEN` cookie of a kept session makes it, once; a session that never hands one out never has one, and a post that
+needs it is refused (419) all the same. Signing in and out (`regenerate()`, `invalidate()`) renews it at once.
 
 - **Plain HTTP:** browsers send Fetch Metadata only to secure origins (HTTPS, `localhost`, `127.0.0.1`). A staging host over
   plain HTTP falls back to stage 2 — every current browser sends `Origin` with a form post and with `fetch` — then to the token.
@@ -231,6 +234,7 @@ interface SessionStore {
   write(key: string, data: string, options: { expectedVersion: number | undefined; lifetimeSeconds: number; userId?: string | null }): Promise<'written' | 'conflict' | 'gone'>;
   destroy(key: string): Promise<void>;
   gc(lifetimeSeconds: number): Promise<number>;
+  destroyUser?(userId: string): Promise<number>;   // optional: every session of a user (the database store, by user_id)
 }
 ```
 
@@ -266,6 +270,13 @@ the sign-out, with the session as it was when it started: still signed in.
 - **`cookie` driver:** cannot be protected. The whole session travels in the cookie, so the slower response brings
   the signed-in cookie back and the sign-out is undone. With `@marmeon/auth` registered, the app logs a warning
   at boot (E46). **Use `file`, `database` or `redis` for apps with login.**
+
+### A user's sessions
+
+`UserSessions` (a singleton — inject it in a command or a task too) ends every session of a user at once:
+`await sessions.end(user.id)` — what deleting an account does (E203, the `auth:prune-unverified` of `make:auth`). The `database`
+store removes them by their `user_id` (`destroyUser`); the others cannot tell whose a session is and keep them until they expire —
+harmless for a deleted account: `@marmeon/auth` finds no user at their next request and ends them then.
 
 ### When a session ends
 

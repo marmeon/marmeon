@@ -92,7 +92,7 @@ export class CsrfProtection {
  * from `X-Forwarded-*` of a trusted proxy, `TRUSTED_PROXIES`) and `APP_URL`'s.
  *
  * Every response of the `web` group whose session is kept (`session.persists`) refreshes the readable `XSRF-TOKEN` cookie — a
- * guest without a session gets none.
+ * guest without a session gets none, and their session draws no token at all (E203: made on demand).
  */
 export class VerifyCsrfToken {
   readonly #session: Session;
@@ -120,7 +120,8 @@ export class VerifyCsrfToken {
     // session that is not kept (a guest's, nothing in it) has no token worth sending: it would not be valid next time.
     if (this.#session.readOnly || !this.#session.persists) return response;
     const { lifetime, secure, sameSite } = this.#sessionConfig; // lives as long as the session, like Laravel's
-    ctx.cookies.set(XSRF_COOKIE, this.#session.currentToken(), { httpOnly: false, maxAge: lifetime * 60, secure, sameSite });
+    // The token is made here if nothing needed it before (E203): a kept session always gets its cookie.
+    ctx.cookies.set(XSRF_COOKIE, this.#session.token(), { httpOnly: false, maxAge: lifetime * 60, secure, sameSite });
     return response;
   }
 
@@ -144,8 +145,10 @@ export class VerifyCsrfToken {
   async #tokenMatches(ctx: HttpContext): Promise<boolean> {
     const header = ctx.request.headers.get('x-csrf-token') ?? ctx.request.headers.get('x-xsrf-token');
     const field = header ?? (await ctx.input())._token;
-    // Compared, not handed out: a refused request does not make a new session worth keeping.
-    return typeof field === 'string' && constantTimeEquals(field, this.#session.currentToken());
+    // Compared, not handed out (and never made here, E203): a refused request does not make a new session worth keeping, and
+    // a session without a token matches nothing.
+    const token = this.#session.currentToken();
+    return typeof field === 'string' && token !== undefined && constantTimeEquals(field, token);
   }
 }
 

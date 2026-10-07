@@ -1,4 +1,6 @@
-import { defineModule } from '@marmeon/core';
+import { defineModule, listen } from '@marmeon/core';
+import { AccountDeleted } from '#modules/auth';
+import { ClearInbox } from './listeners/ClearInbox.ts';
 import routes from './routes.ts';
 
 /**
@@ -9,4 +11,6 @@ import routes from './routes.ts';
 export default defineModule({
   name: 'notifications',
   routes,
+  // A deleted account's notifications go with it (E203).
+  listeners: [listen(AccountDeleted, ClearInbox)],
 });

@@ -112,15 +112,20 @@ export const MembersTable = defineTable({
 });
 
 /** The same members, paged by an encrypted cursor ("load more"). */
-export const FeedTable = defineTable({
-  name: 'feed',
-  prefix: 'feed',
-  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
-  key: 'members.id',
-  columns: { name: column('members.name').sortable(), seen: column('members.last_seen_at').sortable() },
-  defaultSort: '-seen',
-  pagination: { perPage: 2, cursor: true },
-});
+const feed = (name: string) =>
+  defineTable({
+    name,
+    prefix: 'feed',
+    query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+    key: 'members.id',
+    columns: { name: column('members.name').sortable(), seen: column('members.last_seen_at').sortable() },
+    defaultSort: '-seen',
+    pagination: { perPage: 2, cursor: true },
+  });
+export const FeedTable = feed('feed');
+
+/** Another list with the same order and the same keys (W10 step 8): a cursor of the feed is no cursor of this one. */
+export const FeedCopyTable = feed('feed-copy');
 
 /** A base query that selects a column itself (it should not): the props still carry only the visible columns. */
 export const LeakyTable = defineTable({
@@ -187,6 +192,20 @@ export class FeedPage extends Controller {
   }
 }
 
+export class FeedCopyPage extends Controller {
+  static request = FeedRequest;
+  readonly #tables: Tables;
+
+  constructor(tables: Tables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof FeedRequest> & Authenticated & { team: number }) {
+    return this.json({ feed: await this.#tables.resolve(FeedCopyTable, ctx) });
+  }
+}
+
 export class LeakyPage extends Controller {
   static request = LeakyRequest;
   readonly #tables: Tables;
@@ -236,6 +255,7 @@ const routes = defineRoutes((Route) => {
   team.get('/members', MembersPage);
   tableRoutes(team, MembersTable);
   team.get('/feed', FeedPage);
+  team.get('/feed-copy', FeedCopyPage);
   team.get('/leaky', LeakyPage);
   team.get('/no-schema', NoSchemaPage);
   team.get('/export-in-transaction', ExportInTransaction);

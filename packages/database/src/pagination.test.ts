@@ -151,6 +151,21 @@ describe.each(drivers)('pagination on %s', (driver) => {
     expect((await cursorPaginate(byEmail, { column: 'email', perPage: 1, cursor, encrypter })).data).toHaveLength(1);
   });
 
+  it('a named list takes only its own cursors — another list with the same order is a 400 (W10 step 8)', async () => {
+    const byEmail = db.selectFrom('users').select(['id', 'email']).where('email', 'like', 'u%@example.com');
+    const page = (list: string | undefined, cursor?: string) =>
+      cursorPaginate(byEmail, { column: 'email', perPage: 1, encrypter, ...(list === undefined ? {} : { name: list }), ...(cursor ? { cursor } : {}) });
+    const members = (await page('table:members')).meta.nextCursor!;
+    const staff = (await page('table:staff')).meta.nextCursor!;
+    // Its own goes on; another list's — the same columns, the same direction — does not decrypt.
+    expect((await page('table:members', members)).data).toHaveLength(1);
+    await expect(page('table:members', staff)).rejects.toBeInstanceOf(InvalidCursorError);
+    // Neither does an unnamed list's, nor one of a name that only reads like a prefix of it.
+    await expect(page('table:members', (await page(undefined)).meta.nextCursor!)).rejects.toBeInstanceOf(InvalidCursorError);
+    await expect(page(undefined, members)).rejects.toBeInstanceOf(InvalidCursorError);
+    await expect(page('table:members:asc:email', members)).rejects.toBeInstanceOf(InvalidCursorError);
+  });
+
   it('needs the key selected — it orders by it last', async () => {
     await expect(cursorPaginate(db.selectFrom('users').select(['name']), { column: 'name', perPage: 1, encrypter })).rejects.toThrow('does not select it');
   });

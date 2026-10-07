@@ -53,6 +53,7 @@ describe('the schedule', () => {
     expect(app.schedule.tasks).toEqual([
       'auth:prune-tokens',
       'auth.prune-email-changes',
+      'auth:prune-unverified',
       'user-profile.rebuild-member-stats',
       'user-profile.prune-data-exports',
       'session:prune',
@@ -63,7 +64,7 @@ describe('the schedule', () => {
       'devtools:prune',
     ]);
     expect(app.schedule.due('2026-10-05T03:15:00+02:00')).toEqual(['session:prune']);
-    expect(app.schedule.due('2026-10-05T03:20:00+02:00')).toEqual(['user-profile.prune-data-exports', 'queue:prune-failed --hours=168']);
+    expect(app.schedule.due('2026-10-05T03:20:00+02:00')).toEqual(['auth:prune-unverified', 'user-profile.prune-data-exports', 'queue:prune-failed --hours=168']);
     expect(app.schedule.due('2026-10-05T03:30:00+02:00')).toEqual(['user-profile.prune-data-exports', 'session:prune', 'notifications:prune --days=30']);
     expect(app.schedule.due('2026-10-05T10:25:00Z')).toEqual(['cache:prune']);
     expect(app.schedule.due('2026-10-05T11:00:00Z')).toEqual(['user-profile.rebuild-member-stats', 'user-profile.prune-data-exports', 'session:prune', 'uploads:prune']);

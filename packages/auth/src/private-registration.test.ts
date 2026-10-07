@@ -4,7 +4,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AuthConfig, AuthServiceProvider, PRIVATE_REGISTRATION_OFF_WARNING } from './index.ts';
+import { AuthConfig, AuthServiceProvider, PRIVATE_REGISTRATION_OFF_WARNING, UNVERIFIED_KEPT_NOTICE } from './index.ts';
 
 /** Boots auth with `env` and returns the app and what was logged as a warning about private registration. */
 async function boot(env: Record<string, string>): Promise<{ app: Application; warnings: string[] }> {
@@ -23,8 +23,8 @@ async function boot(env: Record<string, string>): Promise<{ app: Application; wa
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
     override: (container: Container) => container.instance(Logger, logger),
   });
-  // Only this switch's: a protected boot warns about other things too (cookies without Secure over http://).
-  return { app, warnings: warnings.filter((warning) => warning.startsWith('AUTH_PRIVATE_REGISTRATION')) };
+  // Only these switches': a protected boot warns about other things too (cookies without Secure over http://).
+  return { app, warnings: warnings.filter((warning) => warning.startsWith('AUTH_PRIVATE_REGISTRATION') || warning.startsWith('AUTH_UNVERIFIED_DAYS')) };
 }
 
 describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
@@ -48,5 +48,26 @@ describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
     expect((await boot({ NODE_ENV: 'production' })).warnings).toEqual([]);
     expect((await boot({ NODE_ENV: 'development', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings).toEqual([]);
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings).toEqual([]);
+  });
+});
+
+describe('AUTH_UNVERIFIED_DAYS (E203)', () => {
+  it('is 7 unless set — only whole numbers of days boot, 0 keeps unconfirmed accounts', async () => {
+    const days = async (value?: string) => (await boot({ NODE_ENV: 'test', ...(value === undefined ? {} : { AUTH_UNVERIFIED_DAYS: value }) })).app.container.make(AuthConfig).unverifiedDays;
+    expect(await days(), 'unset, unconfirmed accounts must go after 7 days').toBe(7);
+    expect(await days('30')).toBe(30);
+    expect(await days('0')).toBe(0);
+    // Fail-closed: a typo never turns the prune off (or makes it delete at once) quietly — the boot names the variable.
+    for (const value of ['-1', '1.5', '7d', 'seven', '', ' 7', '1e3', '0x10']) {
+      await expect(boot({ NODE_ENV: 'test', AUTH_UNVERIFIED_DAYS: value }), value).rejects.toThrow(/auth: AUTH_UNVERIFIED_DAYS/);
+    }
+  });
+
+  it('0 outside development and tests: the boot says once that unconfirmed accounts are kept forever', async () => {
+    expect((await boot({ NODE_ENV: 'production', AUTH_UNVERIFIED_DAYS: '0' })).warnings).toEqual([UNVERIFIED_KEPT_NOTICE]);
+    expect((await boot({ NODE_ENV: 'staging', AUTH_UNVERIFIED_DAYS: '0' })).warnings, 'staging (protected, E139)').toEqual([UNVERIFIED_KEPT_NOTICE]);
+    expect((await boot({ NODE_ENV: 'production' })).warnings).toEqual([]);
+    expect((await boot({ NODE_ENV: 'development', AUTH_UNVERIFIED_DAYS: '0' })).warnings).toEqual([]);
+    expect((await boot({ NODE_ENV: 'test', AUTH_UNVERIFIED_DAYS: '0' })).warnings).toEqual([]);
   });
 });

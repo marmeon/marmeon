@@ -30,7 +30,54 @@ class FormController extends Controller {
   }
 }
 
+/** A guest's page whose request writes the session (its first data). */
+class CountController extends Controller {
+  readonly #session: Session;
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+  handle() {
+    this.#session.put('visits' as never, 1 as never);
+    return view('shop/Page', {});
+  }
+}
+
+/** JSON that writes the session and hands out nothing: the XSRF-TOKEN cookie is the first to need the token. */
+class RememberController extends Controller {
+  readonly #session: Session;
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+  handle() {
+    this.#session.put('visits' as never, 1 as never);
+    return { ok: true };
+  }
+}
+
+/** What the session of the last `/peek` held as its CSRF token once its page was made — `undefined`: none was drawn (E203). */
+const peeked: { token?: string | undefined; persists?: boolean } = {};
+
+/** Looks at the session after the route's response is made — the page's props asked for the token by then. */
+class Peek {
+  readonly #session: Session;
+  constructor(session: Session) {
+    this.#session = session;
+  }
+  async handle(_ctx: unknown, next: () => Promise<Response>) {
+    const response = await next();
+    await response.clone().text();
+    Object.assign(peeked, { token: this.#session.currentToken(), persists: this.#session.persists });
+    return response;
+  }
+}
+
 const routes = defineRoutes((Route) => {
+  Route.middleware(Peek).get('/peek', () => view('shop/Page', {}));
+  // A page whose request writes the session (a guest's first data): kept — its page carries the token it makes now (E203).
+  Route.get('/count', CountController);
+  Route.get('/remember', RememberController);
   Route.get('/form', FormController);
   Route.get('/status', () => ({ ok: true }));
   Route.get('/page', () => view('shop/Page', {}));
@@ -196,6 +243,35 @@ describe('VerifyCsrfToken', () => {
         expect(response.headers.getSetCookie()).toEqual([]);
         expect(((await response.json()) as PageObject).csrf).toBeUndefined();
       }
+    });
+
+    it('a page for a guest draws no token at all (E203) — the session that is not kept never makes one', async () => {
+      const { send } = await boot();
+      const response = await send('/peek', { headers: { 'x-marmeon': 'true' } });
+      expect(response.status).toBe(200);
+      expect(response.headers.getSetCookie()).toEqual([]);
+      expect(peeked.persists).toBe(false);
+      expect(peeked.token, 'a guest page drew a CSRF token').toBeUndefined();
+      // Without one, a post that needs the token (no Fetch Metadata, no Origin) is still refused — the check is unchanged.
+      expect((await send('/save', form({ _token: '' }))).status).toBe(419);
+      expect((await send('/save', form({ _token: 'undefined' }))).status).toBe(419);
+    });
+
+    it('a page whose request keeps the session carries the token it makes — the same the XSRF-TOKEN cookie gets (E203)', async () => {
+      const { send, token } = await boot();
+      const response = await send('/count', { headers: { 'x-marmeon': 'true' } });
+      const page = (await response.json()) as PageObject;
+      expect(page.csrf, 'the page of a kept session carries no token').toBeTypeOf('string');
+      expect(page.csrf).toMatch(/^[\w-]{40}$/);
+      expect(page.csrf).toBe(token());
+      expect((await send('/save', form({ _token: page.csrf! }))).status).toBe(200);
+    });
+
+    it('a kept session whose request never asked for the token still gets it in its XSRF-TOKEN cookie — made then (E203)', async () => {
+      const { send, token } = await boot();
+      await send('/remember');
+      expect(token(), 'the XSRF-TOKEN cookie of a kept session carries no token').toMatch(/^[\w-]{40}$/);
+      expect((await send('/save', { method: 'POST', headers: { 'x-xsrf-token': token() } })).status).toBe(200);
     });
 
     it('a failed guest form keeps its errors — that writes the session, and from then on its pages carry the token', async () => {

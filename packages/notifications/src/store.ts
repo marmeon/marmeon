@@ -99,7 +99,9 @@ export class NotificationStore {
       .select(['id', 'type', 'data', 'read_at', 'created_at'])
       .where('recipient_type', '=', recipient.type)
       .where('recipient_id', '=', String(recipient.id));
-    const page = await cursorPaginate(query, { column: 'created_at', key: 'id', cursor, perPage: Math.max(1, Math.min(perPage, 500)), direction: 'desc', encrypter });
+    // The recipient's own cursors only (`name`): one of another recipient's inbox does not decrypt here.
+    const name = `notifications:${JSON.stringify([recipient.type, String(recipient.id)])}`;
+    const page = await cursorPaginate(query, { column: 'created_at', key: 'id', cursor, perPage: Math.max(1, Math.min(perPage, 500)), direction: 'desc', encrypter, name });
     return { data: page.data.map((row) => ({ id: row.id, type: row.type, data: row.data, readAt: iso(row.read_at), createdAt: iso(row.created_at)! })), meta: page.meta };
   }
 
@@ -113,6 +115,16 @@ export class NotificationStore {
       .where('id', '=', id)
       .executeTakeFirst();
     return result.numDeletedRows > 0n;
+  }
+
+  /** Deletes all of the recipient's notifications — how many. */
+  async deleteAll(recipient: AnyRecipient): Promise<number> {
+    const result = await this.#db()
+      .deleteFrom(NOTIFICATIONS_TABLE)
+      .where('recipient_type', '=', recipient.type)
+      .where('recipient_id', '=', String(recipient.id))
+      .executeTakeFirst();
+    return Number(result.numDeletedRows);
   }
 
   /** How many of the recipient's notifications are unread. */

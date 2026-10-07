@@ -13,7 +13,7 @@ marmeon make:auth          # the auth module: modules/auth — yours to change
 `marmeon discover` registers its `AuthServiceProvider` (the `"marmeon"` field of its `package.json`). The provider binds the
 `Hasher` (built at the boot: a Node without argon2 stops the start with the fix, not the first login), `Auth` and `Gate` per
 request, the token stores on the app's tables, adds `NoStoreWhenSignedIn` to the `web` group and — with `marmeon` —
-the commands `make:auth` and `auth:prune-tokens`. It needs [@marmeon/session](../session/README.md) and
+the commands `make:auth` and `auth:prune-tokens` (the module adds `auth:prune-unverified`). It needs [@marmeon/session](../session/README.md) and
 [@marmeon/database](../database/README.md); what it does not know is where users come from: the app binds a
 [`UserProvider`](#the-user-type-and-the-userprovider-e24).
 
@@ -46,7 +46,7 @@ What the module holds:
 
 | | |
 |---|---|
-| `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the jobs, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
+| `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the jobs, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule`, `commands` |
 | `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user) ([@marmeon/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
 | `routes.ts` | `/login`, `/register`, `/register/sent`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…`, `/email/change…` (behind `authenticate()`; the app's pages also behind `ConfirmedAddress`) |
@@ -55,12 +55,13 @@ What the module holds:
 | `views/`, `layouts/` | `Login`, `Register`, `RegistrationSent`, `ForgotPassword`, `ResetPassword`, `ConfirmPassword`, `VerifyEmail`, `Dashboard`, `Security`, `AccessTokens`; `AppLayout`, `SettingsLayout` |
 | `mail/` | `VerifyEmailMail`, `ResetPasswordMail`, `EmailChangedMail`, `AccountExistsMail`, `ConfirmNewEmailMail`, `EmailInUseMail` (MJML) and their preview data |
 | `listeners/`, `jobs/`, `tasks/` | `SendEmailVerification` (queued); `SendPasswordResetLinkJob`, `SendAccountExistsMailJob`, `SendEmailChangeMailJob` (encrypted payloads); `PruneEmailChanges` |
+| `AccountDeletion.ts`, `commands/` | the one way an account is deleted, and its event `AccountDeleted`; `auth:prune-unverified` ([below](#unconfirmed-accounts-e203)) |
 | `middleware/` | `ShareAuthProps.ts`: the shared `auth` prop (`{ user: { id, name, verified } \| null }`) and the `toast` flash type; `ConfirmedAddress.ts`: `verified()` while the registration is private |
 | `migrations/` | `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, the pending change of address on `users` (prefixed `0001_01_01_…`: they run first) |
 | `factories/`, `seeders/` | `UserFactory` (password `password`, hashed once at the test costs), `UserSeeder` (`test@example.com`) |
-| `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`, and `PruneEmailChanges` at the same hour |
+| `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`, `PruneEmailChanges` at the same hour, `auth:prune-unverified` at 03:20 |
 | `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts`, `email-change.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
-| `auth.test.ts`, `registration.test.ts`, `email-change.test.ts` | the module's own tests (SQLite and Postgres) — registration and change of address with both values of `AUTH_PRIVATE_REGISTRATION` |
+| `auth.test.ts`, `registration.test.ts`, `email-change.test.ts`, `prune-unverified.test.ts` | the module's own tests (SQLite and Postgres) — registration, change of address and the prune of unconfirmed accounts with both values of `AUTH_PRIVATE_REGISTRATION` |
 
 The generated forms carry no `_token` field: with JavaScript the client core sends `X-XSRF-TOKEN` when the session has one, and a
 plain form post (no JavaScript) passes by the browser's word — Fetch Metadata, or `Origin` over plain HTTP (E143,
@@ -384,6 +385,29 @@ Deletes reset tokens older than `AUTH_RESET_EXPIRE`, expired remember-me tokens 
 `--hours` ago (they stop working when they expire, but stay listed until pruned). Valid tokens stay. The generated module
 schedules it nightly — [@marmeon/scheduler](../scheduler/README.md).
 
+## Unconfirmed accounts (E203)
+
+```text
+marmeon auth:prune-unverified        # the module's command — scheduled nightly at 03:20, onOneServer()
+```
+
+An account whose address was not confirmed within `AUTH_UNVERIFIED_DAYS` (default **7**) is deleted: whoever signed up with
+somebody else's address stops holding it (a "pre-hijacked" account), and the data of sign-ups nobody finished goes (data
+minimization). Only accounts with `email_verified_at` null **and** neither made nor changed within the days (`created_at` and
+`updated_at`): a confirmed account never, a pending change of address of a confirmed one neither ([private
+registration](#private-registration-e146-e193): the new address waits beside the confirmed one). It goes through the module's
+`AccountDeletion` — the row (its remember-me and API tokens with it: the foreign keys cascade), its reset token, what other
+modules keep (they listen to `AccountDeleted`, in the same transaction; files after the commit) and its sessions
+(`UserSessions` of [@marmeon/session](../session/README.md#a-users-sessions): removed from the `database` store, ended at their
+next request with the others) — in batches of 100, the number in the log. Irreversible.
+
+- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have **used the app** before it goes —
+  and an address changed there (unconfirmed at once) gets its days from the change: an account that does not confirm its new
+  address within them is deleted like a sign-up. Tell your users, or raise the days.
+- **`AUTH_UNVERIFIED_DAYS=0`** keeps every account (outside development and tests the boot says so: `UNVERIFIED_KEPT_NOTICE`);
+  only whole numbers of days boot.
+- A "delete my account" page uses the same `AccountDeletion` — `delete([user.id])`.
+
 ## Configuration
 
 Environment only (`AuthConfig` and `HashConfig`, injectable like every [configuration](../core/README.md#configuration)):
@@ -402,10 +426,12 @@ AUTH_PASSWORD_TIMEOUT=900         # seconds a confirmation counts for confirmedP
 AUTH_RESET_EXPIRE=60              # minutes a reset link works
 AUTH_RESET_THROTTLE=60            # seconds before another reset link for the same e-mail
 AUTH_TOKEN_PREFIX=bc_             # API tokens; lower-case letters, digits and _, at most 16
+AUTH_PRIVATE_REGISTRATION=true    # private registration (E146, E193) — only true and false boot
+AUTH_UNVERIFIED_DAYS=7            # days before an account without a confirmed address is deleted (E203); 0 keeps them
 ```
 
 `HashConfig` resolves to `{ driver, argon2: { memory, time, parallelism }, scrypt: { cost, blockSize, parallelism } }`,
-`AuthConfig` to `{ rememberDays, rememberCookie, passwordTimeout, resetExpire, resetThrottle, tokenPrefix }`. Tests set cheap
+`AuthConfig` to `{ rememberDays, rememberCookie, passwordTimeout, resetExpire, resetThrottle, tokenPrefix, privateRegistration, unverifiedDays }`. Tests set cheap
 costs in `.env.test` (`HASH_ARGON_MEMORY=1024`, `HASH_ARGON_TIME=1`) — they check behaviour, not strength.
 
 ## Testing

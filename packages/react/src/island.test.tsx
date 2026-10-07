@@ -198,6 +198,8 @@ describe('<Island> and useIsland (E48, E51)', () => {
   it('useIsland outside an island says where it belongs', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await mount(page('Outside', '/dashboard'));
+    // The page that threw is shown by a chunk of its own (W10.7, loaded when it happens): wait for it, not for one tick.
+    for (let tries = 0; tries < 200 && !container.textContent?.includes('useIsland()'); tries++) await wait(5);
     expect(container.textContent).toContain('useIsland() is for the view of an island');
     errors.mockRestore();
   });

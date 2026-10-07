@@ -8,6 +8,7 @@ import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
+import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
 import { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 import { UserRecipients } from './UserRecipients.ts';
 import { DemoUsersSeeder } from './seeders/DemoUsersSeeder.ts';
@@ -15,6 +16,7 @@ import routes from './routes.ts';
 import { schedule } from './schedule.ts';
 
 // Public API of the auth module. Other modules import from here, never from internals.
+export { AccountDeleted, AccountDeletion } from './AccountDeletion.ts';
 export { UserFactory } from './factories/UserFactory.ts';
 export { NewSignInNotification } from './notifications/NewSignInNotification.ts';
 export { UserRepository } from './UserRepository.ts';
@@ -38,6 +40,9 @@ export default defineModule({
   exposes: ['users'],
   seeders: [DemoUsersSeeder],
   routes,
-  // Scheduled work: the nightly prune of tokens and expired changes of address (marmeon schedule:work).
+  // Scheduled work: the nightly prune of tokens, expired changes of address and unconfirmed accounts (marmeon schedule:work).
   schedule,
+  // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (E203; the schedule runs it nightly).
+  // Other modules clear what belongs to a deleted account by listening to AccountDeleted (user-profile: the avatar; notifications).
+  commands: [PruneUnverifiedCommand],
 });

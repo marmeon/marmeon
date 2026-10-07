@@ -204,8 +204,31 @@ describe('@marmeon/otel (E120)', () => {
     expect(missing.events).toEqual([]);
   });
 
-  it('continues an incoming trace (W3C traceparent of the caller); redacts sensitive route parameters and recorded headers', async () => {
-    const { app: booting } = boot({ OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: 'authorization, x-tenant, cookie' });
+  it("starts a trace of its own for every request — a caller's traceparent is a link, never the parent (W10 step 8)", async () => {
+    const { app: booting } = boot();
+    await using app = await booting;
+    await spans();
+    const kernel = createHttpKernel(app);
+    const caller = '0af7651916cd43dd8448eb211c80319c';
+    // The caller says "not sampled" (flags 00): its word decides nothing here — the request is recorded, in a trace of its own.
+    await kernel.request('/people/1', { headers: { traceparent: `00-${caller}-b7ad6b7169203331-00` } });
+    const all = await spans();
+    const server = all.find((candidate) => candidate.kind === SpanKind.SERVER);
+    expect(server, 'the request was not recorded: the caller\'s sampled flag decided').toBeDefined();
+    expect(server!.spanContext().traceId).not.toBe(caller);
+    expect(parentOf(server)).toBeUndefined();
+    expect(server!.links.map((link) => [link.context.traceId, link.context.spanId])).toEqual([[caller, 'b7ad6b7169203331']]);
+    // What happens inside is still the request's child — its own trace.
+    expect(all.filter((span) => span.kind !== SpanKind.SERVER && span.kind !== SpanKind.CONSUMER).every((span) => span.spanContext().traceId === server!.spanContext().traceId)).toBe(true);
+    // No header, or a broken one: a new trace, no link.
+    await kernel.request('/people/1', { headers: { traceparent: 'not-a-traceparent' } });
+    const [plain] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
+    expect(plain!.links).toEqual([]);
+    expect(parentOf(plain)).toBeUndefined();
+  });
+
+  it('continues an incoming trace with OTEL_TRUST_TRACEPARENT=true (behind an edge that sets the header); redacts sensitive route parameters and recorded headers', async () => {
+    const { app: booting } = boot({ OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: 'authorization, x-tenant, cookie', OTEL_TRUST_TRACEPARENT: 'true' });
     await using app = await booting;
     await spans();
     const kernel = createHttpKernel(app);
@@ -216,6 +239,7 @@ describe('@marmeon/otel (E120)', () => {
     const [span] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
     expect(span!.spanContext().traceId).toBe(caller);
     expect(parentOf(span)).toBe('b7ad6b7169203331');
+    expect(span!.links).toEqual([]);
     expect(span!.attributes['url.path']).toBe('/reset/[redacted]');
     expect(span!.attributes['http.request.header.authorization']).toEqual(['[redacted]']);
     expect(span!.attributes['http.request.header.cookie']).toEqual(['[redacted]']);

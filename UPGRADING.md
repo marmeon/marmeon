@@ -474,6 +474,36 @@ import '../modules/auth/auth.css';         // make:auth's module, if the app has
 The way back: none needed. An app that styled `[data-marmeon-layer]` itself can leave the import out and keep its rules — set what it
 took from the old inline defaults.
 
+#### Medium: accounts without a confirmed address are deleted after 7 days — `AUTH_UNVERIFIED_DAYS`, `auth:prune-unverified`
+
+*Likelihood of impact: medium — every app with the module of `make:auth`, above all one with `AUTH_PRIVATE_REGISTRATION=false`.* An
+account whose address was never confirmed stayed forever: whoever signed up with somebody else's address kept holding it (a
+"pre-hijacked" account), and the data of sign-ups nobody finished stayed too. Now the module deletes them (E203): its command
+`auth:prune-unverified`, scheduled nightly at 03:20 (`onOneServer()`), deletes every account with `email_verified_at` null that was
+neither made nor changed within `AUTH_UNVERIFIED_DAYS` (default **7**; only whole numbers boot) — through the module's new
+`AccountDeletion`: the row (remember-me and API tokens cascade), its reset token, what other modules keep (they listen to
+`AccountDeleted`, in the same transaction) and its sessions (`UserSessions` of `@marmeon/session`: removed from the `database` store,
+ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** A confirmed account never
+goes, nor one whose confirmed address has a change pending (private registration).
+
+```ts
+// modules/auth/schedule.ts — new line            // modules/auth/index.ts — new
+s.command('auth:prune-unverified').daily().at('03:20').onOneServer();      commands: [PruneUnverifiedCommand],
+```
+
+- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have used the app for days before it goes —
+  and a change of address there is unconfirmed at once: an account that does not confirm its new address within the days (counted
+  from the change) is deleted like a sign-up. Tell your users in the verification mail, or raise the days.
+- An app made with `make:auth` before: copy `AccountDeletion.ts`, `commands/PruneUnverifiedCommand.ts`, the two methods
+  `unconfirmedSince`/`deleteAccounts` of `UserRepository.ts`, the schedule line and `commands` from the stubs
+  (`packages/auth/stubs/react/modules/auth/`), or run `marmeon make:auth --force` on a clean tree and merge. Without them nothing is
+  deleted.
+- New API: `UserSessions` (`end(userId)`) and the optional `SessionStore#destroyUser(userId)` (the `database` store has it), and
+  `Inbox#deleteAll(recipient)` of `@marmeon/notifications`.
+
+The way back: `AUTH_UNVERIFIED_DAYS=0` keeps every account (outside development and tests the boot says so once), or a larger number
+of days.
+
 #### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
 
 *Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,
@@ -553,6 +583,56 @@ built-in `errors/Error` are a chunk of their own (E202, like the layers, E71): `
 no chunk loads). If the chunk cannot load either, a 5xx shows that notice and a page that threw shows nothing in its place — never an
 error of its own. A test that looks for `dialog[data-marmeon-failure="server"]` right after the visit waits a tick for it (`findBy…`,
 a settle). The way back: none needed.
+
+#### Low: a session draws its CSRF token when something needs it — a guest's request makes none
+
+*Likelihood of impact: low — code that reads `session.currentToken()`, and custom middleware that expects every session to have a
+`_token`.* `Session.start()` made a token for every new session — 30 random bytes per guest request, thrown away with the session
+that was never kept (E143). Now the token is made on demand (E203): the first `session.token()`, a page of a kept session
+(`page.csrf`) or the `XSRF-TOKEN` cookie of a kept session makes it, once; signing in and out (`regenerate()`, `invalidate()`) renew
+it at once, as before. The check is unchanged: a post that needs the token and has none is a 419. `currentToken()` (internal) is
+`string | undefined` now — `undefined` for a session that never needed one. An island resolved in-process gives its page's token;
+one that reads a session without a token gives none (never one it made and cannot save). The way back: none needed — call
+`session.token()` where you need the token.
+
+#### Low: a caller's `traceparent` is a link of the request's span — `OTEL_TRUST_TRACEPARENT=true` continues its trace
+
+*Likelihood of impact: low — apps with `@marmeon/otel` whose traces span services.* A request's server span continued the trace of
+any `traceparent` header — so a client chose the trace its requests landed in, and its sampled flag decided whether they were
+recorded at all (`-00` turned tracing off for it, `-01` on past your sampler). Now every request from outside starts a trace of its
+own (your sampler decides) and a valid incoming `traceparent` is a **span link** (decided by Max, 07.10.): the caller's context stays
+findable, nothing of it is taken — its baggage neither. In-process requests (islands, a layer's base) stay children of their page's,
+a job continues the trace of its dispatch (E131).
+
+```sh
+OTEL_TRUST_TRACEPARENT=true   # behind an edge (gateway, ingress, mesh) that sets or strips the header — or for an internal service
+```
+
+A trusted proxy (`TRUSTED_PROXIES`) is no such edge by itself: it usually passes the client's header on unchanged. A hand-made setup
+passes `instrument(app, api, { trustTraceparent: true })`. The way back: `OTEL_TRUST_TRACEPARENT=true`.
+
+#### Low: a `URL` in a log context is masked like text — its query token and token-like path segments
+
+*Likelihood of impact: low — log readers who searched for whole URLs logged as objects.* `logger.info('…', { link: new URL(…) })`
+wrote the URL as it was (its `toJSON`): a `?token=…` or `/reset-password/<token>` reached the log. Now `redact()` masks a `URL` and
+`URLSearchParams` like text (`token=[redacted]`, `/reset-password/[redacted]`), and the `Redactor` (devtools, error page, spans)
+shows a `URL` through `url()` instead of an empty object. The way back: none needed — log `url.pathname` or a field you choose.
+
+#### Low: `uploads:prune --hours` below `UPLOADS_LIFETIME` needs `--force`
+
+*Likelihood of impact: low — scripts that call `uploads:prune --hours=0` (or below the token lifetime).* `--hours=0` deleted every
+temporary upload — also those whose token still worked (a form still open lost its file). Now `--hours` below `UPLOADS_LIFETIME`
+(default 120 minutes) stops with the reason and exit code 1; `--force` deletes them anyway. The scheduled `uploads:prune` (24 hours)
+is not affected. The way back: add `--force`.
+
+#### Low: a table's and an inbox's cursors belong to their list — `name` in `CursorOptions`
+
+*Likelihood of impact: low — cursors kept in URLs across the upgrade.* An encrypted cursor was bound to its order (columns,
+direction) only: one of another list with the same order decrypted — as a position among this list's rows. `cursorPaginate` takes
+an optional `name` now, part of the cursor's context: a table passes its name, an inbox its recipient — another table's or another
+recipient's cursor is a 400 (`InvalidCursorError`). A cursor of a table or an inbox from before the upgrade is a 400 once ("load more"
+starts again from the first page). Unnamed lists are unchanged. The way back: none needed — name your own lists
+(`name: 'articles'`) to get the same.
 
 ## Upgrading to 0.1.0 from the development snapshots
 

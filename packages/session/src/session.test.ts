@@ -210,6 +210,28 @@ describe('Session', () => {
     expect(writes).toHaveLength(4);
   });
 
+  it('draws a CSRF token only when something needs it (E203) — a new session that hands none out has none; sign-in renews it', async () => {
+    const store = new MemorySessionStore();
+    // A guest's request: no token made, none stored.
+    const guest = await request(store, undefined, (session) => expect(session.currentToken(), 'a new session drew a token at start').toBeUndefined());
+    expect(guest.currentToken()).toBeUndefined();
+    // Data without a token (a failed form's errors): stored without one — the next request that needs it makes it, once.
+    const kept = await request(store, undefined, (session) => session.put('visits', 1));
+    expect(await stored(store, kept.id)).toEqual({ visits: 1 });
+    const handed = await request(store, kept.id, (session) => {
+      expect(session.currentToken()).toBeUndefined();
+      expect(session.token()).toMatch(/^[A-Za-z0-9_-]{40}$/);
+      expect(session.token()).toBe(session.currentToken()); // made once
+    });
+    const token = (await stored(store, kept.id))!._token;
+    expect(token).toBe(handed.currentToken());
+    await request(store, kept.id, (session) => expect(session.token()).toBe(token)); // and kept
+    // A sign-in (regenerate) and a sign-out (invalidate) renew it at once, as before.
+    const signedIn = await request(store, kept.id, (session) => session.regenerate());
+    expect(signedIn.currentToken()).toMatch(/^[A-Za-z0-9_-]{40}$/);
+    expect(signedIn.currentToken()).not.toBe(token);
+  });
+
   it('writes a loaded session back in one atomic step (compare-and-set on its version) — no read before it', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => session.put('visits', 1));

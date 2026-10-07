@@ -72,7 +72,8 @@ step by step and goes through the security model attack by attack.
   (`?filter[joined]=2026-01-01..2026-03-31`, either end may be empty, both days included). `.visible(…)` like columns.
 - **Pagination:** by number with a total (the default; `?page=`, `?per_page=` from `perPage`, default `[25, 50, 100]`), or by an
   encrypted cursor (`{ cursor: true }`: keyset along the sort, `?cursor=`, no `count(*)` — the cursor of
-  [`cursorPaginate`](../database/README.md#pagination), so a changed one is a 400).
+  [`cursorPaginate`](../database/README.md#pagination) named after the table, so a changed one — or another table's with the
+  same order — is a 400).
 - **More than one table on a page:** `prefix: 'teams'` gives its keys a prefix (`teams_sort`, `teams_filter[role]`); spread both
   schemas: `defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
 - **Who may see the table at all:** `authorize: can(MemberPolicy, 'viewAny')` (or any check) — asked on the page and in every

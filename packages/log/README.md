@@ -73,7 +73,9 @@ Before pino writes an entry, its context goes through `redact()` of `@marmeon/co
 `remember_web`, `api_key`, `signature` … — has its value replaced by `[redacted]`, in nested objects, lists, maps and sets too
 (six levels deep; deeper is left out as `[…]`). The bindings of a child logger (`logger.child({ token })`) go through it as
 well — pino writes them once, when the child is made. An error stays an error of its class (pino's `err` serializer still
-knows it), with its message and stack masked as text, its own fields redacted by key and its causes alike. The console
+knows it), with its message and stack masked as text, its own fields redacted by key and its causes alike. A `URL` (or
+`URLSearchParams`) is written as text masked like a message — `{ link: new URL('…/reset/<token>?token=…') }` keeps neither the
+query's token nor a token-like path segment (W10 step 8; before, its `toJSON` wrote it as it was). The console
 fallback (`ConsoleLogger`, without this package) redacts the same way:
 
 ```ts

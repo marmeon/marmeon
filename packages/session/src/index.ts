@@ -18,4 +18,5 @@ export type { DatabaseSessionConnection } from './stores/database.ts';
 export { FileSessionStore } from './stores/file.ts';
 export { MemorySessionStore } from './stores/memory.ts';
 export { RedisSessionStore } from './stores/redis.ts';
+export { UserSessions } from './user-sessions.ts';
 export type { RedisSessionConnection } from './stores/redis.ts';

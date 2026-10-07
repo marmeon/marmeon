@@ -238,6 +238,9 @@ describe('make:auth', () => {
       expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(4);
       expect(ran('email-change', 'changing the address (private registration, E146) — the default')).toBe(7); // W9 step 9
       expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(2);
+      // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS (E203) — scheduled at 03:20, in both behaviours.
+      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed (E203) — the default')).toBe(5);
+      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(2);
       expect(tests.code).toBe(0);
 
       // A stale bootstrap/routes.ts fails the CI check.

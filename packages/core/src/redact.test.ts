@@ -205,3 +205,25 @@ describe('Redactor.headers — a header given more than once', () => {
     expect(shown).toEqual({ 'set-cookie': REDACTED, 'x-forwarded-for': '1.2.3.4, 5.6.7.8', accept: 'text/html' });
   });
 });
+
+describe('URL objects (W10 step 8)', () => {
+  const RESET = 'Q7mZ2xLk9TcV4bN8rW1yH6sD3fG5jA0pE2uI7oK9qMz';
+
+  it('are masked like text on the log path — a query token and a token-like path segment never pass as the object', () => {
+    const link = new URL(`https://example.com/reset-password/${RESET}?email=ada%40example.com&token=t0k3n-abc&page=2`);
+    const shown = redact({ link, nested: { at: [new URL('https://example.com/callback?signature=s1gn3d')] }, query: new URLSearchParams('token=t0k3n-abc&page=2') });
+    expect(shown.link, String(shown.link)).toBe('https://example.com/reset-password/[redacted]?email=ada%40example.com&token=[redacted]&page=2');
+    expect(shown.nested).toEqual({ at: ['https://example.com/callback?signature=[redacted]'] });
+    expect(shown.query).toBe('token=[redacted]&page=2');
+    expect(JSON.stringify(shown)).not.toMatch(/t0k3n|s1gn3d|Q7mZ2xLk9/);
+    // A URL without anything to hide stays readable.
+    expect(redact({ link: new URL('https://example.com/users/7?page=2') }).link).toBe('https://example.com/users/7?page=2');
+  });
+
+  it('are masked by the Redactor too (devtools, error page, spans) — its URL rules, not an empty object', () => {
+    const redactor = new Redactor();
+    const shown = redactor.value({ link: new URL(`https://example.com/reset-password/${RESET}?token=t0k3n-abc`), query: new URLSearchParams('signature=s1gn3d') }) as Record<string, unknown>;
+    expect(shown.link).toBe('https://example.com/reset-password/[redacted]?token=[redacted]');
+    expect(shown.query).toBe('signature=[redacted]');
+  });
+});

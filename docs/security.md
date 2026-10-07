@@ -20,7 +20,7 @@ warns loudly, and its start line says `development (from .env)`.
 Every request of the `web` group that changes something is checked in stages
 ([CSRF protection](../packages/session/README.md#csrf-protection)): the browser's `Sec-Fetch-Site: same-origin` passes, a request
 from another site is refused with 403; without Fetch Metadata the `Origin` decides; only a client that sends neither needs the
-session's token. Guests get no session just for a token. List other origins you trust in `CSRF_TRUSTED_ORIGINS` (whole origins);
+session's token. Guests get no session just for a token — and a session draws its token only when something needs it (E203). List other origins you trust in `CSRF_TRUSTED_ORIGINS` (whole origins);
 webhooks that cannot carry a token go into a module's `csrfExcept`.
 
 - Browsers send Fetch Metadata to secure origins only — over plain HTTP the check falls back to `Origin`, then to the token. Serve
@@ -82,6 +82,9 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   change of address say "taken", like Laravel's starter kits, a new account is signed in at once) — then only the throttle stands
   between the form and a list of addresses, and the boot warns outside development and tests
   ([private registration](../packages/auth/README.md#private-registration-e146-e193)).
+- **Unconfirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203): whoever signed up with somebody else's address stops
+  holding it, and nothing of an unfinished sign-up stays — deleted at night with its tokens, sessions and what other modules keep
+  ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
 - **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS
   (`MAIL_REQUIRE_TLS`, default `true`, E192) — a server without it, or someone who strips the offer, never sees the credentials or a
   reset link ([mail](../packages/mail/README.md)).
@@ -124,7 +127,7 @@ limit connections at the proxy as well.
 
 Passwords, tokens, cookies and keys are redacted wherever the framework writes something down — the log, the request log line, the
 devtools' recordings — by one `Redactor` with one list of names ([redaction](../packages/core/README.md#redaction-e125)). Add the
-names of your own secrets to it. The devtools exist in development only and refuse other hosts
+names of your own secrets to it — a `URL` object in a log context is masked like text (`?token=…`, a token in its path). The devtools exist in development only and refuse other hosts
 ([only in development](../packages/devtools/README.md#only-in-development-e115-fail-closed)).
 
 ## Your checklist

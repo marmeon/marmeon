@@ -1,6 +1,6 @@
 import type { Application, LogContextSources, Redactor } from '@marmeon/core';
 import { channels, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type QueueDispatchMessage, type QueueJobMessage, type TracingName } from '@marmeon/core/diagnostics';
-import type { Attributes, Context, Span, SpanKind, SpanOptions } from '@opentelemetry/api';
+import type { Attributes, Context, Link, Span, SpanKind, SpanOptions } from '@opentelemetry/api';
 import type { OtelApi } from './api.ts';
 
 /** What the instrumentation needs besides the API. */
@@ -13,6 +13,14 @@ export interface InstrumentOptions {
   readonly requestHeaders?: readonly string[];
   /** The tracer's name (default `@marmeon/otel`). */
   readonly tracerName?: string;
+  /**
+   * Continue the trace of an incoming request's `traceparent` (and take its baggage) — `OTEL_TRUST_TRACEPARENT=true`. Off by default
+   * (W10 step 8, Max 07.10.): anyone can send the header, so every request starts a trace of its own and the caller's context is
+   * only a **link** of its server span — findable, but its trace id and its sampling decision are not taken. Turn it on only
+   * where the edge in front of the app (a gateway, an ingress) sets or strips the header itself, or for an internal service
+   * whose callers are your own. A trusted proxy is no such edge by itself: it usually passes the client's header on unchanged.
+   */
+  readonly trustTraceparent?: boolean;
 }
 
 const KNOWN_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH']);
@@ -67,6 +75,15 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
       if (error !== undefined && !typed.has(span)) failed(span, error);
       span.end();
     };
+  /**
+   * Where a request from outside starts: the caller's trace when it is trusted (`trustTraceparent`); otherwise a new root — the
+   * caller's valid `traceparent` a link only (its sampled flag decides nothing here), its baggage dropped.
+   */
+  const incoming = (headers: Headers): { parent: Context; links: Link[] | undefined } => {
+    if (options.trustTraceparent) return { parent: api.propagation.extract(api.context.active(), headers, HEADER_GETTER), links: undefined };
+    const caller = api.trace.getSpanContext(api.propagation.extract(api.ROOT_CONTEXT, headers, HEADER_GETTER));
+    return { parent: api.trace.deleteSpan(api.context.active()), links: caller && api.isSpanContextValid(caller) ? [{ context: caller }] : undefined };
+  };
   /** Every traced operation's work runs in its span's context. */
   const wrap = (name: Exclude<TracingName, 'db.query'>) =>
     offs.push(
@@ -82,7 +99,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
     channels.subscribe(app, 'http.request', {
       start: (request) => {
         const url = parseUrl(request.url);
-        const parent = request.inProcess ? api.context.active() : api.propagation.extract(api.context.active(), request.headers, HEADER_GETTER);
+        const { parent, links } = request.inProcess ? { parent: api.context.active(), links: undefined } : incoming(request.headers);
         const method = KNOWN_METHODS.has(request.method) ? request.method : '_OTHER';
         start(request, method === '_OTHER' ? 'HTTP' : method, request.inProcess ? api.SpanKind.INTERNAL : api.SpanKind.SERVER, {
           'http.request.method': method,
@@ -94,7 +111,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
           'marmeon.request.id': request.requestId,
           'marmeon.region': request.region,
           ...capturedHeaders(request, requestHeaders, redactor),
-        }, parent);
+        }, parent, links ? { links } : {});
       },
       end: ender<HttpRequestMessage>((span, request) => {
         const url = parseUrl(request.url);

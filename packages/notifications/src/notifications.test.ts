@@ -1,5 +1,5 @@
 import { createApplication, Logger } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, InvalidCursorError, sql } from '@marmeon/database';
 import { Encrypter } from '@marmeon/encryption';
 import { Queue } from '@marmeon/queue';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -268,8 +268,17 @@ describe.each(drivers)('notifications on %s', (driver) => {
       const second = await inbox.page(ada, { perPage: 2, cursor: first.meta.nextCursor, encrypter });
       expect([...first.data, ...second.data].map((row) => row.id).sort()).toEqual([...adas, newest].sort());
       expect(second.meta.nextCursor).toBeNull();
-      // Alan's list is his own; a cursor of Ada's list is no way into it — it only says where to go on.
+      // Alan's list is his own; a cursor of Ada's list is no way into it — not even a position: it does not decrypt for his (W10 step 8).
       expect((await inbox.page(alan, { encrypter })).data).toHaveLength(1);
+      await expect(inbox.page(alan, { perPage: 2, cursor: first.meta.nextCursor, encrypter })).rejects.toBeInstanceOf(InvalidCursorError);
+    });
+
+    it("deletes all of a recipient's notifications at once — a deleted account's — and nobody else's (W10 step 8)", async () => {
+      const { inbox, adas } = await seeded();
+      expect(await inbox.deleteAll(ada)).toBe(adas.length);
+      expect(await inbox.latest(ada)).toEqual([]);
+      expect(await inbox.latest(alan)).toHaveLength(1);
+      expect(await inbox.deleteAll(ada)).toBe(0);
     });
 
     it('takes an id that is no notification\'s for none (no database error on Postgres\'s uuid column)', async () => {

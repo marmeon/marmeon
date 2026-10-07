@@ -153,6 +153,10 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect((await feed('feed_cursor=bm90LWEtY3Vyc29y')).status).toBe(400);
       // The table's keys carry its prefix: an unprefixed `page` is the page's business, a prefixed one the table's (a cursor table has none).
       expect((await feed('feed_page=2')).status).toBe(400);
+      // Another table with the same order and keys takes none of this one's cursors (W10 step 8: the cursor's context names the table).
+      const copy = await application.request(`/teams/1/feed-copy?feed_cursor=${encodeURIComponent(cursor)}`, { user: ALAN });
+      expect(copy.status, "another table's cursor was taken").toBe(400);
+      expect((await application.request('/teams/1/feed-copy', { user: ALAN })).status).toBe(200);
     });
   });
 

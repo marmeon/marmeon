@@ -29,23 +29,26 @@ export class MakeUploadsTableCommand {
 const HOUR = 3_600_000;
 
 /**
- * `marmeon uploads:prune [--hours=24]`: deletes temporary uploads made more than `--hours` ago — used, expired or never
+ * `marmeon uploads:prune [--hours=24] [--force]`: deletes temporary uploads made more than `--hours` ago — used, expired or never
  * sent — the rows first (one statement), then their files. A token never works longer than a day (`UPLOADS_LIFETIME`), so
- * nothing usable goes. For the scheduler: `s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` (with a
+ * nothing usable goes. `--hours` below `UPLOADS_LIFETIME` would delete uploads whose token still works (a form still open):
+ * refused unless `--force`. For the scheduler: `s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` (with a
  * local uploads disk on several servers: without `onOneServer`, on each).
  */
 export class PruneUploadsCommand {
   static command = 'uploads:prune';
   static description = 'Delete temporary uploads older than a day (rows, then files)';
-  static usage = '[--hours=24]';
-  static options = { hours: { type: 'string' } } as const;
+  static usage = '[--hours=24] [--force]';
+  static options = { hours: { type: 'string' }, force: { type: 'boolean' } } as const;
 
   readonly #uploads: TemporaryUploads;
   readonly #clock: Clock;
+  readonly #config: UploadsConfig;
 
-  constructor(uploads: TemporaryUploads, clock: Clock) {
+  constructor(uploads: TemporaryUploads, clock: Clock, config: UploadsConfig) {
     this.#uploads = uploads;
     this.#clock = clock;
+    this.#config = config;
   }
 
   async handle({ options, output }: CommandInput): Promise<number> {
@@ -54,8 +57,21 @@ export class PruneUploadsCommand {
       output.error(`--hours must be a number ≥ 0 (uploads made longer ago than that are deleted), not ${String(options.hours)}.`);
       return 1;
     }
+    const lifetime = this.#config.lifetime; // minutes
+    if (hours * 60 < lifetime && options.force !== true) {
+      output.error(
+        `--hours=${String(options.hours)} would delete uploads whose token still works: a token works for ${lifetime} minutes (UPLOADS_LIFETIME), ` +
+          `so --hours must be at least ${formatHours(lifetime / 60)} — or pass --force to delete them anyway (a form still open loses its files).`,
+      );
+      return 1;
+    }
     const pruned = await this.#uploads.prune(this.#clock.now() - hours * HOUR);
     output.success(`Pruned ${pruned} temporary ${pruned === 1 ? 'upload' : 'uploads'}.`);
     return 0;
   }
+}
+
+/** `2`, `0.5`, `1.25` — hours as a short number. */
+function formatHours(hours: number): string {
+  return String(Math.round(hours * 100) / 100);
 }

@@ -136,7 +136,8 @@ export class Session {
     this.#data = data ?? {};
     this.#loaded = data !== undefined;
     this.#started = true;
-    if (typeof this.#data[TOKEN] !== 'string') this.regenerateToken();
+    // No CSRF token yet (E203): it is made when something needs it — `token()`, a page of a session that is kept, the
+    // `XSRF-TOKEN` cookie. A guest's request that keeps no session never draws one.
   }
 
   /**
@@ -145,6 +146,8 @@ export class Session {
    * session is read-only and never saved.
    */
   adopt(page: Session): void {
+    // The page's token first (E203: made on demand) — the island hands out the same one, never one of its own that is never saved.
+    if (page.exists && !page.readOnly) page.#ensureToken();
     this.#id = page.id;
     this.#key = page.#key;
     this.#data = structuredClone(page.#data);
@@ -282,15 +285,16 @@ export class Session {
   // -- Security --------------------------------------------------------------
 
   /**
-   * The CSRF token of this session — handed out: a new session whose token an app puts into a response itself is saved,
+   * The CSRF token of this session — made the first time something needs it (E203: a session that never hands one out never
+   * draws one) and handed out: a new session whose token an app puts into a response itself is saved,
    * so the token is still valid when the browser sends it back. Pages do not need to: `PageObject.csrf` (what `<Form>`
    * renders, `usePage().csrf`) carries the token of a session that is kept anyway, and a guest's forms pass without one by
    * the browser's word (Fetch Metadata, Origin — E143). So a guest's page creates no session.
    */
   token(): string {
-    const token = this.#ensureStarted()[TOKEN] as string;
+    this.#ensureStarted();
     this.#issued = true;
-    return token;
+    return this.#ensureToken();
   }
 
   /**
@@ -303,9 +307,13 @@ export class Session {
     this.#issued = true;
   }
 
-  /** @internal — the token without handing it out: what `VerifyCsrfToken` compares a request's token against. */
-  currentToken(): string {
-    return this.#ensureStarted()[TOKEN] as string;
+  /**
+   * @internal — the token without handing it out (and without making one, E203): what `VerifyCsrfToken` compares a request's
+   * token against. `undefined` for a session that never needed one — no token matches it.
+   */
+  currentToken(): string | undefined {
+    const token = this.#ensureStarted()[TOKEN];
+    return typeof token === 'string' ? token : undefined;
   }
 
   /**
@@ -330,10 +338,19 @@ export class Session {
     return this.#loaded || (this.#permit === undefined && this.persists);
   }
 
+  /** A new CSRF token now — the old one stops matching (sign-in and sign-out do it through `regenerate()`). */
   regenerateToken(): void {
     const data = this.#ensureStarted();
     if (!this.#may('session.regenerateToken()')) return;
-    data[TOKEN] = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
+    data[TOKEN] = newToken();
+  }
+
+  /** The session's token — made now if it has none yet (E203). Not a write the app asked for: no read-only check. */
+  #ensureToken(): string {
+    const data = this.#ensureStarted();
+    const token = data[TOKEN];
+    if (typeof token === 'string') return token;
+    return (data[TOKEN] = newToken());
   }
 
   /**
@@ -454,6 +471,11 @@ export class Session {
     }
     return this.#data;
   }
+}
+
+/** A CSRF token: 30 random bytes, base64url. */
+function newToken(): string {
+  return crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
 }
 
 /** The payload of a session's JSON — undefined when it is not an object (a broken record starts a new session). */

@@ -41,7 +41,7 @@ import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 
 const resource = defaultResource().merge(detectResources({ detectors: [envDetector] })); // OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES
 context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());     // spans nest
-propagation.setGlobalPropagator(new W3CTraceContextPropagator());                       // a caller's traceparent continues its trace
+propagation.setGlobalPropagator(new W3CTraceContextPropagator());                       // reads a caller's traceparent (a link, or the parent: below)
 trace.setGlobalTracerProvider(new TracerProvider({ resource, spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })] }));
 ```
 
@@ -67,7 +67,7 @@ controller) — is its child.
 
 | Operation | Span | Notes |
 |---|---|---|
-| Request | `GET /users/:user` — server | `http.route`, `http.response.status_code`, `url.path`, … Status error only for a 5xx (with `error.type` and the exception); a 4xx is the client's. A caller's `traceparent` header continues its trace. Islands and a layer's base resolved in-process: internal children. |
+| Request | `GET /users/:user` — server | `http.route`, `http.response.status_code`, `url.path`, … Status error only for a 5xx (with `error.type` and the exception); a 4xx is the client's. Every request starts a trace of its own; a caller's valid `traceparent` header is a **link** of the span ([below](#a-callers-traceparent)), its parent only with `OTEL_TRUST_TRACEPARENT=true`. Islands and a layer's base resolved in-process: internal children. |
 | Query | `SELECT users` — client | `db.query.text` **without parameters** (Kysely binds every value; the text has placeholders), `db.system.name`, `db.operation.name`, `db.collection.name`. Only inside another span: a statement outside every span (a health check, a CLI command) is no trace of its own. |
 | Dispatch | `send <job>` — producer | Its context goes with the job as W3C `traceparent` ([E131](../queue/README.md#job-events)) — in the jobs table, the Redis list, the `QueueFake`. |
 | Job | `process <job>` — consumer | Child of its dispatch: a job runs in the trace of the request (task, job) that dispatched it — also in another process, also days later. `marmeon.job.outcome`, `marmeon.request.origin_id`. |
@@ -80,6 +80,25 @@ The core README lists every attribute: [what `@marmeon/otel` makes of them](../c
 **Log lines** written inside a span carry its `trace_id`, `span_id` and `trace_flags` ([@marmeon/log](../log/README.md)'s mixin,
 through core's `LogContextSources` — [the channels](../core/README.md#the-channels)) — the request's own line `GET /users/7 200`
 too. Logs and traces join on `trace_id`.
+
+### A caller's `traceparent`
+
+Anyone can send a `traceparent` header. Taken as the parent, it would put the request into a trace the caller picked — and its
+sampled flag would decide whether the request is recorded at all (a client sending `-00` switches tracing off for itself; one
+sending `-01` on every request switches it on past your sampler). So by default **every request from outside starts a trace of
+its own** (your sampler decides), and a valid incoming `traceparent` becomes a **span link** of the server span: the caller's
+context stays findable from the request, nothing of it is taken. Its baggage is not taken either.
+
+```sh
+OTEL_TRUST_TRACEPARENT=true   # continue the caller's trace (parent = the incoming traceparent, its baggage taken)
+```
+
+Turn it on only where the header is yours: behind an edge — a gateway, an ingress, a service mesh — that sets or strips
+`traceparent` itself, or for an internal service whose only callers are your own services. A trusted proxy (`TRUSTED_PROXIES`)
+is **not** such an edge by itself: it usually passes the client's header on unchanged — "came through the proxy" does not mean
+"the proxy wrote it". `instrument(app, api, { trustTraceparent: true })` does the same for a hand-made setup. What stays as it was:
+islands and a layer's base resolved in-process are children of their page's request, and a job continues the trace of its dispatch
+(its `traceparent` comes from your own queue, [E131](../queue/README.md#job-events)).
 
 **Not traced:** `/up` and `/up/ready` ([health](../server/README.md#health-e126), E126) — the health endpoints answer before the
 request pipeline.
@@ -102,8 +121,9 @@ OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST=x-tenant,accept-languag
 |---|---|---|
 | `OTEL_SDK_DISABLED` | `false` | `true`: the provider subscribes to nothing (the SDK honours it too). |
 | `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | — | Request headers recorded as `http.request.header.<name>`, comma-separated. |
+| `OTEL_TRUST_TRACEPARENT` | `false` | `true`: an incoming request's `traceparent` is the parent of its span (the caller's trace continues) instead of a link — only behind an edge that sets the header ([a caller's `traceparent`](#a-callers-traceparent)). |
 
-`OtelConfig` is the package's config class (`config.disabled`, `config.requestHeaders` — lower-cased names). Everything else is
+`OtelConfig` is the package's config class (`config.disabled`, `config.requestHeaders` — lower-cased names, `config.trustTraceparent`). Everything else is
 the SDK's (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER`, …).
 
 - **No SDK, no cost:** without a registered tracer provider (checked through the API: the global provider still delegates to the

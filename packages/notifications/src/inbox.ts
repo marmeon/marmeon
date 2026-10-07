@@ -65,6 +65,11 @@ export class Inbox {
   markAllRead(recipient: RecipientRef): Promise<number> {
     return this.#store.markAllRead(recipient);
   }
+
+  /** Deletes all of the recipient's notifications — how many: the recipient is gone (a deleted account, E203). */
+  deleteAll(recipient: RecipientRef): Promise<number> {
+    return this.#store.deleteAll(recipient);
+  }
 }
 
 /**

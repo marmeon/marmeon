@@ -36,6 +36,12 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev', // W10.6, E200
     'medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount', // W10.7, E202
     'low-what-a-failure-shows-loads-when-it-happens--the-dialog-of-a-5xx-and-the-error-pages-are-a-chunk-of-their-own', // W10.7, E202
+    'medium-accounts-without-a-confirmed-address-are-deleted-after-7-days--auth_unverified_days-authprune-unverified', // W10.8, E203
+    'low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none', // W10.8, E203
+    'low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace', // W10.8, Max 07.10.
+    'low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments', // W10.8, E204
+    'low-uploadsprune---hours-below-uploads_lifetime-needs---force', // W10.8, E204
+    'low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions', // W10.8, E204
   ],
   'Wave 9': [
     'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187

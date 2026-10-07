@@ -23,7 +23,9 @@ function redactNested(value: unknown, depth: number): unknown {
   if (value instanceof Error) return redactError(value, depth + 1, new Set());
   if (Array.isArray(value) || value instanceof Set) return [...(value as Iterable<unknown>)].map((item) => redactNested(item, depth + 1));
   if (value instanceof Map) return redact(Object.fromEntries(value), depth + 1);
-  // Dates, URLs, buffers and typed arrays: written as they are (their `toJSON`, or bytes).
+  // A URL is text with a query (`?token=…`) and a path (`/reset-password/<token>`): masked like text, never written as it is.
+  if (value instanceof URL || value instanceof URLSearchParams) return redactText(String(value));
+  // Dates, buffers and typed arrays: written as they are (their `toJSON`, or bytes).
   if (typeof (value as { toJSON?: unknown }).toJSON === 'function' || ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return value;
   return redact(value as Record<string, unknown>, depth + 1);
 }
@@ -163,6 +165,8 @@ export class Redactor {
     if (value === null || typeof value !== 'object') return typeof value === 'bigint' || typeof value === 'symbol' || typeof value === 'function' ? String(value) : value;
     if (depth >= 8) return '[…]';
     if (value instanceof Date) return Number.isNaN(value.getTime()) ? 'Invalid Date' : value.toISOString();
+    if (value instanceof URL) return this.url(value.href);
+    if (value instanceof URLSearchParams) return this.text(value.toString());
     if (typeof Blob !== 'undefined' && value instanceof Blob) {
       const name = (value as { name?: unknown }).name;
       return `[${typeof name === 'string' ? `file ${this.text(name)}, ` : ''}${value.size} bytes${value.type ? `, ${value.type}` : ''}]`;

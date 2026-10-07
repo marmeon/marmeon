@@ -154,7 +154,8 @@ const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'
 - **Never echoed:** a `TemporaryUpload` serializes to nothing — old input after a failed submit, logs and JSON never hold the
   token or the file.
 - **Housekeeping:** `marmeon uploads:prune [--hours=24]` deletes uploads made more than a day ago — the rows first (one
-  statement), then their files. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` —
+  statement), then their files. `--hours` below `UPLOADS_LIFETIME` would delete uploads whose token still works (a form still
+  open): refused unless `--force`. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` —
   [@marmeon/scheduler](../scheduler/README.md); with a local uploads disk on several servers, on each, without `onOneServer()`).
 - **Not yet:** lists of files (`r.array(upload(…))`), files in an optional object, and a `<Form>` without JavaScript (it would post the file itself — refused).
 

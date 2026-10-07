@@ -159,13 +159,25 @@ export interface CursorOptions<C extends string> {
   readonly direction?: 'asc' | 'desc';
   /** Encrypts the cursor (inject `Encrypter`): a client can neither read the last row's values nor make one up. */
   readonly encrypter: CursorEncrypter;
+  /**
+   * The list's name — part of the cursor's context: a cursor of another list with the same order does not decrypt here (a
+   * table's name, an inbox's recipient). Without it a cursor is bound to its order only — one of another list with the same order
+   * is a position among this list's rows (its filters still apply).
+   */
+  readonly name?: string;
 }
 
 /**
- * Each order's own context: a cursor of other columns or the other direction does not decrypt here. Per order, not per list — one
- * of another list with the same order is a position among this list's rows (its filters still apply).
+ * Each order's own context: a cursor of other columns or the other direction does not decrypt here — nor one of another list,
+ * when the list is named (`name`).
  */
 const CURSOR_CONTEXT = 'marmeon:cursor';
+
+/** The cursor context of a list: its name (escaped — no name reads as another's) and its order. */
+function cursorContext(name: string | undefined, direction: 'asc' | 'desc', columns: readonly string[]): string {
+  const order = `${direction}:${columns.join(',')}`;
+  return name === undefined ? `${CURSOR_CONTEXT}:${order}` : `${CURSOR_CONTEXT}@${encodeURIComponent(name)}:${order}`;
+}
 
 /**
  * Keyset pagination for large tables and "load more": rows after the cursor, ordered by `column` and then the unique `key` —
@@ -176,8 +188,8 @@ const CURSOR_CONTEXT = 'marmeon:cursor';
  *   NULL is a cursor like any other — the next page goes on among the NULLs instead of starting over.
  * - **Its own order:** an `orderBy` the query had is taken out — the cursor follows these columns only.
  * - **Encrypted:** the cursor is the last row's values, encrypted and authenticated with the app key (`encrypter`, its own
- *   context per columns and direction) — a hidden sort column's values do not leak into URLs, and a cursor cannot be made up.
- *   One that does not decrypt answers 400 ({@link InvalidCursorError}).
+ *   context per columns and direction — and per list with `name`) — a hidden sort column's values do not leak into URLs, and a
+ *   cursor cannot be made up. One that does not decrypt answers 400 ({@link InvalidCursorError}).
  *
  * ```ts
  * cursorPaginate(query, { column: 'name', cursor: ctx.query.cursor, perPage: 10, encrypter: this.#encrypter });   // by (name, id)
@@ -185,12 +197,12 @@ const CURSOR_CONTEXT = 'marmeon:cursor';
  */
 export async function cursorPaginate<DB, TB extends keyof DB, O extends Record<string, unknown>>(
   query: SelectQueryBuilder<DB, TB, O>,
-  { column, key = 'id' as keyof O & string, cursor, perPage = 15, direction = 'asc', encrypter }: CursorOptions<keyof O & string>,
+  { column, key = 'id' as keyof O & string, cursor, perPage = 15, direction = 'asc', encrypter, name }: CursorOptions<keyof O & string>,
 ): Promise<CursorPaginated<O>> {
   if (!Number.isSafeInteger(perPage) || perPage < 1) throw new RangeError(`perPage must be a whole number ≥ 1, got ${perPage}.`);
   const sorted: readonly string[] = typeof column === 'string' ? [column] : column;
   const columns = sorted.at(-1) === key ? sorted : [...sorted.filter((name) => name !== key), key];
-  const context = `${CURSOR_CONTEXT}:${direction}:${columns.join(',')}`;
+  const context = cursorContext(name, direction, columns);
   let page = (query as SelectQueryBuilder<any, any, O>).clearOrderBy();
   for (const [index, name] of columns.entries()) {
     // The key is unique and never NULL; the columns before it may be NULL — last, in either direction.

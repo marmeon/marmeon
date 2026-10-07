@@ -13,6 +13,7 @@ import { SessionLottery, StartSession } from './start-session.ts';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SESSION_USER_KEY, SessionStore } from './store.ts';
+import { UserSessions } from './user-sessions.ts';
 import { CookieSessionStore } from './stores/cookie.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
 import { FileSessionStore } from './stores/file.ts';
@@ -52,6 +53,8 @@ export class SessionServiceProvider implements ServiceProvider {
     // The cookie store works on the request's cookie jar: one per request. The others are shared.
     if (config.driver === 'cookie') container.scoped(SessionStore, (c) => storeFor(config, c));
     else container.singleton(SessionStore, (c) => storeFor(config, c));
+    // A user's sessions as a whole (E203: a deleted account's) — the shared store's; the cookie driver's live in the browsers.
+    container.singleton(UserSessions, (c) => new UserSessions(config.driver === 'cookie' ? undefined : () => c.make(SessionStore)));
   }
 
   async boot(app: Application): Promise<void> {
@@ -174,7 +177,9 @@ export function pageSessionOf(session: Session): PageSession {
   return {
     // Only a session that is kept has a token worth putting into the page (E143): a guest's new session, with nothing in it,
     // gets none — and is not kept just for it. Its forms pass by the browser's word (Fetch Metadata, Origin).
-    csrfToken: () => started(() => (session.exists ? session.currentToken() : undefined)),
+    // Made now if the session has none yet (E203) — but never by a read-only request (an island): a token it made would never be
+    // saved; it gives the one the session has, if any.
+    csrfToken: () => started(() => (!session.exists ? undefined : session.readOnly ? session.currentToken() : session.token())),
     scope: (options) => {
       // A session that is not kept has an id nobody will see again: no scope — unless the caller binds something to it.
       const id = started(() => {

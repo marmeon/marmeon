@@ -21,16 +21,20 @@ const list = v.pipe(
  * ```sh
  * OTEL_SDK_DISABLED=true                                        # no spans from Marmeon (the SDK honours it too)
  * OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST=x-tenant,accept-language   # recorded request headers, redacted
+ * OTEL_TRUST_TRACEPARENT=true                                   # continue a caller's trace — only behind an edge that sets the header
  * ```
  */
 export const OtelConfig = defineConfig('otel', {
   env: v.object({
     OTEL_SDK_DISABLED: v.optional(v.pipe(v.string(), v.toLowerCase(), v.picklist(['true', 'false'])), 'false'),
     OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: v.optional(list, ''),
+    OTEL_TRUST_TRACEPARENT: v.optional(v.pipe(v.string(), v.toLowerCase(), v.picklist(['true', 'false'])), 'false'),
   }),
   resolve: (env) => ({
     disabled: env.OTEL_SDK_DISABLED === 'true',
     requestHeaders: env.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST,
+    /** Continue an incoming request's trace (`traceparent`) instead of linking it — see `InstrumentOptions.trustTraceparent`. */
+    trustTraceparent: env.OTEL_TRUST_TRACEPARENT === 'true',
   }),
 });
 export type OtelConfig = ConfigOf<typeof OtelConfig>;
@@ -77,6 +81,7 @@ export class OtelServiceProvider implements ServiceProvider {
       redactor: app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor(),
       ...(app.container.has(LogContextSources) ? { logContext: app.container.make(LogContextSources) } : {}),
       requestHeaders: config.requestHeaders,
+      trustTraceparent: config.trustTraceparent,
     });
   }
 
