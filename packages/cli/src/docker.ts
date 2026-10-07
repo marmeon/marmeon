@@ -151,7 +151,8 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     '  worker:',
     '    <<: *app',
     '    # A job past its timeout ends the worker with exit code 70 (E83) — the restart policy brings a fresh one.',
-    "    command: ['queue:work', '--queue=mail,default']",
+    '    # Every queue, fairly (E199). For a priority, add a second worker with --queue=mail.',
+    "    command: ['queue:work']",
     '    healthcheck:',
     '      disable: true',
     '    # SIGTERM: no new job; the running one gets --stop-timeout (10 s) to finish. Raise both together.',
@@ -337,7 +338,8 @@ WantedBy=multi-user.target
       'Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1',
       '# SIGTERM → SHUTDOWN_DELAY (E163) → drain (at most 10 s): TimeoutStopSec covers both.',
     ]),
-    worker: unit('queue worker', 'queue worker (marmeon queue:work)', 'queue:work --queue=mail,default', 30, [
+    worker: unit('queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 30, [
+      '# Every queue, fairly (E199). For a priority, a second unit with --queue=mail.',
       '# A job past its timeout ends the worker with exit code 70 (E83): Restart=always brings a fresh one. On SIGTERM the running',
       '# job gets --stop-timeout (10 s): TimeoutStopSec must be longer — raise both together for long jobs.',
     ]),

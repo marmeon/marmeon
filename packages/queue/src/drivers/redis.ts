@@ -17,6 +17,20 @@ const MIGRATE = `local function migrate(from, to, now)
 end
 `;
 
+/** Claims the first job of one queue: due delayed jobs and expired claims back to the list, pop, count the attempt, record the claim. */
+const CLAIM = `local function claim(list, delayed, reserved, now, expiry)
+  migrate(delayed, list, now)
+  migrate(reserved, list, now)
+  local member = redis.call('lpop', list)
+  if not member then return false end
+  local id, attempts, payload = string.match(member, '^([^:]*):(%d+):(.*)$')
+  if not id then id, attempts, payload = '?', '0', member end
+  local claimed = id .. ':' .. (tonumber(attempts) + 1) .. ':' .. payload
+  redis.call('zadd', reserved, expiry, claimed)
+  return claimed
+end
+`;
+
 /** Queues a member: into the list now, or into the delayed set until its time. And remembers the queue's name. */
 const PUSH_ONE = `local function push(list, delayed, index, name, member, available, now)
   if tonumber(available) > tonumber(now) then
@@ -35,6 +49,7 @@ end
 interface Scripts {
   readonly push: RedisScript;
   readonly reserve: RedisScript;
+  readonly reserveAny: RedisScript;
   readonly ack: RedisScript;
   readonly release: RedisScript;
   readonly size: RedisScript;
@@ -51,17 +66,18 @@ return 1`,
     ),
     // KEYS: list, delayed, reserved. ARGV: now (ms), claim expiry (ms). The claim — migrate, pop, count the attempt,
     // record the claim — is one atomic step: two workers never pop the same member.
-    reserve: defineRedisScript(
-      'queue.reserve',
-      `${MIGRATE}migrate(KEYS[2], KEYS[1], ARGV[1])
-migrate(KEYS[3], KEYS[1], ARGV[1])
-local member = redis.call('lpop', KEYS[1])
-if not member then return false end
-local id, attempts, payload = string.match(member, '^([^:]*):(%d+):(.*)$')
-if not id then id, attempts, payload = '?', '0', member end
-local claimed = id .. ':' .. (tonumber(attempts) + 1) .. ':' .. payload
-redis.call('zadd', KEYS[3], ARGV[2], claimed)
-return claimed`,
+    reserve: defineRedisScript('queue.reserve', `${MIGRATE}${CLAIM}return claim(KEYS[1], KEYS[2], KEYS[3], ARGV[1], ARGV[2])`),
+    // KEYS: list, delayed, reserved of each queue in turn. ARGV: now (ms), claim expiry (ms), the queue to try first (1-based).
+    // Every queue in one call (E199): from the start queue round to the one before it, the first claim wins — `{ queue, member }`.
+    reserveAny: defineRedisScript(
+      'queue.reserve-any',
+      `${MIGRATE}${CLAIM}local count = #KEYS / 3
+for step = 0, count - 1 do
+  local queue = (tonumber(ARGV[3]) - 1 + step) % count + 1
+  local claimed = claim(KEYS[3 * queue - 2], KEYS[3 * queue - 1], KEYS[3 * queue], ARGV[1], ARGV[2])
+  if claimed then return { queue, claimed } end
+end
+return false`,
     ),
     // KEYS: reserved, queue index, then per next job: its list and delayed set. ARGV: member, now, then per next job:
     // queue name, member, available at. Acknowledged and the chain handed on together — only for this claim.
@@ -96,7 +112,7 @@ export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnect
  * - `<prefix>queues:<queue>` — a list of waiting jobs, oldest first;
  * - `<prefix>queues:<queue>:delayed` — a sorted set of jobs not yet due (score: when they are), and of released ones;
  * - `<prefix>queues:<queue>:reserved` — a sorted set of claimed jobs (score: when the claim expires = now + `retryAfter`);
- * - `<prefix>queues` — the names of the queues (`--queue=*`, `queue:size`).
+ * - `<prefix>queues` — the names of the queues (`reserveAny`, `queue:size`); a queue that ran empty stays in it.
  *
  * A job is the member `<id>:<attempts>:<payload>`. **The claim is one Lua script:** it moves due delayed jobs and
  * expired claims (a worker that died) back to the list, pops the first job, counts the attempt and records the claim —
@@ -111,6 +127,9 @@ export class RedisQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<RedisConnection>;
   readonly #clock: Clock;
   readonly #retryAfter: number;
+  /** `reserveAny`: the queue it took from last (whose successor comes first next time), and the registry it read. */
+  #last: string | undefined;
+  #known: { queues: string[]; at: number } | undefined;
 
   /** `retryAfter`: seconds after which a claimed job counts as abandoned (its worker died) and is claimed again. */
   constructor(connection: RedisQueueConnection, options: { retryAfter: number; clock?: Clock }) {
@@ -138,6 +157,46 @@ export class RedisQueueDriver implements QueueDriver {
       const { id, attempts, payload } = parseMember(member);
       return { id, queue, payload, attempts, reservedAt: now };
     }
+    return undefined;
+  }
+
+  /**
+   * Every queue in turn (E199), in ONE script call: Redis keeps a list per queue, so there is no oldest job across them — the
+   * queue after the one this driver took from last is tried first (round robin), then the rest. The queues come from the
+   * registry (`SMEMBERS <prefix>queues`), asked again after a second or a round without a job — so an idle round costs two
+   * calls, whatever the number of queues (before: one per queue, plus the registry). Their keys go to the script as `KEYS`.
+   */
+  async reserveAny(except: readonly string[] = []): Promise<ReservedJob | undefined> {
+    const [redis, { reserveAny }] = await Promise.all([this.#connection(), loadScripts()]);
+    const queues = (await this.#registry(redis)).filter((queue) => !except.includes(queue));
+    if (queues.length === 0) return this.#forget();
+    // Round robin by name, not by position: a queue that appears in between does not shift whose turn it is.
+    const last = this.#last;
+    const after = last === undefined ? 0 : queues.findIndex((queue) => queue > last);
+    const keys = queues.flatMap((queue) => {
+      const { list, delayed, reserved } = this.#keys(redis, queue);
+      return [list, delayed, reserved];
+    });
+    const now = this.#clock.now();
+    const claimed = await redis.run<[number, string] | null>(reserveAny, keys, [now, now + this.#retryAfter * 1000, Math.max(after, 0) + 1]);
+    if (!Array.isArray(claimed)) return this.#forget();
+    const queue = queues[Number(claimed[0]) - 1]!;
+    this.#last = queue;
+    const { id, attempts, payload } = parseMember(claimed[1]);
+    return { id, queue, payload, attempts, reservedAt: now };
+  }
+
+  /** The registry's queues, at most a second old (sorted, like `queues()`). */
+  async #registry(redis: RedisConnection): Promise<string[]> {
+    if (this.#known && performance.now() - this.#known.at < 1000) return this.#known.queues;
+    const queues = (await redis.command<string[]>(['SMEMBERS', redis.key('queues')])).sort();
+    this.#known = { queues, at: performance.now() };
+    return queues;
+  }
+
+  /** No job in any queue: ask the registry again next time — a new queue is taken in the next round. */
+  #forget(): undefined {
+    this.#known = undefined;
     return undefined;
   }
 

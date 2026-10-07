@@ -18,10 +18,12 @@ export class JobTimeoutError extends Error {
 
 export interface WorkOptions {
   /**
-   * Queues in priority order: a job of the first is taken before any of the second. `*` stands for every other queue
-   * that holds jobs (alphabetically, looked up again at least every second): `['*']`, `['mail', '*']`.
+   * Which queues, and how (E199). Missing, empty or `['*']`: **every queue, fairly** — the driver's `reserveAny` (the database:
+   * the oldest due job of all queues; Redis: the queues in turn). A list is a **strict** priority: a job of the first is taken
+   * before any of the second (`['mail', 'default']`). `*` in a list stands for every queue the list does not name, taken fairly
+   * at its place: `['mail', '*']` takes `mail` first, then the rest.
    */
-  readonly queues: readonly string[];
+  readonly queues?: readonly string[];
   /** Seconds to wait when no job is available (default 1). */
   readonly sleep?: number;
   /** Stop after this many jobs (each processed attempt counts). */
@@ -39,8 +41,9 @@ export interface WorkOptions {
   readonly signal?: AbortSignal;
   /**
    * Seconds between two looks, while idle, at the queues this worker does not take (default 60; `false`: never). Jobs ready
-   * on one of them at two looks in a row — and none of them running — are logged once as a warning: a worker started without
-   * `--queue=mail,default` would otherwise leave the mails of the auth module waiting without a word. Not with `*`.
+   * on one of them at two looks in a row — and none of them running — are logged once as a warning: a worker started with
+   * `--queue=default` would otherwise leave the mails of the auth module waiting without a word. Only for a list without `*` —
+   * a worker on every queue has nothing to look for.
    */
   readonly watchOtherQueues?: number | false;
   /**
@@ -104,16 +107,15 @@ export class Worker {
     const started = performance.now();
     const counts = { processed: 0, failed: 0, released: 0 };
     const result = (reason: WorkResult['reason']): WorkResult => ({ ...counts, reason });
-    const queues = this.#queues(options.queues);
+    const claims = this.#claims(options.queues);
     const others = this.#others(options);
     for (;;) {
       if (options.signal?.aborted) return result('stopped');
       if (options.maxJobs !== undefined && counts.processed >= options.maxJobs) return result('max-jobs');
       if (options.maxTime !== undefined && performance.now() - started >= options.maxTime * 1000) return result('max-time');
 
-      const job = await this.#deps.driver.reserve(await queues.current());
+      const job = await claims.next();
       if (!job) {
-        queues.stale();
         if (options.stopWhenEmpty) return result('empty');
         await others.look();
         try {
@@ -213,24 +215,63 @@ export class Worker {
     return 'processed';
   }
 
-  /** The queues to take from now: the list as given, `*` expanded to the driver's queues (again after a second, or when none had a job). */
-  #queues(list: readonly string[]): { current(): Promise<readonly string[]>; stale(): void } {
-    if (!list.includes('*')) return { current: async () => list, stale: () => {} };
-    if (!this.#deps.driver.queues) throw new Error('This queue driver cannot list its queues, so --queue=* is not possible — name the queues.');
-    let expanded: readonly string[] | undefined;
-    let at = 0;
+  /**
+   * The claims of one round, in order — the first that finds a job wins: named queues strictly (`reserve`), `*` (or no list)
+   * as every other queue fairly (`reserveAny`).
+   */
+  #claims(list: readonly string[] | undefined): { next(): Promise<ReservedJob | undefined> } {
+    const { driver } = this.#deps;
+    const every = !list || list.every((queue) => queue === '*'); // also an empty list
+    if (every) {
+      const any = this.#any([]);
+      return { next: () => any() };
+    }
+    const named = list.filter((queue) => queue !== '*');
+    const steps: (() => Promise<ReservedJob | undefined>)[] = [];
+    let group: string[] = [];
+    const flush = () => {
+      if (group.length === 0) return;
+      const queues = group;
+      steps.push(() => driver.reserve(queues));
+      group = [];
+    };
+    for (const queue of list) {
+      if (queue !== '*') {
+        group.push(queue);
+        continue;
+      }
+      flush();
+      steps.push(this.#any(named));
+    }
+    flush();
     return {
-      current: async () => {
-        if (expanded && performance.now() - at < 1000) return expanded;
-        const named = new Set(list.filter((queue) => queue !== '*'));
-        const others = (await this.#deps.driver.queues()).filter((queue) => !named.has(queue));
-        expanded = list.flatMap((queue) => (queue === '*' ? others : [queue]));
-        at = performance.now();
-        return expanded;
+      next: async () => {
+        for (const step of steps) {
+          const job = await step();
+          if (job) return job;
+        }
+        return undefined;
       },
-      stale: () => {
-        expanded = undefined;
-      },
+    };
+  }
+
+  /**
+   * Every queue but `except`, fairly: the driver's `reserveAny` — or, for a driver without it, its `queues()` in turn (asked again
+   * after a second or a round without a job; the queue after the one taken from last first).
+   */
+  #any(except: readonly string[]): () => Promise<ReservedJob | undefined> {
+    const { driver } = this.#deps;
+    if (driver.reserveAny) return () => driver.reserveAny!(except);
+    if (!driver.queues) throw new Error('This queue driver can neither claim from every queue (reserveAny) nor list its queues (queues) — name the queues: --queue=mail,default.');
+    let known: { queues: readonly string[]; at: number } | undefined;
+    let last: string | undefined;
+    return async () => {
+      if (!known || performance.now() - known.at >= 1000) known = { queues: (await driver.queues()).filter((queue) => !except.includes(queue)), at: performance.now() };
+      const start = last === undefined ? 0 : Math.max(0, known.queues.findIndex((queue) => queue > last!));
+      const job = await driver.reserve([...known.queues.slice(start), ...known.queues.slice(0, start)]);
+      if (job) last = job.queue;
+      else known = undefined;
+      return job;
     };
   }
 
@@ -241,8 +282,9 @@ export class Worker {
    */
   #others(options: WorkOptions): { look(): Promise<void> } {
     const every = options.watchOtherQueues ?? 60;
-    if (every === false || options.queues.includes('*')) return { look: async () => {} };
-    const taken = new Set(options.queues);
+    const list = options.queues ?? [];
+    if (every === false || list.length === 0 || list.includes('*')) return { look: async () => {} };
+    const taken = new Set(list);
     const { driver, logger, connection } = this.#deps;
     let last = Number.NEGATIVE_INFINITY;
     let waiting = new Set<string>();
@@ -266,8 +308,8 @@ export class Worker {
           if (!waiting.has(queue)) continue;
           named.add(queue);
           logger.warn(
-            `Jobs are waiting on the "${queue}" queue of the ${connection} connection, which this worker does not take (it takes ${options.queues.join(', ')}). ` +
-              `If no other worker takes it, start this one with --queue=${[queue, ...options.queues].join(',')} (in priority order) or --queue=*.`,
+            `Jobs are waiting on the "${queue}" queue of the ${connection} connection, which this worker does not take (it takes ${list.join(', ')}). ` +
+              `If no other worker takes it, start this one without --queue (a worker without --queue takes every queue) or with --queue=${[queue, ...list].join(',')} (in priority order).`,
             { queue, connection },
           );
         }

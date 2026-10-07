@@ -23,7 +23,7 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
 | Role | Command | Restart | Stops on SIGTERM |
 | --- | --- | --- | --- |
 | web | `marmeon start` | always (unless stopped) | readiness 503, `SHUTDOWN_DELAY`, then the drain: requests in flight and the work after them (≤ 10 s) |
-| worker | `marmeon queue:work --queue=mail,default` | always — a job past its timeout ends the worker with **exit code 70** on purpose | no new job; the running one gets `--stop-timeout` (10 s), else it is released |
+| worker | `marmeon queue:work` | always — a job past its timeout ends the worker with **exit code 70** on purpose | no new job; the running one gets `--stop-timeout` (10 s), else it is released |
 | scheduler | `marmeon schedule:work` | always | no new tick; runs get `--stop-timeout` |
 
 - **One role per container** (or per systemd unit) is the model: the same image, another command. Scale the web role with more
@@ -32,9 +32,10 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
   cluster needs `LIVE_DRIVER=redis` — with `memory` a worker refuses to start and the cluster stops (W9 step 4) — and the
   other drivers follow [More than one instance](#more-than-one-instance). Run **one scheduler** per deployment (or per server
   with `onOneServer()` tasks and a shared cache) and as many workers as the queue needs.
-- **The worker's queues:** without `--queue` a worker takes only `default` — the auth module's mails wait on `mail`. Name every
-  queue the app uses, in priority order (`--queue=mail,default`), or `--queue=*`. An idle worker names a queue nobody takes in a
-  warning (`Jobs are waiting on the "mail" queue …`) once it saw jobs ready there twice in a row.
+- **The worker's queues:** without `--queue` a worker takes every queue, fairly (E199) — the database queue the oldest due job of
+  all, Redis the queues in turn — so a full `default` queue no longer holds the auth module's mails back. `--queue=mail,default`
+  narrows a worker down to these, in strict order; for a priority run a second worker with `--queue=mail`. A worker with a list
+  names a queue nobody takes in a warning (`Jobs are waiting on the "mail" queue …`) once it saw jobs ready there twice in a row.
 - **Boot warnings once:** with `--workers=N` the primary says the boot's warnings (log mailer, cookies without `Secure`, stale
   build artifacts); the workers keep theirs to themselves.
 - **One process:** `marmeon start` *is* the server — no launcher in front — so the supervisor's SIGTERM, a worker's exit code and
@@ -113,7 +114,7 @@ and breaks every signed link.
 
 **Mail (E135):** the default `MAIL_MAILER=log` sends nothing — it writes each mail, password-reset and verification links
 included, into the log. A protected app warns about it at boot. Production needs `smtp`; queued mails then go out through the
-worker (`--queue=mail,default`). SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, otherwise STARTTLS is required
+worker (any worker without `--queue`). SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, otherwise STARTTLS is required
 (`MAIL_REQUIRE_TLS`, default `true`, E192) — set it to `false` only for a relay without TLS on the same machine.
 
 ## Stopping without dropped requests
@@ -268,7 +269,7 @@ beyond the template:
   idle timeout to the app
 - [ ] `MAIL_MAILER=smtp`
 - [ ] web, worker and scheduler each under a supervisor that restarts them; grace periods longer than the drain
-- [ ] the worker takes every queue the app uses (`--queue=mail,default`, or `--queue=*`)
+- [ ] a worker takes every queue the app uses (one without `--queue` does; a `--queue` list names every queue)
 - [ ] HSTS once the site is HTTPS only (the app's `SecurityHeaders` switch or the proxy); the rest of the list: [security](security.md#your-checklist)
 - [ ] `SHUTDOWN_DELAY` (≈ 5) behind a probing load balancer or in Kubernetes
 - [ ] more than one instance — or `--workers`: shared drivers for sessions, cache, queue, live (`LIVE_DRIVER=redis`) and uploads;

@@ -226,7 +226,6 @@ export class QueueFake implements Queue {
   async work(options: Partial<Pick<WorkOptions, 'queues' | 'maxJobs' | 'stopTimeout'>> = {}): Promise<WorkResult> {
     const owner = this.#owner;
     const driver = owner.#memory();
-    const queues = options.queues ?? [...new Set(driver.entries().map((entry) => entry.queue))];
     const container = owner.#container;
     const registry = container.make(JobRegistry);
     const connections = container.make(QueueConnections);
@@ -239,7 +238,8 @@ export class QueueFake implements Queue {
       logger: container.make(Logger).child({ channel: 'queue' }),
       events: connections.events,
     });
-    return worker.run({ queues: queues.length > 0 ? queues : ['default'], stopWhenEmpty: true, stopTimeout: options.stopTimeout ?? 1, ...(options.maxJobs === undefined ? {} : { maxJobs: options.maxJobs }) });
+    // Without `queues` every queue, fairly — like `queue:work` without --queue (E199): the job that became due first runs first.
+    return worker.run({ ...(options.queues ? { queues: options.queues } : {}), stopWhenEmpty: true, stopTimeout: options.stopTimeout ?? 1, ...(options.maxJobs === undefined ? {} : { maxJobs: options.maxJobs }) });
   }
 
   /** Jobs `work()` recorded as failed, newest first. */

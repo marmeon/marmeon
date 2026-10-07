@@ -71,7 +71,9 @@ describe('marmeon make:docker', () => {
     expect(compose).toContain('image: shop');
     expect(compose).not.toMatch(/^\s*init: true/m); // tini is PID 1 already
     expect(compose).toContain("command: ['start']");
-    expect(compose).toContain("command: ['queue:work', '--queue=mail,default']");
+    // Every queue (E199): a worker without --queue — no list that forgets a queue.
+    expect(compose).toContain("command: ['queue:work']");
+    expect(compose).not.toContain("'--queue");
     expect(compose).toContain("command: ['schedule:work']");
     expect(compose.match(/healthcheck:\n {6}disable: true/g)).toHaveLength(2);
     expect(compose).toContain("      - '3000:3000'");
@@ -145,7 +147,7 @@ describe('marmeon make:docker', () => {
     expect(web).toContain('Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1');
     expect(web).toContain('TimeoutStopSec=30');
     expect(web).toContain('ReadWritePaths=/srv/shop/storage');
-    expect(result.file('deploy/systemd/worker.service')).toContain('ExecStart=/srv/shop/node_modules/.bin/marmeon queue:work --queue=mail,default');
+    expect(result.file('deploy/systemd/worker.service')).toMatch(/^ExecStart=\/srv\/shop\/node_modules\/\.bin\/marmeon queue:work$/m);
     expect(result.file('deploy/systemd/worker.service')).toContain('Restart=always');
     expect(result.file('deploy/systemd/scheduler.service')).toContain('marmeon schedule:work');
     expect(result.file('deploy/Caddyfile')).toContain('reverse_proxy 127.0.0.1:3000');

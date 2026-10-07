@@ -150,9 +150,9 @@ export class QueueServiceProvider implements ServiceProvider {
         .make(cli.CommandRegistry)
         .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand]);
     }
-    // `marmeon dev` runs a worker next to the server (E101) — on every queue (mails go to `mail`), unless jobs run at dispatch anyway.
+    // `marmeon dev` runs a worker next to the server (E101) — on every queue, like any worker without --queue (E199), unless jobs run at dispatch anyway.
     if (cli && app.container.has(cli.DevProcesses) && config.default !== 'sync') {
-      app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--queue=*', '--stop-timeout=5'] });
+      app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--stop-timeout=5'] });
     }
   }
 }

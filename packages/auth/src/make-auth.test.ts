@@ -57,7 +57,7 @@ describe('make:auth', () => {
     // The blank app has its lint preset, the devtools (E150) and a Content-Security-Policy (E147): none is named.
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
-    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work --queue=mail,default).');
+    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
   });
 
   it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app, W7.6)', async () => {

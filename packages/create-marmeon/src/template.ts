@@ -267,7 +267,7 @@ export function readme({ title, packageManager, kit, docker }: ReadmeOptions): s
     `${run('build').padEnd(26)}# type-check, client and SSR build`,
     `${run('start').padEnd(26)}# the build, as production runs it (set NODE_ENV and the configuration in the real environment)`,
     `${`${exec} migrate`.padEnd(26)}# after a new migration — .env says NODE_ENV=development: it writes bootstrap/database.d.ts`,
-    `${exec} queue:work --queue=mail,default  # production: a worker for the queued jobs and the auth module's mails (marmeon dev runs one)`,
+    `${`${exec} queue:work`.padEnd(26)}# production: a worker on every queue — the queued jobs and the auth module's mails (marmeon dev runs one)`,
     '```',
     '',
     '`.env` holds this machine\'s configuration and the application key (`APP_KEY`) — it is not committed. `.env.example` lists',

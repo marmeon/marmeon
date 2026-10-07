@@ -87,8 +87,9 @@ with its links — and queues the finished `MailMessage` as the framework job `m
 - **Inside a transaction** (E107) it is a dispatch like any other: on the database queue a row in the transaction, else held
   until the commit — a rolled-back registration sends nothing ([what joins](../database/README.md#what-joins-what-does-not)).
 - Needs `@marmeon/queue` (an optional peer: without it `queue()` says what to install). A worker must take the queue:
-  `marmeon queue:work --queue=mail,default` (`make:docker`'s compose file and systemd unit do); a worker without it names the
-  waiting `mail` queue in a warning ([which queues a worker takes](../queue/README.md#which-queues-a-worker-takes)).
+  `marmeon queue:work` without `--queue` takes every queue (E199; `make:docker`'s compose file and systemd unit do so); a worker
+  with a `--queue` list that leaves `mail` out names the waiting queue in a warning ([which queues a worker
+  takes](../queue/README.md#which-queues-a-worker-takes)).
 - Tokens that must stay the same over the mail's retries (a reset token) are made **before** the mail is queued — the web app
   queues a job that makes the token and queues the mail (two hops), so the request's answer time does not depend on the account.
 

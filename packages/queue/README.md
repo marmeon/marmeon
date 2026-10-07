@@ -41,30 +41,51 @@ await this.#queue.dispatch(SendWelcomeMailJob, { userId: 'x' });    // ✗ Type 
 ```
 
 ```text
-marmeon queue:work [--connection=database|redis] [--queue=mail,default|*] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]
+marmeon queue:work [--connection=database|redis] [--queue=mail,default] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]
 marmeon queue:failed | queue:retry <id…|all> | queue:forget <id> | queue:flush | queue:prune-failed [--hours=168]
 marmeon queue:size [queue…] [--connection=database|redis]
 marmeon make:queue-table [--module=system]
 ```
 
 `marmeon make:job <Name> --module=<module>` ([marmeon](../cli/README.md)) writes a job class with a stable name and
-prints the line for its module. `marmeon dev` starts a worker next to the server, on every queue (`--queue=*`,
-`--stop-timeout=5`), and restarts it when code changes (E101) — not with `QUEUE_CONNECTION=sync`, where jobs run at the dispatch.
+prints the line for its module. `marmeon dev` starts a worker next to the server, on every queue (`queue:work --stop-timeout=5`),
+and restarts it when code changes (E101) — not with `QUEUE_CONNECTION=sync`, where jobs run at the dispatch.
 
 `queue:work` runs in the one Node process `marmeon` started (E159) — signals and its exit code reach the supervisor directly. Its
 first line names the connection, the queues and the environment it assumed (E139): `Processing jobs of the database connection:
-mail, default — in production (protected)`. A worker that is `development` only because the app's `.env` says so (E170) logs a
+every queue (oldest first) — in production (protected)`. A worker that is `development` only because the app's `.env` says so (E170) logs a
 loud warning (`NODE_ENV=development comes from .env, not from the environment: …`) and runs anyway: on a server, set `NODE_ENV`
 in the environment ([where it comes from](../core/README.md#the-environment-node_env)).
 
 ## Which queues a worker takes
 
-Without `--queue` a worker takes only the connection's queue (`default`). The auth module of `make:auth` queues its mails on
-`mail`, so a production worker runs with `--queue=mail,default` (the `make:docker` templates do). A worker that is idle looks at
-the other queues once a minute: jobs ready on one of them at two looks in a row, and none of them running, are named once in a
-warning — `Jobs are waiting on the "mail" queue …, which this worker does not take (it takes default)` — instead of waiting
-without a word. `Worker#run({ watchOtherQueues })` sets the interval in seconds, `false` switches it off; with `--queue=*` there
-is nothing to look for.
+**Without `--queue` a worker takes every queue, fairly** (E199) — no queue waits for another one to run empty:
+
+| Driver | Without `--queue` (or `--queue=*`) | An idle round asks |
+| --- | --- | --- |
+| `database` | the oldest due job of all queues — an expired claim first, then by when a job became due — in **one** statement | the database once, whatever the number of queues; a new queue is taken at once |
+| `redis` | the queues in turn: the one after the queue it took from last first (Redis keeps a list per queue — there is no oldest job across them) | Redis twice: the queue registry (`SMEMBERS`, at most a second old) and one Lua script over every queue's keys |
+
+```text
+marmeon queue:work                      # every queue, fairly — "Processing jobs of the database connection: every queue (oldest first)"
+marmeon queue:work --queue=mail,default # only these, in strict order: mail first, default when mail is empty (Laravel's)
+marmeon queue:work --queue=mail,*       # mail first, then every other queue, fairly
+```
+
+**`--queue` narrows it down and keeps a strict order** — a job of the first queue is taken before any of the second, so the second
+waits while the first has jobs. `*` in the list stands for every queue the list does not name, taken fairly at its place;
+`--queue=*` alone is the same as no `--queue`. For a priority without starving the rest, run two workers: one without `--queue`
+and one with `--queue=mail` (Horizon's and Oban's way — fairness by processes, not by order). A driver of your own gets the fair
+claim by implementing `reserveAny(except)` (optional — without it the worker goes round `queues()` with `reserve`).
+
+A worker with a list without `*` that is idle looks at the other queues once a minute: jobs ready on one of them at two looks in
+a row, and none of them running, are named once in a warning — `Jobs are waiting on the "mail" queue …, which this worker does not
+take (it takes default)` — instead of waiting without a word. `Worker#run({ watchOtherQueues })` sets the interval in seconds,
+`false` switches it off; a worker on every queue has nothing to look for.
+
+The Redis registry (`<prefix>queues`) keeps a queue that ran empty — each one costs its three keys in every idle round's script
+(an idle round, local Redis: 0.42 ms with 1 queue, 0.46 ms with 20, 0.70 ms with 100 — a `--queue=*` worker before took 0.38, 3.8
+and 17.8 ms, one script call per queue). Apps with many short-lived queue names: name them in `--queue`, or keep their number small.
 
 ## Connections and drivers
 
@@ -94,7 +115,11 @@ is not configured, an unknown database or Redis connection, a missing driver pac
 | `sync` | nowhere — `handle()` runs at the dispatch, in a scope of its own; its error is the dispatch's | — | scripts, and tests that want the work done at once |
 
 Workers never decide by reading first: a job is claimed by exactly one worker (2 workers × 200 jobs, Postgres and Redis: none
-twice — a test of the package). `queue:size` counts per queue; `--queue=*` finds every queue that holds jobs (at most once a second).
+twice — a test of the package). `queue:size` counts per queue, and lists every queue that holds jobs without names.
+The `jobs` table of `make:queue-table` has two indexes: `(queue, reserved_at, available_at)` for a worker with `--queue`, and
+`(reserved_at, available_at, id)` for one without — its claim is `UPDATE … WHERE id = coalesce((an expired claim), (the oldest
+due job))`, each subquery `LIMIT 1` along that index (on Postgres `FOR UPDATE SKIP LOCKED`), never a sort of every due job; that
+both databases plan it so is a test of the package (EXPLAIN on SQLite and Postgres).
 A driver may also split its count (`counts(queue)` → `{ ready, delayed, reserved }`: due, not yet due or released for later,
 claimed by a worker) — all three drivers do; the devtools' queue view (`/_marmeon/devtools/queue`, development only —
 [the pages](../devtools/README.md#the-pages-_marmeondevtools)) shows it.

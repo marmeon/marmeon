@@ -29,6 +29,32 @@ async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { 
   return { ...resolved, sql };
 }
 
+/** The index the fair claim needs (`make:queue-table`'s migration creates it, E199). */
+export const FAIR_CLAIM_INDEX = 'jobs_reserved_at_available_at_id_index';
+
+/**
+ * The claim of `reserveAny`: one `UPDATE` whose row is the first of two subqueries — an expired claim (a worker died), else the
+ * oldest due job — each `LIMIT 1` (`FOR UPDATE SKIP LOCKED` on Postgres), joined by `coalesce` (the second runs only when the
+ * first found nothing). Not one `WHERE (reserved_at IS NULL AND available_at <= now) OR reserved_at <= expired`: an `OR` over
+ * two ranges cannot walk one index in order, so both databases read every due row and sort them (EXPLAIN, 200 000 jobs:
+ * SQLite 8–17 ms, Postgres 45–50 ms with an external sort — against 0.01 and 0.06 ms). Both subqueries order by all three
+ * columns of {@link FAIR_CLAIM_INDEX}: Postgres does not treat `reserved_at IS NULL` as an equality, so `ORDER BY available_at, id`
+ * alone made it sort again. Exported for the EXPLAIN test.
+ */
+export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['driver'], { now, expired, except }: { now: number; expired: number; except: readonly string[] }) {
+  const lock = driver === 'pgsql' ? sql`for update skip locked` : sql``;
+  const others = except.length === 0 ? sql`` : sql`and queue not in (${sql.join(except)})`;
+  return sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update jobs
+      set reserved_at = cast(${now} as bigint), attempts = attempts + 1
+      where id = coalesce(
+        (select id from jobs where reserved_at <= cast(${expired} as bigint) ${others}
+          order by reserved_at, available_at, id limit 1 ${lock}),
+        (select id from jobs where reserved_at is null and available_at <= cast(${now} as bigint) ${others}
+          order by reserved_at, available_at, id limit 1 ${lock})
+      )
+      returning id, queue, payload, attempts`;
+}
+
 /**
  * Jobs in the app's database (`QUEUE_CONNECTION=database`, E83) — the table `jobs`.
  *
@@ -40,6 +66,9 @@ async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { 
  * before the lock.) A claim counts the attempt; `ack` deletes, `release` hands the row back —
  * both only while the claim is still this worker's (`attempts` unchanged), so a worker whose claim expired cannot
  * touch the job another worker holds now.
+ *
+ * A worker without `--queue` claims with `reserveAny`: the oldest due job of every queue, in one statement
+ * ({@link claimAnyStatement}, along {@link FAIR_CLAIM_INDEX}) — `reserve` keeps one statement per named queue, in order.
  *
  * A dispatch inside `connections.transaction()` on the same connection is part of that transaction (E85, E107): visible
  * to workers with the commit, gone with a rollback — as is one through `queue.using(trx)`.
@@ -100,6 +129,19 @@ export class DatabaseQueueDriver implements QueueDriver {
       if (row) return { id: String(row.id), queue: row.queue, payload: row.payload, attempts: Number(row.attempts), reservedAt: now };
     }
     return undefined;
+  }
+
+  /**
+   * The oldest due job of every queue (but `except`) in ONE statement (E199) — an idle round asks the database once, whatever
+   * the number of queues, and a queue that appears later is taken at once. Expired claims (a worker died) come first, then
+   * jobs by when they became due. See {@link claimAnyStatement} for why the statement looks the way it does.
+   */
+  async reserveAny(except: readonly string[] = []): Promise<ReservedJob | undefined> {
+    const { db, sql, driver } = await use(this.#connection, this.#cache);
+    const now = this.#clock.now();
+    const { rows } = await claimAnyStatement(sql, driver, { now, expired: now - this.#retryAfter * 1000, except }).execute(db);
+    const row = rows[0];
+    return row ? { id: String(row.id), queue: row.queue, payload: row.payload, attempts: Number(row.attempts), reservedAt: now } : undefined;
   }
 
   async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {

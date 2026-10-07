@@ -7,6 +7,7 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
 import { checkTimeouts } from './connections.ts';
+import type { QueueDriver } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { QueueFake } from './fake.ts';
 import { Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
@@ -429,7 +430,7 @@ describe('the worker', () => {
     stop.abort();
     await run;
     expect(warnings).toEqual([
-      'Jobs are waiting on the "mail" queue of the memory connection, which this worker does not take (it takes default). If no other worker takes it, start this one with --queue=mail,default (in priority order) or --queue=*.',
+      'Jobs are waiting on the "mail" queue of the memory connection, which this worker does not take (it takes default). If no other worker takes it, start this one without --queue (a worker without --queue takes every queue) or with --queue=mail,default (in priority order).',
     ]);
     // `false` never looks (the mail jobs still wait).
     warnings.length = 0;
@@ -441,6 +442,56 @@ describe('the worker', () => {
     await running;
     expect(warnings).toEqual([]);
     expect(await driver.size('mail')).toBe(2);
+  });
+
+  it('without queues takes every queue in one claim per round — an idle round asks the driver once, never for its list (E199)', async () => {
+    await using application = await app();
+    const memory = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    const calls: string[] = [];
+    const driver = new Proxy(memory, {
+      get(target, key) {
+        const value = Reflect.get(target, key) as unknown;
+        if (typeof value !== 'function') return value;
+        return (...args: unknown[]) => (calls.push(String(key)), (value as (...a: unknown[]) => unknown).apply(target, args));
+      },
+    });
+    const { worker: w } = worker(application, driver);
+    for (const queue of ['default', 'mail', 'reports']) await driver.push(queue, 'later', 60);
+    calls.length = 0;
+    expect(await w.run({ stopWhenEmpty: true })).toMatchObject({ processed: 0, reason: 'empty' });
+    expect(calls, 'driver calls of an idle round without queues').toEqual(['reserveAny']);
+    calls.length = 0;
+    await w.run({ queues: ['*'], stopWhenEmpty: true });
+    expect(calls, "driver calls of an idle round with ['*']").toEqual(['reserveAny']);
+    calls.length = 0;
+    await w.run({ queues: ['mail', '*'], stopWhenEmpty: true });
+    expect(calls, "driver calls of an idle round with ['mail', '*']").toEqual(['reserve', 'reserveAny']);
+    // Idle for a while: a worker on every queue never looks at "the other queues" — there are none.
+    calls.length = 0;
+    const stop = new AbortController();
+    const running = w.run({ sleep: 0.005, watchOtherQueues: 0.01, signal: stop.signal });
+    await sleep(80);
+    stop.abort();
+    await running;
+    expect([...new Set(calls)], 'driver calls of an idle worker without queues').toEqual(['reserveAny']);
+  });
+
+  it('goes round the queues itself for a driver without reserveAny — the one after the queue it took from last first (E199)', async () => {
+    await using application = await app();
+    const memory = new MemoryQueueDriver({ clock: application.container.make(Clock) });
+    // A driver of an older contract: no reserveAny.
+    const driver = new Proxy(memory, {
+      get: (target, key) => {
+        const value = Reflect.get(target, key) as unknown;
+        return key === 'reserveAny' ? undefined : typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as QueueDriver;
+    const job = (queue: string, userId: number) => driver.push(queue, JSON.stringify({ uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
+    for (const userId of [1, 2, 3]) await job('default', userId);
+    await job('mail', 100);
+    const { worker: w } = worker(application, driver as MemoryQueueDriver);
+    expect(await w.run({ stopWhenEmpty: true })).toMatchObject({ processed: 4 });
+    expect(application.seen.entries.map((entry) => (entry.payload as { userId: number }).userId), 'the order a worker without reserveAny took them').toEqual([1, 100, 2, 3]);
   });
 
   it('fails a job that came back more often than its tries (its worker died each time) instead of running it again', async () => {

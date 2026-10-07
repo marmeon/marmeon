@@ -142,7 +142,7 @@ export type PendingJob<J extends JobClass = JobClass> = readonly [job: J, payloa
 export interface DispatchOptions {
   /** Run no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
   readonly delay?: number | Duration;
-  /** The queue (default: the connection's, usually `default`). Workers take queues in the order `--queue=mail,default` lists them. */
+  /** The queue (default: the connection's, usually `default`). A worker without `--queue` takes every queue (E199); `--queue=mail,default` takes only these, in this order. */
   readonly queue?: string;
   /** The queue connection (default: `QUEUE_CONNECTION`). */
   readonly connection?: string;

@@ -95,11 +95,12 @@ describe('queued listeners (E86)', () => {
     expect(rows.map((row) => row.payload).join()).not.toContain('order-77'); // E105: no plaintext payload
     expect(application.seen.entries).toEqual([]);
 
-    const result = await application.container.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
+    // A worker on every queue (E199): the job queued first runs first — the mail, then the default queue's.
+    const result = await application.container.make(QueueConnections).worker('database', 10).run({ stopWhenEmpty: true });
     expect(result).toMatchObject({ processed: 2, failed: 0 });
     expect(application.seen.entries.map(({ listener, payload, inTransaction }) => ({ listener, payload, inTransaction }))).toEqual([
-      { listener: 'UpdateWarehouse', payload: { orderId: 'order-77' }, inTransaction: false },
       { listener: 'SendShippingMail', payload: { orderId: 'order-77' }, inTransaction: false }, // only what the schema reads — not the customer
+      { listener: 'UpdateWarehouse', payload: { orderId: 'order-77' }, inTransaction: false },
     ]);
   });
 

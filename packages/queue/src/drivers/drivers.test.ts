@@ -2,7 +2,7 @@ import { sql } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { connectionOptions, databaseConnections, databaseKinds, queueKinds, queueUnderTest, type QueueUnderTest } from '../__fixtures__/targets.ts';
 import type { ReservedJob } from '../driver.ts';
-import { DatabaseQueueDriver } from './database.ts';
+import { claimAnyStatement, DatabaseQueueDriver, FAIR_CLAIM_INDEX } from './database.ts';
 
 async function withQueue(kind: (typeof queueKinds)[number], test: (queue: QueueUnderTest) => Promise<void>, options: { retryAfter?: number } = {}): Promise<void> {
   const queue = await queueUnderTest(kind, options);
@@ -136,6 +136,61 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
+  it('reserveAny: takes every queue fairly — a mail job behind a full default queue is not starved (E199)', async () => {
+    await withQueue(kind, async ({ driver, clock }) => {
+      clock.freeze();
+      for (const payload of ['a1', 'a2']) await driver.push('default', payload, 0);
+      await driver.push('mail', 'mail', 0);
+      for (const payload of ['b1', 'b2']) await driver.push('default', payload, 0);
+      const order: string[] = [];
+      for (let job = await driver.reserveAny!(); job; job = await driver.reserveAny!()) order.push(job.payload);
+      // The database (and memory): the job that became due first, whatever its queue. Redis: the queues in turn.
+      const expected = kind === 'redis' ? 'a1 mail a2 b1 b2' : 'a1 a2 mail b1 b2';
+      expect(order.join(' '), `taken in this order: ${order.join(' ')}`).toBe(expected);
+    });
+  });
+
+  it('reserveAny: leaves the queues it is told to — the * of --queue=mail,* (E199)', async () => {
+    await withQueue(kind, async ({ driver }) => {
+      await driver.push('mail', 'mail', 0);
+      await driver.push('default', 'default', 0);
+      expect((await driver.reserveAny!(['mail']))?.payload).toBe('default');
+      expect(await driver.reserveAny!(['mail'])).toBeUndefined();
+      expect((await driver.reserveAny!())?.payload).toBe('mail');
+    });
+  });
+
+  it('reserveAny: keeps a delayed job back and takes an expired claim (its worker died) again (E199)', async () => {
+    await withQueue(
+      kind,
+      async ({ driver, clock }) => {
+        clock.freeze();
+        await driver.push('default', 'later', 30);
+        await driver.push('mail', 'lost', 0);
+        expect((await driver.reserveAny!())?.payload).toBe('lost');
+        expect(await driver.reserveAny!()).toBeUndefined();
+        clock.travel({ seconds: 30 });
+        await driver.push('reports', 'fresh', 0);
+        clock.travel({ seconds: 30 });
+        const taken: string[] = [];
+        for (let job = await driver.reserveAny!(); job; job = await driver.reserveAny!()) taken.push(`${job.payload}#${job.attempts}`);
+        // The database: an expired claim first, then by when a job became due. Redis: the queues in turn (after mail, whose job it took last).
+        expect(taken.join(' ')).toBe(kind === 'redis' ? 'fresh#1 later#1 lost#2' : 'lost#2 later#1 fresh#1');
+      },
+      { retryAfter: 60 },
+    );
+  });
+
+  it('reserveAny: takes a queue that appears after the worker started (E199)', async () => {
+    await withQueue(kind, async ({ driver }) => {
+      await driver.push('default', 'first', 0);
+      expect((await driver.reserveAny!())?.payload).toBe('first');
+      expect(await driver.reserveAny!()).toBeUndefined();
+      await driver.push('reports', 'new queue', 0);
+      expect((await driver.reserveAny!())?.payload, 'a queue pushed to after the first claim').toBe('new queue');
+    });
+  });
+
   it('keeps failed jobs, newest first; prunes, forgets and flushes them', async () => {
     await withQueue(kind, async ({ failed }) => {
       const base = { connection: 'database', queue: 'default', job: 'test.job', payload: '{}', exception: 'Error: boom' };
@@ -204,6 +259,45 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction 
       expect(rows).toHaveLength(1);
       expect(rows[0]!.payload).toBe('first');
       expect(rows[0]!.reserved_at).not.toBeNull();
+    });
+  });
+
+  it('reserveAny asks the database once per round, whatever the number of queues (E199)', async () => {
+    await withQueue(kind, async ({ connections, clock }) => {
+      let statements = 0;
+      const counting = connections!.get().withPlugin({
+        transformQuery: ({ node }) => (statements++, node),
+        transformResult: async ({ result }) => result,
+      });
+      const driver = new DatabaseQueueDriver({ db: counting, driver: kind }, { retryAfter: 90, clock });
+      for (const queue of ['default', 'mail', 'reports']) await driver.push(queue, 'later', 60);
+      statements = 0;
+      expect(await driver.reserveAny()).toBeUndefined();
+      expect(statements, 'statements of an idle round of reserveAny').toBe(1);
+      statements = 0;
+      expect(await driver.reserve(['default', 'mail', 'reports'])).toBeUndefined();
+      expect(statements, 'statements of an idle round of reserve — one per queue').toBe(3);
+    });
+  });
+
+  it('reserveAny claims through the index of the fair claim — no sort, no scan of every due job (EXPLAIN, E199)', async () => {
+    await withQueue(kind, async ({ connections }) => {
+      const claim = claimAnyStatement(sql, kind, { now: 2_000_000, expired: 1_000_000, except: [] });
+      const plan =
+        kind === 'sqlite'
+          ? (await sql<{ detail: string }>`explain query plan ${claim}`.execute(connections!.get())).rows.map((row) => row.detail).join(' | ')
+          : await connections!
+              .get()
+              .transaction()
+              .execute(async (trx) => {
+                // An empty table is read whole by Postgres anyway: without sequential scans the plan shows which index it would walk.
+                await sql`set local enable_seqscan = off`.execute(trx);
+                return (await sql<{ 'QUERY PLAN': string }>`explain ${claim}`.execute(trx)).rows.map((row) => row['QUERY PLAN'].trim()).join(' | ');
+              });
+      expect(plan.split(FAIR_CLAIM_INDEX).length - 1, `both subqueries walk ${FAIR_CLAIM_INDEX}: ${plan}`).toBe(2);
+      expect(plan, `no sort and no full scan: ${plan}`).not.toMatch(/TEMP B-TREE|Sort|SCAN jobs|Seq Scan/);
+      // Postgres: each subquery locks the row it found, skipping rows other workers are claiming (FOR UPDATE SKIP LOCKED).
+      if (kind === 'pgsql') expect(plan.split('LockRows').length - 1, `both subqueries lock their row: ${plan}`).toBe(2);
     });
   });
 

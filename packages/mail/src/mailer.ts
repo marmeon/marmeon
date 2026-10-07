@@ -8,7 +8,7 @@ import type { MailTransport } from './transports.ts';
 
 /** Where and when a queued mail goes (`mailer.queue(mail, options)`). */
 export interface QueueMailOptions {
-  /** The queue (default: the connection's default queue). A worker must take it: `queue:work --queue=mail,default`. */
+  /** The queue (default: the connection's default queue). A worker without `--queue` takes it; one with `--queue` must name it. */
   readonly queue?: string;
   /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
   readonly delay?: number | Duration;

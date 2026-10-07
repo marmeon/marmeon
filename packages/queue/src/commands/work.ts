@@ -17,8 +17,9 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 /**
  * `marmeon queue:work`: processes jobs until stopped — one at a time, each in its own container scope (E84).
  *
- * - **Queues:** `--queue=mail,default` in priority order; `*` stands for every other queue that holds jobs
- *   (`--queue=*`, `--queue=mail,*`). Default: the connection's queue.
+ * - **Queues (E199):** without `--queue` (or with `--queue=*`) every queue, fairly — the database: the oldest due job of all
+ *   queues, in one statement; Redis: the queues in turn. `--queue=mail,default` narrows it down to these, in strict priority
+ *   order (Laravel's). `*` in a list stands for every queue the list does not name, taken fairly at its place: `--queue=mail,*`.
  *
  * - **SIGTERM/SIGINT:** no new claim; the running job may finish for `--stop-timeout` seconds, then it is released and the
  *   worker exits with 0. Later signals do not cut that short.
@@ -29,7 +30,7 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 export class QueueWorkCommand {
   static command = 'queue:work';
   static description = 'Process jobs from the queue';
-  static usage = '[--connection=database|redis] [--queue=mail,default|*] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]';
+  static usage = '[--connection=database|redis] [--queue=mail,default] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]';
   static options = {
     connection: { type: 'string' },
     queue: { type: 'string' },
@@ -75,10 +76,10 @@ export class QueueWorkCommand {
     const fromDotEnv = environment.dotEnvDevelopmentWarning('queue:work');
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed (E139): `in staging (protected)`, `in unset NODE_ENV (protected, like production)`.
-    output.line(`Processing jobs of the ${connection} connection: ${queues.map((queue) => (queue === '*' ? '* (every queue)' : queue)).join(', ')} — in ${environment.describe()}`);
+    output.line(`Processing jobs of the ${connection} connection: ${describeQueues(queues, this.#connections.options(connection).driver)} — in ${environment.describe()}`);
     try {
       const result = await worker.run({
-        queues,
+        ...(queues ? { queues } : {}),
         sleep,
         ...(maxJobs !== undefined ? { maxJobs } : {}),
         ...(maxTime !== undefined ? { maxTime } : {}),
@@ -100,13 +101,22 @@ export class QueueWorkCommand {
     const { options } = input;
     const connection = typeof options.connection === 'string' ? options.connection : this.#connections.default;
     const stopTimeout = number(input, 'stop-timeout', 10)!;
-    const queues =
-      typeof options.queue === 'string'
-        ? options.queue.split(',').map((queue) => queue.trim()).filter(Boolean)
-        : [this.#connections.options(connection).queue];
-    if (queues.length === 0) throw new QueueSetupError('--queue names no queue.');
-    if (queues.includes('*') && this.#connections.options(connection).driver === 'sync') throw new QueueSetupError('--queue=* needs a connection that keeps jobs.');
+    let queues: string[] | undefined;
+    if (options.queue !== undefined) {
+      queues = typeof options.queue === 'string' ? options.queue.split(',').map((queue) => queue.trim()).filter(Boolean) : [];
+      if (queues.length === 0) throw new QueueSetupError('--queue names no queue — leave it out to take every queue.');
+      if (queues.filter((queue) => queue === '*').length > 1) throw new QueueSetupError('--queue names * more than once.');
+      // `--queue=*` alone is no list: every queue, the same as without --queue.
+      if (queues.length === 1 && queues[0] === '*') queues = undefined;
+    }
     const worker = this.#connections.worker(connection, stopTimeout);
     return { connection, stopTimeout, queues, worker, sleep: number(input, 'sleep', 1)!, maxJobs: number(input, 'max-jobs'), maxTime: number(input, 'max-time') };
   }
+}
+
+/** The start line's queues: `every queue (oldest first)`, `mail, default` (strict), `mail, every other queue (oldest first)`. */
+function describeQueues(queues: readonly string[] | undefined, driver: string): string {
+  const how = driver === 'database' ? ' (oldest first)' : driver === 'redis' ? ' (in turn)' : '';
+  if (!queues) return `every queue${how}`;
+  return queues.map((queue) => (queue === '*' ? `every other queue${how}` : queue)).join(', ');
 }

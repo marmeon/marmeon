@@ -16,7 +16,7 @@ it (E170) — the switch for
 everything that exists only in development (E115): the error page and `Server-Timing`
 ([@marmeon/server](../server/README.md#error-page-e119--development-only)), the [devtools](../devtools/README.md), the
 [mail previews](../mail/README.md#previews-e106). Next to the server it starts what packages add to
-`DevProcesses` — a queue worker on every queue (`queue:work --queue=*`, unless the default connection is `sync`,
+`DevProcesses` — a queue worker on every queue (`queue:work`, unless the default connection is `sync`,
 [@marmeon/queue](../queue/README.md)) and the scheduler (`schedule:work`, when the app schedules tasks,
 [@marmeon/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
 when one ends on its own. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed. All of
@@ -91,7 +91,7 @@ marmeon make:docker --nginx --systemd  # … nginx on the host (deploy/nginx.con
   to (`file:./vendor/…`) are copied before the install.
 - **`.dockerignore`** — every `.env*`, `node_modules`, `dist`, `.marmeon`,
   `storage`.
-- **`compose.production.yaml`** — one image, a role per container: `web` (`start`), `worker` (`queue:work --queue=mail,default`;
+- **`compose.production.yaml`** — one image, a role per container: `web` (`start`), `worker` (`queue:work` — every queue, E199;
   a stuck job's exit 70 is restarted by `restart: unless-stopped`), `scheduler` (`schedule:work`); `env_file:
   .env.production`, a `storage` volume, the health check off for worker and scheduler, `stop_grace_period` longer than the drain.
 - **Proxies** — `--caddy` adds a Caddy service (certificates, HTTP/2 and 3; live streams unbuffered) and `TRUSTED_PROXIES: '*'`

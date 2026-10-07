@@ -47,6 +47,20 @@ export class MemoryQueueDriver implements QueueDriver {
     return undefined;
   }
 
+  /** Like the database driver: an expired claim first, else the job that became due first (then the older one) — of any queue but `except`. */
+  async reserveAny(except: readonly string[] = []): Promise<ReservedJob | undefined> {
+    const now = this.#clock.now();
+    const candidates = this.#entries.filter((entry) => !except.includes(entry.queue));
+    const expired = candidates.filter((entry) => entry.reservedAt !== undefined && entry.reservedAt <= now - this.#retryAfter * 1000);
+    const due = candidates.filter((entry) => entry.reservedAt === undefined && entry.availableAt <= now);
+    // Stable sorts: entries are kept in the order they were pushed (the id's order).
+    const entry = expired.sort((a, b) => a.reservedAt! - b.reservedAt! || a.availableAt - b.availableAt)[0] ?? due.sort((a, b) => a.availableAt - b.availableAt)[0];
+    if (!entry) return undefined;
+    entry.attempts += 1;
+    entry.reservedAt = now;
+    return { id: entry.id, queue: entry.queue, payload: entry.payload, attempts: entry.attempts, reservedAt: now };
+  }
+
   async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
     if (!this.#remove(job)) return false;
     for (const push of next) await this.push(push.queue, push.payload, push.delay);

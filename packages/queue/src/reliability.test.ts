@@ -112,7 +112,7 @@ class RecordJobEvents {
   }
 }
 
-type TestApp = Application & { seen: Seen; queue: Queue; target: SharedTarget; clock: TestClock; work(queues?: string[]): Promise<void> };
+type TestApp = Application & { seen: Seen; queue: Queue; target: SharedTarget; clock: TestClock; work(queues?: string[] | 'every queue'): Promise<void> };
 
 /** The cache a target's app would use for the queue's locks: memory beside SQLite (a shared file cannot lock inside a transaction, E108). */
 function cacheFor(target: SharedTarget): Record<string, string> {
@@ -142,8 +142,8 @@ async function withApp(kind: SharedTarget['kind'], test: (app: TestApp) => Promi
     target,
     clock,
     queue: application.container.make(Queue),
-    work: async (queues = ['default']) => {
-      await application.container.make(QueueConnections).worker(connection, 1).run({ queues, stopWhenEmpty: true, stopTimeout: 1 });
+    work: async (queues: string[] | 'every queue' = ['default']) => {
+      await application.container.make(QueueConnections).worker(connection, 1).run({ ...(queues === 'every queue' ? {} : { queues }), stopWhenEmpty: true, stopTimeout: 1 });
     },
   });
   try {
@@ -398,14 +398,46 @@ describe.each(processKinds)('job.once, withoutOverlapping and job events on %s',
   });
 });
 
+describe.each(processKinds)('which queues a worker takes on %s (E199)', (kind) => {
+  // The W8.10 trap: a full default queue, one mail behind it, more default jobs after it.
+  async function fill(app: TestApp): Promise<void> {
+    for (let n = 1; n <= 20; n++) await app.queue.dispatch(NoteJob, { n });
+    await app.queue.dispatch(NoteJob, { n: 100 }, { queue: 'mail' });
+    for (let n = 21; n <= 40; n++) await app.queue.dispatch(NoteJob, { n });
+  }
+
+  it('without --queue: a mail behind a full default queue runs before the default jobs dispatched after it — not after all of them', async () => {
+    await withApp(kind, async (app) => {
+      app.clock.freeze();
+      await fill(app);
+      await app.work('every queue');
+      const order = app.seen.entries.map((entry) => entry.n);
+      expect(order, 'every job ran once').toHaveLength(41);
+      // The database: the oldest due job first — the mail as the 21st. Redis: the queues in turn — the mail as the 2nd.
+      const at = order.indexOf(100);
+      expect(at, `the mail ran as job ${at + 1} of ${order.length}`).toBe(kind === 'redis' ? 1 : 20);
+    });
+  });
+
+  it('with --queue=default,mail the order stays strict: the mail waits until the default queue is empty', async () => {
+    await withApp(kind, async (app) => {
+      app.clock.freeze();
+      await fill(app);
+      await app.work(['default', 'mail']);
+      const order = app.seen.entries.map((entry) => entry.n);
+      expect(order.indexOf(100), `the mail ran as job ${order.indexOf(100) + 1} of ${order.length}`).toBe(40);
+    });
+  });
+});
+
 describe('the queue beyond one driver', () => {
-  it('works every queue with --queue=* (listed ones first), and queue:size lists them', async () => {
+  it('works the listed queues first with --queue=default,* — then every other queue, oldest first (E199)', async () => {
     await withApp('sqlite', async (app) => {
       await app.queue.dispatch(NoteJob, { n: 1 }, { queue: 'reports' });
       await app.queue.dispatch(NoteJob, { n: 2 }, { queue: 'mail' });
       await app.queue.dispatch(NoteJob, { n: 3 });
       await app.work(['default', '*']);
-      expect(app.seen.entries.map((entry) => entry.n)).toEqual([3, 2, 1]);
+      expect(app.seen.entries.map((entry) => entry.n)).toEqual([3, 1, 2]);
     });
   });
 

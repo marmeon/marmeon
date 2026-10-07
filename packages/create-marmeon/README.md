@@ -70,7 +70,7 @@ A thin shell around the framework's own generators (E150) — the app's code com
 2. **`package.json`** — every `@marmeon/*` package and the CLI `marmeon` at exactly this package's version (the framework is versioned in
    lockstep, E152), `marmeon` among the `dependencies` (it runs on the server, E159), `packageManager: pnpm@12.9.1` —
    with `--npm` nothing of pnpm's. Next to it the app's `README.md`: its commands with the chosen package manager (production
-   runs `marmeon queue:work --queue=mail,default` for the queued jobs and the auth module's mails).
+   runs `marmeon queue:work` — every queue — for the queued jobs and the auth module's mails).
 3. **`.env`** — from `.env.example`, with a fresh `APP_KEY` (readable by its owner only, ignored by git); `.env.test` gets a test
    key of its own. The template never carries a key.
 4. **Install**, then the app's `marmeon`: `make:auth` for the starter kit (sign-in, registration, password reset, e-mail

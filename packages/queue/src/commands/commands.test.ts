@@ -62,7 +62,7 @@ describe('the queue provider', () => {
     expect(commands).toEqual(
       expect.arrayContaining(['queue:work', 'queue:failed', 'queue:retry', 'queue:forget', 'queue:flush', 'queue:prune-failed', 'queue:size', 'make:queue-table']),
     );
-    expect(application.container.make(DevProcesses).all()).toEqual([{ name: 'queue', args: ['queue:work', '--queue=*', '--stop-timeout=5'] }]);
+    expect(application.container.make(DevProcesses).all()).toEqual([{ name: 'queue', args: ['queue:work', '--stop-timeout=5'] }]);
 
     await using sync = await app({ env: { QUEUE_CONNECTION: 'sync' } });
     expect(sync.container.make(DevProcesses).all()).toEqual([]);
@@ -88,6 +88,44 @@ describe('the queue commands', () => {
     const { input: run, lines } = input('/tmp');
     expect(await application.container.make(QueueWorkCommand).handle(run)).toBe(1);
     expect(lines).toEqual([expect.stringMatching(/^✗ The queue connection "database" gives a claimed job 30s \(retryAfter\).*test\.ping \(timeout 60s\)/)]);
+  });
+
+  it('queue:work without --queue (or with --queue=*) takes every queue, oldest first; --queue only narrows it down (E199)', async () => {
+    await using application = await app();
+    const queue = application.container.make(Queue);
+    const connections = application.container.make(QueueConnections);
+    const work = async (options: Record<string, unknown>) => {
+      const { input: run, lines } = input('/tmp', [], { 'stop-when-empty': true, ...options });
+      const code = await application.container.make(QueueWorkCommand).handle(run);
+      return { code, line: lines[0] };
+    };
+    const line = (queues: string) => new RegExp(`^Processing jobs of the database connection: ${queues.replaceAll('(', '\\(').replaceAll(')', '\\)')} — in `);
+
+    // --queue narrows it down: only mail runs, the default queue's job waits.
+    await queue.dispatch(PingJob, { n: 1 });
+    await queue.dispatch(PingJob, { n: 2 }, { queue: 'mail' });
+    const narrowed = await work({ queue: 'mail' });
+    expect([await connections.driver('database').size('mail'), await connections.driver('database').size('default')], 'only the named queue ran').toEqual([0, 1]);
+    expect(narrowed.line).toMatch(line('mail'));
+
+    // Without --queue every queue: the default queue's job runs too.
+    await queue.dispatch(PingJob, { n: 3 }, { queue: 'reports' });
+    const every = await work({});
+    expect([await connections.driver('database').size('default'), await connections.driver('database').size('reports')], 'a worker without --queue left jobs').toEqual([0, 0]);
+    expect(every.line).toMatch(line('every queue (oldest first)'));
+    expect((await work({ queue: '*' })).line).toMatch(line('every queue (oldest first)'));
+    expect((await work({ queue: 'mail,*' })).line).toMatch(line('mail, every other queue (oldest first)'));
+
+    // A --queue that names nothing, or * twice, is a message.
+    for (const [value, message] of [
+      ['', '✗ --queue names no queue — leave it out to take every queue.'],
+      [' , ', '✗ --queue names no queue — leave it out to take every queue.'],
+      ['*,mail,*', '✗ --queue names * more than once.'],
+    ] as const) {
+      const { input: run, lines } = input('/tmp', [], { queue: value, 'stop-when-empty': true });
+      expect(await application.container.make(QueueWorkCommand).handle(run)).toBe(1);
+      expect(lines).toEqual([message]);
+    }
   });
 
   it('lists, retries (same id, attempts from zero), forgets, flushes and prunes failed jobs; counts queues', async () => {
@@ -139,6 +177,18 @@ describe('the queue commands', () => {
     expect(flushed.lines).toEqual(['✓ Deleted 1 failed job.']);
   });
 
+  it("the apps' and the starter's jobs migrations are the stub make:queue-table copies — with the fair claim's index (E199)", () => {
+    const stub = readFileSync(new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url), 'utf8');
+    const repo = new URL('../../../../', import.meta.url);
+    for (const copy of [
+      'apps/web-app/modules/system/migrations/2026_10_02_211222_create_jobs_table.ts',
+      'apps/blank-app/modules/system/migrations/2026_10_03_002234_create_jobs_table.ts',
+      'packages/create-marmeon/template/base/modules/system/migrations/2026_10_03_002234_create_jobs_table.ts',
+    ]) {
+      expect(readFileSync(new URL(copy, repo), 'utf8'), copy).toBe(stub);
+    }
+  });
+
   it('make:queue-table writes the migration of jobs and failed_jobs into the system module (E96)', async () => {
     const root = tempDir('marmeon-queue-table-');
     mkdirSync(join(root, 'bootstrap'));
@@ -150,6 +200,8 @@ describe('the queue commands', () => {
     const contents = readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8');
     expect(contents).toContain("schema.create('jobs'");
     expect(contents).toContain("schema.create('failed_jobs'");
+    // The index of the fair claim (E199): a worker without --queue takes the oldest due job of every queue through it.
+    expect(contents).toContain("table.index(['reserved_at', 'available_at', 'id']);");
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [system]');
     expect(lines.at(-1)).toBe('Then: marmeon migrate');
   });

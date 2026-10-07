@@ -405,6 +405,36 @@ The way back: Valibot, Zod or any Standard Schema library still works wherever a
 only the helpers above are rules now (`password()` inside a Valibot object: wrap the object in `r.object()` instead, or check the
 password with Valibot).
 
+#### Medium: `queue:work` takes every queue, fairly — a `--queue` list keeps its strict order
+
+*Likelihood of impact: medium — apps with more than one queue, and every app with `make:auth` (its mails go to `mail`).* A worker
+without `--queue` took only the connection's queue (`default`): the auth module's mails waited unless the worker was started with
+`--queue=mail,default` — and even then they waited behind a full `default` queue, because a list is a strict priority. Now a worker
+without `--queue` takes **every queue, fairly** (E199): the `database` driver the oldest due job of all queues in one statement
+(an expired claim first), `redis` the queues in turn. `--queue=*` alone means the same; `--queue=mail,default` still narrows a
+worker down to these queues in strict order (Laravel's), and `*` in a list stands for every queue it does not name
+(`--queue=mail,*`). `marmeon dev`, `make:docker`'s compose file and systemd unit, the starter's README and `make:auth`'s hint start
+the worker without `--queue`.
+
+```text
+# before                                              # after
+marmeon queue:work                  # only default    marmeon queue:work                  # every queue, oldest due job first
+marmeon queue:work --queue=mail,default               marmeon queue:work --queue=mail,default   # unchanged: these two, strictly
+marmeon queue:work --queue=*        # alphabetically  marmeon queue:work --queue=*        # = no --queue
+```
+
+- **The `jobs` table gets a second index**, `(reserved_at, available_at, id)` — the fair claim walks it (EXPLAIN on SQLite and
+  Postgres, 200 000 jobs: 0.01 / 0.06 ms instead of a sort of every due job). `make:queue-table`'s migration has it; an app with
+  the table already adds a migration: `schema.alter('jobs', (table) => table.index(['reserved_at', 'available_at', 'id']))`.
+- The worker's start line says `every queue (oldest first)` (database) or `every queue (in turn)` (Redis). The warning about a queue
+  nobody takes comes only from a worker with a `--queue` list without `*`. `--queue=` with no name, or `*` twice, is an error.
+- A driver of your own: `reserveAny(except)` is the new, optional claim of `QueueDriver`; without it the worker goes round
+  `queues()` with `reserve`. `WorkOptions.queues` is optional (missing = every queue), and `QueueFake#work()` without `queues`
+  runs the due jobs oldest first instead of queue by queue.
+
+The way back: name the queues in the order you want them — `--queue=default,mail` is the strict order of before, `--queue=default`
+the old default. A priority without starving the rest: two workers, one without `--queue` and one with `--queue=mail`.
+
 #### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
 
 *Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,

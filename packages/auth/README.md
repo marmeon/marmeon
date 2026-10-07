@@ -32,7 +32,7 @@ must keep them), and — when nothing is missing — runs `marmeon route:types`.
 (`APP_NAME`, `APP_URL`) — the app skeleton has one. An existing `modules/auth` is never touched without `--force`. Then:
 `marmeon migrate` (with `NODE_ENV=development`, so it writes the table types) and `MAIL_*` in `.env`. Its mails go through the
 queue, on its `mail` queue: a jobs table (`marmeon make:queue-table`, once) and a worker — `marmeon dev` starts one, production
-runs `marmeon queue:work --queue=mail,default` ([@marmeon/queue](../queue/README.md)); its expired tokens are pruned at night
+runs `marmeon queue:work`, which takes every queue ([@marmeon/queue](../queue/README.md)); its expired tokens are pruned at night
 by the scheduler (`marmeon schedule:work`, or `schedule:run` from cron). The lint preset, the devtools and the
 Content-Security-Policy belong to the app, not to the module — `make:auth` names them while the app has none:
 `marmeon make:lint-config` ([Lint](../cli/README.md#lint)), `pnpm add -D @marmeon/devtools`

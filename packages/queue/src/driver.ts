@@ -47,6 +47,13 @@ export interface QueueDriver {
    */
   reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
   /**
+   * Claims a job of any queue but those in `except` — every queue taken fairly (E199): what `queue:work` without `--queue` (or
+   * the `*` of `--queue=mail,*`) asks for. The `database` driver takes the oldest due job of all queues in one statement, `redis`
+   * goes round its queues (the one after the queue it took from last comes first). The same claim as `reserve` otherwise:
+   * atomic, counts the attempt, takes expired claims again. Optional: without it the worker goes round `queues()` itself.
+   */
+  reserveAny?(except?: readonly string[]): Promise<ReservedJob | undefined>;
+  /**
    * Done: the job leaves the queue — and `next` (the rest of a chain) is queued in the same atomic step: both happen, or
    * neither (a database transaction, one Lua script). Only while the claim is this worker's: an expired claim queues
    * nothing — the worker that holds the job now hands the chain on.
@@ -63,7 +70,7 @@ export interface QueueDriver {
    * (claimed by a worker: running, or an expired claim of a worker that died). Optional: for the devtools' queue view (W7).
    */
   counts?(queue: string): Promise<QueueCounts>;
-  /** The queues that hold jobs (or held some — a driver may remember a queue after it ran empty), sorted — `--queue=*`, `queue:size`. */
+  /** The queues that hold jobs (or held some — a driver may remember a queue after it ran empty), sorted — `queue:size`, the worker's look at the queues it does not take. */
   queues(): Promise<string[]>;
   /** Drivers that keep jobs in the database: the same driver writing through a transaction (E85). */
   using?(transaction: Kysely<any>): QueueDriver;
