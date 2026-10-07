@@ -209,6 +209,7 @@ pnpm pack:smoke        # create-marmeon from the tarballs, outside the repositor
 pnpm template:sync     # apps/blank-app → the template of create-marmeon (a test fails while they differ)
 pnpm changeset         # a changeset for your change (CONTRIBUTING.md); pnpm check-changesets checks the release rules
 pnpm gegen w9/s01      # the Gegenproben of a step (CONTRIBUTING.md): every case red for its reason; --control: all green without the patches
+pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome under style-src 'self': 0 CSP violations (E202; never a gate)
 ```
 
 `pnpm run ci` runs 14 parts one after the other, each with its exit code and time, and fails when one is red: `build`,

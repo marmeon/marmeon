@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy } from '@marmeon/http';
+import { contentSecurityPolicy, NONCE } from '@marmeon/http';
 import auth from '#modules/auth';
 import dashboard from '#modules/dashboard';
 import lab from '#modules/lab';
@@ -28,8 +28,9 @@ export default defineApplication({
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {
     // A strict Content-Security-Policy on every document (E147): scripts only with the response's nonce ('strict-dynamic'),
-    // no plugins, no foreign <base>; framed by nobody.
-    global: [SecurityHeaders, contentSecurityPolicy({ frameAncestors: ["'none'"] })],
+    // no plugins, no foreign <base>; framed by nobody. Styles (E202): stylesheets of the app's origin and <style> elements with
+    // the nonce (Vite's in development, the devtools' bar) — no 'unsafe-inline': not one `style` attribute in the markup.
+    global: [SecurityHeaders, contentSecurityPolicy({ styleSrc: ["'self'", NONCE], frameAncestors: ["'none'"] })],
     web: [ShareAppProps],
   },
   // The browser learns only the `web` routes its code names (virtual:marmeon/routes). API routes stay on the server

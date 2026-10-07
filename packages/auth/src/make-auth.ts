@@ -85,6 +85,11 @@ export class MakeAuthCommand {
       input.output.line("  import auth from '#modules/auth';");
       input.output.line('  modules: [auth, …]');
     }
+    // Its look (E202): a stylesheet of the app, imported by the client entry — in the built index.html, so a server-rendered
+    // page is styled before its code loads; classes, never `style` attributes (a strict `style-src` blocks those).
+    const styled = importStyles(join(input.root, 'bootstrap', 'client.tsx'));
+    if (styled === 'added') input.output.success('Imported its styles (modules/auth/auth.css) in bootstrap/client.tsx');
+    else if (styled === 'manual') input.output.line(`Import its styles in the app's client entry: ${AUTH_STYLES_IMPORT}`);
 
     const missing = missingDependencies(input.root);
     const runtime = missing.filter((name) => NEEDED.includes(name));
@@ -118,6 +123,21 @@ export class MakeAuthCommand {
     }
     return 0;
   }
+}
+
+/** The client entry's import of the module's stylesheet. */
+export const AUTH_STYLES_IMPORT = "import '../modules/auth/auth.css';";
+
+/** Adds the import of `modules/auth/auth.css` after the client entry's last import — or says it cannot. */
+function importStyles(file: string): 'added' | 'present' | 'manual' {
+  if (!existsSync(file)) return 'manual';
+  const source = readFileSync(file, 'utf8');
+  if (source.includes('modules/auth/auth.css')) return 'present';
+  const lastImport = [...source.matchAll(/^import .*;.*$/gm)].at(-1);
+  if (!lastImport) return 'manual';
+  const at = lastImport.index + lastImport[0].length;
+  writeFileSync(file, `${source.slice(0, at)}\n${AUTH_STYLES_IMPORT} // the auth module's look (make:auth)${source.slice(at)}`);
+  return 'added';
 }
 
 /** Adds `auth` to `modules: [...]` of the application definition — or says it cannot. */

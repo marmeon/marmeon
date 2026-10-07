@@ -3,7 +3,8 @@ import { useState } from 'react';
 
 /**
  * Navigation and flash messages around the auth pages: `Page.layout = AppLayout`. It stays mounted while
- * you navigate between pages that use it (E35). Make it the app's default with `createMarmeonApp({ layout })`.
+ * you navigate between pages that use it (E35). Make it the app's default with `createMarmeonApp({ layout })`. Its look:
+ * `modules/auth/auth.css` (classes, no inline styles — a strict `style-src` blocks none of it, E202).
  */
 export function AppLayout({ children }: LayoutProps) {
   // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.
@@ -12,7 +13,7 @@ export function AppLayout({ children }: LayoutProps) {
 
   return (
     <>
-      <header style={{ display: 'flex', gap: 16, justifyContent: 'space-between', borderBottom: '1px solid #ddd', paddingBottom: 8 }}>
+      <header className="auth-header">
         <strong>{user ? <Link route="dashboard">{t('layout.dashboard')}</Link> : <Link route="auth.login">{t('layout.sign_in')}</Link>}</strong>
         {user ? (
           <nav aria-label={t('layout.account')}>

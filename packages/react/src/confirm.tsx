@@ -31,17 +31,16 @@ export interface ConfirmDialogProps extends ConfirmProps {
   /** The label of the field of a type-to-confirm question (default `Type “…” to confirm`). */
   promptLabel?: (prompt: string) => string;
   className?: string;
-  /** Merged over the default look (a few inline properties — a strict CSP blocks none of them). */
+  /** Inline properties over the default look (rendered in the browser only, through the CSSOM — a strict CSP blocks none of them). */
   style?: CSSProperties;
 }
-
-const LOOK: CSSProperties = { padding: '1.25rem 1.5rem', border: 'none', borderRadius: 8, width: 'min(28rem, calc(100vw - 2rem))', boxShadow: '0 12px 32px rgba(0, 0, 0, 0.25)' };
 
 /**
  * The default confirmation dialog (E64): a native `<dialog>` opened modally, `role="alertdialog"`, named by its title and
  * described by its message. Focus starts on the safe choice — no (`Cancel`, `Stay`) — or in the field of a type-to-confirm
- * question, whose yes stays disabled until the text matches; Escape is no; focus returns to what had it. Unstyled but for a
- * few inline properties (`data-marmeon-confirm`, `data-kind`, `data-destructive` to style it). Wrap it for the app's labels:
+ * question, whose yes stays disabled until the text matches; Escape is no; focus returns to what had it. Its look comes from
+ * `@marmeon/react/styles.css` (classes `marmeon-confirm…`, E202); style it by those or by `data-marmeon-confirm`, `data-kind`,
+ * `data-destructive`. Wrap it for the app's labels:
  * `confirm: (props) => <ConfirmDialog {...props} cancelLabel={t('cancel')} />`.
  */
 export function ConfirmDialog({
@@ -89,8 +88,8 @@ export function ConfirmDialog({
       data-marmeon-confirm=""
       data-kind={request.kind}
       data-destructive={request.destructive ? '' : undefined}
-      className={className}
-      style={{ ...LOOK, ...style }}
+      className={`marmeon-confirm${className ? ` ${className}` : ''}`}
+      style={style}
       onCancel={(event) => {
         // Escape: no — answered here, the dialog goes with the answer.
         event.preventDefault();
@@ -106,7 +105,7 @@ export function ConfirmDialog({
           answer(prompt ?? true);
         }}
       >
-        <h2 id={`${id}-title`} style={{ marginTop: 0, fontSize: '1.125rem' }}>
+        <h2 id={`${id}-title`} className="marmeon-confirm__title">
           {title}
         </h2>
         {request.title !== undefined && <p id={`${id}-message`}>{request.message}</p>}
@@ -123,11 +122,11 @@ export function ConfirmDialog({
               autoCapitalize="off"
               spellCheck={false}
               aria-invalid={typed !== '' && !yes ? true : undefined}
-              style={{ font: 'inherit', width: '100%', boxSizing: 'border-box' }}
+              className="marmeon-confirm__field"
             />
           </p>
         )}
-        <p style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 0 }}>
+        <p className="marmeon-confirm__actions">
           <button ref={safe} type="button" onClick={() => answer(false)}>
             {request.cancelLabel ?? (leave ? stayLabel : cancelLabel)}
           </button>

@@ -77,9 +77,11 @@ contentSecurityPolicy({ baseUri: false, reportOnly: true, reportUri: ['/csp-repo
 - **Not with a shared cache:** a page cached publicly (`Cache-Control: public` or `s-maxage`, e.g. `cacheControl('public, …')`)
   with a nonce is logged once — a CDN would hand the same nonce to everybody, which a script injected into the page could
   reuse. Keep such pages private, or out of the policy.
-- The client code needs nothing: data travels in `<script type="application/json">` (inert, no nonce), the progress bar and the
-  dialogs style through CSSOM properties (not blocked by `style-src`); React's inline `style` props become attributes that
-  need `'unsafe-inline'` only if you add a `styleSrc` (or `styleSrcAttr`) directive.
+- The client code needs nothing: data travels in `<script type="application/json">` (inert, no nonce), the progress bar styles
+  through CSSOM properties (not blocked by `style-src`), and the React adapter renders no `style` attribute (E202) — its layer
+  frame, dialogs and error page take their look from `@marmeon/react/styles.css`, a stylesheet of the app's origin: a strict
+  `styleSrc: ["'self'"]` (without `'unsafe-inline'`) blocks nothing of the framework's. An app's own inline `style` props become
+  attributes that need `'unsafe-inline'` once you add a `styleSrc` (or `styleSrcAttr`) directive — use classes.
 
 ## The client core and the adapter contract
 

@@ -1,0 +1,41 @@
+/*
+ * The auth module's look — `marmeon make:auth` imports it in bootstrap/client.tsx. The views name classes, never `style` props:
+ * a `style` attribute in the server's markup is what a strict `style-src` blocks (E202). Yours to change.
+ */
+
+/* AppLayout: the header — home link left, the account's links right. */
+.auth-header {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 8px;
+}
+
+/* SettingsLayout: the settings' navigation beside the page. */
+.auth-settings {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.auth-settings-nav {
+  min-width: 140px;
+  padding-top: 16px;
+}
+
+.auth-settings-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  line-height: 2;
+}
+
+.auth-settings-page {
+  flex: 1;
+}
+
+/* AccessTokens: one ability per line. */
+.auth-choice {
+  display: block;
+}

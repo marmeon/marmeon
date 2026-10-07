@@ -435,6 +435,45 @@ marmeon queue:work --queue=*        # alphabetically  marmeon queue:work --queue
 The way back: name the queues in the order you want them — `--queue=default,mail` is the strict order of before, `--queue=default`
 the old default. A priority without starving the rest: two workers, one without `--queue` and one with `--queue=mail`.
 
+#### Medium: the framework's look is a stylesheet — import `@marmeon/react/styles.css`, `LayerDialog`'s `style` arrives after the mount
+
+*Likelihood of impact: medium — every app that shows layers, `ConfirmDialog`, the failure dialogs or the built-in error page, and every
+app with `make:auth`.* The framework gave its components their default look as inline `style` props — `LayerDialog`, `ConfirmDialog`,
+the dialogs of a failed visit, the built-in error page and `make:auth`'s layouts. Rendered on the server (a deep link to a layer, a
+404, a sign-in page) they became `style` attributes, which a strict Content-Security-Policy (`style-src` without `'unsafe-inline'`)
+blocks — a nonce does not cover attributes, and React does not add a blocked attribute while it hydrates (E202). Now they render
+classes, and the look is a stylesheet of the app's origin: `@marmeon/react/styles.css`. Import it once in the client entry —
+`marmeon build` puts it into the stylesheet the built `index.html` links:
+
+```ts
+// bootstrap/client.tsx — after
+import { createMarmeonApp, progressBar } from '@marmeon/react';
+import '@marmeon/react/styles.css';        // the framework's look
+import '../modules/auth/auth.css';         // make:auth's module, if the app has it (make:auth adds the line)
+```
+
+- **Without the import the components are unstyled** — a layer is a plain dialog, the notice of an unreachable server no longer
+  floats over the page. Apps from `create-marmeon` have it; for an existing app add the line.
+- **`LayerDialog`'s `style` prop** is written through the CSSOM once the dialog is mounted — never a server-rendered attribute; a deep
+  link shows the frame without it until it hydrates. A value that must be there at once belongs in a class of the app's stylesheet
+  (`className`). `ConfirmDialog`'s `style` renders in the browser only, as before.
+- **The classes** (each rule in `:where()`, so any class of the app overrides it): `marmeon-layer`, `marmeon-layer--modal`/`--slideover`,
+  `marmeon-layer__content`, `marmeon-layer__close`; `marmeon-confirm` (`__title`, `__field`, `__actions`); `marmeon-failure--network`,
+  `marmeon-failure--server`, `marmeon-failure__frame`; `marmeon-error` (`__status`, `__title`, `__exception`). The failure colours keep
+  their CSS variables (`--marmeon-failure-background`, `-color`, `-dialog-background`, `-dialog-color`), now read by the stylesheet.
+- **`make:auth`** writes `modules/auth/auth.css` (`auth-header`, `auth-settings`, `auth-settings-nav`, `auth-settings-page`,
+  `auth-choice`) and imports it in `bootstrap/client.tsx` (or names the line). A module made before keeps its inline styles until you
+  take the stubs' layouts over.
+- Under `marmeon dev`, Vite adds a stylesheet the client entry imports as a `<style>` element with the response's nonce once the
+  entry runs — a server-rendered layer shows unstyled until then (a build links it in the document). A policy that limits `style-src`
+  in development too names the nonce: `contentSecurityPolicy({ styleSrc: ["'self'", NONCE] })` (what the web app does). The devtools'
+  bar brings its look as a constructed stylesheet of its shadow root now — before, its `<style>` element without the nonce was refused.
+- `pnpm csp:probe --app <dir> --build` (this repository) starts a built app in headless Chrome under an added `style-src 'self'` and
+  counts the violations — deep link and click on a layer, the failure dialogs, the signed-in pages.
+
+The way back: none needed. An app that styled `[data-marmeon-layer]` itself can leave the import out and keep its rules — set what it
+took from the old inline defaults.
+
 #### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
 
 *Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,
@@ -504,6 +543,16 @@ const hosts = allowedHosts(env.APP_URL);                    const hosts = devHos
 ```
 
 The way back: open the previews through `localhost` or set `APP_URL` to the host you use.
+
+#### Low: what a failure shows loads when it happens — the dialog of a 5xx and the error pages are a chunk of their own
+
+*Likelihood of impact: low — apps that count on the error dialog appearing in the same tick, and tests that look for it at once.*
+The dialog with the server's error page (a 5xx answer to a visit), the app's error page for a page that threw while rendering and the
+built-in `errors/Error` are a chunk of their own (E202, like the layers, E71): `<MarmeonApp>` loads it when the failure happens — about
+0.4 KB gzip less in every first download. The error boundary and the notice of an unreachable server stay in the first download (offline,
+no chunk loads). If the chunk cannot load either, a 5xx shows that notice and a page that threw shows nothing in its place — never an
+error of its own. A test that looks for `dialog[data-marmeon-failure="server"]` right after the visit waits a tick for it (`findBy…`,
+a settle). The way back: none needed.
 
 ## Upgrading to 0.1.0 from the development snapshots
 

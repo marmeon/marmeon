@@ -107,7 +107,7 @@ export class DevtoolsBar {
     ({ open: this.#open, tab: this.#tab } = readState(win));
     this.host = h('div', { 'data-marmeon-devtools': true });
     this.root = this.host.attachShadow({ mode: 'open' });
-    this.root.append(h('style', {}, STYLES));
+    adoptStyles(this.root, win);
     parent.append(this.host);
     // A modal dialog (a layer, E53) makes everything outside it inert — the bar too: while one is open, the bar lives in the top one.
     const observer = new MutationObserver(() => this.#place(parent));
@@ -597,3 +597,18 @@ export class DevtoolsBar {
   }
 }
 
+/**
+ * The bar's look as a constructed stylesheet of its shadow root (E202): the CSSOM, which no `style-src` blocks — a `<style>` element
+ * without the response's nonce is what a strict policy refuses (the app's `contentSecurityPolicy({ styleSrc: ["'self'"] })` runs
+ * under `marmeon dev` too). A browser (or test DOM) without constructed stylesheets gets the `<style>` element.
+ */
+function adoptStyles(root: ShadowRoot, win: Window): void {
+  const Sheet = (win as Window & { CSSStyleSheet?: typeof CSSStyleSheet }).CSSStyleSheet;
+  if (Sheet && 'adoptedStyleSheets' in root && typeof Sheet.prototype.replaceSync === 'function') {
+    const sheet = new Sheet();
+    sheet.replaceSync(STYLES);
+    root.adoptedStyleSheets = [sheet];
+    return;
+  }
+  root.append(h('style', {}, STYLES));
+}

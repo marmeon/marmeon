@@ -128,6 +128,15 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     stop();
   });
 
+  it('brings its look as a constructed stylesheet — no <style> element a strict style-src would block (E202), and it survives a redraw', async () => {
+    const { bar, stop } = app();
+    bar.toggle(true);
+    expect(bar.root.querySelector('style'), 'a <style> element in the bar').toBeNull();
+    expect(bar.root.adoptedStyleSheets).toHaveLength(1);
+    expect([...bar.root.adoptedStyleSheets[0]!.cssRules].some((rule) => rule.cssText.includes('.pill'))).toBe(true);
+    stop();
+  });
+
   it('Visits: every request as it happens — kind, status, time, request id; a click shows what the server recorded (E131)', async () => {
     const { navigator, bar, text, stop } = app();
     bar.show('visits');

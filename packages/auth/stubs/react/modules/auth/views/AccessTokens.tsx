@@ -70,7 +70,7 @@ export default function AccessTokens({ tokens, abilities, plainText }: Props) {
         <fieldset>
           <legend>{t('tokens.may')}</legend>
           {Object.entries(abilities).map(([ability, description]) => (
-            <label key={ability} style={{ display: 'block' }}>
+            <label key={ability} className="auth-choice">
               <input
                 type="checkbox"
                 checked={selected.includes(ability as never)}

@@ -62,8 +62,8 @@ describe('the app’s pages, rendered on the server (W9 step 10b)', () => {
     const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     for (const url of ['/dashboard', '/people', `/users/${ada.id}`, `/users/${ada.id}/edit`, '/members', '/notifications', '/settings/security', '/settings/tokens']) {
       const { body } = await session.get(url, page).assertOk().assertServerRendered();
-      // The framework's LayerDialog brings its default look inline (the dialog, its content box, the close button) — not the app's.
-      const styled = (body.match(/<[^>]+\sstyle="[^>]*>/g) ?? []).filter((tag) => !/data-marmeon-layer|style="padding:1\.5rem;padding-inline-end:3rem"/.test(tag));
+      // The framework's LayerDialog too (W10 step 7, E202): its look is classes of @marmeon/react/styles.css.
+      const styled = body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
       expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
     }
   });
@@ -99,6 +99,10 @@ describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
     expect(response.body.match(/<dialog open="" data-marmeon-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
+    // Their frames carry no style attribute (W10 step 7, E202): classes of @marmeon/react/styles.css, linked by the built index.html.
+    const styled = response.body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
+    expect(styled, `inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
+    expect(response.body).toMatch(/<dialog open="" data-marmeon-layer="user-profile\/Edit"[^>]* class="marmeon-layer marmeon-layer--(modal|slideover)[ "]/);
   });
 });
 

@@ -150,6 +150,11 @@ const $ = (selector: string) => container.querySelector(selector);
 const click = (testId: string) => act(async () => ($(`[data-testid="${testId}"]`) as HTMLButtonElement).click());
 /** Lets fetches, renders and effects finish. */
 const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
+/** What a failure shows is a chunk of its own (W10 step 7, E202): under a busy test run it may take more than a tick to load. */
+const shown = async (selector: string) => {
+  for (let tries = 0; tries < 200 && !$(selector); tries++) await settle();
+  return $(selector);
+};
 
 describe('persistent layouts (E35)', () => {
   it('keeps the layout mounted across navigations: its state survives', async () => {
@@ -238,7 +243,7 @@ describe('error boundaries', () => {
 
     expect(requests).toBe(1); // one retry, not a loop
     expect($('[data-layout="app"]')).not.toBeNull(); // the layout stands
-    expect($('[data-layout="app"] h1')!.textContent).toBe('Something went wrong');
+    expect((await shown('[data-layout="app"] h1'))!.textContent).toBe('Something went wrong');
     await click('count'); // and still works
     expect($('[data-testid="count"]')!.textContent).toBe('1');
   });
@@ -280,7 +285,7 @@ describe('failed visits', () => {
     await mount(page('A', '/a'));
     await click('to-b');
     await settle();
-    const dialog = $('dialog[data-marmeon-failure="server"]')!;
+    const dialog = (await shown('dialog[data-marmeon-failure="server"] pre'))!.closest('dialog')!;
     expect(dialog.querySelector('h1')!.textContent).toBe('Internal Server Error');
     expect(dialog.querySelector('pre')!.textContent).toContain('at ShowController.handle');
     expect($('[data-page="a"]')).not.toBeNull();

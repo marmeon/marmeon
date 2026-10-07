@@ -176,10 +176,22 @@ async function lint(packed: PackedPackage): Promise<string[]> {
   return messages.map((message) => `publint: ${formatMessage(message, pkg, { color: false }) ?? message.code}`);
 }
 
-function typesWrong(packed: PackedPackage): string[] {
+/** The stylesheets a package exports (`@marmeon/react/styles.css`, E202) — no types to check there; publint checks that they ship. */
+export function stylesheetEntrypoints(manifest: Record<string, unknown>): string[] {
+  const exports = manifest.exports;
+  if (typeof exports !== 'object' || exports === null) return [];
+  return Object.keys(exports).filter((key) => key.endsWith('.css'));
+}
+
+function typesWrong(packed: PackedPackage, manifest: Record<string, unknown>): string[] {
+  const stylesheets = stylesheetEntrypoints(manifest);
   const result = spawnSync(
     join(root, 'node_modules/.bin/attw'),
-    [packed.tarball, '--profile', 'esm-only', '--no-definitely-typed', '--format', 'ascii', '--no-emoji', '--no-color', '--no-summary'],
+    [
+      packed.tarball,
+      ...['--profile', 'esm-only', '--no-definitely-typed', '--format', 'ascii', '--no-emoji', '--no-color', '--no-summary'],
+      ...(stylesheets.length > 0 ? ['--exclude-entrypoints', ...stylesheets] : []),
+    ],
     { encoding: 'utf8' },
   );
   if (result.status === 0) return [];
@@ -235,7 +247,7 @@ async function main(): Promise<number> {
         report(pkg.name, await lint(tarball));
         // attw checks what importing the package resolves to — a package that only has a bin (create-marmeon) has nothing to import.
         const packedManifest = JSON.parse(readFileSync(join(unpacked, 'package', 'package.json'), 'utf8')) as Record<string, unknown>;
-        if (['exports', 'main', 'types', 'module'].some((field) => field in packedManifest)) report(pkg.name, typesWrong(tarball));
+        if (['exports', 'main', 'types', 'module'].some((field) => field in packedManifest)) report(pkg.name, typesWrong(tarball, packedManifest));
       }),
     );
 

@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symli
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, PRIVATE_REGISTRATION_FLAG_GONE, STUBS } from './make-auth.ts';
+import { AUTH_STYLES_IMPORT, MakeAuthCommand, NEEDED, NEEDED_FOR_TESTS, PRIVATE_REGISTRATION_FLAG_GONE, STUBS } from './make-auth.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -54,6 +54,11 @@ describe('make:auth', () => {
     expect(app).toMatch(/modules: \[auth, system\]/);
     expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
+    // Its look (E202): a stylesheet the client entry imports — once, after the framework's.
+    const client = readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8');
+    expect(client.match(/modules\/auth\/auth\.css/g)).toHaveLength(1);
+    expect(client.indexOf(AUTH_STYLES_IMPORT)).toBeGreaterThan(client.indexOf("import '@marmeon/react/styles.css';"));
+    expect(lines).toContain('✓ Imported its styles (modules/auth/auth.css) in bootstrap/client.tsx');
     // The blank app has its lint preset, the devtools (E150) and a Content-Security-Policy (E147): none is named.
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
@@ -91,6 +96,7 @@ describe('make:auth', () => {
     expect(readFileSync(join(root, 'modules/auth/routes.ts'), 'utf8')).toBe('// changed by the app\n');
     expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').match(/#modules\/auth/g)).toHaveLength(1); // registered once
+    expect(readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8').match(/modules\/auth\/auth\.css/g)).toHaveLength(1); // its styles too
   });
 
   it('names every package its templates import — the module\'s in NEEDED, its tests\' in NEEDED_FOR_TESTS (W7.11: i18n was missing)', () => {
@@ -253,6 +259,13 @@ describe('make:auth', () => {
         .map((file) => readFileSync(join(root, 'dist/client', file), 'utf8'))
         .join('\n');
       expect(client).toContain('auth.login.store');
+      // The look (E202): the framework's stylesheet and the module's, in the stylesheet the built index.html links — no inline style.
+      const css = readdirSync(join(root, 'dist/client'), { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.css'));
+      const styles = css.map((file) => readFileSync(join(root, 'dist/client', file), 'utf8')).join('\n');
+      expect(styles).toContain('.auth-header');
+      expect(styles).toContain('.marmeon-layer');
+      const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
+      for (const file of css) expect(html, `index.html links ${file}`).toContain(`/${file}`);
       expect(client).toContain('/dashboard');
       expect(readFileSync(join(root, '.marmeon/routes.json'), 'utf8')).toContain('"auth.password.reset"'); // the browser may learn it …
       for (const serverOnly of ['auth.password.reset', 'auth.password.confirm', 'auth.verification.notice']) {

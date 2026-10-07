@@ -23,7 +23,9 @@
     "node": ">=26.10"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./styles.css"
+  ],
   "exports": {
     ".": {
       "@marmeon/source": "./src/index.ts",
@@ -44,7 +46,8 @@
       "@marmeon/source": "./src/table-tanstack.ts",
       "types": "./dist/table-tanstack.d.ts",
       "default": "./dist/table-tanstack.js"
-    }
+    },
+    "./styles.css": "./styles.css"
   },
   "publishConfig": {
     "access": "public",
@@ -65,12 +68,14 @@
       "./table-tanstack": {
         "types": "./dist/table-tanstack.d.ts",
         "default": "./dist/table-tanstack.js"
-      }
+      },
+      "./styles.css": "./styles.css"
     }
   },
   "files": [
     "dist",
     "src",
+    "styles.css",
     "LICENSE",
     "README.md",
     "!{dist,src}/**/*.test.*",

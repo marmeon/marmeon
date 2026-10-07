@@ -99,6 +99,10 @@ const FEATURES = {
   // View transitions (W9 step 8, E185): the core loads them before the first page change that asks for one (a visit's, a link's, the
   // app's `viewTransition`) — a chunk of its own, never in a first download; only the loader is.
   viewTransitions: { markers: ['http/client/features/view-transitions'], use: inApp(), lazy: true },
+  // What a failure shows (W10 step 7, E202): the dialogs of a failed visit and the error page for a page that threw — a chunk
+  // <MarmeonApp> loads when it happens, never in a first download (the error boundary stays). `react/error-page` is no marker: the
+  // adapter's main entry exports `ErrorPage` (everything holds it); the built-in page itself is checked on its own below.
+  failures: { markers: ['react/failure'], use: inApp(), lazy: true },
   // The headless table (W9 step 6, E183): `@marmeon/react/table` and what it builds on — the core's row selection (a slot of the
   // entry) and the table's UI-free controller. Only with its own import: never in an app without tables (its subpath, an optional peer).
   table: { markers: ['http/client/features/selection', 'table/client/table', 'react/table'], use: { base: 'emptyApp' as const, entry: tableEntry() }, brings: ['queryState'] },
@@ -120,7 +124,7 @@ type Feature = keyof typeof FEATURES;
 const FEATURE_NAMES = Object.keys(FEATURES) as Feature[];
 
 /** The features Wave 5c took out of every app that does not use them (step 4: one commit each; step 5: the layers; step 6: the page's optimistic patches, uploads, the progress bar). */
-const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack', 'viewTransitions'];
+const EXTRACTED: readonly Feature[] = ['queryState', 'liveValidation', 'remember', 'actions', 'prefetch', 'revalidateOnBack', 'instant', 'guard', 'islands', 'layers', 'optimistic', 'uploads', 'progress', 'live', 'hooks', 'table', 'tanstack', 'viewTransitions', 'failures'];
 
 /** `http/dist/client/layer.js` → `http/client/layer`. */
 const moduleKey = (id: string) => id.replace(/^([^/]+)\/(?:src|dist)\//, '$1/').replace(/\.[cm]?[jt]sx?$/, '');
@@ -254,6 +258,21 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     const built = bundle(name);
     expect(featuresIn(built), 'view transitions in the first download').not.toContain('viewTransitions');
     expect(featuresIn(built, true)).toContain('viewTransitions');
+  });
+
+  // W10 step 7 (E202): what a failure shows — the failure dialogs, the error page for a page that threw, the built-in error page — is
+  // a chunk of its own in every app of <MarmeonApp>; its styles are classes of styles.css, so none of it is in the first download.
+  it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the failure dialogs are a chunk of their own in %s — never in the first download', (name) => {
+    const built = bundle(name);
+    expect(featuresIn(built), 'the failure dialogs in the first download').not.toContain('failures');
+    expect(featuresIn(built, true)).toContain('failures');
+    // The notice of an unreachable server stays in the first download: offline, no chunk loads.
+    expect(built.code, 'the notice of an unreachable server').toContain('The server could not be reached.');
+    // The built-in error page too — but for everything, which keeps the adapter's export of `ErrorPage`.
+    if (name !== 'everything') {
+      expect(built.modules, 'the built-in error page in the first download').not.toContain('react/dist/error-page.js');
+      expect(built.lazyModules).toContain('react/dist/error-page.js');
+    }
   });
 
   it('the core alone carries no History fallback — not in its first download, not in a chunk (the adapter loads it)', () => {

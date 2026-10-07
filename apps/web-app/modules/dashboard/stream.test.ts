@@ -63,7 +63,7 @@ describe('the dashboard as it streams (E49)', () => {
     const response = await app.actingAs(ada).stream('/dashboard');
     const html = await response.text();
     const nonce = /'nonce-([^']+)'/.exec(response.headers.get('content-security-policy') ?? '')?.[1];
-    expect(response.headers.get('content-security-policy')).toBe(`script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`);
+    expect(response.headers.get('content-security-policy')).toBe(`script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'self'; style-src 'self' 'nonce-${nonce}'; frame-ancestors 'none'`);
     expect(html).toMatch(/data-island="dashboard\.members" data-status="ready"/);
     expect(html).toContain('$RC'); // a boundary streamed in after the shell
     const scripts = html.match(/<script\b[^>]*>/g)!;

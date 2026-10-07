@@ -135,6 +135,22 @@ describe('API tokens', () => {
   });
 });
 
+describe('the pages, rendered on the server', () => {
+  it('carry no style attribute — the layouts name classes of auth.css (a strict style-src blocks inline styles, E202)', async () => {
+    // This test's app renders through the app's Vite setup (one open app at a time).
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh', ssr: true });
+    const ada = await app.factory(UserFactory).create();
+    const sudo = continuing(await app.post('/login', credentials(ada)));
+    const html = { headers: { accept: 'text/html' } };
+    for (const [client, url] of [[app, '/login'], [app, '/register'], [sudo, '/dashboard'], [sudo, '/settings/security'], [sudo, '/settings/tokens']] as const) {
+      const { body } = await client.get(url, html).assertOk().assertServerRendered();
+      const styled = body.match(/<[^>]+\sstyle="[^>]*>/g) ?? [];
+      expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
+    }
+  });
+});
+
 describe('the user type', () => {
   it('carries no password hash', async () => {
     const ada = await app.factory(UserFactory).create();

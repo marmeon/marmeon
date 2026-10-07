@@ -1,0 +1,148 @@
+/*
+ * @marmeon/react — the default look of the framework's components (E202): the layer frame (LayerDialog), the confirmation
+ * dialog (ConfirmDialog), the dialogs of a failed visit (VisitFailure) and the built-in error page. Import it once, in the
+ * app's client entry: `import '@marmeon/react/styles.css';` — a stylesheet of the app's origin, allowed under a strict
+ * `style-src 'self'` (inline `style` attributes are not: the components render none).
+ *
+ * Every rule is wrapped in :where() — no specificity: any class of the app (`className`) or a rule on the data attributes
+ * (`data-marmeon-layer`, `data-variant`, `data-marmeon-confirm`, `data-marmeon-failure`) overrides it. Leave the import out
+ * and style them yourself.
+ */
+
+/* The layer frame: a native <dialog>, opened modally (E53). */
+:where(.marmeon-layer) {
+  padding: 0;
+  border: none;
+}
+
+:where(.marmeon-layer--modal) {
+  border-radius: 8px;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+:where(.marmeon-layer--slideover) {
+  margin: 0 0 0 auto;
+  width: min(28rem, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.2);
+}
+
+:where(.marmeon-layer__content) {
+  padding: 1.5rem;
+  padding-inline-end: 3rem;
+}
+
+:where(.marmeon-layer__close) {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+/* The confirmation dialog (E64). */
+:where(.marmeon-confirm) {
+  padding: 1.25rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  width: min(28rem, calc(100vw - 2rem));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+:where(.marmeon-confirm__title) {
+  margin-top: 0;
+  font-size: 1.125rem;
+}
+
+:where(.marmeon-confirm__field) {
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+:where(.marmeon-confirm__actions) {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+
+/*
+ * A failed visit, over the page: the notice when the server could not be reached, the dialog with the server's error page.
+ * Their colours are variables — set them on :root to fit the app.
+ */
+:where(.marmeon-failure button) {
+  font: inherit;
+  cursor: pointer;
+}
+
+:where(.marmeon-failure--network) {
+  position: fixed;
+  inset-inline: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font: 14px/1.4 system-ui, sans-serif;
+  background: var(--marmeon-failure-background, #1f2937);
+  color: var(--marmeon-failure-color, #f9fafb);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+:where(.marmeon-failure--server) {
+  width: min(960px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--marmeon-failure-dialog-background, Canvas);
+  color: var(--marmeon-failure-dialog-color, CanvasText);
+}
+
+:where(.marmeon-failure__close) {
+  text-align: right;
+  margin: 0;
+}
+
+:where(.marmeon-failure__frame) {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+}
+
+/* The built-in error page (`errors/Error` until the app brings its own). */
+:where(.marmeon-error) {
+  font-family: system-ui, sans-serif;
+  max-width: 720px;
+  margin: 10vh auto;
+  padding: 0 16px;
+}
+
+:where(.marmeon-error__status) {
+  font-size: 14px;
+  letter-spacing: 1px;
+  opacity: 0.6;
+  margin: 0;
+}
+
+:where(.marmeon-error__title) {
+  margin: 4px 0 12px;
+}
+
+:where(.marmeon-error__exception) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  background: rgba(127, 127, 127, 0.12);
+  padding: 16px;
+  border-radius: 8px;
+}

@@ -453,6 +453,19 @@ class Smoke {
  * entry script — and never compressed, for a guest without a cookie (E143), a cross-site post refused; the entry script as the
  * `.br` `marmeon build` wrote, kept a year (`immutable`); the home page.
  */
+/**
+ * The look comes from stylesheets the built index.html links (E202): `@marmeon/react/styles.css` — resolved from the packed
+ * package's `exports` — and, in the kit, the auth module's `auth.css`. No inline style needed under a strict `style-src`.
+ */
+function checkStyles(app: string, classes: readonly string[]): void {
+  const client = join(app, 'dist/client');
+  const html = readFileSync(join(client, 'index.html'), 'utf8');
+  const linked = [...html.matchAll(/<link rel="stylesheet"[^>]* href="\/([^"]+\.css)"/g)].map((match) => match[1]!);
+  const css = linked.map((file) => readFileSync(join(client, file), 'utf8')).join('\n');
+  const missing = classes.filter((name) => !css.includes(`.${name}`));
+  if (missing.length > 0) throw new SmokeError(`the built index.html links ${linked.join(', ') || 'no stylesheet'} — without ${missing.map((name) => `.${name}`).join(', ')} (E202).`);
+}
+
 async function checkProductionHttp(base: string): Promise<void> {
   const home = await fetch(`${base}/`, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(5_000) });
   const homeHtml = await home.text();
@@ -630,8 +643,9 @@ async function main(): Promise<number> {
       return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
     await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));
-    await pnpmApp.step('marmeon build without .env (no key, E187) → no secret in dist/ or .marmeon/', () => {
+    await pnpmApp.step('marmeon build without .env (no key, E187) → no secret in dist/ or .marmeon/, the stylesheets linked (E202)', () => {
       pnpmApp.buildWithoutEnv();
+      checkStyles(app, ['marmeon-layer', 'marmeon-failure', 'auth-header']);
       // The injection lists of the app (E138): the auth module's controllers take their services through the constructor.
       const injections = JSON.parse(readFileSync(join(app, '.marmeon/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
@@ -704,7 +718,10 @@ async function main(): Promise<number> {
       if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
     });
-    await npmApp.step('marmeon build without .env (E187)', () => npmApp.buildWithoutEnv());
+    await npmApp.step('marmeon build without .env (E187), the framework\'s stylesheet linked (E202)', () => {
+      npmApp.buildWithoutEnv();
+      checkStyles(npmApp.app, ['marmeon-layer']);
+    });
     await npmApp.step('marmeon start → GET /up 200', () => npmApp.serve('/up'));
     const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');
     // Discovery walks node_modules as Node resolves (E151): in npm's flat layout it finds every package pnpm's finds.

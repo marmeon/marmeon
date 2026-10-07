@@ -32,6 +32,7 @@ export default function People({ people }: PageProps<ListPeopleController>) {
 | `@marmeon/react/server` | server (the SSR entry) | `createSsrRenderer` — so `react-dom/server` never ends up in the client bundle |
 | `@marmeon/react/table` | browser and the SSR entry | `useTable` — the headless table of [@marmeon/table](../table/README.md#in-the-browser) (an optional peer) |
 | `@marmeon/react/table-tanstack` | browser | `toTanStack` — `useTable` for TanStack Table v9 (`@tanstack/react-table`, an optional peer; types only) |
+| `@marmeon/react/styles.css` | browser (the client entry) | the default look of the layer frame, the confirmation and failure dialogs and the built-in error page — classes, no inline style (E202, [below](#the-look-stylescss)) |
 
 ## Installation
 
@@ -73,6 +74,7 @@ export const messages = createMessageLoader(lang);                   // lang fro
 
 ```tsx
 // bootstrap/client.tsx
+import '@marmeon/react/styles.css';                                  // the framework's look (E202) — the built index.html links it
 void createMarmeonApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm });
 
 // bootstrap/ssr.tsx
@@ -96,6 +98,25 @@ export const render = createSsrRenderer(resolvePage, { title, routes, layout, la
 
 Whether the server renders at all is the server's: `SSR_ENABLED=false` of [@marmeon/server](../server/README.md#configuration) sends
 every page without markup.
+
+### The look: styles.css
+
+The components render **no `style` attribute** (E202): a strict Content-Security-Policy (`contentSecurityPolicy({ styleSrc: ["'self'"] })`,
+no `'unsafe-inline'`) blocks every one, and a nonce does not cover attributes. Their default look is a stylesheet the app imports
+once in `bootstrap/client.tsx` — `import '@marmeon/react/styles.css'` — which `marmeon build` puts into the stylesheet the built
+`index.html` links (`style-src 'self'` allows it). Under `marmeon dev` Vite adds it as a `<style>` element with the response's nonce
+once the entry runs — a policy that limits styles in development too names the nonce, `styleSrc: ["'self'", NONCE]`:
+
+- `LayerDialog`: `marmeon-layer`, `marmeon-layer--modal` / `--slideover`, `marmeon-layer__content`, `marmeon-layer__close`;
+- `ConfirmDialog`: `marmeon-confirm`, `__title`, `__field`, `__actions`;
+- a failed visit: `marmeon-failure--network` (the notice), `marmeon-failure--server` (the dialog), `marmeon-failure__frame`; their colours
+  are CSS variables — `--marmeon-failure-background`, `--marmeon-failure-color`, `--marmeon-failure-dialog-background`,
+  `--marmeon-failure-dialog-color`;
+- the built-in error page: `marmeon-error`, `__status`, `__title`, `__exception`.
+
+Every rule sits in `:where()` (no specificity): a class of the app's own stylesheet or a rule on the data attributes
+(`[data-marmeon-layer]`, `[data-variant]`, `[data-marmeon-confirm]`, `[data-marmeon-failure]`) overrides it. Without the import the
+components are unstyled — style them yourself.
 
 ## The entries
 
@@ -383,9 +404,10 @@ const layer = useLayer<EditUserProfileController>();     // isLayer, depth, isTo
 
 The frame is `LayerDialog` by default — a native modal `<dialog>`: focus kept inside and returned to the opener, Escape and the
 backdrop close it, the page beneath inert. Wrap it for the app's label (`<LayerDialog {...props} closeLabel={t('close')} />`) and
-pass it as `layer`; a view's own `layer` static wins. Its default look is a few inline properties — server-rendered (a deep link
-to a layer) a `style` attribute, which a strict `style-src` would block: with one, style the frame by `[data-marmeon-layer]` and
-`[data-variant]` in the app's stylesheet. The layer stack is a chunk of its own, loaded where a layer link renders or
+pass it as `layer`; a view's own `layer` static wins. Its look is [`styles.css`](#the-look-stylescss) — classes, no `style`
+attribute, so a deep link to a layer renders under a strict `style-src` as it is. Its `style` prop (a dynamic value, say
+`{ '--layer-depth': layer.depth }`) is written through the CSSOM once the dialog is mounted (E202) — the server renders none, and
+React would not add an attribute it skipped while hydrating; a deep link shows the frame without it until it hydrates. The layer stack is a chunk of its own, loaded where a layer link renders or
 when the server answers with a layer (E71).
 
 ## Flash messages, head and translations
@@ -407,6 +429,10 @@ when the server answers with a layer (E71).
   a layout that throws shows it without layouts. The next visit tries again. A placeholder that throws shows nothing.
 - **A failed visit** keeps the page and what was typed: offline is a notice, a 5xx the server's error page in a dialog over it.
   An island fails on its own (its `error`).
+- **What a failure shows is a chunk of its own** (W10 step 7, E202, like the layers, E71): the dialog with the server's error page,
+  the error page of a page that threw and the built-in `errors/Error` load when it happens — never with the first download
+  (≈ 0.4 KB gzip less). The error boundary and the notice of an unreachable server stay in it (offline, no chunk loads); when the
+  chunk cannot load, a 5xx shows that notice and a page that threw shows nothing in its place — a failure never fails the app.
 - **Codes, not explanations:** a production build throws `[marmeon:R2] users/Show`; development the whole explanation. The
   table of codes is [in @marmeon/http](../http/README.md#error-codes).
 

@@ -87,6 +87,15 @@
   flex: 1;
 }
 
+/*
+ * Layers (layouts/LayerFrame.tsx): the framework's look (@marmeon/react/styles.css) plus a nudge per depth — `--layer-depth` comes
+ * through LayerDialog's style prop, written with the CSSOM after the mount (E202). A deep link shows it without the nudge until it
+ * hydrates.
+ */
+.app-layer.marmeon-layer--modal {
+  translate: calc((var(--layer-depth, 1) - 1) * 1rem) calc((var(--layer-depth, 1) - 1) * 1rem);
+}
+
 /* The members table's filters in one row. */
 .filters {
   display: flex;

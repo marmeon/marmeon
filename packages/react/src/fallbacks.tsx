@@ -1,23 +1,9 @@
-import { isDevelopment, type VisitException } from '@marmeon/http/client';
-import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/page';
-import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { ErrorPage } from './error-page.tsx';
-import type { PageComponent, ResolvePage } from './pages.ts';
+import type { VisitException } from '@marmeon/http/client';
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
+import type { ResolvePage } from './pages.ts';
 
 /** The digest of errors in a Suspense boundary on the server — how the browser tells them from a hydration mismatch. */
 export const SSR_ERROR_DIGEST = 'marmeon:ssr';
-
-/** What the error page shows for an error thrown while rendering — the details only in development. */
-export function renderErrorProps(error: unknown): ErrorPageProps {
-  const exception = error instanceof Error ? { name: error.name, message: error.message, stack: error.stack ?? '' } : { name: 'Error', message: String(error), stack: '' };
-  const development = isDevelopment();
-  return {
-    status: 500,
-    title: 'Something went wrong',
-    message: development ? exception.message : 'This page could not be shown. Please try again.',
-    exception: development ? exception : null,
-  };
-}
 
 interface ErrorBoundaryProps {
   /** A new page resets the boundary — the next page gets its chance. */
@@ -64,93 +50,51 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 }
 
-/** A page component by name — loaded on demand (the error page is a chunk of its own). The built-in one if it cannot load. */
-export function LazyPage({ resolve, name, props }: { resolve: ResolvePage; name: string; props: object }) {
-  const [loaded, setLoaded] = useState<{ name: string; Component: PageComponent } | null>(null);
-  useEffect(() => {
-    let current = true;
-    resolve(name).then(
-      (Component) => current && setLoaded({ name, Component }),
-      () => current && setLoaded({ name, Component: ErrorPage }),
-    );
-    return () => {
-      current = false;
-    };
-  }, [resolve, name]);
-  if (!loaded || loaded.name !== name) return null;
-  return <loaded.Component {...props} />;
-}
-
-/** The app's error page (`errors/Error`) for an error thrown while rendering. */
-export function RenderErrorFallback({ resolve, error }: { resolve: ResolvePage; error: unknown }) {
-  return <LazyPage resolve={resolve} name={ERROR_PAGE} props={renderErrorProps(error)} />;
-}
+type ServerFailure = Extract<VisitException, { type: 'server' }>;
 
 /**
- * What a failed visit shows, over the page (which stays, with whatever was typed into it):
- * - the server could not be reached: a notice;
- * - a 5xx: the server's error page in a dialog — with the exception in debug mode (development), else just
- *   status and title. Plain HTML from something in front of the server goes into a sandboxed frame.
+ * The notice when the server could not be reached — in the first download: offline, no chunk could load. Also what a server's
+ * failure shows when the failure chunk cannot load either.
  */
-export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitException | null; resolve: ResolvePage; onDismiss: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    if (element && !element.open) element.showModal?.();
-  }, [failure]);
-
-  if (!failure) return null;
-  if (failure.type === 'network') {
-    return (
-      <div role="alert" data-marmeon-failure="network" style={noticeStyle}>
-        The server could not be reached. Check your connection and try again.{' '}
-        <button type="button" onClick={onDismiss} style={buttonStyle}>
-          Dismiss
-        </button>
-      </div>
-    );
-  }
-  const { page, html, status } = failure;
+function NetworkNotice({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <dialog ref={dialog} data-marmeon-failure="server" aria-label={`Server error ${status}`} onClose={onDismiss} style={dialogStyle}>
-      <form method="dialog" style={{ textAlign: 'right', margin: 0 }}>
-        <button type="submit" aria-label="Close" style={buttonStyle}>
-          Close
-        </button>
-      </form>
-      {page ? (
-        <LazyPage resolve={resolve} name={page.component} props={page.props} />
-      ) : html ? (
-        // No scripts, no access to this origin: the answer is shown, never run.
-        <iframe sandbox="" srcDoc={html} title={`Server error ${status}`} style={{ width: '100%', height: '70vh', border: 0 }} />
-      ) : (
-        <ErrorPage status={status} title="Server Error" message="Server Error" exception={null} />
-      )}
-    </dialog>
+    <div role="alert" data-marmeon-failure="network" className="marmeon-failure marmeon-failure--network">
+      The server could not be reached. Check your connection and try again.{' '}
+      <button type="button" onClick={onDismiss}>
+        Dismiss
+      </button>
+    </div>
   );
 }
 
-const noticeStyle = {
-  position: 'fixed',
-  insetInline: 16,
-  bottom: 16,
-  zIndex: 2147483646,
-  padding: '12px 16px',
-  borderRadius: 8,
-  font: '14px/1.4 system-ui, sans-serif',
-  background: 'var(--marmeon-failure-background, #1f2937)',
-  color: 'var(--marmeon-failure-color, #f9fafb)',
-  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
-} as const;
+/** When the failure chunk cannot load: the notice for a visit, nothing for a page that threw — never an error of its own. */
+const unloaded = { RenderErrorFallback: () => null, ServerFailure: NetworkNotice } as unknown as typeof import('./failure.tsx');
 
-const dialogStyle = {
-  width: 'min(960px, calc(100vw - 32px))',
-  maxHeight: 'calc(100vh - 32px)',
-  padding: 16,
-  border: 0,
-  borderRadius: 8,
-  background: 'var(--marmeon-failure-dialog-background, Canvas)',
-  color: 'var(--marmeon-failure-dialog-color, CanvasText)',
-} as const;
+// The rest of what a failure shows is a chunk of its own (E202, like the layers, E71): the server's error page in a dialog and the
+// app's error page for a page that threw — loaded when it happens.
+const loadFailure = () => import('./failure.tsx').catch(() => unloaded);
+const LazyRenderError = lazy(() => loadFailure().then((module) => ({ default: module.RenderErrorFallback })));
+const LazyServerFailure = lazy(() => loadFailure().then((module) => ({ default: module.ServerFailure })));
 
-const buttonStyle = { font: 'inherit', cursor: 'pointer' } as const;
+/** The app's error page (`errors/Error`) for an error thrown while rendering. */
+export function RenderErrorFallback(props: { resolve: ResolvePage; error: unknown }) {
+  return (
+    <Suspense fallback={null}>
+      <LazyRenderError {...props} />
+    </Suspense>
+  );
+}
+
+/**
+ * What a failed visit shows, over the page (which stays, with whatever was typed into it): the server could not be reached — a
+ * notice; a 5xx — the server's error page in a dialog (`failure.tsx`).
+ */
+export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitException | null; resolve: ResolvePage; onDismiss: () => void }) {
+  if (!failure) return null;
+  if (failure.type === 'network') return <NetworkNotice onDismiss={onDismiss} />;
+  return (
+    <Suspense fallback={null}>
+      <LazyServerFailure failure={failure satisfies ServerFailure} resolve={resolve} onDismiss={onDismiss} />
+    </Suspense>
+  );
+}
