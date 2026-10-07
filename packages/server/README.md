@@ -4,9 +4,12 @@ The HTTP server of a Marmeon app: the kernel (Hono for matching, the Marmeon rou
 rendering through Vite in development and through the build in production, islands and layers resolved in-process, the health
 endpoints and `startServer()` with a graceful drain. `marmeon dev` and `marmeon start` run it
 ([marmeon](../cli/README.md#commands)); an app rarely calls it itself. Its `ServerServiceProvider` is found by
-`marmeon discover`. Vite is an optional peer: `marmeon dev` and `marmeon build` need it (`pnpm add -D vite @marmeon/vite`),
+`marmeon discover`. Vite is an optional peer: `marmeon dev` and `marmeon build` need it (`pnpm add -D vite@^8 @marmeon/vite`),
 a production server never loads it. Routes, controllers and responses are [@marmeon/router](../router/README.md) and
 [@marmeon/http](../http/README.md); what goes over the wire is [the protocol](../http/README.md#the-protocol).
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): Vite stays a **peer** — the app's own Vite (its plugins, its config) is the one the server runs;
+a dependency would bring a second.
 
 ## Configuration
 

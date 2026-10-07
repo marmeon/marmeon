@@ -169,7 +169,7 @@ describe('marmeon build with the marmeon() plugin', () => {
 
   it('says how to install Vite when the app has none', () => {
     const { code, out } = build(app({ vite: false }));
-    expect(out).toContain('Vite is not installed in this app. `marmeon dev` and `marmeon build` need it: pnpm add -D vite @marmeon/vite');
+    expect(out).toContain('Vite is not installed in this app. `marmeon dev` and `marmeon build` need it: pnpm add -D vite@^8 @marmeon/vite');
     expect(code).toBe(1);
   });
 
@@ -177,7 +177,7 @@ describe('marmeon build with the marmeon() plugin', () => {
     const root = app();
     rmSync(join(root, 'node_modules/@marmeon/vite'));
     const { code, out } = build(root);
-    expect(out).toContain('vite.config.ts imports @marmeon/vite, which is not installed in this app: pnpm add -D vite @marmeon/vite');
+    expect(out).toContain('vite.config.ts imports @marmeon/vite, which is not installed in this app: pnpm add -D vite@^8 @marmeon/vite');
     expect(out).not.toContain('ERR_MODULE_NOT_FOUND');
     expect(code).toBe(1);
   });

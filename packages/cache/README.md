@@ -20,7 +20,11 @@ inside its few-microsecond step loses its exclusivity.)
 `CACHE_DRIVER` and the `RateLimiter` (singletons), the live-validation limit in the global middleware stack, a readiness check,
 and `make:cache-table`, `cache:prune` and `cache:clear` (when `marmeon` is installed). The `database` and `redis` drivers
 need their packages — optional peers; a missing one fails the start with what to install (`CacheSetupError`: "CACHE_DRIVER=redis
-needs @marmeon/redis, which is not installed in this app: pnpm add @marmeon/redis redis").
+needs @marmeon/redis, which is not installed in this app: pnpm add @marmeon/redis").
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): no third-party driver here — the
+`redis` driver's client comes with `@marmeon/redis` (its dependency), the `database` driver's with `@marmeon/database` (SQLite
+built in, `pg` an optional peer there).
 
 **Readiness (E126):** the provider registers `CacheHealthCheck` for `/up/ready` — the store of `CACHE_DRIVER` takes a new key
 (`add`) and lets it go (`forget`); the database store writes on its infrastructure connection (E108), as the cache always does.

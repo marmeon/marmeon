@@ -1,7 +1,7 @@
 import { createApplication, type Logger } from '@marmeon/core';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
-import { defineRedisScript, RedisConnections, RedisSetupError } from './connections.ts';
+import { defineRedisScript, RedisConnections } from './connections.ts';
 import { defineRedisConnection, RedisConfig, RedisServiceProvider } from './index.ts';
 
 /** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`docker compose up -d`, then `pnpm test:redis`). */
@@ -14,30 +14,10 @@ function connections(prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`
 }
 
 describe('RedisConnections without a server', () => {
-  it('says how to install the client when it is missing — at startup, with the command', async () => {
-    const missing = new RedisConnections({
-      connections: { default: { url: 'redis://127.0.0.1:6379', prefix: '' } },
-      logger: silent,
-      importClient: () => import('redis-is-not-installed' as string).catch(() => {
-        // What Node throws for a package the app lacks (the name says which).
-        throw Object.assign(new Error("Cannot find package 'redis' imported from /app/node_modules/@marmeon/redis/dist/connections.js"), { code: 'ERR_MODULE_NOT_FOUND' });
-      }),
-    });
-    const error = await missing.verify().catch((caught: unknown) => caught);
-    expect(error).toBeInstanceOf(RedisSetupError);
-    expect((error as Error).message).toBe('Redis needs its client, which is not installed in this app: pnpm add redis');
-    await expect(missing.get().command(['PING'])).rejects.toThrow(RedisSetupError);
-  });
-
-  it('passes other import failures through (a broken install is not "not installed")', async () => {
-    const broken = new RedisConnections({
-      connections: { default: { url: 'redis://127.0.0.1:6379', prefix: '' } },
-      logger: silent,
-      importClient: async () => {
-        throw new SyntaxError('Unexpected token');
-      },
-    });
-    await expect(broken.verify()).rejects.toThrow(SyntaxError);
+  it('loads its client at the start without connecting — node-redis comes with this package (E198), the app installs nothing else', async () => {
+    const redis = connections('x:', 'redis://127.0.0.1:1');
+    await expect(redis.verify()).resolves.toBeUndefined();
+    await redis.close();
   });
 
   it('fails fast when Redis is unreachable — no request waits for a reconnect loop', async () => {

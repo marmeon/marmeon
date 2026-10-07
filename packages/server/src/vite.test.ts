@@ -138,10 +138,10 @@ describe('createViteDevRenderer', () => {
 
   it('explains a missing Vite, a missing @marmeon/vite, and a config without marmeon()', async () => {
     await expect(start(app({ vite: false }))).rejects.toThrow(
-      new ViteSetupError('Vite is not installed in this app. `marmeon dev` and `marmeon build` need it: pnpm add -D vite @marmeon/vite'),
+      new ViteSetupError('Vite is not installed in this app. `marmeon dev` and `marmeon build` need it: pnpm add -D vite@^8 @marmeon/vite'),
     );
     await expect(start(app({ framework: false }))).rejects.toThrow(
-      new ViteSetupError('vite.config.ts imports @marmeon/vite, which is not installed in this app: pnpm add -D vite @marmeon/vite'),
+      new ViteSetupError('vite.config.ts imports @marmeon/vite, which is not installed in this app: pnpm add -D vite@^8 @marmeon/vite'),
     );
     await expect(start(app({ config: 'export default {};' }))).rejects.toThrow(/^vite\.config\.ts does not use the marmeon\(\) plugin/);
   });

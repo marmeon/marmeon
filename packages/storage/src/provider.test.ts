@@ -301,7 +301,43 @@ describe('configuration', () => {
     expect(() => storage.disk('a')).toThrow('has no bucket — set the variable its configuration reads (e.g. S3_BUCKET');
     const { loadS3 } = await import('./drivers/s3.ts');
     const missing = Object.assign(new Error("Cannot find package '@aws-sdk/client-s3' imported from x"), { code: 'ERR_MODULE_NOT_FOUND' });
-    await expect(loadS3(() => Promise.reject(missing))).rejects.toThrow('S3 disks need the AWS SDK, which is not installed in this app: pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner');
+    await expect(loadS3(() => Promise.reject(missing))).rejects.toThrow(
+      'S3 disks need the AWS SDK, which is not installed in this app: pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3',
+    );
+  });
+
+  it('an S3 default disk (or UPLOADS_DISK) without the AWS SDK fails the start with the exact command (E198) — another S3 disk on first use', async () => {
+    const { checkS3Sdk } = await import('./index.ts');
+    const { missingPackages } = await import('./drivers/s3.ts');
+    const s3 = { driver: 's3', bucket: 'b' } as const;
+    const local = { driver: 'local', root: 'x' } as const;
+    const gone = (names: readonly string[]) => [...names];
+    const message = (() => {
+      try {
+        checkS3Sdk({ default: 'files', disks: { files: s3, uploads: local } }, 'uploads', gone);
+        return 'started';
+      } catch (error) {
+        return (error as Error).message;
+      }
+    })();
+    // The message as the assertion's text: the whole command shows when it differs (Vitest shortens long strings).
+    expect(message, message).toBe('The disk "files" (the default disk) is on S3, which needs the AWS SDK — not installed in this app: pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3');
+    expect(() => checkS3Sdk({ default: 'local', disks: { local, uploads: s3 } }, 'uploads', gone)).toThrow('The disk "uploads" (UPLOADS_DISK) is on S3, which needs the AWS SDK');
+    // The SDK without the presigned POST: uploads on S3 need it, an S3 default disk does not.
+    const noPost = (names: readonly string[]) => names.filter((name) => name === '@aws-sdk/s3-presigned-post');
+    expect(() => checkS3Sdk({ default: 'local', disks: { local, uploads: s3 } }, 'uploads', noPost)).toThrow(
+      'uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: pnpm add @aws-sdk/s3-presigned-post@^3',
+    );
+    expect(() => checkS3Sdk({ default: 'files', disks: { files: s3, uploads: local } }, 'uploads', noPost)).not.toThrow();
+    // An S3 disk the app may never use (Laravel's config has one too) does not stop the start.
+    expect(() => checkS3Sdk({ default: 'local', disks: { local, uploads: local, s3 } }, 'uploads', gone)).not.toThrow();
+    // Resolved, not loaded: a missing package is "missing", any other failure passes through.
+    const notFound = Object.assign(new Error("Cannot find module '@aws-sdk/client-s3'"), { code: 'MODULE_NOT_FOUND' });
+    expect(missingPackages(['@aws-sdk/client-s3'], () => { throw notFound; })).toEqual(['@aws-sdk/client-s3']);
+    expect(missingPackages(['@aws-sdk/client-s3'], () => '/x.js')).toEqual([]);
+    expect(() => missingPackages(['x'], () => { throw new SyntaxError('broken'); })).toThrow(SyntaxError);
+    // This repository has the SDK: an S3 default disk boots.
+    await expect(boot(defineStorage({ default: 'a', disks: { a: s3 } }))).resolves.toBeDefined();
   });
 
   it('env: the disks from validated variables', async () => {

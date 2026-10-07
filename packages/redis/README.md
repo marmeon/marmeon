@@ -6,8 +6,12 @@ props (`LIVE_DRIVER=redis`) build on it. **Redis is optional:** the defaults of 
 `pnpm test` need no Redis); Valkey works the same.
 
 ```sh
-pnpm add @marmeon/redis redis   # the official client (node-redis 5 or 6) is an optional peer
+pnpm add @marmeon/redis   # brings the official client, node-redis 6
 ```
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): `redis` (node-redis) is a dependency
+of this package — the one driver it wraps, so the app installs `@marmeon/redis` and nothing else. The cache, session, queue and live
+packages take `@marmeon/redis` as an optional peer: a Redis driver without it fails the start with `pnpm add @marmeon/redis`.
 
 `marmeon discover` registers its `RedisServiceProvider` through the `"marmeon"` field of its package.json: `RedisConnections`
 (a singleton), a readiness check, and closing every connection — duplicates included — on shutdown.
@@ -65,10 +69,10 @@ A driver whose connection name is unknown fails at the start; one whose package 
   down; here the first connect fails at once (`connectTimeout` 5 s) with the URL (password masked) in the message, and while a
   lost connection reconnects (at most every 2 s) commands fail instead of waiting (`disableOfflineQueue`). A request with
   Redis down gets an error (500), not a hang. There is no fallback store — decide per app whether Redis is critical.
-- **A missing client is a boot error** with the install command (`RedisSetupError`: "… pnpm add redis") — one line from the
-  CLI, no stack trace. An unreachable Redis is noticed by the first command (the queue's worker checks at start).
-- **Raw commands only** (`sendCommand`): node-redis' own types never reach the API, so apps without Redis compile, and a new major
-  of the client changes one file (`src/connections.ts`). The peer range is `^5 || ^6`.
+- **The client loads at the start of a driver that uses it** (`verify()`), never for an app whose drivers do not talk to Redis — a
+  broken install fails the start. An unreachable Redis is noticed by the first command (the queue's worker checks at start).
+- **Raw commands only** (`sendCommand`): node-redis' own types never reach the API, and a new major of the client changes one file
+  (`src/connections.ts`). The dependency range is `^6.2.1` (the tested major).
 - **Keys are not prefixed for you** — commands are raw; name them with `connection.key(…)`. The framework's keys:
   `<prefix>cache:…` and `<prefix>lock:…` (cache, locks — a blocking route's `lock:session:<key>` too), `<prefix>session:<key>`
   (sessions: a hash of the payload `d` and its version `v`, written by one Lua script; `<key>` is the SHA-256 of the session id,

@@ -12,6 +12,9 @@ checked at the start — not at the first dispatch: `database` (the default) nee
 [@marmeon/encryption](../encryption/README.md) with an `APP_KEY`; unique jobs, `job.once()` and `withoutOverlapping()` keep
 their locks in the app's cache ([@marmeon/cache](../cache/README.md#locks-and-markers-of-the-queue)).
 
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): no third-party driver here — `QUEUE_CONNECTION=redis` needs only `@marmeon/redis` (it brings
+the client: `pnpm add @marmeon/redis`).
+
 ```ts
 // modules/auth/jobs/SendWelcomeMailJob.ts — and `jobs: [SendWelcomeMailJob]` in defineModule({ … })
 export class SendWelcomeMailJob {

@@ -87,8 +87,10 @@ It has no dependencies: the prompts are `node:readline`.
 
 `MARMEON_CREATE_TARBALLS=<dir>` takes the framework from the tarballs of `pnpm pack` in that directory instead of the registry:
 they are copied into the app's `vendor/marmeon/`, every `@marmeon/*` dependency and `marmeon` point there (`file:`), the packages'
-dependencies on each other too (`overrides` — in `pnpm-workspace.yaml` for pnpm, with nothing hoisted, in `package.json` for
-npm; optional peers nobody installs by absolute path, since npm resolves a relative override from the dependent's directory).
+dependencies on each other too (`overrides` — in `pnpm-workspace.yaml` for pnpm, with nothing hoisted, only for what gets installed:
+pnpm installs an overridden optional peer as if the app had asked for it, which an install from the registry never does; in
+`package.json` for npm, the optional peers nobody installs by absolute path, since npm resolves a relative override from the
+dependent's directory). A package the app adds later comes from its tarball: `pnpm add ./vendor/marmeon/marmeon-redis-<version>.tgz`.
 That is how `pnpm pack:smoke` and `pnpm image:smoke` make their apps before anything is published. Not for apps; the variable never
 reaches the install and the generators.
 

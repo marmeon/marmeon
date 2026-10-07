@@ -10,7 +10,8 @@ pnpm add -D @marmeon/testing vitest
 ```
 
 A dev dependency with no provider: nothing to discover, tests import it. The other framework packages are optional peers —
-`createTestApp` wires what the app has installed. Vitest runs with the app's Vite plugin (`marmeon({ test: true })` in
+`createTestApp` wires what the app has installed. **Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): no third-party driver here; a Redis or S3 test needs what the
+app's driver needs (`@marmeon/redis` brings its client, the AWS SDK is the app's own). Vitest runs with the app's Vite plugin (`marmeon({ test: true })` in
 `vitest.config.ts`, [@marmeon/vite](../vite/README.md)) and sets `NODE_ENV=test`.
 
 ```ts

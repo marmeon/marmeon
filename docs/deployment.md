@@ -97,7 +97,7 @@ into the image: Node uses a cache directory only when it can write to it.
 | `HOST`, `PORT` | `0.0.0.0` / `3000` in a container; `127.0.0.1` behind a proxy on the same machine (`PORT=0` takes a free port — the start line names it) |
 | `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` (the direct peer only, E172) when only your proxy can reach the app — see [Proxies](#proxies-and-http2) |
 | `SHUTDOWN_DELAY` | `5` behind a load balancer that learns from its probes — see [Stopping](#stopping-without-dropped-requests) |
-| `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; `pnpm add nodemailer`) |
+| `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; nodemailer comes with `@marmeon/mail`) |
 
 **`HOST` — set it.** Without `HOST` the server listens on every interface (`::`, IPv6 and IPv4 together). In a container that is
 what `HOST=0.0.0.0` in the image says anyway; on a machine of its own, behind a proxy there, set `HOST=127.0.0.1` so nothing but the

@@ -131,7 +131,7 @@ export function sessionTableConnection(container: Resolver): string {
 }
 
 const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add @marmeon/database');
-const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add @marmeon/redis redis');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add @marmeon/redis');
 
 /** The store of `SESSION_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
 function storeFor(config: SessionConfig, container: Resolver): SessionStore {

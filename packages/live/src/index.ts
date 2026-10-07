@@ -106,7 +106,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const config = c.make(LiveConfig);
       if (config.driver === 'memory') return new MemoryLiveBackend();
       const redis = this.#redis;
-      if (!redis) throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis (pnpm add @marmeon/redis redis; marmeon discover).');
+      if (!redis) throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis (pnpm add @marmeon/redis; marmeon discover).');
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
@@ -139,7 +139,7 @@ export class LiveServiceProvider implements ServiceProvider {
     if (config.driver === 'redis') {
       this.#redis = await importOptional(() => import('@marmeon/redis'), '@marmeon/redis');
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
-        throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add @marmeon/redis redis; marmeon discover).');
+        throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add @marmeon/redis; marmeon discover).');
       }
       // An unknown connection name fails the start, with the known ones.
       container.make(this.#redis.RedisConnections).options(config.redisConnection);

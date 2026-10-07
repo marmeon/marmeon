@@ -217,7 +217,7 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
     expect(spawnSync('tar', ['-czf', join(dir, `${short}-0.0.0.tgz`), '-C', join(dir, 'src', short), 'package']).status).toBe(0);
   }
 
-  it('vendors them into the app; npm overrides what gets installed by relative path, the optional peers nobody installs by absolute path', async () => {
+  it('vendors them into the app; npm overrides what gets installed by relative path, the optional peers nobody installs by absolute path, pnpm only what gets installed', async () => {
     const cwd = workspace();
     const tarballs = join(cwd, 'tarballs');
     mkdirSync(tarballs);
@@ -241,7 +241,10 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
 
     expect((await create(cwd, ['vendored-pnpm', '--minimal', '--no-install', '--no-git'], { env: { MARMEON_CREATE_TARBALLS: tarballs } })).code).toBe(0);
     const workspaceFile = readFileSync(join(cwd, 'vendored-pnpm/pnpm-workspace.yaml'), 'utf8');
-    expect(workspaceFile).toContain('"@marmeon/redis": "file:./vendor/marmeon/marmeon-redis-0.0.0.tgz"');
+    expect(workspaceFile).toContain('"@marmeon/core": "file:./vendor/marmeon/marmeon-core-0.0.0.tgz"');
+    expect(workspaceFile).toContain('"@marmeon/encryption": "file:./vendor/marmeon/marmeon-encryption-0.0.0.tgz"'); // cli's dependency
+    // An overridden optional peer is installed by pnpm as if the app had asked for it — what nobody installs stays out (E198).
+    expect(workspaceFile).not.toContain('@marmeon/redis');
     expect(workspaceFile).toContain('hoistPattern: []');
   });
 

@@ -19,6 +19,7 @@ import {
   copyTemplate,
   ownVersion,
   packageName,
+  installedClosure,
   pnpmWorkspace,
   readme,
   registerModule,
@@ -184,9 +185,10 @@ export async function main(io: Io = processIo()): Promise<number> {
     const vendored = vendorTarballs(resolve(io.cwd, tarballs), target);
     if (vendored.size === 0) return fail(`MARMEON_CREATE_TARBALLS=${tarballs} has no framework tarballs (marmeon-*.tgz).`);
     source = { tarballs: vendored, app: target };
-    if (pm === 'pnpm') writeFileSync(join(target, 'pnpm-workspace.yaml'), pnpmWorkspace(vendored));
   }
-  const manifest = appManifest(readFileSync(join(target, 'package.json'), 'utf8'), { name, packageManager: pm, source });
+  const template = readFileSync(join(target, 'package.json'), 'utf8');
+  if ('tarballs' in source && pm === 'pnpm') writeFileSync(join(target, 'pnpm-workspace.yaml'), pnpmWorkspace(source.tarballs, installedClosure(JSON.parse(template), source)));
+  const manifest = appManifest(template, { name, packageManager: pm, source });
   writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   writeEnv(target, title);
   writeTitle(target, title);

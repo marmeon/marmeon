@@ -28,7 +28,7 @@ export const importDatabase = (what = 'QUEUE_CONNECTION=database') =>
   importOptional(() => import('@marmeon/database'), '@marmeon/database', what, 'pnpm add @marmeon/database');
 export const importEncryption = () =>
   importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', 'An encrypted job (static encrypted)', 'pnpm add @marmeon/encryption');
-export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_CONNECTION=redis', 'pnpm add @marmeon/redis redis');
+export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_CONNECTION=redis', 'pnpm add @marmeon/redis');
 export const importCache = () =>
   importOptional(() => import('@marmeon/cache'), '@marmeon/cache', 'Unique jobs, withoutOverlapping and job.once', 'pnpm add @marmeon/cache');
 

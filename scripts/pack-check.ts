@@ -15,6 +15,8 @@
  *     dependency (also optional peers) at exactly the package's own version (lockstep, E152 — the exact peers name the release);
  *   - every `exports`/`bin` target in the tarball, none of them TypeScript source (Node does not strip types under node_modules);
  *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
+ *   - the driver rule (E198, `checkDriverRule` in scripts/packages.ts): one wrapped driver is a dependency, one of several an optional
+ *     peer, a library the app must share one instance of (OpenTelemetry API, React, Vite) a peer;
  * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
  * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported); a package with
  * only a bin (create-marmeon) has no entry point for attw to check.
@@ -30,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { publint } from 'publint';
 import { formatMessage } from 'publint/utils';
-import { frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
+import { checkDriverRule, frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
 import { licenseDrift } from './sync-license.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -101,6 +103,9 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
       }
     }
   }
+
+  // The driver rule (E198): which third-party library is a dependency, an optional peer or a shared peer.
+  for (const problem of checkDriverRule(pkg.short, manifest)) problems.push(problem);
 
   for (const [where, target] of exportTargets(manifest)) {
     const path = posix.normalize(target);

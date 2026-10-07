@@ -48,11 +48,19 @@ export function createPostgresDialect(options: PostgresOptions): PostgresDialect
   });
 }
 
-async function importPg(): Promise<(typeof import('pg'))['default']> {
+/** What to install for Postgres — an optional peer (E198: SQLite needs nothing, `pg` is one of the drivers), with the tested major. */
+export const PG_INSTALL = 'pnpm add pg@^8';
+
+/** Imports `pg`, or says how to install it. Other failures (a broken install) pass through. `load` is replaced in tests. */
+export async function importPg(load: () => Promise<{ default: unknown }> = () => import('pg')): Promise<(typeof import('pg'))['default']> {
   try {
-    return (await import('pg')).default;
+    return (await load()).default as (typeof import('pg'))['default'];
   } catch (error) {
-    throw new Error('DB_CONNECTION=pgsql needs the "pg" package: pnpm add pg', { cause: error });
+    const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+    if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && /['"]pg['"]/.test(message)) {
+      throw new Error(`DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: ${PG_INSTALL}`, { cause: error });
+    }
+    throw error;
   }
 }
 

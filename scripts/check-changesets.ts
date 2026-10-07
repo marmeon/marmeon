@@ -26,7 +26,10 @@ import { trustScript, TRUST_SCRIPT } from './npm-trust.ts';
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 /** The entries UPGRADING.md must keep, by wave — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
-export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
+export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
+  'Wave 10': [
+    'low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major', // W10.2, E198
+  ],
   'Wave 9': [
     'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187
     'low-the-image-runs-marmeon-under-tini--rebuild-it',

@@ -358,6 +358,26 @@ prefixes (`root`) or buckets.
 `email_verified_at` was not `null` — also one whose provider did not load the column (`undefined`). It fails closed now: the notice page
 (403 for JSON). Load the column with the user.
 
+### Wave 10 — Marmeon: lean dependencies
+
+#### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
+
+*Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,
+[CONTRIBUTING](CONTRIBUTING.md#dependencies-of-drivers)): a package that wraps exactly one driver brings it. `@marmeon/redis` depends
+on `redis` (node-redis `^6.2.1`, before an optional peer `^5 || ^6`), and `@marmeon/mail` on `nodemailer` (`^10`, the decided
+exception: no dependencies of its own, the production path). Before: `pnpm add @marmeon/redis redis`, and `pnpm add nodemailer` for
+`MAIL_MAILER=smtp`; after: `pnpm add @marmeon/redis`, and nothing for SMTP. The app's own `redis`/`nodemailer` entries can go unless
+its code imports them — kept, they do no harm (the same major is one copy); node-redis 5 is no longer what the framework talks to.
+Gone with the missing client: `RedisSetupError`, `REDIS_INSTALL`, `loadRedisClient`, the type `ImportRedisClient` and the
+`importClient` option of `RedisConnections`. A starter-kit install grows by `nodemailer` (≈ 1.9 MB, one package).
+
+The drivers that stay optional peers — the AWS SDK (`@marmeon/storage`), `mjml` (`@marmeon/mail`), `pg` (`@marmeon/database`) — and
+the shared peers `@opentelemetry/api` and `vite` are named with the tested major: `pnpm add @aws-sdk/client-s3@^3
+@aws-sdk/s3-request-presigner@^3`, `pnpm add @aws-sdk/s3-presigned-post@^3`, `pnpm add mjml@^5`, `pnpm add pg@^8`,
+`pnpm add @opentelemetry/api@^1`, `pnpm add -D vite@^8 @marmeon/vite`. A default disk or `UPLOADS_DISK` on S3 without the SDK now fails
+the start (it failed the first use); an S3 disk the app only names still says it on first use. A broken install of `mjml` or `pg`
+shows its own error instead of "install it". There is no old behaviour to keep.
+
 ## Upgrading to 0.1.0 from the development snapshots
 
 0.1.0 is the first release. An app made from it (`pnpm create marmeon`) has nothing to upgrade. This section is for apps

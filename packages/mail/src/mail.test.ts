@@ -98,6 +98,15 @@ describe('mjml``', () => {
     const typo = { envelope: () => ({ to: 'a@b.test', subject: 'x' }), content: () => mjml`<mjml><mj-body><mj-buton>x</mj-buton></mj-body></mjml>` };
     await expect(compose(typo, 'hello@app.test')).rejects.toThrow(MjmlError);
   });
+
+  it('without mjml (an optional peer, E198) says what to install — with the tested major; a broken install passes through', async () => {
+    const { loadMjml } = await import('./mjml.ts');
+    const missing = Object.assign(new Error("Cannot find package 'mjml' imported from /app/node_modules/@marmeon/mail/dist/mjml.js"), { code: 'ERR_MODULE_NOT_FOUND' });
+    const message = await loadMjml(() => Promise.reject(missing)).then(() => 'loaded', (error: Error) => error.message);
+    // The message as the assertion's text: the whole command shows when it differs (Vitest shortens long strings).
+    expect(message, message).toBe('mjml`` needs the mjml package, which is not installed in this app: pnpm add mjml@^5');
+    await expect(loadMjml(() => Promise.reject(new SyntaxError('Unexpected token')))).rejects.toThrow(SyntaxError);
+  });
 });
 
 describe('compose()', () => {

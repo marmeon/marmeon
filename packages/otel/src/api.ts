@@ -3,8 +3,11 @@ import type * as Api from '@opentelemetry/api';
 /** The OpenTelemetry API module (`@opentelemetry/api`) — the one OpenTelemetry package this one talks to (E120). */
 export type OtelApi = typeof Api;
 
-/** What to install when the API is missing. */
-export const OTEL_INSTALL = 'pnpm add @opentelemetry/api';
+/**
+ * What to install when the API is missing — a peer, never a dependency (E198): the app's SDK and the framework must share one
+ * instance of the API.
+ */
+export const OTEL_INSTALL = 'pnpm add @opentelemetry/api@^1';
 
 /**
  * `@opentelemetry/api` is not installed — an optional peer of @marmeon/otel. The message says what to install; the CLI

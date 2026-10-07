@@ -125,7 +125,7 @@ export function appManifest(template: string, { name, packageManager, source }: 
 }
 
 /** The framework packages an install of `manifest` puts into node_modules: its own and, transitively, their `dependencies`. */
-function installedClosure(manifest: Record<string, any>, source: { tarballs: ReadonlyMap<string, string>; app: string }): Set<string> {
+export function installedClosure(manifest: Record<string, any>, source: { tarballs: ReadonlyMap<string, string>; app: string }): Set<string> {
   const pending = [...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {})].filter(isFramework);
   const installed = new Set<string>();
   for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
@@ -158,12 +158,17 @@ function spec(dependency: string, source: FrameworkSource): string {
   return `file:${file}`;
 }
 
-/** pnpm's settings for the tarball source: the packages' dependencies on each other from the tarballs, and nothing hoisted. */
-export function pnpmWorkspace(tarballs: ReadonlyMap<string, string>): string {
+/**
+ * pnpm's settings for the tarball source: the packages' dependencies on each other from the tarballs, and nothing hoisted. Only
+ * what gets installed (`installed`, {@link installedClosure}) is overridden — pnpm installs an overridden optional peer as if the
+ * app had asked for it (`@marmeon/redis` and its `redis` in every app), which an install from the registry never does. A package
+ * the app adds later comes from its tarball by its own `file:` spec.
+ */
+export function pnpmWorkspace(tarballs: ReadonlyMap<string, string>, installed: ReadonlySet<string>): string {
   return [
     '# Written by create-marmeon (MARMEON_CREATE_TARBALLS): the framework from its tarballs.',
     'overrides:',
-    ...[...tarballs].map(([dependency, file]) => `  ${JSON.stringify(dependency)}: ${JSON.stringify(`file:${file}`)}`),
+    ...[...tarballs].filter(([dependency]) => installed.has(dependency)).map(([dependency, file]) => `  ${JSON.stringify(dependency)}: ${JSON.stringify(`file:${file}`)}`),
     '# Nothing hoisted: a package can only import what it declares.',
     'hoistPattern: []',
     '',

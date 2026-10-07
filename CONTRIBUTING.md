@@ -154,6 +154,27 @@ is 0 when every case is as expected, 1 when one is not, 2 for a usage error, 3 w
   another (correct) reason after a later step — read the message, then correct the reason, never just count "red".
 - Never edit the repository while `pnpm gegen` runs, and never run it beside `pnpm test:pgsql`/`test:redis` (shared databases).
 
+## Dependencies of drivers
+
+Third-party driver libraries follow one rule (E198) — the package READMEs say which part of it applies to them:
+
+1. A package that wraps exactly **one** third-party driver and is useless without it lists it in **`dependencies`**, at a caret
+   range of the tested major: `@marmeon/redis` → `redis`. The app installs the package, nothing else.
+2. A package with **several** selectable drivers (usually with a built-in one) keeps the third-party drivers as **optional peers**,
+   and its error names the **exact** install command with the major — `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`
+   (storage), `pnpm add mjml@^5` (mail), `pnpm add pg@^8` (database). Where the driver is surely used (an S3 default disk, a
+   Redis cache), the start fails with it, not the first request.
+3. A library whose instance or types the app must **share** stays a **peer** — the OpenTelemetry API, React, Vite. A dependency would
+   install a second copy, and the app's SDK would register on an API the framework never reads.
+4. Decided exception: **`nodemailer` is a dependency of `@marmeon/mail`** — no dependencies of its own, the production path.
+
+A driver sub-package (`@marmeon/<package>-<driver>`) only when a driver brings its own code and configuration — ask first. Optional
+peers on other framework packages (`@marmeon/queue` for `mailer.queue()`, `@marmeon/redis` for a Redis cache) are a different
+thing: the coupling between the framework's packages. `pnpm pack:check` holds every packed manifest to the rule (`DRIVER_RULE` in
+`scripts/packages.ts` — a new driver gets its line there), and `pnpm pack:smoke` boots the starter kit on the Redis drivers without
+`redis` in its `package.json`, sends a mail over SMTP from the production install, and starts it with an S3 default disk and no AWS
+SDK (the exact command, exit 1).
+
 ## Changesets and releases
 
 The framework is released in lockstep (E152): every `@marmeon/*` package, the CLI `marmeon` and

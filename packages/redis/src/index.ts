@@ -4,9 +4,9 @@ import { RedisConnections, type RedisConnectionOptions } from './connections.ts'
 import { RedisHealthCheck } from './health.ts';
 
 // Redis (E87): connections like database connections — lazy per name, closed on shutdown — on the official client
-// `redis` (node-redis), an optional peer. The cache, session, queue and live drivers build on it.
-export { defineRedisScript, describeRedisUrl, loadRedisClient, REDIS_INSTALL, RedisConnection, RedisConnections, RedisSetupError } from './connections.ts';
-export type { ImportRedisClient, RedisConnectionOptions, RedisScript } from './connections.ts';
+// `redis` (node-redis), this package's dependency (E198). The cache, session, queue and live drivers build on it.
+export { defineRedisScript, describeRedisUrl, RedisConnection, RedisConnections } from './connections.ts';
+export type { RedisConnectionOptions, RedisScript } from './connections.ts';
 export { RedisHealthCheck } from './health.ts';
 
 const redisUrl = v.pipe(v.string(), v.regex(/^rediss?:\/\//, 'Expected a redis:// or rediss:// URL'), v.url());

@@ -18,6 +18,9 @@ It comes with `@marmeon/http` (a dependency of it, of `@marmeon/session`, `@marm
 `@marmeon/testing`); `marmeon discover` registers its `EncryptionServiceProvider` through the `"marmeon"` field of its
 package.json. The queue and storage take it as an optional peer: only an encrypted job or uploads need it.
 
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): no third-party driver — the crypto is Node's own (`node:crypto`). The optional peers on it are
+framework packages, a different thing from driver libraries.
+
 ## The key: `APP_KEY`
 
 `base64:` followed by 32 random bytes, base64-encoded — a 256-bit AES key.

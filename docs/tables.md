@@ -196,8 +196,9 @@ const tanstack = useTanStackTable(toTanStack(table, { features }));
 ```
 
 TanStack runs in manual mode — it sees one page and sorts nothing itself; its sorting, pagination and row selection go back
-through `useTable` (a visit, the entry's selection). `@tanstack/react-table` is an optional peer, and the bridge imports only its
-types: TanStack is in a bundle only where the app imports it. Put the sort toggle into a button inside the `<th>`, as above.
+through `useTable` (a visit, the entry's selection). `@tanstack/react-table` is an optional peer of `@marmeon/react` (the
+[driver rule, E198](../CONTRIBUTING.md#dependencies-of-drivers): one table library among others — the app installs it), and the
+bridge imports only its types: TanStack is in a bundle only where the app imports it. Put the sort toggle into a button inside the `<th>`, as above.
 
 ## Size
 

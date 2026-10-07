@@ -60,8 +60,8 @@ interface NodemailerTransporter {
 }
 
 /**
- * SMTP through nodemailer — an optional peer dependency, imported on first use (`MAIL_MAILER=smtp`,
- * `pnpm add nodemailer`). Nothing of nodemailer is visible outside this class.
+ * SMTP through nodemailer — a dependency of this package (E198: the production path, no dependencies of its own), imported
+ * on first use (`MAIL_MAILER=smtp`). Nothing of nodemailer is visible outside this class.
  */
 export class SmtpTransport implements MailTransport {
   readonly #options: SmtpOptions;
@@ -98,12 +98,8 @@ export class SmtpTransport implements MailTransport {
   }
 
   async #connect(): Promise<NodemailerTransporter> {
-    let nodemailer: { createTransport(options: Record<string, unknown>): NodemailerTransporter };
-    try {
-      nodemailer = ((await import('nodemailer' as string)) as { default: typeof nodemailer }).default;
-    } catch {
-      throw new Error('MAIL_MAILER=smtp needs nodemailer: pnpm add nodemailer');
-    }
+    // `as string`: nodemailer ships no types (and @types/nodemailer would be one more dependency for one call).
+    const nodemailer = ((await import('nodemailer' as string)) as { default: { createTransport(options: Record<string, unknown>): NodemailerTransporter } }).default;
     const { host, port, secure, requireTls = true, username, password } = this.#options;
     return nodemailer.createTransport({ host, port, secure, requireTLS: !secure && requireTls, ...(username ? { auth: { user: username, pass: password ?? '' } } : {}) });
   }

@@ -235,3 +235,14 @@ describe('DatabaseServiceProvider', () => {
     ).rejects.toThrow(/DB_URL.*postgres:\/\//);
   });
 });
+
+describe('pg (an optional peer, E198)', () => {
+  it('without pg, DB_CONNECTION=pgsql says what to install — with the tested major; a broken install passes through', async () => {
+    const { importPg } = await import('./postgres.ts');
+    const missing = Object.assign(new Error("Cannot find package 'pg' imported from /app/node_modules/@marmeon/database/dist/postgres.js"), { code: 'ERR_MODULE_NOT_FOUND' });
+    const message = await importPg(() => Promise.reject(missing)).then(() => 'loaded', (error: Error) => error.message);
+    // The message as the assertion's text: the whole command shows when it differs (Vitest shortens long strings).
+    expect(message, message).toBe('DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8');
+    await expect(importPg(() => Promise.reject(new SyntaxError('Unexpected token')))).rejects.toThrow(SyntaxError);
+  });
+});

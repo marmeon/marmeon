@@ -14,7 +14,10 @@ const locale = this.#session.get('locale');           // string | undefined
 `Session`, the store of `SESSION_DRIVER`, and three middleware of the `web` group — `StartSession`, `VerifyCsrfToken` and
 `ShareErrorsFromSession` — plus `make:session-table` and `session:prune` (when `marmeon` is installed). The `database`
 and `redis` drivers need their packages — optional peers; a missing one fails the start with what to install
-(`SessionSetupError`). The session cookie's value is redacted wherever requests are recorded (E125).
+(`SessionSetupError`: "… pnpm add @marmeon/redis"). The session cookie's value is redacted wherever requests are recorded (E125).
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): no third-party driver here — the `redis` driver's client comes with `@marmeon/redis` (its
+dependency), the `database` driver's with `@marmeon/database`.
 
 ## Configuration
 

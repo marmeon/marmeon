@@ -245,10 +245,10 @@ describe('@marmeon/otel (E120)', () => {
   it('without @opentelemetry/api: the start fails with what to install', async () => {
     const missing = Object.assign(new Error("Cannot find package '@opentelemetry/api' imported from …"), { code: 'ERR_MODULE_NOT_FOUND' });
     const error = await loadOtelApi(() => Promise.reject(missing)).catch((failure: unknown) => failure);
-    expect((error as Error).message).toMatch(/^@marmeon\/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry\/api/);
+    expect((error as Error).message).toMatch(/^@marmeon\/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry\/api@\^1 /);
     // `marmeon` prints the way out when the app cannot start (E130).
     const [solution] = await new ErrorSolutions(OtelServiceProvider.solutions).find(error);
-    expect(solution).toMatchObject({ title: 'Install the OpenTelemetry API', command: 'pnpm add @opentelemetry/api' });
+    expect(solution).toMatchObject({ title: 'Install the OpenTelemetry API', command: 'pnpm add @opentelemetry/api@^1' });
   });
 
   it('redactedPath: sensitive parameters by name; a pattern that does not line up shows the pattern', () => {

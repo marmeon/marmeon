@@ -11,6 +11,9 @@ server side; the browser side is the `live` feature of the client core ([feature
 with their session) and [@marmeon/notifications](../notifications/README.md) (the [`live` channel](#notifications-the-live-channel))
 are optional peers.
 
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): no third-party driver here — `LIVE_DRIVER=redis` needs only `@marmeon/redis` (it brings the
+client: `pnpm add @marmeon/redis`).
+
 ```ts
 // A page, an island, a layer — the same API (regions, E50). `only`: the props a hint reloads (typed: a name that is not one of
 // the page's props is a compile error — "'avtar' is not a prop of this page — its props: activity, profile, …").

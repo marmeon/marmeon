@@ -9,6 +9,10 @@ disk, and the form's request checks it.
 [@marmeon/http](../http/README.md) (public disks, temporary URLs); uploads also need `@marmeon/database` and
 [@marmeon/encryption](../encryption/README.md); S3 needs the AWS SDK (optional peers, [below](#s3)).
 
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): the local and memory disks need nothing, so the AWS SDK — one of several drivers, ≈ 18 MB — is
+a set of optional peers: `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`, and for uploads straight to S3
+`pnpm add @aws-sdk/s3-presigned-post@^3`. An S3 default disk (or `UPLOADS_DISK`) without them fails the start with that command.
+
 ```ts
 // config/storage.ts — listed in the app's `config` (defineApplication({ config: [AppConfig, AppStorage] }))
 export const AppStorage = defineStorage({
@@ -94,9 +98,10 @@ S3 keys are checked too: some S3-compatible stores map keys onto paths.
 
 ## S3
 
-`@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are optional peers — loaded on first use, with an install message
-if missing (`pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner`). A disk without a bucket (an unset `S3_BUCKET`)
-fails on first use, not at startup. With an `endpoint`, the bucket goes into the path and the SDK's newer default checksums
+`@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are optional peers (E198) — loaded on first use, with the exact
+command if missing (`pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`). When the default disk or `UPLOADS_DISK`
+is on S3, the start already checks that they are installed (resolved, not loaded) and fails with that command; an S3 disk the app
+names only somewhere says it on first use. A disk without a bucket (an unset `S3_BUCKET`) fails on first use, not at startup. With an `endpoint`, the bucket goes into the path and the SDK's newer default checksums
 are only sent when required (S3-compatible stores). Visibility is the disk's, not the object's: a public S3 disk needs a
 bucket policy that makes it readable — the disk sets no ACLs. `temporaryUrl()` presigns a GET with
 `response-content-disposition` (attachment unless the file's name — `filename`, else the key — has a raster image's extension;
@@ -118,7 +123,7 @@ Livewire's three steps (W6.9), with what the route already knows deciding everyt
    limit (no such rule: 404; a file the browser says is too large: 422). The answer is a token `tu_<id>.<hmac>` and where the
    bytes go: a signed URL of the app (`PUT /_marmeon/uploads/<id>`, 15 minutes) or — when the uploads disk is S3 — a
    **presigned POST** with `content-length-range` (the store refuses one byte more; the bucket needs CORS for the app's origin,
-   and `pnpm add @aws-sdk/s3-presigned-post`). A target belongs to a **session** — without one it is a 419. A guest's page keeps
+   and `pnpm add @aws-sdk/s3-presigned-post@^3` — checked at the start). A target belongs to a **session** — without one it is a 419. A guest's page keeps
    none by itself (E143), so a guest's page with an upload field keeps it: the injected `Session`'s `persist()` in its
    controller ([new sessions](../session/README.md#new-sessions-are-only-kept-when-used)).
 2. **The bytes**, with progress — streamed onto the private `uploads` disk (`UPLOADS_DISK`), cut off after `maxBytes` whatever

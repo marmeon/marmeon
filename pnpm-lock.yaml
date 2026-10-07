@@ -465,9 +465,6 @@ importers:
       react-dom:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
-      redis:
-        specifier: 6.2.1
-        version: 6.2.1(@opentelemetry/api@1.9.1)
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
@@ -752,9 +749,6 @@ importers:
       '@marmeon/session':
         specifier: workspace:*
         version: link:../session
-      redis:
-        specifier: 6.2.1
-        version: 6.2.1(@opentelemetry/api@1.9.1)
 
   packages/log:
     dependencies:
@@ -776,6 +770,9 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
+      nodemailer:
+        specifier: ^10.0.13
+        version: 10.0.13
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
@@ -792,9 +789,6 @@ importers:
       mjml:
         specifier: ^5.4.1
         version: 5.4.1(svgo@4.1.0)(typescript@7.0.2)
-      nodemailer:
-        specifier: ^10.0.13
-        version: 10.0.13
 
   packages/notifications:
     dependencies:
@@ -934,13 +928,12 @@ importers:
       '@marmeon/core':
         specifier: workspace:*
         version: link:../core
+      redis:
+        specifier: ^6.2.1
+        version: 6.2.1(@opentelemetry/api@1.9.1)
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
-    devDependencies:
-      redis:
-        specifier: 6.2.1
-        version: 6.2.1(@opentelemetry/api@1.9.1)
 
   packages/router:
     devDependencies:

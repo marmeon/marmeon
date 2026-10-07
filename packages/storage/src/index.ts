@@ -6,6 +6,7 @@ import { registerStorageRoutes } from './routes.ts';
 import { StorageSetup } from './setup.ts';
 import { checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
 import { StorageSetupError } from './errors.ts';
+import { missingPackages, S3_INSTALL, S3_UPLOADS_INSTALL } from './drivers/s3.ts';
 import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
 import { UploadsConfig } from './uploads/config.ts';
 import { registerUploads, UPLOADS_PREFIX } from './uploads/http.ts';
@@ -38,7 +39,7 @@ export { contentDisposition, INLINE_TYPES, isInlineType, mimeTypeOf } from './mi
 export { LocalDisk } from './drivers/local.ts';
 export { MemoryDisk } from './drivers/memory.ts';
 export type { ExpectedContents } from './drivers/memory.ts';
-export { loadS3, S3_INSTALL, s3BaseUrl, S3Disk } from './drivers/s3.ts';
+export { loadS3, missingPackages, S3_INSTALL, s3BaseUrl, S3Disk } from './drivers/s3.ts';
 export type { ImportS3, S3Modules } from './drivers/s3.ts';
 export { checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
 export type { StorageDependencies } from './storage.ts';
@@ -101,6 +102,23 @@ function storageOptions(container: Resolver): StorageOptions {
  * serves public disks under their path (`/storage/…`) and temporary URLs under `/_marmeon/storage/…`, with safe headers.
  * Found by `marmeon discover`.
  */
+/**
+ * The disks the app is sure to use — the default disk and the uploads' (UPLOADS_DISK) — fail the start when they are on S3 and
+ * the AWS SDK is missing (optional peers, E198): the exact command at the start, not an error on the first request. Uploads on S3
+ * go straight to the store (a presigned POST) and need `@aws-sdk/s3-presigned-post` too. Other S3 disks say it when first used.
+ */
+export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing: (names: readonly string[]) => string[] = missingPackages): void {
+  const used = [...new Set([options.default, uploadsDisk])].filter((name) => options.disks[name]?.driver === 's3');
+  if (used.length === 0) return;
+  if (missing(['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner']).length > 0) {
+    const what = used.map((name) => `"${name}"${name === options.default ? ' (the default disk)' : ' (UPLOADS_DISK)'}`).join(' and ');
+    throw new StorageSetupError(`The disk ${what} is on S3, which needs the AWS SDK — not installed in this app: ${S3_INSTALL}`);
+  }
+  if (used.includes(uploadsDisk) && missing(['@aws-sdk/s3-presigned-post']).length > 0) {
+    throw new StorageSetupError(`The disk "${uploadsDisk}" (UPLOADS_DISK) is on S3: uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: ${S3_UPLOADS_INSTALL}`);
+  }
+}
+
 export class StorageServiceProvider implements ServiceProvider {
   static config = [UploadsConfig];
 
@@ -158,6 +176,7 @@ export class StorageServiceProvider implements ServiceProvider {
     if (uploadDisk && visibilityOf(uploadDisk) === 'public') {
       throw new StorageSetupError(`The disk "${uploads.disk}" holds temporary uploads (UPLOADS_DISK) but is public — files nobody checked yet would be served. Make it private.`);
     }
+    checkS3Sdk(options, uploads.disk);
 
     const cli = await import('marmeon').catch(() => undefined);
     if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([MakeUploadsTableCommand, PruneUploadsCommand]);

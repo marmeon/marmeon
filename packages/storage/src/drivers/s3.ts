@@ -10,8 +10,11 @@ import { FileNotFoundError, StorageError, StorageSetupError } from '../errors.ts
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from '../mime.ts';
 
-/** What the CLI or a disk prints when the SDK is missing. */
-export const S3_INSTALL = 'pnpm add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner';
+/**
+ * What the CLI or a disk prints when the SDK is missing — optional peers (E198: S3 is one of several drivers, the local one needs
+ * nothing), with the major this package is tested with.
+ */
+export const S3_INSTALL = 'pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3';
 
 export interface S3Modules {
   readonly client: typeof S3;
@@ -29,7 +32,7 @@ const importModules: ImportS3 = async () => ({
 });
 
 /** What uploads straight to S3 need (W6.9: presigned POST with a size limit) — installed only by apps that upload there. */
-export const S3_UPLOADS_INSTALL = 'pnpm add @aws-sdk/s3-presigned-post';
+export const S3_UPLOADS_INSTALL = 'pnpm add @aws-sdk/s3-presigned-post@^3';
 
 /** `@aws-sdk/s3-presigned-post`, or how to install it. */
 export function loadPresignedPost(): typeof PresignedPost {
@@ -55,6 +58,23 @@ export async function loadS3(load: ImportS3 = importModules): Promise<S3Modules>
     }
     throw error;
   }
+}
+
+/**
+ * Which of `names` are not installed — resolved, not loaded (the start stays as quick as without the SDK). Other failures pass
+ * through.
+ */
+export function missingPackages(names: readonly string[], resolve: (name: string) => unknown = (name) => require.resolve(name)): string[] {
+  return names.filter((name) => {
+    try {
+      resolve(name);
+      return false;
+    } catch (error) {
+      const { code } = (error ?? {}) as { code?: unknown };
+      if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') return true;
+      throw error;
+    }
+  });
 }
 
 export interface S3DiskConfig {

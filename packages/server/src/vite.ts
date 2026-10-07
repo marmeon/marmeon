@@ -19,7 +19,7 @@ interface MarmeonPluginApi {
   entries: { client: string; ssr: string };
 }
 
-const INSTALL = 'pnpm add -D vite @marmeon/vite';
+const INSTALL = 'pnpm add -D vite@^8 @marmeon/vite';
 
 /**
  * Imports the app's own Vite (resolved from `root`, not from the framework), which is an optional

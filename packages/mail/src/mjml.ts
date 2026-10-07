@@ -20,7 +20,7 @@ export class Mjml extends Html {}
  * }
  * ```
  *
- * Compiled by `mjml` (an optional peer: `pnpm add mjml`) with strict validation — a mistyped tag is
+ * Compiled by `mjml` (an optional peer: `pnpm add mjml@^5`) with strict validation — a mistyped tag is
  * an error, not a silently missing part. The text version is derived from the compiled HTML.
  */
 export function mjml(strings: TemplateStringsArray, ...values: unknown[]): Mjml {
@@ -48,12 +48,20 @@ export async function fromMjml(source: Mjml, options: { text?: string } = {}): P
   return { html: result.html, text: options.text ?? textFromHtml(result.html) };
 }
 
-async function loadMjml(): Promise<Compile> {
+/** What to install for `` mjml`…` `` templates — an optional peer (E198: a renderer, not the transport; ≈ 50 MB with its dependencies). */
+export const MJML_INSTALL = 'pnpm add mjml@^5';
+
+/** Loads the compiler, or says how to install it. Other failures (a broken install) pass through. `load` is replaced in tests. */
+export async function loadMjml(load: () => Promise<unknown> = () => import('mjml' as string)): Promise<Compile> {
   try {
-    const module = (await import('mjml' as string)) as { default: Compile };
+    const module = (await load()) as { default: Compile };
     return module.default;
   } catch (error) {
     compiler = undefined;
-    throw new MjmlError('mjml`` needs the mjml package: pnpm add mjml', { cause: error });
+    const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+    if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && /['"]mjml['"]/.test(message)) {
+      throw new MjmlError(`mjml\`\` needs the mjml package, which is not installed in this app: ${MJML_INSTALL}`, { cause: error });
+    }
+    throw error;
   }
 }

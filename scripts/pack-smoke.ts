@@ -9,6 +9,9 @@
  *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
  *     .br, immutable), GET / 200, a sign-up with a known address answered like a new one (private registration, E146) → start
  *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns (E193) → pnpm install --prod → node_modules/.bin/marmeon → start → GET /login 200
+ *     → SMTP from the production install (nodemailer comes with @marmeon/mail, E198) → pnpm add @marmeon/redis @marmeon/storage (their
+ *     tarballs, nothing else), build: start with CACHE_DRIVER=redis SESSION_DRIVER=redis on the Redis of compose.yaml (`redis` came with
+ *     @marmeon/redis — the app's package.json has none) → an S3 default disk without the AWS SDK: the start fails with the exact command
  *   create-marmeon app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
  *     node_modules finds every package the pnpm app's does (E151)
  *
@@ -29,11 +32,12 @@
  * here as it would for a user.
  *
  * Third-party packages come from pnpm's store, npm's cache or the registry. When none is reachable the run ends with exit 75
- * and "skipped" — `pnpm run ci` reports that as skipped, never as green.
+ * and "skipped" — `pnpm run ci` reports that as skipped, never as green. The Redis step needs the Redis of compose.yaml
+ * (`MARMEON_TEST_REDIS_URL`, default redis://127.0.0.1:56379 — `pnpm run ci` starts it); without it the run is red.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { connect, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -44,6 +48,10 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
 export const SKIPPED = 75;
 export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode|ENOTCACHED/;
+/** The Redis of compose.yaml (marmeon-redis) — the driver step of the starter kit talks to it (E198). */
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL ?? 'redis://127.0.0.1:56379';
+/** What a missing AWS SDK says (E198: optional peers, the exact command with the tested major). */
+const S3_COMMAND = 'pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3';
 /** What create-marmeon says without a directory and without a terminal (E167). */
 const NO_DIRECTORY = 'create-marmeon needs a directory: create-marmeon <dir> [--yes]';
 
@@ -180,6 +188,82 @@ export function freePort(): Promise<number> {
   });
 }
 
+/** One command to a Redis (RESP over a socket — no client library in this script): the reply as text, its first line decides. */
+export function redisCommand(url: string, args: readonly string[]): Promise<string> {
+  const { hostname, port } = new URL(url);
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: hostname, port: Number(port || 6379) });
+    let reply = '';
+    socket.setTimeout(5_000, () => socket.destroy(new Error(`no answer from Redis at ${url}`)));
+    socket.on('connect', () => socket.write(`*${args.length}\r\n${args.map((arg) => `$${Buffer.byteLength(arg)}\r\n${arg}\r\n`).join('')}`));
+    socket.on('data', (chunk) => {
+      reply += chunk.toString('utf8');
+      // Enough for the replies used here: a status, an integer, or an array whose last element ends the reply.
+      if (/^[+:-][^\r]*\r\n$/.test(reply) || /^\*0\r\n$/.test(reply) || (/^\*\d+\r\n/.test(reply) && reply.split('\r\n').length >= Number(/^\*(\d+)/.exec(reply)![1]) * 2 + 2)) {
+        socket.end();
+        resolve(reply);
+      }
+    });
+    socket.on('error', (error) => reject(new SmokeError(`Redis at ${url} is not reachable (${error.message}) — docker compose up -d --wait redis (pnpm run ci starts it).`)));
+  });
+}
+
+/** The keys under `prefix` (a smoke run's own: `KEYS` is fine on a test Redis). */
+async function redisKeys(prefix: string): Promise<string[]> {
+  const reply = await redisCommand(REDIS_URL, ['KEYS', `${prefix}*`]);
+  return reply.split('\r\n').filter((line, index) => index > 0 && line !== '' && !line.startsWith('$'));
+}
+
+/**
+ * A minimal SMTP server without TLS (as Mailpit is): takes one message and hands back its envelope and data. Closed by `close()`.
+ */
+function smtpServer(): Promise<{ port: number; received: { envelope: string[]; data: string }; close: () => void }> {
+  const received = { envelope: [] as string[], data: '' };
+  const sockets = new Set<import('node:net').Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    let buffer = '';
+    let inData = false;
+    socket.write('220 smoke ESMTP\r\n');
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      for (;;) {
+        if (inData) {
+          const end = buffer.indexOf('\r\n.\r\n');
+          if (end === -1) return;
+          received.data = buffer.slice(0, end);
+          buffer = buffer.slice(end + 5);
+          inData = false;
+          socket.write('250 queued\r\n');
+          continue;
+        }
+        const newline = buffer.indexOf('\r\n');
+        if (newline === -1) return;
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 2);
+        const command = line.slice(0, 4).toUpperCase();
+        if (command === 'MAIL' || command === 'RCPT') received.envelope.push(line.replace(/ SIZE=\d+/, ''));
+        if (command === 'DATA') {
+          inData = true;
+          socket.write('354 go ahead\r\n');
+        } else if (command === 'QUIT') socket.end('221 bye\r\n');
+        else socket.write('250 ok\r\n');
+      }
+    });
+    socket.on('close', () => sockets.delete(socket));
+  });
+  return new Promise((resolve, reject) => {
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const close = () => {
+        for (const socket of sockets) socket.destroy();
+        server.close();
+      };
+      resolve({ port: (server.address() as { port: number }).port, received, close });
+    });
+  });
+}
+
 interface Step {
   readonly name: string;
   readonly ms: number;
@@ -307,6 +391,32 @@ class Smoke {
     }
   }
 
+  /** `marmeon start` that must not come up: its exit code and output (SIGKILL after 30 s — then it did come up). */
+  async startFailing(env: NodeJS.ProcessEnv = {}): Promise<{ code: number | null; output: string }> {
+    const child = spawn(join(this.app, 'node_modules/.bin/marmeon'), ['start'], {
+      cwd: this.app,
+      env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: '0', ...env },
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    this.#children.add(child);
+    let output = '';
+    child.stdout!.on('data', (chunk) => (output += chunk));
+    child.stderr!.on('data', (chunk) => (output += chunk));
+    const code = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.#stop(child, 'SIGKILL');
+        resolve(null);
+      }, 30_000);
+      child.once('exit', (exitCode) => {
+        clearTimeout(timer);
+        resolve(exitCode);
+      });
+    });
+    this.#children.delete(child);
+    return { code, output };
+  }
+
   /** After SIGTERM: what the start loaded (E138) — no oxc-parser, no pino-pretty — and no "build artifacts" warning. */
   async #checkLoads(child: ChildProcess, exited: Promise<void>, loaded: string, output: () => string): Promise<void> {
     this.#stop(child);
@@ -397,6 +507,58 @@ function checkRegistration(privately: boolean) {
   };
 }
 
+/**
+ * The production install sends a mail over SMTP — nodemailer is a dependency of @marmeon/mail (E198), the app never names it. A
+ * local server without TLS, so `requireTls: false` (MAIL_REQUIRE_TLS=false, as for Mailpit).
+ */
+async function checkSmtp(smoke: Smoke): Promise<void> {
+  const server = await smtpServer();
+  try {
+    const script =
+      "import { compose, SmtpTransport } from '@marmeon/mail';\n" +
+      `const transport = new SmtpTransport({ host: '127.0.0.1', port: ${server.port}, secure: false, requireTls: false });\n` +
+      "await transport.send(await compose({ envelope: () => ({ to: 'ada@example.com', subject: 'Smoke' }), content: () => ({ html: '<p>Hello</p>', text: 'Hello' }) }, 'app@example.com'));\n" +
+      'await transport.close();\n';
+    // Asynchronously: the SMTP server lives in this process (spawnSync would block it).
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { cwd: smoke.app, env: smoke.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout!.on('data', (chunk) => (output += chunk));
+    child.stderr!.on('data', (chunk) => (output += chunk));
+    const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
+    const code = await new Promise<number | null>((resolve) => child.once('exit', (exitCode) => resolve(exitCode)));
+    clearTimeout(timer);
+    if (code !== 0) throw new SmokeError(`SMTP from the production install failed (exit ${code ?? 'killed after 30 s'}):\n${output}`);
+    if (!server.received.envelope.includes('RCPT TO:<ada@example.com>') || !/^Subject: Smoke$/m.test(server.received.data)) {
+      throw new SmokeError(`the SMTP server got no mail: ${JSON.stringify(server.received)}`);
+    }
+  } finally {
+    server.close();
+  }
+}
+
+/**
+ * The Redis drivers of the starter kit: `/up/ready` (the cache takes and frees a key, Redis answers PING), a failed sign-in writes its
+ * flash into a Redis session — and the keys are under the run's prefix.
+ */
+async function checkRedisDrivers(base: string, prefix: string): Promise<void> {
+  const ready = await fetch(`${base}/up/ready`, { signal: AbortSignal.timeout(5_000) });
+  const readiness = await ready.text();
+  if (ready.status !== 200) throw new SmokeError(`GET /up/ready with the Redis drivers answered ${ready.status}: ${readiness}`);
+  const login = await fetch(`${base}/login`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { origin: base, referer: `${base}/login`, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email: 'nobody@example.com', password: 'not the password' }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  await login.arrayBuffer();
+  if (login.status !== 303 || !login.headers.getSetCookie().some((cookie) => cookie.startsWith('marmeon_session='))) {
+    throw new SmokeError(`A failed sign-in answered ${login.status} without a session cookie — expected 303 back to /login with its error in the session.`);
+  }
+  const keys = await redisKeys(prefix);
+  if (!keys.some((key) => key.startsWith(`${prefix}session:`))) throw new SmokeError(`No session in Redis under ${prefix} — the keys: ${keys.join(', ') || 'none'}`);
+}
+
 async function main(): Promise<number> {
   const { values } = parseArgs({ options: { keep: { type: 'boolean' }, offline: { type: 'boolean' }, 'store-dir': { type: 'string' } } });
   const started = performance.now();
@@ -485,6 +647,48 @@ async function main(): Promise<number> {
       if (!existsSync(join(app, 'node_modules/.bin/marmeon'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/marmeon — marmeon must be a dependency of the app.');
     });
     await pnpmApp.step('marmeon start (production install) → GET /login 200', () => pnpmApp.serve('/login'));
+    // ── The driver rule (E198) as an app meets it ──
+    await pnpmApp.step('SMTP from the production install (nodemailer comes with @marmeon/mail, E198)', () => checkSmtp(pnpmApp));
+    await pnpmApp.step('pnpm add @marmeon/redis @marmeon/storage (their tarballs — nothing else) → marmeon build', () => {
+      const tarball = (name: string) => {
+        const packed = tarballs.get(name);
+        if (!packed) throw new SmokeError(`pnpm pack made no tarball for ${name}.`);
+        return `./vendor/marmeon/${packed.tarball.split(sep).pop()}`;
+      };
+      pnpmApp.run('pnpm', ['add', tarball('@marmeon/redis'), tarball('@marmeon/storage'), ...pnpmFlags, '--reporter', 'append-only']);
+      const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+      const drivers = Object.keys(manifest.dependencies).filter((name) => name === 'redis' || name.startsWith('@aws-sdk/'));
+      if (drivers.length > 0) throw new SmokeError(`the kit's package.json lists ${drivers.join(', ')} — the driver step must show what @marmeon/redis brings by itself (E198).`);
+      if (!manifest.dependencies['@marmeon/redis'] || !manifest.dependencies['@marmeon/storage']) throw new SmokeError('pnpm add did not add @marmeon/redis and @marmeon/storage.');
+      // New packages, new injection lists: built as before a deploy (the start must not parse anything, E138).
+      pnpmApp.buildWithoutEnv();
+    });
+    await pnpmApp.step('marmeon start with CACHE_DRIVER=redis SESSION_DRIVER=redis — redis came with @marmeon/redis (E198)', async () => {
+      const prefix = `marmeon-smoke-${process.pid}-${Date.now()}:`;
+      try {
+        await pnpmApp.serve('/login', (base) => checkRedisDrivers(base, prefix), { CACHE_DRIVER: 'redis', SESSION_DRIVER: 'redis', REDIS_URL, REDIS_PREFIX: prefix });
+      } finally {
+        await redisCommand(REDIS_URL, ['EVAL', "for _, key in ipairs(redis.call('KEYS', ARGV[1])) do redis.call('DEL', key) end return 0", '0', `${prefix}*`]).catch(() => undefined);
+      }
+    });
+    await pnpmApp.step('an S3 default disk without the AWS SDK → the start fails with the exact command (E198)', async () => {
+      const bootstrap = join(app, 'bootstrap/app.ts');
+      const original = readFileSync(bootstrap, 'utf8');
+      if (!original.includes('config: [AppConfig],')) throw new SmokeError('bootstrap/app.ts of the kit has no "config: [AppConfig]," to add the storage configuration to.');
+      writeFileSync(
+        join(app, 'config/storage.ts'),
+        "import { defineStorage } from '@marmeon/storage';\n\nexport const Storage = defineStorage({\n  default: 'files',\n  disks: { files: { driver: 's3', bucket: 'smoke' }, uploads: { driver: 'local', root: 'storage/app/uploads' } },\n});\n",
+      );
+      writeFileSync(bootstrap, `import { Storage } from '../config/storage.ts';\n${original.replace('config: [AppConfig],', 'config: [AppConfig, Storage],')}`);
+      try {
+        const { code, output } = await pnpmApp.startFailing();
+        if (code === null) throw new SmokeError(`marmeon start came up with an S3 default disk and no AWS SDK — it should fail at the start:\n${output}`);
+        if (code === 0 || !output.includes(S3_COMMAND)) throw new SmokeError(`marmeon start with an S3 default disk and no AWS SDK ended with ${code}, without "${S3_COMMAND}":\n${output}`);
+      } finally {
+        writeFileSync(bootstrap, original);
+        rmSync(join(app, 'config/storage.ts'), { force: true });
+      }
+    });
 
     // ── A blank app with npm (E151: npm's flat node_modules) ──
     await npmApp.step('create-marmeon app-npm --minimal --npm --no-git (install, migrate)', () => {
@@ -511,7 +715,7 @@ async function main(): Promise<number> {
 
     const total = ((performance.now() - started) / 1000).toFixed(1);
     console.log(
-      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, lint, build, start, production install) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
+      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, lint, build, start, production install, the drivers: SMTP, Redis, S3 without its SDK) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
     );
     return 0;
   } catch (error) {

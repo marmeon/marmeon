@@ -23,13 +23,17 @@ await this.#mailer.send(new VerifyEmailMail(user, url, t));                     
 `marmeon discover` registers its `MailServiceProvider` through the `"marmeon"` field of its package.json: the `Mailer` and the
 `MailTransport` of `MAIL_MAILER` (built on first use — a web process that only queues mails never opens an SMTP connection;
 SMTP connections are closed on shutdown), the framework job `marmeon.mail` when the app has `@marmeon/queue`, and — with
-`NODE_ENV=development` only — the [previews](#previews-e106). Optional peers: `mjml` (for the `` mjml`…` `` template, `pnpm add mjml`),
-`nodemailer` (for `smtp`), `@marmeon/queue` (for `mailer.queue()`), `@marmeon/router` (for the previews).
+`NODE_ENV=development` only — the [previews](#previews-e106). Optional peers: `mjml` (for the `` mjml`…` `` template,
+`pnpm add mjml@^5`), `@marmeon/queue` (for `mailer.queue()`), `@marmeon/router` (for the previews).
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): `nodemailer` is a dependency (the decided exception: no dependencies of its own, the
+production path — `MAIL_MAILER=smtp` needs nothing more); `mjml` is an optional peer (a renderer with ≈ 50 MB of dependencies,
+not the transport) — without it an `` mjml`…` `` mail fails with `pnpm add mjml@^5`.
 
 ## Configuration
 
 ```sh
-MAIL_MAILER=log               # log (default: written to the log, nothing sent) | array (kept in memory) | smtp (pnpm add nodemailer)
+MAIL_MAILER=log               # log (default: written to the log, nothing sent) | array (kept in memory) | smtp (nodemailer, included)
 MAIL_FROM_ADDRESS=hello@example.com   # the default sender (default hello@example.com)
 MAIL_FROM_NAME=               # its name (default: none — then the address alone)
 MAIL_HOST=127.0.0.1  MAIL_PORT=587  MAIL_SECURE=false  MAIL_USERNAME=  MAIL_PASSWORD=   # smtp (these are the defaults)

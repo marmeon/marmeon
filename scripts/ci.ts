@@ -55,8 +55,9 @@ export const parts: readonly Part[] = [
   // The tarballs (E156–E158): a clean build, pnpm pack of every package, the content rules, publint and attw.
   { name: 'pack:check', command: pnpm('pack:check') },
   // create-marmeon from the tarballs, outside the monorepo: the starter kit with pnpm and a blank app with npm — install, tests,
-  // lint, build, start. Without a store/cache and the registry it is skipped (exit 75) — reported as such, never as green.
-  { name: 'pack:smoke', command: pnpm('pack:smoke'), after: ['build', 'pack:check'] },
+  // lint, build, start; the kit's Redis drivers talk to marmeon-redis (E198). Without a store/cache and the registry it is skipped
+  // (exit 75) — reported as such, never as green.
+  { name: 'pack:smoke', command: pnpm('pack:smoke'), services: ['redis'], after: ['build', 'pack:check'] },
   // create-marmeon --docker as an image (marmeon make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
   // --workers, a worker's exit 70, the image's size; then the docs' image (apps/docs/Dockerfile) — its contents, read-only, behind
   // Caddy over HTTP/2 (deploy/docs). Without Docker (or the registry) it is skipped (exit 75), never green.

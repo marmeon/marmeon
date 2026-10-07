@@ -61,3 +61,58 @@ export function packAll(root: string, destination: string): PackedPackage[] {
     .map((pkg) => ({ name: pkg.name, version: pkg.version, tarball: pkg.filename, files: pkg.files.map((file) => file.path).sort() }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** How a package lists a third-party library under the driver rule (E198). */
+export type DriverKind = 'dependency' | 'optional peer' | 'peer';
+
+/**
+ * The driver rule (E198), per package — `pack:check` holds the packed manifests to it, a test in `scripts/ci.test.ts` the sources:
+ *   1. a package that wraps exactly one third-party driver and is useless without it lists it in `dependencies`, at a caret range
+ *      of the tested major (`@marmeon/redis` → `redis`); decided exception: `nodemailer` in `@marmeon/mail`;
+ *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
+ *      exact install command with the major (`pnpm add pg@^8`);
+ *   3. a library whose instance or types the app must share (the OpenTelemetry API, React, Vite) is a peer — and no framework package
+ *      lists it as a dependency: a second copy would be a second instance.
+ */
+export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, DriverKind>>>> = {
+  redis: { redis: 'dependency' },
+  mail: { nodemailer: 'dependency', mjml: 'optional peer' },
+  storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
+  database: { pg: 'optional peer' },
+  otel: { '@opentelemetry/api': 'peer' },
+  server: { vite: 'peer' },
+  vite: { vite: 'peer' },
+  react: { react: 'peer', 'react-dom': 'peer', '@tanstack/react-table': 'optional peer' },
+};
+
+/** Libraries the app and the framework must share one instance of (rule 3): a dependency of no framework package. */
+export const SHARED_LIBRARIES: readonly string[] = ['@opentelemetry/api', 'react', 'react-dom', 'vite'];
+
+/** What breaks the driver rule in one package's manifest (`short` = its directory under `packages/`). */
+export function checkDriverRule(short: string, manifest: Record<string, any>): string[] {
+  const problems: string[] = [];
+  const dependencies = (manifest.dependencies ?? {}) as Record<string, string>;
+  const peers = (manifest.peerDependencies ?? {}) as Record<string, string>;
+  const optional = (name: string) => (manifest.peerDependenciesMeta as Record<string, { optional?: boolean }> | undefined)?.[name]?.optional === true;
+  for (const [library, kind] of Object.entries(DRIVER_RULE[short] ?? {})) {
+    if (kind === 'dependency') {
+      if (!dependencies[library]) problems.push(`${library} must be a dependency (E198: the one driver this package wraps — the app installs nothing else)`);
+      else if (!/^\^\d+\.\d+\.\d+$/.test(dependencies[library])) problems.push(`dependencies.${library} is "${dependencies[library]}" — a caret range of the tested major (^6.2.1, E198)`);
+      if (dependencies[library] && peers[library]) problems.push(`${library} is a dependency and a peer — one or the other (E198)`);
+      continue;
+    }
+    if (dependencies[library]) {
+      problems.push(
+        kind === 'peer'
+          ? `${library} must stay a peer, not a dependency (E198) — the app and the framework share one instance; a dependency installs a second copy`
+          : `${library} must stay an optional peer, not a dependency (E198) — one of several drivers; every app would install it`,
+      );
+    }
+    if (!peers[library]) problems.push(`${library} must be a${kind === 'optional peer' ? 'n optional' : ''} peer of this package (E198)`);
+    else if (kind === 'optional peer' && !optional(library)) problems.push(`${library} must be an optional peer (peerDependenciesMeta) — the app installs it only for that driver (E198)`);
+  }
+  for (const library of SHARED_LIBRARIES) {
+    if (dependencies[library]) problems.push(`${library} is a dependency — the app and the framework must share one instance of it: a peer (E198)`);
+  }
+  return problems;
+}

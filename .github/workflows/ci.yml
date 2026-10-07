@@ -33,10 +33,21 @@ jobs:
   pack:
     # The tarballs (E158): pack:check builds clean and checks every tarball (rules, publint, attw); pack:smoke runs the packed
     # create-marmeon outside the checkout — the starter kit with pnpm, a blank app with npm — installs, tests, lints, builds and
-    # starts them (pnpm's store from setup-node; npm fetches the third-party packages).
+    # starts them (pnpm's store from setup-node; npm fetches the third-party packages), the kit once on the Redis drivers (E198).
     name: pack:check, pack:smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      # As in compose.yaml (marmeon-redis): the kit's CACHE_DRIVER=redis / SESSION_DRIVER=redis step.
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v6.1.0
@@ -45,7 +56,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run ci --only pack:check,pack:smoke
+      - run: pnpm run ci --only pack:check,pack:smoke --no-compose
 
   image:
     # create-marmeon --docker as a Docker image (E158): marmeon make:docker → docker build → docker run (non-root, no .env, /up, the health

@@ -43,6 +43,8 @@ pnpm add @marmeon/react react react-dom
   `useTranslation`/`useLocale` (an app that does not translate gets neither it nor its session through discovery).
   `@marmeon/table` and `@tanstack/react-table` are optional peers too — for the `table` and `table-tanstack` subpaths only: the
   main entry never imports them, so discovery adds no table to a React app without tables.
+- **Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): `react` and `react-dom` stay **peers**, never dependencies — the app and the framework must
+  render with one React (a second copy breaks hooks); `@tanstack/react-table` is one table library among others — an optional peer.
 - **No provider:** `"marmeon": { "browser": ["src/**"] }` marks every source as browser code — discovery registers nothing
   for it, and `marmeon package:build` embeds no injection lists into it (E76). A test bundles the package for the browser and
   fails on any module outside its own sources, the client core, `@marmeon/http/page` and `@marmeon/router/url`, and on

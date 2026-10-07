@@ -9,17 +9,6 @@ export interface RedisConnectionOptions {
 }
 
 /**
- * The Redis client is not installed (an optional peer of @marmeon/redis), or the app uses a Redis driver without
- * @marmeon/redis. The message says what to install — the CLI prints it without a stack trace.
- */
-export class RedisSetupError extends Error {
-  override name = 'RedisSetupError';
-}
-
-/** What the CLI or a driver prints when the client is missing. */
-export const REDIS_INSTALL = 'pnpm add redis';
-
-/**
  * A Lua script, run atomically by Redis. Defined once (module scope), run by name and hash: `EVALSHA`, and the
  * script itself only when this Redis does not know it yet (after a restart or `SCRIPT FLUSH`).
  *
@@ -41,8 +30,8 @@ export function defineRedisScript(name: string, lua: string): RedisScript {
 }
 
 /**
- * The part of node-redis this package uses — its own types never reach the API, so apps without Redis compile, and
- * a new major of the client changes one file.
+ * The part of node-redis this package uses — its own types never reach the API, and a new major of the client changes one
+ * file.
  */
 interface Client {
   connect(): Promise<unknown>;
@@ -57,26 +46,15 @@ interface ClientModule {
   createClient(options: Record<string, unknown>): Client;
 }
 
-/** How the client module is loaded — replaced in tests to play a missing client. */
-export type ImportRedisClient = () => Promise<unknown>;
-
-const importClient: ImportRedisClient = () => import('redis' as string);
-
-/** Imports node-redis, or explains how to install it. Other failures (a broken install) pass through. */
-export async function loadRedisClient(load: ImportRedisClient = importClient): Promise<ClientModule> {
-  try {
-    const module = (await load()) as Partial<ClientModule> & { default?: Partial<ClientModule> };
-    const createClient = module.createClient ?? module.default?.createClient;
-    if (typeof createClient !== 'function') throw new RedisSetupError(`The installed "redis" package is not node-redis 5 or 6: ${REDIS_INSTALL}`);
-    return { createClient };
-  } catch (error) {
-    if (error instanceof RedisSetupError) throw error;
-    const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
-    if (code === 'ERR_MODULE_NOT_FOUND' && typeof message === 'string' && /['"]redis['"]/.test(message)) {
-      throw new RedisSetupError(`Redis needs its client, which is not installed in this app: ${REDIS_INSTALL}`);
-    }
-    throw error;
-  }
+/**
+ * node-redis — a dependency of this package (E198: it wraps exactly this one driver, so `pnpm add @marmeon/redis` is all an
+ * app installs), imported on first use: an app whose drivers never talk to Redis never loads it.
+ */
+async function loadClient(): Promise<ClientModule> {
+  const module = (await import('redis')) as unknown as Partial<ClientModule> & { default?: Partial<ClientModule> };
+  const createClient = module.createClient ?? module.default?.createClient;
+  if (typeof createClient !== 'function') throw new TypeError('The "redis" package this one depends on has no createClient() — a broken install? (pnpm install)');
+  return { createClient };
 }
 
 /**
@@ -237,11 +215,14 @@ export class RedisConnections {
   #client: Promise<ClientModule> | undefined;
   #closed = false;
 
-  constructor(options: { connections: Readonly<Record<string, RedisConnectionOptions>>; logger: Logger; importClient?: ImportRedisClient }) {
+  constructor(options: { connections: Readonly<Record<string, RedisConnectionOptions>>; logger: Logger }) {
     this.#options = new Map(Object.entries(options.connections));
     this.#logger = options.logger.child({ channel: 'redis' });
-    const load = options.importClient;
-    this.#load = () => (this.#client ??= loadRedisClient(load));
+    this.#load = () =>
+      (this.#client ??= loadClient().catch((error: unknown) => {
+        this.#client = undefined;
+        throw error;
+      }));
   }
 
   /** The connection by name (default: `default`, from `REDIS_URL`). Nothing connects until its first command. */
@@ -276,8 +257,8 @@ export class RedisConnections {
   }
 
   /**
-   * Checks what can be checked without connecting: that the client is installed. Drivers call it when they boot, so a
-   * missing client is a message at startup ({@link RedisSetupError}), not an error on the first request.
+   * Checks what can be checked without connecting: loads the client. Drivers call it when they boot, so a broken install
+   * fails the start, not the first request; an unreachable Redis is noticed by the first command.
    */
   async verify(): Promise<void> {
     await this.#load();

@@ -7,13 +7,16 @@ server rendering as spans, following OpenTelemetry's semantic conventions — fr
 `module.register()`, DEP0205): nothing patches a module.
 
 ```sh
-pnpm add @marmeon/otel @opentelemetry/api
+pnpm add @marmeon/otel @opentelemetry/api@^1
 # the SDK and an exporter — what your backend speaks:
 pnpm add @opentelemetry/sdk-trace @opentelemetry/context-async-hooks @opentelemetry/core @opentelemetry/resources @opentelemetry/exporter-trace-otlp-http
 ```
 
 `marmeon discover` registers its `OtelServiceProvider` like any installed package. `@opentelemetry/api` is an optional peer the
-app installs; the package itself depends on nothing of the SDK. Install the SDK as **dependencies**, not dev dependencies: it runs
+app installs; the package itself depends on nothing of the SDK.
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): `@opentelemetry/api` stays a **peer**, never a dependency — the app's SDK registers its tracer
+provider on the API, and the framework must read that same instance (a dependency could install a second copy). Install the SDK as **dependencies**, not dev dependencies: it runs
 in production, and a production install (`pnpm install --prod`, `make:docker`'s image) leaves dev dependencies out.
 
 ## Starting the SDK
@@ -106,7 +109,7 @@ the SDK's (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMP
 - **No SDK, no cost:** without a registered tracer provider (checked through the API: the global provider still delegates to the
   no-op one) the provider subscribes to nothing — no message is built, no span, no error; one debug line says why.
 - **`@opentelemetry/api` missing:** the start fails with `@marmeon/otel needs the OpenTelemetry API, which is not installed in
-  this app: pnpm add @opentelemetry/api` (also a solution on the error page, [E130](../core/README.md#solutions-e130)) — unless
+  this app: pnpm add @opentelemetry/api@^1` (also a solution on the error page, [E130](../core/README.md#solutions-e130)) — unless
   `OTEL_SDK_DISABLED=true`: then the API is not even loaded.
 
 ## Testing

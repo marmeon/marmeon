@@ -1,8 +1,9 @@
 # @marmeon/vite
 
 The Vite plugin of a Marmeon app — UI-agnostic; the adapter's own plugin goes next to it. A dev dependency of the app
-(`pnpm add -D vite @marmeon/vite`), used by `marmeon dev`, `marmeon build` and the tests; it has no provider and nothing
-of it runs on a production server.
+(`pnpm add -D vite@^8 @marmeon/vite`), used by `marmeon dev`, `marmeon build` and the tests; it has no provider and nothing
+of it runs on a production server. **Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): Vite
+is a **peer** — the plugin runs inside the app's own Vite, never a second one.
 
 ```ts
 export default defineConfig({ plugins: [marmeon(), react()] });          // vite.config.ts

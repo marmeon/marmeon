@@ -3,7 +3,10 @@
 Data access on [Kysely](https://kysely.dev) (E6): connections (`Connections`, the typed `Database`), migrations per module,
 table types generated from the migrations (`marmeon db:types`), repositories, relations without lazy loading, pagination,
 factories, seeders — and transactions that everything awaited inside joins (E107). SQLite runs on Node's built-in
-`node:sqlite` (no native addon); Postgres needs `pg` (an optional peer: `pnpm add pg`).
+`node:sqlite` (no native addon); Postgres needs `pg` (an optional peer: `pnpm add pg@^8`).
+
+**Dependencies** ([the driver rule, E198](../../CONTRIBUTING.md#dependencies-of-drivers)): SQLite is built in, so `pg` — one of several drivers — is an optional peer; without it
+`DB_CONNECTION=pgsql` fails with the exact command (`pnpm add pg@^8`).
 
 ```ts
 // modules/user-profile/controllers/ListUsersController.ts — constructor(users: UserRepository)

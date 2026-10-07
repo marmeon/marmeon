@@ -7,7 +7,7 @@ import { ArrayTransport, LogTransport, MailTransport, SmtpTransport } from './tr
 
 // Mail (E29): mails as classes, a transport behind a neutral message type, UI-agnostic content (MJML or HTML).
 export { escapeHtml, fromHtml, Html, html, raw, textFromHtml } from './html.ts';
-export { fromMjml, Mjml, mjml, MjmlError } from './mjml.ts';
+export { fromMjml, Mjml, mjml, MJML_INSTALL, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
 export { compose, MailError, Mailer, TransportMailer } from './mailer.ts';
 export type { MailQueue, QueueMailOptions } from './mailer.ts';
@@ -62,7 +62,7 @@ export type MailConfig = ConfigOf<typeof MailConfig>;
  */
 export const LOG_MAILER_WARNING =
   'MAIL_MAILER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password ' +
-  'reset, e-mail verification, signed URLs) in plain text. Set MAIL_MAILER=smtp (pnpm add nodemailer) and MAIL_HOST, ' +
+  'reset, e-mail verification, signed URLs) in plain text. Set MAIL_MAILER=smtp and MAIL_HOST, ' +
   'MAIL_USERNAME, MAIL_PASSWORD.';
 
 type QueueModule = typeof import('@marmeon/queue');
