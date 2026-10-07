@@ -14,6 +14,8 @@ export const UserFactory = defineFactory(
     email: `user${sequence}@example.com`,
     password: FACTORY_PASSWORD_HASH,
     email_verified_at: new Date().toISOString(),
+    // Confirmed once (E203): never deleted by auth:prune-unverified.
+    first_verified_at: new Date().toISOString(),
   }),
-  { states: { unverified: { email_verified_at: null } } },
+  { states: { unverified: { email_verified_at: null, first_verified_at: null } } },
 );

@@ -225,7 +225,7 @@ describe('user-profile module', () => {
   });
 
   it('lets tests replace services before the app boots — singletons included', async () => {
-    const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null, pending_email: null, pending_email_expires_at: null };
+    const stub: User = { id: 7, name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', first_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null, pending_email: null, pending_email_expires_at: null };
     class StubUserRepository extends UserRepository {
       override async findById(id: number) {
         return id === stub.id ? { user: stub, passwordHash: null } : undefined;

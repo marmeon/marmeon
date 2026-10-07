@@ -82,7 +82,7 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   change of address say "taken", like Laravel's starter kits, a new account is signed in at once) — then only the throttle stands
   between the form and a list of addresses, and the boot warns outside development and tests
   ([private registration](../packages/auth/README.md#private-registration-e146-e193)).
-- **Unconfirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203): whoever signed up with somebody else's address stops
+- **Never-confirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes): whoever signed up with somebody else's address stops
   holding it, and nothing of an unfinished sign-up stays — deleted at night with its tokens, sessions and what other modules keep
   ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
 - **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS

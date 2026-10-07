@@ -5,8 +5,9 @@ import { defineGegenproben } from '../define.ts';
  *
  * Unconfirmed accounts: without the schedule entry they stay (G1 web app, G1b the stub through the make:auth fixture). What is
  * deleted is decided by two conditions — the deadline and the missing confirmation — each with its own scenario (masking pair
- * G2 ↔ G3: a confirmed old account and an unconfirmed young one), and by the delete itself again (G2b ↔ G2: the look-up's
- * condition hides a delete without its own — only a race shows it), the grace of a change (G2c). What goes with the account:
+ * G2 ↔ G3: a confirmed old account and an unconfirmed young one), never what was confirmed once — `first_verified_at` (Max, 07.10.;
+ * G12 ↔ G3: each condition with its own account, G13/G13b: the link keeps the first confirmation) —, by the delete itself again
+ * (G2b ↔ X2b: the look-up's condition hides a delete without its own — only a race shows it), counted from the sign-up (G2c). What goes with the account:
  * its sessions (G4), its reset token (G5), its avatar after the commit (G6, G6b).
  *
  * CSRF on demand: a guest's page draws no token (G7) — X7 shows the 419 check alone never sees it (the check is unchanged either
@@ -20,8 +21,9 @@ const WEB_REPO = 'apps/web-app/modules/auth/UserRepository.ts';
 const WEB_DELETION = 'apps/web-app/modules/auth/AccountDeletion.ts';
 const webPrune = (name: string) => ({ vitest: 'apps/web-app/modules/auth/prune-unverified.test.ts', name }) as const;
 const pruneAll = webPrune('deletes the account with everything that is its');
-const SELECT_DEADLINE = "      .where('created_at', '<=', at)\n      .where(sql<string>`coalesce(updated_at, created_at)`, '<=', at)\n";
-const DELETE_CONDITIONS = "query = query.where('email_verified_at', 'is', null).where('created_at', '<=', at).where(sql<string>`coalesce(updated_at, created_at)`, '<=', at);";
+const DELETE_CONDITIONS = "query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where('created_at', '<=', at);";
+const MARK_VERIFIED = ".set({ email_verified_at: now, first_verified_at: sql<Date>`coalesce(first_verified_at, ${now.toISOString()})`, updated_at: now })";
+const firstConfirmation = webPrune('the first confirmation is kept for good');
 const SESSION = 'packages/session/src/session.ts';
 const LAZY = '    this.#started = true;\n    // No CSRF token yet (E203)';
 const csrf = (name: string) => ({ vitest: 'packages/session/src/csrf.test.ts', name }) as const;
@@ -51,8 +53,8 @@ export default defineGegenproben({
       id: 'G2',
       title: 'without the deadline (look-up and delete): an account unconfirmed for 5 days is deleted',
       patch: [
-        { file: WEB_REPO, find: SELECT_DEADLINE, replace: '' },
-        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('email_verified_at', 'is', null);" },
+        { file: WEB_REPO, find: "      .where('first_verified_at', 'is', null)\n      .where('created_at', '<=', at)\n", replace: "      .where('first_verified_at', 'is', null)\n" },
+        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null);" },
       ],
       run: pruneAll,
       expect: /an account unconfirmed for 5 days was deleted: expected undefined to be defined/,
@@ -60,14 +62,40 @@ export default defineGegenproben({
     },
     {
       id: 'G3',
-      title: 'without the missing confirmation (look-up and delete): a confirmed account of 30 days is deleted',
+      title: 'without the missing confirmation (look-up and delete): an account confirmed by email_verified_at alone is deleted',
       patch: [
-        { file: WEB_REPO, find: "      .where('email_verified_at', 'is', null)\n", replace: '' },
-        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('created_at', '<=', at).where(sql<string>`coalesce(updated_at, created_at)`, '<=', at);" },
+        { file: WEB_REPO, find: "      .where('email_verified_at', 'is', null)\n      .where('first_verified_at', 'is', null)\n", replace: "      .where('first_verified_at', 'is', null)\n" },
+        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('first_verified_at', 'is', null).where('created_at', '<=', at);" },
       ],
       run: pruneAll,
-      expect: /a confirmed account was deleted: expected undefined to be defined/,
-      masks: 'G2',
+      expect: /a confirmed account without first_verified_at was deleted: expected undefined to be defined/,
+      masks: 'G12',
+    },
+    {
+      id: 'G12',
+      title: 'without first_verified_at (look-up and delete): an account confirmed once, now with an unconfirmed address, is deleted',
+      patch: [
+        { file: WEB_REPO, find: "      .where('email_verified_at', 'is', null)\n      .where('first_verified_at', 'is', null)\n", replace: "      .where('email_verified_at', 'is', null)\n" },
+        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('email_verified_at', 'is', null).where('created_at', '<=', at);" },
+      ],
+      run: pruneAll,
+      expect: /an account confirmed once was deleted: expected undefined to be defined/,
+      masks: 'G3',
+    },
+    {
+      id: 'G13',
+      title: 'the verification link does not keep the first confirmation: confirmed, then changed — the account is prunable',
+      patch: [{ file: WEB_REPO, find: MARK_VERIFIED, replace: '.set({ email_verified_at: now, updated_at: now })' }],
+      run: firstConfirmation,
+      expect: /the first confirmation was not kept: expected null not to be null/,
+      masks: 'G12',
+    },
+    {
+      id: 'G13b',
+      title: 'a second confirmation overwrites the first one\'s time (no coalesce)',
+      patch: [{ file: WEB_REPO, find: MARK_VERIFIED, replace: '.set({ email_verified_at: now, first_verified_at: now, updated_at: now })' }],
+      run: firstConfirmation,
+      expect: /to deeply equal/,
     },
     {
       id: 'G2b',
@@ -85,13 +113,13 @@ export default defineGegenproben({
     },
     {
       id: 'G2c',
-      title: 'counted from the sign-up only (no updated_at): an account changed 3 days ago is deleted',
+      title: 'the deadline counted from the last change again: a never confirmed account of 40 days, touched 3 days ago, stays',
       patch: [
-        { file: WEB_REPO, find: "      .where(sql<string>`coalesce(updated_at, created_at)`, '<=', at)\n", replace: '' },
-        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('email_verified_at', 'is', null).where('created_at', '<=', at);" },
+        { file: WEB_REPO, find: "      .where('created_at', '<=', at)\n", replace: "      .where(sql<string>`coalesce(updated_at, created_at)`, '<=', at)\n" },
+        { file: WEB_REPO, find: DELETE_CONDITIONS, replace: "query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where(sql<string>`coalesce(updated_at, created_at)`, '<=', at);" },
       ],
       run: pruneAll,
-      expect: /an account changed 3 days ago was deleted: expected undefined to be defined/,
+      expect: /a never confirmed account of 40 days was kept: an update extended its days: expected \{/,
     },
     {
       id: 'G4',

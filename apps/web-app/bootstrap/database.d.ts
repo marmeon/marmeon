@@ -132,6 +132,7 @@ declare module '@marmeon/database' {
       pending_email: string | null;
       pending_email_token: Secret<string | null>;
       pending_email_expires_at: Timestamp | null;
+      first_verified_at: Timestamp | null;
     };
   }
   interface TableOwners {

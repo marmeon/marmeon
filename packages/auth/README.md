@@ -57,7 +57,7 @@ What the module holds:
 | `listeners/`, `jobs/`, `tasks/` | `SendEmailVerification` (queued); `SendPasswordResetLinkJob`, `SendAccountExistsMailJob`, `SendEmailChangeMailJob` (encrypted payloads); `PruneEmailChanges` |
 | `AccountDeletion.ts`, `commands/` | the one way an account is deleted, and its event `AccountDeleted`; `auth:prune-unverified` ([below](#unconfirmed-accounts-e203)) |
 | `middleware/` | `ShareAuthProps.ts`: the shared `auth` prop (`{ user: { id, name, verified } \| null }`) and the `toast` flash type; `ConfirmedAddress.ts`: `verified()` while the registration is private |
-| `migrations/` | `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, the pending change of address on `users` (prefixed `0001_01_01_…`: they run first) |
+| `migrations/` | `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, the pending change of address and `first_verified_at` on `users` (prefixed `0001_01_01_…`: they run first) |
 | `factories/`, `seeders/` | `UserFactory` (password `password`, hashed once at the test costs), `UserSeeder` (`test@example.com`) |
 | `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`, `PruneEmailChanges` at the same hour, `auth:prune-unverified` at 03:20 |
 | `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts`, `email-change.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
@@ -391,19 +391,21 @@ schedules it nightly — [@marmeon/scheduler](../scheduler/README.md).
 marmeon auth:prune-unverified        # the module's command — scheduled nightly at 03:20, onOneServer()
 ```
 
-An account whose address was not confirmed within `AUTH_UNVERIFIED_DAYS` (default **7**) is deleted: whoever signed up with
-somebody else's address stops holding it (a "pre-hijacked" account), and the data of sign-ups nobody finished goes (data
-minimization). Only accounts with `email_verified_at` null **and** neither made nor changed within the days (`created_at` and
-`updated_at`): a confirmed account never, a pending change of address of a confirmed one neither ([private
-registration](#private-registration-e146-e193): the new address waits beside the confirmed one). It goes through the module's
-`AccountDeletion` — the row (its remember-me and API tokens with it: the foreign keys cascade), its reset token, what other
-modules keep (they listen to `AccountDeleted`, in the same transaction; files after the commit) and its sessions
-(`UserSessions` of [@marmeon/session](../session/README.md#a-users-sessions): removed from the `database` store, ended at their
-next request with the others) — in batches of 100, the number in the log. Irreversible.
+An account that never confirmed an address within `AUTH_UNVERIFIED_DAYS` of its sign-up (default **7**) is deleted: whoever
+signed up with somebody else's address stops holding it (a "pre-hijacked" account), and the data of sign-ups nobody finished
+goes (data minimization). **Never deleted is what was confirmed once:** the module keeps the first confirmation in
+`users.first_verified_at` (set by the verification link, never cleared — migration `0001_01_01_000005_…`, which fills it for
+accounts confirmed before). Only accounts with `email_verified_at` **and** `first_verified_at` null **and** made before the days
+go (`created_at` — a later change does not extend them); a pending change of address of a confirmed account is untouched
+([private registration](#private-registration-e146-e193)). The delete checks all of it again (one confirmed a moment ago
+stays). It goes through the module's `AccountDeletion` — the row (its remember-me and API tokens with it: the foreign keys
+cascade), its reset token, what other modules keep (they listen to `AccountDeleted`, in the same transaction; files after the
+commit) and its sessions (`UserSessions` of [@marmeon/session](../session/README.md#a-users-sessions): removed from the
+`database` store, ended at their next request with the others) — in batches of 100, the number in the log. Irreversible.
 
-- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have **used the app** before it goes —
-  and an address changed there (unconfirmed at once) gets its days from the change: an account that does not confirm its new
-  address within them is deleted like a sign-up. Tell your users, or raise the days.
+- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have **used the app** before it goes,
+  if it never clicks its link — tell your users, or raise the days. A change of address there is unconfirmed at once
+  (`email_verified_at` null), but an account confirmed before keeps `first_verified_at` and is never pruned.
 - **`AUTH_UNVERIFIED_DAYS=0`** keeps every account (outside development and tests the boot says so: `UNVERIFIED_KEPT_NOTICE`);
   only whole numbers of days boot.
 - A "delete my account" page uses the same `AccountDeletion` — `delete([user.id])`.

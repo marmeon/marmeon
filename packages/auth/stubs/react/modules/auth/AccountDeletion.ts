@@ -47,8 +47,8 @@ export class AccountDeletion {
   }
 
   /**
-   * Deletes the accounts `ids` — the deleted ones come back. `unconfirmedSince`: only those still without a confirmed address and
-   * unchanged since then, decided in the statement that deletes (one confirmed a moment ago stays).
+   * Deletes the accounts `ids` — the deleted ones come back. `unconfirmedSince`: only those that never confirmed an address and were
+   * made before then, decided in the statement that deletes (one confirmed a moment ago stays).
    */
   async delete(ids: readonly number[], only?: { unconfirmedSince: Date }): Promise<User[]> {
     if (ids.length === 0) return [];

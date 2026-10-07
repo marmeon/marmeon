@@ -479,23 +479,28 @@ took from the old inline defaults.
 *Likelihood of impact: medium — every app with the module of `make:auth`, above all one with `AUTH_PRIVATE_REGISTRATION=false`.* An
 account whose address was never confirmed stayed forever: whoever signed up with somebody else's address kept holding it (a
 "pre-hijacked" account), and the data of sign-ups nobody finished stayed too. Now the module deletes them (E203): its command
-`auth:prune-unverified`, scheduled nightly at 03:20 (`onOneServer()`), deletes every account with `email_verified_at` null that was
-neither made nor changed within `AUTH_UNVERIFIED_DAYS` (default **7**; only whole numbers boot) — through the module's new
+`auth:prune-unverified`, scheduled nightly at 03:20 (`onOneServer()`), deletes every account that **never** confirmed an address
+(`email_verified_at` and the new `first_verified_at` null) and was made more than `AUTH_UNVERIFIED_DAYS` ago (default **7**; only
+whole numbers boot) — through the module's new
 `AccountDeletion`: the row (remember-me and API tokens cascade), its reset token, what other modules keep (they listen to
 `AccountDeleted`, in the same transaction) and its sessions (`UserSessions` of `@marmeon/session`: removed from the `database` store,
-ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** A confirmed account never
-goes, nor one whose confirmed address has a change pending (private registration).
+ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** An account that was
+confirmed once never goes — `users.first_verified_at` keeps the first confirmation for good (the verification link sets it), so a
+pending change (private registration) or an unconfirmed new address (`AUTH_PRIVATE_REGISTRATION=false`) leaves it alone.
 
 ```ts
 // modules/auth/schedule.ts — new line            // modules/auth/index.ts — new
 s.command('auth:prune-unverified').daily().at('03:20').onOneServer();      commands: [PruneUnverifiedCommand],
 ```
 
-- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have used the app for days before it goes —
-  and a change of address there is unconfirmed at once: an account that does not confirm its new address within the days (counted
-  from the change) is deleted like a sign-up. Tell your users in the verification mail, or raise the days.
-- An app made with `make:auth` before: copy `AccountDeletion.ts`, `commands/PruneUnverifiedCommand.ts`, the two methods
-  `unconfirmedSince`/`deleteAccounts` of `UserRepository.ts`, the schedule line and `commands` from the stubs
+- **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have used the app for days before it goes,
+  if it never clicks its link. Tell your users in the verification mail, or raise the days.
+- **A new column, `users.first_verified_at`** (migration `0001_01_01_000005_add_first_verified_at_to_users_table.ts`): it fills
+  itself from `email_verified_at` for every account confirmed before; `markEmailVerified` (and the confirmed change of address) set
+  it with `coalesce(first_verified_at, now)`. A factory or seeder of your own that makes confirmed users sets it too.
+- An app made with `make:auth` before: copy the migration, `AccountDeletion.ts`, `commands/PruneUnverifiedCommand.ts`, the methods
+  `unconfirmedSince`/`deleteAccounts` and the new `markEmailVerified` of `UserRepository.ts`, the factory, the schedule line and
+  `commands` from the stubs
   (`packages/auth/stubs/react/modules/auth/`), or run `marmeon make:auth --force` on a clean tree and merge. Without them nothing is
   deleted.
 - New API: `UserSessions` (`end(userId)`) and the optional `SessionStore#destroyUser(userId)` (the `database` store has it), and
