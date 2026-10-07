@@ -1,17 +1,18 @@
 import { outsideTransaction, type Application, type Redactor } from '@marmeon/core';
+import { devOnly } from '@marmeon/core/dev';
+import type { EmptyObject, HttpContext, Next } from '@marmeon/router';
 import { ENTRY_TYPES, type AnyEntry, type EntryType } from '../entry.ts';
 import { matchesEntry, MAX_LIMIT, type DevtoolsStore, type EntryQuery } from '../store.ts';
 import { MAIL_CSP } from './assets.ts';
 import { queueSnapshot, scheduleSnapshot } from './infra.ts';
 import { BASE, entryHref, SLUGS } from './layout.ts';
 import { row } from './rows.ts';
-import { forbiddenHost, hostAllowed, htmlResponse, jsonResponse, secured } from './security.ts';
+import { htmlResponse, jsonResponse } from './security.ts';
 import { findController, findView } from './source.ts';
 import { batchPage, entryPage, listPage, listQuery, overviewPage, queuePage, schedulePage, type Frame, type ListFilters } from './views.ts';
 
 export { BASE } from './layout.ts';
 export { MAIL_CSP, PAGE_CSP } from './assets.ts';
-export { hostAllowed } from './security.ts';
 
 /** The version of the JSON API and the stream (E117: documented, so the in-page bar and later adapters build on it). */
 export const API_VERSION = 1;
@@ -57,7 +58,8 @@ export async function registerDevtoolsPages(options: PagesOptions): Promise<bool
   const http = await import('@marmeon/http').catch(() => undefined);
   const closing = () => (http && app.container.has(http.ServerClosing) ? app.container.make(http.ServerClosing).signal : undefined);
   const pages = new DevtoolsPages(options, () => app.container.make(router.Router).routes.some((route) => route.path === '/_marmeon/mail'), closing);
-  const guard = router.defineMiddleware('DevtoolsGuard', async (ctx, next) => (hostAllowed(ctx.request, options.hosts) ? secured(await next()) : secured(forbiddenHost())));
+  // The guard of every development route (E200, `@marmeon/core/dev`): 403 for another host, the dev headers on every answer.
+  const guard = router.defineMiddleware('DevtoolsGuard', devOnly(options.hosts, (_ctx: HttpContext, next: Next<EmptyObject>) => next()));
 
   app.container.make(router.Router).load(
     // No group: no session, no cookies (E115). The guard runs for every route here.

@@ -168,10 +168,12 @@ Filters (`?status=4xx&route=auth.login&tag=failed&requestId=…&search=…`) are
 - **Gate (E115):** the routes exist only where the devtools run — `NODE_ENV=development` (or a test's `devtools: true`). In
   production, staging, tests without the opt-in or without `NODE_ENV` they are **not registered** (404); `DEVTOOLS_ENABLED=true`
   where the app is protected (production, staging, no `NODE_ENV`) fails the start.
-- **Host check (DNS rebinding):** a request whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or the host of `APP_URL` gets
-  **403** — a page on `evil.example` whose name was pointed at 127.0.0.1 cannot read the devtools as same-origin. In `marmeon dev`
-  Vite's own host check (`server.allowedHosts`) runs first, for the whole app: a host Vite does not know (the `APP_URL` host
-  included, unless the app's Vite config allows it) gets Vite's 403. No CORS header is ever set.
+- **Host check (DNS rebinding, E200):** a request whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or the host of `APP_URL` gets
+  **403** — a page on `evil.example` whose name was pointed at 127.0.0.1 cannot read the devtools as same-origin. It is the guard of
+  every development route, `devOnly()` of [`@marmeon/core/dev`](../core/README.md#development-routes-marmeoncoredev-e200) — the mail
+  previews have the same one. In `marmeon dev` Vite's own host check (`server.allowedHosts`) runs first, for the whole app: a host
+  Vite does not know (the `APP_URL` host included, unless the app's Vite config allows it) gets Vite's 403 — but Vite **skips that
+  check under HTTPS** (`server.https`) and with `allowedHosts: true`; then this guard is what stands. No CORS header is ever set.
 - **Read-only, GET only:** no route accepts POST, PUT, PATCH or DELETE, and none runs anything (E113, E130) — retrying a failed
   job, running a task, clearing the store are commands to copy.
 - **No session, no cookies:** the routes are in no middleware group (no session, no CSRF, nothing written).
@@ -223,8 +225,8 @@ with the document's request id, and `<script type="module" src="/@id/@marmeon/de
 package's `./client` export; under the app's [`contentSecurityPolicy()`](../http/README.md#content-security-policy-e147) the
 script carries the response's nonce (E147). Nothing of the app imports it, so no build has it; the production renderer never reads `DevDocument`.
 In the head, it runs before the app's entry and sets the **dev hook** `__MARMEON_DEVTOOLS_HOOK__`. The client core calls the hook
-only under `process.env.NODE_ENV !== 'production'` — a production build drops every call, and the leak test checks that no chunk
-names it:
+only under `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (positive, E201: staging is not development) — a
+production build drops every call, and the leak test checks that no chunk names it:
 
 - `Navigator` (made): the bar attaches its data feature — `devtools` of `@marmeon/http/client` — and draws itself once that
   navigator takes over the history;

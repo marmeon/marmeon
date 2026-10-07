@@ -40,6 +40,11 @@
       "types": "./dist/environment.d.ts",
       "default": "./dist/environment.js"
     },
+    "./dev": {
+      "@marmeon/source": "./src/dev.ts",
+      "types": "./dist/dev.d.ts",
+      "default": "./dist/dev.js"
+    },
     "./vite": {
       "@marmeon/source": "./src/vite.ts",
       "types": "./dist/vite.d.ts",
@@ -66,6 +71,10 @@
       "./environment": {
         "types": "./dist/environment.d.ts",
         "default": "./dist/environment.js"
+      },
+      "./dev": {
+        "types": "./dist/dev.d.ts",
+        "default": "./dist/dev.js"
       },
       "./vite": {
         "types": "./dist/vite.d.ts",

@@ -12,6 +12,13 @@
  *      imports Valibot (in code or in the code a generator writes: `make:*`'s templates count), and no `package.json` of an app or of
  *      the template lists it. Inside a package's `src/` Valibot stays an internal engine (its env schemas, its tests).
  *
+ *   3. **`NODE_ENV` is checked positively** (E201, W10 step 6): no `!== 'production'` (any quotes, also `!=`) and no
+ *      `NODE_ENV === 'production'` in a package's code (`packages/<name>/src/` and the `make:auth` stubs, tests and fixtures aside).
+ *      Either sends `staging`, a typo or a missing `NODE_ENV` down the development branch — long messages, warnings, devtools hooks
+ *      and error details in server rendering, which reads `NODE_ENV` at run time. Development branches ask
+ *      `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (inline: a client build folds it away), server
+ *      code `environment.isDevelopment()` / `environment.isProtected()` of @marmeon/core.
+ *
  * Later rules join this script (one script, several rules, each with its test and Gegenprobe).
  */
 import { spawnSync } from 'node:child_process';
@@ -102,6 +109,30 @@ export function engineHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
+/** `!== 'production'` / `!= "production"` (either side), and `NODE_ENV === 'production'` — what rule 3 refuses. */
+const NEGATIVE_ENV = new RegExp(
+  [
+    `!==?\\s*(['"\`])production\\1`, // x !== 'production'
+    `(['"\`])production\\2\\s*!==?`, // 'production' !== x
+    `NODE_ENV\\s*===?\\s*(['"\`])production\\3`, // NODE_ENV === 'production' (staging falls into the else)
+    `(['"\`])production\\4\\s*===?\\s*(?:process\\.env\\.|env\\.)?NODE_ENV`,
+  ].join('|'),
+);
+/** A package's own code — sources and the stubs it writes into apps — not its tests and fixtures. */
+const PACKAGE_CODE = /^packages\/[^/]+\/(?:src|stubs)\/(?!.*(?:\.test\.|\.type-test\.|__fixtures__\/))/;
+
+/** Rule 3: every negative or `=== 'production'` check of the environment in a package's code. */
+export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!CODE.test(path) || !PACKAGE_CODE.test(path) || !NEGATIVE_ENV.test(text)) continue;
+    text.split('\n').forEach((line, index) => {
+      if (NEGATIVE_ENV.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
+    });
+  }
+  return hits;
+}
+
 /** The repository's files as git sees them: tracked, and new ones that are not ignored — text only, as they are on disk. */
 export function repositoryFiles(repository: string = root): SourceFile[] {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: repository, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -126,6 +157,9 @@ export function checkSource(repository: string = root): string[] {
   return [
     ...oldNameHits(files).map((hit) => `the old name (E196): ${hit}`),
     ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates (E197): ${hit}`),
+    ...negativeEnvHits(files).map(
+      (hit) => `NODE_ENV checked positively (E201 — staging is not development): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
+    ),
   ];
 }
 
@@ -136,6 +170,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package checks NODE_ENV against 'production'.`);
   }
 }

@@ -168,7 +168,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
     async (options: Partial<ActionSubmitOptions<string>> & { params?: Readonly<Record<string, Param>>; query?: Query } = {}): Promise<ActionResultOf<string>> => {
       const navigator = router.navigator();
       if (!navigator) {
-        throw new Error(process.env.NODE_ENV !== 'production' ? `[marmeon:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[marmeon:R7] ${name}`);
+        throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[marmeon:R7] ${name}`);
       }
       const target = resolveRoute(manifest, name, { ...boundParams.current, ...options.params }, options.query);
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;

@@ -396,7 +396,7 @@ export interface IslandState<C extends IslandAction = IslandAction> {
 }
 
 function onServer(): never {
-  throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
+  throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
 }
 
 /**
@@ -413,7 +413,7 @@ function onServer(): never {
  */
 export function useIsland<C extends IslandAction = IslandAction>(): IslandState<C> {
   const value = useContext(IslandContext);
-  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R15] useIsland() is for the view of an island — the component an <Island route> renders.' : '[marmeon:R15]');
+  if (!value) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R15] useIsland() is for the view of an island — the component an <Island route> renders.' : '[marmeon:R15]');
   return useMemo(
     () =>
       ({

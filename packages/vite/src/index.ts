@@ -115,8 +115,8 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     api,
     config(config, { command, mode, isSsrBuild }) {
       const root = resolve(config.root ?? process.cwd());
-      // Sources while serving (dev server, Vitest); a build always takes what a published package ships.
-      const source = command === 'serve' && mode !== 'production' ? [SOURCE_CONDITION] : [];
+      // Sources while serving (dev server, Vitest); a build always takes what a published package ships. Positive (E201).
+      const source = command === 'serve' && (mode === 'development' || mode === 'test') ? [SOURCE_CONDITION] : [];
       const result: UserConfig = {
         resolve: { conditions: [...source, ...defaultClientConditions], dedupe: adapterPeers(root) },
         // Vitest hands the server conditions to its Node workers (`--conditions`). Node itself never matches `module`: with

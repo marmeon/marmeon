@@ -221,7 +221,7 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
     const browser = (): TableController<T> => {
       if (!controller) {
         throw new Error(
-          process.env.NODE_ENV !== 'production' ? `[marmeon:R18] useTable(${data.name}): it changes something only in the browser — not while rendering on the server.` : `[marmeon:R18] ${data.name}`,
+          process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R18] useTable(${data.name}): it changes something only in the browser — not while rendering on the server.` : `[marmeon:R18] ${data.name}`,
         );
       }
       return controller;

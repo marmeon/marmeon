@@ -31,12 +31,14 @@ export function hasServerMarkup(root: Pick<Element, 'childNodes'>): boolean {
 }
 
 /**
- * Development builds (Vite replaces `process.env.NODE_ENV`, as for React itself). Without a bundler that
- * replaces it, `process` does not exist in the browser: production.
+ * Development builds and tests — `NODE_ENV` is `development` or `test` (E201: checked positively, so `staging`, a typo or none
+ * is production — fail-closed like E139). A client build has it replaced by Vite (`process.env.NODE_ENV || mode`, at build
+ * time) and folds the check away; server rendering reads it at run time (Vite leaves it alone in the SSR build).
+ * Without a bundler that replaces it, `process` does not exist in the browser: production.
  */
 export function isDevelopment(): boolean {
   try {
-    return process.env.NODE_ENV !== 'production';
+    return process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
   } catch {
     return false;
   }

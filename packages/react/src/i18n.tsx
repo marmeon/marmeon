@@ -16,7 +16,7 @@ function useI18n(hook: string): I18nValue {
   const value = useContext(I18nContext);
   if (!value) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:R12] ${hook} needs the app's messages: createMarmeonApp({ messages }) and createSsrRenderer(resolve, { messages }) — ` +
             "with `messages = createMessageLoader(lang)` from '@marmeon/i18n/messages' and `lang` from 'virtual:marmeon/lang'."
         : `[marmeon:R12] ${hook}`,

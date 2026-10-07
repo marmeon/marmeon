@@ -91,7 +91,7 @@ function checkLayout(name: string, layout: unknown): void {
   const invalid = layouts.findIndex((entry) => !isComponent(entry));
   if (invalid !== -1) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:R1] Page [${name}] has an invalid layout${Array.isArray(layout) ? ` at index ${invalid}` : ''}: expected a component (or a list of them), got ${String(layouts[invalid])}.`
         : `[marmeon:R1] ${name}`,
     );
@@ -131,29 +131,29 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     if (!load) {
       const [module, ...rest] = name.split('/');
       throw new Error(
-        process.env.NODE_ENV !== 'production' ? `[marmeon:R2] Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx` : `[marmeon:R2] ${name}`,
+        process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R2] Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx` : `[marmeon:R2] ${name}`,
       );
     }
     const module = await load();
     if (typeof module !== 'object' || module === null || !('default' in module)) {
-      throw new Error(process.env.NODE_ENV !== 'production' ? `[marmeon:R3] Page [${name}] has no default export.` : `[marmeon:R3] ${name}`);
+      throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R3] Page [${name}] has no default export.` : `[marmeon:R3] ${name}`);
     }
     const page = module.default as PageComponent;
     checkLayout(name, page.layout);
     if (page.ssr !== undefined && page.ssr !== true && page.ssr !== false && page.ssr !== 'complete') {
       throw new Error(
-        process.env.NODE_ENV !== 'production' ? `[marmeon:R4] Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.` : `[marmeon:R4] ${name}`,
+        process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R4] Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.` : `[marmeon:R4] ${name}`,
       );
     }
     if (page.placeholder !== undefined && !isComponent(page.placeholder)) {
       throw new Error(
-        process.env.NODE_ENV !== 'production' ? `[marmeon:R5] Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.` : `[marmeon:R5] ${name}`,
+        process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R5] Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.` : `[marmeon:R5] ${name}`,
       );
     }
     const revalidate: unknown = page.revalidateOnBack;
     if (revalidate !== undefined && typeof revalidate !== 'boolean' && !(Array.isArray(revalidate) && revalidate.every((prop) => typeof prop === 'string' && prop !== ''))) {
       throw new Error(
-        process.env.NODE_ENV !== 'production'
+        (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
           ? `[marmeon:R6] Page [${name}] has an invalid revalidateOnBack: expected true, false or a list of prop names, got ${JSON.stringify(revalidate)}.`
           : `[marmeon:R6] ${name}`,
       );

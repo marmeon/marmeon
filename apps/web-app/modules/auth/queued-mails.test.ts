@@ -211,4 +211,21 @@ describe('mails without a request', () => {
     expect(preview.headers.get('set-cookie')).toBeNull(); // no session, no cookies
     await app.assertDatabaseCount('users', 0); // sample data is made, never stored
   });
+
+  it('answer only localhost and the host of APP_URL (E200, DNS rebinding) — any other Host gets 403, without Vite in front', async () => {
+    const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development', APP_URL: 'http://shop.test:3960' } });
+    const paths = ['/_marmeon/mail', '/_marmeon/mail/auth/VerifyEmailMail'];
+    for (const path of paths) {
+      for (const host of ['evil.example', 'evil.example:3960', 'localhost.evil.example', 'shop.test.evil.example']) {
+        const refused = await app.get(path, { headers: { host } });
+        expect(refused.status, `${host} ${path}`).toBe(403);
+        expect(refused.body).not.toContain('<th>Subject</th>');
+        expect(refused.headers.get('cache-control')).toBe('no-store');
+      }
+      for (const host of ['localhost:3960', '127.0.0.1', '[::1]:3960', 'shop.test:3960']) {
+        const answer = await app.get(path, { headers: { host } }).assertOk();
+        expect(answer.headers.get('cross-origin-resource-policy'), `${host} ${path}`).toBe('same-origin');
+      }
+    }
+  });
 });

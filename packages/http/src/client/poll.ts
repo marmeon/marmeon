@@ -29,7 +29,7 @@ export interface Poll {
  */
 export function createPoll(run: () => Promise<unknown>, interval: number, { keepAlive = false, document = globalThis.document }: PollOptions = {}): Poll {
   if (!(interval > 0)) {
-    throw new RangeError(process.env.NODE_ENV !== 'production' ? `[marmeon:C5] A poll needs an interval above 0 ms, got ${interval}.` : `[marmeon:C5] ${interval}`);
+    throw new RangeError(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:C5] A poll needs an interval above 0 ms, got ${interval}.` : `[marmeon:C5] ${interval}`);
   }
   let running = false;
   let inFlight = false;

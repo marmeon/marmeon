@@ -42,7 +42,7 @@ describe('marmeon()', () => {
     expect(test.ssr?.resolve?.conditions).not.toContain('module');
     expect(test.ssr?.resolve?.conditions).toContain('node');
 
-    for (const env of [{ command: 'build', mode: 'production' }, { command: 'build', mode: 'development' }, { command: 'serve', mode: 'production' }] as const) {
+    for (const env of [{ command: 'build', mode: 'production' }, { command: 'build', mode: 'development' }, { command: 'serve', mode: 'production' }, { command: 'serve', mode: 'staging' }] as const) {
       const config = configFor(marmeon(), env);
       expect(config.resolve?.conditions).not.toContain(SOURCE_CONDITION);
       expect(config.ssr?.resolve?.conditions).not.toContain(SOURCE_CONDITION);

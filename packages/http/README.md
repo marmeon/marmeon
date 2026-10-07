@@ -136,7 +136,7 @@ are here.
 | `visitUrlOf(click, href, target)`, `prefetchTriggers`, `prefetchUrlOf`, `HOVER_PREFETCH_DELAY` | Which link clicks become visits (plain left clicks, same origin, no other `target`) and when links prefetch |
 | `firstErrors(page)` | The first validation message per field (forms) |
 | `TitleRegistry`, `defaultTitle` | The document title from the mounted head components — the last one wins, none → `template('')` |
-| `isDevelopment()` | `process.env.NODE_ENV !== 'production'`, as bundlers replace it |
+| `isDevelopment()` | `NODE_ENV` is `development` or `test` — checked positively (E201: `staging`, a typo or none is production); bundlers replace it in a client build, server rendering reads it at run time |
 
 ### Merged props: revalidations replace, load more appends (W9)
 
@@ -397,7 +397,7 @@ comes with its outcome (`useAction`). Listeners are wiring, never data — the f
 **Development hooks (W7 step 9).** [The in-page bar](../devtools/README.md#the-in-page-bar) of `@marmeon/devtools` attaches
 the `devtools` feature (exported here, used by nothing else) through `globalThis.__MARMEON_DEVTOOLS_HOOK__`, which its client
 sets before the app starts. The core and the React adapter call that hook only under an inline
-`process.env.NODE_ENV !== 'production'` — when a navigator is made, when optimistic patches are applied, shown, folded in or
+`process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (E201) — when a navigator is made, when optimistic patches are applied, shown, folded in or
 taken out, and for hydration errors — so a production build drops the calls (the leak test checks no chunk names the hook, and
 the budgets are unchanged). What the feature records stays in slots of the document (E36).
 
@@ -538,7 +538,10 @@ A mistake in app code (a hook outside its app, a page with a broken export, a ro
 explanation in development: what is wrong and how to fix it. A production build carries only a code and a name, such as
 `[marmeon:R2] users/Show`, so the explanations cost no download (E80). Both start with the same code: run the app in
 development to read the whole message, or look the code up here. The core and every adapter keep their explanations
-behind an inline `process.env.NODE_ENV !== 'production'`, which the bundler replaces, so the production bundle drops the text.
+behind an inline `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`, which the bundler replaces, so the
+production bundle drops the text. The check is **positive** (E201): `staging`, a typo or a missing `NODE_ENV` gets the code only —
+also in server rendering, which reads `NODE_ENV` at run time (Vite replaces it only in the client build), and in a client
+build made with `NODE_ENV=staging` (Vite folds in what it finds). `check:source` refuses `!== 'production'` in package code.
 Without a bundler that replaces it, `process` does not exist in the browser; React needs that replacement anyway.
 
 What is not a code: refusals a production log needs to read (an action, a live validation or a region that would go to

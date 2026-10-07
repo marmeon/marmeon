@@ -117,6 +117,24 @@ included, into the log. A protected app warns about it at boot. Production needs
 worker (any worker without `--queue`). SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, otherwise STARTTLS is required
 (`MAIL_REQUIRE_TLS`, default `true`, E192) — set it to `false` only for a relay without TLS on the same machine.
 
+**`NODE_ENV` in the browser and in server rendering (E201).** Code that runs in both places — the client core, the React adapter,
+server rendering — keeps its explanations, warnings and devtools hooks behind an inline `process.env.NODE_ENV === 'development' ||
+process.env.NODE_ENV === 'test'`, checked positively: `staging`, a typo or none takes the production branch (short codes such as
+`[marmeon:C1] people.show`, no warnings, no error details). Where the value comes from differs:
+
+- **The client build** — Vite replaces `process.env.NODE_ENV` itself, with the value `marmeon build` runs under (`NODE_ENV`, or
+  `production` when it is unset); the Vite plugin sets no `define` of its own. The minifier folds the branches away. Build with
+  `NODE_ENV=production` (the image does) or without one: a build under `NODE_ENV=staging` still drops Marmeon's explanations, but
+  bakes in **React's development build** (React itself asks `=== 'production'`) — bigger and slower.
+- **Server rendering** reads `NODE_ENV` at run time: Vite replaces it only in the client build — the SSR build leaves
+  `process.env.NODE_ENV` in the framework's code (bundled or external), and React stays external. On a staging server (`NODE_ENV=staging`) Marmeon takes no development branch — but **React renders with its development
+  build** there (`react-dom/server` chooses by `NODE_ENV === 'production'`): slower, with React's own warnings in the log — and an
+  error thrown in a Suspense boundary after the shell reaches the browser **with its message and stack** inside the page
+  (`$RX("B:0","marmeon:ssr","…message…","…stack…")`; production sends the digest alone). Treat staging pages as showing server
+  errors to whoever opens them. Whether
+  staging should run `NODE_ENV=production` with an app-level environment of its own is an open question (it touches E139); until then,
+  expect staging to be slower than production at server rendering.
+
 ## Stopping without dropped requests
 
 On SIGTERM the web server:

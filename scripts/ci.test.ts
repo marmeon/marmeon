@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkSource, ENGINE, engineHits, oldNameHits, OLD_NAME } from './check-source.ts';
+import { checkSource, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME } from './check-source.ts';
 import { parts } from './ci.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
@@ -90,6 +90,41 @@ describe('check:source — no app, stub or template installs the validation engi
       `apps/blank-app/package.json: dependencies lists ${engine} — an app validates with @marmeon/validation`,
       `packages/create-marmeon/template/base/_package.json: dependencies lists ${engine} — an app validates with @marmeon/validation`,
     ]);
+  });
+});
+
+describe('check:source — NODE_ENV is checked positively (E201)', () => {
+  it('finds a negative or a production check in a package\'s code — sources and stubs, any quotes, either side', () => {
+    const hits = negativeEnvHits([
+      { path: 'packages/react/src/app.tsx', text: "const a = 1;\nif (process.env.NODE_ENV !== 'production') console.warn('[marmeon] …');\n" },
+      { path: 'packages/http/src/client/poll.ts', text: 'throw new RangeError(process.env.NODE_ENV != "production" ? long : short);' },
+      { path: 'packages/table/src/client/table.ts', text: "refuse(code, name, 'production' !== process.env.NODE_ENV && text);" },
+      { path: 'packages/vite/src/index.ts', text: "const source = command === 'serve' && mode !== `production` ? [SOURCE] : [];" },
+      { path: 'packages/react/src/client.tsx', text: "if (process.env.NODE_ENV === 'production') return;" },
+      { path: 'packages/server/src/kernel.ts', text: "const strict = 'production' == env.NODE_ENV;" },
+      { path: 'packages/auth/stubs/react/modules/auth/views/Login.tsx', text: "{process.env.NODE_ENV !== 'production' && <DevHint />}" },
+    ]);
+    expect(hits).toEqual([
+      "packages/react/src/app.tsx:2: if (process.env.NODE_ENV !== 'production') console.warn('[marmeon] …');",
+      'packages/http/src/client/poll.ts:1: throw new RangeError(process.env.NODE_ENV != "production" ? long : short);',
+      "packages/table/src/client/table.ts:1: refuse(code, name, 'production' !== process.env.NODE_ENV && text);",
+      "packages/vite/src/index.ts:1: const source = command === 'serve' && mode !== `production` ? [SOURCE] : [];",
+      "packages/react/src/client.tsx:1: if (process.env.NODE_ENV === 'production') return;",
+      "packages/server/src/kernel.ts:1: const strict = 'production' == env.NODE_ENV;",
+      "packages/auth/stubs/react/modules/auth/views/Login.tsx:1: {process.env.NODE_ENV !== 'production' && <DevHint />}",
+    ]);
+  });
+
+  it('leaves the positive form, other comparisons with production, tests, fixtures, apps and prose alone', () => {
+    expect(negativeEnvHits([
+      { path: 'packages/react/src/app.tsx', text: "if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') warn();" },
+      { path: 'packages/cli/src/commands/tinker.ts', text: "const label = name === undefined || name === 'production' ? 'PRODUCTION' : 'PROTECTED';" },
+      { path: 'packages/cli/src/commands/build.ts', text: "await vite.resolveConfig(shared, 'build', 'production', 'production');" },
+      { path: 'packages/react/src/bundle-size.test.ts', text: "// `process.env.NODE_ENV !== 'production'` stays out of a production bundle" },
+      { path: 'packages/react/src/__fixtures__/bundle.ts', text: "if (process.env.NODE_ENV !== 'production') x();" },
+      { path: 'apps/web-app/modules/lab/views/Lab.tsx', text: "if (process.env.NODE_ENV !== 'production') x();" },
+      { path: 'packages/core/README.md', text: "never `!== 'production'`" },
+    ])).toEqual([]);
   });
 });
 

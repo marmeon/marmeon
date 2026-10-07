@@ -79,7 +79,7 @@ let warned: Set<string> | undefined;
  */
 function pageHref(page: Pick<PageObject, 'url' | 'component' | 'query' | 'queryDefaults'>, param: string): (number: number) => string {
   if (page.queryDefaults) {
-    if (process.env.NODE_ENV !== 'production' && !Object.hasOwn(page.queryDefaults, param) && !(warned ??= new Set()).has(`${page.component} ${param}`)) {
+    if ((process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && !Object.hasOwn(page.queryDefaults, param) && !(warned ??= new Set()).has(`${page.component} ${param}`)) {
       warned.add(`${page.component} ${param}`);
       console.warn(`[marmeon:R17] <Pagination param="${param}"> on ${page.component}, whose query schema has no "${param}" — its links would lead to the first page: spread pageQuery() into the route's query schema.`);
     }

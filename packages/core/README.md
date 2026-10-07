@@ -13,6 +13,7 @@ It has no provider of its own and is not discovered — it is what discovery run
 | `@marmeon/core/register` | the Node loader hook that writes the injection lists of app code (`node --import`; `marmeon` loads it itself) — in a protected environment from `marmeon build`'s lists ([Precomputed lists](#precomputed-lists-in-production-e138)) |
 | `@marmeon/core/vite` | the same transform as a Vite plugin (`marmeonInjection()` — part of `marmeon()` in [@marmeon/vite](../vite/README.md)) and `CSP_NONCE_PLACEHOLDER` |
 | `@marmeon/core/diagnostics` | the observation channels ([Diagnostics](#diagnostics-marmeoncorediagnostics-e118)) |
+| `@marmeon/core/dev` | the guard of every development route: `devHosts`, `hostAllowed`, `devOnly` ([Development routes](#development-routes-marmeoncoredev-e200)) |
 
 ## The application: `defineApplication`
 
@@ -177,8 +178,8 @@ mirror images:
 | `environment.isProtected()` — protections (JSON logs, `migrate` needs `--force`, boot warnings, no lab pages, read-only writes dropped instead of thrown) | no | no | **yes** |
 
 Protections are **fail-closed**: a staging box, a typo and a server without `NODE_ENV` are protected like production. Check
-`isProtected()` on the protecting side and `isDevelopment()` for a development tool — never `=== 'production'` or
-`!== 'production'`. Both read `process.env` unless given the `env` a config definition resolves from:
+`isProtected()` on the protecting side and `isDevelopment()` for a development tool — never `=== 'production'` or a negative
+check against it. Both read `process.env` unless given the `env` a config definition resolves from:
 
 ```ts
 export const LabConfig = defineConfig('lab', {
@@ -207,6 +208,39 @@ the CLI, the load hook and the server all read the same value. A value from `.en
 then `marmeon start`, `queue:work` and `schedule:work` run as development, and each logs a loud warning (`NODE_ENV=development comes
 from .env, not from the environment: …`) — they are not refused. On a server, set `NODE_ENV` in the environment and never deploy a
 development `.env`. `createTestApp` runs as `test` unless its `env` says otherwise.
+
+**Code that also runs in the browser** (the client core, the adapters, server rendering) cannot import `environment` — it checks
+inline, and **positively** (E201): `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` for an explanation,
+a warning or a devtools hook. A client build has the value folded in by Vite (`process.env.NODE_ENV || mode` at build time), so the
+branch disappears from a production bundle; server rendering reads it at run time (Vite leaves it alone in the SSR build), so
+`staging` must not count as development there. `pnpm check:source` refuses `!== 'production'` (and `NODE_ENV === 'production'`)
+in package code.
+
+## Development routes: `@marmeon/core/dev` (E200)
+
+Routes for the developer's browser only — the devtools (`/_marmeon/devtools`), the mail previews (`/_marmeon/mail`) and any later
+one — are registered only with `NODE_ENV=development` (E115) and all sit behind **one guard**: they answer only `localhost`,
+`127.0.0.1`, `[::1]` and the host of `APP_URL`; any other `Host` gets **403** and the handler never runs. Every answer leaves with
+`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`,
+`Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`, its own CSP or `frame-ancestors 'self'`, and never a CORS header.
+
+```ts
+import { devHosts, devOnly } from '@marmeon/core/dev';
+
+const hosts = devHosts(env.APP_URL); // localhost, 127.0.0.1, [::1] + APP_URL's host (lower case, no port)
+Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));               // a handler
+defineMiddleware('DevtoolsGuard', devOnly(hosts, (_ctx: HttpContext, next: Next<EmptyObject>) => next())); // or a middleware
+```
+
+`hostAllowed(request, hosts)` is the check alone (the `Host` header, else the URL's host; no userinfo, path or look-alike such as
+`localhost.evil.example`), `devSecured(response)` the headers alone.
+
+**Why:** DNS rebinding. A page on `evil.example` whose name the attacker then points at `127.0.0.1` reaches the developer's server
+with `Host: evil.example` and would read every answer as same-origin — recorded requests, mails with reset links, source paths.
+`marmeon dev` puts Vite in front, and Vite refuses unknown hosts itself (`server.allowedHosts`) — but Vite **skips that check under
+HTTPS** (`server.https` in `vite.config.ts`) and with `allowedHosts: true`. In those set-ups this guard is what stands; the rest of
+what Vite serves in development (source modules, `/@fs/`, `/__open-in-editor`) and the development error page then have no host
+check of their own — run `marmeon dev` over HTTPS only on a trusted network, or keep `allowedHosts` a list.
 
 ## Configuration
 

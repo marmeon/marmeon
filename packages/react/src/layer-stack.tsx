@@ -82,11 +82,11 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       prefetch: (url, options) => base.prefetch(url, { ...options, layer: true }),
       // An action's patches and reloads from inside the layer are the layer's (E59).
       optimistic: (patch) => {
-        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
+        if (!layer) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
         return layer.optimistic(patch as never);
       },
       reloading: (options) => {
-        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
+        if (!layer) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
         return reloadsOf((spec) => layer.reloading(spec), layer.owner, manifest, options as { islands?: readonly string[] });
       },
     }),

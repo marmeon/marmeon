@@ -470,6 +470,41 @@ libraries ignore it); `defineRequest` takes `messages` and `attributes` (Laravel
 a live validation drops an issue a rule marked as not live. The Standard Schema interface lives in `@marmeon/core` only — the router
 re-exports the same types (`@marmeon/router` now depends on `@marmeon/core`, types only). There is no old behaviour to keep.
 
+#### Low: staging takes the production branches of the browser code and of server rendering — short codes, no development warnings
+
+*Likelihood of impact: low — apps on a staging server (`NODE_ENV=staging`) or built with one.* The client core, the React adapter,
+the table's client and server rendering asked `process.env.NODE_ENV !== 'production'` for their explanations, warnings, devtools
+hooks and error details — so `NODE_ENV=staging` (and any other value) took the development branch wherever the value is read at run
+time: in server rendering always, in the browser when `marmeon build` ran with `NODE_ENV=staging`. They ask positively now (E201):
+`process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`. On staging an error says its code (`[marmeon:R2] users/Show`
+instead of the explanation), the late-`<Head>` warning and the hydration notice on the page are gone, the devtools hook is never
+called, and a React error page rendered on the server shows no exception message. Development and tests are unchanged; a production
+client bundle is byte for byte the same. Two things stay as they were and are worth knowing: React renders with **its** development
+build wherever `NODE_ENV` is not `production` (server rendering on staging; the browser too after a `NODE_ENV=staging` build), and
+that build sends the message and stack of an error thrown after the shell into the page — see [deployment](docs/deployment.md#configuration). Code of your own that does the same check: `pnpm check:source` refuses
+`!== 'production'` in this repository's packages; an app's code is its own.
+
+The way back: none needed — to read a full message on staging, run the app with `NODE_ENV=development` on a machine of your own.
+
+#### Low: the mail previews answer only `localhost` and the host of `APP_URL` — the devtools' host check moved to `@marmeon/core/dev`
+
+*Likelihood of impact: low — developers who open `/_marmeon/mail` through another host name, and code that imported `allowedHosts`,
+`LOOPBACK_HOSTS` or `hostAllowed` from `@marmeon/devtools`.* The mail previews (development only) had no host check: behind a DNS
+rebinding a page on another site could read them — Vite's own host check is skipped under HTTPS. They now sit behind the same guard
+as the devtools (E200): `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL` get the page, any other `Host` a 403; every
+answer is `no-store`, `nosniff`, `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`, without CORS headers. The guard lives
+in `@marmeon/core/dev`: `devHosts(appUrl)` (before `allowedHosts` of `@marmeon/devtools`), `hostAllowed(request, hosts)`,
+`LOOPBACK_HOSTS`, and `devOnly(hosts, handler)` for a development route of your own; `@marmeon/devtools` no longer exports them.
+
+```ts
+// before                                                   // after
+import { allowedHosts, hostAllowed } from '@marmeon/devtools';   import { devHosts, devOnly, hostAllowed } from '@marmeon/core/dev';
+const hosts = allowedHosts(env.APP_URL);                    const hosts = devHosts(env.APP_URL);
+                                                            Route.get('/_dev/report', devOnly(hosts, () => report()));
+```
+
+The way back: open the previews through `localhost` or set `APP_URL` to the host you use.
+
 ## Upgrading to 0.1.0 from the development snapshots
 
 0.1.0 is the first release. An app made from it (`pnpm create marmeon`) has nothing to upgrade. This section is for apps

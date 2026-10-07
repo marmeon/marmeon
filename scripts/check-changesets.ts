@@ -32,6 +32,8 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone', // W10.4, E197
     'low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major', // W10.2, E198
     'low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract', // W10.3, E197
+    'low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings', // W10.6, E201
+    'low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev', // W10.6, E200
   ],
   'Wave 9': [
     'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187

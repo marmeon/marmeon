@@ -310,6 +310,26 @@ describe('streaming SSR (E37)', () => {
     expect(onWarning).toHaveBeenCalledWith(expect.stringContaining('<Head title="Late"> in [app/LateHead] rendered after the document head was sent'));
   });
 
+  it('takes no development branch with NODE_ENV=staging (E201): no late-<Head> warning, short codes — SSR reads NODE_ENV at run time', async () => {
+    vi.stubEnv('NODE_ENV', 'staging');
+    try {
+      const slow = later<string>();
+      const onWarning = vi.fn();
+      const result = await createSsrRenderer(pages(slow.promise))(page('app/LateHead'), { onWarning });
+      const reading = text(result.html);
+      slow.settle('done');
+      await reading;
+      expect(onWarning).not.toHaveBeenCalled();
+      await expect(createSsrRenderer(pages(slow.promise))(page('app/Nope'))).rejects.toThrow(/^\[marmeon:R2\] app\/Nope$/);
+      await expect(createSsrRenderer(resolve)(page('broken/NoDefault'))).rejects.toThrow(/^\[marmeon:R3\] broken\/NoDefault$/);
+      // The same renders in a test explain themselves (development and test take the branch).
+      vi.stubEnv('NODE_ENV', 'test');
+      await expect(createSsrRenderer(pages(slow.promise))(page('app/Nope'))).rejects.toThrow(/^\[marmeon:R2\] Page \[app\/Nope\] not found/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('collects a <Head> beside a slow part with the shell — once, without a warning', async () => {
     const slow = later<string>();
     const onWarning = vi.fn();

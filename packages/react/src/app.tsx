@@ -171,7 +171,7 @@ export function reloadsOf(
     const route = manifest && Object.hasOwn(manifest, name) ? manifest[name] : undefined;
     if (!route) {
       throw new Error(
-        process.env.NODE_ENV !== 'production'
+        (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
           ? `[marmeon:R8] reloading({ islands: ['${name}'] }): [${name}] is not a route the browser knows — an island reloads where <Island route="${name}"> shows it.`
           : `[marmeon:R8] ${name}`,
       );
@@ -236,7 +236,7 @@ export const RouterContext = createContext<RouterValue | null>(null);
 
 export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
-  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R9] Marmeon hooks must be used inside <MarmeonApp>.' : '[marmeon:R9]');
+  if (!value) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R9] Marmeon hooks must be used inside <MarmeonApp>.' : '[marmeon:R9]');
   return value;
 }
 
@@ -249,7 +249,7 @@ export function useFeature<API>(feature: Feature<API>): API {
   const navigator = useRouterContext().navigator();
   if (!navigator) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:R10] useFeature(${feature.name}): the ${feature.name} feature runs in the browser — there is no navigator while rendering on the server. Use it in a component that renders in the browser only.`
         : `[marmeon:R10] ${feature.name}`,
     );
@@ -316,7 +316,7 @@ export function progressIndicator(progress: MarmeonAppProps['progress'] | unknow
   if (progress === undefined) return undefined;
   if (typeof progress === 'function') return progress as ProgressIndicator;
   throw new TypeError(
-    process.env.NODE_ENV !== 'production'
+    (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
       ? `[marmeon:R16] progress takes an indicator since E82: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'. Leave it out for no progress bar.`
       : '[marmeon:R16]',
   );
@@ -535,7 +535,7 @@ export function MarmeonApp({
   }, []);
 
   const browser = useCallback(() => {
-    if (!navigator.current) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R11] Visits run in the browser, not while rendering on the server.' : '[marmeon:R11]');
+    if (!navigator.current) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R11] Visits run in the browser, not while rendering on the server.' : '[marmeon:R11]');
     return navigator.current;
   }, []);
   const visit = useCallback(

@@ -426,7 +426,7 @@ export class Navigator {
     for (const feature of features) this.use(feature);
     // Development only: without the Navigation API, the History fallback follows Back/Forward (E184) — it must be there before the
     // first entry is written.
-    if (process.env.NODE_ENV !== 'production' && !win.navigation && !this.#has('history')) {
+    if ((process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && !win.navigation && !this.#has('history')) {
       console.warn(
         '[marmeon:C13] This browser has no Navigation API, and the History fallback is not attached — the navigator writes its entries, but nothing follows Back/Forward. ' +
           'Load it before the navigator is made and pass it with the features: features: [await loadHistoryFallback()] (createMarmeonApp does).',
@@ -439,7 +439,7 @@ export class Navigator {
     core.props = new PropLoader(core, page, initialPage.streamedProps ?? []);
     // Development only (W7 step 9): the devtools' bar attaches to the navigator (`__MARMEON_DEVTOOLS_HOOK__`, set by its client,
     // which the Vite dev server alone serves) — a production build drops this line.
-    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.navigator?.(this);
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.navigator?.(this);
   }
 
   /**
@@ -811,7 +811,7 @@ export class Navigator {
     const position = restored ? core.scroll.of(restored) : TOP;
     // A deep link (a layer's URL): the layers take the entry — the page under them gets a key of its own, in memory only.
     const pageKey = this.#first('adopt', key, position) ?? key;
-    if (process.env.NODE_ENV !== 'production' && pageKey === key && core.initial?.layers?.length) {
+    if ((process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && pageKey === key && core.initial?.layers?.length) {
       console.warn(
         '[marmeon:C8] The document is a layer’s URL (a deep link, a reload), but the layers were not attached before the navigator took over the history — ' +
           'the page beneath shows without them. Attach them before the first render: await navigator.load(loadLayers) (createMarmeonApp does).',
@@ -1225,7 +1225,7 @@ export class Navigator {
 
   async #loadLayers(asked: boolean): Promise<boolean> {
     // Development: a layer nobody here asked for — the server's answer, or Back/Forward.
-    if (process.env.NODE_ENV !== 'production' && !asked) {
+    if ((process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && !asked) {
       console.info(
         '[marmeon:C7] The server answered with a layer (or Back/Forward went to one), but no code here had loaded the layers yet — loading them now, one round trip. ' +
           'Open layers with <Link layer> or visit(url, { layer: true }) to load them before.',

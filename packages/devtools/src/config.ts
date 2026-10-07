@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConfigError, defineConfig, environment, type ConfigOf } from '@marmeon/core';
+import { devHosts } from '@marmeon/core/dev';
 import * as v from 'valibot';
 import { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES } from './file-store.ts';
 
@@ -160,24 +161,8 @@ export const DevtoolsConfig = defineConfig('devtools', {
       /** `DEVTOOLS_ENABLED=true` in a test: it has no effect (said once, at the start). */
       ineffective: env.DEVTOOLS_ENABLED === 'true' && !environment.isDevelopment(env),
       /** The hosts the pages answer (a request for any other gets 403 — DNS rebinding): loopback names and `APP_URL`'s host. */
-      hosts: allowedHosts(env.APP_URL),
+      hosts: devHosts(env.APP_URL),
     };
   },
 });
 export type DevtoolsConfig = ConfigOf<typeof DevtoolsConfig>;
-
-/** The loopback names — always allowed. */
-export const LOOPBACK_HOSTS: readonly string[] = ['localhost', '127.0.0.1', '[::1]'];
-
-/** The host names the devtools' pages answer: the loopback ones and the host of `appUrl` (lower case, no port). */
-export function allowedHosts(appUrl: string | undefined): ReadonlySet<string> {
-  const hosts = new Set(LOOPBACK_HOSTS);
-  if (appUrl) {
-    try {
-      hosts.add(new URL(appUrl).hostname.toLowerCase());
-    } catch {
-      // Not a URL: only the loopback names (the app's own config reports a broken APP_URL).
-    }
-  }
-  return hosts;
-}

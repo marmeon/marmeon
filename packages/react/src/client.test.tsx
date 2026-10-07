@@ -109,6 +109,29 @@ describe('createMarmeonApp — hydration', () => {
     }
   });
 
+  it('reports a mismatch like production with NODE_ENV=staging (E201): no notice, no explanation, no devtools hook — React\'s report only', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+    const hook = { navigator: vi.fn(), recoverable: vi.fn() };
+    (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = hook;
+    try {
+      // Server and browser render under staging: what a staging server and a staging build (Vite folds "staging" in) do.
+      vi.stubEnv('NODE_ENV', 'staging');
+      serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), await ssr(page({ name: 'Ada', lastLoginAt: at as unknown as string })));
+      await start();
+      expect(notice()?.textContent ?? null, 'the development notice').toBeNull();
+      expect(hook.recoverable).not.toHaveBeenCalled();
+      expect(hook.navigator).not.toHaveBeenCalled();
+      expect(reportError).toHaveBeenCalled();
+      expect(document.querySelector('time')?.textContent).toBe('2026-10-01T12:00:00.600Z');
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      delete (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__;
+    }
+  });
+
   it('renders the page itself when the server sent no markup (SSR failed or is off) — no hydration, no mismatch', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), '');

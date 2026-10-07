@@ -130,7 +130,10 @@ static preview({ make, locale }: MailPreviewContext) {
 
 The routes are **registered only with `NODE_ENV=development`** (E115, the devtools' gate — `marmeon dev` sets it,
 [only in development](../devtools/README.md#only-in-development-e115-fail-closed)) and have no middleware group (no session, no
-cookies); the devtools (`/_marmeon/devtools`) link to them. A name finds a mail in the list made at startup — never a file path
+cookies); the devtools (`/_marmeon/devtools`) link to them. They answer **only `localhost`, `127.0.0.1`, `[::1]` and the host of
+`APP_URL`** — any other `Host` gets 403 (DNS rebinding, E200: the guard of every development route,
+[`devOnly()` of `@marmeon/core/dev`](../core/README.md#development-routes-marmeoncoredev-e200)), and every answer is `no-store`,
+`nosniff`, `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`, without CORS headers. A name finds a mail in the list made at startup — never a file path
 from the URL. A test that wants them runs as development: `createTestApp(App, { env: { NODE_ENV: 'development' } })`.
 
 > **Upgrading from before Wave 7:** the previews were registered for every `NODE_ENV` but `production` ("not production"); since

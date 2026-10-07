@@ -1,4 +1,5 @@
 import { Application, defineConfig, environment, Logger, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { devHosts, devOnly } from '@marmeon/core/dev';
 import * as v from 'valibot';
 import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
 import { MailPreviews } from './preview.ts';
@@ -36,6 +37,7 @@ export const MailConfig = defineConfig('mail', {
     MAIL_USERNAME: v.optional(v.string(), ''),
     MAIL_PASSWORD: v.optional(v.string(), ''),
     NODE_ENV: v.optional(v.string()),
+    APP_URL: v.optional(v.string()),
   }),
   resolve: (env) => ({
     mailer: env.MAIL_MAILER,
@@ -46,6 +48,8 @@ export const MailConfig = defineConfig('mail', {
      * a test, staging or a server without `NODE_ENV` has no such routes.
      */
     previews: environment.isDevelopment(env),
+    /** The hosts the previews answer (E200 — DNS rebinding): loopback names and `APP_URL`'s; any other gets 403. */
+    previewHosts: devHosts(env.APP_URL),
     /**
      * Protected (E139 — every `NODE_ENV` but `development` and `test`: production, staging, none): the boot warns about
      * `MAIL_MAILER=log` ({@link LOG_MAILER_WARNING}).
@@ -132,13 +136,16 @@ async function registerPreviews(app: Application): Promise<void> {
     return; // no HTTP in this app
   }
   if (!app.container.has(router.Router)) return;
-  const previews = new MailPreviews(app.root, app.container, app.container.make(MailConfig).from);
+  const config = app.container.make(MailConfig);
+  const previews = new MailPreviews(app.root, app.container, config.from);
   app.container.instance(MailPreviews, previews);
-  // No middleware group: no session, no cookies — a page for the developer's browser only.
+  const hosts = config.previewHosts;
+  // No middleware group: no session, no cookies — a page for the developer's browser only. Behind the guard of every development
+  // route (E200): 403 for any host but loopback and APP_URL's (DNS rebinding), `no-store`, CORP/COOP same-origin, no CORS.
   app.container.make(router.Router).load(
     router.defineRoutes((Route) => {
-      Route.get('/_marmeon/mail', () => previews.index());
-      Route.get('/_marmeon/mail/:module/:mail', (ctx) => previews.show(`${ctx.params.module}/${ctx.params.mail}`, new URL(ctx.request.url)));
+      Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));
+      Route.get('/_marmeon/mail/:module/:mail', devOnly(hosts, (ctx) => previews.show(`${ctx.params.module}/${ctx.params.mail}`, new URL(ctx.request.url))));
     }),
   );
 }

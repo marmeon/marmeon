@@ -108,7 +108,7 @@ function name(element: HTMLDialogElement, id: string): void {
       if (!heading.id) heading.id = `${id}-title`;
       element.setAttribute('aria-labelledby', heading.id);
       element.setAttribute('data-marmeon-aria-labelledby', '');
-    } else if (process.env.NODE_ENV !== 'production') {
+    } else if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
       console.warn(`[marmeon] The layer [${element.dataset.marmeonLayer}] has no heading (h1–h3) to name its dialog — add one, or wrap LayerDialog with an aria-label.`);
     }
   }

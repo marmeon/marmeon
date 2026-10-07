@@ -72,14 +72,14 @@ export function assertQueryPage(name: string, path: string, page: Pick<PageObjec
   const pathname = new URL(page.url, 'http://marmeon.invalid').pathname;
   if (!matchesPath(path, pathname)) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:C3] Query state of [${name}] (${path}) is used on ${pathname}, a page of another route — it belongs to the page of its route.`
         : `[marmeon:C3] ${name}`,
     );
   }
   if (!page.queryDefaults) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:C4] Route [${name}] has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\`.`
         : `[marmeon:C4] ${name}`,
     );

@@ -7,7 +7,7 @@
  *
  * **Development only (E115).** Nothing in the framework imports it: the devtools' client (`@marmeon/devtools/client`, served by
  * the Vite dev server only) attaches it through the dev hook (`__MARMEON_DEVTOOLS_HOOK__`), which the core and the React adapter
- * call only under `process.env.NODE_ENV !== 'production'` — a production build drops those calls (and so the hook's name).
+ * call only under `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (E201: positive — staging is not development) — a production build drops those calls (and so the hook's name).
  *
  * **What it holds is the server's data** (validation messages, patched props, a hydration error's text): **only in slots of the
  * document**, emptied by the core when the document is left — signing out leaves none of it (E36), whatever the bar showed.
@@ -138,7 +138,7 @@ export interface HydrationIssue {
 
 /**
  * The dev hook — `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set by the devtools' client before the app starts. The core and the
- * React adapter call it only under `process.env.NODE_ENV !== 'production'` (gone from a production build), each method optional.
+ * React adapter call it only under `process.env.NODE_ENV === 'development' || … === 'test'` (gone from a production build), each method optional.
  */
 export interface DevtoolsHook {
   /** A navigator was made — the bar attaches {@link devtools} to it. */

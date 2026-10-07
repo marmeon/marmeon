@@ -14,7 +14,7 @@ export function resolveRoute(
 ): { url: string; method: string } {
   if (!manifest) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:C1] Route [${name}]: the browser has no route manifest — pass the routes of virtual:marmeon/routes to createMarmeonApp({ routes }) and createSsrRenderer(…, { routes }).`
         : `[marmeon:C1] ${name}`,
     );
@@ -22,7 +22,7 @@ export function resolveRoute(
   const entry = Object.hasOwn(manifest, name) ? manifest[name] : undefined;
   if (!entry) {
     throw new Error(
-      process.env.NODE_ENV !== 'production'
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:C2] Route [${name}] is not defined in the browser: a build ships only the route names client code writes out (<Link route="…">, route('…'), useForm('…', …)), ` +
             'never API routes, .internal() routes or clientRoutes.except (run marmeon route:types after adding a route).'
         : `[marmeon:C2] ${name}`,

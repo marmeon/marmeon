@@ -57,7 +57,7 @@ const OUTSIDE: LayerState = {
   key: undefined,
   once: false,
   close: () => {
-    if (process.env.NODE_ENV !== 'production') console.warn('[marmeon] useLayer().close() outside a layer does nothing — check useLayer().isLayer first.');
+    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') console.warn('[marmeon] useLayer().close() outside a layer does nothing — check useLayer().isLayer first.');
     return Promise.resolve();
   },
   onClose: () => () => {},
