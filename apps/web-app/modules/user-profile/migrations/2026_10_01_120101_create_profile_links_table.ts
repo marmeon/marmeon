@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 // Links people put on their profile (website, GitHub …) — the user-profile module's own table.
 export default defineMigration({

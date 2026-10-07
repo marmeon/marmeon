@@ -1,7 +1,7 @@
 import { defineGegenproben } from '../define.ts';
 
 /**
- * W9.5 — `@bespokecore/table` on the server (E183, part 2): hidden columns neither in the props nor in the SQL, the URL parsed strictly
+ * W9.5 — `@marmeon/table` on the server (E183, part 2): hidden columns neither in the props nor in the SQL, the URL parsed strictly
  * (unknown or raw sorts, filters that are none, page sizes that are none: 400), actions and bulk actions checked again on their
  * endpoints (visibility, the base query, the policy per row, the limit of "all matching"), the CSV export (formulas, hidden columns,
  * its own authorization), the encrypted cursor end to end, and the endpoints behind the page's middleware.

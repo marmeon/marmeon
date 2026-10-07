@@ -1,7 +1,7 @@
 import { appendFileSync, cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig, { PACKAGES } from '../../docs.config.ts';
@@ -81,14 +81,14 @@ describe('pages', () => {
     expect(nav.groups.map((group) => group.title)).toEqual(['Guides', 'Core', 'HTTP', 'Data', 'Auth & Mail', 'Background', 'Frontend', 'Tools']);
     expect(nav.groups.slice(1).flatMap((group) => group.pages.map((pkg) => pkg.name)).sort()).toEqual([...PACKAGES].sort());
     expect(nav.groups[0]!.pages.map((guide) => guide.path)).toEqual(docsConfig.guides!.map((guide) => `/guides/${guide.slug}`));
-    expect(page.props).toMatchObject({ previous: { path: '/packages/router' }, next: { path: '/packages/server' }, group: 'HTTP', title: '@bespokecore/http' });
+    expect(page.props).toMatchObject({ previous: { path: '/packages/router' }, next: { path: '/packages/server' }, group: 'HTTP', title: '@marmeon/http' });
   });
 });
 
 describe('the guides (docs/*.md and the policies at the root, E168)', () => {
   it('are pages under /guides — with their own neighbours, in the search, and an unknown one is a 404', async () => {
     const deployment = (await app.navigating().get('/guides/deployment').assertOk().assertPage('docs/Page')).page()!;
-    expect(deployment.props).toMatchObject({ title: 'Deploying a BespokeCore app', group: 'Guides', previous: { path: '/guides/realtime' }, next: { path: '/guides/security' } });
+    expect(deployment.props).toMatchObject({ title: 'Deploying a Marmeon app', group: 'Guides', previous: { path: '/guides/realtime' }, next: { path: '/guides/security' } });
     const upgrading = (await app.navigating().get('/guides/upgrading').assertOk()).page()!;
     expect(upgrading.props).toMatchObject({ title: 'Upgrading' });
     await app.get('/guides/no-such-guide').assertNotFound();
@@ -126,7 +126,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     expect(json.headers.get('etag')).not.toBe(etag);
     for (const response of [html, json]) {
       const vary = response.headers.get('vary')!.toLowerCase().split(/\s*,\s*/);
-      expect(vary).toEqual(expect.arrayContaining(['x-bespoke', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose', 'x-bespoke-once', 'x-bespoke-version']));
+      expect(vary).toEqual(expect.arrayContaining(['x-marmeon', 'x-marmeon-partial-component', 'x-marmeon-partial-data', 'x-marmeon-partial-except', 'purpose', 'x-marmeon-once', 'x-marmeon-version']));
     }
     const again = await app.get('/packages/queue', { headers: { accept: 'text/html', 'if-none-match': `W/${etag}` } });
     expect(again.status).toBe(304);
@@ -191,7 +191,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
 describe('the repository and docs.config.ts', () => {
   /** A copy of the repository's READMEs — the real ones are never touched. */
   function copy(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'bespoke-docs-'));
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-docs-'));
     cpSync(join(repo, 'README.md'), join(dir, 'README.md'));
     for (const name of PACKAGES) {
       mkdirSync(join(dir, 'packages', name), { recursive: true });
@@ -225,7 +225,7 @@ describe('the repository and docs.config.ts', () => {
       await new DocsRepository({ source: dir }).load();
       mkdirSync(join(dir, 'packages/brandnew'));
       writeFileSync(join(dir, 'packages/brandnew/package.json'), '{}');
-      writeFileSync(join(dir, 'packages/brandnew/README.md'), '# @bespokecore/brandnew\n');
+      writeFileSync(join(dir, 'packages/brandnew/README.md'), '# @marmeon/brandnew\n');
       rmSync(join(dir, 'packages/otel/README.md'));
       const error = await new DocsRepository({ source: dir }).load().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(DocsError);

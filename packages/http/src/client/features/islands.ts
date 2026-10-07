@@ -1,5 +1,5 @@
 /**
- * The requests of islands (E52): a GET with the page headers and `x-bespoke-region: island`, never following a redirect. What
+ * The requests of islands (E52): a GET with the page headers and `x-marmeon-region: island`, never following a redirect. What
  * the server answers becomes the region's outcome — never a navigation of the page — except a 409: a new build (or a document
  * change), so the whole page loads again (the island's code of this build may be gone).
  */

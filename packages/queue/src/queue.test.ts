@@ -1,8 +1,8 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, currentLogContext, Logger, TestClock, type Application, type ModuleDefinition } from '@bespokecore/core';
-import { channels, type QueueJobMessage } from '@bespokecore/core/diagnostics';
-import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
+import { Clock, createApplication, currentLogContext, Logger, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
+import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
+import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
@@ -142,7 +142,7 @@ async function app(options: { env?: Record<string, string>; modules?: ModuleDefi
 
 function worker(application: Application, driver = new MemoryQueueDriver({ clock: application.container.make(Clock) }), failed = new MemoryFailedJobStore()) {
   const container = application.container;
-  const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@bespokecore/encryption')).Encrypter));
+  const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
   return { driver, failed, worker: new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger: silent }) };
 }
 
@@ -184,7 +184,7 @@ describe('the job registry', () => {
       static readonly schema = v.object({});
     }
     class Framework {
-      static readonly job = 'bespoke.mail';
+      static readonly job = 'marmeon.mail';
       static readonly schema = v.object({});
       handle() {}
     }
@@ -192,7 +192,7 @@ describe('the job registry', () => {
     expect(() => registry.add([ClassName as never], 'module x')).toThrow(/"SendMail" is not one/);
     expect(() => registry.add([NoSchema as never], 'module x')).toThrow(/needs static schema/);
     expect(() => registry.add([NoHandle as never], 'module x')).toThrow(/needs a handle\(payload, job\) method/);
-    expect(() => registry.add([Framework], 'module x')).toThrow(/names under "bespoke\." belong to the framework/);
+    expect(() => registry.add([Framework], 'module x')).toThrow(/names under "marmeon\." belong to the framework/);
   });
 });
 
@@ -383,7 +383,7 @@ describe('the worker', () => {
     const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
     const failed = new MemoryFailedJobStore();
     const container = application.container;
-    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@bespokecore/encryption')).Encrypter));
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
     const w = new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger });
     const ended: QueueJobMessage[] = [];
     const off = channels.subscribe(application, 'queue.job', { end: (message) => void ended.push(message) });
@@ -412,7 +412,7 @@ describe('the worker', () => {
     await using application = await app({ logger });
     const driver = new MemoryQueueDriver({ clock: application.container.make(Clock) });
     const container = application.container;
-    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@bespokecore/encryption')).Encrypter));
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
     const w = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock: container.make(Clock), logger });
     const job = (queue: string) => driver.push(queue, JSON.stringify({ uuid: crypto.randomUUID(), job: 'test.welcome', data: { userId: 1 }, tries: 1, backoff: [], dispatchedAt: 0 }), 0);
     await job('mail');

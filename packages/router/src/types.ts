@@ -192,7 +192,7 @@ export type Action<TCtx, TSchema extends StandardSchemaV1 = never, TQuery extend
   | ControllerClass<TCtx, TSchema, TQuery, TResult>;
 
 /**
- * What a region result carries — `this.island(…)` of @bespokecore/http — so the router can tell an island's controller
+ * What a region result carries — `this.island(…)` of @marmeon/http — so the router can tell an island's controller
  * by its type alone (it never imports http): islands are GET routes (E52), `<Island route>` takes only them, `<Link>` none.
  */
 export interface RegionResultMarker {
@@ -200,7 +200,7 @@ export interface RegionResultMarker {
 }
 
 /**
- * What a layer result carries — `this.view(…).layer({ base })` of @bespokecore/http (E53) — so the router's types can tell a
+ * What a layer result carries — `this.view(…).layer({ base })` of @marmeon/http (E53) — so the router's types can tell a
  * layer route by its controller alone: `<Link layer>` takes only them.
  */
 export interface LayerResultMarker {

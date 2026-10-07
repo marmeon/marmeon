@@ -1,4 +1,4 @@
-import { Controller } from '@bespokecore/http';
+import { Controller } from '@marmeon/http';
 
 /**
  * `/dashboard`: a page of islands (E48). The page itself loads nothing — each panel is an island, a GET route of its

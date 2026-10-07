@@ -1,6 +1,6 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { Controller, type HttpContext } from '@bespokecore/http';
-import { Translator } from '@bespokecore/i18n';
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
 import { VerificationMailer } from '../verification.ts';
 
 export class ResendVerificationController extends Controller {

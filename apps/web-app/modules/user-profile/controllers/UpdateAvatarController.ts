@@ -1,8 +1,8 @@
-import { can } from '@bespokecore/auth';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { Broadcaster } from '@bespokecore/live';
-import { Translator } from '@bespokecore/i18n';
-import { Storage, upload } from '@bespokecore/storage';
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Broadcaster } from '@marmeon/live';
+import { Translator } from '@marmeon/i18n';
+import { Storage, upload } from '@marmeon/storage';
 import * as v from 'valibot';
 import { UserRepository } from '#modules/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
@@ -42,7 +42,7 @@ export class UpdateAvatarController extends Controller {
     // Uses the upload up (once — a second submit of the same token is a 422) and moves it: avatars/<random>.<its type>.
     const path = await ctx.body.avatar.store(disk, 'avatars');
     await this.#users.update(user.id, { avatar_path: path });
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(user.id), { only: ['profile'] });
     // The picture it replaces goes (a failure here leaves a file nobody links to — nothing worse).
     if (previous) await disk.delete(previous).catch(() => false);

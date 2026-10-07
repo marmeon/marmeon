@@ -2,15 +2,15 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, coreSolutions, createApplication, defineModule, ErrorSolutions, EventDispatcher, EventFake, EventRegistry, Logger, type ServiceProviderClass } from '@bespokecore/core';
-import { channels, messageBase, trace } from '@bespokecore/core/diagnostics';
-import { Connections, Database, DatabaseServiceProvider, Migrator, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider, optional, SharedData, view } from '@bespokecore/http';
-import { html, Mailer, MailServiceProvider, type Mailable } from '@bespokecore/mail';
-import { Queue, QueueServiceProvider } from '@bespokecore/queue';
-import { defineRoutes, type HttpContext } from '@bespokecore/router';
-import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
+import { Application, coreSolutions, createApplication, defineModule, ErrorSolutions, EventDispatcher, EventFake, EventRegistry, Logger, type ServiceProviderClass } from '@marmeon/core';
+import { channels, messageBase, trace } from '@marmeon/core/diagnostics';
+import { Connections, Database, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider, optional, SharedData, view } from '@marmeon/http';
+import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
+import { Queue, QueueServiceProvider } from '@marmeon/queue';
+import { defineRoutes, type HttpContext } from '@marmeon/router';
+import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { DevtoolsStore, enableDevtoolsForTests, FileStore, MemoryStore, Recorder, type AnyEntry, type DevtoolsTester } from './index.ts';
@@ -154,7 +154,7 @@ interface Booted {
 }
 
 async function boot(env: Record<string, string> = {}, options: { test?: boolean; config?: string; providers?: ServiceProviderClass[] } = {}): Promise<Booted> {
-  const root = tempDir('bespoke-devtools-');
+  const root = tempDir('marmeon-devtools-');
   if (options.config) {
     mkdirSync(join(root, 'config'));
     writeFileSync(join(root, 'config', 'devtools.ts'), options.config);
@@ -231,7 +231,7 @@ describe('the gate (E115: fail closed, development only)', () => {
     await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with unset NODE_ENV/);
     await expect(boot({ NODE_ENV: 'production' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run in production/);
     await expect(boot({ NODE_ENV: 'staging' }, { test: true })).rejects.toThrow(/NODE_ENV=staging — they never run/);
-    // What `bespoke` prints with it (E130): the devtools' own solution — not "set the variables in .env".
+    // What `marmeon` prints with it (E130): the devtools' own solution — not "set the variables in .env".
     const error = await boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' }).catch((failure: unknown) => failure);
     const solutions = await new ErrorSolutions([...DevtoolsServiceProvider.solutions, ...coreSolutions]).find(error);
     expect(solutions.map((solution) => solution.title)).toEqual(['Remove DEVTOOLS_ENABLED in production']);
@@ -263,7 +263,7 @@ describe('what the recorder keeps', () => {
   it('a request with its queries, jobs, log entries and events — one batch, tied by the request id (E131)', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { 'x-bespoke': 'true', cookie: 'bespoke_session=s3ss10n', authorization: `Bearer ${API_TOKEN}` } });
+      const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { 'x-marmeon': 'true', cookie: 'marmeon_session=s3ss10n', authorization: `Bearer ${API_TOKEN}` } });
       const requestId = response.headers.get('x-request-id')!;
       const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
       expect(request.requestId).toBe(requestId);
@@ -277,7 +277,7 @@ describe('what the recorder keeps', () => {
       expect(request.content.page).toMatchObject({ kind: 'page', component: 'people/Show', props: { person: JSON.stringify({ id: 7, name: 'Ada' }).length, list: JSON.stringify(Array.from({ length: 50 }, (_, i) => i)).length } });
       expect(JSON.stringify(request.content.page)).not.toContain('Ada');
       // Where the props came from (W7 step 9): shared and left-out optional props, by name.
-      await kernel.request('/origins', { headers: { 'x-bespoke': 'true' } });
+      await kernel.request('/origins', { headers: { 'x-marmeon': 'true' } });
       expect(tester!.assertRecorded('request', (content) => content.route === 'origins').content.page).toMatchObject({ component: 'people/Origins', shared: ['auth'], optional: ['stats'] });
 
       const batch = tester!.batch(request.batch);

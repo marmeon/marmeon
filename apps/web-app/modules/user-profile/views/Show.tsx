@@ -1,4 +1,4 @@
-import type { PageProps } from '@bespokecore/http';
+import type { PageProps } from '@marmeon/http';
 import {
   Deferred,
   Head,
@@ -12,7 +12,7 @@ import {
   WhenVisible,
   type Placeholder,
   type RevalidateOnBack,
-} from '@bespokecore/react';
+} from '@marmeon/react';
 import { ViewTransition } from 'react';
 import { ActionFailure } from '../../../layouts/ActionFailure.tsx';
 import type { ShowUserProfileController } from '../controllers/ShowUserProfileController.ts';

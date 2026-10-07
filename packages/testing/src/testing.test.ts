@@ -1,9 +1,9 @@
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { tmpdir } from 'node:os';
-import { Clock, defineModule, type ApplicationOptions } from '@bespokecore/core';
-import { Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
-import { DevtoolsServiceProvider } from '@bespokecore/devtools';
-import { ServerServiceProvider } from '@bespokecore/server';
+import { Clock, defineModule, type ApplicationOptions } from '@marmeon/core';
+import { Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { DevtoolsServiceProvider } from '@marmeon/devtools';
+import { ServerServiceProvider } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
 
@@ -60,7 +60,7 @@ async function failure(check: PromiseLike<unknown>): Promise<string> {
   throw new Error('expected the assertion to fail');
 }
 
-describe('@bespokecore/testing', () => {
+describe('@marmeon/testing', () => {
   it("moves the app's time: every service reading the Clock sees app.travel() and app.freeze() (E97)", async () => {
     const app = await createTestApp(definition);
     const clock = app.container.make(Clock);
@@ -78,7 +78,7 @@ describe('@bespokecore/testing', () => {
   it('chains assertions on the pending request (page loads and navigations)', async () => {
     const app = await createTestApp(definition);
     await app.get('/greeting').assertOk().assertSee('Hello Ada').assertPage('greetings/Show', { meta: { lang: 'en' } });
-    await app.navigating().get('/greeting').assertHeader('x-bespoke', 'true').assertPage<ShowGreetingController>('greetings/Show', {
+    await app.navigating().get('/greeting').assertHeader('x-marmeon', 'true').assertPage<ShowGreetingController>('greetings/Show', {
       message: 'Hello Ada',
     });
   });
@@ -188,6 +188,6 @@ describe('the devtools in tests (E115, E116)', () => {
   });
 
   it('says when the app does not register the devtools', async () => {
-    await expect(createTestApp(definition, { devtools: true })).rejects.toThrow(/does not register @bespokecore\/devtools — add it to the app's package\.json/);
+    await expect(createTestApp(definition, { devtools: true })).rejects.toThrow(/does not register @marmeon\/devtools — add it to the app's package\.json/);
   });
 });

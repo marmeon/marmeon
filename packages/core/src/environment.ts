@@ -9,13 +9,13 @@
  *   are all protected.
  *
  * **Where it comes from** ({@link resolveEnvironment}, E170): the process's `NODE_ENV` — else the one in the app's `.env`
- * (only the base file: `.env.{NODE_ENV}` is chosen by it and cannot define it) — else none, which is protected (`bespoke start`
+ * (only the base file: `.env.{NODE_ENV}` is chosen by it and cannot define it) — else none, which is protected (`marmeon start`
  * then sets `production`). The resolved value is written to `process.env.NODE_ENV` once, at the start of the process, so
  * config definitions, the CLI and the server all read the same one; a value taken from `.env` is marked as such and named
  * wherever the environment is shown (`development (from .env)`).
  *
  * Every function reads `process.env` unless given the environment a config definition resolves from (`env` of `defineConfig`).
- * This module has no dependencies besides Node: `bespoke` loads it (`@bespokecore/core/environment`) before the injection hook.
+ * This module has no dependencies besides Node: `marmeon` loads it (`@marmeon/core/environment`) before the injection hook.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,7 +27,7 @@ export interface NodeEnvironment {
 }
 
 /** Set next to `NODE_ENV` when its value came from `.env` (holds that value, so a later explicit `NODE_ENV` is never mistaken). */
-export const DOTENV_MARKER = 'BESPOKE_NODE_ENV_FROM_DOTENV';
+export const DOTENV_MARKER = 'MARMEON_NODE_ENV_FROM_DOTENV';
 
 function nodeEnv(env: NodeEnvironment): string | undefined {
   return env.NODE_ENV || undefined; // an empty NODE_ENV is a missing one
@@ -76,13 +76,13 @@ export const environment = {
   },
 
   /**
-   * The warning a production command (`bespoke start`, `queue:work`, `schedule:work`) logs when it runs as `development`
+   * The warning a production command (`marmeon start`, `queue:work`, `schedule:work`) logs when it runs as `development`
    * because a `.env` says so (E170) — a developer's `.env` copied to a server turns the development tools on. Undefined otherwise.
    */
   dotEnvDevelopmentWarning(command: string, env: NodeEnvironment = process.env): string | undefined {
     if (!environment.isDevelopment(env) || !environment.fromDotEnv(env)) return undefined;
     return (
-      `NODE_ENV=development comes from .env, not from the environment: bespoke ${command} runs with the development tools ` +
+      `NODE_ENV=development comes from .env, not from the environment: marmeon ${command} runs with the development tools ` +
       '(error pages with source code, devtools, Vite) and without the production protections. On a server, set NODE_ENV ' +
       '(production, staging) in the environment — it wins over .env — and never deploy a development .env.'
     );
@@ -108,8 +108,8 @@ export function readEnvFile(path: string): Record<string, string | undefined> {
 
 /**
  * Resolves `NODE_ENV` for the app in `root` and writes it into `env` (`process.env`) — the one place that decides it (E170):
- * the process's own value wins; else the base `.env`'s (marked {@link DOTENV_MARKER}); else `fallback` (`bespoke start`:
- * `production`, `bespoke dev`: `development`); else none. A `.env.{NODE_ENV}` that sets `NODE_ENV` is ignored, with a warning.
+ * the process's own value wins; else the base `.env`'s (marked {@link DOTENV_MARKER}); else `fallback` (`marmeon start`:
+ * `production`, `marmeon dev`: `development`); else none. A `.env.{NODE_ENV}` that sets `NODE_ENV` is ignored, with a warning.
  */
 export function resolveEnvironment(root: string, { fallback, env = process.env }: { fallback?: string; env?: Record<string, string | undefined> } = {}): ResolvedEnvironment {
   let source: ResolvedEnvironment['source'];

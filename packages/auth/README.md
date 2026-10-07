@@ -1,44 +1,44 @@
-# @bespokecore/auth
+# @marmeon/auth
 
-Authentication and authorization for BespokeCore apps: the session guard (`Auth`), remember-me, password hashing (argon2id or
+Authentication and authorization for Marmeon apps: the session guard (`Auth`), remember-me, password hashing (argon2id or
 scrypt from `node:crypto`), password reset, e-mail verification, API tokens, policies with the `Gate` and their projection
 into pages — the **mechanics**. The auth **area** — pages, controllers, mails, migrations, tests — is generated into the app
-by `bespoke make:auth` and belongs to the app from then on (Laravel Breeze's principle, E30).
+by `marmeon make:auth` and belongs to the app from then on (Laravel Breeze's principle, E30).
 
 ```sh
-pnpm add @bespokecore/auth
-bespoke make:auth          # the auth module: modules/auth — yours to change
+pnpm add @marmeon/auth
+marmeon make:auth          # the auth module: modules/auth — yours to change
 ```
 
-`bespoke discover` registers its `AuthServiceProvider` (the `"bespoke"` field of its `package.json`). The provider binds the
+`marmeon discover` registers its `AuthServiceProvider` (the `"marmeon"` field of its `package.json`). The provider binds the
 `Hasher` (built at the boot: a Node without argon2 stops the start with the fix, not the first login), `Auth` and `Gate` per
-request, the token stores on the app's tables, adds `NoStoreWhenSignedIn` to the `web` group and — with `@bespokecore/cli` —
-the commands `make:auth` and `auth:prune-tokens`. It needs [@bespokecore/session](../session/README.md) and
-[@bespokecore/database](../database/README.md); what it does not know is where users come from: the app binds a
+request, the token stores on the app's tables, adds `NoStoreWhenSignedIn` to the `web` group and — with `marmeon` —
+the commands `make:auth` and `auth:prune-tokens`. It needs [@marmeon/session](../session/README.md) and
+[@marmeon/database](../database/README.md); what it does not know is where users come from: the app binds a
 [`UserProvider`](#the-user-type-and-the-userprovider-e24).
 
-## `bespoke make:auth`
+## `marmeon make:auth`
 
 ```text
-bespoke make:auth [--adapter=react] [--force]
+marmeon make:auth [--adapter=react] [--force]
 ```
 
 Copies `stubs/<adapter>/modules/auth` of this package to the app's `modules/auth/` (`react` is the only adapter with templates),
 adds `import auth from '#modules/auth'` and `modules: [auth, …]` to `bootstrap/app.ts` (or says how), names the packages the
-module imports that `package.json` lacks (`@bespokecore/cache`, `cli`, `i18n`, `mail`, `queue`, `react`, `scheduler`,
-`session`, `mjml`, `valibot`, …; `@bespokecore/testing` and `vitest` for its tests) and those it has only as dev dependencies
-(production runs the module through `@bespokecore/cli` — `bespoke start`, the worker, the scheduler — so `pnpm install --prod`
-must keep them), and — when nothing is missing — runs `bespoke route:types`. It needs `config/app.ts` exporting `AppConfig`
+module imports that `package.json` lacks (`@marmeon/cache`, `cli`, `i18n`, `mail`, `queue`, `react`, `scheduler`,
+`session`, `mjml`, `valibot`, …; `@marmeon/testing` and `vitest` for its tests) and those it has only as dev dependencies
+(production runs the module through `marmeon` — `marmeon start`, the worker, the scheduler — so `pnpm install --prod`
+must keep them), and — when nothing is missing — runs `marmeon route:types`. It needs `config/app.ts` exporting `AppConfig`
 (`APP_NAME`, `APP_URL`) — the app skeleton has one. An existing `modules/auth` is never touched without `--force`. Then:
-`bespoke migrate` (with `NODE_ENV=development`, so it writes the table types) and `MAIL_*` in `.env`. Its mails go through the
-queue, on its `mail` queue: a jobs table (`bespoke make:queue-table`, once) and a worker — `bespoke dev` starts one, production
-runs `bespoke queue:work --queue=mail,default` ([@bespokecore/queue](../queue/README.md)); its expired tokens are pruned at night
-by the scheduler (`bespoke schedule:work`, or `schedule:run` from cron). The lint preset, the devtools and the
+`marmeon migrate` (with `NODE_ENV=development`, so it writes the table types) and `MAIL_*` in `.env`. Its mails go through the
+queue, on its `mail` queue: a jobs table (`marmeon make:queue-table`, once) and a worker — `marmeon dev` starts one, production
+runs `marmeon queue:work --queue=mail,default` ([@marmeon/queue](../queue/README.md)); its expired tokens are pruned at night
+by the scheduler (`marmeon schedule:work`, or `schedule:run` from cron). The lint preset, the devtools and the
 Content-Security-Policy belong to the app, not to the module — `make:auth` names them while the app has none:
-`bespoke make:lint-config` ([Lint](../cli/README.md#lint)), `pnpm add -D @bespokecore/devtools`
-([@bespokecore/devtools](../devtools/README.md)) and `contentSecurityPolicy()` of [@bespokecore/http](../http/README.md) among
-the global middleware of `bootstrap/app.ts` (a nonce per page, E147). An app from `create-bespoke-app` has all three (E150) —
-its starter kit is this module, a home page and the blank app ([create-bespoke-app](../create-bespoke-app/README.md)). Its
+`marmeon make:lint-config` ([Lint](../cli/README.md#lint)), `pnpm add -D @marmeon/devtools`
+([@marmeon/devtools](../devtools/README.md)) and `contentSecurityPolicy()` of [@marmeon/http](../http/README.md) among
+the global middleware of `bootstrap/app.ts` (a nonce per page, E147). An app from `create-marmeon` has all three (E150) —
+its starter kit is this module, a home page and the blank app ([create-marmeon](../create-marmeon/README.md)). Its
 registration is [private](#private-registration-e146-e193) unless `AUTH_PRIVATE_REGISTRATION=false`; the old
 `--private-registration` flag is gone (E193) — passed anyway, `make:auth` says so and writes the same module.
 
@@ -47,7 +47,7 @@ What the module holds:
 | | |
 |---|---|
 | `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the jobs, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule` |
-| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user) ([@bespokecore/cache](../cache/README.md)) |
+| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user) ([@marmeon/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
 | `routes.ts` | `/login`, `/register`, `/register/sent`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…`, `/email/change…` (behind `authenticate()`; the app's pages also behind `ConfirmedAddress`) |
 | `api-routes.ts` | `GET /api/user` behind `authenticate('api')` — Sanctum's `/api/user` |
@@ -120,7 +120,7 @@ The app declares its user type once — `ctx.user`, `auth.user()`, `actingAs()` 
 // modules/auth/users.ts
 export type User = Row<'users'>;     // without the hash: `password` is a secret column
 
-declare module '@bespokecore/auth' {
+declare module '@marmeon/auth' {
   interface AuthTypes {
     user: User;
   }
@@ -260,7 +260,7 @@ if (!this.#verification.matches(ctx.user, ctx.params)) abort(403, …);         
 address stops working when the address changes, and a valid signature of someone else's link is not enough — `matches()`
 compares it with the signed-in user. Options: `expiresIn` (default `60m`), `route`. `verified()` guards the routes that need a
 confirmed address; the user type needs `email_verified_at`. Signed URLs are
-[@bespokecore/http](../http/README.md)'s `UrlSigner` and `signed()`.
+[@marmeon/http](../http/README.md)'s `UrlSigner` and `signed()`.
 
 ## API tokens (E27)
 
@@ -338,7 +338,7 @@ schema: (resolve) => confirmed(v.objectAsync({ email: v.pipeAsync(…, v.checkAs
 ```
 
 - **`password({ min = 8, messages? })`** — long enough (code points after NFKC: an emoji is one), at most 4 KiB, well-formed;
-  no composition rules (NIST advises against them). Messages are translation keys `bespoke.validation.password.*` by default.
+  no composition rules (NIST advises against them). Messages are translation keys `marmeon.validation.password.*` by default.
 - **`confirmed(schema, { field = 'password', confirmation = 'password_confirmation', message? })`** — the confirmation
   repeats the field (after the same normalization), reported on the confirmation field; sync and async schemas. It runs once
   the whole body is valid — a live validation (E62) never sees it.
@@ -357,7 +357,7 @@ Dispatched through the app's `EventDispatcher` (tests see them in `app.events`):
 | `PasswordChanged` | `updatePassword()` | `user` |
 | `PasswordReset` | `PasswordBroker.reset()` | `user` |
 
-A queued listener (`static queue`, [@bespokecore/queue](../queue/README.md)) of `Login` gets `{ userId, remember, via, at, ip,
+A queued listener (`static queue`, [@marmeon/queue](../queue/README.md)) of `Login` gets `{ userId, remember, via, at, ip,
 userAgent }`, one of `Registered` `{ userId }` — and reads the account as it is when it runs.
 
 ## Signed-in answers are never cached
@@ -373,12 +373,12 @@ signed-out session back. Use `file`, `database` or `redis` for apps with login �
 ## Pruning tokens
 
 ```text
-bespoke auth:prune-tokens [--hours=0]
+marmeon auth:prune-tokens [--hours=0]
 ```
 
 Deletes reset tokens older than `AUTH_RESET_EXPIRE`, expired remember-me tokens and API tokens that expired more than
 `--hours` ago (they stop working when they expire, but stay listed until pruned). Valid tokens stay. The generated module
-schedules it nightly — [@bespokecore/scheduler](../scheduler/README.md).
+schedules it nightly — [@marmeon/scheduler](../scheduler/README.md).
 
 ## Configuration
 
@@ -406,7 +406,7 @@ costs in `.env.test` (`HASH_ARGON_MEMORY=1024`, `HASH_ARGON_TIME=1`) — they ch
 
 ## Testing
 
-[@bespokecore/testing](../testing/README.md) signs in through this package — `authenticatedSession()` and
+[@marmeon/testing](../testing/README.md) signs in through this package — `authenticatedSession()` and
 `authenticatedToken()` build what a login or a token leaves:
 
 ```ts

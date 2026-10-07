@@ -32,7 +32,7 @@ jobs:
 
   pack:
     # The tarballs (E158): pack:check builds clean and checks every tarball (rules, publint, attw); pack:smoke runs the packed
-    # create-bespoke-app outside the checkout — the starter kit with pnpm, a blank app with npm — installs, tests, lints, builds and
+    # create-marmeon outside the checkout — the starter kit with pnpm, a blank app with npm — installs, tests, lints, builds and
     # starts them (pnpm's store from setup-node; npm fetches the third-party packages).
     name: pack:check, pack:smoke
     runs-on: ubuntu-latest
@@ -48,7 +48,7 @@ jobs:
       - run: pnpm run ci --only pack:check,pack:smoke
 
   image:
-    # create-bespoke-app --docker as a Docker image (E158): bespoke make:docker → docker build → docker run (non-root, no .env, /up, the health
+    # create-marmeon --docker as a Docker image (E158): marmeon make:docker → docker build → docker run (non-root, no .env, /up, the health
     # check, SIGTERM with SHUTDOWN_DELAY → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size; then the docs' image
     # (apps/docs/Dockerfile, E142): its contents, read-only, and deploy/docs/compose.yaml behind Caddy over HTTP/2.
     name: image
@@ -69,17 +69,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
-      # As in compose.yaml (bespokecore-pgsql): the port and credentials test:pgsql uses.
+      # As in compose.yaml (marmeon-pgsql): the port and credentials test:pgsql uses.
       pgsql:
         image: postgres:18-alpine
         env:
-          POSTGRES_USER: bespoke
+          POSTGRES_USER: marmeon
           POSTGRES_PASSWORD: secret
-          POSTGRES_DB: bespoke
+          POSTGRES_DB: marmeon
         ports:
           - 55432:5432
         options: >-
-          --health-cmd "pg_isready -U bespoke"
+          --health-cmd "pg_isready -U marmeon"
           --health-interval 2s
           --health-timeout 2s
           --health-retries 15
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
-      # As in compose.yaml (bespokecore-redis).
+      # As in compose.yaml (marmeon-redis).
       redis:
         image: redis:8-alpine
         ports:

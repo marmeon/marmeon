@@ -5,28 +5,28 @@ import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@bespokecore/core';
+import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
-const bin = join(repo, 'packages/cli/bin/bespoke.js');
+const bin = join(repo, 'packages/cli/bin/marmeon.js');
 const webApp = join(repo, 'apps/web-app');
 const tsc = join(repo, 'node_modules/.bin/tsc');
 
-function bespoke(cwd: string, args: string[], env: Record<string, string> = {}) {
+function marmeon(cwd: string, args: string[], env: Record<string, string> = {}) {
   // The launcher must re-exec, not think it is the child; and the web app here is the SQLite app of
   // .env.test — `pnpm test:pgsql` points app tests at Postgres, commands get that only when a test says so.
-  const { BESPOKE_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
+  const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
   const result = spawnSync(process.execPath, [bin, ...args], { cwd, encoding: 'utf8', env: { ...parent, NO_COLOR: '1', ...env } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-describe('bespoke (in the web app)', () => {
+describe('marmeon (in the web app)', () => {
   it('lists commands grouped by namespace', () => {
-    const { code, stdout } = bespoke(webApp, []);
+    const { code, stdout } = marmeon(webApp, []);
     expect(code).toBe(0);
     expect(stdout).toMatch(/^ {2}dev\s+Start the development server/m);
     expect(stdout).toMatch(/^make\n(?: {2}make:.*\n)+/m);
@@ -36,7 +36,7 @@ describe('bespoke (in the web app)', () => {
   });
 
   it('lists routes through a command that gets the Router injected', () => {
-    const { code, stdout } = bespoke(webApp, ['route:list']);
+    const { code, stdout } = marmeon(webApp, ['route:list']);
     expect(code).toBe(0);
     // Execution order: global first, then the web group (cookies before the session), the route's own last.
     expect(stdout).toMatch(
@@ -47,23 +47,23 @@ describe('bespoke (in the web app)', () => {
   });
 
   it('prints configuration errors without Node internals and exits with 1', () => {
-    const { code, stderr } = bespoke(webApp, ['route:list'], { APP_NAME: '', APP_URL: 'localhost' });
+    const { code, stderr } = marmeon(webApp, ['route:list'], { APP_NAME: '', APP_URL: 'localhost' });
     expect(code).toBe(1);
     expect(stderr).toMatch(/^✗ Invalid configuration — the application cannot start:\n {2}• app: APP_NAME/);
     expect(stderr).not.toMatch(/triggerUncaughtException|node:internal/);
   });
 
   it('says how to fix an error the app cannot start with — the solutions as text (E130)', () => {
-    const { code, stdout } = bespoke(webApp, ['route:list'], { APP_KEY: '' });
+    const { code, stdout } = marmeon(webApp, ['route:list'], { APP_KEY: '' });
     expect(code).toBe(1);
     // The installed package's solution (encryption) first, then the core's.
     expect(stdout).toContain('How to fix it: Generate an application key');
-    expect(stdout).toContain('  $ bespoke key:generate');
+    expect(stdout).toContain('  $ marmeon key:generate');
     expect(stdout).toContain('How to fix it: Set APP_KEY in .env');
   });
 
-  it('shows the database connection (db:show, added by @bespokecore/database)', () => {
-    const { code, stdout } = bespoke(webApp, ['db:show'], { DB_DATABASE: ':memory:' });
+  it('shows the database connection (db:show, added by @marmeon/database)', () => {
+    const { code, stdout } = marmeon(webApp, ['db:show'], { DB_DATABASE: ':memory:' });
     expect(code).toBe(0);
     expect(stdout).toMatch(/^Connection {2}default\nTarget {6}sqlite :memory:\nServer {6}SQLite 3\.\d+/m);
     expect(stdout).toContain('No tables yet.');
@@ -71,11 +71,11 @@ describe('bespoke (in the web app)', () => {
 
   it('runs the modules’ migrations in timestamp order (migrate, migrate:status)', () => {
     const memory = { DB_DATABASE: ':memory:' }; // every process starts empty
-    const status = bespoke(webApp, ['migrate:status'], memory);
+    const status = marmeon(webApp, ['migrate:status'], memory);
     expect(status.stdout).toMatch(
       /2026_10_01_120000_create_users_table\s+auth\s+Pending\n2026_10_01_120100_create_login_activity_table\s+user-profile\s+Pending\n2026_10_01_120101_create_profile_links_table\s+user-profile\s+Pending/,
     );
-    const migrate = bespoke(webApp, ['migrate'], memory);
+    const migrate = marmeon(webApp, ['migrate'], memory);
     expect(migrate.code).toBe(0);
     // Every module's migrations, in timestamp order (the list grows with the app) …
     const ran = [...migrate.stdout.matchAll(/^✓ Migrated (\d{4}_\d\d_\d\d_\d{6}_\w+) \(([\w-]+)\) [\d.]+ ms$/gm)].map((match) => match[1]!);
@@ -90,65 +90,65 @@ describe('bespoke (in the web app)', () => {
     const memory = { DB_DATABASE: ':memory:' };
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
     const key = /^APP_KEY=(.*)$/m.exec(readFileSync(join(webApp, '.env.test'), 'utf8'))![1]!;
-    const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: key, DEVTOOLS_ENABLED: 'false' };
+    const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: key, DEVTOOLS_ENABLED: 'false' };
     // Development regenerates the table types (already committed, so unchanged).
-    const development = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
+    const development = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'development' });
     expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
-    expect(bespoke(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (protected)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
+    expect(marmeon(webApp, ['migrate:fresh'], { ...config, NODE_ENV: 'production' }).stderr).toContain('The application is protected (production (protected)). Pass --force to drop every table — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
     // Fail-closed (E139): staging and a missing NODE_ENV ask for --force too; with it, staging migrates — and writes no types.
-    const staging = bespoke(webApp, ['migrate'], { ...config, NODE_ENV: 'staging' });
+    const staging = marmeon(webApp, ['migrate'], { ...config, NODE_ENV: 'staging' });
     expect(staging.code).toBe(1);
     expect(staging.stdout).toContain('Environment: staging (protected)\n');
     expect(staging.stdout).not.toContain('Migrated');
     expect(staging.stderr).toContain('Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).');
-    const forced = bespoke(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'staging' });
+    const forced = marmeon(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'staging' });
     expect(forced.code).toBe(0);
     expect(forced.stdout).toContain('Migrated 2026_10_01_120000_create_users_table');
     expect(forced.stdout).not.toContain('database.d.ts');
   }, 30_000);
 
   it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {
-    const fresh = bespoke(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
+    const fresh = marmeon(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
     expect(fresh.code).toBe(0);
     expect(fresh.stdout).toMatch(/✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\n✓ Seeded DemoLinksSeeder \(user-profile\) [\d.]+ ms\n$/);
-    const unknown = bespoke(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
+    const unknown = marmeon(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toBe('✗ There is no seeder "Nope".\n');
   });
 
   it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
-    const { code, stdout } = bespoke(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
+    const { code, stdout } = marmeon(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
     expect(stdout).toContain('✓ bootstrap/database.d.ts matches the migrations.');
     expect(code).toBe(0);
   });
 
   it('checks that the committed route types match the routes and views (route:types --check, as in CI)', () => {
-    const { code, stdout } = bespoke(webApp, ['route:types', '--check']);
+    const { code, stdout } = marmeon(webApp, ['route:types', '--check']);
     expect(stdout).toContain('✓ bootstrap/routes.ts matches the routes and views.');
     expect(code).toBe(0);
   });
 
-  it('writes the route types without a secret — route:types registers the app and boots nothing, as bespoke build runs it (E187)', () => {
+  it('writes the route types without a secret — route:types registers the app and boots nothing, as marmeon build runs it (E187)', () => {
     // What a Docker build has: no .env of the app's (CI has none anyway), no key, no name — here emptied over whatever .env holds.
     const withoutSecrets = { NODE_ENV: 'production', APP_KEY: '', APP_PREVIOUS_KEYS: '', APP_NAME: '', APP_URL: '' };
-    const types = bespoke(webApp, ['route:types', '--check'], withoutSecrets);
+    const types = marmeon(webApp, ['route:types', '--check'], withoutSecrets);
     expect(types.stderr).not.toContain('Invalid configuration');
     expect(types.stdout).toContain('✓ bootstrap/routes.ts matches the routes and views.');
     expect(types.code).toBe(0);
     // A command that runs the app still needs them.
-    const list = bespoke(webApp, ['route:list'], withoutSecrets);
+    const list = marmeon(webApp, ['route:list'], withoutSecrets);
     expect(list.code).toBe(1);
     expect(list.stderr).toContain('Invalid configuration — the application cannot start:\n  • app: APP_NAME');
   }, ciTimeout);
 
-  it.runIf(process.env.BESPOKE_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
-    const { code, stdout } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.BESPOKE_TEST_PGSQL_URL! });
+  it.runIf(process.env.MARMEON_TEST_PGSQL_URL)('shuts the app down after a command, so an open Postgres pool does not keep it running', () => {
+    const { code, stdout } = marmeon(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: process.env.MARMEON_TEST_PGSQL_URL! });
     expect(code).toBe(0);
-    expect(stdout).toMatch(/Target {6}pgsql postgres:\/\/bespoke:\*\*\*@localhost:55432\/bespoke\nServer {6}PostgreSQL \d+/);
+    expect(stdout).toMatch(/Target {6}pgsql postgres:\/\/marmeon:\*\*\*@localhost:55432\/marmeon\nServer {6}PostgreSQL \d+/);
   });
 
   it('prints a failing command’s error without Node’s dump and exits with 1', () => {
-    const { code, stdout, stderr } = bespoke(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:hunter2@127.0.0.1:1/app' });
+    const { code, stdout, stderr } = marmeon(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:hunter2@127.0.0.1:1/app' });
     expect(code).toBe(1);
     expect(stderr).toMatch(/^✗ DatabaseConnectionError: Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED.*\n {2}at /);
     expect(stderr).not.toMatch(/\[cause\]|hunter2|Node\.js v/);
@@ -156,25 +156,25 @@ describe('bespoke (in the web app)', () => {
   });
 
   it('rejects unknown commands and invalid options', () => {
-    expect(bespoke(webApp, ['nope']).stderr).toContain('Command "nope" is not defined');
-    const invalid = bespoke(webApp, ['route:list', '--verbose']);
+    expect(marmeon(webApp, ['nope']).stderr).toContain('Command "nope" is not defined');
+    const invalid = marmeon(webApp, ['route:list', '--verbose']);
     expect(invalid.code).toBe(1);
     expect(invalid.stderr).toContain("Unknown option '--verbose'");
   });
 });
 
-describe('bespoke make:* (generated code compiles)', () => {
+describe('marmeon make:* (generated code compiles)', () => {
   let app: string;
 
   beforeAll(() => {
-    app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-make-')));
+    app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-make-')));
     writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module' }));
     // Resolve the framework and React like an installed app would.
     const link = (name: string, target: string) => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications']) link(`@bespokecore/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
     for (const pkg of ['react', '@types/react', 'valibot']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
@@ -189,24 +189,24 @@ describe('bespoke make:* (generated code compiles)', () => {
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
   it('scaffolds a module, controller with view, event, listener, middleware, job and notification', () => {
-    expect(bespoke(app, ['make:module', 'billing']).stdout).toContain("import billing from '#modules/billing';");
-    expect(bespoke(app, ['make:controller', 'ShowInvoice', '--module=billing', '--view']).code).toBe(0);
-    expect(bespoke(app, ['make:event', 'InvoicePaid', '-m', 'billing']).code).toBe(0);
-    expect(bespoke(app, ['make:listener', 'SendReceipt', '--event=InvoicePaid', '--module=billing']).stdout).toContain(
+    expect(marmeon(app, ['make:module', 'billing']).stdout).toContain("import billing from '#modules/billing';");
+    expect(marmeon(app, ['make:controller', 'ShowInvoice', '--module=billing', '--view']).code).toBe(0);
+    expect(marmeon(app, ['make:event', 'InvoicePaid', '-m', 'billing']).code).toBe(0);
+    expect(marmeon(app, ['make:listener', 'SendReceipt', '--event=InvoicePaid', '--module=billing']).stdout).toContain(
       'listeners: [listen(InvoicePaid, SendReceipt)]',
     );
-    expect(bespoke(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
-    expect(bespoke(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain('jobs: [SendInvoiceReminderJob]');
-    expect(bespoke(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain('notifications: [InvoiceOverdueNotification]');
-    expect(bespoke(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
+    expect(marmeon(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
+    expect(marmeon(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain('jobs: [SendInvoiceReminderJob]');
+    expect(marmeon(app, ['make:notification', 'InvoiceOverdue', '--module=billing']).stdout).toContain('notifications: [InvoiceOverdueNotification]');
+    expect(marmeon(app, ['make:controller', 'UpdateInvoice', '--module=billing', '--request']).stdout).toContain("Route.post('/…', UpdateInvoiceController)");
     // A reading endpoint is a GET, and a GET has no body (E65): its request validates the query.
-    expect(bespoke(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
-    expect(bespoke(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
+    expect(marmeon(app, ['make:controller', 'ListInvoices', '--module=billing', '--request']).stdout).toContain("Route.get('/…', ListInvoicesController)");
+    expect(marmeon(app, ['make:migration', 'create_invoices_table', '--module=billing']).stdout).toContain(
       "migrations: new URL('./migrations/', import.meta.url)",
     );
-    expect(bespoke(app, ['make:migration', 'add_due_date_to_invoices_table', '--module=billing']).code).toBe(0);
-    expect(bespoke(app, ['make:migration', 'backfill_totals', '--module=billing']).code).toBe(0);
-    expect(bespoke(app, ['make:migration', 'CreateInvoices', '--module=billing']).stderr).toContain('Pass a snake_case name');
+    expect(marmeon(app, ['make:migration', 'add_due_date_to_invoices_table', '--module=billing']).code).toBe(0);
+    expect(marmeon(app, ['make:migration', 'backfill_totals', '--module=billing']).code).toBe(0);
+    expect(marmeon(app, ['make:migration', 'CreateInvoices', '--module=billing']).stderr).toContain('Pass a snake_case name');
 
     const controller = readFileSync(join(app, 'modules/billing/controllers/ShowInvoiceController.ts'), 'utf8');
     expect(controller).toContain("return this.view('billing/ShowInvoice', {});");
@@ -221,9 +221,9 @@ describe('bespoke make:* (generated code compiles)', () => {
     writeFileSync(
       join(app, 'modules/billing/send-overdue.ts'),
       [
-        "import type { Notifications } from '@bespokecore/notifications';",
+        "import type { Notifications } from '@marmeon/notifications';",
         "import { InvoiceOverdueNotification } from './notifications/InvoiceOverdueNotification.ts';",
-        "declare module '@bespokecore/notifications' { interface NotificationRecipients { user: { readonly id: number } } }",
+        "declare module '@marmeon/notifications' { interface NotificationRecipients { user: { readonly id: number } } }",
         'export const sendOverdue = (notifications: Notifications) => notifications.send({ type: \'user\', id: 7 }, InvoiceOverdueNotification, { id: 1 });',
         '',
       ].join('\n'),
@@ -254,29 +254,29 @@ describe('bespoke make:* (generated code compiles)', () => {
   }, 30_000); // thirteen CLI processes — seconds under a full parallel run (it timed out at 5 s with test:pgsql)
 
   it('refuses to overwrite and explains missing modules', () => {
-    bespoke(app, ['make:module', 'shop']);
-    const again = bespoke(app, ['make:module', 'shop']);
+    marmeon(app, ['make:module', 'shop']);
+    const again = marmeon(app, ['make:module', 'shop']);
     expect(again.code).toBe(1);
     expect(again.stderr).toContain('modules/shop/index.ts already exists (use --force to overwrite)');
 
-    const missing = bespoke(app, ['make:controller', 'ShowCart', '--module=cart']);
-    expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: bespoke make:module cart');
+    const missing = marmeon(app, ['make:controller', 'ShowCart', '--module=cart']);
+    expect(missing.stderr).toContain('Module "cart" does not exist. Create it first: marmeon make:module cart');
   }, ciTimeout);
 
   it('generates the application key into .env — without booting, never silently replacing one, rotating with --force (E169)', () => {
     writeFileSync(join(app, '.env.example'), 'APP_NAME=Shop\nAPP_KEY=\n');
-    expect(bespoke(app, ['key:generate']).code).toBe(0);
+    expect(marmeon(app, ['key:generate']).code).toBe(0);
     const env = readFileSync(join(app, '.env'), 'utf8');
     expect(env).toMatch(/^APP_NAME=Shop\nAPP_KEY=base64:[A-Za-z0-9+/]{43}=\n$/);
 
-    const again = bespoke(app, ['key:generate']);
+    const again = marmeon(app, ['key:generate']);
     expect(again.code).toBe(1);
     expect(again.stderr).toContain('APP_KEY is already set');
     expect(readFileSync(join(app, '.env'), 'utf8')).toBe(env);
 
     // --force rotates (E169): the old key moves to APP_PREVIOUS_KEYS — what it encrypted stays readable.
     const first = /^APP_KEY=(.*)$/m.exec(env)![1]!;
-    const rotated = bespoke(app, ['key:generate', '--force']);
+    const rotated = marmeon(app, ['key:generate', '--force']);
     expect(rotated.code).toBe(0);
     expect(rotated.stdout).toContain('The old key moved to APP_PREVIOUS_KEYS');
     const second = readFileSync(join(app, '.env'), 'utf8');
@@ -284,14 +284,14 @@ describe('bespoke make:* (generated code compiles)', () => {
     expect(/^APP_KEY=(.*)$/m.exec(second)![1]).not.toBe(first);
     // Again: the newest old key first, none twice.
     const secondKey = /^APP_KEY=(.*)$/m.exec(second)![1]!;
-    expect(bespoke(app, ['key:generate', '--force']).code).toBe(0);
+    expect(marmeon(app, ['key:generate', '--force']).code).toBe(0);
     expect(/^APP_PREVIOUS_KEYS=(.*)$/m.exec(readFileSync(join(app, '.env'), 'utf8'))![1]).toBe(`${secondKey},${first}`);
-    expect(bespoke(app, ['key:generate', '--show']).stdout).toMatch(/^base64:[A-Za-z0-9+/]{43}=\n$/);
+    expect(marmeon(app, ['key:generate', '--show']).stdout).toMatch(/^base64:[A-Za-z0-9+/]{43}=\n$/);
   });
 
   it('runs generators without a bootable app (no bootstrap, no .env)', () => {
-    expect(bespoke(app, ['make:event', 'CartEmptied', '--module=shop']).code).toBe(0);
-    expect(bespoke(app, ['route:list']).stderr).toContain('No BespokeCore app');
+    expect(marmeon(app, ['make:event', 'CartEmptied', '--module=shop']).code).toBe(0);
+    expect(marmeon(app, ['route:list']).stderr).toContain('No Marmeon app');
   });
 });
 
@@ -300,19 +300,20 @@ describe('bespoke make:* (generated code compiles)', () => {
  * the workspace manifest, whose `exports` name the source condition. It runs its `dist/` like a published package; started with
  * the source condition, Node would refuse its TypeScript (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING).
  */
-describe('bespoke from a copy of the workspace package (pnpm deploy)', () => {
+describe('marmeon from a copy of the workspace package (pnpm deploy)', () => {
   it('is no monorepo: no source condition, the built dist/', () => {
-    const app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-deployed-')));
+    const app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-deployed-')));
     try {
-      const cli = join(app, 'node_modules/@bespokecore/cli');
+      const cli = join(app, 'node_modules/marmeon');
       // As pnpm deploy writes it: a workspace of the app alone — the copy under node_modules is none of its packages (E187).
       writeFileSync(join(app, 'pnpm-workspace.yaml'), "packages:\n- '.'\ninjectWorkspacePackages: false\n");
       // The CLI copied with its workspace manifest and sources; its dependencies as installed (here: links to the built packages).
       for (const part of ['bin', 'src', 'dist', 'package.json']) cpSync(join(repo, 'packages/cli', part), join(cli, part), { recursive: true });
-      for (const name of ['core', 'server', 'http', 'router', 'encryption', 'log']) symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@bespokecore', name), 'dir');
-      expect(readFileSync(join(cli, 'package.json'), 'utf8')).toContain('"@bespokecore/source"');
-      const { BESPOKE_CHILD: _child, NODE_OPTIONS: _options, ...parent } = process.env;
-      const result = spawnSync(process.execPath, [join(cli, 'bin/bespoke.js'), 'list'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, NODE_ENV: 'production' } });
+      mkdirSync(join(app, 'node_modules/@marmeon'), { recursive: true }); // the CLI is unscoped (E195): nothing made the scope's directory
+      for (const name of ['core', 'server', 'http', 'router', 'encryption', 'log']) symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@marmeon', name), 'dir');
+      expect(readFileSync(join(cli, 'package.json'), 'utf8')).toContain('"@marmeon/source"');
+      const { MARMEON_CHILD: _child, NODE_OPTIONS: _options, ...parent } = process.env;
+      const result = spawnSync(process.execPath, [join(cli, 'bin/marmeon.js'), 'list'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, NODE_ENV: 'production' } });
       expect(result.stderr).not.toContain('ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING');
       expect(result.stdout).toContain('make:module');
       expect(result.status).toBe(0);
@@ -324,27 +325,27 @@ describe('bespoke from a copy of the workspace package (pnpm deploy)', () => {
   it('knows the monorepo by its workspace, not by a manifest: a pnpm-workspace.yaml above the package lists its directory (E187)', async () => {
     const { inWorkspace, listedIn } = (await import(new URL('../bin/workspace.js', import.meta.url).href)) as { inWorkspace(dir: string): boolean; listedIn(yaml: string, path: string): boolean };
     expect(inWorkspace(join(repo, 'packages/cli'))).toBe(true);
-    expect(inWorkspace(join(webApp, 'node_modules/@bespokecore/cli'))).toBe(true); // the app's link resolves to the workspace package
+    expect(inWorkspace(join(webApp, 'node_modules/marmeon'))).toBe(true); // the app's link resolves to the workspace package
     const yaml = "# the workspace\npackages:\n  - 'packages/*'\n  - \"apps/**\" # apps\n  - '!apps/legacy/**'\ncatalog:\n  - nope\n";
     expect(['packages/cli', 'apps/shop', 'apps/a/b'].map((path) => listedIn(yaml, path))).toEqual([true, true, true]);
-    expect(['packages/cli/sub', 'apps/legacy/x', 'nope', 'node_modules/.pnpm/x/node_modules/@bespokecore/cli', 'packages/node_modules'].map((path) => listedIn(yaml, path))).toEqual([false, false, false, false, false]);
+    expect(['packages/cli/sub', 'apps/legacy/x', 'nope', 'node_modules/.pnpm/x/node_modules/marmeon', 'packages/node_modules'].map((path) => listedIn(yaml, path))).toEqual([false, false, false, false, false]);
     expect(listedIn("packages:\n- '.'\n", '')).toBe(false);
     expect(listedIn("packages:\n- packages/*\nother: 1\n", 'packages/cli')).toBe(true); // a sequence need not be indented
     expect(listedIn('onlyBuiltDependencies:\n  - esbuild\n', 'packages/cli')).toBe(false);
   });
 
   it('a package that brings its TypeScript sources: the start says Node’s code and how to fix it', () => {
-    const app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-shipped-ts-')));
+    const app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-shipped-ts-')));
     try {
       writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module' }));
-      mkdirSync(join(app, 'node_modules/@bespokecore'), { recursive: true });
-      symlinkSync(join(repo, 'packages/core'), join(app, 'node_modules/@bespokecore/core'), 'dir');
+      mkdirSync(join(app, 'node_modules/@marmeon'), { recursive: true });
+      symlinkSync(join(repo, 'packages/core'), join(app, 'node_modules/@marmeon/core'), 'dir');
       mkdirSync(join(app, 'node_modules/shipped'));
       writeFileSync(join(app, 'node_modules/shipped/package.json'), JSON.stringify({ name: 'shipped', type: 'module', exports: './index.ts' }));
       writeFileSync(join(app, 'node_modules/shipped/index.ts'), 'export const value: number = 1;\n');
       mkdirSync(join(app, 'bootstrap'));
-      writeFileSync(join(app, 'bootstrap/app.ts'), "import { join } from 'node:path';\nimport { defineApplication } from '@bespokecore/core';\nimport 'shipped';\nexport default defineApplication({ root: join(import.meta.dirname, '..') });\n");
-      const { code, stdout, stderr } = bespoke(app, ['route:list'], { NODE_ENV: 'production' });
+      writeFileSync(join(app, 'bootstrap/app.ts'), "import { join } from 'node:path';\nimport { defineApplication } from '@marmeon/core';\nimport 'shipped';\nexport default defineApplication({ root: join(import.meta.dirname, '..') });\n");
+      const { code, stdout, stderr } = marmeon(app, ['route:list'], { NODE_ENV: 'production' });
       expect(code).toBe(1);
       expect(stderr).toContain('(ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING)');
       expect(stdout).toContain('How to fix it: Install the package as it is published');
@@ -355,21 +356,21 @@ describe('bespoke from a copy of the workspace package (pnpm deploy)', () => {
 });
 
 /**
- * `bespoke start` (E139, E159): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
+ * `marmeon start` (E139, E159): one Node process — the server itself, no launcher in front, so a supervisor's SIGTERM reaches
  * it — and the `NODE_ENV` it is given (staging stays staging, protected; a missing one becomes production). An app of its own
  * that resolves the framework's built `dist/` like an installed one (`start` never uses the source condition).
  */
-describe('bespoke start', () => {
+describe('marmeon start', () => {
   let app: string;
   const key = `base64:${Buffer.alloc(32, 3).toString('base64')}`;
 
   beforeAll(() => {
-    app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-start-')));
+    app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-start-')));
     const packages = ['core', 'encryption', 'http', 'router', 'server', 'log'];
-    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: Object.fromEntries(packages.map((name) => [`@bespokecore/${name}`, '*'])) }));
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: Object.fromEntries(packages.map((name) => [`@marmeon/${name}`, '*'])) }));
     for (const name of packages) {
-      mkdirSync(join(app, 'node_modules/@bespokecore'), { recursive: true });
-      symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@bespokecore', name), 'dir');
+      mkdirSync(join(app, 'node_modules/@marmeon'), { recursive: true });
+      symlinkSync(join(repo, 'packages', name), join(app, 'node_modules/@marmeon', name), 'dir');
     }
     mkdirSync(join(app, 'bootstrap'));
     mkdirSync(join(app, 'services'));
@@ -380,14 +381,14 @@ describe('bespoke start', () => {
       [
         "import { join } from 'node:path';",
         "import { setTimeout as sleep } from 'node:timers/promises';",
-        "import { defineApplication, defineModule, Logger, type Application } from '@bespokecore/core';",
-        "import { defineRoutes } from '@bespokecore/http';",
+        "import { defineApplication, defineModule, Logger, type Application } from '@marmeon/core';",
+        "import { defineRoutes } from '@marmeon/http';",
         "import { Greeter } from '../services/Greeter.ts';",
         '// The logger as a service takes it while the app boots — its warnings later on are said.',
         'let bootLogger: Logger | undefined;',
         'class GreeterProvider {',
         '  boot(app: Application) {',
-        "    if (process.env.GREETER_FAILS === '1' && process.env.BESPOKE_CLUSTER_WORKER === '1') throw new Error('the greeter cannot boot in a worker');",
+        "    if (process.env.GREETER_FAILS === '1' && process.env.MARMEON_CLUSTER_WORKER === '1') throw new Error('the greeter cannot boot in a worker');",
         '    console.log(`greeter: ${app.container.make(Greeter).describe()}`);',
         '    bootLogger = app.container.make(Logger);',
         '  }',
@@ -403,7 +404,7 @@ describe('bespoke start', () => {
       join(app, 'loads.mjs'),
       "import { registerHooks } from 'node:module';\nimport { writeFileSync } from 'node:fs';\nconst urls = [];\nregisterHooks({ load(url, context, next) { urls.push(url); return next(url, context); } });\nprocess.on('exit', () => writeFileSync(new URL('./loaded.json', import.meta.url), JSON.stringify(urls)));\n",
     );
-    // What `bespoke build` leaves for the production renderer.
+    // What `marmeon build` leaves for the production renderer.
     mkdirSync(join(app, 'dist/client'), { recursive: true });
     mkdirSync(join(app, 'dist/server'), { recursive: true });
     writeFileSync(join(app, 'dist/client/index.html'), '<!doctype html><html><head></head><body><div id="app"></div></body></html>\n');
@@ -412,14 +413,14 @@ describe('bespoke start', () => {
   afterAll(() => rmSync(app, { recursive: true, force: true }));
 
   /**
-   * `bespoke start` until `servers` servers listen, on the address the requests go to: `HOST=127.0.0.1` (W9.2). On every interface
+   * `marmeon start` until `servers` servers listen, on the address the requests go to: `HOST=127.0.0.1` (W9.2). On every interface
    * (`::`, no HOST) macOS lets the server — even with the port the system picked for it (`PORT=0`) — listen beside another program
    * that holds the same port on 127.0.0.1 only (1Password on 127.0.0.1:39127, W8.13); a request to 127.0.0.1 then reaches that
    * program (a 404, a 501 from `/up`). Bound to 127.0.0.1 the start fails instead (EADDRINUSE). The requests go to `base`: the
    * address and port the start line names.
    */
   async function start(env: Record<string, string>, args: string[] = [], servers = 1) {
-    const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
     const child = spawn(process.execPath, [bin, 'start', ...args], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'info', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (chunk) => (output += chunk));
@@ -432,7 +433,7 @@ describe('bespoke start', () => {
       if (child.exitCode !== null || Date.now() > deadline) {
         // A start that took too long must not outlive the test (a primary and its workers would keep running).
         child.kill('SIGTERM');
-        throw new Error(`bespoke start did not start:\n${output}`);
+        throw new Error(`marmeon start did not start:\n${output}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
@@ -448,8 +449,8 @@ describe('bespoke start', () => {
       // No launcher, no child: the process that was started is the server.
       expect(spawnSync('pgrep', ['-P', String(server.child.pid)], { encoding: 'utf8' }).stdout).toBe('');
       expect((await fetch(`${server.base}/up`)).status).toBe(200);
-      const line = server.output().split('\n').find((entry) => entry.includes('BespokeCore in'))!;
-      expect(JSON.parse(line).msg).toMatch(new RegExp(`^BespokeCore in staging \\(protected\\) on http://127.0.0.1:${server.port} \\(the build; `));
+      const line = server.output().split('\n').find((entry) => entry.includes('Marmeon in'))!;
+      expect(JSON.parse(line).msg).toMatch(new RegExp(`^Marmeon in staging \\(protected\\) on http://127.0.0.1:${server.port} \\(the build; `));
     } finally {
       server.child.kill('SIGTERM');
     }
@@ -463,7 +464,7 @@ describe('bespoke start', () => {
     const original = readFileSync(ssr, 'utf8');
     writeFileSync(ssr, "console.log('ssr: loading');\nawait new Promise((resolve) => setTimeout(resolve, 800));\nexport const render = async () => ({ html: '' });\n");
     try {
-      const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+      const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
       const child = spawn(process.execPath, [bin, 'start'], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'info', NODE_ENV: 'production' }, stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '';
       child.stdout.on('data', (chunk) => (output += chunk));
@@ -471,7 +472,7 @@ describe('bespoke start', () => {
       const exited = new Promise<{ code: number | null; signal: string | null }>((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));
       const deadline = Date.now() + 20_000;
       while (!output.includes('ssr: loading')) {
-        if (child.exitCode !== null || Date.now() > deadline) throw new Error(`bespoke start did not load the SSR bundle:\n${output}`);
+        if (child.exitCode !== null || Date.now() > deadline) throw new Error(`marmeon start did not load the SSR bundle:\n${output}`);
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       child.kill('SIGTERM');
@@ -485,7 +486,7 @@ describe('bespoke start', () => {
 
   it('--workers=2 (E140): a primary and two servers on one port; SIGTERM reaches both, each drains its request, exit 0', async () => {
     // Without the build's injection lists every process boots with a warning — said once, by the primary, not by each worker.
-    rmSync(join(app, '.bespoke/injections.json'), { force: true });
+    rmSync(join(app, '.marmeon/injections.json'), { force: true });
     const server = await start({ NODE_ENV: 'production' }, ['--workers=2'], 2);
     let slow: Promise<Response> | undefined;
     try {
@@ -539,15 +540,15 @@ describe('bespoke start', () => {
   }, 30_000);
 
   it('the workers\' mark left in the environment silences no single server: its boot warnings are said', async () => {
-    rmSync(join(app, '.bespoke/injections.json'), { force: true });
-    const server = await start({ NODE_ENV: 'production', BESPOKE_CLUSTER_WORKER: '1' });
+    rmSync(join(app, '.marmeon/injections.json'), { force: true });
+    const server = await start({ NODE_ENV: 'production', MARMEON_CLUSTER_WORKER: '1' });
     server.child.kill('SIGTERM');
     expect(await server.exited).toBe(0);
     expect(server.output()).toContain('Build artifacts are missing');
   }, 30_000);
 
   it('a worker that cannot start stops the cluster with its exit code; --workers needs a number', async () => {
-    const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
     // The port is taken: every worker fails to listen — the cluster must end, not fork them forever.
     const busy = createServer();
     await new Promise<void>((resolve) => busy.listen(0, '127.0.0.1', resolve));
@@ -607,10 +608,10 @@ describe('bespoke start', () => {
     writeFileSync(join(app, '.env'), 'NODE_ENV=development\n');
     mkdirSync(join(app, 'modules')); // what development watches for new views
     try {
-      const { BESPOKE_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+      const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
       // Development serves through Vite's dev server, which this app does not have — the warning comes first, before the server.
       const result = spawnSync(process.execPath, [bin, 'start'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, PORT: '0', LOG_LEVEL: 'info' } });
-      expect(`${result.stdout}${result.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: bespoke start runs with the development tools');
+      expect(`${result.stdout}${result.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: marmeon start runs with the development tools');
       // …and the failed start ends (the route-types watcher kept it alive until it was killed).
       expect(result.stderr).toContain('Vite is not installed in this app.');
       expect(result.status).toBe(1);
@@ -626,7 +627,7 @@ describe('bespoke start', () => {
       const server = await start({ NODE_ENV: 'staging' });
       server.child.kill('SIGTERM');
       expect(await server.exited).toBe(0);
-      expect(server.output()).toContain(`BespokeCore in staging (protected) on http://127.0.0.1:${server.port}`);
+      expect(server.output()).toContain(`Marmeon in staging (protected) on http://127.0.0.1:${server.port}`);
       expect(server.output()).not.toContain('comes from .env');
     } finally {
       rmSync(join(app, '.env'));
@@ -637,7 +638,7 @@ describe('bespoke start', () => {
     const server = await start({});
     server.child.kill('SIGTERM');
     expect(await server.exited).toBe(0);
-    expect(server.output()).toContain('BespokeCore in production (protected) on http://127.0.0.1:');
+    expect(server.output()).toContain('Marmeon in production (protected) on http://127.0.0.1:');
   }, 30_000);
 
   /** One start until it listens, then SIGTERM: its output and the modules it loaded. */
@@ -650,9 +651,9 @@ describe('bespoke start', () => {
     return { output: server.output(), loaded: (name: string) => loaded.some((url) => url.includes(`/node_modules/${name}/`) || url.includes(`/${name}@`)) };
   }
 
-  it('applies the injection lists of bespoke build: no oxc-parser, no pino-pretty for JSON logs, and a compile cache (E138)', async () => {
+  it('applies the injection lists of marmeon build: no oxc-parser, no pino-pretty for JSON logs, and a compile cache (E138)', async () => {
     rmSync(join(app, 'storage'), { recursive: true, force: true });
-    // What `bespoke build` leaves: the injection lists and the discovery manifest (discovering would parse .d.ts files with oxc).
+    // What `marmeon build` leaves: the injection lists and the discovery manifest (discovering would parse .d.ts files with oxc).
     writeInjectionArtifacts({ root: app });
     writeManifest({ root: app, conditions: runtimeConditions([], '') });
     const { output, loaded } = await startOnce();
@@ -681,11 +682,11 @@ describe('bespoke start', () => {
     }
   }, 60_000);
 
-  it('analyses what bespoke build never saw — a missing file, a module not in it — instead of failing (E138)', async () => {
-    rmSync(join(app, '.bespoke/injections.json'), { force: true });
+  it('analyses what marmeon build never saw — a missing file, a module not in it — instead of failing (E138)', async () => {
+    rmSync(join(app, '.marmeon/injections.json'), { force: true });
     const { output } = await startOnce();
     expect(output).toContain('greeter: SystemClock');
-    expect(output).toContain('Build artifacts are missing (.bespoke/injections.json): the injection lists of 1 file (services/Greeter.ts)');
+    expect(output).toContain('Build artifacts are missing (.marmeon/injections.json): the injection lists of 1 file (services/Greeter.ts)');
   }, 30_000);
 
   it('starts without the compile cache when its directory cannot be written', async () => {
@@ -710,11 +711,11 @@ describe('NODE_ENV from the app’s .env (E170)', () => {
   let app: string;
   const blank = join(repo, 'apps/blank-app');
   const config = (dir: string) => `APP_NAME=Blank\nAPP_URL=http://localhost\nAPP_KEY=base64:${Buffer.alloc(32, 5).toString('base64')}\nDB_DATABASE=${join(dir, 'db.sqlite')}\nMAIL_MAILER=array\n`;
-  const inApp = (args: string[], env: Record<string, string> = {}) => bespoke(app, args, { NODE_ENV: '', ...env });
+  const inApp = (args: string[], env: Record<string, string> = {}) => marmeon(app, args, { NODE_ENV: '', ...env });
 
   beforeAll(() => {
-    app = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-dotenv-')));
-    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.bespoke|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
+    app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-dotenv-')));
+    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
     symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
     mkdirSync(join(app, 'storage'));
   });
@@ -731,7 +732,7 @@ describe('NODE_ENV from the app’s .env (E170)', () => {
     // A production command as development because of .env: said, not refused.
     const worker = inApp(['queue:work', '--stop-when-empty']);
     expect(worker.code).toBe(0);
-    expect(`${worker.stdout}${worker.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: bespoke queue:work runs with the development tools');
+    expect(`${worker.stdout}${worker.stderr}`).toContain('NODE_ENV=development comes from .env, not from the environment: marmeon queue:work runs with the development tools');
     expect(worker.stdout).toContain('— in development (from .env)');
   }, 30_000);
 
@@ -764,7 +765,7 @@ describe('NODE_ENV from the app’s .env (E170)', () => {
 /** The fixture's `services/Greeter.ts`, whose constructor takes `parameters` (a `Clock`, maybe a `Redactor`). */
 function greeter(parameters: string[]): string {
   return [
-    "import { Clock, Redactor } from '@bespokecore/core';",
+    "import { Clock, Redactor } from '@marmeon/core';",
     'export class Greeter {',
     '  readonly #parts: object[];',
     `  constructor(${parameters.join(', ')}) {`,

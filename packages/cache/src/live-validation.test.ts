@@ -1,7 +1,7 @@
-import { createApplication, defineModule, type Application } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { Controller, defineRequest, defineRoutes, HttpServiceProvider, VALIDATE_HEADER, type ContextOf } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
+import { createApplication, defineModule, type Application } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { Controller, defineRequest, defineRoutes, HttpServiceProvider, VALIDATE_HEADER, type ContextOf } from '@marmeon/http';
+import { createHttpKernel } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { CacheServiceProvider } from './index.ts';

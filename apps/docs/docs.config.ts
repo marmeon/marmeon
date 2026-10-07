@@ -5,11 +5,10 @@
  */
 export const PACKAGES = [
   'auth',
-  'bespokecore',
   'cache',
   'cli',
   'core',
-  'create-bespoke-app',
+  'create-marmeon',
   'database',
   'devtools',
   'encryption',
@@ -90,7 +89,7 @@ export default defineDocs({
     { slug: 'security-policy', file: 'SECURITY.md', label: 'Reporting a vulnerability' },
   ],
   groups: [
-    { title: 'Core', packages: ['core', 'cli', 'create-bespoke-app', 'bespokecore', 'log', 'encryption', 'testing'] },
+    { title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing'] },
     { title: 'HTTP', packages: ['router', 'http', 'server', 'session', 'vite', 'i18n'] },
     { title: 'Data', packages: ['database', 'cache', 'redis', 'table'] },
     { title: 'Auth & Mail', packages: ['auth', 'mail', 'notifications'] },

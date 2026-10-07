@@ -1,4 +1,4 @@
-import type { HealthCheck } from '@bespokecore/core';
+import type { HealthCheck } from '@marmeon/core';
 import { QueueConfig } from './config.ts';
 import { Queue } from './queue.ts';
 

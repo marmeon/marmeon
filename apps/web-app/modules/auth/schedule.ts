@@ -1,7 +1,7 @@
-import { defineSchedule } from '@bespokecore/scheduler';
+import { defineSchedule } from '@marmeon/scheduler';
 import { PruneEmailChanges } from './tasks/PruneEmailChanges.ts';
 
-// The auth module's scheduled work (E88) — `bespoke schedule:work` runs it (`bespoke dev` starts one), `bespoke schedule:list`
+// The auth module's scheduled work (E88) — `marmeon schedule:work` runs it (`marmeon dev` starts one), `marmeon schedule:list`
 // shows it. Expired reset, remember-me and API tokens are deleted at night, by one server only — and the changes of address
 // nobody confirmed in time (private registration, E146) are cleared.
 export const schedule = defineSchedule((s) => {

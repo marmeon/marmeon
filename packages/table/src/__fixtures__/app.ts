@@ -1,16 +1,16 @@
-import { Gate, type Auth, type Authenticated } from '@bespokecore/auth';
-import { createApplication, defineModule, Logger, type Application } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, Schema, sql, type QueryEvent } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
-import { Controller, defineRequest, defineRoutes, HttpServiceProvider, IncomingRequest, type ContextOf } from '@bespokecore/http';
-import { defineMiddleware, type HttpContext } from '@bespokecore/router';
-import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
+import { Gate, type Auth, type Authenticated } from '@marmeon/auth';
+import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, Schema, sql, type QueryEvent } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
+import { Controller, defineRequest, defineRoutes, HttpServiceProvider, IncomingRequest, type ContextOf } from '@marmeon/http';
+import { defineMiddleware, type HttpContext } from '@marmeon/router';
+import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { action, bulk, column, defineTable, exportCsv, filter, Tables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
 import { MemberPolicy } from './policies.ts';
 import './schema.ts';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
-export const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+/** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
+export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 export type TestDriver = (typeof drivers)[number];
 
@@ -257,7 +257,7 @@ export interface TableTestApp {
 /** A fresh database per app: SQLite in memory, or a new Postgres database (dropped by `close()`). */
 async function freshDatabase(driver: TestDriver): Promise<{ env: Record<string, string>; drop: () => Promise<void> }> {
   if (driver === 'sqlite') return { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' }, drop: async () => {} };
-  const name = `bespoke_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);
@@ -333,7 +333,7 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
         headers: {
           accept: 'application/json',
           ...(init.user === undefined ? {} : { 'x-test-user': String(init.user) }),
-          ...(init.action ? { 'x-bespoke-action': 'true' } : {}),
+          ...(init.action ? { 'x-marmeon-action': 'true' } : {}),
           ...(init.json === undefined ? {} : { 'content-type': 'application/json' }),
           ...(init.form === undefined ? {} : { 'content-type': 'application/x-www-form-urlencoded' }),
           ...init.headers,

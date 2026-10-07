@@ -1,5 +1,5 @@
-import type { Login } from '@bespokecore/auth';
-import { Broadcaster } from '@bespokecore/live';
+import type { Login } from '@marmeon/auth';
+import { Broadcaster } from '@marmeon/live';
 import { LoginActivityRepository } from '../LoginActivityRepository.ts';
 import { SIGN_INS_CHANNEL } from '../live.ts';
 

@@ -5,18 +5,18 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createApplication } from '@bespokecore/core';
-import { ServerConfig, ServerServiceProvider } from '@bespokecore/server';
+import { createApplication } from '@marmeon/core';
+import { ServerConfig, ServerServiceProvider } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { inspectApp } from './commands/make-docker.ts';
 import { HEALTHCHECK_SCRIPT, TESTED_PNPM } from './docker.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
-const bin = join(repo, 'packages/cli/bin/bespoke.js');
+const bin = join(repo, 'packages/cli/bin/marmeon.js');
 
 function app(files: Record<string, string>): string {
-  const root = realpathSync(tempDir('bespoke-docker-'));
+  const root = realpathSync(tempDir('marmeon-docker-'));
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     writeFileSync(join(root, file), content);
@@ -25,21 +25,21 @@ function app(files: Record<string, string>): string {
 }
 
 function makeDocker(cwd: string, ...args: string[]) {
-  const { BESPOKE_CHILD: _child, ...parent } = process.env;
+  const { MARMEON_CHILD: _child, ...parent } = process.env;
   const result = spawnSync(process.execPath, [bin, 'make:docker', ...args], { cwd, encoding: 'utf8', env: { ...parent, NO_COLOR: '1' } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr, file: (name: string) => readFileSync(join(cwd, name), 'utf8') };
 }
 
 const pnpmApp = () =>
   app({
-    'package.json': JSON.stringify({ name: '@acme/shop', packageManager: 'pnpm@12.9.1+sha512.abc', dependencies: { '@bespokecore/core': 'file:./vendor/fw/core.tgz' } }),
+    'package.json': JSON.stringify({ name: '@acme/shop', packageManager: 'pnpm@12.9.1+sha512.abc', dependencies: { '@marmeon/core': 'file:./vendor/fw/core.tgz' } }),
     'pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
-    'pnpm-workspace.yaml': 'overrides:\n  "@bespokecore/http": "file:./vendor/fw/http.tgz"\n  "left-pad": "file:../outside/left-pad.tgz"\n',
+    'pnpm-workspace.yaml': 'overrides:\n  "@marmeon/http": "file:./vendor/fw/http.tgz"\n  "left-pad": "file:../outside/left-pad.tgz"\n',
   });
 
-// `bespoke make:docker` (E140, E141, E163): the image, its context, the roles, the proxies.
-describe('bespoke make:docker', () => {
-  it('writes a multi-stage Dockerfile for a pnpm app: pinned pnpm, frozen lockfile, build, production install, non-root, health check, bespoke as the process', () => {
+// `marmeon make:docker` (E140, E141, E163): the image, its context, the roles, the proxies.
+describe('marmeon make:docker', () => {
+  it('writes a multi-stage Dockerfile for a pnpm app: pinned pnpm, frozen lockfile, build, production install, non-root, health check, marmeon as the process', () => {
     const root = pnpmApp();
     const result = makeDocker(root);
     expect(result.code).toBe(0);
@@ -51,21 +51,21 @@ describe('bespoke make:docker', () => {
     expect(dockerfile).toContain('COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./\nCOPY vendor/fw ./vendor/fw\nRUN --mount=type=cache');
     expect(result.stderr).toContain('Local packages outside the app cannot reach the Docker build (its context is the app): ../outside/left-pad.tgz');
     expect(dockerfile).toContain('pnpm install --frozen-lockfile --store-dir /pnpm/store');
-    expect(dockerfile).toContain('NODE_ENV=production node_modules/.bin/bespoke build');
+    expect(dockerfile).toContain('NODE_ENV=production node_modules/.bin/marmeon build');
     expect(dockerfile).toContain('rm -rf node_modules \\\n && pnpm install --prod --frozen-lockfile');
-    expect(dockerfile).toContain('&& node_modules/.bin/bespoke discover');
+    expect(dockerfile).toContain('&& node_modules/.bin/marmeon discover');
     expect(dockerfile).toMatch(/ENV NODE_ENV=production HOST=0\.0\.0\.0 PORT=3000/);
     expect(dockerfile).toMatch(/\nUSER node\n/);
-    // tini as PID 1 (E187): signals passed on, orphans reaped — installed in the final stage, the entrypoint in front of bespoke.
+    // tini as PID 1 (E187): signals passed on, orphans reaped — installed in the final stage, the entrypoint in front of marmeon.
     expect(dockerfile).toContain('apt-get install -y --no-install-recommends tini');
-    expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]\nCMD ["start"]\n');
+    expect(dockerfile).toContain('ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]\nCMD ["start"]\n');
     expect(dockerfile).toContain('chown -R node:node storage');
     // The image has no .env: every one stays out of the context — the build needs none, nor a key (E187).
     expect(result.file('.dockerignore')).toMatch(/^\.env\*\n/m);
     expect(result.file('.dockerignore')).not.toContain('!.env.example');
-    expect(dockerfile).toContain('RUN NODE_ENV=production node_modules/.bin/bespoke build\n');
+    expect(dockerfile).toContain('RUN NODE_ENV=production node_modules/.bin/marmeon build\n');
     expect(dockerfile).not.toMatch(/APP_KEY=|key:generate|\.env\.example/);
-    for (const ignored of ['node_modules', 'dist', '.bespoke', 'storage']) expect(result.file('.dockerignore')).toMatch(new RegExp(`^${ignored.replace('.', '\\.')}$`, 'm'));
+    for (const ignored of ['node_modules', 'dist', '.marmeon', 'storage']) expect(result.file('.dockerignore')).toMatch(new RegExp(`^${ignored.replace('.', '\\.')}$`, 'm'));
 
     const compose = result.file('compose.production.yaml');
     expect(compose).toContain('image: shop');
@@ -141,13 +141,13 @@ describe('bespoke make:docker', () => {
   it('--systemd: a unit per role (restart, TimeoutStopSec, loopback + trusted proxy for the web) — the proxy then on the host', () => {
     const result = makeDocker(pnpmApp(), '--systemd', '--caddy');
     const web = result.file('deploy/systemd/web.service');
-    expect(web).toContain('ExecStart=/srv/shop/node_modules/.bin/bespoke start');
+    expect(web).toContain('ExecStart=/srv/shop/node_modules/.bin/marmeon start');
     expect(web).toContain('Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1');
     expect(web).toContain('TimeoutStopSec=30');
     expect(web).toContain('ReadWritePaths=/srv/shop/storage');
-    expect(result.file('deploy/systemd/worker.service')).toContain('ExecStart=/srv/shop/node_modules/.bin/bespoke queue:work --queue=mail,default');
+    expect(result.file('deploy/systemd/worker.service')).toContain('ExecStart=/srv/shop/node_modules/.bin/marmeon queue:work --queue=mail,default');
     expect(result.file('deploy/systemd/worker.service')).toContain('Restart=always');
-    expect(result.file('deploy/systemd/scheduler.service')).toContain('bespoke schedule:work');
+    expect(result.file('deploy/systemd/scheduler.service')).toContain('marmeon schedule:work');
     expect(result.file('deploy/Caddyfile')).toContain('reverse_proxy 127.0.0.1:3000');
     // Compose then publishes the web server on loopback for the host's proxy, and runs no proxy of its own.
     expect(result.file('compose.production.yaml')).toContain("- '127.0.0.1:3000:3000'");

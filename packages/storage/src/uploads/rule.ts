@@ -1,11 +1,11 @@
-import type { Upload } from '@bespokecore/http/page';
-import type { JoinNames } from '@bespokecore/router';
+import type { Upload } from '@marmeon/http/page';
+import type { JoinNames } from '@marmeon/router';
 import * as v from 'valibot';
 import { isActiveType, UPLOAD_TYPES, type UploadMime } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload, type UploadProblem } from './temporary-upload.ts';
 
 /** Where a schema carries its upload rule — found by the upload target and the validation hook. */
-export const UPLOAD_RULE = Symbol.for('bespokecore.upload-rule');
+export const UPLOAD_RULE = Symbol.for('marmeon.upload-rule');
 
 /** What an `upload()` rule allows. */
 export interface UploadRule {
@@ -34,18 +34,18 @@ export type CheckUploadMime<M extends string> = M extends UploadMime
       ? `'${M}' is not a type an upload is recognised as by its bytes — leave out mime for any type, or name some of: ${JoinNames<UploadMime>}`
       : `'${M}' is not a type an upload is recognised as by its bytes — did you mean ${JoinNames<Near<M>>}?`;
 
-/** Message keys of the rule (namespace `bespoke`), with the English text for apps without @bespokecore/i18n. */
+/** Message keys of the rule (namespace `marmeon`), with the English text for apps without @marmeon/i18n. */
 const MESSAGES: Record<UploadProblem | 'required' | 'max' | 'type', [key: string, fallback: string]> = {
-  required: ['bespoke.validation.upload.required', 'Choose a file.'],
-  invalid: ['bespoke.validation.upload.invalid', 'The file did not arrive — choose it again.'],
-  expired: ['bespoke.validation.upload.expired', 'The upload expired — choose the file again.'],
-  used: ['bespoke.validation.upload.used', 'This file was saved already — choose it again.'],
-  max: ['bespoke.validation.upload.max', 'The file may be at most {max}.'],
-  type: ['bespoke.validation.upload.type', 'This type of file is not accepted (allowed: {types}).'],
+  required: ['marmeon.validation.upload.required', 'Choose a file.'],
+  invalid: ['marmeon.validation.upload.invalid', 'The file did not arrive — choose it again.'],
+  expired: ['marmeon.validation.upload.expired', 'The upload expired — choose the file again.'],
+  used: ['marmeon.validation.upload.used', 'This file was saved already — choose it again.'],
+  max: ['marmeon.validation.upload.max', 'The file may be at most {max}.'],
+  type: ['marmeon.validation.upload.type', 'This type of file is not accepted (allowed: {types}).'],
 };
 
 /** Where `translatable()` of the router leaves a message's key on an issue — the request's translator reads it. */
-const TRANSLATION = Symbol.for('bespokecore.translation');
+const TRANSLATION = Symbol.for('marmeon.translation');
 
 function message(kind: keyof typeof MESSAGES, params: Record<string, unknown> = {}): (issue: object) => string {
   const [key, fallback] = MESSAGES[kind];

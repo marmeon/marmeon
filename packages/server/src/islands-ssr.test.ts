@@ -1,5 +1,5 @@
-import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, type Container } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, type Container } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
   abort,
   defer,
@@ -11,8 +11,8 @@ import {
   type PageObject,
   type RegionResult,
   type SsrRender,
-} from '@bespokecore/http';
-import { defineRoutes, type Next } from '@bespokecore/router';
+} from '@marmeon/http';
+import { defineRoutes, type Next } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -122,7 +122,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     islands.get('/islands/boom', () => {
       throw new Error('database password is hunter2');
     });
-    islands.get('/islands/stale', () => new Response(null, { status: 409, headers: { 'x-bespoke-location': '/page' } }));
+    islands.get('/islands/stale', () => new Response(null, { status: 409, headers: { 'x-marmeon-location': '/page' } }));
     islands.get('/islands/cookie', (ctx: HttpContext) => {
       ctx.cookies.set('tracking', 'yes');
       return island('islands/Echo', {});
@@ -260,7 +260,7 @@ describe('islands resolved in-process while the page streams (E49)', async () =>
     computed.length = 0;
     const response = await app.request('/page/deferred');
     const html = await response.text();
-    const page = JSON.parse(/<script type="application\/json" id="bespoke-page">(.*?)<\/script>/.exec(html)![1]!) as PageObject;
+    const page = JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as PageObject;
     expect(page.streamedProps).toEqual(['default', 'later']);
     expect(html).toContain('<deferred group="default">{"props":{"report":{"at":"2026-10-02T12:00:00.000Z"}}}</deferred>');
     expect(html).toContain('<deferred group="later">{"props":{"late":"other group"}}</deferred>');

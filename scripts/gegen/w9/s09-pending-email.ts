@@ -23,7 +23,7 @@ const JOB = 'apps/web-app/modules/auth/jobs/SendEmailChangeMailJob.ts';
 /** The request decides and composes the link mail itself for a free address (the old way: rendered here, queued for a worker). */
 // (The controller has a Mailer since E193 — the switched-off path mails at once.)
 const COMPOSED_IN_THE_REQUEST = [
-  { file: UPDATE, find: "import { Queue } from '@bespokecore/queue';", replace: "import { Queue } from '@bespokecore/queue';\nimport { ConfirmNewEmailMail } from '../mail/ConfirmNewEmailMail.ts';" },
+  { file: UPDATE, find: "import { Queue } from '@marmeon/queue';", replace: "import { Queue } from '@marmeon/queue';\nimport { ConfirmNewEmailMail } from '../mail/ConfirmNewEmailMail.ts';" },
   {
     file: UPDATE,
     find: "      await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email, token, locale: this.#translator.locale }, { queue: 'mail' });",

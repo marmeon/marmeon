@@ -12,14 +12,14 @@ const PACKAGE = fileURLToPath(new URL('..', import.meta.url));
 
 describe('withFileGuard — one writer per file, across processes', () => {
   it('eight processes meet a stale guard, round after round: one at a time takes it over — never two inside at once', { timeout: 60_000 }, async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bespoke-guard-'));
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-guard-'));
     try {
       const file = join(dir, 'session');
       const log = join(dir, 'log');
       writeFileSync(log, '');
       const workers = await Promise.all(
         Array.from({ length: 8 }, async () => {
-          const child = spawn(process.execPath, ['--conditions=@bespokecore/source', WORKER, file, log], { cwd: PACKAGE, stdio: ['pipe', 'pipe', 'inherit'] });
+          const child = spawn(process.execPath, ['--conditions=@marmeon/source', WORKER, file, log], { cwd: PACKAGE, stdio: ['pipe', 'pipe', 'inherit'] });
           const lines = createInterface({ input: child.stdout! })[Symbol.asyncIterator]();
           expect((await lines.next()).value).toBe('ready');
           return { child, next: () => lines.next() };
@@ -46,7 +46,7 @@ describe('withFileGuard — one writer per file, across processes', () => {
   });
 
   it('releases only its own guard and says when the file stays busy', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bespoke-guard-'));
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-guard-'));
     try {
       const file = join(dir, 'entry');
       // Taken over while it worked (it was slower than staleMs): its release leaves the new holder's guard alone.

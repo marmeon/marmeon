@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 /**
  * The pages' only script (E117: no client framework, nothing of it in the app's bundle): the live tail (an `EventSource` on
- * `/_bespoke/devtools/stream`, rows rendered and escaped by the server), filters that submit on change, copy buttons for
+ * `/_marmeon/devtools/stream`, rows rendered and escaped by the server), filters that submit on change, copy buttons for
  * commands. The pages work without it — lists reload, commands can be selected.
  */
 export const SCRIPT = `(() => {

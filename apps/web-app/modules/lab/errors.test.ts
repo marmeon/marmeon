@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { ErrorSolutions, Redactor } from '@bespokecore/core';
-import { Router } from '@bespokecore/router';
-import { createTestApp } from '@bespokecore/testing';
+import { ErrorSolutions, Redactor } from '@marmeon/core';
+import { Router } from '@marmeon/router';
+import { createTestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ERROR_KINDS, type ErrorKind } from './controllers/ShowLabPageController.ts';
@@ -40,13 +40,13 @@ describe('the lab’s errors on the development error page (E119, E130)', () => 
   it.skipIf(postgres)('a missing table: the solution says which migrations have not run', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
     // The migrations table forgets the last one: as if it had not run.
-    const db = app.container.make((await import('@bespokecore/database')).Database);
+    const db = app.container.make((await import('@marmeon/database')).Database);
     const last = await db.selectFrom('migrations' as never).select('name' as never).orderBy('id' as never, 'desc').executeTakeFirstOrThrow();
     await db.deleteFrom('migrations' as never).where('name' as never, '=', (last as { name: string }).name as never).execute();
     const response = await app.get('/lab/errors/table', page).assertStatus(500);
     expect(response.body).toContain('<h2>Run the 1 pending migration</h2>');
     expect(response.body).toContain((last as { name: string }).name);
-    expect(response.body).toContain('bespoke migrate');
+    expect(response.body).toContain('marmeon migrate');
   });
 
   it('a defaulted parameter of an injectable type: built with its default, the warning on the page (E128)', async () => {
@@ -61,16 +61,16 @@ describe('the lab’s errors on the development error page (E119, E130)', () => 
 
   it('a missing view (R2) has its solution too — server rendering shows it in Vite’s overlay', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
-    const [solution] = await app.container.make(ErrorSolutions).find(new Error('[bespoke:R2] Page [lab/Missing] not found. Expected a default export in modules/lab/views/Missing.tsx'), {
+    const [solution] = await app.container.make(ErrorSolutions).find(new Error('[marmeon:R2] Page [lab/Missing] not found. Expected a default export in modules/lab/views/Missing.tsx'), {
       app: app.application,
     });
-    expect(solution).toMatchObject({ title: 'Create modules/lab/views/Missing.tsx', command: 'bespoke route:types' });
+    expect(solution).toMatchObject({ title: 'Create modules/lab/views/Missing.tsx', command: 'marmeon route:types' });
   });
 
   it('the session cookie’s name is redacted like any credential (E125)', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
-    expect(app.container.make(Redactor).isSensitive('bespoke_session')).toBe(true);
-    const response = await app.get('/lab/errors/container-unbound', { headers: { accept: 'text/html', cookie: 'bespoke_session=0123456789abcdef; lang=de' } }).assertStatus(500);
+    expect(app.container.make(Redactor).isSensitive('marmeon_session')).toBe(true);
+    const response = await app.get('/lab/errors/container-unbound', { headers: { accept: 'text/html', cookie: 'marmeon_session=0123456789abcdef; lang=de' } }).assertStatus(500);
     expect(response.body).not.toContain('0123456789abcdef');
   });
 
@@ -83,9 +83,9 @@ describe('the lab’s errors on the development error page (E119, E130)', () => 
 });
 
 describe('solutions are text, never actions (E130, CVE-2021-3129)', () => {
-  it('no framework route under /_bespoke takes a POST — nothing there runs a solution', async () => {
+  it('no framework route under /_marmeon takes a POST — nothing there runs a solution', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
-    const internal = app.container.make(Router).routes.filter((route) => route.path.startsWith('/_bespoke'));
+    const internal = app.container.make(Router).routes.filter((route) => route.path.startsWith('/_marmeon'));
     expect(internal.length).toBeGreaterThan(0);
     expect(internal.filter((route) => route.methods.includes('POST'))).toEqual([]);
     expect(internal.filter((route) => /solution/i.test(route.path))).toEqual([]);

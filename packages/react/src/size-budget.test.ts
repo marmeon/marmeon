@@ -45,7 +45,7 @@ describe('the size budget keeps a reserve of 0.5 KB and only goes down (E186)', 
   });
 
   it('lowerLimits writes two decimals in place, keeps the layout and never raises a limit', () => {
-    const file = join(tempDir('bespoke-size-budget-'), 'size-budget.json');
+    const file = join(tempDir('marmeon-size-budget-'), 'size-budget.json');
     writeFileSync(file, '{\n  "gzipKB": {\n    "core": { "limit": 11.57 },\n    "emptyApp": { "limit": 14.08 }\n  }\n}\n');
     lowerLimits({ core: 11.4, emptyApp: 14.5 }, file);
     const text = readFileSync(file, 'utf8');

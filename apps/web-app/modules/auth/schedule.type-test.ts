@@ -1,7 +1,7 @@
-// Type guarantees of the scheduler (W6 step 6, E88) — compiled by `pnpm typecheck` / `bespoke build`, never run.
-import { PruneTokensCommand } from '@bespokecore/auth';
-import { defineSchedule } from '@bespokecore/scheduler';
-import type { TestApp } from '@bespokecore/testing';
+// Type guarantees of the scheduler (W6 step 6, E88) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+import { PruneTokensCommand } from '@marmeon/auth';
+import { defineSchedule } from '@marmeon/scheduler';
+import type { TestApp } from '@marmeon/testing';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 

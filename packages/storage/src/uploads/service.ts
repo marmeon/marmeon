@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import type { Clock } from '@bespokecore/core';
-import type { Kysely } from '@bespokecore/database';
-import { HttpError, ValidationError } from '@bespokecore/router';
+import type { Clock } from '@marmeon/core';
+import type { Kysely } from '@marmeon/database';
+import { HttpError, ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
 import { S3Disk } from '../drivers/s3.ts';
@@ -9,7 +9,7 @@ import { formatBytes, type UploadRule } from './rule.ts';
 import { SNIFF_BYTES, sniff } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
 
-/** The table `bespoke make:uploads-table` creates (E96: the app owns the migration; this package types it itself). */
+/** The table `marmeon make:uploads-table` creates (E96: the app owns the migration; this package types it itself). */
 export const UPLOADS_TABLE = 'temporary_uploads';
 
 interface UploadRow {
@@ -75,7 +75,7 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** A field's validation error (422) with a key the request's translator turns into its language. */
 export function uploadError(field: string, key: string, message: string, params: Record<string, unknown> = {}): ValidationError {
   const filled = message.replace(/\{(\w+)\}/g, (match, name: string) => (name in params ? String(params[name]) : match));
-  const issue = { message: filled, path: field.split('.'), [Symbol.for('bespokecore.translation')]: { key, params } };
+  const issue = { message: filled, path: field.split('.'), [Symbol.for('marmeon.translation')]: { key, params } };
   return ValidationError.fromIssues([issue], {});
 }
 
@@ -102,7 +102,7 @@ export class TemporaryUploads {
   /** A target for one file: a row for its token, and where the bytes go. A file the browser says is too large: 422 at once. */
   async target(request: TargetRequest): Promise<UploadTarget> {
     const { rule, field } = request;
-    if (request.size > rule.maxBytes) throw uploadError(field, 'bespoke.validation.upload.max', 'The file may be at most {max}.', { max: formatBytes(rule.maxBytes) });
+    if (request.size > rule.maxBytes) throw uploadError(field, 'marmeon.validation.upload.max', 'The file may be at most {max}.', { max: formatBytes(rule.maxBytes) });
     const disk = this.disk;
     const id = randomUUID();
     const now = this.#options.clock.now();

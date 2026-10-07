@@ -1,6 +1,6 @@
 import { isAbsolute, join } from 'node:path';
-import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
-import { GLOBAL, MiddlewarePriority, Router } from '@bespokecore/router';
+import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
 import { Cache, StoreCache, type CacheStore } from './cache.ts';
 import { CacheConfig } from './config.ts';
 import { CacheHealthCheck } from './health.ts';
@@ -50,11 +50,11 @@ const CACHE_INFRASTRUCTURE = {
   system: 'The cache (CACHE_DRIVER=database — also rate limits and locks)',
   remedy:
     "Give the cache its own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, CACHE_CONNECTION=system, " +
-    'and `bespoke migrate` (the migration of `bespoke make:cache-table` follows CACHE_CONNECTION) — or use Redis (CACHE_DRIVER=redis).',
+    'and `marmeon migrate` (the migration of `marmeon make:cache-table` follows CACHE_CONNECTION) — or use Redis (CACHE_DRIVER=redis).',
 };
 
 /**
- * The connection the cache's tables belong on — for the migration `bespoke make:cache-table` writes (`connection` in
+ * The connection the cache's tables belong on — for the migration `marmeon make:cache-table` writes (`connection` in
  * `defineMigration`): `CACHE_CONNECTION` with the database driver, else `default`.
  */
 export function cacheTablesConnection(container: Resolver): string {
@@ -62,10 +62,10 @@ export function cacheTablesConnection(container: Resolver): string {
   return config.driver === 'database' ? config.connection : 'default';
 }
 
-const importDatabase = () => importOptional(() => import('@bespokecore/database'), '@bespokecore/database', 'database', 'pnpm add @bespokecore/database');
-const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis', 'redis', 'pnpm add @bespokecore/redis redis');
+const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add @marmeon/database');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add @marmeon/redis redis');
 
-/** Registers the `Cache` (`CACHE_DRIVER`) and the `RateLimiter`, and `make:cache-table`. Found by `bespoke discover`. */
+/** Registers the `Cache` (`CACHE_DRIVER`) and the `RateLimiter`, and `make:cache-table`. Found by `marmeon discover`. */
 export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
   /** The cache takes and frees a key, for `/up/ready` (E126). */
@@ -86,7 +86,7 @@ export class CacheServiceProvider implements ServiceProvider {
     if (driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new CacheSetupError('CACHE_DRIVER=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).');
+        throw new CacheSetupError('CACHE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
       }
       const connections = app.container.make(redis.RedisConnections);
       connections.options(connection);
@@ -94,12 +94,12 @@ export class CacheServiceProvider implements ServiceProvider {
     } else if (driver === 'database') {
       const database = await importDatabase();
       if (!app.container.has(database.Connections)) {
-        throw new CacheSetupError('CACHE_DRIVER=database needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).');
+        throw new CacheSetupError('CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
       }
       app.container.make(database.Connections).options(connection);
     }
 
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeCacheTableCommand, CachePruneCommand, CacheClearCommand]);
   }
 }

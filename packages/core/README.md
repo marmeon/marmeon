@@ -1,24 +1,24 @@
-# @bespokecore/core
+# @marmeon/core
 
 The application kernel: the service container with constructor injection (generated `static inject` lists, no
 decorators), service providers, modules, configuration, events, the clock, the request/job context and the ambient
 transaction context — plus the diagnostics channels, health checks, redaction and error solutions every other package uses.
-Every BespokeCore package builds on it; an app depends on it directly (`defineApplication`, `defineModule`, `defineConfig`).
+Every Marmeon package builds on it; an app depends on it directly (`defineApplication`, `defineModule`, `defineConfig`).
 It has no provider of its own and is not discovered — it is what discovery runs on.
 
 | Import | What |
 | --- | --- |
-| `@bespokecore/core` | everything below |
-| `@bespokecore/core/environment` | `environment` and `resolveEnvironment` alone, without dependencies — what `bespoke` loads before anything else ([The environment](#the-environment-node_env)) |
-| `@bespokecore/core/register` | the Node loader hook that writes the injection lists of app code (`node --import`; `bespoke` loads it itself) — in a protected environment from `bespoke build`'s lists ([Precomputed lists](#precomputed-lists-in-production-e138)) |
-| `@bespokecore/core/vite` | the same transform as a Vite plugin (`bespokeInjection()` — part of `bespoke()` in [@bespokecore/vite](../vite/README.md)) and `CSP_NONCE_PLACEHOLDER` |
-| `@bespokecore/core/diagnostics` | the observation channels ([Diagnostics](#diagnostics-bespokecorecorediagnostics-e118)) |
+| `@marmeon/core` | everything below |
+| `@marmeon/core/environment` | `environment` and `resolveEnvironment` alone, without dependencies — what `marmeon` loads before anything else ([The environment](#the-environment-node_env)) |
+| `@marmeon/core/register` | the Node loader hook that writes the injection lists of app code (`node --import`; `marmeon` loads it itself) — in a protected environment from `marmeon build`'s lists ([Precomputed lists](#precomputed-lists-in-production-e138)) |
+| `@marmeon/core/vite` | the same transform as a Vite plugin (`marmeonInjection()` — part of `marmeon()` in [@marmeon/vite](../vite/README.md)) and `CSP_NONCE_PLACEHOLDER` |
+| `@marmeon/core/diagnostics` | the observation channels ([Diagnostics](#diagnostics-marmeoncorediagnostics-e118)) |
 
 ## The application: `defineApplication`
 
-`bootstrap/app.ts` describes the app and exports it — it boots nothing. `bespoke` boots it for a command or the server
-([@bespokecore/cli](../cli/README.md)); tests boot a fresh instance per test (`createTestApp(app)`,
-[@bespokecore/testing](../testing/README.md)).
+`bootstrap/app.ts` describes the app and exports it — it boots nothing. `marmeon` boots it for a command or the server
+([marmeon](../cli/README.md)); tests boot a fresh instance per test (`createTestApp(app)`,
+[@marmeon/testing](../testing/README.md)).
 
 ```ts
 // bootstrap/app.ts (apps/web-app)
@@ -32,27 +32,27 @@ export default defineApplication({
 
 | Option | What |
 | --- | --- |
-| `root` | the app root: `package.json`, `.env`, `.bespoke/`, `index.html` |
+| `root` | the app root: `package.json`, `.env`, `.marmeon/`, `index.html` |
 | `modules` | the feature modules, in the order they register and boot |
 | `config` | app-level configuration (`defineConfig`) — validated with every other definition before anything registers |
 | `providers` | app-level service providers (booted after the packages', before the modules') |
 | `listeners` | app-level event listeners (`listen(Event, Listener)`) |
 | `health` | app-level readiness checks for `/up/ready` ([Health checks](#health-checks-e126)) |
 | `env` | the environment to validate against (default: `.env`, `.env.{NODE_ENV}`, then the real one — [Configuration](#configuration)) |
-| `discover` | register the providers of installed packages (default `true`, [Discovery](#discovery-the-bespoke-field-and-bespoke-discover)) |
+| `discover` | register the providers of installed packages (default `true`, [Discovery](#discovery-the-marmeon-field-and-marmeon-discover)) |
 | `phase` | `'run'` (the default) or `'build'` — registered, never booted ([the build phase](#modules-definemodule), `ApplicationPhase`) |
 | `override` | runs after every provider registered and before any boots — replace bindings there (tests) |
 | `container` | a container to use instead of a new one |
 
 Packages add their own options by declaration merging: `middleware` and `clientRoutes` come from
-@bespokecore/http ([Configuration](../router/README.md#configuration) of the router).
+@marmeon/http ([Configuration](../router/README.md#configuration) of the router).
 
 `createApplication(options)` creates and boots it and returns the `Application` (`root`, `container`, `modules`, `packages`
 — the discovered ones —, `options`). In order: discovery, configuration (validated and bound), the core's bindings
 (`Logger`, `Clock`, `Redactor`, `ErrorSolutions`, `HealthChecks`, `EventDispatcher`), every provider's `register()`,
 `override`, every provider's `boot()` — then the warnings of the boot, each once per process (a `.env.{NODE_ENV}` that sets
-`NODE_ENV`, a read-only `.bespoke/`, stale build artifacts; the packages' own, like the log mailer in production). A worker of
-`bespoke start --workers=N` keeps its boot's warnings to itself: the primary booted the same app and said them once
+`NODE_ENV`, a read-only `.marmeon/`, stale build artifacts; the packages' own, like the log mailer in production). A worker of
+`marmeon start --workers=N` keeps its boot's warnings to itself: the primary booted the same app and said them once
 (`CLUSTER_WORKER`, set by the primary; warnings after the boot are the worker's as always). `app.shutdown()` — also `await using app = …` — runs every provider's `shutdown()`
 in reverse order, once; each gets its turn even if an earlier one fails (the errors are thrown together).
 
@@ -68,31 +68,31 @@ export default defineModule({
   providers: [UserProfileServiceProvider],
   config: [ProfileConfig],
   listeners: [listen(Login, RecordLastLogin), listen(Registered, RefreshMemberStats)],
-  jobs: [RebuildMemberStatsJob],                          // @bespokecore/queue
-  migrations: new URL('./migrations/', import.meta.url),  // @bespokecore/database
-  seeders: [DemoLinksSeeder],                             // @bespokecore/database
-  routes,                                                 // @bespokecore/http: the `web` group
-  apiRoutes,                                              // @bespokecore/http: the `api` group, under /api
-  schedule,                                               // @bespokecore/scheduler
+  jobs: [RebuildMemberStatsJob],                          // @marmeon/queue
+  migrations: new URL('./migrations/', import.meta.url),  // @marmeon/database
+  seeders: [DemoLinksSeeder],                             // @marmeon/database
+  routes,                                                 // @marmeon/http: the `web` group
+  apiRoutes,                                              // @marmeon/http: the `api` group, under /api
+  schedule,                                               // @marmeon/scheduler
 });
 ```
 
 | Key | From |
 | --- | --- |
 | `name`, `providers`, `config`, `listeners`, `health` | core |
-| `routes`, `apiRoutes` | @bespokecore/http ([Registration](../router/README.md#registration) of the router) |
-| `commands` | [@bespokecore/cli](../cli/README.md#commands) |
-| `migrations`, `seeders`, `exposes` | [@bespokecore/database](../database/README.md) |
-| `jobs` | [@bespokecore/queue](../queue/README.md) |
-| `notifications`, `recipients` | [@bespokecore/notifications](../notifications/README.md) |
-| `schedule` | [@bespokecore/scheduler](../scheduler/README.md) |
-| `csrfExcept` | [@bespokecore/session](../session/README.md) |
+| `routes`, `apiRoutes` | @marmeon/http ([Registration](../router/README.md#registration) of the router) |
+| `commands` | [marmeon](../cli/README.md#commands) |
+| `migrations`, `seeders`, `exposes` | [@marmeon/database](../database/README.md) |
+| `jobs` | [@marmeon/queue](../queue/README.md) |
+| `notifications`, `recipients` | [@marmeon/notifications](../notifications/README.md) |
+| `schedule` | [@marmeon/scheduler](../scheduler/README.md) |
+| `csrfExcept` | [@marmeon/session](../session/README.md) |
 
 Its `index.ts` is also its public API: other modules import from `#modules/user-profile` (the app's `package.json` maps
-`"#modules/*": "./modules/*/index.ts"`) — `bespoke make:lint-config --boundaries` can enforce that
-([Lint](../cli/README.md#lint)). `bespoke make:module <name>` writes a new one.
+`"#modules/*": "./modules/*/index.ts"`) — `marmeon make:lint-config --boundaries` can enforce that
+([Lint](../cli/README.md#lint)). `marmeon make:module <name>` writes a new one.
 
-**The build phase (E187).** `createApplication({ ...definition, phase: 'build' })` is the app as `bespoke build` needs it — for
+**The build phase (E187).** `createApplication({ ...definition, phase: 'build' })` is the app as `marmeon build` needs it — for
 the route types (`route:types` runs so: `static boots = 'build'`): discovery, configuration, every provider's `register()` and
 `override` — and **no** `boot()` (no connection, no driver check, no `shutdown()` afterwards; `app.phase` says `'build'`). A
 configuration that does not validate — without `.env` that is `APP_KEY`, `APP_NAME`, database passwords, mail credentials … —
@@ -127,15 +127,15 @@ Order: the providers of installed packages (dependencies first, from discovery),
 module's, in module order. **Every** provider registers before **any** boots; `shutdown` runs in reverse. A class listed as a
 provider without any hook or list fails the start.
 
-## Discovery: the `"bespoke"` field and `bespoke discover`
+## Discovery: the `"marmeon"` field and `marmeon discover`
 
-Packages register themselves: a package that opts in with a `"bespoke"` field in its `package.json` has its providers
+Packages register themselves: a package that opts in with a `"marmeon"` field in its `package.json` has its providers
 registered by every app that installs it — no list in the app:
 
 ```json
 {
-  "name": "@bespokecore/http",
-  "bespoke": {
+  "name": "@marmeon/http",
+  "marmeon": {
     "providers": ["HttpServiceProvider"],
     "browser": ["src/client/**", "src/page.ts"]
   }
@@ -145,30 +145,30 @@ registered by every app that installs it — no list in the app:
 - **`providers`:** exported from the package's entry, registered in dependency order (a package after the ones it depends on).
 - **`browser`:** browser-only sources (globs relative to the package) — the injection transform leaves them alone, so no
   injection code reaches a client bundle (E76).
-- **`bespoke discover`** walks the app's dependencies — its dev dependencies too, which a production install simply lacks — and
-  writes `.bespoke/manifest.json`: the providers and the injection lists of the packages' exported classes, read from their
-  `.d.ts` files (a package built with `bespoke package:build` carries its lists already). It runs **by itself** whenever
+- **`marmeon discover`** walks the app's dependencies — its dev dependencies too, which a production install simply lacks — and
+  writes `.marmeon/manifest.json`: the providers and the injection lists of the packages' exported classes, read from their
+  `.d.ts` files (a package built with `marmeon package:build` carries its lists already). It runs **by itself** whenever
   `package.json`, the lockfile or the resolution conditions change — `pnpm add` needs no extra step — and again when a listed
   package is gone (a production install without the dev dependencies). The manifest is data, never imported: rewriting it
   restarts no dev server.
-- **One manifest per set of resolution conditions (E160):** `.bespoke/manifest.json` for the published packages (an installed
-  app, production) and `.bespoke/manifest.source.json` inside the framework's monorepo (`@bespokecore/source`) — switching
-  between `bespoke dev` and `bespoke start` there rewrites neither. Module paths are relative to the app, so a manifest written
+- **One manifest per set of resolution conditions (E160):** `.marmeon/manifest.json` for the published packages (an installed
+  app, production) and `.marmeon/manifest.source.json` inside the framework's monorepo (`@marmeon/source`) — switching
+  between `marmeon dev` and `marmeon start` there rewrites neither. Module paths are relative to the app, so a manifest written
   in a Docker build stage works where the app is copied to. Any other set gets its own file (Vitest adds `development`:
-  `manifest.development+source.json`). `bespoke build` writes the production manifest.
+  `manifest.development+source.json`). `marmeon build` writes the production manifest.
 - **Published packages run their `dist/`:** Node does not strip types under `node_modules`. A package that reaches Node with its
   TypeScript sources — packed with `npm pack` (which ignores `publishConfig.exports`), a workspace package copied with its
-  workspace manifest, the `@bespokecore/source` condition outside the framework's monorepo — fails the start with Node's
-  `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`; `bespoke` names the code and the solution (install the package as it is
-  published). `bespoke` itself, copied under `node_modules` by `pnpm deploy`, runs its `dist/`.
-- **Read-only `.bespoke/`:** when the manifest is out of date and cannot be written (`EACCES`, `EPERM`, `EROFS`), the app discovers in
-  memory and logs one warning — it starts, never fails with `EACCES`. Run `bespoke build` (or `bespoke discover`) where it can
+  workspace manifest, the `@marmeon/source` condition outside the framework's monorepo — fails the start with Node's
+  `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`; `marmeon` names the code and the solution (install the package as it is
+  published). `marmeon` itself, copied under `node_modules` by `pnpm deploy`, runs its `dist/`.
+- **Read-only `.marmeon/`:** when the manifest is out of date and cannot be written (`EACCES`, `EPERM`, `EROFS`), the app discovers in
+  memory and logs one warning — it starts, never fails with `EACCES`. Run `marmeon build` (or `marmeon discover`) where it can
   write, e.g. in the image's build stage.
 - `defineApplication({ discover: false })` registers nothing of the installed packages (`providers` then lists them by hand).
 
 ## The environment: `NODE_ENV`
 
-One place decides what `NODE_ENV` means (E115, E139) — `environment` from `@bespokecore/core` — and the two rules are not
+One place decides what `NODE_ENV` means (E115, E139) — `environment` from `@marmeon/core` — and the two rules are not
 mirror images:
 
 | | `development` | `test` | `production`, `staging`, anything else, **none** |
@@ -191,20 +191,20 @@ export const LabConfig = defineConfig('lab', {
 `environment.describe()` names it the way start lines do: `production (protected)`, `staging (protected)`, `development`,
 `test`, `unset NODE_ENV (protected, like production)`.
 
-**Where it comes from (E170)** — one resolution, `resolveEnvironment(root)`, done by `bespoke` before anything of the app loads
+**Where it comes from (E170)** — one resolution, `resolveEnvironment(root)`, done by `marmeon` before anything of the app loads
 (and by `createApplication` for a script that boots the app itself; an app given its own `env` decides for itself):
 
 1. the process's `NODE_ENV` — the supervisor, the Dockerfile, the shell. It always wins;
 2. else the app's **`.env`** — only the base file: `.env.{NODE_ENV}` is chosen by `NODE_ENV` and cannot set it (a `NODE_ENV` there
    is ignored, with a warning). `.env.example` carries `NODE_ENV=development`, so on a development machine every command
    (`migrate`, `tinker`, `queue:work`) is development;
-3. else none — protected like production; `bespoke start` then sets `production`, `bespoke dev` `development` (the `fallback`
+3. else none — protected like production; `marmeon start` then sets `production`, `marmeon dev` `development` (the `fallback`
    option).
 
 The result is written to `process.env.NODE_ENV` (the one exception to "`process.env` is never modified"), so config definitions,
 the CLI, the load hook and the server all read the same value. A value from `.env` is named as such — `development (from .env)`,
 `staging (protected, from .env)` — in start lines and `Environment:` lines. **The risk** is a developer's `.env` copied to a server:
-then `bespoke start`, `queue:work` and `schedule:work` run as development, and each logs a loud warning (`NODE_ENV=development comes
+then `marmeon start`, `queue:work` and `schedule:work` run as development, and each logs a loud warning (`NODE_ENV=development comes
 from .env, not from the environment: …`) — they are not refused. On a server, set `NODE_ENV` in the environment and never deploy a
 development `.env`. `createTestApp` runs as `test` unless its `env` says otherwise.
 
@@ -212,13 +212,13 @@ development `.env`. `createTestApp` runs as `test` unless its `env` says otherwi
 
 Packages, modules and the app declare their environment as config definitions (`defineConfig(name, { env, resolve })`,
 validated with any Standard Schema). The app validates **all** of them before anything registers: a missing or invalid
-variable stops the start with one `ConfigError` that lists every problem (`• encryption: APP_KEY — Missing — run "bespoke
+variable stops the start with one `ConfigError` that lists every problem (`• encryption: APP_KEY — Missing — run "marmeon
 key:generate"`). Variables come from `.env`, then `.env.{NODE_ENV}` (`.env.test`) on top, then the real environment, which
-wins. `bespoke` prints how to fix it below the error (the solutions, E130).
+wins. `marmeon` prints how to fix it below the error (the solutions, E130).
 
 ```ts
 // config/app.ts (apps/web-app)
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 export const AppConfig = defineConfig('app', {
@@ -241,8 +241,8 @@ class ShowLoginController {
   the schema (`v.optional(…, '3000')`); every value is a string until the schema transforms it.
 - **`process.env` is never modified** (except the resolved `NODE_ENV`, [The environment](#the-environment-node_env)): the files
   are parsed with `util.parseEnv`; tests pass `createTestApp(app, { env })`.
-- Each package's README lists its variables (`PORT` → [@bespokecore/server](../server/README.md#configuration), `LOG_LEVEL` →
-  [@bespokecore/log](../log/README.md#configuration), …); `.env.example` of `apps/web-app` shows them together.
+- Each package's README lists its variables (`PORT` → [@marmeon/server](../server/README.md#configuration), `LOG_LEVEL` →
+  [@marmeon/log](../log/README.md#configuration), …); `.env.example` of `apps/web-app` shows them together.
 
 ## The container
 
@@ -257,21 +257,21 @@ container.has(Mailer);                                   // bound here or in a p
 ```
 
 - **Scopes:** the kernel resolves controllers and middleware from `container.createScope()` per request; the worker per job
-  attempt; `bespoke` per command. A scoped service resolved outside a scope — or by a singleton — is an error
+  attempt; `marmeon` per command. A scoped service resolved outside a scope — or by a singleton — is an error
   ([The container's errors](#the-containers-errors)): a singleton is built in the root and must never capture a request.
 - **Tokens:** an interface has no runtime value, so it is bound and injected through a token of the same name —
   `export interface Mailer { … }` plus `export const Mailer = token<Mailer>('Mailer')`; one import gives both. The core's
-  contracts are tokens: `Logger` (a console fallback until [@bespokecore/log](../log/README.md) binds pino; its optional
+  contracts are tokens: `Logger` (a console fallback until [@marmeon/log](../log/README.md) binds pino; its optional
   `enabled?(level)` says whether an entry at that level would go anywhere — written, or seen on the `log` channel —, asked
   before building a costly one: the request line with `LOG_LEVEL=silent`; a logger without it counts as enabled), `Clock`,
-  `Translator` (bound per request by [@bespokecore/i18n](../i18n/README.md#on-the-server-translator)).
+  `Translator` (bound per request by [@marmeon/i18n](../i18n/README.md#on-the-server-translator)).
 - **Re-binding** replaces a cached singleton — `override` (tests) sees every binding before anything is built.
 - `container.keys()` lists what is bound, for tooling ([tinker](../cli/README.md#tinker)).
 
 ## Constructor injection
 
-App code gets its `static inject` lists from the injection transform (the loader of `bespoke dev`/`start`, the `bespoke()`
-Vite plugin for Vitest and SSR); packages get them from `bespoke package:build`. A parameter is injectable when its type is a
+App code gets its `static inject` lists from the injection transform (the loader of `marmeon dev`/`start`, the `marmeon()`
+Vite plugin for Vitest and SSR); packages get them from `marmeon package:build`. A parameter is injectable when its type is a
 class or a token that exists at runtime (a value import — not `import type` — or a declaration in the module). Interfaces are
 injected through a token of the same name: `export const Mailer = token<Mailer>('Mailer')`. A class that declares its own
 `static inject` is left alone.
@@ -292,8 +292,8 @@ page, and `container.onWarning(listener)` hears them. A tree's `parent?: Self` i
 
 ### Precomputed lists in production (E138)
 
-The transform parses every app module with a constructor (oxc-parser) — at each start, unless `bespoke build` did it before:
-the build writes `.bespoke/injections.json`, per module of the app the insertions the hook would make (the same analysis,
+The transform parses every app module with a constructor (oxc-parser) — at each start, unless `marmeon build` did it before:
+the build writes `.marmeon/injections.json`, per module of the app the insertions the hook would make (the same analysis,
 `analyzeInjections` + `insertionsOf`, line for line) and the SHA-256 of the source they were derived from. In a protected
 environment (production, staging, no `NODE_ENV` — [The environment](#the-environment-node_env)) the hook applies them to every
 module whose source is unchanged; oxc-parser is not loaded at all (it is imported on the first parse only — also by
@@ -305,11 +305,11 @@ Nothing is trusted blindly: a module that changed since the build, or that the f
 development, and the app logs once, after booting:
 
 ```text
-[warn] Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since bespoke build, so their
-injection lists were derived at start, with oxc-parser — run bespoke build again.
+[warn] Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since marmeon build, so their
+injection lists were derived at start, with oxc-parser — run marmeon build again.
 ```
 
-Without the file the message says `Build artifacts are missing (.bespoke/injections.json): …`. In development and in tests the
+Without the file the message says `Build artifacts are missing (.marmeon/injections.json): …`. In development and in tests the
 hook always analyses (the file may be old there). `computeInjectionArtifacts(root)` returns what `writeInjectionArtifacts({ root })`
 writes; `PrecomputedInjections` is the hook's side.
 
@@ -319,13 +319,13 @@ A `ContainerError` says why (`reason`), what (`key`) and who asked (`path`, `nee
 
 | `reason` | Means | The fix |
 |---|---|---|
-| `unbound` | An interface's token has no binding. | Bind it in a provider's `register()` (`container.singleton(Mailer, …)`), or install the package that does (`bespoke discover`). |
+| `unbound` | An interface's token has no binding. | Bind it in a provider's `register()` (`container.singleton(Mailer, …)`), or install the package that does (`marmeon discover`). |
 | `scoped` | A per-request (scoped) service resolved outside a scope — or by a singleton, which would keep the first request's. | Resolve it from the request's scope (inject it into a controller, middleware, listener); a singleton that needs it becomes scoped too. |
 | `no-injection-list` | A class with constructor parameters but no list — `injection` says what the transform could not inject (a number, a type-only import, a missing annotation). | Inject classes and tokens; primitives come from a config object. |
 | `circular` | `A → B → A`. | Move what both need into a third class, or pass one of them per call. |
 
 `container.keys()` lists every class and token bound in a container and its parents (the nearest binding first) — for
-tooling: `bespoke tinker` completes them and resolves them by name. Resolving stays `make()`.
+tooling: `marmeon tinker` completes them and resolves them by name. Resolving stays `make()`.
 
 ## Events and listeners
 
@@ -333,7 +333,7 @@ An event is a class — its class is its identity. A listener is a class with `h
 so it gets constructor injection) or a closure. Modules and the app list who listens to what:
 
 ```ts
-// @bespokecore/auth (its `static event` and `static schema` for queued listeners left out)
+// @marmeon/auth (its `static event` and `static schema` for queued listeners left out)
 export class Registered {
   readonly #event = true;          // makes the class nominal: a listener for another event is a compile error
   readonly user: AuthUser;
@@ -359,18 +359,18 @@ await this.#events.dispatch(new Registered(user));
 
 - **In order, awaited:** listeners run one after the other in registration order — the event's class first, then the classes
   it extends. An error stops the dispatch and reaches the caller (in a request: the exception handler); the listeners after it
-  do not run. For all or nothing, dispatch inside a transaction ([@bespokecore/database](../database/README.md#transactions)):
+  do not run. For all or nothing, dispatch inside a transaction ([@marmeon/database](../database/README.md#transactions)):
   in-process listeners join it.
 - **Per scope:** the `EventDispatcher` is resolved from the asking container — in a request, listeners are built from the
   request's scope and may use scoped services.
 - **Queued listeners** (`static queue = { queue: 'mail' }` on the listener, E86) are queued as a job and run in a worker, with
   the event's payload (its `static event` and `static schema`) instead of the event object — they need
-  [@bespokecore/queue](../queue/README.md#transactions-e107-e109); without it the start fails. `listen()` checks the pairing at
+  [@marmeon/queue](../queue/README.md#transactions-e107-e109); without it the start fails. `listen()` checks the pairing at
   compile time.
 - **Framework events** are classes like any other: `Login`, `Registered` (auth), the job events
   ([queue](../queue/README.md#job-events)), the scheduler's ([scheduler](../scheduler/README.md#events-e127)).
-- Every dispatch is reported on the `event` channel ([Diagnostics](#diagnostics-bespokecorecorediagnostics-e118)) — the
-  devtools record it ([App events](../devtools/README.md#app-events-the-bespokeevent-channel)).
+- Every dispatch is reported on the `event` channel ([Diagnostics](#diagnostics-marmeoncorediagnostics-e118)) — the
+  devtools record it ([App events](../devtools/README.md#app-events-the-marmeonevent-channel)).
 
 ### Testing: `EventFake`
 
@@ -414,12 +414,12 @@ currentTask();         // { task }
 currentLogContext();   // what every log entry written now carries: { requestId }, { job, jobId, attempt }, { task }
 ```
 
-`LogContextSources` (one per app) adds fields to every entry — `@bespokecore/otel` adds the span's ids.
+`LogContextSources` (one per app) adds fields to every entry — `@marmeon/otel` adds the span's ids.
 
 ## The transaction context
 
 Which database transaction the current async call chain runs in (E107). The transaction is
-[@bespokecore/database](../database/README.md#transactions)'s — `connections.transaction(callback)`, `repository.transaction(callback)`
+[@marmeon/database](../database/README.md#transactions)'s — `connections.transaction(callback)`, `repository.transaction(callback)`
 —; the context and the functions around it live here, so every package can use them without depending on the database (the
 database package re-exports them):
 
@@ -445,14 +445,14 @@ await connections.transaction(async () => {
   when they were registered.
 - The rules, nesting (savepoints) and the limits: [Transactions](../database/README.md#transactions).
 
-## Diagnostics: `@bespokecore/core/diagnostics` (E118)
+## Diagnostics: `@marmeon/core/diagnostics` (E118)
 
 The framework reports what it does on `node:diagnostics_channel` **TracingChannels** — the channel kind the Node ecosystem
 (undici, fastify, node-redis, …) uses. The error page, the devtools recorder, the debug bar, `Server-Timing` and
-`@bespokecore/otel` subscribe to them; apps keep using events (job events, scheduler events) for their own reactions.
+`@marmeon/otel` subscribe to them; apps keep using events (job events, scheduler events) for their own reactions.
 
 ```ts
-import { channels } from '@bespokecore/core/diagnostics';
+import { channels } from '@marmeon/core/diagnostics';
 
 // in a provider's boot(app):
 this.#off = channels.subscribe(app, 'db.query', {
@@ -472,7 +472,7 @@ channels.subscribe(app, 'log', (entry) => { … });             // a plain chann
   the only shared part.
 - **Raw values:** queries carry their parameters, log entries their context, exceptions the error. Whatever records or
   shows them redacts first (E125); `db.query`'s `secret` says when a statement touches secret columns.
-- **A subscriber that throws** is reported as a process warning (`BespokeDiagnosticsWarning`); the operation goes on. A
+- **A subscriber that throws** is reported as a process warning (`MarmeonDiagnosticsWarning`); the operation goes on. A
   `log` subscriber must not log itself.
 - **Types:** `ChannelMessage<'db.query'>` is `DbQueryMessage`, and so on; a wrong field or channel name is a compile
   error (`Property 'route' does not exist on type 'DbQueryMessage'.`, `Argument of type '"db.querry"' is not assignable
@@ -480,11 +480,11 @@ channels.subscribe(app, 'log', (entry) => { … });             // a plain chann
 
 ### The channels
 
-Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEnd,error}`; the plain ones `bespoke:<name>`.
+Node names the traced ones `tracing:marmeon:<name>:{start,end,asyncStart,asyncEnd,error}`; the plain ones `marmeon:<name>`.
 
 | Channel | Where | Message (besides `app`, `startedAt`, `requestId?`, `jobId?`, `task?`, `durationMs`, `error`) |
 |---|---|---|
-| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status`, `location` (raw: a redirect's target, or with a 409 the protocol's `x-bespoke-location`) and `reload` (its reason); while something listens also `page` (`PageSummary`: view, kind, the bytes of each prop, `only`/`except`, deferred groups) and `input` (the body as the app read it — raw; never read for this) |
+| `http.request` | the kernel, per request (also an island or a layer's base resolved in-process; never `/up`, E126) | `HttpRequestMessage`: `method`, `path`, `url` and `headers` (raw), `region`, `inProcess`, `route` (name), `routePath` (pattern), `controller`, `status`, `location` (raw: a redirect's target, or with a 409 the protocol's `x-marmeon-location`) and `reload` (its reason); while something listens also `page` (`PageSummary`: view, kind, the bytes of each prop, `only`/`except`, deferred groups) and `input` (the body as the app read it — raw; never read for this) |
 | `db.query` | every statement of every connection | `DbQueryMessage`: `connection`, `driver` (`sqlite`/`pgsql`), `sql`, `parameters` (raw), `secret` |
 | `queue.dispatch` | `queue.dispatch()`, `bulk()`, `chain()` | `QueueDispatchMessage`: `kind`, `jobs`, `jobIds`, `connection`, `queue`, `delay`, `unique`, `traceparent` (a tracer sets it), `payloads` (raw) and `encrypted` (per job) |
 | `queue.job` | each attempt (worker, `sync`, `app.queue.work()`) | `QueueJobMessage`: `job`, `jobId`, `queue`, `connection`, `attempt`, `originRequestId`, `traceparent`, `payload` (raw), `encrypted`, `outcome` |
@@ -493,7 +493,7 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
 | `notification.send` | `notifications.send()` (queued), each delivery (also the `NotificationFake`) | `NotificationSendMessage`: `notification`, `id`, `recipient`, `queued`, `channels`, `outcome` |
 | `live.refresh` | a live hint going out (after its commit) | `LiveRefreshMessage`: `channel`, `only` |
 | `render.ssr` | server rendering of a document, until its shell | `SsrRenderMessage`: `component`, `complete` (a crawler), `streamed` |
-| `command.run` | one `bespoke <command>` in its own process (not a scheduled one) | `CommandRunMessage`: `command`, `args` (raw), `exitCode` |
+| `command.run` | one `marmeon <command>` in its own process (not a scheduled one) | `CommandRunMessage`: `command`, `args` (raw), `exitCode` |
 | `log` *(plain)* | every log entry, any level (before the logger's level filter) | `LogMessage`: `level`, `message`, `context` (bindings + context) |
 | `exception` *(plain)* | an error a request ends in, on its way to the `ExceptionHandler` | `ExceptionMessage`: `error`, `status`, `method`, `path` |
 | `event` *(plain)* | every `EventDispatcher.dispatch()` — before a test's `EventFake` decides whether listeners run | `EventDispatchMessage`: `event` (raw), `name` (`static event` or class name), `listeners` |
@@ -502,38 +502,38 @@ Node names the traced ones `tracing:bespoke:<name>:{start,end,asyncStart,asyncEn
   request keeps it as `originRequestId`. Queries, mails, notifications and log entries carry the `requestId` or `jobId` of
   where they happen.
 - **Trace context:** `channels.around(app, name, (message, run) => …)` runs each traced operation's work inside a context
-  of the subscriber's — `@bespokecore/otel` runs it in the operation's span (`context.with(…, run)`), so what happens inside
+  of the subscriber's — `@marmeon/otel` runs it in the operation's span (`context.with(…, run)`), so what happens inside
   (its queries, the jobs it dispatches, its log lines, the app's own spans) is its child. Call `run` once, synchronously; a
   wrapper that throws or forgets it is a process warning and the work runs without it. (Node's `start.bindStore` cannot carry
   OpenTelemetry's context: Node 26 enters a bound store with `store.withScope()`, which only an `AsyncLocalStorage` has.)
   On `queue.dispatch` a tracer sets `message.traceparent` in `start` — the job stores it, its `queue.job` message carries it
   to the worker (also through the `QueueFake`). A raw subscriber (`channels.tracing(name)`) hears every app: compare
   `message.app` itself.
-- **Log fields:** `LogContextSources` (one per app) adds fields to every log entry written now — `@bespokecore/otel` adds
-  the active span's `trace_id`, `span_id` and `trace_flags`; `@bespokecore/log` and the fallback logger merge them.
+- **Log fields:** `LogContextSources` (one per app) adds fields to every log entry written now — `@marmeon/otel` adds
+  the active span's `trace_id`, `span_id` and `trace_flags`; `@marmeon/log` and the fallback logger merge them.
 - **Publishing (packages):** `messageBase(app)` (the common fields — counts as a message built), `trace(channel, message,
   fn, finish?)` (start → end → error → asyncStart → asyncEnd, `durationMs` set first) and `publishEnded(channel, message)`
   for an operation that already ended. Always behind `channel.hasSubscribers`.
 
-### What `@bespokecore/otel` makes of them (E120)
+### What `@marmeon/otel` makes of them (E120)
 
-| Channel | Span (kind) | Attributes (semantic conventions; `bespoke.*` our own) |
+| Channel | Span (kind) | Attributes (semantic conventions; `marmeon.*` our own) |
 |---|---|---|
-| `http.request` | `GET /users/:user` (server; in-process: internal) — `{method}` without a route | `http.request.method`, `http.route`, `http.response.status_code`, `url.path` (sensitive route parameters `[redacted]`), `url.query` and `user_agent.original` (redacted), `url.scheme`, `server.address`/`port`, `bespoke.route.name`, `bespoke.controller`, `bespoke.request.id`; a 5xx: status error + `error.type` |
+| `http.request` | `GET /users/:user` (server; in-process: internal) — `{method}` without a route | `http.request.method`, `http.route`, `http.response.status_code`, `url.path` (sensitive route parameters `[redacted]`), `url.query` and `user_agent.original` (redacted), `url.scheme`, `server.address`/`port`, `marmeon.route.name`, `marmeon.controller`, `marmeon.request.id`; a 5xx: status error + `error.type` |
 | `exception` | — (on the request's span, 5xx only) | an `exception` event, message and stack redacted; `error.type` = the error's class |
-| `db.query` | `SELECT users` (client) — only inside another span | `db.system.name`, `db.query.text` (**no parameters**), `db.operation.name`, `db.collection.name`, `bespoke.db.connection` |
-| `queue.dispatch` | `send <job>` (producer) | `messaging.system=bespokecore`, `messaging.operation.type=send`, `messaging.destination.name`, `messaging.message.id`; its context → `traceparent` |
-| `queue.job` | `process <job>` (consumer) — parent: the dispatch (`traceparent`) | `messaging.*`, `bespoke.job`, `bespoke.job.attempt`, `bespoke.job.outcome`, `bespoke.request.origin_id` |
-| `schedule.task` | `schedule <task>` | `bespoke.schedule.task`, `.reason`, `.outcome`, `.skipped` |
-| `mail.send` | `mail <Mailable>` (client) | `bespoke.mail.mailable`, `.mode`, `.recipients` (a count — no addresses, no subject) |
-| `notification.send` | `notify <notification>` | `bespoke.notification`, `.queued`, `.recipient_type`, `.channels`, `.outcome` |
-| `live.refresh` | `live refresh` (producer) | `bespoke.live.channel`, `.only` |
-| `render.ssr` | `render <View>` | `bespoke.view`, `bespoke.ssr.complete`, `.streamed` |
+| `db.query` | `SELECT users` (client) — only inside another span | `db.system.name`, `db.query.text` (**no parameters**), `db.operation.name`, `db.collection.name`, `marmeon.db.connection` |
+| `queue.dispatch` | `send <job>` (producer) | `messaging.system=marmeon`, `messaging.operation.type=send`, `messaging.destination.name`, `messaging.message.id`; its context → `traceparent` |
+| `queue.job` | `process <job>` (consumer) — parent: the dispatch (`traceparent`) | `messaging.*`, `marmeon.job`, `marmeon.job.attempt`, `marmeon.job.outcome`, `marmeon.request.origin_id` |
+| `schedule.task` | `schedule <task>` | `marmeon.schedule.task`, `.reason`, `.outcome`, `.skipped` |
+| `mail.send` | `mail <Mailable>` (client) | `marmeon.mail.mailable`, `.mode`, `.recipients` (a count — no addresses, no subject) |
+| `notification.send` | `notify <notification>` | `marmeon.notification`, `.queued`, `.recipient_type`, `.channels`, `.outcome` |
+| `live.refresh` | `live refresh` (producer) | `marmeon.live.channel`, `.only` |
+| `render.ssr` | `render <View>` | `marmeon.view`, `marmeon.ssr.complete`, `.streamed` |
 | `log` | — | `trace_id`, `span_id`, `trace_flags` in the entry (`LogContextSources`) |
 
 ## Health checks (E126)
 
-`/up/ready` ([@bespokecore/server](../server/README.md#health-e126)) runs the app's `HealthChecks`: invokable classes with
+`/up/ready` ([@marmeon/server](../server/README.md#health-e126)) runs the app's `HealthChecks`: invokable classes with
 `static check` (the name) and `handle()` (throws when the check fails; may return a short note), dependencies through the
 constructor. Packages list theirs as `static health` on their provider (database: `select 1` on every connection; redis: `PING`
 on each connection in use; cache: `add` + `forget`; queue: the default connection's size); the app adds its own with
@@ -560,7 +560,7 @@ in type '{ readonly check: string; readonly timeout?: number | undefined; }'.`);
 ## Redaction (E125)
 
 `Redactor` (one per app: `app.container.make(Redactor)`) is the one place that decides what of a value may be shown or
-recorded — the development error page and its Markdown copy, the devtools recorder (`@bespokecore/devtools`) and telemetry
+recorded — the development error page and its Markdown copy, the devtools recorder (`@marmeon/devtools`) and telemetry
 spans. It is on by default, also locally:
 
 - **by key**, at any depth: `REDACTED_KEYS` (passwords, tokens, secrets, cookies, `authorization`, signatures — so also
@@ -568,7 +568,7 @@ spans. It is on by default, also locally:
 - **in text** (`redactText`): values of sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials,
   URL passwords, password hashes (`$argon2id$…`, `$scrypt$…`), API tokens (`bc_12|…`, any prefix) and token-like path
   segments — 32 or more URL-safe characters, hex or mixed-case with digits (`/reset-password/<token>` in a mail's link, a log
-  line or a `Referer`; slugs and UUIDs stay) —, plus the added names' values (`bespoke_session=…`);
+  line or a `Referer`; slugs and UUIDs stay) —, plus the added names' values (`marmeon_session=…`);
 - **statements** that touch a table with secret columns (`DbQueryMessage.secret`) show none of their parameters;
 - **encrypted payloads** (a job with `static encrypted`, a queued mail or listener) only as `[encrypted]` (`payload(value, encrypted)`);
 - **paths and URLs** by their route: the values of sensitive route parameters (`/reset/:token`) replaced (`path(path, pattern)`,
@@ -595,14 +595,14 @@ They are **text only** — no endpoint runs anything (Ignition's runnable soluti
 solutions on its provider; an app can do the same:
 
 ```ts
-import { defineSolutions } from '@bespokecore/core';
+import { defineSolutions } from '@marmeon/core';
 
 export class PaymentsServiceProvider {
   static solutions = defineSolutions([
     {
       for: PaymentError,                                  // the class (and its subclasses)
       when: (e) => e.code === 'declined',                  // optional: narrows it — `e` is a PaymentError
-      solve: (e, { app }) => ({ title: 'Use a test card', text: '…', command: 'bespoke payments:cards', docs: 'README.md#cards' }),
+      solve: (e, { app }) => ({ title: 'Use a test card', text: '…', command: 'marmeon payments:cards', docs: 'README.md#cards' }),
     },
   ]);
 }
@@ -612,18 +612,18 @@ export class PaymentsServiceProvider {
 `ErrorSolutions` (`app.container.make(ErrorSolutions)`) holds every provider's solutions, then the core's, and `find(error,
 { app })` looks through the error and its causes. The core brings solutions for the container's errors, the injection
 transform, invalid configuration and a package that reaches Node with its TypeScript sources (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`,
-[Discovery](#discovery-the-bespoke-field-and-bespoke-discover)); the packages add theirs (`http`: an undefined route name with "did you mean", a missing
-view R2; `database`: a missing table and the pending migrations; `encryption`: a missing `APP_KEY`). `bespoke` prints them
+[Discovery](#discovery-the-marmeon-field-and-marmeon-discover)); the packages add theirs (`http`: an undefined route name with "did you mean", a missing
+view R2; `database`: a missing table and the pending migrations; `encryption`: a missing `APP_KEY`). `marmeon` prints them
 too when the app cannot start, after the error and Node's code (`ERR_…`) when it has one.
 
 ## HTML: the escaping `html` template
 
 ```ts
-import { html, raw } from '@bespokecore/core';
+import { html, raw } from '@marmeon/core';
 
 html`<p>Hello ${user.name}</p><ul>${items.map((item) => html`<li>${item}</li>`)}</ul>`;   // every value escaped; nested html kept
 ```
 
-For HTML the server writes itself — mails (`@bespokecore/mail` re-exports it) and the devtools' pages. Values are escaped as
+For HTML the server writes itself — mails (`@marmeon/mail` re-exports it) and the devtools' pages. Values are escaped as
 text and inside quoted attributes (`& < > " ' \``); `raw()` is markup you trust, never input. It does not judge URLs: put only
 links you built into `href`.

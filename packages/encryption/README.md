@@ -1,21 +1,21 @@
-# @bespokecore/encryption
+# @marmeon/encryption
 
 Symmetric, authenticated encryption with the application key — Laravel's `Encrypter`: AES-256-GCM, keyed by `APP_KEY`, with
-previous keys for rotation. `@bespokecore/http` encrypts every cookie with it, `@bespokecore/queue` encrypted job payloads,
-`@bespokecore/session` the session data with `SESSION_ENCRYPT=true`, `@bespokecore/database` the cursors of `cursorPaginate`; the
+previous keys for rotation. `@marmeon/http` encrypts every cookie with it, `@marmeon/queue` encrypted job payloads,
+`@marmeon/session` the session data with `SESSION_ENCRYPT=true`, `@marmeon/database` the cursors of `cursorPaginate`; the
 key itself (`EncryptionConfig`) is what signed URLs, live tokens, upload tokens and the tabs' session epoch derive keys of their
 own from.
 
 ```ts
-import { Encrypter } from '@bespokecore/encryption';
+import { Encrypter } from '@marmeon/encryption';
 
 // constructor(encrypter: Encrypter) — a singleton
 const payload = await this.#encrypter.encrypt(JSON.stringify({ exportId: 7 }), 'exports:download');
 const data = JSON.parse(await this.#encrypter.decrypt(payload, 'exports:download'));   // DecryptError when anything is off
 ```
 
-It comes with `@bespokecore/http` (a dependency of it, of `@bespokecore/session`, `@bespokecore/live`, `@bespokecore/cli` and
-`@bespokecore/testing`); `bespoke discover` registers its `EncryptionServiceProvider` through the `"bespoke"` field of its
+It comes with `@marmeon/http` (a dependency of it, of `@marmeon/session`, `@marmeon/live`, `marmeon` and
+`@marmeon/testing`); `marmeon discover` registers its `EncryptionServiceProvider` through the `"marmeon"` field of its
 package.json. The queue and storage take it as an optional peer: only an encrypted job or uploads need it.
 
 ## The key: `APP_KEY`
@@ -23,9 +23,9 @@ package.json. The queue and storage take it as an optional peer: only an encrypt
 `base64:` followed by 32 random bytes, base64-encoded — a 256-bit AES key.
 
 ```sh
-bespoke key:generate          # writes APP_KEY=base64:… into .env (copied from .env.example first when there is no .env)
-bespoke key:generate --show   # prints a new key, writes nothing
-bespoke key:generate --force  # replaces a key that is set — the old one moves to APP_PREVIOUS_KEYS ("Key rotation")
+marmeon key:generate          # writes APP_KEY=base64:… into .env (copied from .env.example first when there is no .env)
+marmeon key:generate --show   # prints a new key, writes nothing
+marmeon key:generate --force  # replaces a key that is set — the old one moves to APP_PREVIOUS_KEYS ("Key rotation")
 ```
 
 `key:generate` runs without booting the app (a missing key is exactly why it cannot boot), and refuses to replace a key that is
@@ -35,7 +35,7 @@ set: `APP_KEY is already set. Replacing it makes existing sessions and encrypted
 ## Configuration
 
 ```sh
-APP_KEY=base64:…                      # required — every environment, tests included (not by `bespoke build`, below)
+APP_KEY=base64:…                      # required — every environment, tests included (not by `marmeon build`, below)
 APP_PREVIOUS_KEYS=base64:…,base64:…   # optional, comma-separated: former keys that still decrypt
 ```
 
@@ -43,11 +43,11 @@ APP_PREVIOUS_KEYS=base64:…,base64:…   # optional, comma-separated: former ke
 ([configuration](../core/README.md#configuration)): a missing, empty or malformed key stops it with one `ConfigError`, e.g.
 
 ```text
-• encryption: APP_KEY — Missing — run "bespoke key:generate"
-• encryption: APP_KEY — Expected "base64:" followed by 32 base64-encoded bytes — run "bespoke key:generate"
+• encryption: APP_KEY — Missing — run "marmeon key:generate"
+• encryption: APP_KEY — Expected "base64:" followed by 32 base64-encoded bytes — run "marmeon key:generate"
 ```
 
-A broken entry in `APP_PREVIOUS_KEYS` fails the same way. `bespoke build` needs neither (E187): its build phase registers the
+A broken entry in `APP_PREVIOUS_KEYS` fails the same way. `marmeon build` needs neither (E187): its build phase registers the
 providers without booting them and leaves a configuration that does not validate out — the `Encrypter` is only made when
 something resolves it, and reading `EncryptionConfig` then throws a `ConfigError` that names `APP_KEY`
 ([the build phase](../core/README.md#modules-definemodule)).
@@ -65,7 +65,7 @@ something resolves it, and reading `EncryptionConfig` then throws a `ConfigError
   string all end in the same `DecryptError` (`The payload is invalid.`) — it never says which.
 - **`context` binds a payload to its use** (additional authenticated data, default `''`): a value encrypted for the cookie
   `session` does not decrypt as the cookie `remember`. The framework's contexts are `cookie:<name>`, `queue:<job name>`, `session:<key>` and
-  `bespoke:cursor:<direction>:<columns>`;
+  `marmeon:cursor:<direction>:<columns>`;
   pick your own for your own payloads (`exports:download`).
 - **Strings in, strings out:** serialize yourself (`JSON.stringify`) — there is no implicit serialization like Laravel's.
 - **Outside the container:** `new AesGcmEncrypter(key, previousKeys)` takes raw 32-byte keys (anything else is a `TypeError`),
@@ -78,7 +78,7 @@ something resolves it, and reading `EncryptionConfig` then throws a `ConfigError
 epoch is computed with the current key only: after a deploy with a new key every open tab finds a new epoch at its next check
 and reloads once ([tab sync](../http/README.md#tab-sync-w8-step-8)).
 
-1. `bespoke key:generate --force` writes a new `APP_KEY` into `.env` and moves the old one to the front of `APP_PREVIOUS_KEYS`
+1. `marmeon key:generate --force` writes a new `APP_KEY` into `.env` and moves the old one to the front of `APP_PREVIOUS_KEYS`
    (E169: `The old key moved to APP_PREVIOUS_KEYS: sessions, encrypted cookies and signed links stay valid. Set both on every
    server.`) — keys already listed there stay behind it, without duplicates. Where the
    environment comes from elsewhere, do the same there: the current key into `APP_PREVIOUS_KEYS`, a new one (`--show`) into `APP_KEY`.
@@ -95,22 +95,22 @@ absent), invalidates every signed link and turns encrypted jobs still waiting in
 
 | Package | What | Key |
 |---|---|---|
-| [@bespokecore/http](../http/README.md) | `EncryptCookies` in the `web` group: every cookie the app sets and reads | the `Encrypter`, context `cookie:<name>` |
-| [@bespokecore/queue](../queue/README.md#secrets-in-payloads-e105) | jobs with `static encrypted = true`, the framework's own jobs | the `Encrypter`, context `queue:<job name>` |
-| [@bespokecore/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145) | the session data in its store with `SESSION_ENCRYPT=true` (off by default) | the `Encrypter`, context `session:<key>` (the session's store key) |
-| [@bespokecore/database](../database/README.md#pagination) | `cursorPaginate`'s `nextCursor` (W9: the last row's values — hidden sort columns too — neither readable nor made up; one that does not decrypt is a 400) | the `Encrypter` (its `encrypter` option), context `bespoke:cursor:<direction>:<columns>` |
-| [@bespokecore/http](../http/README.md) | `UrlSigner` — signed URLs, HMAC-SHA-256 | HKDF-SHA-256 of each key, info `bespokecore:signed-url` |
-| [@bespokecore/live](../live/README.md#the-guarantees) | the tokens of the channels a page follows | HKDF-SHA-256, info `bespokecore:live` |
-| [@bespokecore/storage](../storage/README.md#uploads) | upload tokens | HKDF-SHA-256, info `bespokecore:upload-token` |
-| [@bespokecore/http](../http/README.md#tab-sync-w8-step-8) | the session epoch (`PageObject.epoch`, E148/E165), HMAC-SHA-256 | HKDF-SHA-256 of `APP_KEY` only, info `bespokecore:session-epoch` |
+| [@marmeon/http](../http/README.md) | `EncryptCookies` in the `web` group: every cookie the app sets and reads | the `Encrypter`, context `cookie:<name>` |
+| [@marmeon/queue](../queue/README.md#secrets-in-payloads-e105) | jobs with `static encrypted = true`, the framework's own jobs | the `Encrypter`, context `queue:<job name>` |
+| [@marmeon/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145) | the session data in its store with `SESSION_ENCRYPT=true` (off by default) | the `Encrypter`, context `session:<key>` (the session's store key) |
+| [@marmeon/database](../database/README.md#pagination) | `cursorPaginate`'s `nextCursor` (W9: the last row's values — hidden sort columns too — neither readable nor made up; one that does not decrypt is a 400) | the `Encrypter` (its `encrypter` option), context `marmeon:cursor:<direction>:<columns>` |
+| [@marmeon/http](../http/README.md) | `UrlSigner` — signed URLs, HMAC-SHA-256 | HKDF-SHA-256 of each key, info `marmeon:signed-url` |
+| [@marmeon/live](../live/README.md#the-guarantees) | the tokens of the channels a page follows | HKDF-SHA-256, info `marmeon:live` |
+| [@marmeon/storage](../storage/README.md#uploads) | upload tokens | HKDF-SHA-256, info `marmeon:upload-token` |
+| [@marmeon/http](../http/README.md#tab-sync-w8-step-8) | the session epoch (`PageObject.epoch`, E148/E165), HMAC-SHA-256 | HKDF-SHA-256 of `APP_KEY` only, info `marmeon:session-epoch` |
 
 - **Cookies:** the session id, the `cookie` session driver's data and auth's remember-me cookie are encrypted this way — every
   cookie except the names given to `CookieEncryption.except()` (the session package excepts `XSRF-TOKEN`: the browser's
   JavaScript reads it). A tampered, foreign or plain value counts as absent.
-- **Jobs:** the framework's own jobs are always encrypted — `bespoke.mail`, `bespoke.listener`, `bespoke.notification`.
+- **Jobs:** the framework's own jobs are always encrypted — `marmeon.mail`, `marmeon.listener`, `marmeon.notification`.
 - **Derived keys:** each purpose gets a key of its own — a signature is never also a cookie key.
-- **Checked at the start**, not on the first request: `@bespokecore/http` fails when the `web` group has no `Encrypter` (`The web
-  middleware group needs the Encrypter — register EncryptionServiceProvider from @bespokecore/encryption (discovery does this
+- **Checked at the start**, not on the first request: `@marmeon/http` fails when the `web` group has no `Encrypter` (`The web
+  middleware group needs the Encrypter — register EncryptionServiceProvider from @marmeon/encryption (discovery does this
   automatically) and set APP_KEY.`), the queue when an encrypted job or a queued listener exists without it, live when it builds
   its tokens.
 
@@ -118,13 +118,13 @@ absent), invalidates every signed link and turns encrypted jobs still waiting in
 
 The provider brings a [solution](../core/README.md#solutions-e130) for every error whose message names `APP_KEY` — a missing or
 broken key at the start, or a package that needs one: **Generate an application key**, with the command
-`bespoke key:generate` to copy and the warning about rotation above. `bespoke` prints it below the error when the app cannot
+`marmeon key:generate` to copy and the warning about rotation above. `marmeon` prints it below the error when the app cannot
 start; the development error page shows it. Text only — nothing runs it for you.
 
 ## Testing
 
 Tests need a key like any other environment: the web app keeps a fixed one in `.env.test`; a test that boots an app of its own
 passes one (`createApplication({ env: { APP_KEY: generateKey() }, providers: [EncryptionServiceProvider] })`).
-[@bespokecore/testing](../testing/README.md) encrypts and decrypts cookies like the app: `app.withCookie(name, value)` sends a value encrypted for
+[@marmeon/testing](../testing/README.md) encrypts and decrypts cookies like the app: `app.withCookie(name, value)` sends a value encrypted for
 that cookie, `withUnencryptedCookie(name, value)` sends it as given (to prove forged values are ignored), and
 `response.cookie(name)` / `assertCookie(name, value)` see the decrypted value.

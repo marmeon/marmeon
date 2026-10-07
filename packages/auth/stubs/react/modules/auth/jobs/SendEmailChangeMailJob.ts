@@ -1,8 +1,8 @@
-import { Clock } from '@bespokecore/core';
-import { UrlSigner } from '@bespokecore/http';
-import { Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
-import type { JobPayload } from '@bespokecore/queue';
+import { Clock } from '@marmeon/core';
+import { UrlSigner } from '@marmeon/http';
+import { Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
+import type { JobPayload } from '@marmeon/queue';
 import * as v from 'valibot';
 import { AppConfig } from '../../../config/app.ts';
 import { emailChangeTokenHash } from '../email-change.ts';

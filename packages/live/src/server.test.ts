@@ -4,17 +4,17 @@ import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createApplication, defineModule, type Container } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, type PageObject } from '@bespokecore/http';
-import { ServerServiceProvider, startServer } from '@bespokecore/server';
-import { SessionServiceProvider } from '@bespokecore/session';
+import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { Controller, defineRoutes, HttpServiceProvider, type PageObject } from '@marmeon/http';
+import { ServerServiceProvider, startServer } from '@marmeon/server';
+import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { LiveBackend, LiveServiceProvider, MemoryLiveBackend } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = tempDir('bespoke-live-');
+const root = tempDir('marmeon-live-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
 mkdirSync(join(root, 'node_modules'));
@@ -37,12 +37,12 @@ describe('a live stream and the server (E104)', () => {
     });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
-    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-bespoke': 'true' } });
+    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-marmeon': 'true' } });
     const page = (await answer.json()) as PageObject;
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;
     const stream = new LiveStreamReader(
-      await fetch(`http://127.0.0.1:${port}/_bespoke/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } }),
+      await fetch(`http://127.0.0.1:${port}/_marmeon/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } }),
     );
     expect(await stream.hello()).toEqual({ seq: { 'board.1': 0 } });
     // Read-only: the stream sets no cookie.
@@ -84,11 +84,11 @@ describe('a live stream and the server (E104)', () => {
     });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
-    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-bespoke': 'true' } });
+    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-marmeon': 'true' } });
     const page = (await answer.json()) as PageObject;
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;
-    const stream = fetch(`http://127.0.0.1:${port}/_bespoke/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } });
+    const stream = fetch(`http://127.0.0.1:${port}/_marmeon/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } });
     await waiting;
     const closed = running.close();
     release();
@@ -104,12 +104,12 @@ describe('a live stream and the server (E104)', () => {
   }, 20_000);
 });
 
-describe('the memory backend and bespoke start --workers (W9 step 4)', () => {
+describe('the memory backend and marmeon start --workers (W9 step 4)', () => {
   const fixture = fileURLToPath(new URL('./__fixtures__/cluster-boot.ts', import.meta.url));
   const run = (mode: string) => {
-    const { NODE_OPTIONS: _options, BESPOKE_CLUSTER_WORKER: _mark, ...env } = process.env;
-    const mark = mode === 'single' ? { BESPOKE_CLUSTER_WORKER: '1' } : {};
-    const result = spawnSync(process.execPath, ['--conditions=@bespokecore/source', fixture, root, mode], { cwd: dirname(fixture), encoding: 'utf8', env: { ...env, ...mark }, timeout: 20_000 });
+    const { NODE_OPTIONS: _options, MARMEON_CLUSTER_WORKER: _mark, ...env } = process.env;
+    const mark = mode === 'single' ? { MARMEON_CLUSTER_WORKER: '1' } : {};
+    const result = spawnSync(process.execPath, ['--conditions=@marmeon/source', fixture, root, mode], { cwd: dirname(fixture), encoding: 'utf8', env: { ...env, ...mark }, timeout: 20_000 });
     return { code: result.status, output: `${result.stdout}${result.stderr}`.trim() };
   };
 
@@ -117,7 +117,7 @@ describe('the memory backend and bespoke start --workers (W9 step 4)', () => {
     expect(run('worker')).toEqual({
       code: 70,
       output:
-        'failed: LIVE_DRIVER=memory cannot serve bespoke start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @bespokecore/redis), or start one process without --workers.',
+        'failed: LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
     });
   }, 30_000);
 

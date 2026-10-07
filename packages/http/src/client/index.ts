@@ -1,5 +1,5 @@
 /**
- * `@bespokecore/http/client` — the UI-free client core (E39). Everything a UI adapter needs that is not rendering:
+ * `@marmeon/http/client` — the UI-free client core (E39). Everything a UI adapter needs that is not rendering:
  * visits and their events, 409/hard page changes, XSRF, the history and the in-memory page cache (E36), regions
  * (islands, E50) and layers (E53) with their own requests and memory, partial reloads, deferred and merged props, prefetching, polling,
  * scroll restoration, the progress bar, the first page, route URLs and the page's messages. It may use DOM APIs, but no UI framework — and it never imports server code

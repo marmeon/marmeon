@@ -1,4 +1,4 @@
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
@@ -8,7 +8,7 @@ import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 /** Signed in with a password just now — what the password confirmation ("sudo mode") asks for. */
 async function signedIn(app: TestApp, user: User) {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
-  return app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 }
 
 describe('"Download my data" (W6.8: a private disk and a signed, expiring URL)', () => {
@@ -21,7 +21,7 @@ describe('"Download my data" (W6.8: a private disk and a signed, expiring URL)',
 
     const response = await session.post('/users/me/export').assertRedirect();
     const location = response.headers.get('location')!;
-    expect(location).toMatch(new RegExp(`^/_bespoke/storage/local/exports/user-${ada.id}\\.json\\?filename=my-data-${ada.id}\\.json&expires=\\d+&signature=[0-9a-f]{64}$`));
+    expect(location).toMatch(new RegExp(`^/_marmeon/storage/local/exports/user-${ada.id}\\.json\\?filename=my-data-${ada.id}\\.json&expires=\\d+&signature=[0-9a-f]{64}$`));
     app.storage.disk('local').assertExists(`exports/user-${ada.id}.json`).assertCount(1);
     app.storage.disk('public').assertCount(0);
 

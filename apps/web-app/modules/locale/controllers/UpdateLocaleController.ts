@@ -1,7 +1,7 @@
-import { Auth } from '@bespokecore/auth';
-import { ClientHistory, Controller, defineRequest, ValidationError, type ContextOf } from '@bespokecore/http';
-import { Locales, trans, Translator } from '@bespokecore/i18n';
-import { Session } from '@bespokecore/session';
+import { Auth } from '@marmeon/auth';
+import { ClientHistory, Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { Locales, trans, Translator } from '@marmeon/i18n';
+import { Session } from '@marmeon/session';
 import * as v from 'valibot';
 import { UserRepository } from '#modules/auth';
 

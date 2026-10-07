@@ -1,5 +1,5 @@
-import { Logger, type LogContext } from '@bespokecore/core';
-import { createTestApp } from '@bespokecore/testing';
+import { Logger, type LogContext } from '@marmeon/core';
+import { createTestApp } from '@marmeon/testing';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -43,7 +43,7 @@ describe('the SSR lab (W5 step 7)', () => {
     const { app, entries } = await lab();
     const response = await app.get('/lab/browser-only', page).assertOk().assertPage('lab/BrowserOnly');
     expect(response.body).toMatch(/<div id="app"><\/div>/);
-    expect(response.body).toContain('<title data-bespoke-head="ssr">BespokeCore</title>');
+    expect(response.body).toContain('<title data-marmeon-head="ssr">Marmeon</title>');
     expect(entries.filter((entry) => entry.level === 'error')).toEqual([]);
   });
 
@@ -65,7 +65,7 @@ describe('the SSR lab (W5 step 7)', () => {
     const response = await app.get('/lab/late-error', page).assertOk();
     expect(response.body).toContain('<h1>Late error</h1>');
     expect(response.body).toContain('Loading the late part…'); // the boundary's fallback, until the browser renders it
-    expect(response.body).toContain('data-dgst="bespoke:ssr"');
+    expect(response.body).toContain('data-dgst="marmeon:ssr"');
     expect(entries).toContainEqual(expect.objectContaining({ level: 'error', message: 'Server rendering of [lab/LateError] failed in a Suspense boundary — the browser renders that part' }));
   });
 

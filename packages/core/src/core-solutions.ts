@@ -16,7 +16,7 @@ export const coreSolutions = defineSolutions([
         `Nothing is bound for ${e.key}${e.neededBy ? ` (needed by ${e.neededBy})` : ''}. An interface's token needs a binding: ` +
         `register one in a provider's register() — container.singleton(${e.key}, Implementation). If a package provides it, ` +
         'install the package and let discovery register its provider.',
-      command: 'bespoke discover',
+      command: 'marmeon discover',
       docs: CONTAINER_DOCS,
     }),
   },
@@ -62,9 +62,9 @@ export const coreSolutions = defineSolutions([
       text:
         `Node does not run TypeScript under node_modules (${/for "([^"]+)"/.exec(e.message)?.[1] ?? 'a package'}). A published package ` +
         'brings its built dist/ — this one points Node at its sources: packed with npm pack (which ignores publishConfig.exports — pack ' +
-        'with pnpm), a workspace package copied with its workspace manifest, or the @bespokecore/source condition outside the ' +
+        'with pnpm), a workspace package copied with its workspace manifest, or the @marmeon/source condition outside the ' +
         "framework's monorepo (NODE_OPTIONS).",
-      docs: 'packages/core/README.md#discovery-the-bespoke-field-and-bespoke-discover',
+      docs: 'packages/core/README.md#discovery-the-marmeon-field-and-marmeon-discover',
     }),
   },
   {
@@ -91,9 +91,9 @@ function injectionSolution(key: string, reason: string | undefined): Solution {
   return {
     title: `Give ${key} an injection list`,
     text:
-      `${key} takes constructor arguments but has no generated list. App code gets it from the loader (bespoke dev/start, ` +
-      'Vitest through the bespoke() plugin); a package from "bespoke package:build". Code loaded another way needs `static inject = [...]`.',
-    command: 'bespoke package:build',
+      `${key} takes constructor arguments but has no generated list. App code gets it from the loader (marmeon dev/start, ` +
+      'Vitest through the marmeon() plugin); a package from "marmeon package:build". Code loaded another way needs `static inject = [...]`.',
+    command: 'marmeon package:build',
     docs,
   };
 }

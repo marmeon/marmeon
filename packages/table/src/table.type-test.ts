@@ -1,8 +1,8 @@
-import type { Authenticated } from '@bespokecore/auth';
+import type { Authenticated } from '@marmeon/auth';
 import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
-import { defineMiddleware, defineRequest, defineRoutes } from '@bespokecore/router';
+import { defineMiddleware, defineRequest, defineRoutes } from '@marmeon/router';
 import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {

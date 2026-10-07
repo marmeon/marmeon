@@ -1,10 +1,10 @@
-import { Container } from '@bespokecore/core';
-import type { CommandInput } from '@bespokecore/cli';
+import { Container } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
 import { SessionConfig } from '../config.ts';
 import { SessionStore } from '../store.ts';
 
 /**
- * `bespoke session:prune`: removes expired sessions — what the lottery does now and then after a response
+ * `marmeon session:prune`: removes expired sessions — what the lottery does now and then after a response
  * (`SESSION_LOTTERY`), as a command for a scheduler or system cron. Redis and cookie sessions expire on their own.
  */
 export class PruneSessionsCommand {

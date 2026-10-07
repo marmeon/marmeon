@@ -1,22 +1,22 @@
 {
-  "name": "@bespokecore/react",
+  "name": "@marmeon/react",
   "version": "0.1.0",
-  "description": "The React adapter of BespokeCore: components, hooks, layouts, error boundaries and <Head> on the UI-free client core.",
+  "description": "The React adapter of Marmeon: components, hooks, layouts, error boundaries and <Head> on the UI-free client core.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "react",
     "ssr",
     "spa",
     "adapter"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/react#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/react#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/react"
   },
   "engines": {
@@ -26,22 +26,22 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./server": {
-      "@bespokecore/source": "./src/server.tsx",
+      "@marmeon/source": "./src/server.tsx",
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
     "./table": {
-      "@bespokecore/source": "./src/table.ts",
+      "@marmeon/source": "./src/table.ts",
       "types": "./dist/table.d.ts",
       "default": "./dist/table.js"
     },
     "./table-tanstack": {
-      "@bespokecore/source": "./src/table-tanstack.ts",
+      "@marmeon/source": "./src/table-tanstack.ts",
       "types": "./dist/table-tanstack.d.ts",
       "default": "./dist/table-tanstack.js"
     }
@@ -83,11 +83,11 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/http": "workspace:*"
+    "@marmeon/http": "workspace:*"
   },
   "devDependencies": {
-    "@bespokecore/i18n": "workspace:*",
-    "@bespokecore/table": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
+    "@marmeon/table": "workspace:*",
     "@tanstack/react-table": "^9.2.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -97,24 +97,24 @@
     "vite": "^8.3.1"
   },
   "peerDependencies": {
-    "@bespokecore/i18n": "workspace:*",
-    "@bespokecore/table": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
+    "@marmeon/table": "workspace:*",
     "@tanstack/react-table": "^9.2.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/i18n": {
+    "@marmeon/i18n": {
       "optional": true
     },
-    "@bespokecore/table": {
+    "@marmeon/table": {
       "optional": true
     },
     "@tanstack/react-table": {
       "optional": true
     }
   },
-  "bespoke": {
+  "marmeon": {
     "browser": [
       "src/**"
     ]

@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { precompressAssets } from './precompress.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const dir = tempDir('bespoke-precompress-');
+const dir = tempDir('marmeon-precompress-');
 
-describe('bespoke build — precompressed assets (E162)', () => {
+describe('marmeon build — precompressed assets (E162)', () => {
   it('writes .br and .gz next to the compressible files — the same bytes once decompressed; never for images or what does not shrink', async () => {
     const script = `export const text = ${JSON.stringify('lorem ipsum '.repeat(300))};`;
     mkdirSync(join(dir, 'nested'));

@@ -1,4 +1,4 @@
-import { Logger, token } from '@bespokecore/core';
+import { Logger, token } from '@marmeon/core';
 import type { MailMessage } from './message.ts';
 
 /**

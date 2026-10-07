@@ -36,7 +36,7 @@ describe('progress bar', () => {
     source.emit('start', visit);
     vi.advanceTimersByTime(300);
     expect(bar()).not.toBeNull();
-    expect(bar()!.style.background).toContain('--bespoke-progress-color');
+    expect(bar()!.style.background).toContain('--marmeon-progress-color');
     source.emit('progress', { loaded: 50, total: 100, percentage: 50 }, visit);
     expect(bar()!.style.transform).toBe('scaleX(0.45)');
     source.emit('finish', visit);

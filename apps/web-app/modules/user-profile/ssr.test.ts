@@ -1,5 +1,5 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
@@ -30,7 +30,7 @@ describe('the profile page, rendered on the server', () => {
       .actingAs(ada)
       .get(`/users/${alan.id}`, page)
       .assertServerRendered()
-      .assertSee('<title data-bespoke-head="ssr">Alan Turing — BespokeCore</title><meta name="description" content="Computability pioneer." data-bespoke-head="ssr"/>')
+      .assertSee('<title data-marmeon-head="ssr">Alan Turing — Marmeon</title><meta name="description" content="Computability pioneer." data-marmeon-head="ssr"/>')
       .assertSee('<h1>Alan Turing</h1>');
   });
 
@@ -59,11 +59,11 @@ describe('the app’s pages, rendered on the server (W9 step 10b)', () => {
   it('counter-check: carry no style attribute — the views name classes of styles/app.css (a strict style-src would block one)', async () => {
     // Signed in for real: a fresh sign-in counts as a confirmed password (the settings pages are in sudo mode).
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me');
-    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     for (const url of ['/dashboard', '/people', `/users/${ada.id}`, `/users/${ada.id}/edit`, '/members', '/notifications', '/settings/security', '/settings/tokens']) {
       const { body } = await session.get(url, page).assertOk().assertServerRendered();
       // The framework's LayerDialog brings its default look inline (the dialog, its content box, the close button) — not the app's.
-      const styled = (body.match(/<[^>]+\sstyle="[^>]*>/g) ?? []).filter((tag) => !/data-bespoke-layer|style="padding:1\.5rem;padding-inline-end:3rem"/.test(tag));
+      const styled = (body.match(/<[^>]+\sstyle="[^>]*>/g) ?? []).filter((tag) => !/data-marmeon-layer|style="padding:1\.5rem;padding-inline-end:3rem"/.test(tag));
       expect(styled, `${url}: inline styles in the server's markup — ${styled.join(' ')}`).toEqual([]);
     }
   });
@@ -90,7 +90,7 @@ describe('the people list, rendered on the server — its query state included (
 describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
   it('renders the edit layer over the profile in one document — and it hydrates', async () => {
     const response = await app.actingAs(ada).get(`/users/${ada.id}/edit`, page).assertOk().assertServerRendered().assertHydrates();
-    expect(response.body).toContain('<dialog open="" data-bespoke-layer="user-profile/Edit"');
+    expect(response.body).toContain('<dialog open="" data-marmeon-layer="user-profile/Edit"');
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
   });
 
@@ -98,7 +98,7 @@ describe('a deep link of a layer, rendered on the server (E53, E71)', () => {
     const link = await app.factory(ProfileLinkFactory).create({ user_id: ada.id, label: 'Blog' });
     const response = await app.actingAs(ada).get(`/users/${ada.id}/links/${link.id}/remove`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<h1>Ada Lovelace</h1>');
-    expect(response.body.match(/<dialog open="" data-bespoke-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
+    expect(response.body.match(/<dialog open="" data-marmeon-layer="user-profile\/(Edit|RemoveLink)"/g)).toHaveLength(2);
   });
 });
 

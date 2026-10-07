@@ -1,6 +1,6 @@
 import { UserFactory, UserRepository } from '#modules/auth';
-import { browserRoutes, LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, Router, VERSION_HEADER, type PageObject } from '@bespokecore/http';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { browserRoutes, LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, Router, VERSION_HEADER, type PageObject } from '@marmeon/http';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
@@ -14,7 +14,7 @@ afterEach(async () => {
 /** Signs in with a real session (its id is what once props are scoped to) — the cookie a browser would keep. */
 async function signIn(email: string) {
   const login = await app.post('/login', { form: { email, password: 'password' }, headers: { referer: 'http://localhost/login' } }).assertRedirect();
-  return app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 }
 
 describe('once props: the locale list (E64)', () => {
@@ -47,7 +47,7 @@ describe('once props: the locale list (E64)', () => {
     const scope = (await ada.navigating().get('/people')).page()!.onceScope;
     const out = await ada.navigating().post('/logout').assertStatus(409);
     expect(out.headers.get(RELOAD_HEADER)).toBe('history');
-    const guest = app.withCookie('bespoke_session', out.cookie('bespoke_session')!);
+    const guest = app.withCookie('marmeon_session', out.cookie('marmeon_session')!);
     const login = (await guest.navigating().withHeaders({ [ONCE_HEADER]: 'locales', [ONCE_SCOPE_HEADER]: scope! }).get('/login')).page()!;
     expect(login.props.locales).toEqual(['en', 'de']);
     expect(login.onceScope).not.toBe(scope);
@@ -85,7 +85,7 @@ describe('<Form> without JavaScript (E64)', () => {
     app = await createTestApp(application, { database: 'refresh', csrf: true });
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com', name: 'Ada' });
     const signedIn = await app.post('/login', { form: { email: 'ada@example.com', password: 'password' }, headers: { referer: 'http://localhost/login', 'sec-fetch-site': 'same-origin' } }).assertRedirect();
-    const browser = app.withCookie('bespoke_session', signedIn.cookie('bespoke_session')!);
+    const browser = app.withCookie('marmeon_session', signedIn.cookie('marmeon_session')!);
     const page = (await browser.navigating().get(`/users/${ada.id}/edit`)).page() as PageObject;
     expect(page.csrf).toBeTruthy(); // a session: its pages carry the token for forms without JavaScript
     await browser.post(`/users/${ada.id}`, { form: { _method: 'PUT', name: 'Ada', bio: 'x' }, headers: { referer: `http://localhost/users/${ada.id}/edit` } }).assertStatus(419);

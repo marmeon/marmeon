@@ -1,5 +1,5 @@
-import { DecryptError, Encrypter } from '@bespokecore/encryption';
-import type { HttpContext, Next } from '@bespokecore/router';
+import { DecryptError, Encrypter } from '@marmeon/encryption';
+import type { HttpContext, Next } from '@marmeon/router';
 
 /**
  * Which cookies stay unencrypted — e.g. `XSRF-TOKEN`, which the browser's

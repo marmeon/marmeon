@@ -2,7 +2,7 @@
 
 A list that people sort, filter, page through, tick rows in and act on — and download. Hand-written, such a table is where the
 classic leaks live: a hidden column that still travels in the props, a sort parameter that goes into `ORDER BY`, a bulk action that
-takes another tenant's IDs, a cell that a spreadsheet runs as a formula. [@bespokecore/table](../packages/table/README.md) handles
+takes another tenant's IDs, a cell that a spreadsheet runs as a formula. [@marmeon/table](../packages/table/README.md) handles
 them once (E183): **one definition** per table on the server, the URL as its state, parsed strictly, and endpoints that check
 everything again. The browser half is headless — `useTable` gives a component what the props allow and renders nothing itself.
 
@@ -13,9 +13,9 @@ model attack by attack, and ends with the markup. The package's README is the re
 
 ```ts
 // modules/members/tables/MembersTable.ts
-import type { Authenticated } from '@bespokecore/auth';
-import { sql } from '@bespokecore/database';
-import { action, bulk, column, defineTable, exportCsv, filter, type TableContext } from '@bespokecore/table';
+import type { Authenticated } from '@marmeon/auth';
+import { sql } from '@marmeon/database';
+import { action, bulk, column, defineTable, exportCsv, filter, type TableContext } from '@marmeon/table';
 
 export const MembersTable = defineTable({
   name: 'members',
@@ -88,7 +88,7 @@ export reads the whole filtered table.
 
 ```tsx
 // modules/members/views/Index.tsx (shortened)
-import { useTable } from '@bespokecore/react/table';
+import { useTable } from '@marmeon/react/table';
 
 export default function Index({ members }: PageProps<ListMembersController>) {
   const t = useTranslation('members');
@@ -129,7 +129,7 @@ export default function Index({ members }: PageProps<ListMembersController>) {
 
 - **Sorting, filtering, searching, paging** (`table.sort('joined')`, `filter`, `filterBy`, `setSearch`, `goTo`, `perPage`, `next`)
   are visits of the page's URL with the props' keys and the columns' aliases — only the table's prop reloads. Asking for something
-  the props do not offer throws before a request leaves (`[bespoke:C9]`–`[C12]`). Sort links are real links: without JavaScript,
+  the props do not offer throws before a request leaves (`[marmeon:C9]`–`[C12]`). Sort links are real links: without JavaScript,
   or in a new tab, they work.
 - **The selection** lives with the history entry — in memory, never in `history.state` or storage: a new sort, filter or page
   starts with nothing selected, Back brings the old one back, and leaving the document (signing out, a new build) forgets it.
@@ -186,8 +186,8 @@ An app that wants TanStack's header and cell model, column sizing or pinning kee
 
 ```tsx
 import { rowPaginationFeature, rowSelectionFeature, rowSortingFeature, tableFeatures, useTable as useTanStackTable } from '@tanstack/react-table';
-import { useTable } from '@bespokecore/react/table';
-import { toTanStack } from '@bespokecore/react/table-tanstack';
+import { useTable } from '@marmeon/react/table';
+import { toTanStack } from '@marmeon/react/table-tanstack';
 
 const features = tableFeatures({ rowSortingFeature, rowPaginationFeature, rowSelectionFeature });   // module scope: stable
 

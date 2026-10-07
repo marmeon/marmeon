@@ -1,10 +1,10 @@
 import { join } from 'node:path';
-import { defineApplication } from '@bespokecore/core';
+import { defineApplication } from '@marmeon/core';
 import docs from '#modules/docs';
 import { AppConfig } from '../config/app.ts';
 
 /**
- * The docs: BespokeCore's READMEs as a normal BespokeCore app (E114, E133 — SSR, layouts, `<Link prefetch>`, a search route;
+ * The docs: Marmeon's READMEs as a normal Marmeon app (E114, E133 — SSR, layouts, `<Link prefetch>`, a search route;
  * no static export). Public pages without a session: the routes live in the `docs` group (see DocsServiceProvider).
  */
 export default defineApplication({

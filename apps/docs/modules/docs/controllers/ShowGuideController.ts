@@ -1,4 +1,4 @@
-import { Controller, type HttpContext } from '@bespokecore/http';
+import { Controller, type HttpContext } from '@marmeon/http';
 import { DocsRepository, type DocPage } from '../DocsRepository.ts';
 import { pageProps } from './ShowPackageController.ts';
 

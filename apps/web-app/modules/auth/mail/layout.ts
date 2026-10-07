@@ -1,5 +1,5 @@
-import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Html } from '@bespokecore/mail';
+import type { Translator } from '@marmeon/i18n';
+import { mjml, type Html } from '@marmeon/mail';
 
 /**
  * The frame of every mail of the app — a function returning `mjml`, so mails nest their body into it. `t` speaks the

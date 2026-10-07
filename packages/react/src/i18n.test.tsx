@@ -1,17 +1,17 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { loadHistoryFallback, loadPageMessages } from '@bespokecore/http/client';
-import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
-import { createMessageLoader } from '@bespokecore/i18n/messages';
+import { loadHistoryFallback, loadPageMessages } from '@marmeon/http/client';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/page';
+import { createMessageLoader } from '@marmeon/i18n/messages';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, useRouter } from './app.tsx';
+import { MarmeonApp, useRouter } from './app.tsx';
 import { useLocale, useTranslation } from './i18n.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -60,7 +60,7 @@ describe('useTranslation', () => {
     const first = page('/a', 'en');
     const catalog = await loadPageMessages(first, messages);
     root = createRoot(container);
-    await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={first} initialComponent={pages.Greeting!} resolve={resolve} messages={messages} initialCatalog={catalog} />));
+    await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={first} initialComponent={pages.Greeting!} resolve={resolve} messages={messages} initialCatalog={catalog} />));
     expect(container.textContent).toBe('Hello Ada · 1,234.5');
     expect(loads).toEqual(['/modules/shop/lang/en.ts']);
 
@@ -80,8 +80,8 @@ describe('useTranslation', () => {
 
   it('tells what is missing without the app’s messages', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderToString(<BespokeApp initialPage={page('/a', 'en')} initialComponent={pages.Greeting!} resolve={resolve} />)).toThrow(
-      /useTranslation\(\) needs the app's messages: createBespokeApp\(\{ messages \}\) and createSsrRenderer\(resolve, \{ messages \}\)/,
+    expect(() => renderToString(<MarmeonApp initialPage={page('/a', 'en')} initialComponent={pages.Greeting!} resolve={resolve} />)).toThrow(
+      /useTranslation\(\) needs the app's messages: createMarmeonApp\(\{ messages \}\) and createSsrRenderer\(resolve, \{ messages \}\)/,
     );
   });
 });

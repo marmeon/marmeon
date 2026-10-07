@@ -1,7 +1,7 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { Connections } from '@bespokecore/database';
-import { useForm } from '@bespokecore/react';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Connections } from '@marmeon/database';
+import { useForm } from '@marmeon/react';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
@@ -51,7 +51,7 @@ describe('user-profile module', () => {
     await as(ada)
       .get(profile(ada))
       .assertOk()
-      .assertHeader('x-bespoke', 'true')
+      .assertHeader('x-marmeon', 'true')
       .assertPage<ShowUserProfileController>('user-profile/Show', {
         profile: { name: 'Ada Lovelace' },
         email: 'ada@example.com',
@@ -69,7 +69,7 @@ describe('user-profile module', () => {
   });
 
   it('serves a stateless API under /api — a token, no session, no cookies', async () => {
-    const response = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=50').assertOk().assertCookieMissing('bespoke_session');
+    const response = await app.actingAs(ada, { guard: 'api', abilities: ['users:read'] }).get('/api/users?per_page=50').assertOk().assertCookieMissing('marmeon_session');
     expect(response.json()).toEqual({
       data: [
         { id: ada.id, name: 'Ada Lovelace' },
@@ -179,7 +179,7 @@ describe('user-profile module', () => {
         .assertRedirect(`${profile(ada)}/edit`);
 
       await app
-        .withCookie('bespoke_session', response.cookie('bespoke_session')!)
+        .withCookie('marmeon_session', response.cookie('marmeon_session')!)
         .navigating()
         .get(`${profile(ada)}/edit`)
         .assertPage<EditUserProfileController>('user-profile/Edit', {
@@ -191,7 +191,7 @@ describe('user-profile module', () => {
     it('a successful save lands on the profile with a status message', async () => {
       const response = await as(ada).put(profile(ada), { json: { name: 'Ada', bio: 'Math.' } }).assertRedirect(profile(ada));
       await app
-        .withCookie('bespoke_session', response.cookie('bespoke_session')!)
+        .withCookie('marmeon_session', response.cookie('marmeon_session')!)
         .navigating()
         .get(profile(ada))
         .assertPage<ShowUserProfileController>('user-profile/Show', { profile: { bio: 'Math.' } })
@@ -206,10 +206,10 @@ describe('user-profile module', () => {
     await deployed
       .actingAs(user)
       .navigating()
-      .withHeaders({ 'x-bespoke-version': 'build-1' })
+      .withHeaders({ 'x-marmeon-version': 'build-1' })
       .get(`/users/${user.id}`)
       .assertStatus(409)
-      .assertHeader('x-bespoke-location', `http://localhost/users/${user.id}`);
+      .assertHeader('x-marmeon-location', `http://localhost/users/${user.id}`);
     await deployed.actingAs(user).navigating().get(`/users/${user.id}`).assertOk();
   });
 
@@ -246,7 +246,7 @@ describe('user-profile module', () => {
 
   it('boots modules and discovered packages through their providers', () => {
     expect(app.application.modules.map((module) => module.name)).toEqual(['auth', 'user-profile', 'dashboard', 'members', 'notifications', 'locale', 'lab', 'system']);
-    expect(app.application.packages).toEqual(expect.arrayContaining(['@bespokecore/http', '@bespokecore/log', '@bespokecore/session', '@bespokecore/redis', '@bespokecore/table']));
+    expect(app.application.packages).toEqual(expect.arrayContaining(['@marmeon/http', '@marmeon/log', '@marmeon/session', '@marmeon/redis', '@marmeon/table']));
     expect(app.make(UserRepository)).toBe(app.make(UserRepository)); // singleton
   });
 
@@ -266,7 +266,7 @@ describe('user-profile module', () => {
     expect(people.data.find((person) => person.id === alan.id)?.activity).toBeNull();
   });
 
-  it('shows when a user last signed in — via the Login event of @bespokecore/auth', async () => {
+  it('shows when a user last signed in — via the Login event of @marmeon/auth', async () => {
     await app.post('/login', { form: { email: alan.email, password: 'password' } }).assertRedirect('/users/me');
     await app.assertDatabaseHas('login_activity', { user_id: alan.id });
 
@@ -361,7 +361,7 @@ export function TypedForm() {
 }
 
 // Never called: PageProps are serialized — the controller's Date is a string in the view.
-export function serializedProps(props: import('@bespokecore/http').PageProps<ShowUserProfileController>) {
+export function serializedProps(props: import('@marmeon/http').PageProps<ShowUserProfileController>) {
   const now: string = props.now;
   // @ts-expect-error — not a Date any more once it crossed the wire
   props.now.getTime();
@@ -369,7 +369,7 @@ export function serializedProps(props: import('@bespokecore/http').PageProps<Sho
 }
 
 // Never called: the database's page meta and the one browser code knows describe the same shape.
-export function pageMetaShapes(meta: import('@bespokecore/database').PageMeta): import('@bespokecore/http/page').PaginationMeta {
-  expectTypeOf<import('@bespokecore/database').PageMeta>().toEqualTypeOf<import('@bespokecore/http/page').PaginationMeta>();
+export function pageMetaShapes(meta: import('@marmeon/database').PageMeta): import('@marmeon/http/page').PaginationMeta {
+  expectTypeOf<import('@marmeon/database').PageMeta>().toEqualTypeOf<import('@marmeon/http/page').PaginationMeta>();
   return meta;
 }

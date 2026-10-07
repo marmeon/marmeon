@@ -1,5 +1,5 @@
 import { hkdfSync } from 'node:crypto';
-import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
+import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { DEFAULT_STORAGE, isStorageDefinition, type StorageOptions } from './config.ts';
 import type { Disk } from './disk.ts';
 import { registerStorageRoutes } from './routes.ts';
@@ -83,8 +83,8 @@ export async function diskAttachment(disk: Disk, key: string, options: { filenam
 const UPLOADS_INFRASTRUCTURE = {
   system: 'Temporary uploads (temporary_uploads)',
   remedy:
-    'Give them their own SQLite file — the connection of the cache and sessions (UPLOADS_CONNECTION=system) — and `bespoke migrate` (the migration of ' +
-    '`bespoke make:uploads-table` follows UPLOADS_CONNECTION), or store a file outside the transaction.',
+    'Give them their own SQLite file — the connection of the cache and sessions (UPLOADS_CONNECTION=system) — and `marmeon migrate` (the migration of ' +
+    '`marmeon make:uploads-table` follows UPLOADS_CONNECTION), or store a file outside the transaction.',
 };
 
 /** The app's storage configuration: its `defineStorage(…)` (in the app's or a module's `config`), else the defaults. */
@@ -97,9 +97,9 @@ function storageOptions(container: Resolver): StorageOptions {
 
 /**
  * Registers `Storage` (the app's disks, built on first use), checks the configuration at startup (a private disk never
- * shares a directory with a public one), and — with @bespokecore/http — signs temporary URLs with its `UrlSigner` and
- * serves public disks under their path (`/storage/…`) and temporary URLs under `/_bespoke/storage/…`, with safe headers.
- * Found by `bespoke discover`.
+ * shares a directory with a public one), and — with @marmeon/http — signs temporary URLs with its `UrlSigner` and
+ * serves public disks under their path (`/storage/…`) and temporary URLs under `/_marmeon/storage/…`, with safe headers.
+ * Found by `marmeon discover`.
  */
 export class StorageServiceProvider implements ServiceProvider {
   static config = [UploadsConfig];
@@ -115,7 +115,7 @@ export class StorageServiceProvider implements ServiceProvider {
       dependencies: {
         root: c.make(Application).root,
         clock: c.make(Clock),
-        // Resolved per call: @bespokecore/http is looked for while booting.
+        // Resolved per call: @marmeon/http is looked for while booting.
         temporaryUrls: { sign: (disk, key, options) => this.#temporaryUrls.sign(disk, key, options) },
       },
     }));
@@ -127,7 +127,7 @@ export class StorageServiceProvider implements ServiceProvider {
     // Temporary uploads (W6.9): built on first use — the disk looked up per use (the test fake replaces `Storage`).
     container.singleton(TemporaryUploads, (c) => {
       if (!this.#uploads) {
-        throw new StorageSetupError('Uploads need @bespokecore/http, @bespokecore/database and @bespokecore/encryption in the app (and their providers: bespoke discover).');
+        throw new StorageSetupError('Uploads need @marmeon/http, @marmeon/database and @marmeon/encryption in the app (and their providers: marmeon discover).');
       }
       const config = c.make(UploadsConfig);
       return new TemporaryUploads({
@@ -159,12 +159,12 @@ export class StorageServiceProvider implements ServiceProvider {
       throw new StorageSetupError(`The disk "${uploads.disk}" holds temporary uploads (UPLOADS_DISK) but is public — files nobody checked yet would be served. Make it private.`);
     }
 
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && container.has(cli.CommandRegistry)) container.make(cli.CommandRegistry).add([MakeUploadsTableCommand, PruneUploadsCommand]);
 
-    let http: typeof import('@bespokecore/http') | undefined;
+    let http: typeof import('@marmeon/http') | undefined;
     try {
-      http = await import('@bespokecore/http');
+      http = await import('@marmeon/http');
     } catch (error) {
       if ((error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     }
@@ -180,15 +180,15 @@ export class StorageServiceProvider implements ServiceProvider {
     };
     registerStorageRoutes(http, container, options);
 
-    const database = await import('@bespokecore/database').catch(() => undefined);
-    const encryption = await import('@bespokecore/encryption').catch(() => undefined);
+    const database = await import('@marmeon/database').catch(() => undefined);
+    const encryption = await import('@marmeon/encryption').catch(() => undefined);
     if (database && encryption && container.has(database.Connections) && container.has(encryption.EncryptionConfig)) {
       const key = container.make(encryption.EncryptionConfig);
       const connections = container.make(database.Connections);
       this.#uploads = {
         // Infrastructure (E108): never the app's transaction — a rollback after store() never makes a used token usable again.
         db: () => connections.infrastructure(uploads.connection, UPLOADS_INFRASTRUCTURE),
-        keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'bespokecore:upload-token', 32))),
+        keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
         receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),
       };
       registerUploads(http, container, () => container.make(TemporaryUploads));

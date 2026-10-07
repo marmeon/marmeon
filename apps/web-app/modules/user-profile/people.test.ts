@@ -1,5 +1,5 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ListPeopleController } from './controllers/ListPeopleController.ts';

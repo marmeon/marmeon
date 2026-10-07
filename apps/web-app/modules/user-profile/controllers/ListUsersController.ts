@@ -1,5 +1,5 @@
-import { pageQuery } from '@bespokecore/database';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { pageQuery } from '@marmeon/database';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import * as v from 'valibot';
 import { UserRepository } from '#modules/auth';
 

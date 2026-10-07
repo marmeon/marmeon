@@ -1,4 +1,4 @@
-import { isLiveChannel, type HttpContext } from '@bespokecore/http';
+import { isLiveChannel, type HttpContext } from '@marmeon/http';
 import { CONNECTION_ID } from './broadcaster.ts';
 import type { LiveHub } from './hub.ts';
 import type { LiveTokens } from './signer.ts';
@@ -8,7 +8,7 @@ const refuse = (status: number, message: string) =>
   new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
 
 /**
- * `GET /_bespoke/live?connection=<id>&c=<token>.<channel>&…` — a tab's stream (E89): every channel its page, islands and layers
+ * `GET /_marmeon/live?connection=<id>&c=<token>.<channel>&…` — a tab's stream (E89): every channel its page, islands and layers
  * follow, each with the token the page was signed with (E90). Runs in the `web` group, read-only (its path, with or without
  * `Accept: text/event-stream`: the kernel never saves the session, sets no cookie): the session is read only to know whose stream it is. One invalid token — a
  * channel rewritten, a token of another session or of one that ended (signed out) — and there is no stream (403). The hub

@@ -1,4 +1,4 @@
-import { defineModule } from '@bespokecore/core';
+import { defineModule } from '@marmeon/core';
 import { DocsConfig } from '../../config/docs.ts';
 import { DocsServiceProvider } from './DocsServiceProvider.ts';
 

@@ -1,4 +1,4 @@
-import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@bespokecore/core';
+import { leftTransactionOf, TransactionError, transactionOf, type TransactionFrame } from '@marmeon/core';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import type { SchemaMetadata } from './metadata.ts';
 
@@ -10,19 +10,19 @@ export class DatabaseConnectionError extends Error {
 export interface DriverContext {
   /** The connection's name, e.g. `default`. */
   readonly name: string;
-  /** Where it points, for error messages: `sqlite storage/database.sqlite`, `pgsql postgres://bespoke:***@localhost/app`. */
+  /** Where it points, for error messages: `sqlite storage/database.sqlite`, `pgsql postgres://marmeon:***@localhost/app`. */
   readonly target: string;
   /** Refreshed on each connection handed out, while stale (see {@link SchemaMetadata}). */
   readonly metadata?: SchemaMetadata;
 }
 
 /**
- * Wraps a dialect's driver with what every BespokeCore connection needs:
+ * Wraps a dialect's driver with what every Marmeon connection needs:
  *
  * - **Nested transactions become savepoints.** When a connection is already inside a transaction,
  *   beginning another one starts a savepoint instead (commit → release, rollback → rollback to it) —
  *   Laravel's transaction level. That is what lets a test wrap everything in one transaction
- *   ({@link BespokeDriver.isolate}) while the code under test opens its own.
+ *   ({@link MarmeonDriver.isolate}) while the code under test opens its own.
  * - **The ambient transaction (E107).** Inside `connections.transaction(callback)` every query of this
  *   connection — from a repository, the queue, any `db` — gets the transaction's connection; a transaction
  *   opened inside it becomes a savepoint on it. After the transaction finished, work of its call chain is
@@ -36,9 +36,9 @@ export interface DriverContext {
  * - **Schema metadata is loaded on the connection being handed out** — never through the pool,
  *   which a transaction may be holding.
  */
-export function withBespokeDriver(dialect: Dialect, context: DriverContext): { dialect: Dialect; driver: BespokeDriver } {
+export function withMarmeonDriver(dialect: Dialect, context: DriverContext): { dialect: Dialect; driver: MarmeonDriver } {
   const adapter = dialect.createAdapter();
-  const driver = new BespokeDriver(dialect.createDriver(), context, { single: adapter.supportsMultipleConnections === false });
+  const driver = new MarmeonDriver(dialect.createDriver(), context, { single: adapter.supportsMultipleConnections === false });
   return {
     driver,
     dialect: {
@@ -52,7 +52,7 @@ export function withBespokeDriver(dialect: Dialect, context: DriverContext): { d
   };
 }
 
-export class BespokeDriver implements Driver {
+export class MarmeonDriver implements Driver {
   readonly #driver: Driver;
   readonly #context: DriverContext;
   /** Open transaction levels per connection: 1 = a real transaction, 2+ = savepoints inside it. */
@@ -298,9 +298,9 @@ export class BespokeDriver implements Driver {
   }
 }
 
-const savepoint = (depth: number) => `bespoke_savepoint_${depth}`;
+const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
 
-/** The adapter as it is, but claiming several connections — so Kysely leaves the locking to {@link BespokeDriver}. */
+/** The adapter as it is, but claiming several connections — so Kysely leaves the locking to {@link MarmeonDriver}. */
 export function multipleConnections(adapter: DialectAdapter): DialectAdapter {
   return new Proxy(adapter, {
     get(target, property) {

@@ -1,7 +1,7 @@
-import { Gate, type Authenticated } from '@bespokecore/auth';
-import { Controller, type HttpContext } from '@bespokecore/http';
-import { Session } from '@bespokecore/session';
-import { Storage } from '@bespokecore/storage';
+import { Gate, type Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Session } from '@marmeon/session';
+import { Storage } from '@marmeon/storage';
 import type { User } from '#modules/auth';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';

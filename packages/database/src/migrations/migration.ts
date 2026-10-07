@@ -1,4 +1,4 @@
-import type { Resolver } from '@bespokecore/core';
+import type { Resolver } from '@marmeon/core';
 import type { Schema } from '../schema/schema.ts';
 
 /**

@@ -1,6 +1,6 @@
 import { UserRepository, type User } from '#modules/auth';
-import { Session } from '@bespokecore/session';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Session } from '@marmeon/session';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileActivity } from '../user-profile/ProfileActivity.ts';
@@ -70,7 +70,7 @@ describe('the dashboard as it streams (E49)', () => {
     const executable = scripts.filter((tag) => !tag.includes('type="application/json"'));
     expect(executable.length).toBeGreaterThan(2);
     for (const tag of executable) expect(tag).toContain(`nonce="${nonce}"`);
-    expect(html).not.toContain('__bespoke_csp_nonce__');
+    expect(html).not.toContain('__marmeon_csp_nonce__');
     // Another response, another nonce.
     const next = await app.actingAs(ada).stream('/dashboard');
     await next.text();
@@ -109,8 +109,8 @@ describe('deferred props in the first response (E49 bonus)', () => {
   it('streams the profile’s activity with the page — the page object says so, the browser does not ask again', async () => {
     const started = performance.now();
     const response = await app.actingAs(ada).stream(`/users/${ada.id}`);
-    const { at, html } = await follow(started, response, { shell: /<h1>Ada Lovelace<\/h1>/, activity: /id="bespoke-deferred-[^"]*">\{"props":\{"activity"/ });
-    const page = JSON.parse(/<script type="application\/json" id="bespoke-page">(.*?)<\/script>/.exec(html)![1]!) as { streamedProps?: string[]; deferredProps?: Record<string, string[]> };
+    const { at, html } = await follow(started, response, { shell: /<h1>Ada Lovelace<\/h1>/, activity: /id="marmeon-deferred-[^"]*">\{"props":\{"activity"/ });
+    const page = JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as { streamedProps?: string[]; deferredProps?: Record<string, string[]> };
     expect(page).toMatchObject({ streamedProps: ['default'], deferredProps: { default: ['activity'] } });
     expect(at.shell!).toBeLessThan(150);
     expect(at.activity!).toBeGreaterThanOrEqual(150);
@@ -128,7 +128,7 @@ describe('deferred props in the first response (E49 bonus)', () => {
     );
     try {
       const response = await app.actingAs(ada).get(`/users/${ada.id}`, { headers: { accept: 'text/html' } }).assertOk();
-      expect(response.body).toMatch(/id="bespoke-deferred-[^"]*">null<\/script>/);
+      expect(response.body).toMatch(/id="marmeon-deferred-[^"]*">null<\/script>/);
       response.assertSessionMissing('deferred_wrote');
     } finally {
       app.container.scoped(ProfileActivity);
@@ -140,16 +140,16 @@ describe('a deep link of a layer, streamed (E53, E71)', () => {
   it('the layer renders in the shell over its base — with the page, not a boundary streamed later', async () => {
     const started = performance.now();
     const streamed = await app.actingAs(ada).stream(`/users/${ada.id}/edit`);
-    const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-bespoke-layer="user-profile\/Edit"/ });
+    const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-marmeon-layer="user-profile\/Edit"/ });
     // In the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first: no later than the profile's
     // deferred activity (150 ms) would take, counted from the shell — not from the request, whose shell a loaded machine
     // can hold back on its own (W6.11: 228 ms under a full `test:pgsql`).
     expect(at.layer! - at.shell!).toBeLessThan(150);
-    expect(html.indexOf('data-bespoke-layer')).toBeGreaterThan(html.indexOf('<h1>Ada Lovelace</h1>'));
+    expect(html.indexOf('data-marmeon-layer')).toBeGreaterThan(html.indexOf('<h1>Ada Lovelace</h1>'));
     // Not a part streamed after the shell (React sends those as hidden segments).
-    expect(html.slice(0, html.indexOf('data-bespoke-layer'))).not.toContain('<div hidden id="');
+    expect(html.slice(0, html.indexOf('data-marmeon-layer'))).not.toContain('<div hidden id="');
     // Rendered at once, not suspended: the layer stack's code was loaded before rendering (a boundary already resolved, `<!--$-->`).
-    expect(html).toContain('<!--$--><div data-bespoke-layers="">');
+    expect(html).toContain('<!--$--><div data-marmeon-layers="">');
   });
 });
 

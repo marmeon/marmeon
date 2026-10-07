@@ -1,16 +1,16 @@
-import { createApplication, HealthChecks, Logger } from '@bespokecore/core';
+import { createApplication, HealthChecks, Logger } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { RedisConnections, RedisServiceProvider } from './index.ts';
 
-/** Redis runs when `BESPOKE_TEST_REDIS_URL` is set (`pnpm test:redis`). */
-const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+/** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
 const boot = (url: string) =>
   createApplication({
     root: import.meta.dirname,
     discover: false,
-    env: { REDIS_URL: url, REDIS_PREFIX: `bespoke-test-${crypto.randomUUID().slice(0, 8)}:` },
+    env: { REDIS_URL: url, REDIS_PREFIX: `marmeon-test-${crypto.randomUUID().slice(0, 8)}:` },
     providers: [RedisServiceProvider],
     override: (container) => container.instance(Logger, silent),
   });

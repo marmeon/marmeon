@@ -1,29 +1,29 @@
-# @bespokecore/vite
+# @marmeon/vite
 
-The Vite plugin of a BespokeCore app — UI-agnostic; the adapter's own plugin goes next to it. A dev dependency of the app
-(`pnpm add -D vite @bespokecore/vite`), used by `bespoke dev`, `bespoke build` and the tests; it has no provider and nothing
+The Vite plugin of a Marmeon app — UI-agnostic; the adapter's own plugin goes next to it. A dev dependency of the app
+(`pnpm add -D vite @marmeon/vite`), used by `marmeon dev`, `marmeon build` and the tests; it has no provider and nothing
 of it runs on a production server.
 
 ```ts
-export default defineConfig({ plugins: [bespoke(), react()] });          // vite.config.ts
-export default defineConfig({ plugins: [bespoke({ test: true })] });     // vitest.config.ts
+export default defineConfig({ plugins: [marmeon(), react()] });          // vite.config.ts
+export default defineConfig({ plugins: [marmeon({ test: true })] });     // vitest.config.ts
 ```
 
-What `bespoke()` does:
+What `marmeon()` does:
 
-- **resolution:** the framework's workspace sources while serving (the `@bespokecore/source` condition — dev server and tests,
+- **resolution:** the framework's workspace sources while serving (the `@marmeon/source` condition — dev server and tests,
   never a build); the non-optional peers of the app's framework packages deduped (one React for the adapter and the app);
-- **constructor injection:** the transform of `@bespokecore/core/vite` for code Vite loads — SSR and tests
+- **constructor injection:** the transform of `@marmeon/core/vite` for code Vite loads — SSR and tests
   ([Constructor injection](../core/README.md#constructor-injection));
 - **entries:** adds the client entry to `index.html` (`async` in a build: a streamed page hydrates its shell while the rest
   arrives), builds the client to `dist/client` and the SSR entry to `dist/server/ssr.js`;
-- **CSP nonce:** sets Vite's `html.cspNonce` to `CSP_NONCE_PLACEHOLDER` (`@bespokecore/core`), so every script, style and preload
-  tag of `index.html` carries `nonce="__bespoke_csp_nonce__"`; the server puts each response's nonce in its place, or takes the
+- **CSP nonce:** sets Vite's `html.cspNonce` to `CSP_NONCE_PLACEHOLDER` (`@marmeon/core`), so every script, style and preload
+  tag of `index.html` carries `nonce="__marmeon_csp_nonce__"`; the server puts each response's nonce in its place, or takes the
   attribute out when the response has none ([Content-Security-Policy](../http/README.md#content-security-policy-e147)). Not with
   `test: true`;
 - **chunks:** splits the first page's download into `vendor` (third-party packages) and `index` (the framework, the app's entry
   and layouts) — `CLIENT_CHUNKS`; what loads on first use stays in its own chunks (the size budget:
-  [@bespokecore/react](../react/README.md#the-size-budget-e75));
+  [@marmeon/react](../react/README.md#the-size-budget-e75));
 - **pre-bundling** while serving: Vite's dependency scan starts at the client entry and the pages (`optimizeDeps.entries`), not at
   `index.html` (which names no entry before this plugin adds it), and includes the devtools' bar when an installed package brings
   it — so a new app's first visit is not reloaded once or twice while Vite discovers its packages (workspace links are never
@@ -36,36 +36,36 @@ What `bespoke()` does:
 | Option | Default | What |
 | --- | --- | --- |
 | `entries` | `{ client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' }` | the entries, relative to the app root |
-| `pages` | `'modules/*/views/**/*.tsx'` | the page components (`virtual:bespoke/pages`) |
-| `lang` | `['modules/*/lang/*.ts', 'lang/*.ts']` | the language files (`virtual:bespoke/lang`) |
+| `pages` | `'modules/*/views/**/*.tsx'` | the page components (`virtual:marmeon/pages`) |
+| `lang` | `['modules/*/lang/*.ts', 'lang/*.ts']` | the language files (`virtual:marmeon/lang`) |
 | `routeSinks` | — | more places where client code hands a route name to the framework, besides `ROUTE_SINKS` |
 | `serverModules` | — | more server modules (globs), `'!glob'` takes some out of the conventions ([below](#server-code-in-the-browser-e121)) |
 | `test` | `false` | for `vitest.config.ts`: conditions, injection, virtual modules and the server-import check only — no entries, no HTML, no CSP nonce, no pre-bundling, no build settings |
 
 ## Virtual modules
 
-Types: add `"@bespokecore/vite/client"` to `compilerOptions.types` in the app's `tsconfig.json`.
+Types: add `"@marmeon/vite/client"` to `compilerOptions.types` in the app's `tsconfig.json`.
 
 | Module | Default export / exports | Used by |
 | --- | --- | --- |
-| `virtual:bespoke/pages` | every page, lazily (`import.meta.glob`), keyed by its path from the root (`/modules/user-profile/views/Show.tsx`) — one chunk per page | `resolveModulePages(pages)` ([@bespokecore/react](../react/README.md)) |
-| `virtual:bespoke/lang` | every language file, lazily — one chunk per file, so the browser loads only the page's locale | `createMessageLoader(lang)` ([@bespokecore/i18n](../i18n/README.md)) |
-| `virtual:bespoke/routes` | `routes`: the named routes the browser knows (`{ method, path }` by name) | `createBespokeApp({ routes })`, `createSsrRenderer(…, { routes })` |
+| `virtual:marmeon/pages` | every page, lazily (`import.meta.glob`), keyed by its path from the root (`/modules/user-profile/views/Show.tsx`) — one chunk per page | `resolveModulePages(pages)` ([@marmeon/react](../react/README.md)) |
+| `virtual:marmeon/lang` | every language file, lazily — one chunk per file, so the browser loads only the page's locale | `createMessageLoader(lang)` ([@marmeon/i18n](../i18n/README.md)) |
+| `virtual:marmeon/routes` | `routes`: the named routes the browser knows (`{ method, path }` by name) | `createMarmeonApp({ routes })`, `createSsrRenderer(…, { routes })` |
 
 ```ts
 // bootstrap/pages.ts, bootstrap/client.tsx (apps/web-app)
-import pages from 'virtual:bespoke/pages';
-import { routes } from 'virtual:bespoke/routes';
+import pages from 'virtual:marmeon/pages';
+import { routes } from 'virtual:marmeon/routes';
 export const resolvePage = resolveModulePages(pages);
-void createBespokeApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }),
+void createMarmeonApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }),
   confirm: Confirm });
 ```
 
 ## The route manifest (E57)
 
-`virtual:bespoke/routes` comes from `.bespoke/routes.json`, which `bespoke route:types` writes (`bespoke dev` and
-`bespoke build` run it). Which routes the browser may learn at all is the app's choice (`clientRoutes`,
-[@bespokecore/router](../router/README.md#configuration): the `web` routes by default; API routes, `.internal()`
+`virtual:marmeon/routes` comes from `.marmeon/routes.json`, which `marmeon route:types` writes (`marmeon dev` and
+`marmeon build` run it). Which routes the browser may learn at all is the app's choice (`clientRoutes`,
+[@marmeon/router](../router/README.md#configuration): the `web` routes by default; API routes, `.internal()`
 routes and `clientRoutes.except` never). Of those:
 
 - **a client build** ships only the names client code writes out at a **sink** — `<Link route>`, `<Island route>`,
@@ -75,13 +75,13 @@ routes and `clientRoutes.except` never). Of those:
 - **the SSR build and the dev server** know every route the browser may learn; the same collector runs while serving, so a
   name built at runtime is an error there too, and one the collector never saw warns that production lacks it.
 
-Another adapter brings its own sinks (`bespoke({ routeSinks })`), keyed by the package that exports them — rows like the React
+Another adapter brings its own sinks (`marmeon({ routeSinks })`), keyed by the package that exports them — rows like the React
 adapter's:
 
 ```ts
-{ module: '@bespokecore/react', export: 'Link', kind: 'element', prop: 'route' }                  // <Link route="…">
-{ module: '@bespokecore/react', export: 'useForm', kind: 'call', argument: 0, minArguments: 2 }   // useForm('…', initial)
-{ module: '@bespokecore/react', export: 'useRoute', kind: 'route-function' }                      // useRoute()('…')
+{ module: '@marmeon/react', export: 'Link', kind: 'element', prop: 'route' }                  // <Link route="…">
+{ module: '@marmeon/react', export: 'useForm', kind: 'call', argument: 0, minArguments: 2 }   // useForm('…', initial)
+{ module: '@marmeon/react', export: 'useRoute', kind: 'route-function' }                      // useRoute()('…')
 ```
 
 `kind` is `element` (a JSX attribute: `prop`), `call` (an argument of a function: `argument`, `minArguments`) or
@@ -103,10 +103,10 @@ A class is a value even where only its type is used: with `verbatimModuleSyntax`
 `import { type ShowLoginController }`, as `import {} from …`). The plugin makes it an error:
 
 - **dev server** — Vite's overlay, when the browser loads the module (and already when the page renders on the server);
-- **`bespoke build`** — the build stops, with the message and no stack:
+- **`marmeon build`** — the build stops, with the message and no stack:
 
 ```text
-✗ [bespoke] modules/auth/views/Login.tsx:3:1 — imports modules/auth/controllers/ShowLoginController.ts as a value: a controller
+✗ [marmeon] modules/auth/views/Login.tsx:3:1 — imports modules/auth/controllers/ShowLoginController.ts as a value: a controller
   is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where
   only its type is used: write import type { ShowLoginController } from '../controllers/ShowLoginController.ts'. If the
   browser needs a value from it, move that value into a module both sides import.
@@ -114,7 +114,7 @@ A class is a value even where only its type is used: with `verbatimModuleSyntax`
 ```
 
 - **tests** — the server renderer of `createTestApp(app, { ssr: true })` (the app's Vite config) and Vitest with
-  `bespoke({ test: true })` check pages, layouts and the client entry too.
+  `marmeon({ test: true })` check pages, layouts and the client entry too.
 
 **Indirect imports count.** A page imports `helpers.ts`, which imports a controller: the error names the helper's line and
 the way there — `modules/auth/helpers.ts:1:1 — imports modules/auth/controllers/ShowLoginController.ts as a value
@@ -134,7 +134,7 @@ Views, layouts, language files and anything else (`modules/auth/abilities.ts`, a
 are client code as soon as a page imports them, and the check follows them. More or fewer:
 
 ```ts
-bespoke({ serverModules: ['modules/*/services/**', '!modules/shop/jobs/labels.ts'] })
+marmeon({ serverModules: ['modules/*/services/**', '!modules/shop/jobs/labels.ts'] })
 ```
 
 **What counts as a value import:** `import … from`, `import './x'`, `import { type X } from` (see above), `export … from`,
@@ -152,10 +152,10 @@ budgets and the leak test are unchanged). It costs one parse and the resolution 
 
 **Before this check** (W7 step 6), a value import of a controller failed the client build only by accident: 144 warnings
 `Module "node:…" has been externalized for browser compatibility`, then `Rolldown failed to resolve import
-"@oxc-parser/binding-wasm32-wasip1"` — `@bespokecore/core`'s injection analyzer pulls in oxc-parser, whose WebAssembly fallback
-cannot be resolved for the browser. The view was named nowhere. A server module that did not reach `@bespokecore/core` built
+"@oxc-parser/binding-wasm32-wasip1"` — `@marmeon/core`'s injection analyzer pulls in oxc-parser, whose WebAssembly fallback
+cannot be resolved for the browser. The view was named nowhere. A server module that did not reach `@marmeon/core` built
 green and shipped its code. The dev server showed the same unrelated error in the overlay and the page did not hydrate; the
 SSR build bundled a second copy of what the imported module ran at load (`defineConfig('app', …)` with its own key).
 
-The [lint preset](../cli/README.md#lint) (`bespoke make:lint-config`) flags the common case in the editor; this check is the one
+The [lint preset](../cli/README.md#lint) (`marmeon make:lint-config`) flags the common case in the editor; this check is the one
 that resolves imports and cannot be skipped.

@@ -1,8 +1,8 @@
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { Clock, token } from '@bespokecore/core';
-import { Connections, type Generated, type JsonColumn } from '@bespokecore/database';
-import type { Duration } from '@bespokecore/http';
+import { Clock, token } from '@marmeon/core';
+import { Connections, type Generated, type JsonColumn } from '@marmeon/database';
+import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link AccessTokenTable}. */
@@ -69,7 +69,7 @@ export interface AccessTokenStore {
   /** Revokes one token of the user — `false` if the user has no such token. */
   revoke(userId: number | string, id: number): Promise<boolean>;
   /**
-   * Deletes the tokens that expired more than `graceSeconds` ago (`bespoke auth:prune-tokens`) — they stop working when
+   * Deletes the tokens that expired more than `graceSeconds` ago (`marmeon auth:prune-tokens`) — they stop working when
    * they expire, but stay listed until pruned. How many. Tokens without an expiry stay until revoked.
    */
   prune(graceSeconds?: number): Promise<number>;

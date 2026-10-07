@@ -1,7 +1,7 @@
 /**
  * Asking the user (E64), UI-free: a confirmation before a link, an action or a form is sent (`confirm`), and the navigation
  * guard's question before unsaved changes are left (`leave`). The adapter shows it — a dialog of the app's
- * (`createBespokeApp({ confirm })`) or the browser's own `confirm()`/`prompt()` — and the core decides what the answer
+ * (`createMarmeonApp({ confirm })`) or the browser's own `confirm()`/`prompt()` — and the core decides what the answer
  * means: a type-to-confirm question (`prompt`) is answered yes only by the text typed exactly, whatever the dialog does.
  */
 

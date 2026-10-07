@@ -74,7 +74,7 @@ describe('connections.infrastructure() on SQLite', () => {
     (open = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'app.sqlite') }, ...named }, root: directory, logger: silent }));
 
   beforeAll(() => {
-    directory = tempDir('bespoke-infrastructure-');
+    directory = tempDir('marmeon-infrastructure-');
   });
   afterEach(async () => {
     await open?.destroy();

@@ -1,5 +1,5 @@
-import type { HealthCheck } from '@bespokecore/core';
-import { Storage } from '@bespokecore/storage';
+import type { HealthCheck } from '@marmeon/core';
+import { Storage } from '@marmeon/storage';
 
 /**
  * Readiness (E126): the private `local` disk takes a file and lets it go — uploads, the data export and the avatars live on

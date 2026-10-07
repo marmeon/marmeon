@@ -1,5 +1,5 @@
-import { TestClock } from '@bespokecore/core';
-import type { Connections } from '@bespokecore/database';
+import { TestClock } from '@marmeon/core';
+import type { Connections } from '@marmeon/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-reset.ts';

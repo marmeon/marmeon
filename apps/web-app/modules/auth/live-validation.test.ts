@@ -1,6 +1,6 @@
-import { RateLimiter } from '@bespokecore/cache';
-import { ACTION_REDIRECT_HEADER, VALIDATED_HEADER } from '@bespokecore/http/page';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { RateLimiter } from '@marmeon/cache';
+import { ACTION_REDIRECT_HEADER, VALIDATED_HEADER } from '@marmeon/http/page';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { RegisterController } from './controllers/RegisterController.ts';
@@ -72,7 +72,7 @@ describe('live validation changes nothing (E62, read-only)', () => {
   it('never writes the session nor sets a cookie — a waiting flash message stays for the page (Gegenprobe: without read-only it is gone)', async () => {
     const ada = await app.factory(UserFactory).create();
     const saved = await app.actingAs(ada).put(`/users/${ada.id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect(`/users/${ada.id}`);
-    const browser = app.withCookie('bespoke_session', saved.cookie('bespoke_session')!);
+    const browser = app.withCookie('marmeon_session', saved.cookie('marmeon_session')!);
     const live = await browser.validating('name').put(`/users/${ada.id}`, { json: { name: 'Ada Byron', bio: '' } }).assertLiveValid('name').assertNoFlash();
     expect(live.headers.get('set-cookie')).toBeNull();
     expect(live.headers.get('cache-control')).toBe('no-store');

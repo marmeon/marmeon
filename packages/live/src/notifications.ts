@@ -1,7 +1,7 @@
-import type { Delivery, NotificationChannel } from '@bespokecore/notifications';
+import type { Delivery, NotificationChannel } from '@marmeon/notifications';
 import type { Broadcaster } from './broadcaster.ts';
 
-declare module '@bespokecore/notifications' {
+declare module '@marmeon/notifications' {
   interface NotificationChannelMap {
     /**
      * A hint on the recipient's notifications channel (W6.10): `notificationsChannel(recipient)` — the bell and the list of a

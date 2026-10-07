@@ -1,12 +1,12 @@
 # Real time: live hints
 
 When something changes, the other tabs that show it should follow — another user added a link to a profile, a notification came,
-an administrator removed a row. In BespokeCore real time is **live hints** (E89): the server tells the tabs that follow a channel
+an administrator removed a row. In Marmeon real time is **live hints** (E89): the server tells the tabs that follow a channel
 *that* something changed — never *what* — and each tab reloads the affected props through the page's own route, as a partial reload,
 with its middleware and policies. One Server-Sent-Events stream per tab carries the hints of every channel on screen.
 
 This guide shows how to use it, what holds it in bounds, what it needs in production — and, honestly, what it is not. The reference:
-[@bespokecore/live](../packages/live/README.md).
+[@marmeon/live](../packages/live/README.md).
 
 ## Following and hinting
 
@@ -38,10 +38,10 @@ A notification sent `via()` `'live'` hints its recipient's channel by itself.
   session, keyed from `APP_KEY`. Whoever may see the page may hear its hints; a channel rewritten (`users.1` → `users.2`), another
   session's token or one of a session that ended is refused with a 403, and a stream without a session with a 401.
 - **After the commit (E107).** A `refresh()` inside a transaction goes out once it committed; a rollback sends nothing.
-- **Not back to the tab that caused it.** Every request of a following tab names its document (`x-bespoke-connection`): the hint
+- **Not back to the tab that caused it.** Every request of a following tab names its document (`x-marmeon-connection`): the hint
   of its own write reloads nothing there (it shows its own answer).
 - **Signing in or out ends the old session's streams**, in every process; the next page the tab asks for is the server's answer.
-- **Read-only.** The stream (`GET /_bespoke/live`) never writes a session, a cookie or a flash message.
+- **Read-only.** The stream (`GET /_marmeon/live`) never writes a session, a cookie or a flash message.
 
 Reloads coalesce: hints are collected until 250 ms pass without one (at most 2 s), then **one** partial reload per page, island or
 layer. A reload after a hint is a revalidation — it **replaces** `merge()`d props ([lists](lists.md#revalidations-replace-load-more-appends)).
@@ -68,9 +68,9 @@ a page of the new session is on screen.
 ## More than one process
 
 `LIVE_DRIVER=memory` (the default) reaches the streams of its own process only. Use **`LIVE_DRIVER=redis`**
-([@bespokecore/redis](../packages/redis/README.md)) as soon as there is more than one:
+([@marmeon/redis](../packages/redis/README.md)) as soon as there is more than one:
 
-- **`bespoke start --workers=N` needs Redis.** With `memory` a worker refuses to start (`LiveSetupError`: "memory pub/sub never
+- **`marmeon start --workers=N` needs Redis.** With `memory` a worker refuses to start (`LiveSetupError`: "memory pub/sub never
   reaches the other workers — use LIVE_DRIVER=redis") and the cluster stops — a hint would have reached one worker's tabs only.
 - **Queue workers and the scheduler** send hints too (a queued notification, a job): they publish, the web processes deliver — only
   through Redis.
@@ -109,7 +109,7 @@ reaching both, the 17th stream of the session refused. The whole picture: [deplo
 ```ts
 const stream = await app.actingAs(ada).live(`/users/${ada.id}`);    // the page's channels, signed for this session
 await stream.hello();
-await app.actingAs(ada).withHeaders({ 'x-bespoke-connection': 'tab-a' }).post(`/users/${ada.id}/links`, { json });
+await app.actingAs(ada).withHeaders({ 'x-marmeon-connection': 'tab-a' }).post(`/users/${ada.id}/links`, { json });
 await stream.waitFor(1);
 expect(stream.hints).toEqual([{ channel: `users.${ada.id}`, only: ['profile'], seq: 1 }]);
 app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });
@@ -117,7 +117,7 @@ app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });
 
 ## What there is not
 
-Real time in BespokeCore is the hints above — and stays so until a better design is settled. **Not** part of the framework (E191,
+Real time in Marmeon is the hints above — and stays so until a better design is settled. **Not** part of the framework (E191,
 in the backlog with their design notes):
 
 - **Broadcasting over WebSockets** — no WebSocket server or client, no Pusher-compatible protocol, no driver for Pusher, Ably,

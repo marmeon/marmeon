@@ -1,10 +1,10 @@
 /**
  * Type guarantees of the query schema (E55) against this app's people list — checked by `tsc` (`pnpm typecheck`,
- * `bespoke build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is
+ * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is
  * the message they get (read with the directive removed).
  */
-import type { QueryOf } from '@bespokecore/http';
-import { Link, useQueryState, useRoute } from '@bespokecore/react';
+import type { QueryOf } from '@marmeon/http';
+import { Link, useQueryState, useRoute } from '@marmeon/react';
 import { expectTypeOf } from 'vitest';
 import type { ListPeopleController } from './controllers/ListPeopleController.ts';
 

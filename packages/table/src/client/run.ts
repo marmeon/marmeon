@@ -2,7 +2,7 @@
  * A table's row or bulk action as an action request (E59), then the table's prop reloaded — loaded with a table's first run (W9 step
  * 6): the actions feature and the page's reloads are a chunk of their own, so a page that only shows a table carries neither.
  */
-import { actions, optimistic, type ActionOutcome, type Confirm, type Navigator } from '@bespokecore/http/client';
+import { actions, optimistic, type ActionOutcome, type Confirm, type Navigator } from '@marmeon/http/client';
 
 export interface TableRun {
   readonly url: string;

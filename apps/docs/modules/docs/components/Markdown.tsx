@@ -1,4 +1,4 @@
-import { Link } from '@bespokecore/react';
+import { Link } from '@marmeon/react';
 import { createElement, type ReactNode } from 'react';
 import type { DocNode } from '../types.ts';
 

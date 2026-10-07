@@ -11,7 +11,7 @@
     "moduleResolution": "NodeNext",
 
     // Resolve sibling workspace packages to their TypeScript sources (see "exports" in each package.json).
-    "customConditions": ["@bespokecore/source"],
+    "customConditions": ["@marmeon/source"],
 
     // Keep every file runnable by Node's native type stripping.
     "verbatimModuleSyntax": true,

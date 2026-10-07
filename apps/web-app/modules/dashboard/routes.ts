@@ -1,5 +1,5 @@
-import { authenticate, verified } from '@bespokecore/auth';
-import { defineRoutes } from '@bespokecore/http';
+import { authenticate, verified } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
 import { ShowDashboardController } from './controllers/ShowDashboardController.ts';
 import { ShowMemberStatsController } from './controllers/ShowMemberStatsController.ts';
 import { ShowMyActivityController } from './controllers/ShowMyActivityController.ts';

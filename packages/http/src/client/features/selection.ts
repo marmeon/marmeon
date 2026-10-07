@@ -2,7 +2,7 @@
  * Row selection (W9 step 6, E183) as a feature: which rows of a table the user ticked — the keys, or "every row that matches" — kept
  * per history entry in a slot (`SELECTIONS`), so the core empties it with the entry (memory lets go of it, another page replaces it)
  * and with the document (every 409: signed out, a new build). In memory only, never in `history.state` (E36). Attached where a
- * table is used (`@bespokecore/table/client`, React's `useTable`).
+ * table is used (`@marmeon/table/client`, React's `useTable`).
  *
  * A selection belongs to what the entry shows: a sort, a filter or another page is a visit with an entry of its own, which starts
  * with nothing selected — and Back brings the old one back from memory. "Every row that matches" is a flag, never a list of keys:

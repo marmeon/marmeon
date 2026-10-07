@@ -1,20 +1,20 @@
 {
-  "name": "@bespokecore/vite",
+  "name": "@marmeon/vite",
   "version": "0.1.0",
-  "description": "The Vite plugin for BespokeCore apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic — the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
+  "description": "The Vite plugin for Marmeon apps: resolution conditions, constructor injection, entries, and virtual modules. UI-agnostic — the adapter's own plugin (e.g. @vitejs/plugin-react) goes next to it.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "vite",
     "vite-plugin"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/vite#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/vite#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/vite"
   },
   "engines": {
@@ -24,7 +24,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
@@ -61,7 +61,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "oxc-parser": "^0.152.0"
   },
   "peerDependencies": {

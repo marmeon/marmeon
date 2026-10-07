@@ -1,9 +1,9 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, defineConfig, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
-import { editableResponse, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@bespokecore/router';
-import { Session } from '@bespokecore/session';
+import { Application, defineConfig, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { editableResponse, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
+import { Session } from '@marmeon/session';
 import * as v from 'valibot';
 import { Catalog } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
@@ -17,7 +17,7 @@ export * from './messages.ts';
 export { createTranslator, CurrentLocale, Translator } from './translator.ts';
 export type { TranslatorOptions } from './translator.ts';
 
-declare module '@bespokecore/session' {
+declare module '@marmeon/session' {
   interface SessionData {
     /** The locale the visitor chose (a language switcher) — wins over the user's stored one and the browser's. */
     locale: string;
@@ -262,7 +262,7 @@ export async function loadLangFiles(root: string, catalog: Catalog, locales: Loc
   for (const path of await langFiles(root)) {
     const file = langFileOf(path.slice(root.length));
     if (!file || /\.(test|type-test)\.[jt]s$/.test(path) || path.endsWith('.d.ts')) continue;
-    if (file.namespace === 'bespoke') throw new Error(`${path}: the namespace "bespoke" belongs to the framework — rename the module.`);
+    if (file.namespace === 'marmeon') throw new Error(`${path}: the namespace "marmeon" belongs to the framework — rename the module.`);
     const locale = locales.add(file.locale);
     if (!locale) {
       skipped.push(path);
@@ -277,14 +277,14 @@ export async function loadLangFiles(root: string, catalog: Catalog, locales: Loc
 
 /**
  * Registers the translations (`Catalog`, loaded at boot), `Translators` (any locale, anywhere), the request's
- * `Translator` and `SetLocale` in the `web` group. Found by `bespoke discover`.
+ * `Translator` and `SetLocale` in the `web` group. Found by `marmeon discover`.
  */
 export class I18nServiceProvider implements ServiceProvider {
   static config = [I18nConfig];
 
   register(container: Container): void {
     const locales = new Locales(container.make(I18nConfig));
-    const catalog = new Catalog({ fallback: locales.fallback }).add('en', 'bespoke', frameworkEn, '@bespokecore/i18n (en)').add('de', 'bespoke', frameworkDe, '@bespokecore/i18n (de)');
+    const catalog = new Catalog({ fallback: locales.fallback }).add('en', 'marmeon', frameworkEn, '@marmeon/i18n (en)').add('de', 'marmeon', frameworkDe, '@marmeon/i18n (de)');
     container.instance(Locales, locales);
     container.instance(Catalog, catalog);
     container.instance(Translators, new Translators(catalog, locales));

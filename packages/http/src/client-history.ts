@@ -1,4 +1,4 @@
-import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
+import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
 import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './page.ts';
 
 /**
@@ -6,7 +6,7 @@ import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './
  * (`Auth` calls it; so can an app that switches accounts or impersonates). The client keeps the pages it
  * showed in memory, to go back without a request; after `clear()`, none of them may come back:
  *
- * - A client-side visit (`x-bespoke`) is answered with `409` and `x-bespoke-location` — the same answer as a
+ * - A client-side visit (`x-marmeon`) is answered with `409` and `x-marmeon-location` — the same answer as a
  *   new build (asset versioning) — so the browser loads the next page **fully**. The old document, and the
  *   in-memory page cache with it, is gone; every earlier history entry is fetched from the server again.
  * - With `{ siteData: true }` (sign-out — `Auth.logout()` asks for it, E165), the response also carries
@@ -99,7 +99,7 @@ function refererPath(request: Request): string {
 
 /**
  * Sets `Cache-Control` on the route's responses that do not set it themselves — e.g. to let the browser keep a
- * page that `@bespokecore/auth` would otherwise mark `no-store` for signed-in users:
+ * page that `@marmeon/auth` would otherwise mark `no-store` for signed-in users:
  * `Route.middleware(cacheControl('private, max-age=60')).get('/report.pdf', ShowReportController)`.
  * Never `public` for what depends on the user: shared caches (proxies, CDNs) would hand it to others.
  */

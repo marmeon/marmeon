@@ -7,7 +7,7 @@ export type OtelApi = typeof Api;
 export const OTEL_INSTALL = 'pnpm add @opentelemetry/api';
 
 /**
- * `@opentelemetry/api` is not installed — an optional peer of @bespokecore/otel. The message says what to install; the CLI
+ * `@opentelemetry/api` is not installed — an optional peer of @marmeon/otel. The message says what to install; the CLI
  * prints it without a stack trace.
  */
 export class OtelSetupError extends Error {
@@ -32,7 +32,7 @@ export async function loadOtelApi(load: ImportOtelApi = importApi): Promise<Otel
     if (error instanceof OtelSetupError) throw error;
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && message.includes('@opentelemetry/api')) {
-      throw new OtelSetupError(`@bespokecore/otel needs the OpenTelemetry API, which is not installed in this app: ${OTEL_INSTALL} (the SDK and an exporter are the app's, see packages/otel/README.md).`);
+      throw new OtelSetupError(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: ${OTEL_INSTALL} (the SDK and an exporter are the app's, see packages/otel/README.md).`);
     }
     throw error;
   }
@@ -52,6 +52,6 @@ export function sdkRegistered(api: OtelApi): boolean {
 
 /** Whether a context manager propagates contexts (`AsyncLocalStorageContextManager`, which `NodeSDK` registers). */
 export function contextPropagates(api: OtelApi): boolean {
-  const key = api.createContextKey('@bespokecore/otel probe');
+  const key = api.createContextKey('@marmeon/otel probe');
   return api.context.with(api.ROOT_CONTEXT.setValue(key, true), () => api.context.active().getValue(key) === true);
 }

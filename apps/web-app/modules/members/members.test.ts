@@ -1,7 +1,7 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { Connections, type QueryEvent } from '@bespokecore/database';
-import type { TableData } from '@bespokecore/table';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Connections, type QueryEvent } from '@marmeon/database';
+import type { TableData } from '@marmeon/table';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { warmUp, WARM_UP_TIMEOUT } from '../auth/warm-up.ts';
@@ -35,7 +35,7 @@ async function members(user: User, query = ''): Promise<Members> {
 
 const linksOf = async (user: User) => (await app.make(Connections).get().selectFrom('profile_links').select('id').where('user_id', '=', user.id).execute()).length;
 
-describe('the members table (/members) — @bespokecore/table in the app', () => {
+describe('the members table (/members) — @marmeon/table in the app', () => {
   it('shows the e-mail column to administrators only (DASHBOARD_ADMINS): for everyone else it is not selected at all', async () => {
     const asAda = await members(ada);
     expect(asAda.columns.map((column) => column.name)).toEqual(['name', 'email', 'joined', 'links']);

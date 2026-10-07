@@ -1,6 +1,6 @@
-import { afterCommit, outsideTransaction, token, type Application, type Logger } from '@bespokecore/core';
-import { channels, messageBase, trace } from '@bespokecore/core/diagnostics';
-import { checkedChannel } from '@bespokecore/http';
+import { afterCommit, outsideTransaction, token, type Application, type Logger } from '@marmeon/core';
+import { channels, messageBase, trace } from '@marmeon/core/diagnostics';
+import { checkedChannel } from '@marmeon/http';
 import type { LiveBackend } from './backend.ts';
 import type { BroadcastRecorder } from './recorder.ts';
 
@@ -21,7 +21,7 @@ export interface RefreshOptions {
  *   policies and props, as for any partial reload.
  * - **After the commit** (like a dispatched job, E85/E107): inside a transaction it goes out once it committed — a rollback
  *   sends nothing; the other tab never reloads what is not there yet.
- * - **Not to the tab that caused it**: a request's `x-bespoke-connection` (sent by every request of a tab that follows live
+ * - **Not to the tab that caused it**: a request's `x-marmeon-connection` (sent by every request of a tab that follows live
  *   hints) — that tab gets the hint with nothing to reload; it shows the change from its own answer.
  */
 export interface Broadcaster {
@@ -34,7 +34,7 @@ export const CONNECTION_ID = /^[\w-]{8,64}$/;
 
 export interface LiveBroadcasterDependencies {
   readonly backend: () => LiveBackend;
-  /** The tab that sent the current request (`x-bespoke-connection`) — none outside a request (a job, a command). */
+  /** The tab that sent the current request (`x-marmeon-connection`) — none outside a request (a job, a command). */
   readonly connection: string | undefined;
   readonly logger: Logger;
   /** Tests: what was refreshed (`app.broadcast`). */

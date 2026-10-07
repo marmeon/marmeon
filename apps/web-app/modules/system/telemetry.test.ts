@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
-import { Application, Logger } from '@bespokecore/core';
-import { createPinoLogger } from '@bespokecore/log';
-import { createTestApp } from '@bespokecore/testing';
+import { Application, Logger } from '@marmeon/core';
+import { createPinoLogger } from '@marmeon/log';
+import { createTestApp } from '@marmeon/testing';
 import { context, propagation, SpanKind, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
@@ -56,7 +56,7 @@ describe('OpenTelemetry in the web app (E120)', () => {
     const request = spans.find((span) => span.name === 'POST /register')!;
     expect(request).toBeDefined();
     expect(request.kind).toBe(SpanKind.SERVER);
-    expect(request.attributes).toMatchObject({ 'http.route': '/register', 'http.response.status_code': 303, 'bespoke.route.name': 'auth.register.store', 'bespoke.controller': 'RegisterController' });
+    expect(request.attributes).toMatchObject({ 'http.route': '/register', 'http.response.status_code': 303, 'marmeon.route.name': 'auth.register.store', 'marmeon.controller': 'RegisterController' });
     const traceId = request.spanContext().traceId;
 
     // The account's insert: a child of the request, without its parameters (the Argon2 hash, the e-mail address).
@@ -69,7 +69,7 @@ describe('OpenTelemetry in the web app (E120)', () => {
     expect(job.spanContext().traceId).toBe(traceId);
     const mail = spans.find((span) => span.name === 'mail WelcomeMail')!;
     expect(parentOf(mail)).toBe(job.spanContext().spanId);
-    expect(mail.attributes).toMatchObject({ 'bespoke.mail.mode': 'send', 'bespoke.mail.recipients': 1 });
+    expect(mail.attributes).toMatchObject({ 'marmeon.mail.mode': 'send', 'marmeon.mail.recipients': 1 });
 
     // Nothing secret in any span (E125): the password, its hash, the address, the session.
     const everything = spans.map(dump).join('\n');

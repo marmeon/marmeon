@@ -1,5 +1,5 @@
-import { Clock, Logger } from '@bespokecore/core';
-import { Storage } from '@bespokecore/storage';
+import { Clock, Logger } from '@marmeon/core';
+import { Storage } from '@marmeon/storage';
 
 /** How long an export stays on the private disk: its signed URL works five minutes (ExportMyDataController) — then some slack. */
 export const EXPORT_KEEP_MINUTES = 15;

@@ -21,14 +21,14 @@ function remove(dir) {
 
 /**
  * A fresh temporary directory (`<os.tmpdir()>/<prefix>XXXXXX`) that removes itself: made inside a test, when the test ends; made
- * anywhere else in a test file, when the file's tests are done. The prefix starts with `bespoke-`, so the run's hygiene check
+ * anywhere else in a test file, when the file's tests are done. The prefix starts with `marmeon-`, so the run's hygiene check
  * (`scripts/test/temp-hygiene.ts`) names whatever is left behind.
  *
- * @param {string} prefix e.g. `bespoke-env-`
+ * @param {string} prefix e.g. `marmeon-env-`
  * @returns {string} the directory's path (not resolved: wrap it in `realpathSync` where symlinks matter, e.g. macOS `/var`)
  */
 export function tempDir(prefix) {
-  if (!prefix.startsWith('bespoke-')) throw new Error(`tempDir("${prefix}"): the prefix starts with "bespoke-", so the hygiene check sees what is left.`);
+  if (!prefix.startsWith('marmeon-')) throw new Error(`tempDir("${prefix}"): the prefix starts with "marmeon-", so the hygiene check sees what is left.`);
   const dir = mkdtempSync(join(tmpdir(), prefix));
   try {
     onTestFinished(() => remove(dir));

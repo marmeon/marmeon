@@ -1,10 +1,10 @@
 import { relative } from 'node:path';
-import { writeManifest } from '@bespokecore/core';
+import { writeManifest } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 
 /**
  * Composer's dump-autoload + Laravel's package:discover. Also runs automatically when dependencies change. Writes the manifest of
- * this process's conditions (E160): `.bespoke/manifest.json` in an installed app, `.bespoke/manifest.source.json` in the monorepo.
+ * this process's conditions (E160): `.marmeon/manifest.json` in an installed app, `.marmeon/manifest.source.json` in the monorepo.
  */
 export class DiscoverCommand {
   static command = 'discover';

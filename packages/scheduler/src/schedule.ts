@@ -1,5 +1,5 @@
-import type { CommandClass } from '@bespokecore/cli';
-import type { CheckJob, JobClass, JobInput } from '@bespokecore/queue';
+import type { CommandClass } from 'marmeon';
+import type { CheckJob, JobClass, JobInput } from '@marmeon/queue';
 import { ScheduleError } from './cron.ts';
 import { PendingTask, type InvokableClass, type TaskDefinition, type UnscheduledTask } from './task.ts';
 
@@ -22,7 +22,7 @@ export interface Schedule {
   call(target: InvokableClass): UnscheduledTask<'call'>;
 }
 
-const DEFINE = Symbol.for('bespokecore.scheduler.define');
+const DEFINE = Symbol.for('marmeon.scheduler.define');
 
 /** A module's schedule (`defineModule({ schedule })`). */
 export interface ScheduleDefinition {
@@ -41,7 +41,7 @@ export interface ScheduleDefinition {
  * });
  * ```
  *
- * `bespoke schedule:work` runs them (`bespoke dev` starts it), `bespoke schedule:run` from a system cron every minute.
+ * `marmeon schedule:work` runs them (`marmeon dev` starts it), `marmeon schedule:run` from a system cron every minute.
  */
 export function defineSchedule(define: (s: Schedule) => void): ScheduleDefinition {
   if (typeof define !== 'function') throw new ScheduleError('defineSchedule() takes a function: defineSchedule((s) => { s.command(…).daily(); }).');

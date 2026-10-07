@@ -1,9 +1,9 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link } from '@marmeon/react';
 import type { ShowErrorsLabController } from '../controllers/ShowLabPageController.ts';
 
 /**
- * Errors on purpose (E119, E130): each link fails in its own way. In development (`bespoke dev`) the error page shows the
+ * Errors on purpose (E119, E130): each link fails in its own way. In development (`marmeon dev`) the error page shows the
  * code, the request, the queries and the solution; in production the plain error page. Plain links load the page, the
  * buttons visit it — the error page then shows in the visit's dialog.
  */

@@ -57,7 +57,7 @@ export class ScheduleTester {
     return Promise.all(runs.map((run) => run.done));
   }
 
-  /** Runs one task now, like `bespoke schedule:test <name>`. */
+  /** Runs one task now, like `marmeon schedule:test <name>`. */
   async runTask(name: string): Promise<TaskResult> {
     return this.#scheduler.runNow(this.#scheduler.task(name)).done;
   }

@@ -32,10 +32,10 @@ export type InjectionSite =
     });
 
 /** Static, symbol-keyed field carrying the reason a class has no injection list. */
-export const UNRESOLVABLE = 'bespokecore.injection.unresolvable';
+export const UNRESOLVABLE = 'marmeon.injection.unresolvable';
 
 /** Static, symbol-keyed field carrying a class's injection warnings (E128). */
-export const WARNINGS = 'bespokecore.injection.warnings';
+export const WARNINGS = 'marmeon.injection.warnings';
 
 export class InjectionError extends Error {
   override name = 'InjectionError';
@@ -107,7 +107,7 @@ export type Insertion = readonly [offset: number, text: string];
 
 /**
  * The text each site gets — `static inject = [...]` (or the unresolvable reason, the warnings) — at the offset of its class
- * body's `{`, so line numbers never shift. `bespoke build` keeps these per file (`.bespoke/injections.json`, E138).
+ * body's `{`, so line numbers never shift. `marmeon build` keeps these per file (`.marmeon/injections.json`, E138).
  */
 export function insertionsOf(sites: readonly InjectionSite[]): Insertion[] {
   return sites.map((site) => {
@@ -148,7 +148,7 @@ export function injectConstructorDependencies(source: string, filename: string):
 /**
  * Every class of a module in source order, with a name for messages. `declare`
  * classes produce no JavaScript and are skipped, so the n-th class here is the
- * n-th class of the compiled output too (`bespoke package:build` pairs them).
+ * n-th class of the compiled output too (`marmeon package:build` pairs them).
  */
 export function classesOf(program: Node): { node: Node; name: string; index: number }[] {
   const found: { node: Node; name: string }[] = [];

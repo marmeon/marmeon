@@ -1,7 +1,7 @@
-# Deploying a BespokeCore app
+# Deploying a Marmeon app
 
-A BespokeCore app in production is **one image (or one directory) and three roles**: the web server (`bespoke start`), the
-queue worker (`bespoke queue:work`) and the scheduler (`bespoke schedule:work`). Each runs as a single Node process, each stops
+A Marmeon app in production is **one image (or one directory) and three roles**: the web server (`marmeon start`), the
+queue worker (`marmeon queue:work`) and the scheduler (`marmeon schedule:work`). Each runs as a single Node process, each stops
 gracefully on SIGTERM, and each reads its configuration from the environment. This guide covers the Docker template, the process
 model, stopping without dropped requests, proxies (and why live updates need HTTP/2), what changes with more than one instance,
 mail, keys, systemd and Kubernetes.
@@ -9,7 +9,7 @@ mail, keys, systemd and Kubernetes.
 ## The short version
 
 ```sh
-bespoke make:docker --caddy          # Dockerfile, .dockerignore, compose.production.yaml, deploy/Caddyfile
+marmeon make:docker --caddy          # Dockerfile, .dockerignore, compose.production.yaml, deploy/Caddyfile
 # on the server, next to the files:   .env.production with APP_KEY, APP_URL=https://…, MAIL_*, DB_* …
 APP_DOMAIN=example.com docker compose -f compose.production.yaml up -d --build
 docker compose -f compose.production.yaml run --rm web migrate --force
@@ -22,12 +22,12 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
 
 | Role | Command | Restart | Stops on SIGTERM |
 | --- | --- | --- | --- |
-| web | `bespoke start` | always (unless stopped) | readiness 503, `SHUTDOWN_DELAY`, then the drain: requests in flight and the work after them (≤ 10 s) |
-| worker | `bespoke queue:work --queue=mail,default` | always — a job past its timeout ends the worker with **exit code 70** on purpose | no new job; the running one gets `--stop-timeout` (10 s), else it is released |
-| scheduler | `bespoke schedule:work` | always | no new tick; runs get `--stop-timeout` |
+| web | `marmeon start` | always (unless stopped) | readiness 503, `SHUTDOWN_DELAY`, then the drain: requests in flight and the work after them (≤ 10 s) |
+| worker | `marmeon queue:work --queue=mail,default` | always — a job past its timeout ends the worker with **exit code 70** on purpose | no new job; the running one gets `--stop-timeout` (10 s), else it is released |
+| scheduler | `marmeon schedule:work` | always | no new tick; runs get `--stop-timeout` |
 
 - **One role per container** (or per systemd unit) is the model: the same image, another command. Scale the web role with more
-  containers, or on a machine with several cores with `bespoke start --workers=N` (`node:cluster`: one port, N servers, the
+  containers, or on a machine with several cores with `marmeon start --workers=N` (`node:cluster`: one port, N servers, the
   primary passes signals on, each worker drains, exit 0 when all exited 0). Workers share nothing in memory: with live props a
   cluster needs `LIVE_DRIVER=redis` — with `memory` a worker refuses to start and the cluster stops (W9 step 4) — and the
   other drivers follow [More than one instance](#more-than-one-instance). Run **one scheduler** per deployment (or per server
@@ -37,12 +37,12 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
   warning (`Jobs are waiting on the "mail" queue …`) once it saw jobs ready there twice in a row.
 - **Boot warnings once:** with `--workers=N` the primary says the boot's warnings (log mailer, cookies without `Secure`, stale
   build artifacts); the workers keep theirs to themselves.
-- **One process:** `bespoke start` *is* the server — no launcher in front — so the supervisor's SIGTERM, a worker's exit code and
+- **One process:** `marmeon start` *is* the server — no launcher in front — so the supervisor's SIGTERM, a worker's exit code and
   `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` reach exactly one Node process.
 - **tini as PID 1 (E187):** Node as PID 1 reaps no orphaned process (it stays a zombie), and the kernel drops a signal to PID 1
   that has no handler yet — a SIGTERM in the few hundred milliseconds of the boot would be lost (the container then waits for
-  SIGKILL). The image of `make:docker` runs `bespoke` under `tini` (`ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]`, the Debian
-  package): it passes signals on and ends with bespoke's exit code — 0 after the drain, 70 for a stuck job — in Docker, Compose
+  SIGKILL). The image of `make:docker` runs `marmeon` under `tini` (`ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]`, the Debian
+  package): it passes signals on and ends with marmeon's exit code — 0 after the drain, 70 for a stuck job — in Docker, Compose
   and Kubernetes alike; no `docker run --init` or `init: true` needed (with one, tini runs as its child and warns).
 
 ## The image (E141)
@@ -52,15 +52,15 @@ The Dockerfile of `make:docker`, stage by stage:
 1. **build** — `node:26-slim` (Debian, glibc: native packages such as oxc, rolldown and lightningcss work as on a laptop); pnpm
    pinned from the app's `packageManager` and installed with `npm i -g` (Node ships no Corepack since 25; an app with
    `package-lock.json` gets `npm ci` instead); the manifests first, then `install --frozen-lockfile` with a BuildKit cache mount,
-   so code changes do not reinstall; then the app and **`bespoke build`**: the injection lists, route types, the type check,
+   so code changes do not reinstall; then the app and **`marmeon build`**: the injection lists, route types, the type check,
    the client and SSR bundles, the precompressed assets, the discovery manifest; then a **fresh production install** (only
-   `dependencies` — `bespoke` is one) and `bespoke discover` for exactly these packages.
+   `dependencies` — `marmeon` is one) and `marmeon discover` for exactly these packages.
 2. **run** — `node:26-slim` again (the same Node, so the compile cache and native packages match), the app copied in owned by
    root and readable for everyone, `storage/` owned by `node`, `USER node`, `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=3000`, a
-   `HEALTHCHECK` with Node's own `fetch` on `/up` (no curl), `ENTRYPOINT ["bespoke"]`, `CMD ["start"]`. Worker and scheduler run
+   `HEALTHCHECK` with Node's own `fetch` on `/up` (no curl), `ENTRYPOINT ["marmeon"]`, `CMD ["start"]`. Worker and scheduler run
    the same image with another command.
 
-**Build-time configuration: none (E187).** `bespoke build` writes the route types from the app in its **build phase**
+**Build-time configuration: none (E187).** `marmeon build` writes the route types from the app in its **build phase**
 (`createApplication({ phase: 'build' })`): every provider registered, none booted — no connection, no driver check — and the
 configuration that does not validate without `.env` (`APP_KEY`, `APP_NAME`, database passwords, mail credentials …) left out
 instead of failing. So the build stage needs no `.env`, no throwaway key and no `ARG` for a setting, and no secret can end up in
@@ -76,13 +76,13 @@ tools (E170; it says so loudly in its log).
 compile cache. The container's own files are gone with the container.
 
 **Read-only root file system** works (`docker run --read-only --tmpfs /tmp -v …:/app/storage`): the build artifacts in
-`.bespoke/` are complete, so nothing is written next to the code (E160); a missing or stale one would only log a warning.
+`.marmeon/` are complete, so nothing is written next to the code (E160); a missing or stale one would only log a warning.
 
 **Size.** The image of the blank app with the auth module (`make:auth`) is about **320 MB** — `node:26-slim` alone is 271 MB; the
 app's production `node_modules` are 97 MB (with npm 157 MB). The build stage carries TypeScript, Vite and pnpm; the final stage
 does not. `pnpm run ci` builds and runs this image (`image`) and reports its size.
 
-**Compile cache.** `bespoke start` keeps Node's compile cache in `storage/framework/compile-cache`: the first container on a new
+**Compile cache.** `marmeon start` keeps Node's compile cache in `storage/framework/compile-cache`: the first container on a new
 volume starts about 90 ms slower, every later one — also after a deployment, for each unchanged module — uses it. It is not baked
 into the image: Node uses a cache directory only when it can write to it.
 
@@ -91,7 +91,7 @@ into the image: Node uses a cache directory only when it can write to it.
 | Variable | In production |
 | --- | --- |
 | `NODE_ENV` | `production` (set by the image; `staging` is protected the same way, E139) |
-| `APP_KEY` | the key from `bespoke key:generate --show` — the same on every instance; a secret |
+| `APP_KEY` | the key from `marmeon key:generate --show` — the same on every instance; a secret |
 | `APP_PREVIOUS_KEYS` | when you rotate: the old key(s), comma-separated — sessions, encrypted cookies and signed links made with them keep working until they expire |
 | `APP_URL` | `https://…` — cookies get `Secure` from it (E162); a protected app on `http://` logs a warning at boot. Over plain HTTP browsers also ignore the `Clear-Site-Data` of a sign-out (secure origins only): a staging box without TLS keeps its HTTP cache after a sign-out |
 | `HOST`, `PORT` | `0.0.0.0` / `3000` in a container; `127.0.0.1` behind a proxy on the same machine (`PORT=0` takes a free port — the start line names it) |
@@ -204,7 +204,7 @@ appends to it. Two proxies in a row (a CDN in front of nginx) need their ranges 
 address. Prefer explicit addresses or ranges where you know them (the docs below name the Compose network's subnets) — and
 never `*` on a port anybody can reach: then every client is the "direct peer".
 
-**Compression:** the assets arrive precompressed (`.br`/`.gz` from `bespoke build`, `immutable` for a year); documents and JSON
+**Compression:** the assets arrive precompressed (`.br`/`.gz` from `marmeon build`, `immutable` for a year); documents and JSON
 are not compressed by the app — a compressed response that carries a secret (the CSRF token) is what BREACH reads. Leave the
 proxy's compression off for them too (the templates do).
 
@@ -220,7 +220,7 @@ a shared store:
 | Queue (`QUEUE_CONNECTION`) | `sync` for real work; `database` on SQLite across machines | `redis`, `database` on Postgres |
 | Live (`LIVE_DRIVER`) | `memory` (a hint reaches only its own process — with `--workers` the start fails, W9 step 4) | `redis` |
 | Database | SQLite across machines | Postgres |
-| Uploads | the local disks on several machines | an S3 disk ([@bespokecore/storage](../packages/storage/README.md)) |
+| Uploads | the local disks on several machines | an S3 disk ([@marmeon/storage](../packages/storage/README.md)) |
 
 On one machine the Compose template shares one `storage` volume between web, worker and scheduler — SQLite and the `file`
 drivers work there (one kernel, one file system). `onOneServer()` scheduler tasks need a cache every scheduler shares.
@@ -230,9 +230,9 @@ streams on their own — with four workers a session may hold 16 streams in each
 
 ## Without Docker: systemd
 
-`bespoke make:docker --systemd` writes `deploy/systemd/{web,worker,scheduler}.service` for an app in `/srv/<name>`, run as the
+`marmeon make:docker --systemd` writes `deploy/systemd/{web,worker,scheduler}.service` for an app in `/srv/<name>`, run as the
 user `<name>`, configured from `/etc/<name>/env` (`chmod 600`). Deploy by building there (or copying a build): `pnpm install
---frozen-lockfile && bespoke build && pnpm install --prod --frozen-lockfile`, then `systemctl restart <name>-web <name>-worker
+--frozen-lockfile && marmeon build && pnpm install --prod --frozen-lockfile`, then `systemctl restart <name>-web <name>-worker
 <name>-scheduler`. The units restart always (a worker's exit 70 included), send SIGTERM with `TimeoutStopSec` above the drain,
 and protect the system (`ProtectSystem=strict`, only `storage/` writable). The web server listens on `127.0.0.1` and trusts the
 proxy on the same machine (`--caddy`/`--nginx` with `--systemd` write the proxy configuration for the host). Node must be on the
@@ -255,14 +255,14 @@ beyond the template:
   (E160), nothing else is written.
 - **Compression of pages that carry no secret:** the docs have no session, no CSRF token and no cookie, so Caddy's `encode` is safe
   there (and turns 190 KB pages into 40 KB). An app with sign-in keeps documents uncompressed.
-- **A tag per build for the way back:** `image: bespokecore-docs:${DOCS_TAG:-latest}` — `DOCS_TAG=$(git rev-parse --short HEAD)
+- **A tag per build for the way back:** `image: marmeon-docs:${DOCS_TAG:-latest}` — `DOCS_TAG=$(git rev-parse --short HEAD)
   docker compose up -d --build` builds and starts a named version; an earlier tag still on the machine starts again without a
   build.
 
 ## Checklist
 
 - [ ] `NODE_ENV=production` (image) — no developer `.env` on the server; `APP_KEY` set, the same everywhere; `APP_URL` is `https://`
-- [ ] `bespoke migrate --force` once per deployment (a one-off container: `docker compose run --rm web migrate --force`)
+- [ ] `marmeon migrate --force` once per deployment (a one-off container: `docker compose run --rm web migrate --force`)
 - [ ] the proxy speaks HTTP/2 to browsers, does not buffer event streams, sets `X-Forwarded-*`; `TRUSTED_PROXIES` names it
 - [ ] `HOST` set (`0.0.0.0` in a container, `127.0.0.1` behind a proxy on the same machine); `KEEP_ALIVE_TIMEOUT` above the proxy's
   idle timeout to the app

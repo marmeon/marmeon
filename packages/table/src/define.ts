@@ -1,6 +1,6 @@
-import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@bespokecore/auth';
-import type { Database, SecretReference } from '@bespokecore/database';
-import type { ClassResolver, HttpContext, JoinNames, StandardSchemaV1 } from '@bespokecore/router';
+import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@marmeon/auth';
+import type { Database, SecretReference } from '@marmeon/database';
+import type { ClassResolver, HttpContext, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { ExtractTypeFromReferenceExpression, SelectQueryBuilder, StringReference } from 'kysely';
 import type { TableData } from './client/index.ts';
 import { querySchema } from './state.ts';
@@ -8,7 +8,7 @@ import { querySchema } from './state.ts';
 /**
  * Who may see a part of a table — a column, a filter, an action, an export — for the whole request (no row): an ability of a policy
  * that takes no resource (`viewEmails(user)`), or a check of the request (`(ctx) => ctx.user.admin`). A `can(…)` of
- * @bespokecore/auth works as a check, too: its denial (403/404) means "hidden".
+ * @marmeon/auth works as a check, too: its denial (403/404) means "hidden".
  */
 export type Visibility =
   | { readonly kind: 'policy'; readonly policy: PolicyClass; readonly ability: string }
@@ -285,7 +285,7 @@ export class TableExport {
 
   /**
    * At most `rows` rows per export (default 10 000): an export over more is refused with a 422 before a byte is streamed — narrow
-   * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @bespokecore/cache).
+   * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @marmeon/cache).
    */
   max(rows: number): TableExport {
     return new TableExport(this.visibility, rows);
@@ -341,7 +341,7 @@ export interface TableDefinition {
   readonly exports: Readonly<Record<string, TableExport>>;
 }
 
-const TABLE_TYPES = Symbol.for('bespokecore.table.types');
+const TABLE_TYPES = Symbol.for('marmeon.table.types');
 
 /**
  * A table (E183): its definition, and its types for the client — `TableProps<typeof MembersTable>`. Use it with
@@ -546,7 +546,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
   readonly prefix?: P;
   /**
    * Who may see the table at all — checked on the page and in every action and export (its endpoints run the group's middleware,
-   * not the page controller's `authorize`). A `can(Policy, 'ability')` of @bespokecore/auth, or any check. Without it: whoever
+   * not the page controller's `authorize`). A `can(Policy, 'ability')` of @marmeon/auth, or any check. Without it: whoever
    * reaches the routes.
    */
   readonly authorize?: (ctx: NoInfer<CtxOf<Q>>, resolve: ClassResolver) => boolean | Promise<boolean>;

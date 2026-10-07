@@ -1,8 +1,8 @@
 import { join } from 'node:path';
-import { defineApplication } from '@bespokecore/core';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
-import { CliServiceProvider } from '@bespokecore/cli';
+import { defineApplication } from '@marmeon/core';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
+import { CliServiceProvider } from 'marmeon';
 import { I18nServiceProvider } from '../../../index.ts';
 import { GreetCommand } from '../commands.ts';
 

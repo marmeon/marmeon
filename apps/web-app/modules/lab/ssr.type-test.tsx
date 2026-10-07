@@ -1,9 +1,9 @@
 /**
- * Type guarantees of server rendering per page (W5 step 7) — checked by `tsc` (`pnpm typecheck`, `bespoke build`), never run.
+ * Type guarantees of server rendering per page (W5 step 7) — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run.
  */
-import type { SsrRender, SsrRenderOptions } from '@bespokecore/http/page';
-import type { PageComponent, PageSsr } from '@bespokecore/react';
-import { createSsrRenderer } from '@bespokecore/react/server';
+import type { SsrRender, SsrRenderOptions } from '@marmeon/http/page';
+import type { PageComponent, PageSsr } from '@marmeon/react';
+import { createSsrRenderer } from '@marmeon/react/server';
 
 export function Canvas() {
   return null;

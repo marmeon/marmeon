@@ -1,5 +1,5 @@
-import type { Translator } from '@bespokecore/i18n';
-import type { DatabaseInput, Notification, NotificationData } from '@bespokecore/notifications';
+import type { Translator } from '@marmeon/i18n';
+import type { DatabaseInput, Notification, NotificationData } from '@marmeon/notifications';
 import * as v from 'valibot';
 import { AppConfig } from '../../../config/app.ts';
 import { NewSignInMail } from '../mail/NewSignInMail.ts';

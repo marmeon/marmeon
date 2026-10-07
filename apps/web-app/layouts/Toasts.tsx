@@ -1,4 +1,4 @@
-import { useFlash, usePage, useTranslation } from '@bespokecore/react';
+import { useFlash, usePage, useTranslation } from '@marmeon/react';
 import { useEffect, useState } from 'react';
 
 /** How long a toast stays (ms) — its close button takes it away sooner. */

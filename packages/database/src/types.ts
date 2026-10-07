@@ -12,7 +12,7 @@ import type {
   UpdateResult,
 } from 'kysely';
 
-// Filled in by the generated file (`bespoke db:types`, from the migrations) through declaration merging.
+// Filled in by the generated file (`marmeon db:types`, from the migrations) through declaration merging.
 
 /** Every table of the app: row types by table name. */
 export interface Tables {}

@@ -1,4 +1,4 @@
-import { resolveRoute } from '@bespokecore/http/client';
+import { resolveRoute } from '@marmeon/http/client';
 import { describe, expect, it } from 'vitest';
 import { Link } from './link.tsx';
 import { resolveModulePages } from './pages.ts';
@@ -52,7 +52,7 @@ describe('routes in the browser', () => {
 
   it('says what is missing: the manifest, or a route it does not carry', async () => {
     await expect(createSsrRenderer(resolve)({ component: 'people/Page', props: { id: 7 }, url: '/' })).rejects.toThrow(
-      'the browser has no route manifest — pass the routes of virtual:bespoke/routes to createBespokeApp({ routes })',
+      'the browser has no route manifest — pass the routes of virtual:marmeon/routes to createMarmeonApp({ routes })',
     );
     expect(() => resolveRoute(routes, 'admin.users')).toThrow(
       "Route [admin.users] is not defined in the browser: a build ships only the route names client code writes out (<Link route=\"…\">, route('…'), useForm('…', …)), never API routes, .internal() routes or clientRoutes.except",
@@ -62,13 +62,13 @@ describe('routes in the browser', () => {
   });
 
   it('says the same with its code in production — only the code and the name (E80)', async () => {
-    expect(() => resolveRoute(routes, 'admin.users')).toThrow(/^\[bespoke:C2\] Route \[admin\.users\] is not defined/);
+    expect(() => resolveRoute(routes, 'admin.users')).toThrow(/^\[marmeon:C2\] Route \[admin\.users\] is not defined/);
     const environment = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     try {
-      expect(() => resolveRoute(routes, 'admin.users')).toThrow(new Error('[bespoke:C2] admin.users'));
-      expect(() => resolveRoute(undefined, 'people.show')).toThrow(new Error('[bespoke:C1] people.show'));
-      await expect(resolveModulePages({})('users/Show')).rejects.toThrow(new Error('[bespoke:R2] users/Show'));
+      expect(() => resolveRoute(routes, 'admin.users')).toThrow(new Error('[marmeon:C2] admin.users'));
+      expect(() => resolveRoute(undefined, 'people.show')).toThrow(new Error('[marmeon:C1] people.show'));
+      await expect(resolveModulePages({})('users/Show')).rejects.toThrow(new Error('[marmeon:R2] users/Show'));
     } finally {
       process.env.NODE_ENV = environment;
     }

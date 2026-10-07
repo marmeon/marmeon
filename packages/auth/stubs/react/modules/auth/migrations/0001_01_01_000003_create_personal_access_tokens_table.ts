@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 // API tokens (E27): the secret only as SHA-256, abilities as JSON.
 export default defineMigration({

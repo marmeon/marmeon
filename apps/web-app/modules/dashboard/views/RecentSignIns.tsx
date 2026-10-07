@@ -1,5 +1,5 @@
-import type { IslandProps } from '@bespokecore/http';
-import { Link, useIsland, useTranslation, type RevalidateOnBack } from '@bespokecore/react';
+import type { IslandProps } from '@marmeon/http';
+import { Link, useIsland, useTranslation, type RevalidateOnBack } from '@marmeon/react';
 import type { ShowRecentSignInsController } from '../controllers/ShowRecentSignInsController.ts';
 
 /** The ranges the picker offers — checked against the island's query schema by `reload({ query })`. */

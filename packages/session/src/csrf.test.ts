@@ -1,7 +1,7 @@
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { Controller, defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
+import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { Session } from './session.ts';
@@ -192,7 +192,7 @@ describe('VerifyCsrfToken', () => {
     it('a page for a guest carries no token and sets no cookie — 100 times', async () => {
       const { send } = await boot();
       for (let i = 0; i < 100; i++) {
-        const response = await send('/page', { headers: { 'x-bespoke': 'true' } });
+        const response = await send('/page', { headers: { 'x-marmeon': 'true' } });
         expect(response.headers.getSetCookie()).toEqual([]);
         expect(((await response.json()) as PageObject).csrf).toBeUndefined();
       }
@@ -202,8 +202,8 @@ describe('VerifyCsrfToken', () => {
       const { send, token } = await boot();
       const failed = await send('/fail', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' } });
       expect(failed.status).toBe(303);
-      expect(failed.headers.getSetCookie().map((cookie) => cookie.split('=')[0]).sort()).toEqual(['XSRF-TOKEN', 'bespoke_session']);
-      const page = (await (await send('/page', { headers: { 'x-bespoke': 'true' } })).json()) as PageObject;
+      expect(failed.headers.getSetCookie().map((cookie) => cookie.split('=')[0]).sort()).toEqual(['XSRF-TOKEN', 'marmeon_session']);
+      const page = (await (await send('/page', { headers: { 'x-marmeon': 'true' } })).json()) as PageObject;
       expect(page.csrf).toBe(token());
       expect(page.props).toMatchObject({ errors: { email: ['Wrong.'] } });
     });

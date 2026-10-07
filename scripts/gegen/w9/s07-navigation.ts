@@ -126,7 +126,7 @@ export default defineGegenproben({
     // --- The History fallback: only without window.navigation, never in a first download ------------------------------------
     {
       id: 'G11',
-      title: 'createBespokeApp does not detect a browser without the Navigation API: no fallback, nothing follows Back/Forward',
+      title: 'createMarmeonApp does not detect a browser without the Navigation API: no fallback, nothing follows Back/Forward',
       patch: [{ file: 'packages/react/src/client.tsx', find: '    window.navigation ? undefined : loadHistoryFallback(),', replace: '    undefined,' }],
       run: { vitest: 'packages/react/src/client.test.tsx', name: 'loads it beside the first page where the browser has no Navigation API' },
       expect: /no History fallback attached/,
@@ -163,8 +163,8 @@ export default defineGegenproben({
     {
       id: 'G15',
       title: 'the starter kit’s dialog asks the session question in English: the German page shows the framework’s text',
-      patch: [{ file: 'packages/create-bespoke-app/template/kit/bootstrap/confirm.tsx', find: "      request={session ? { ...props.request, message: t('confirm.session') } : props.request}", replace: '      request={props.request}' }],
-      run: { vitest: 'packages/create-bespoke-app/src/create.test.ts', name: 'the starter kit works', timeout: 15 * 60_000 },
+      patch: [{ file: 'packages/create-marmeon/template/kit/bootstrap/confirm.tsx', find: "      request={session ? { ...props.request, message: t('confirm.session') } : props.request}", replace: '      request={props.request}' }],
+      run: { vitest: 'packages/create-marmeon/src/create.test.ts', name: 'the starter kit works', timeout: 15 * 60_000 },
       expect: /the kit's tests failed:[\s\S]*confirm\.test\.ts/,
     },
     // --- useRouter(): the page's patches on first use; the guard's beforeunload ------------------------------------------------

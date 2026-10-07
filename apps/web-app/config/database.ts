@@ -1,4 +1,4 @@
-import { defineConnection } from '@bespokecore/database';
+import { defineConnection } from '@marmeon/database';
 import * as v from 'valibot';
 
 /**

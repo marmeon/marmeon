@@ -8,7 +8,7 @@
  *   pnpm bench people                                  # GET /people signed in
  *   pnpm bench login --profile [--base f785159]        # CPU profile of the measured requests: top lists (self, inclusive) and the diff
  *
- * Every side runs from a `git worktree` under `$TMPDIR/bespoke-bench/` — the base at its commit, this checkout as a snapshot (HEAD
+ * Every side runs from a `git worktree` under `$TMPDIR/marmeon-bench/` — the base at its commit, this checkout as a snapshot (HEAD
  * plus the working tree's changes and untracked files; `--in-place` measures the checkout itself). Same place, same conditions: the
  * repository's own `apps/web-app/.env` (read under `.env.test`) and its location changed results by several per cent (W8 step 7).
  * Worktrees are kept for the next run (`git worktree remove` cleans up); before a run each one is smoke-tested — it imports what a
@@ -127,7 +127,7 @@ function git(args: string[], cwd = root): string {
 }
 
 function benchDir(): string {
-  const dir = join(tmpdir(), 'bespoke-bench');
+  const dir = join(tmpdir(), 'marmeon-bench');
   mkdirSync(dir, { recursive: true });
   return realpathSync(dir); // the profiles' file URLs are real paths (macOS: /var → /private/var)
 }
@@ -187,7 +187,7 @@ function snapshot(): string {
 function probeOf(checkout: string): ImportProbe {
   return {
     cwd: join(checkout, 'apps/web-app'),
-    args: ['--conditions=@bespokecore/source', `--import=${pathToFileURL(join(checkout, 'packages/core/src/register.ts')).href}`],
+    args: ['--conditions=@marmeon/source', `--import=${pathToFileURL(join(checkout, 'packages/core/src/register.ts')).href}`],
     env: { ...workerEnvironment(), NODE_ENV: 'test' },
     specifiers: WORKER_MODULES.map((path) => pathToFileURL(join(checkout, path)).href),
   };
@@ -196,7 +196,7 @@ function probeOf(checkout: string): ImportProbe {
 /** The environment of a measured process: none of pnpm's, Vitest's or this process's own variables. */
 function workerEnvironment(): NodeJS.ProcessEnv {
   const clean: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) if (!/^(npm_|PNPM_|BESPOKE_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) clean[key] = value;
+  for (const [key, value] of Object.entries(process.env)) if (!/^(npm_|PNPM_|MARMEON_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) clean[key] = value;
   return clean;
 }
 
@@ -205,7 +205,7 @@ function workerEnvironment(): NodeJS.ProcessEnv {
 /** One measured process for `variant`; its last line of output is the result. */
 function worker(variant: Variant, env: Record<string, string>, { shims = variant.without.length > 0 } = {}): Promise<RunResult> {
   const clean = workerEnvironment();
-  const args = ['--expose-gc', '--conditions=@bespokecore/source'];
+  const args = ['--expose-gc', '--conditions=@marmeon/source'];
   if (shims) args.push(`--import=${join(here, 'shims.ts')}`);
   args.push(`--import=${join(variant.checkout, 'packages/core/src/register.ts')}`, join(here, 'request-worker.ts'), variant.checkout);
   const child = spawn(process.execPath, args, {

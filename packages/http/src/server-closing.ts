@@ -1,4 +1,4 @@
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 
 /**
  * The server is closing (W6.10): what holds a response open — a live stream — ends, so `startServer().close()`, which waits for
@@ -36,6 +36,6 @@ export class ServerClosing {
 
 /**
  * The request a container scope answers — bound per request by the kernel. For services that need a header of it outside the
- * pipeline (the live `Broadcaster` reads which tab sent it, `x-bespoke-connection`); controllers and middleware have `ctx`.
+ * pipeline (the live `Broadcaster` reads which tab sent it, `x-marmeon-connection`); controllers and middleware have `ctx`.
  */
 export const IncomingRequest = token<Request>('IncomingRequest');

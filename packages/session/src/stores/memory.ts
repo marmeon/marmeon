@@ -1,4 +1,4 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
+import { SystemClock, type Clock } from '@marmeon/core';
 import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
 interface Entry {

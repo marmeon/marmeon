@@ -1,7 +1,7 @@
-import { Auth } from '@bespokecore/auth';
-import { Controller } from '@bespokecore/http';
-import { Translator } from '@bespokecore/i18n';
-import { Session } from '@bespokecore/session';
+import { Auth } from '@marmeon/auth';
+import { Controller } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
+import { Session } from '@marmeon/session';
 
 export class LogoutController extends Controller {
   readonly #auth: Auth;

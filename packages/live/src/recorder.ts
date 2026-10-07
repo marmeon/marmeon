@@ -5,7 +5,7 @@ export interface RecordedRefresh {
   readonly channel: string;
   /** What it named (`null`: nothing — every prop each follower follows). */
   readonly only: readonly string[] | null;
-  /** The tab that caused it (`x-bespoke-connection`), if the request named one. */
+  /** The tab that caused it (`x-marmeon-connection`), if the request named one. */
   readonly connection: string | undefined;
 }
 

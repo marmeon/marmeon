@@ -10,7 +10,7 @@ const silent = { line: () => {}, success: () => {}, error: () => {}, info: () =>
 
 /** A package outside the repository: one source, TypeScript linked in, and the leftovers of an earlier build. */
 function fixture(outDir = 'dist'): string {
-  const dir = realpathSync(tempDir('bespoke-package-build-'));
+  const dir = realpathSync(tempDir('marmeon-package-build-'));
   mkdirSync(join(dir, 'src'));
   mkdirSync(join(dir, 'node_modules'));
   symlinkSync(realpathSync(join(repo, 'node_modules/typescript')), join(dir, 'node_modules/typescript'));
@@ -27,7 +27,7 @@ function build(dir: string, options: Record<string, boolean> = {}) {
   return new PackageBuildCommand().handle({ args: [dir], options, output: silent as never, root: dir, spawn: async () => 0 });
 }
 
-describe('bespoke package:build --clean (E156)', () => {
+describe('marmeon package:build --clean (E156)', () => {
   let dir: string;
   beforeEach(() => {
     dir = fixture();

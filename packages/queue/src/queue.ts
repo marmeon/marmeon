@@ -1,6 +1,6 @@
-import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, token, type Application, type Clock, type Logger } from '@bespokecore/core';
-import { channels, messageBase, trace, type QueueDispatchMessage } from '@bespokecore/core/diagnostics';
-import type { Kysely } from '@bespokecore/database';
+import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, token, type Application, type Clock, type Logger } from '@marmeon/core';
+import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
+import type { Kysely } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
@@ -10,10 +10,10 @@ import { cipherContext, delaySeconds, nextInChain, toJson, validatePayload, type
 
 /**
  * Settings of one queued record that the framework's own jobs take from elsewhere — a queued listener's `tries` and
- * `backoff` (`static queue`, E86) instead of those of the `bespoke.listener` class. A symbol key of the dispatch options:
+ * `backoff` (`static queue`, E86) instead of those of the `marmeon.listener` class. A symbol key of the dispatch options:
  * not part of the public API.
  */
-export const RECORD_OPTIONS: unique symbol = Symbol.for('bespokecore.queue.record-options');
+export const RECORD_OPTIONS: unique symbol = Symbol.for('marmeon.queue.record-options');
 export interface RecordOptions {
   readonly tries?: number;
   readonly backoff?: readonly number[];
@@ -310,7 +310,7 @@ export class QueueManager implements Queue {
   }
 
   #cache = async () => {
-    if (!this.#deps.cache) throw new QueueError('Unique jobs need the app\'s cache (@bespokecore/cache) — this queue was built without one.');
+    if (!this.#deps.cache) throw new QueueError('Unique jobs need the app\'s cache (@marmeon/cache) — this queue was built without one.');
     return this.#deps.cache();
   };
 

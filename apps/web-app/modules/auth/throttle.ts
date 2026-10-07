@@ -1,6 +1,6 @@
-import { RateLimiter } from '@bespokecore/cache';
-import { ValidationError } from '@bespokecore/http';
-import type { Translator } from '@bespokecore/i18n';
+import { RateLimiter } from '@marmeon/cache';
+import { ValidationError } from '@marmeon/http';
+import type { Translator } from '@marmeon/i18n';
 
 /**
  * Password checks of a signed-in user (confirmation, password change, other devices): five wrong

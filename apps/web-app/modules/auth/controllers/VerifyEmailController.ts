@@ -1,6 +1,6 @@
-import { EmailVerification, type Authenticated } from '@bespokecore/auth';
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
-import { Translator } from '@bespokecore/i18n';
+import { EmailVerification, type Authenticated } from '@marmeon/auth';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
 import { UserRepository } from '../UserRepository.ts';
 
 /** The link from the mail — behind authenticate() and signed(): made by the app, unexpired, and for this user’s current address. */

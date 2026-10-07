@@ -1,4 +1,4 @@
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 import { newestFirst, type AnyEntry, type EntryType } from './entry.ts';
 
 /**

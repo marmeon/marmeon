@@ -1,5 +1,5 @@
-import { Logger, redactText } from '@bespokecore/core';
-import type { ScheduledTaskFailed } from '@bespokecore/scheduler';
+import { Logger, redactText } from '@marmeon/core';
+import type { ScheduledTaskFailed } from '@marmeon/scheduler';
 
 /**
  * A scheduled task failed (E127): one error entry with `alert: true` on the `alerts` channel — what a log shipper pages

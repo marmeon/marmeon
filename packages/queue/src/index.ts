@@ -1,4 +1,4 @@
-import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, Clock, EventRegistry, isQueuedListener, ListenerQueue, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
@@ -57,7 +57,7 @@ export type { ChainMatch, DispatchedJob, DispatchMatch } from './fake.ts';
 export { EXIT_STUCK, QueueWorkCommand } from './commands/work.ts';
 export { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
     /** The module's jobs — classes with `static job`, `static schema` and `handle()`. A worker runs only registered jobs. */
     readonly jobs?: readonly JobClass[];
@@ -65,8 +65,8 @@ declare module '@bespokecore/core' {
 }
 
 /**
- * Registers the `Queue` (`QUEUE_CONNECTION`), the modules' jobs and the `queue:*` commands; `bespoke dev` starts a worker
- * alongside the server (E101). Found by `bespoke discover`.
+ * Registers the `Queue` (`QUEUE_CONNECTION`), the modules' jobs and the `queue:*` commands; `marmeon dev` starts a worker
+ * alongside the server (E101). Found by `marmeon discover`.
  */
 export class QueueServiceProvider implements ServiceProvider {
   static config = [QueueConfig];
@@ -77,13 +77,13 @@ export class QueueServiceProvider implements ServiceProvider {
     container.singleton(JobRegistry, (c) => {
       const registry = new JobRegistry();
       for (const module of c.make(Application).modules) registry.add(module.jobs ?? [], `module ${module.name}`);
-      // The framework's own jobs (`bespoke.*`): queued listeners here — when the app has one —, queued mails from
-      // @bespokecore/mail. (A worker checks every registered job's timeout against retryAfter.)
-      if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@bespokecore/queue', { framework: true });
+      // The framework's own jobs (`marmeon.*`): queued listeners here — when the app has one —, queued mails from
+      // @marmeon/mail. (A worker checks every registered job's timeout against retryAfter.)
+      if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@marmeon/queue', { framework: true });
       return registry;
     });
     // Queued listeners (E86): checked at startup, queued by the EventDispatcher through the ListenerQueue, run by a
-    // `bespoke.listener` job — built in the job's scope, which then builds the listener.
+    // `marmeon.listener` job — built in the job's scope, which then builds the listener.
     container.singleton(QueuedListeners, (c) => new QueuedListeners(c.make(EventRegistry)));
     container.singleton(ListenerQueue, (c) => new QueueListenerDispatcher(() => container.make(Queue), c.make(QueuedListeners)));
     container.bind(CallQueuedListener, (c) => new CallQueuedListener(c, c.make(QueuedListeners)));
@@ -119,7 +119,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (databases.length > 0) {
       const database = await importDatabase(used.driver === 'database' ? 'QUEUE_CONNECTION=database' : 'QUEUE_FAILED_DRIVER=database (set it to null without a database)');
       if (!app.container.has(database.Connections)) {
-        throw new QueueSetupError('The database queue needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).');
+        throw new QueueSetupError('The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
       }
       // An unknown database connection name fails here, with the known ones.
       for (const connection of databases) app.container.make(database.Connections).options(connection);
@@ -127,7 +127,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (used.driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new QueueSetupError('QUEUE_CONNECTION=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).');
+        throw new QueueSetupError('QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
       }
       // An unknown Redis connection name fails here, with the known ones; a missing client with what to install.
       const connections = app.container.make(redis.RedisConnections);
@@ -140,17 +140,17 @@ export class QueueServiceProvider implements ServiceProvider {
     if (registry.all().some((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX)) || queuedListeners.any) {
       const { Encrypter } = await importEncryption();
       if (!app.container.has(Encrypter)) {
-        throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @bespokecore/encryption and an APP_KEY — every queued listener (static queue) is one.');
+        throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY — every queued listener (static queue) is one.');
       }
     }
 
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) {
       app.container
         .make(cli.CommandRegistry)
         .add([QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand]);
     }
-    // `bespoke dev` runs a worker next to the server (E101) — on every queue (mails go to `mail`), unless jobs run at dispatch anyway.
+    // `marmeon dev` runs a worker next to the server (E101) — on every queue (mails go to `mail`), unless jobs run at dispatch anyway.
     if (cli && app.container.has(cli.DevProcesses) && config.default !== 'sync') {
       app.container.make(cli.DevProcesses).add({ name: 'queue', args: ['queue:work', '--queue=*', '--stop-timeout=5'] });
     }

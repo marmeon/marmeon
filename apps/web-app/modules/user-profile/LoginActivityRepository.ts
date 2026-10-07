@@ -1,4 +1,4 @@
-import { Repository } from '@bespokecore/database';
+import { Repository } from '@marmeon/database';
 
 /** When each user last signed in — this module's own table. */
 export class LoginActivityRepository extends Repository<'login_activity'> {

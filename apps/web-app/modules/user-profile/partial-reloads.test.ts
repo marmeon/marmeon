@@ -1,6 +1,6 @@
 import { UserRepository, type User } from '#modules/auth';
-import { Connections } from '@bespokecore/database';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Connections } from '@marmeon/database';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
@@ -51,7 +51,7 @@ describe('profile page: deferred and optional props (E7)', () => {
   it('is a normal request: signed out → the login page (the middleware runs), not the props', async () => {
     await app
       .navigating()
-      .withHeaders({ 'x-bespoke-partial-component': 'user-profile/Show', 'x-bespoke-partial-data': 'stats,email' })
+      .withHeaders({ 'x-marmeon-partial-component': 'user-profile/Show', 'x-marmeon-partial-data': 'stats,email' })
       .get(profile(ada))
       .assertRedirect('/login');
   });

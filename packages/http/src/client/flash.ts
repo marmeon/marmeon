@@ -1,6 +1,6 @@
 /**
  * Flash messages in the client core (E60), UI-free: every answer the user is shown may bring some (`PageObject.flash`, an
- * action's `x-bespoke-flash`, a layer's close) — each fires exactly once, by its id: never again for a partial reload,
+ * action's `x-marmeon-flash`, a layer's close) — each fires exactly once, by its id: never again for a partial reload,
  * Back/Forward or a page shown from memory (the core keeps no message with a page), and twice for the same message flashed
  * twice (another id). A message nobody listens to yet waits for the first listener of its key — the page that mounts with it.
  */
@@ -72,7 +72,7 @@ export function takeFlash(page: PageObject): { page: PageObject; flash: readonly
   return { page: rest, flash: Array.isArray(flash) ? flash : [] };
 }
 
-/** The flash messages of an action's answer (`x-bespoke-flash`) — none when the header is missing or broken. */
+/** The flash messages of an action's answer (`x-marmeon-flash`) — none when the header is missing or broken. */
 export function flashOfResponse(response: Pick<Response, 'headers'>): readonly FlashMessage[] {
   const header = response.headers.get(FLASH_HEADER);
   if (!header) return [];

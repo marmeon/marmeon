@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useTranslation } from '@marmeon/react';
 import type { ShowDashboardController } from '../controllers/ShowDashboardController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 

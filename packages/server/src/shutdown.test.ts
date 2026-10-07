@@ -7,15 +7,15 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { AfterResponse, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { AfterResponse, defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';
 import { startServer } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = tempDir('bespoke-drain-');
+const root = tempDir('marmeon-drain-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
 mkdirSync(join(root, 'node_modules'));
@@ -142,8 +142,8 @@ describe('stopping the server', () => {
     ).rejects.toThrow('Expected seconds, like 5 or 0.5');
   });
 
-  it('sends the mail of a request answered just before SIGTERM, then exits (as `bespoke serve` stops)', { timeout: 20_000 }, async () => {
-    const child = spawn(process.execPath, ['--conditions=@bespokecore/source', FIXTURE, root], { cwd: PACKAGE, stdio: ['ignore', 'pipe', 'pipe'] });
+  it('sends the mail of a request answered just before SIGTERM, then exits (as `marmeon serve` stops)', { timeout: 20_000 }, async () => {
+    const child = spawn(process.execPath, ['--conditions=@marmeon/source', FIXTURE, root], { cwd: PACKAGE, stdio: ['ignore', 'pipe', 'pipe'] });
     const lines: string[] = [];
     let errors = '';
     child.stderr!.on('data', (chunk: Buffer) => (errors += chunk.toString()));

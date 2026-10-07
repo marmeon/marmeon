@@ -11,7 +11,7 @@ describe('withLang', () => {
     expect(renderDocument('<html lang="en"><head></head><body><div id="app"><!--app-html--></div></body></html>', { ...page, locale: 'de' }, { html: '' })).toMatch(/^<html lang="de">/);
   });
 
-  it('a locale that is no language tag never reaches the document (the second line behind the allow-list of @bespokecore/i18n)', () => {
+  it('a locale that is no language tag never reaches the document (the second line behind the allow-list of @marmeon/i18n)', () => {
     for (const locale of ['de"><script>alert(1)</script>', '../../x', 'de en', '']) expect(withLang('<html lang="en">', locale)).toBe('<html lang="en">');
   });
 });
@@ -19,7 +19,7 @@ describe('withLang', () => {
 describe('renderDocument', () => {
   it('fills the outlets and puts the page script into the head — before the markup, which may still be streaming', () => {
     const html = renderDocument(template, page, { html: '<p>hi</p>', head: '<title>T</title>' });
-    expect(html).toMatch(/^<html><head><title>T<\/title><script type="application\/json" id="bespoke-page">.*<\/script>\n<\/head>/);
+    expect(html).toMatch(/^<html><head><title>T<\/title><script type="application\/json" id="marmeon-page">.*<\/script>\n<\/head>/);
     expect(html).toContain('<div id="app"><p>hi</p></div>');
   });
 
@@ -43,8 +43,8 @@ describe('renderDocument — head', () => {
   const page = { component: 'x', props: {}, url: '/' };
 
   it('replaces the default title when the page brings its own', () => {
-    const html = renderDocument(template, page, { html: '', head: '<title data-bespoke-head="ssr">Ada — Shop</title>' });
-    expect(html).toContain('<head><title data-bespoke-head="ssr">Ada — Shop</title><script type="application/json" id="bespoke-page">');
+    const html = renderDocument(template, page, { html: '', head: '<title data-marmeon-head="ssr">Ada — Shop</title>' });
+    expect(html).toContain('<head><title data-marmeon-head="ssr">Ada — Shop</title><script type="application/json" id="marmeon-page">');
     expect(html).not.toContain('Default');
   });
 
@@ -68,7 +68,7 @@ describe('documentOf — streamed markup', () => {
     const document = await documentOf(template, page, { html: markup, head: '<title>T</title>' });
     expect(typeof document).not.toBe('string');
     const html = await new Response(document).text();
-    expect(html).toMatch(/^<html><head><title>T<\/title><script type="application\/json" id="bespoke-page">.*<\/script>\n<\/head><body><div id="app"><p>shell<\/p><p>later<\/p><\/div><\/body><\/html>$/);
+    expect(html).toMatch(/^<html><head><title>T<\/title><script type="application\/json" id="marmeon-page">.*<\/script>\n<\/head><body><div id="app"><p>shell<\/p><p>later<\/p><\/div><\/body><\/html>$/);
 
     const endless = new ReadableStream<Uint8Array>({ pull: (controller) => controller.enqueue(encoder.encode('.')) });
     await ((await documentOf(template, page, { html: endless }, (reason) => (cancelled = reason))) as ReadableStream<Uint8Array>).cancel('gone');

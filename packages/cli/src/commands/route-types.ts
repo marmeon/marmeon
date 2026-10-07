@@ -4,16 +4,16 @@ import { RouteTypes } from '../route-types.ts';
 
 /**
  * Generates `bootstrap/routes.ts` — route names, parameters, methods and controllers for the type checker, and the
- * views (E34) — plus `.bespoke/routes.json`, the routes the browser may learn, for the `bespoke()` Vite plugin (E57).
+ * views (E34) — plus `.marmeon/routes.json`, the routes the browser may learn, for the `marmeon()` Vite plugin (E57).
  * `--check` only compares the committed file, for CI: it fails when someone changed routes or views without
- * regenerating. `bespoke dev` and `bespoke build` run it themselves.
+ * regenerating. `marmeon dev` and `marmeon build` run it themselves.
  */
 export class RouteTypesCommand {
   static command = 'route:types';
   static description = 'Generate bootstrap/routes.ts from the routes and views (--check: fail if outdated)';
   static usage = '[--check]';
   static options = { check: { type: 'boolean' } } as const;
-  /** Routes and views are all it reads: the app registers, boots nothing and needs no secret (E187) — `bespoke build` runs it so. */
+  /** Routes and views are all it reads: the app registers, boots nothing and needs no secret (E187) — `marmeon build` runs it so. */
   static boots = 'build' as const;
 
   readonly #types: RouteTypes;
@@ -29,7 +29,7 @@ export class RouteTypesCommand {
         output.success(`${file} matches the routes and views.`);
         return 0;
       }
-      output.error(`${file} is out of date — run: bespoke route:types`);
+      output.error(`${file} is out of date — run: marmeon route:types`);
       return 1;
     }
     await writeRouteTypes(this.#types, output, root);
@@ -37,7 +37,7 @@ export class RouteTypesCommand {
   }
 }
 
-/** Writes the file and reports it — `quiet` says nothing when it is unchanged (`bespoke dev`). */
+/** Writes the file and reports it — `quiet` says nothing when it is unchanged (`marmeon dev`). */
 export async function writeRouteTypes(types: RouteTypes, output: CommandInput['output'], root: string, { quiet = false } = {}): Promise<boolean> {
   const { changed, warnings } = await types.write();
   for (const warning of warnings) output.warn(warning);

@@ -1,14 +1,14 @@
 import { defineGegenproben } from '../define.ts';
 
 /**
- * W9.2 — the start and build leftovers (E187): the build phase (`bespoke build` without `.env` and without a key), tini as the
+ * W9.2 — the start and build leftovers (E187): the build phase (`marmeon build` without `.env` and without a key), tini as the
  * image's PID 1, the monorepo known by its workspace (a `pnpm deploy` copy without `published-manifests.ts`), the request line not
  * built at `LOG_LEVEL=silent`, a new app's `<title>`, the pnpm pin. The `dist/` cases need `pnpm build` first (pack:smoke and the
  * images pack what is built); the image cases need Docker and take minutes each.
  */
 const cliTest = (name: string) => ({ vitest: 'packages/cli/src/cli.test.ts', name });
 const coreBuildPhase = (name: string) => ({ vitest: 'packages/core/src/application.test.ts', name: `createApplication({ phase: "build" }) (E187) > ${name}` });
-const createTest = (name: string) => ({ vitest: 'packages/create-bespoke-app/src/create.test.ts', name });
+const createTest = (name: string) => ({ vitest: 'packages/create-marmeon/src/create.test.ts', name });
 const MINUTES = 60_000;
 
 export default defineGegenproben({
@@ -47,7 +47,7 @@ export default defineGegenproben({
       title: 'a new app built in a copy without .env (pack:smoke) — the packed CLI without the build phase',
       patch: [{ file: 'packages/cli/dist/main.js', find: "builtIn?.boots === 'build' ? 'build' : 'run'", replace: "builtIn?.boots === 'build' ? 'run' : 'run'" }],
       run: { command: ['pnpm', 'pack:smoke'], timeout: 10 * MINUTES },
-      expect: /Invalid configuration — the application cannot start:[\s\S]*Not built: bespoke route:types failed/,
+      expect: /Invalid configuration — the application cannot start:[\s\S]*Not built: marmeon route:types failed/,
     },
     {
       id: 'G4',
@@ -60,20 +60,20 @@ export default defineGegenproben({
         },
       ],
       run: { command: ['pnpm', 'pack:smoke'], timeout: 10 * MINUTES },
-      expect: /bespoke build wrote a secret \(or a placeholder key\) into its output: dist\/client\/assets\/placeholder\.txt/,
+      expect: /marmeon build wrote a secret \(or a placeholder key\) into its output: dist\/client\/assets\/placeholder\.txt/,
     },
     // --- tini (E187) -------------------------------------------------------------------------------------------------------------
     {
       id: 'G5',
       title: 'the image without tini: Node is PID 1 and an orphaned process stays a zombie',
-      patch: [{ file: 'packages/cli/dist/docker.js', find: 'ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]', replace: 'ENTRYPOINT ["bespoke"]' }],
+      patch: [{ file: 'packages/cli/dist/docker.js', find: 'ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]', replace: 'ENTRYPOINT ["marmeon"]' }],
       run: { command: ['pnpm', 'image:smoke'], timeout: 25 * MINUTES },
       expect: /an orphaned process stayed a zombie \(<defunct>: \d+ sleep\)/,
     },
     {
       id: 'G6',
       title: 'tini that maps the exit code 70 to 0 (-e 70): a stuck worker would look like a clean stop',
-      patch: [{ file: 'packages/cli/dist/docker.js', find: 'ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]', replace: 'ENTRYPOINT ["/usr/bin/tini", "-e", "70", "--", "bespoke"]' }],
+      patch: [{ file: 'packages/cli/dist/docker.js', find: 'ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]', replace: 'ENTRYPOINT ["/usr/bin/tini", "-e", "70", "--", "marmeon"]' }],
       run: { command: ['pnpm', 'image:smoke'], timeout: 25 * MINUTES },
       expect: /the worker container ended with 0, expected 70/,
     },
@@ -83,12 +83,12 @@ export default defineGegenproben({
       title: 'the launcher knows the monorepo by its own exports again: a pnpm deploy copy gets the source condition',
       patch: [
         {
-          file: 'packages/cli/bin/bespoke.js',
+          file: 'packages/cli/bin/marmeon.js',
           find: "inWorkspace(fileURLToPath(new URL('..', import.meta.url)))",
-          replace: "JSON.stringify(JSON.parse((await import('node:fs')).readFileSync(new URL('../package.json', import.meta.url), 'utf8')).exports ?? {}).includes('\"@bespokecore/source\"')",
+          replace: "JSON.stringify(JSON.parse((await import('node:fs')).readFileSync(new URL('../package.json', import.meta.url), 'utf8')).exports ?? {}).includes('\"@marmeon/source\"')",
         },
       ],
-      run: cliTest('bespoke from a copy of the workspace package (pnpm deploy) > is no monorepo'),
+      run: cliTest('marmeon from a copy of the workspace package (pnpm deploy) > is no monorepo'),
       expect: /not to contain 'ERR_UNSUPPORTED_NODE_MODULES_TYPE_STR/,
     },
     {
@@ -96,20 +96,20 @@ export default defineGegenproben({
       title: 'the docs image without published-manifests.ts and with the old detection: a command besides start fails in the copy',
       patch: [
         {
-          file: 'packages/cli/bin/bespoke.js',
+          file: 'packages/cli/bin/marmeon.js',
           find: "inWorkspace(fileURLToPath(new URL('..', import.meta.url)))",
-          replace: "JSON.stringify(JSON.parse((await import('node:fs')).readFileSync(new URL('../package.json', import.meta.url), 'utf8')).exports ?? {}).includes('\"@bespokecore/source\"')",
+          replace: "JSON.stringify(JSON.parse((await import('node:fs')).readFileSync(new URL('../package.json', import.meta.url), 'utf8')).exports ?? {}).includes('\"@marmeon/source\"')",
         },
       ],
       run: { command: ['pnpm', 'docs:image'], timeout: 20 * MINUTES },
-      // Red already in the image's build: `bespoke discover` in the pnpm deploy copy (before route:types --check in the image could run).
+      // Red already in the image's build: `marmeon discover` in the pnpm deploy copy (before route:types --check in the image could run).
       expect: /code: 'ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING'/,
     },
     {
       id: 'X1',
       title: 'masking probe: without the node_modules rule the deploy copy is still no workspace package (its workspace lists "." only)',
       patch: [{ file: 'packages/cli/bin/workspace.js', find: "if (path === '' || path.split('/').includes('node_modules')) return false;", replace: "if (path === '') return false;" }],
-      run: cliTest('bespoke from a copy of the workspace package (pnpm deploy) > is no monorepo'),
+      run: cliTest('marmeon from a copy of the workspace package (pnpm deploy) > is no monorepo'),
       expectGreen: true,
     },
     // --- LOG_LEVEL=silent (E187) -------------------------------------------------------------------------------------------------
@@ -140,10 +140,10 @@ export default defineGegenproben({
     // --- The scaffolder: <title>, pnpm ---------------------------------------------------------------------------------------------
     {
       id: 'G9',
-      title: 'a new app titled "BespokeCore"',
-      patch: [{ file: 'packages/create-bespoke-app/src/template.ts', find: '() => `<title>${escaped}</title>`', replace: "() => '<title>BespokeCore</title>'" }],
+      title: 'a new app titled "Marmeon"',
+      patch: [{ file: 'packages/create-marmeon/src/template.ts', find: '() => `<title>${escaped}</title>`', replace: "() => '<title>Marmeon</title>'" }],
       run: createTest('writes the blank app: every file as apps/blank-app has it'),
-      expect: /the title of a new app: expected 'BespokeCore' not to match/,
+      expect: /the title of a new app: expected 'Marmeon' not to match/,
     },
     {
       id: 'G10',

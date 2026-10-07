@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { bespokeInjection, CSP_NONCE_PLACEHOLDER } from '@bespokecore/core/vite';
+import { marmeonInjection, CSP_NONCE_PLACEHOLDER } from '@marmeon/core/vite';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
@@ -14,39 +14,39 @@ export type { ServerImportsOptions, ServerModule } from './server-imports.ts';
 
 /**
  * The export condition that maps framework packages to their TypeScript sources inside the
- * BespokeCore monorepo. Published packages do not carry it, so it is harmless elsewhere.
+ * Marmeon monorepo. Published packages do not carry it, so it is harmless elsewhere.
  */
-export const SOURCE_CONDITION = '@bespokecore/source';
+export const SOURCE_CONDITION = '@marmeon/source';
 
 /** The name of the main plugin; the server finds the entries through its `api`. */
-export const PLUGIN_NAME = 'bespokecore';
+export const PLUGIN_NAME = 'marmeon';
 
-export interface BespokeEntries {
+export interface MarmeonEntries {
   /** Browser entry, relative to the app root. Default `bootstrap/client.tsx`. */
   client: string;
   /** SSR entry exporting `render`, relative to the app root. Default `bootstrap/ssr.tsx`. */
   ssr: string;
 }
 
-/** What the server and the CLI read from the resolved Vite config (`plugins.find(p => p.name === 'bespokecore').api`). */
-export interface BespokePluginApi {
-  entries: BespokeEntries;
+/** What the server and the CLI read from the resolved Vite config (`plugins.find(p => p.name === 'marmeon').api`). */
+export interface MarmeonPluginApi {
+  entries: MarmeonEntries;
 }
 
-export interface BespokeOptions {
+export interface MarmeonOptions {
   /** Entries relative to the app root — override only if the app keeps them elsewhere. */
-  entries?: Partial<BespokeEntries>;
-  /** Page components, as a glob relative to the app root (`virtual:bespoke/pages`). Default `modules/*\/views/**\/*.tsx`. */
+  entries?: Partial<MarmeonEntries>;
+  /** Page components, as a glob relative to the app root (`virtual:marmeon/pages`). Default `modules/*\/views/**\/*.tsx`. */
   pages?: string | string[];
   /**
-   * Language files, as a glob relative to the app root (`virtual:bespoke/lang`, one chunk per file — the browser loads
+   * Language files, as a glob relative to the app root (`virtual:marmeon/lang`, one chunk per file — the browser loads
    * only the page's locale). Default `modules/*\/lang/*.ts` and `lang/*.ts` (namespace `app`).
    */
   lang?: string | string[];
   /**
    * More places where client code hands a route name to the framework, besides the React adapter's
    * (`<Link route>`, `useRoute()`, `useForm(name, …)` — see `ROUTE_SINKS`). Only names written out at a sink
-   * reach the browser's route manifest (`virtual:bespoke/routes`).
+   * reach the browser's route manifest (`virtual:marmeon/routes`).
    */
   routeSinks?: readonly RouteSink[];
   /**
@@ -63,9 +63,9 @@ export interface BespokeOptions {
   test?: boolean;
 }
 
-/** A module of a third-party package — not one of the framework's (`@bespokecore/*`), not the app's own. */
+/** A module of a third-party package — not one of the framework's (`@marmeon/*`), not the app's own. */
 function isThirdParty(id: string): boolean {
-  return /[\\/]node_modules[\\/]/.test(id) && !/[\\/]node_modules[\\/]@bespokecore[\\/]/.test(id);
+  return /[\\/]node_modules[\\/]/.test(id) && !/[\\/]node_modules[\\/]@marmeon[\\/]/.test(id);
 }
 
 /**
@@ -82,35 +82,35 @@ export const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions = {
   ],
 };
 
-const DEFAULT_ENTRIES: BespokeEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
+const DEFAULT_ENTRIES: MarmeonEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
 const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
 const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
 
 /**
- * The Vite plugin of a BespokeCore app. UI-agnostic: the adapter brings its own plugin.
+ * The Vite plugin of a Marmeon app. UI-agnostic: the adapter brings its own plugin.
  *
  * ```ts
- * export default defineConfig({ plugins: [bespoke(), react()] });          // vite.config.ts
- * export default defineConfig({ plugins: [bespoke({ test: true })] });     // vitest.config.ts
+ * export default defineConfig({ plugins: [marmeon(), react()] });          // vite.config.ts
+ * export default defineConfig({ plugins: [marmeon({ test: true })] });     // vitest.config.ts
  * ```
  *
  * - resolves workspace packages to their sources only while serving (dev, tests) — never in a build;
  * - dedupes the peers of the framework packages the app depends on (one React for the adapter and the app);
- * - runs the constructor-injection transform (`@bespokecore/core/vite`);
+ * - runs the constructor-injection transform (`@marmeon/core/vite`);
  * - adds the client entry to `index.html` and builds the SSR entry to `dist/server/ssr.js`;
  * - marks `index.html`'s tags for the response's CSP nonce (Vite's `html.cspNonce`, E147) — the server fills it in;
  * - splits the client build's initial load into two chunks, `vendor` and `index` ({@link CLIENT_CHUNKS});
- * - serves `virtual:bespoke/pages`, `virtual:bespoke/lang` and `virtual:bespoke/routes` (types: `@bespokecore/vite/client`) —
+ * - serves `virtual:marmeon/pages`, `virtual:marmeon/lang` and `virtual:marmeon/routes` (types: `@marmeon/vite/client`) —
  *   the route manifest with only the names client code writes out (E57);
  * - refuses client code that imports a server module as a value — a controller, a job, a repository … (E121, {@link serverImports}):
  *   an error in Vite's overlay while serving, a failed build, and in tests too.
  */
-export function bespoke(options: BespokeOptions = {}): Plugin[] {
-  const entries: BespokeEntries = { ...DEFAULT_ENTRIES, ...options.entries };
+export function marmeon(options: MarmeonOptions = {}): Plugin[] {
+  const entries: MarmeonEntries = { ...DEFAULT_ENTRIES, ...options.entries };
   const pages = options.pages ?? DEFAULT_PAGES;
-  const api: BespokePluginApi = { entries };
+  const api: MarmeonPluginApi = { entries };
 
-  const main: Plugin & { api: BespokePluginApi } = {
+  const main: Plugin & { api: MarmeonPluginApi } = {
     name: PLUGIN_NAME,
     api,
     config(config, { command, mode, isSsrBuild }) {
@@ -153,7 +153,7 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
   // The page object is in the head, before the markup. Not while serving: the dev runtime's preambles (React Refresh)
   // must run first, so in development a streamed page hydrates once it has arrived completely.
   const asyncEntry: Plugin = {
-    name: 'bespokecore:async-entry',
+    name: 'marmeon:async-entry',
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
@@ -168,7 +168,7 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
   return [
     main,
     asyncEntry,
-    bespokeInjection() as Plugin,
+    marmeonInjection() as Plugin,
     virtualGlob('pages', pages),
     virtualGlob('lang', options.lang ?? DEFAULT_LANG),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
@@ -177,13 +177,13 @@ export function bespoke(options: BespokeOptions = {}): Plugin[] {
 }
 
 /**
- * A virtual module `virtual:bespoke/<name>` whose default export is `import.meta.glob(pattern)` —
+ * A virtual module `virtual:marmeon/<name>` whose default export is `import.meta.glob(pattern)` —
  * one place for a glob that framework code needs (pages; language files later). Patterns are
  * relative to the app root; the keys are root-absolute (`/modules/…`). Vite keeps the module up
  * to date when matching files are added or removed.
  */
 export function virtualGlob(name: string, pattern: string | string[], options: { eager?: boolean } = {}): Plugin {
-  const id = `virtual:bespoke/${name}`;
+  const id = `virtual:marmeon/${name}`;
   const resolved = `\0${id}`;
   const patterns = (Array.isArray(pattern) ? pattern : [pattern]).map((glob) => (glob.startsWith('!') ? `!/${glob.slice(1).replace(/^\/+/, '')}` : `/${glob.replace(/^\/+/, '')}`));
 
@@ -199,8 +199,8 @@ export function virtualGlob(name: string, pattern: string | string[], options: {
 }
 
 /**
- * The non-optional peer dependencies of the app's framework packages (`@bespokecore/*` or with a
- * `"bespoke"` field) — e.g. `react` and `react-dom` for `@bespokecore/react`. Deduped, so the
+ * The non-optional peer dependencies of the app's framework packages (`@marmeon/*`, the CLI `marmeon`, or with a
+ * `"marmeon"` field) — e.g. `react` and `react-dom` for `@marmeon/react`. Deduped, so the
  * adapter and the app share one copy even when the adapter is linked from a workspace.
  */
 export function adapterPeers(root: string): string[] {
@@ -210,7 +210,7 @@ export function adapterPeers(root: string): string[] {
   const peers = new Set<string>();
   for (const name of names) {
     const manifest = findPackage(root, name);
-    if (!manifest || (!name.startsWith('@bespokecore/') && manifest.bespoke === undefined)) continue;
+    if (!manifest || (!name.startsWith('@marmeon/') && name !== 'marmeon' && manifest.marmeon === undefined)) continue;
     const optional = (manifest.peerDependenciesMeta ?? {}) as Record<string, { optional?: boolean }>;
     for (const peer of Object.keys((manifest.peerDependencies ?? {}) as object)) {
       if (!optional[peer]?.optional) peers.add(peer);
@@ -220,7 +220,7 @@ export function adapterPeers(root: string): string[] {
 }
 
 /** Modules a page loads that no file of the app imports: the devtools' bar (development only, added by the server). */
-const PREBUNDLED = ['@bespokecore/devtools/client'];
+const PREBUNDLED = ['@marmeon/devtools/client'];
 
 /**
  * The modules among `specifiers` an installed package provides — in `node_modules` for real: a workspace link (the monorepo's

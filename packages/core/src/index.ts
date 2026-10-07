@@ -1,5 +1,5 @@
 // The application kernel: service container and constructor injection today; providers,
-// config and events follow in Wave 1 (see the roadmap). HTTP concerns live in @bespokecore/http.
+// config and events follow in Wave 1 (see the roadmap). HTTP concerns live in @marmeon/http.
 export { Container, ContainerError } from './container.ts';
 export type { ContainerErrorDetails, ContainerErrorReason, Factory, InjectionWarning, Resolver } from './container.ts';
 export { defineSolutions, ErrorSolutions } from './solutions.ts';

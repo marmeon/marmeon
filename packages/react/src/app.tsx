@@ -26,9 +26,9 @@ import {
   type VisitEvent,
   type VisitEvents,
   type VisitOptions,
-} from '@bespokecore/http/client';
-import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@bespokecore/http/page';
-import type { Catalog, MessageLoader } from '@bespokecore/i18n/messages';
+} from '@marmeon/http/client';
+import { matchesPath, type BrowserRouteNameInput, type CheckIslandRouteName, type PageObject, type PageProps, type RouteManifest, type SharedProps } from '@marmeon/http/page';
+import type { Catalog, MessageLoader } from '@marmeon/i18n/messages';
 import {
   addTransitionType,
   createContext,
@@ -67,7 +67,7 @@ export type {
   VisitMethod,
   VisitOptions,
   VisitProgress,
-} from '@bespokecore/http/client';
+} from '@marmeon/http/client';
 
 /** The props of page `T`: a controller (`PageProps<T>`) or the props themselves. */
 type PropsOf<T> = T extends { handle: (...args: never[]) => unknown } ? PageProps<T> : T;
@@ -172,11 +172,11 @@ export function reloadsOf(
     if (!route) {
       throw new Error(
         process.env.NODE_ENV !== 'production'
-          ? `[bespoke:R8] reloading({ islands: ['${name}'] }): [${name}] is not a route the browser knows — an island reloads where <Island route="${name}"> shows it.`
-          : `[bespoke:R8] ${name}`,
+          ? `[marmeon:R8] reloading({ islands: ['${name}'] }): [${name}] is not a route the browser knows — an island reloads where <Island route="${name}"> shows it.`
+          : `[marmeon:R8] ${name}`,
       );
     }
-    for (const region of owner?.live.values() ?? []) if (matchesPath(route.path, new URL(region.url, 'http://bespoke.invalid').pathname)) reloads.push(region.reloading());
+    for (const region of owner?.live.values() ?? []) if (matchesPath(route.path, new URL(region.url, 'http://marmeon.invalid').pathname)) reloads.push(region.reloading());
   }
   return reloads;
 }
@@ -236,7 +236,7 @@ export const RouterContext = createContext<RouterValue | null>(null);
 
 export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
-  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R9] BespokeCore hooks must be used inside <BespokeApp>.' : '[bespoke:R9]');
+  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R9] Marmeon hooks must be used inside <MarmeonApp>.' : '[marmeon:R9]');
   return value;
 }
 
@@ -250,8 +250,8 @@ export function useFeature<API>(feature: Feature<API>): API {
   if (!navigator) {
     throw new Error(
       process.env.NODE_ENV !== 'production'
-        ? `[bespoke:R10] useFeature(${feature.name}): the ${feature.name} feature runs in the browser — there is no navigator while rendering on the server. Use it in a component that renders in the browser only.`
-        : `[bespoke:R10] ${feature.name}`,
+        ? `[marmeon:R10] useFeature(${feature.name}): the ${feature.name} feature runs in the browser — there is no navigator while rendering on the server. Use it in a component that renders in the browser only.`
+        : `[marmeon:R10] ${feature.name}`,
     );
   }
   return navigator.use(feature);
@@ -305,30 +305,30 @@ function pagePatches(navigator: Navigator | null): PatchTarget {
 }
 
 /** What `progress` took before E82 (`{ delay }`, `false`), as a type error that says what to write now. */
-type ProgressHint = "progress takes an indicator since E82 — progress: progressBar({ delay: 250 }), import { progressBar } from '@bespokecore/react'; leave it out for none";
+type ProgressHint = "progress takes an indicator since E82 — progress: progressBar({ delay: 250 }), import { progressBar } from '@marmeon/react'; leave it out for none";
 type ProgressBefore = { readonly delay?: ProgressHint; readonly color?: ProgressHint };
 
 /**
  * @internal The app's progress indicator (E82) — none by default. What `progress` took before (`{ delay }`, `false`) says what to
  * import now.
  */
-export function progressIndicator(progress: BespokeAppProps['progress'] | unknown): ProgressIndicator | undefined {
+export function progressIndicator(progress: MarmeonAppProps['progress'] | unknown): ProgressIndicator | undefined {
   if (progress === undefined) return undefined;
   if (typeof progress === 'function') return progress as ProgressIndicator;
   throw new TypeError(
     process.env.NODE_ENV !== 'production'
-      ? `[bespoke:R16] progress takes an indicator since E82: createBespokeApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@bespokecore/react'. Leave it out for no progress bar.`
-      : '[bespoke:R16]',
+      ? `[marmeon:R16] progress takes an indicator since E82: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'. Leave it out for no progress bar.`
+      : '[marmeon:R16]',
   );
 }
 
-export interface BespokeAppProps {
+export interface MarmeonAppProps {
   initialPage: PageObject;
   initialComponent: PageComponent;
   resolve: ResolvePage;
   /** Turns a page's `<Head title>` into the document title. */
   title?: TitleTemplate;
-  /** The named routes the browser knows (`routes` of `virtual:bespoke/routes`) — for `route()`, `<Link route>` and `useForm(name, …)`. */
+  /** The named routes the browser knows (`routes` of `virtual:marmeon/routes`) — for `route()`, `<Link route>` and `useForm(name, …)`. */
   routes?: RouteManifest;
   /** The layout of pages without their own `layout` (E35) — the same on the server and in the browser. */
   layout?: DefaultLayout;
@@ -341,11 +341,11 @@ export interface BespokeAppProps {
   /** Server rendering only: where `<Head>` records itself. */
   headCollector?: HeadCollector;
   /**
-   * The app's language files (`createMessageLoader(lang)` of @bespokecore/i18n/messages) — each page renders with the
+   * The app's language files (`createMessageLoader(lang)` of @marmeon/i18n/messages) — each page renders with the
    * messages of its `locale`, loaded before it renders (`useTranslation`). Without them, `useTranslation` throws.
    */
   messages?: MessageLoader;
-  /** The first page's messages, loaded before hydrating (by `createBespokeApp` and the SSR entry). */
+  /** The first page's messages, loaded before hydrating (by `createMarmeonApp` and the SSR entry). */
   initialCatalog?: Catalog;
   /** Server rendering only (E49): islands and deferred groups, resolved in-process by the page's request (the SSR entry). */
   ssr?: SsrResolvers;
@@ -356,7 +356,7 @@ export interface BespokeAppProps {
    * `ConfirmDialog`, or the app's own. Default: the browser's `confirm()` (and `prompt()` for a text to type).
    */
   confirm?: ConfirmComponent;
-  /** Client features attached from the start (`NavigatorOptions.features`) — `createBespokeApp` passes tab sync (E149). */
+  /** Client features attached from the start (`NavigatorOptions.features`) — `createMarmeonApp` passes tab sync (E149). */
   features?: readonly Feature[] | undefined;
   /**
    * View transitions for every page change (E185) — `true` (or `{ types }`): the core's, `document.startViewTransition` around each
@@ -391,7 +391,7 @@ interface Current {
  * fresh copy of its props from the server — what changed may be the props' shape, e.g. after a hot update);
  * a visit that fails (offline, 5xx) leaves the page as it is and shows the failure over it.
  */
-export function BespokeApp({
+export function MarmeonApp({
   initialPage,
   initialComponent,
   resolve,
@@ -407,7 +407,7 @@ export function BespokeApp({
   confirm: Confirm,
   features,
   viewTransition,
-}: BespokeAppProps) {
+}: MarmeonAppProps) {
   // A deep link's document brings the layers over its page (E53): rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
   const [current, setCurrent] = useState<Current>({ page: firstPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
@@ -500,7 +500,7 @@ export function BespokeApp({
       // View transitions (E185): the core's, or React's (the core hands the types to `render`).
       viewTransition,
     });
-    // A deep link's layers: their code was loaded before hydrating (createBespokeApp) — attached before the navigator stacks them.
+    // A deep link's layers: their code was loaded before hydrating (createMarmeonApp) — attached before the navigator stacks them.
     if (stackModule?.value) navigator.current.use(stackModule.value.layers);
     // What the views use (E70): `revalidateOnBack` with the pages of `resolveModulePages`.
     for (const feature of resolve.features ?? []) navigator.current.use(feature);
@@ -516,7 +516,7 @@ export function BespokeApp({
   }, [current, layers]);
   useEffect(() => {
     // When the first page became interactive (hydrated, or rendered when the server sent no markup) — for measuring.
-    if (typeof performance !== 'undefined') performance.mark('bespoke:hydrated');
+    if (typeof performance !== 'undefined') performance.mark('marmeon:hydrated');
     return navigator.current?.start();
   }, []);
   useEffect(() => {
@@ -535,7 +535,7 @@ export function BespokeApp({
   }, []);
 
   const browser = useCallback(() => {
-    if (!navigator.current) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R11] Visits run in the browser, not while rendering on the server.' : '[bespoke:R11]');
+    if (!navigator.current) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R11] Visits run in the browser, not while rendering on the server.' : '[marmeon:R11]');
     return navigator.current;
   }, []);
   const visit = useCallback(

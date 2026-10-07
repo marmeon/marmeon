@@ -1,4 +1,4 @@
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 import { Seeding } from '../seeders.ts';
 import { confirmed } from './confirm.ts';
 

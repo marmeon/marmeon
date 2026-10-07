@@ -14,7 +14,7 @@
  * A plain function is a prop, too — evaluated only when the response includes it (a partial reload that asks for
  * other props never calls it).
  */
-const PROP = Symbol.for('bespokecore.page-prop');
+const PROP = Symbol.for('marmeon.page-prop');
 
 /** Carries a prop's type (never set at runtime). */
 declare const TYPE: unique symbol;
@@ -176,7 +176,7 @@ export type CheckOnceValue<T> = [UnstorablePart<T>] extends [never]
 
 /**
  * A prop the browser keeps (E64, Inertia's `once()`): computed for the first page that has it, then — while the browser holds
- * it, in memory, for this tab — never again: the client says what it holds (`x-bespoke-once`), the server skips it. For data
+ * it, in memory, for this tab — never again: the client says what it holds (`x-marmeon-once`), the server skips it. For data
  * that is the same on every page and expensive or large: a country list, the supported locales, translations.
  *
  * ```ts

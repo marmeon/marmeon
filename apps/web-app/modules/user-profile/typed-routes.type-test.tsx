@@ -3,11 +3,11 @@
  * checked by `tsc` (`pnpm typecheck`), never run. Each `@ts-expect-error` is a mistake an app developer makes;
  * the comment above it is the message they get (read with the directive removed).
  */
-import { authenticate } from '@bespokecore/auth';
-import { Controller, UrlSigner, view } from '@bespokecore/http';
-import { Link, useForm, useRoute } from '@bespokecore/react';
-import { Router } from '@bespokecore/router';
-import type { TestResponse } from '@bespokecore/testing';
+import { authenticate } from '@marmeon/auth';
+import { Controller, UrlSigner, view } from '@marmeon/http';
+import { Link, useForm, useRoute } from '@marmeon/react';
+import { Router } from '@marmeon/router';
+import type { TestResponse } from '@marmeon/testing';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 

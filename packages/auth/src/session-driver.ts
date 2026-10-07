@@ -1,9 +1,9 @@
-import { Logger, type Container } from '@bespokecore/core';
-import { SessionConfig } from '@bespokecore/session';
+import { Logger, type Container } from '@marmeon/core';
+import { SessionConfig } from '@marmeon/session';
 
 /** What the boot logs when an app with sign-in keeps its sessions in the cookie (E46). */
 export const COOKIE_SESSION_WARNING =
-  'SESSION_DRIVER=cookie with sign-in (@bespokecore/auth): the whole session lives in the cookie, so a sign-out can be undone by a ' +
+  'SESSION_DRIVER=cookie with sign-in (@marmeon/auth): the whole session lives in the cookie, so a sign-out can be undone by a ' +
   'request that was still in flight — its response brings back the signed-in cookie. Use SESSION_DRIVER=file, database or redis ' +
   'for apps with login.';
 

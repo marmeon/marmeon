@@ -1,6 +1,6 @@
-import { MailTransport } from '@bespokecore/mail';
-import { QueueConnections } from '@bespokecore/queue';
-import { createTestApp } from '@bespokecore/testing';
+import { MailTransport } from '@marmeon/mail';
+import { QueueConnections } from '@marmeon/queue';
+import { createTestApp } from '@marmeon/testing';
 import application from '../../bootstrap/app.ts';
 
 /** How long {@link warmUp} may take — a hook's own time, not a test's 5 s. */

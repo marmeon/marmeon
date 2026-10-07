@@ -1,4 +1,4 @@
-import { defineConfig, environment, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, environment, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 const BOOLEAN = v.pipe(
@@ -9,8 +9,8 @@ const BOOLEAN = v.pipe(
 export const SessionConfig = defineConfig('session', {
   env: v.object({
     /**
-     * `file` (default: one machine, survives restarts), `database` (the app's database — `bespoke make:session-table`
-     * writes the migration), `redis` (needs @bespokecore/redis and redis), `memory` (tests) or `cookie` (the data in the
+     * `file` (default: one machine, survives restarts), `database` (the app's database — `marmeon make:session-table`
+     * writes the migration), `redis` (needs @marmeon/redis and redis), `memory` (tests) or `cookie` (the data in the
      * encrypted cookie — not for apps with sign-in, E46).
      */
     SESSION_DRIVER: v.optional(v.picklist(['file', 'database', 'redis', 'memory', 'cookie']), 'file'),
@@ -22,7 +22,7 @@ export const SessionConfig = defineConfig('session', {
     SESSION_CONNECTION: v.optional(v.string(), 'default'),
     /** Minutes of inactivity until the session expires. */
     SESSION_LIFETIME: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), '120'),
-    SESSION_COOKIE: v.optional(v.pipe(v.string(), v.regex(/^[\w-]+$/)), 'bespoke_session'),
+    SESSION_COOKIE: v.optional(v.pipe(v.string(), v.regex(/^[\w-]+$/)), 'marmeon_session'),
     /** Where the `file` driver keeps sessions, relative to the app root. */
     SESSION_FILES: v.optional(v.string(), 'storage/framework/sessions'),
     /**
@@ -43,7 +43,7 @@ export const SessionConfig = defineConfig('session', {
     SESSION_ENCRYPT: v.optional(BOOLEAN, 'false'),
     /**
      * Chance that a request also cleans up expired sessions, after the response (Laravel's lottery). `0/1` turns it off —
-     * for apps that run `bespoke session:prune` from a scheduler or cron instead.
+     * for apps that run `marmeon session:prune` from a scheduler or cron instead.
      */
     SESSION_LOTTERY: v.optional(
       v.pipe(

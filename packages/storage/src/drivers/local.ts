@@ -12,7 +12,7 @@ import { mimeTypeOf } from '../mime.ts';
 import type { TemporaryUrls } from '../temporary.ts';
 
 /** Temporary files of a write in progress — renamed into place when complete, never listed. */
-const TEMP_PREFIX = '.bespoke-tmp-';
+const TEMP_PREFIX = '.marmeon-tmp-';
 
 export interface LocalDiskConfig {
   readonly name: string;

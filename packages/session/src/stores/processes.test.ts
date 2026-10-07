@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { SystemClock } from '@bespokecore/core';
+import { SystemClock } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { plainSessionCodec } from '../codec.ts';
 import type { SessionConfig } from '../config.ts';
@@ -15,7 +15,7 @@ const PACKAGE = fileURLToPath(new URL('../..', import.meta.url));
 
 /** Starts a flashing process and waits until it has its store open. */
 async function flasher(target: StoreTarget, id: string, count: number, prefix: string) {
-  const child = spawn(process.execPath, ['--conditions=@bespokecore/source', FLASHER, JSON.stringify(target), id, String(count), prefix], {
+  const child = spawn(process.execPath, ['--conditions=@marmeon/source', FLASHER, JSON.stringify(target), id, String(count), prefix], {
     cwd: PACKAGE,
     stdio: ['pipe', 'pipe', 'inherit'],
   });

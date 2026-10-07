@@ -1,5 +1,5 @@
-import { environment, Logger } from '@bespokecore/core';
-import type { CommandInput } from '@bespokecore/cli';
+import { environment, Logger } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import { QueueSetupError } from '../registry.ts';
 
@@ -15,7 +15,7 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
 }
 
 /**
- * `bespoke queue:work`: processes jobs until stopped — one at a time, each in its own container scope (E84).
+ * `marmeon queue:work`: processes jobs until stopped — one at a time, each in its own container scope (E84).
  *
  * - **Queues:** `--queue=mail,default` in priority order; `*` stands for every other queue that holds jobs
  *   (`--queue=*`, `--queue=mail,*`). Default: the connection's queue.

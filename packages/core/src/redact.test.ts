@@ -17,22 +17,22 @@ describe('redactText (E125)', () => {
 
 describe('Redactor (E125)', () => {
   it('replaces sensitive keys at any depth — cookies, set-cookie, x-xsrf-token, _token, password, authorization — and the names added', () => {
-    const redactor = new Redactor().addKeys('bespoke_session');
+    const redactor = new Redactor().addKeys('marmeon_session');
     const value = redactor.value({
       email: 'ada@example.com',
       password: 'hunter2',
       _token: 'csrf-1',
       nested: { headers: { 'set-cookie': 'a=b', 'x-xsrf-token': 'x', authorization: 'Bearer abc' }, list: [{ new_password: 'p' }] },
-      bespoke_session: 's3ss10n',
-      note: `bespoke_session=s3ss10n; theme=dark`,
+      marmeon_session: 's3ss10n',
+      note: `marmeon_session=s3ss10n; theme=dark`,
     });
     expect(value).toEqual({
       email: 'ada@example.com',
       password: REDACTED,
       _token: REDACTED,
       nested: { headers: { 'set-cookie': REDACTED, 'x-xsrf-token': REDACTED, authorization: REDACTED }, list: [{ new_password: REDACTED }] },
-      bespoke_session: REDACTED,
-      note: 'bespoke_session=[redacted]; theme=dark',
+      marmeon_session: REDACTED,
+      note: 'marmeon_session=[redacted]; theme=dark',
     });
     expect(JSON.stringify(value)).not.toMatch(/hunter2|csrf-1|s3ss10n|Bearer abc/);
   });
@@ -54,8 +54,8 @@ describe('Redactor (E125)', () => {
   });
 
   it('redacts headers by name and statements touching secret columns completely', () => {
-    const redactor = new Redactor().addKeys('bespoke_session');
-    expect(redactor.headers(new Headers({ cookie: 'bespoke_session=abc', authorization: 'Basic eDp5', accept: 'text/html', 'x-xsrf-token': 't' }))).toEqual({
+    const redactor = new Redactor().addKeys('marmeon_session');
+    expect(redactor.headers(new Headers({ cookie: 'marmeon_session=abc', authorization: 'Basic eDp5', accept: 'text/html', 'x-xsrf-token': 't' }))).toEqual({
       accept: 'text/html',
       authorization: REDACTED,
       cookie: REDACTED,
@@ -180,22 +180,22 @@ describe('redact() — the log path, completed (W7.11)', () => {
 
 describe('Redactor.text — the shortcut for text without anything to mask (W7.11)', () => {
   it('returns a plain path as it is, and masks the same as redactText wherever a pattern could match', () => {
-    const redactor = new Redactor(['bespoke_session']);
+    const redactor = new Redactor(['marmeon_session']);
     const token = 'Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z';
     const texts = [
       '/users/7/edit', '/people', '/lab/errors/table', '/docs/packages/core', '/a-slug-of-thirty-one-characters',
       `/reset-password/${token}`, `/files/${'a'.repeat(31)}b`, '/x?password=hunter2', '/x;password:hunter2',
       'Bearer abc', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA', 'bc_1|' + token, 'postgres://u:secret@host/db',
-      'bespoke_session=abc', 'a b',
+      'marmeon_session=abc', 'a b',
     ];
     for (const text of texts) {
-      const expected = redactText(text).replace(/(\bbespoke_session)(\s*[:=]\s*"?)([^\s"'&,;}]+)/gi, '$1$2[redacted]');
+      const expected = redactText(text).replace(/(\bmarmeon_session)(\s*[:=]\s*"?)([^\s"'&,;}]+)/gi, '$1$2[redacted]');
       expect(redactor.text(text), text).toBe(expected);
     }
     expect(redactor.text('/users/7/edit')).toBe('/users/7/edit');
     expect(redactor.text(`/reset-password/${token}`)).toBe('/reset-password/[redacted]');
     expect(redactor.path(`/reset-password/${token}`)).toBe('/reset-password/[redacted]');
-    expect(redactor.text('bespoke_session=abc')).toBe('bespoke_session=[redacted]');
+    expect(redactor.text('marmeon_session=abc')).toBe('marmeon_session=[redacted]');
   });
 });
 

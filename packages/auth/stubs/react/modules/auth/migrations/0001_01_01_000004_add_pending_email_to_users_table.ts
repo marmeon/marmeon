@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 /**
  * A pending change of address (private registration, E146): the new address waits beside the old one until the link sent to it

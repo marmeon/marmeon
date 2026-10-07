@@ -7,7 +7,7 @@ export interface LayerDialogProps extends LayerFrameProps {
   className?: string;
   /**
    * Merged over the default look — a few inline properties. Rendered on the server (a deep link to a layer) they are a `style`
-   * attribute, which a strict `style-src` blocks: an app with one styles the frame by `data-bespoke-layer`/`data-variant` instead.
+   * attribute, which a strict `style-src` blocks: an app with one styles the frame by `data-marmeon-layer`/`data-variant` instead.
    */
   style?: CSSProperties;
 }
@@ -21,8 +21,8 @@ const LOOK: Record<LayerVariant, CSSProperties> = {
  * The default frame of a layer: a native `<dialog>`, opened modally — the browser keeps focus inside it and makes the page
  * (and the layers beneath) inert; named by its first heading, described by an element with `data-layer-description`. Escape, the close button and a click on the
  * backdrop close it (Back in the history); focus returns to what opened it. Unstyled but for a few inline properties
- * (`data-bespoke-layer`, `data-variant` to style it). Wrap it for the app's labels:
- * `createBespokeApp({ layer: (props) => <LayerDialog {...props} closeLabel={t('close')} /> })`.
+ * (`data-marmeon-layer`, `data-variant` to style it). Wrap it for the app's labels:
+ * `createMarmeonApp({ layer: (props) => <LayerDialog {...props} closeLabel={t('close')} /> })`.
  */
 export function LayerDialog({ layer, variant, children, closeLabel = 'Close', className, style }: LayerDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -64,7 +64,7 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
     <dialog
       ref={dialog}
       open
-      data-bespoke-layer={layer.key}
+      data-marmeon-layer={layer.key}
       data-variant={variant}
       data-depth={layer.depth}
       className={className}
@@ -85,7 +85,7 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
       <div style={{ padding: '1.5rem', paddingInlineEnd: '3rem' }}>{children}</div>
       <button
         type="button"
-        data-bespoke-layer-close=""
+        data-marmeon-layer-close=""
         aria-label={closeLabel}
         onClick={() => void layer.close()}
         style={{ position: 'absolute', top: 8, insetInlineEnd: 8, font: 'inherit', fontSize: '1.25rem', lineHeight: 1, padding: '4px 8px', cursor: 'pointer', background: 'none', border: 'none' }}
@@ -101,15 +101,15 @@ export function LayerDialog({ layer, variant, children, closeLabel = 'Close', cl
  * named it itself. Development warns when there is no heading: a dialog without a name.
  */
 function name(element: HTMLDialogElement, id: string): void {
-  const own = (attribute: string) => element.hasAttribute(attribute) && element.getAttribute(`data-bespoke-${attribute}`) === null;
+  const own = (attribute: string) => element.hasAttribute(attribute) && element.getAttribute(`data-marmeon-${attribute}`) === null;
   if (!own('aria-labelledby') && !element.hasAttribute('aria-label')) {
     const heading = element.querySelector('h1, h2, h3');
     if (heading) {
       if (!heading.id) heading.id = `${id}-title`;
       element.setAttribute('aria-labelledby', heading.id);
-      element.setAttribute('data-bespoke-aria-labelledby', '');
+      element.setAttribute('data-marmeon-aria-labelledby', '');
     } else if (process.env.NODE_ENV !== 'production') {
-      console.warn(`[bespoke] The layer [${element.dataset.bespokeLayer}] has no heading (h1–h3) to name its dialog — add one, or wrap LayerDialog with an aria-label.`);
+      console.warn(`[marmeon] The layer [${element.dataset.marmeonLayer}] has no heading (h1–h3) to name its dialog — add one, or wrap LayerDialog with an aria-label.`);
     }
   }
   if (!own('aria-describedby')) {
@@ -117,8 +117,8 @@ function name(element: HTMLDialogElement, id: string): void {
     if (description) {
       if (!description.id) description.id = `${id}-description`;
       element.setAttribute('aria-describedby', description.id);
-      element.setAttribute('data-bespoke-aria-describedby', '');
-    } else if (element.hasAttribute('data-bespoke-aria-describedby')) {
+      element.setAttribute('data-marmeon-aria-describedby', '');
+    } else if (element.hasAttribute('data-marmeon-aria-describedby')) {
       element.removeAttribute('aria-describedby');
     }
   }

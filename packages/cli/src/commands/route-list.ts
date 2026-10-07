@@ -1,4 +1,4 @@
-import { isMiddlewareClass, Router, type AnyAction, type AnyMiddleware } from '@bespokecore/router';
+import { isMiddlewareClass, Router, type AnyAction, type AnyMiddleware } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 
 /** Laravel's `route:list`. */

@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/devtools",
+  "name": "@marmeon/devtools",
   "version": "0.1.0",
-  "description": "Development tools for BespokeCore apps: redacted recordings of requests, queries, jobs, mails and more, with a toolbar and pages.",
+  "description": "Development tools for Marmeon apps: redacted recordings of requests, queries, jobs, mails and more, with a toolbar and pages.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "devtools",
     "debugging",
     "telescope"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/devtools#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/devtools#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/devtools"
   },
   "engines": {
@@ -28,12 +28,12 @@
   ],
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./client": {
-      "@bespokecore/source": "./src/client/index.ts",
+      "@marmeon/source": "./src/client/index.ts",
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     }
@@ -66,7 +66,7 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "DevtoolsServiceProvider"
     ],
@@ -75,48 +75,48 @@
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "marmeon": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/scheduler": "workspace:*",
+    "@marmeon/server": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     },
-    "@bespokecore/http": {
+    "@marmeon/http": {
       "optional": true
     },
-    "@bespokecore/queue": {
+    "@marmeon/queue": {
       "optional": true
     },
-    "@bespokecore/router": {
+    "@marmeon/router": {
       "optional": true
     },
-    "@bespokecore/scheduler": {
+    "@marmeon/scheduler": {
       "optional": true
     },
-    "@bespokecore/server": {
+    "@marmeon/server": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/log": "workspace:*",
-    "@bespokecore/mail": "workspace:*",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/server": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/log": "workspace:*",
+    "@marmeon/mail": "workspace:*",
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/scheduler": "workspace:*",
+    "@marmeon/server": "workspace:*",
     "happy-dom": "^20.14.5",
     "vite": "^8.3.1"
   }

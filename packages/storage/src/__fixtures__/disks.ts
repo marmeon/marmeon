@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TestClock } from '@bespokecore/core';
+import { TestClock } from '@marmeon/core';
 import type { S3DiskOptions } from '../config.ts';
 import type { Disk, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import { LocalDisk } from '../drivers/local.ts';
@@ -12,9 +12,9 @@ import { S3Disk } from '../drivers/s3.ts';
 import type { TemporaryUrls } from '../temporary.ts';
 
 /** `pnpm test:s3` sets it — an S3-compatible store (compose service `s3`, SeaweedFS). Without it the S3 tests skip. */
-export const S3_ENDPOINT = process.env.BESPOKE_TEST_S3_ENDPOINT;
-export const S3_BUCKET = 'bespoke-test';
-export const S3_CREDENTIALS = { accessKeyId: process.env.BESPOKE_TEST_S3_KEY ?? 'bespoke', secretAccessKey: process.env.BESPOKE_TEST_S3_SECRET ?? 'bespoke-secret' };
+export const S3_ENDPOINT = process.env.MARMEON_TEST_S3_ENDPOINT;
+export const S3_BUCKET = 'marmeon-test';
+export const S3_CREDENTIALS = { accessKeyId: process.env.MARMEON_TEST_S3_KEY ?? 'marmeon', secretAccessKey: process.env.MARMEON_TEST_S3_SECRET ?? 'marmeon-secret' };
 
 /** A temporary-URL signer that only records — the real one (UrlSigner) is tested through the app. */
 export const recordingUrls: TemporaryUrls & { last?: { disk: string; key: string; options: TemporaryUrlOptions } } = {
@@ -27,7 +27,7 @@ export const recordingUrls: TemporaryUrls & { last?: { disk: string; key: string
 const directories: string[] = [];
 
 /** A fresh directory (its real path — macOS's /var is a symlink) — removed by {@link removeDirectories}. */
-export function freshDirectory(prefix = 'bespoke-storage-'): string {
+export function freshDirectory(prefix = 'marmeon-storage-'): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   directories.push(dir);
   return dir;

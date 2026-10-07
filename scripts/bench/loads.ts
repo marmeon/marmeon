@@ -20,13 +20,13 @@ registerHooks({
   },
 });
 
-/** `kysely`, `@bespokecore/http` (also a workspace package of the monorepo), `node:` for builtins, `app` for the rest. */
+/** `kysely`, `@marmeon/http` (also a workspace package of the monorepo), `node:` for builtins, `app` for the rest. */
 function packageOf(url: string): string {
   if (url.startsWith('node:')) return 'node:';
   const installed = /node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)/.exec(url);
   if (installed) return installed[1]!;
   const workspace = /\/packages\/([^/]+)\/(?:dist|src)\//.exec(url);
-  return workspace ? `@bespokecore/${workspace[1]}` : 'app';
+  return workspace ? `@marmeon/${workspace[1]}` : 'app';
 }
 
 process.on('exit', () => {

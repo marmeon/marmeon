@@ -3,7 +3,7 @@ dist/
 *.tsbuildinfo
 .vite/
 .DS_Store
-.bespoke/
+.marmeon/
 .env
 .env.local
 storage/
@@ -11,7 +11,7 @@ storage/
 !/packages/storage/
 # …nor the blank app's skeleton (its own .gitignore files ignore what the app writes there).
 !/apps/blank-app/storage/
-# …nor its copy, the template of create-bespoke-app.
-!/packages/create-bespoke-app/template/base/storage/
+# …nor its copy, the template of create-marmeon.
+!/packages/create-marmeon/template/base/storage/
 .claude/*
 !.claude/launch.json

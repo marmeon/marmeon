@@ -6,38 +6,37 @@
 set -euo pipefail
 
 packages=(
-  @bespokecore/auth
-  bespokecore
-  @bespokecore/cache
-  @bespokecore/cli
-  @bespokecore/core
-  create-bespoke-app
-  @bespokecore/database
-  @bespokecore/devtools
-  @bespokecore/encryption
-  @bespokecore/http
-  @bespokecore/i18n
-  @bespokecore/live
-  @bespokecore/log
-  @bespokecore/mail
-  @bespokecore/notifications
-  @bespokecore/otel
-  @bespokecore/queue
-  @bespokecore/react
-  @bespokecore/redis
-  @bespokecore/router
-  @bespokecore/scheduler
-  @bespokecore/server
-  @bespokecore/session
-  @bespokecore/storage
-  @bespokecore/table
-  @bespokecore/testing
-  @bespokecore/vite
+  @marmeon/auth
+  @marmeon/cache
+  marmeon
+  @marmeon/core
+  create-marmeon
+  @marmeon/database
+  @marmeon/devtools
+  @marmeon/encryption
+  @marmeon/http
+  @marmeon/i18n
+  @marmeon/live
+  @marmeon/log
+  @marmeon/mail
+  @marmeon/notifications
+  @marmeon/otel
+  @marmeon/queue
+  @marmeon/react
+  @marmeon/redis
+  @marmeon/router
+  @marmeon/scheduler
+  @marmeon/server
+  @marmeon/session
+  @marmeon/storage
+  @marmeon/table
+  @marmeon/testing
+  @marmeon/vite
 )
 
 for package in "${packages[@]}"; do
-  npm trust github "$package" --repository bespokecore/bespokecore --file release.yml --allow-stage-publish --yes
+  npm trust github "$package" --repository marmeon/marmeon --file release.yml --allow-stage-publish --yes
   sleep 2 # npm asks for a pause between calls (rate limit)
 done
 
-echo "Trusted release.yml of bespokecore/bespokecore (staged publishing) for ${#packages[@]} packages. Check one: npm trust list @bespokecore/auth"
+echo "Trusted release.yml of marmeon/marmeon (staged publishing) for ${#packages[@]} packages. Check one: npm trust list @marmeon/auth"

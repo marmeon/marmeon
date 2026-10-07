@@ -1,9 +1,9 @@
-import { createApplication, defineModule, Logger } from '@bespokecore/core';
-import { channels } from '@bespokecore/core/diagnostics';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
-import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
+import { createApplication, defineModule, Logger } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
+import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { trace } from '@opentelemetry/api';
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -44,7 +44,7 @@ async function boot() {
   return { app, logger };
 }
 
-describe('@bespokecore/otel without an SDK (E120)', () => {
+describe('@marmeon/otel without an SDK (E120)', () => {
   it('no SDK registered: no subscription, no message built, no span, no error — one debug line', async () => {
     const { app, logger } = await boot();
     try {

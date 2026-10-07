@@ -1,7 +1,7 @@
 import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 
 /**
  * The module templates, per UI adapter (E30): `stubs/<adapter>/modules/auth`. One set: its registration and change of address are
@@ -11,31 +11,31 @@ export const STUBS = fileURLToPath(new URL('../stubs/', import.meta.url));
 
 /**
  * What the generated module imports — reported when the app lacks it (the fixture test checks the list against every import
- * of the templates). `mjml` is the mail package's optional peer behind the templates' `mjml` mails. `@bespokecore/cli` runs the
- * module in production — `bespoke start`, the worker its mails go through, the scheduler that prunes its tokens (E159) — so
+ * of the templates). `mjml` is the mail package's optional peer behind the templates' `mjml` mails. `marmeon` runs the
+ * module in production — `marmeon start`, the worker its mails go through, the scheduler that prunes its tokens (E159) — so
  * it is a dependency, never a dev dependency.
  */
 export const NEEDED = [
-  '@bespokecore/auth',
-  '@bespokecore/cache',
-  '@bespokecore/cli',
-  '@bespokecore/core',
-  '@bespokecore/database',
-  '@bespokecore/http',
-  '@bespokecore/i18n',
-  '@bespokecore/mail',
-  '@bespokecore/queue',
-  '@bespokecore/react',
-  '@bespokecore/router',
-  '@bespokecore/scheduler',
-  '@bespokecore/session',
+  '@marmeon/auth',
+  '@marmeon/cache',
+  'marmeon',
+  '@marmeon/core',
+  '@marmeon/database',
+  '@marmeon/http',
+  '@marmeon/i18n',
+  '@marmeon/mail',
+  '@marmeon/queue',
+  '@marmeon/react',
+  '@marmeon/router',
+  '@marmeon/scheduler',
+  '@marmeon/session',
   'mjml',
   'react',
   'valibot',
 ];
 
 /** What only the module's tests import — reported as dev dependencies. */
-export const NEEDED_FOR_TESTS = ['@bespokecore/testing', 'vitest'];
+export const NEEDED_FOR_TESTS = ['@marmeon/testing', 'vitest'];
 
 /** What `make:auth --private-registration` says since the flag is gone (E193) — the module is made all the same. */
 export const PRIVATE_REGISTRATION_FLAG_GONE =
@@ -43,10 +43,10 @@ export const PRIVATE_REGISTRATION_FLAG_GONE =
   'account. Set AUTH_PRIVATE_REGISTRATION=false in .env to turn it off.';
 
 /**
- * `bespoke make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
+ * `marmeon make:auth` (Laravel Breeze): writes a complete auth module into the app — sign-in, registration,
  * remember-me, password reset, e-mail verification, password confirmation, API tokens, with views,
  * mails, migrations and tests. The code belongs to the app from then on; the mechanics stay in
- * @bespokecore/auth.
+ * @marmeon/auth.
  */
 export class MakeAuthCommand {
   static command = 'make:auth';
@@ -98,23 +98,23 @@ export class MakeAuthCommand {
     if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add ${runtime.join(' ')}`);
     if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -D ${forTests.join(' ')}`);
     if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add ${devOnly.join(' ')}`);
-    if (!typed) input.output.line('Then: bespoke route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
-    input.output.line('Then: bespoke migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
-    input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one; in production: bespoke queue:work --queue=mail,default).');
-    input.output.line('Expired tokens are pruned at night by the scheduler (bespoke dev starts it; in production: bespoke schedule:work or schedule:run from cron).');
+    if (!typed) input.output.line('Then: marmeon route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
+    input.output.line('Then: marmeon migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
+    input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work --queue=mail,default).');
+    input.output.line('Expired tokens are pruned at night by the scheduler (marmeon dev starts it; in production: marmeon schedule:work or schedule:run from cron).');
     input.output.line('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
     // The lint preset and the devtools belong to the app, not to the module (W7.6) — named when the app has neither yet.
     if (!existsSync(join(input.root, '.oxlintrc.json'))) {
-      input.output.line('Lint: bespoke make:lint-config writes the app\'s preset (views import controllers only with import type).');
+      input.output.line('Lint: marmeon make:lint-config writes the app\'s preset (views import controllers only with import type).');
     }
-    if (!('@bespokecore/devtools' in installed(input.root))) {
-      input.output.line('Devtools for bespoke dev (requests, queries, jobs, mails at /_bespoke/devtools): pnpm add -D @bespokecore/devtools');
+    if (!('@marmeon/devtools' in installed(input.root))) {
+      input.output.line('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -D @marmeon/devtools');
     }
     // The Content-Security-Policy belongs to the app's middleware too (E147) — named when bootstrap/app.ts has none.
     const bootstrap = join(input.root, 'bootstrap', 'app.ts');
     if (existsSync(bootstrap) && !readFileSync(bootstrap, 'utf8').includes('contentSecurityPolicy(')) {
-      input.output.line("Content-Security-Policy: add contentSecurityPolicy() of @bespokecore/http to the app's global middleware (a nonce per page, E147).");
+      input.output.line("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page, E147).");
     }
     return 0;
   }

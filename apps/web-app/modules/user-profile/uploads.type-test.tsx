@@ -1,8 +1,8 @@
-import type { ContextOf } from '@bespokecore/http';
-import type { Upload } from '@bespokecore/http/page';
-import { FileInput, useForm } from '@bespokecore/react';
-import { upload, type TemporaryUpload } from '@bespokecore/storage';
-import type { TestApp } from '@bespokecore/testing';
+import type { ContextOf } from '@marmeon/http';
+import type { Upload } from '@marmeon/http/page';
+import { FileInput, useForm } from '@marmeon/react';
+import { upload, type TemporaryUpload } from '@marmeon/storage';
+import type { TestApp } from '@marmeon/testing';
 import type { UpdateAvatarRequest } from './controllers/UpdateAvatarController.ts';
 
 // Uploads (W6.9) as types — checked by `pnpm typecheck`, never run.

@@ -1,5 +1,5 @@
-import type { Registered } from '@bespokecore/auth';
-import type { EventPayload } from '@bespokecore/core';
+import type { Registered } from '@marmeon/auth';
+import type { EventPayload } from '@marmeon/core';
 import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 

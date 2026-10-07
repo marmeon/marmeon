@@ -1,22 +1,22 @@
 {
-  "name": "@bespokecore/table",
+  "name": "@marmeon/table",
   "version": "0.1.0",
-  "description": "Server-driven tables for BespokeCore apps: typed columns, policies, sorting and filters by allowlist, row and bulk actions, CSV export.",
+  "description": "Server-driven tables for Marmeon apps: typed columns, policies, sorting and filters by allowlist, row and bulk actions, CSV export.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "table",
     "datatable",
     "pagination",
     "csv"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/table#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/table#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/table"
   },
   "engines": {
@@ -26,12 +26,12 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./client": {
-      "@bespokecore/source": "./src/client/index.ts",
+      "@marmeon/source": "./src/client/index.ts",
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     }
@@ -64,7 +64,7 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "TableServiceProvider"
     ],
@@ -73,17 +73,17 @@
     ]
   },
   "dependencies": {
-    "@bespokecore/auth": "workspace:*",
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/router": "workspace:*",
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/router": "workspace:*",
     "kysely": "^0.29.6",
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@bespokecore/server": "workspace:*",
+    "@marmeon/server": "workspace:*",
     "happy-dom": "^20.14.5"
   }
 }

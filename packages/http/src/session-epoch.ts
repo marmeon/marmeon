@@ -1,11 +1,11 @@
 import { createHmac, hkdfSync } from 'node:crypto';
-import { Translator, type Container, type Key, type Resolver } from '@bespokecore/core';
-import { EncryptionConfig } from '@bespokecore/encryption';
+import { Translator, type Container, type Key, type Resolver } from '@marmeon/core';
+import { EncryptionConfig } from '@marmeon/encryption';
 import { PageSession } from './page-session.ts';
 
 /**
  * The session's epoch (W8 step 8, E148/E165): what the tabs of one browser compare to know that someone signed in or out, the
- * session was regenerated or the language changed — `PageObject.epoch`, the answer of `/_bespoke/session`. An HMAC (its key
+ * session was regenerated or the language changed — `PageObject.epoch`, the answer of `/_marmeon/session`. An HMAC (its key
  * derived from `APP_KEY` by HKDF, context `session-epoch`) over the session's generation and user (`PageSession.generation()`)
  * and the locale, truncated: opaque — it tells nothing about the session, the user or the language, and cannot be guessed
  * without the key. Equal input, equal epoch: flash messages and other session writes leave it as it is.
@@ -16,7 +16,7 @@ export class SessionEpoch {
   readonly #recent = new Map<string, string>();
 
   constructor(config: EncryptionConfig) {
-    this.#key = new Uint8Array(hkdfSync('sha256', config.key, new Uint8Array(0), 'bespokecore:session-epoch', 32));
+    this.#key = new Uint8Array(hkdfSync('sha256', config.key, new Uint8Array(0), 'marmeon:session-epoch', 32));
   }
 
   /** The epoch of a session's generation (undefined: a guest) in `locale`. */
@@ -59,7 +59,7 @@ export function epochOfResolver(resolver: Resolver): string {
 }
 
 /**
- * `GET /_bespoke/session` (`SESSION_PATH`): the current epoch, as `{ "epoch": "…" }` — what a tab asks when it becomes visible
+ * `GET /_marmeon/session` (`SESSION_PATH`): the current epoch, as `{ "epoch": "…" }` — what a tab asks when it becomes visible
  * again, comes back from the back/forward cache or hears another epoch on the channel. Read-only (the kernel): it starts no
  * session, writes none and extends none, and sets no cookie; `no-store`, never cached.
  */

@@ -1,4 +1,4 @@
-import { Application, Container, type ModuleDefinition } from '@bespokecore/core';
+import { Application, Container, type ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { ArticleFactory, UserFactory } from './__fixtures__/factories.ts';

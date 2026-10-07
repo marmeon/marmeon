@@ -9,16 +9,16 @@
  *   live, shared, streamed).
  * - **Layers & regions** — the stack (the page, then each layer) and the islands of each, with their status.
  * - **Optimistic** — the patches shown (E59): what each changed, before and after, and how it ended.
- * - **Server** — what the server recorded for a request (E131: `GET /_bespoke/devtools/api/requests/:id`): route, controller,
+ * - **Server** — what the server recorded for a request (E131: `GET /_marmeon/devtools/api/requests/:id`): route, controller,
  *   queries, log, events, jobs (in the worker too), mails, exceptions.
  * - **SSR** — hydration errors React recovered from, and the document's server rendering.
  *
- * What it shows of the app's data comes from the data feature's slots (`devtools` of `@bespokecore/http/client`) or straight from
+ * What it shows of the app's data comes from the data feature's slots (`devtools` of `@marmeon/http/client`) or straight from
  * the navigator — read when it renders, kept nowhere else: when the document is left (signed out, a new build) the slots are
  * empty and the panel shows nothing of it. `sessionStorage` holds only whether the panel is open and which tab (E36: never props).
  */
-import type { DevtoolsFeature, Layer, Navigator, Region, TimelineEntry } from '@bespokecore/http/client';
-import type { PageObject } from '@bespokecore/http/page';
+import type { DevtoolsFeature, Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client';
+import type { PageObject } from '@marmeon/http/page';
 import type { AnyEntry, RequestContent } from '../entry.ts';
 import { h, json, jsonBytes, size, STYLES, type Child } from './dom.ts';
 
@@ -27,9 +27,9 @@ export type BarTab = (typeof TABS)[number];
 const LABELS: Record<BarTab, string> = { visits: 'Visits', page: 'Page', layers: 'Layers & regions', optimistic: 'Optimistic', server: 'Server', ssr: 'SSR' };
 
 /** Where the panel's state is kept — `{ open, tab }`, nothing else (E36). */
-export const STATE_KEY = 'bespoke-devtools';
+export const STATE_KEY = 'marmeon-devtools';
 /** The devtools' JSON API (W7 step 8). */
-const API = '/_bespoke/devtools/api';
+const API = '/_marmeon/devtools/api';
 /** Opens and closes the panel. */
 export const SHORTCUT = 'Alt+Shift+D';
 
@@ -105,7 +105,7 @@ export class DevtoolsBar {
     // The window's own fetch at the time the bar starts — the data feature records only the core's requests, never these.
     this.#fetch = win.fetch.bind(win);
     ({ open: this.#open, tab: this.#tab } = readState(win));
-    this.host = h('div', { 'data-bespoke-devtools': true });
+    this.host = h('div', { 'data-marmeon-devtools': true });
     this.root = this.host.attachShadow({ mode: 'open' });
     this.root.append(h('style', {}, STYLES));
     parent.append(this.host);
@@ -209,9 +209,9 @@ export class DevtoolsBar {
     const label = api.left ? 'leaving' : last ? `${last.kind} ${last.status ?? ''} ${last.end !== undefined ? `${last.end - last.at} ms` : '…'}`.replace(/\s+/g, ' ').trim() : 'devtools';
     return h(
       'button',
-      { class: 'pill', type: 'button', title: `BespokeCore devtools — development only (${SHORTCUT})`, 'aria-expanded': String(this.#open), onclick: () => this.toggle() },
+      { class: 'pill', type: 'button', title: `Marmeon devtools — development only (${SHORTCUT})`, 'aria-expanded': String(this.#open), onclick: () => this.toggle() },
       h('span', { class: `dot${problem ? ' bad' : last?.outcome === 'invalid' || last?.outcome === 'reload' ? ' warn' : ''}` }),
-      h('span', {}, 'BespokeCore'),
+      h('span', {}, 'Marmeon'),
       h('span', { class: 'muted' }, label),
     );
   }
@@ -222,8 +222,8 @@ export class DevtoolsBar {
     );
     return h(
       'section',
-      { class: 'panel', role: 'dialog', 'aria-label': 'BespokeCore devtools' },
-      h('div', { class: 'head', role: 'tablist' }, h('strong', {}, 'BespokeCore'), tabs, h('span', { class: 'spacer' }), h('a', { href: '/_bespoke/devtools', target: '_blank', rel: 'noopener' }, 'All requests ↗'), h('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => this.toggle(false) }, '×')),
+      { class: 'panel', role: 'dialog', 'aria-label': 'Marmeon devtools' },
+      h('div', { class: 'head', role: 'tablist' }, h('strong', {}, 'Marmeon'), tabs, h('span', { class: 'spacer' }), h('a', { href: '/_marmeon/devtools', target: '_blank', rel: 'noopener' }, 'All requests ↗'), h('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => this.toggle(false) }, '×')),
       h('div', { class: 'body' }, this.#api.left ? h('p', { class: 'empty' }, 'This document is being left (signed in or out, or a new build) — nothing of it is shown or kept.') : this.#body()),
     );
   }
@@ -495,7 +495,7 @@ export class DevtoolsBar {
     const fetched = this.#api.cache.get(`request:${current}`) as Fetched | undefined;
     const record = this.#record(current);
     return [
-      h('p', {}, picker, ' ', h('a', { href: `/_bespoke/devtools/requests/${encodeURIComponent(current)}`, target: '_blank', rel: 'noopener', class: 'link' }, 'in the devtools ↗')),
+      h('p', {}, picker, ' ', h('a', { href: `/_marmeon/devtools/requests/${encodeURIComponent(current)}`, target: '_blank', rel: 'noopener', class: 'link' }, 'in the devtools ↗')),
       record ? this.#server(record) : h('p', { class: 'empty' }, fetched?.state === 'failed' ? `The server's record could not be read (${fetched.status}).` : 'Loading what the server recorded…'),
     ];
   }

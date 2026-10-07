@@ -1,4 +1,4 @@
-import { Pagination as Pages, useTranslation, type PaginationProps } from '@bespokecore/react';
+import { Pagination as Pages, useTranslation, type PaginationProps } from '@marmeon/react';
 
 /**
  * The framework's page links (`<Pagination>`, its links from the page's parsed query) with the app's words — in every language the

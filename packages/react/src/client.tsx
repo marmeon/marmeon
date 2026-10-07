@@ -8,24 +8,24 @@ import {
   type DevtoolsGlobal,
   type Feature,
   type TitleTemplate,
-} from '@bespokecore/http/client';
-import type { RouteManifest } from '@bespokecore/http/page';
-import type { MessageLoader } from '@bespokecore/i18n/messages';
+} from '@marmeon/http/client';
+import type { RouteManifest } from '@marmeon/http/page';
+import type { MessageLoader } from '@marmeon/i18n/messages';
 import { createRoot, hydrateRoot, type ErrorInfo } from 'react-dom/client';
-import { BespokeApp, loadLayerStack, type BespokeAppProps } from './app.tsx';
+import { MarmeonApp, loadLayerStack, type MarmeonAppProps } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { LayerFrame } from './layer.tsx';
 import type { ConfirmComponent } from './confirm.tsx';
 import type { DefaultLayout, ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
 
-export interface CreateBespokeAppOptions {
+export interface CreateMarmeonAppOptions {
   resolve: ResolvePage;
   /** Id of the element the server rendered into. */
   rootId?: string;
   /** Turns a page's `<Head title>` into the document title — the same as the SSR entry's. */
   title?: TitleTemplate;
-  /** `routes` of `virtual:bespoke/routes`: what `route()`, `<Link route>` and `useForm(name, …)` resolve. */
+  /** `routes` of `virtual:marmeon/routes`: what `route()`, `<Link route>` and `useForm(name, …)` resolve. */
   routes?: RouteManifest;
   /**
    * The layout of pages without their own `Page.layout` (E35), by page name — the same as the SSR entry's:
@@ -33,7 +33,7 @@ export interface CreateBespokeAppOptions {
    */
   layout?: DefaultLayout;
   /**
-   * The app's language files — `createMessageLoader(lang)` with `lang` from `virtual:bespoke/lang` — the same as the SSR
+   * The app's language files — `createMessageLoader(lang)` with `lang` from `virtual:marmeon/lang` — the same as the SSR
    * entry's. Only the page's locale is loaded (one chunk per file), before hydrating; `useTranslation` reads them.
    */
   messages?: MessageLoader;
@@ -41,7 +41,7 @@ export interface CreateBespokeAppOptions {
    * An indicator of visits under way (E82, opt-in): `progress: progressBar({ delay: 250 })` shows the core's bar for visits
    * slower than `delay`; none without it.
    */
-  progress?: BespokeAppProps['progress'];
+  progress?: MarmeonAppProps['progress'];
   /**
    * The frame around every layer's view (E53) — the same as the SSR entry's. Default `LayerDialog` (a native modal
    * `<dialog>`); wrap it for the app's labels: `layer: (props) => <LayerDialog {...props} closeLabel="Schließen" />`.
@@ -67,7 +67,7 @@ export interface CreateBespokeAppOptions {
    * (`addTransitionType`), the `<ViewTransition>` components of the views animate (enter, exit, share); React starts the transition,
    * the core never does. Both skip it under `prefers-reduced-motion: reduce` and in a hidden tab. Its code loads with the first page change.
    */
-  viewTransition?: BespokeAppProps['viewTransition'];
+  viewTransition?: MarmeonAppProps['viewTransition'];
   /**
    * Errors React recovered from while hydrating: the server's markup did not match (React rendered that part again in
    * the browser), or a part failed on the server (the browser rendered it). Default: reported to the console — in
@@ -80,11 +80,11 @@ export interface CreateBespokeAppOptions {
  * Client entry point: hydrates the server-rendered page and takes over navigation. Without server markup — server
  * rendering failed (the server logged why) or the page has `ssr = false` — it renders the page itself.
  */
-export async function createBespokeApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, tabSync, viewTransition, onRecoverableError }: CreateBespokeAppOptions): Promise<void> {
+export async function createMarmeonApp({ resolve, rootId = 'app', title, routes, layout, messages, progress, layer, confirm, tabSync, viewTransition, onRecoverableError }: CreateMarmeonAppOptions): Promise<void> {
   const page = readInitialPage();
 
   // Resolve before hydrating so the first client render matches the server HTML — the component and the messages of
-  // the page's locale. The history entry is the navigator's (<BespokeApp> starts it): its key and URL — never the
+  // the page's locale. The history entry is the navigator's (<MarmeonApp> starts it): its key and URL — never the
   // page's props (E36).
   // A deep link's layers (E53) too: the layer stack with the core's layers (E71) and their views render in the server's markup.
   // Tab sync (E149) loads beside them — a chunk of its own, attached from the start: no message of another tab is missed. A chunk
@@ -99,7 +99,7 @@ export async function createBespokeApp({ resolve, rootId = 'app', title, routes,
     ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
   ]);
   const app = (
-    <BespokeApp
+    <MarmeonApp
       initialPage={page}
       initialComponent={Component}
       resolve={resolve}
@@ -132,17 +132,17 @@ function reportRecoverable(error: unknown, component: string): void {
   }
   const server = (error as { digest?: unknown } | null)?.digest === SSR_ERROR_DIGEST;
   const message = server
-    ? `[bespoke] A part of [${component}] failed on the server (see the server log); the browser rendered it instead.`
-    : `[bespoke] Hydration mismatch in [${component}]: the server rendered other markup than the browser, so React rendered it ` +
+    ? `[marmeon] A part of [${component}] failed on the server (see the server log); the browser rendered it instead.`
+    : `[marmeon] Hydration mismatch in [${component}]: the server rendered other markup than the browser, so React rendered it ` +
       'again in the browser. Common causes: values that differ between server and browser (Date.now(), Math.random(), ' +
       'locale formatting, `typeof window` branches) — render those in an effect, or set the page’s ssr = false.';
   console.error(message, error);
   showNotice(message);
-  // The devtools' bar (W7 step 9) lists it in its SSR tab — `__BESPOKE_DEVTOOLS_HOOK__` exists only where its client was served.
-  (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.recoverable?.(error, component, server);
+  // The devtools' bar (W7 step 9) lists it in its SSR tab — `__MARMEON_DEVTOOLS_HOOK__` exists only where its client was served.
+  (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.recoverable?.(error, component, server);
 }
 
-const NOTICE_ATTRIBUTE = 'data-bespoke-hydration';
+const NOTICE_ATTRIBUTE = 'data-marmeon-hydration';
 
 /** A notice at the bottom of the page — plain DOM: it happens while React hydrates. One at a time. */
 function showNotice(message: string): void {

@@ -50,7 +50,7 @@ export class RouteDefinition {
   }
 
   /**
-   * Keeps the route out of the browser for good: `bespoke route:types` marks it `browser: false`, so naming it in
+   * Keeps the route out of the browser for good: `marmeon route:types` marks it `browser: false`, so naming it in
    * client code is a compile error, and it never enters the browser's route manifest — not even when client code
    * names it or `clientRoutes.include` matches it. For routes only the server links to, e.g. a signed link it sends by mail:
    *
@@ -71,7 +71,7 @@ export class RouteDefinition {
 
   /**
    * Runs the route's requests one at a time per session (Laravel's `block()`, E145): `StartSession` takes an atomic lock on the
-   * session (needs `@bespokecore/cache` — locks since E103) before it loads it and frees it after saving it. A second request of
+   * session (needs `@marmeon/cache` — locks since E103) before it loads it and frees it after saving it. A second request of
    * the same browser waits up to `waitSeconds` (then 423); a lock a crashed request held expires after `lockSeconds`. For routes
    * that read the session, decide on it and write it back — where merging concurrent writes (compare-and-set, the default) is
    * not enough:

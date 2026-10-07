@@ -1,5 +1,5 @@
-import { authenticate, confirmedPassword, verified } from '@bespokecore/auth';
-import { defineRoutes } from '@bespokecore/http';
+import { authenticate, confirmedPassword, verified } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
 import { UserRepository } from '#modules/auth';
 import { AddProfileLinkController } from './controllers/AddProfileLinkController.ts';
 import { ConfirmRemoveLinkController } from './controllers/ConfirmRemoveLinkController.ts';

@@ -1,4 +1,4 @@
-import type { HttpContext } from '@bespokecore/router';
+import type { HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
 import { LOCATION_HEADER, PAGE_HEADER } from './page.ts';
@@ -14,7 +14,7 @@ describe('ClientHistory / ClearClientHistory', () => {
     expect(await run(new ClientHistory(), ctx('POST', '/login', visit), response)).toBe(response);
   });
 
-  it('turns the redirect of a client-side visit into 409 + x-bespoke-location (a full page load)', async () => {
+  it('turns the redirect of a client-side visit into 409 + x-marmeon-location (a full page load)', async () => {
     const history = new ClientHistory();
     history.clear();
     const response = await run(history, ctx('POST', '/login', visit), new Response(null, { status: 303, headers: { location: '/users/me', 'x-custom': 'kept' } }));

@@ -1,7 +1,7 @@
-import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, REMEMBER_TABLE, RememberTokenStore } from '@bespokecore/auth';
-import { Connections } from '@bespokecore/database';
-import { SessionLottery } from '@bespokecore/session';
-import { createTestApp } from '@bespokecore/testing';
+import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, REMEMBER_TABLE, RememberTokenStore } from '@marmeon/auth';
+import { Connections } from '@marmeon/database';
+import { SessionLottery } from '@marmeon/session';
+import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';

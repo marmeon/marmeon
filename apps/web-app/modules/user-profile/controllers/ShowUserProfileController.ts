@@ -1,6 +1,6 @@
-import { Controller, defer, optional, type HttpContext } from '@bespokecore/http';
-import { Gate, type Authenticated } from '@bespokecore/auth';
-import { Storage } from '@bespokecore/storage';
+import { Controller, defer, optional, type HttpContext } from '@marmeon/http';
+import { Gate, type Authenticated } from '@marmeon/auth';
+import { Storage } from '@marmeon/storage';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { ProfileActivity } from '../ProfileActivity.ts';

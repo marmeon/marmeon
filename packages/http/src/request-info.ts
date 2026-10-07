@@ -1,4 +1,4 @@
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 
 /**
  * Who sent the current request — injectable where `ctx` is not at hand (E169): `Auth` puts it into the `Login` event, a

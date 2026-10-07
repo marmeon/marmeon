@@ -8,7 +8,7 @@ export type LogContext = Readonly<Record<string, unknown>>;
 
 /**
  * The logging contract. Packages depend on this, never on a logging library;
- * `@bespokecore/log` binds a pino implementation, and without it the
+ * `@marmeon/log` binds a pino implementation, and without it the
  * {@link ConsoleLogger} fallback is used.
  */
 export interface Logger {
@@ -31,7 +31,7 @@ const entries = channels.event('log');
 
 /**
  * More fields for every log entry written now — beside the request's id or the job's name (`currentLogContext()`). One per
- * app; `@bespokecore/otel` adds the active span's `trace_id` and `span_id`. A source runs for every entry: keep it cheap, and
+ * app; `@marmeon/otel` adds the active span's `trace_id` and `span_id`. A source runs for every entry: keep it cheap, and
  * return nothing when it has nothing to add.
  */
 export class LogContextSources {

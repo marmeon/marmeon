@@ -1,11 +1,11 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@bespokecore/database';
-import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
-import { RedisConnections, RedisServiceProvider } from '@bespokecore/redis';
-import { createHttpKernel } from '@bespokecore/server';
+import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
+import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { RedisConnections, RedisServiceProvider } from '@marmeon/redis';
+import { createHttpKernel } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { MakeSessionTableCommand } from './commands/make-session-table.ts';
@@ -65,10 +65,10 @@ function boot(env: Record<string, string>, providers: ServiceProviderClass[], co
   });
 }
 
-const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
+const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='));
 /** The session id a `Set-Cookie` header carries (encrypted like every cookie). */
 const cookieValue = (app: Awaited<ReturnType<typeof boot>>, header: string) =>
-  app.container.make(Encrypter).decrypt(decodeURIComponent(header.split(';')[0]!.split('=')[1]!), 'cookie:bespoke_session');
+  app.container.make(Encrypter).decrypt(decodeURIComponent(header.split(';')[0]!.split('=')[1]!), 'cookie:marmeon_session');
 
 describe('SESSION_DRIVER', () => {
   it('database: sessions live in the app database — and bots leave no rows behind', async () => {
@@ -127,7 +127,7 @@ describe('SESSION_DRIVER', () => {
   });
 
   it('a new APP_KEY with the old one in APP_PREVIOUS_KEYS keeps encrypted sessions — without it, everybody starts afresh (E169)', async () => {
-    const directory = tempDir('bespoke-session-rotation-');
+    const directory = tempDir('marmeon-session-rotation-');
     const [oldKey, newKey] = [generateKey(), generateKey()];
     const files = { SESSION_DRIVER: 'file', SESSION_FILES: directory, SESSION_ENCRYPT: 'true' };
     const before = await boot({ ...files, APP_KEY: oldKey }, []);
@@ -153,13 +153,13 @@ describe('SESSION_DRIVER', () => {
     await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
     const response = await createHttpKernel(app).request('/count', { headers: { accept: 'application/json' } });
     expect(response.status).toBe(500);
-    await expect(app.container.make(SessionStore).read('a'.repeat(64))).rejects.toThrow('Run `bespoke make:session-table --upgrade` and `bespoke migrate`');
+    await expect(app.container.make(SessionStore).read('a'.repeat(64))).rejects.toThrow('Run `marmeon make:session-table --upgrade` and `marmeon migrate`');
     await app.shutdown();
   });
 
   it('database: names what is missing at startup', async () => {
     await expect(boot({ SESSION_DRIVER: 'database' }, [])).rejects.toThrow(
-      'SESSION_DRIVER=database needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).',
+      'SESSION_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',
     );
     await expect(boot({ SESSION_DRIVER: 'database', SESSION_CONNECTION: 'reporting', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
       /Database connection "reporting" is not configured/,
@@ -168,12 +168,12 @@ describe('SESSION_DRIVER', () => {
 
   it('redis: names what is missing at startup', async () => {
     await expect(boot({ SESSION_DRIVER: 'redis' }, [])).rejects.toThrow(
-      'SESSION_DRIVER=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).',
+      'SESSION_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
     );
   });
 
   it.runIf(REDIS_URL)('redis: sessions live in Redis with its own expiry', async () => {
-    const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
     const app = await boot({ SESSION_DRIVER: 'redis', REDIS_URL: REDIS_URL!, REDIS_PREFIX: prefix, SESSION_LIFETIME: '30' }, [RedisServiceProvider]);
     expect(app.container.make(SessionStore)).toBeInstanceOf(RedisSessionStore);
     const kernel = createHttpKernel(app);
@@ -216,7 +216,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions (E108)', 
   });
 
   it('SQLite with a file of its own (SESSION_CONNECTION): a session written inside a transaction survives its rollback', async () => {
-    const directory = tempDir('bespoke-session-system-');
+    const directory = tempDir('marmeon-session-system-');
     const app = await boot(
       { SESSION_DRIVER: 'database', SESSION_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
       [DatabaseServiceProvider],
@@ -289,11 +289,11 @@ describe('session:prune', () => {
 
 describe('make:session-table', () => {
   function app(): string {
-    const root = tempDir('bespoke-session-table-');
+    const root = tempDir('marmeon-session-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(
       join(root, 'bootstrap/app.ts'),
-      "import { defineApplication } from '@bespokecore/core';\nimport auth from '#modules/auth';\n\nexport default defineApplication({ root: '', modules: [auth] });\n",
+      "import { defineApplication } from '@marmeon/core';\nimport auth from '#modules/auth';\n\nexport default defineApplication({ root: '', modules: [auth] });\n",
     );
     return root;
   }
@@ -310,7 +310,7 @@ describe('make:session-table', () => {
     const migration = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_create_sessions_table.ts'))!;
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_sessions_table\.ts$/);
     expect(readFileSync(join(root, 'modules/system/migrations', migration), 'utf8')).toContain("schema.create('sessions'");
-    expect(lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: bespoke migrate']);
+    expect(lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);
     lines.length = 0;
     expect(await new MakeSessionTableCommand().handle(run)).toBe(1);
     expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sessions table has its migration.`]);
@@ -319,7 +319,7 @@ describe('make:session-table', () => {
     expect(await new MakeSessionTableCommand().handle({ ...(run as object), options: { upgrade: true } } as never)).toBe(0);
     const upgrade = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_upgrade_sessions_table.ts'))!;
     expect(readFileSync(join(root, 'modules/system/migrations', upgrade), 'utf8')).toContain("table.integer('version').default(1)");
-    expect(lines).toEqual([`✓ Created modules/system/migrations/${upgrade}`, 'Then: bespoke migrate']);
+    expect(lines).toEqual([`✓ Created modules/system/migrations/${upgrade}`, 'Then: marmeon migrate']);
   });
 
   it('the upgrade migration turns an old table into one the store writes — every old row gone', async () => {
@@ -328,7 +328,7 @@ describe('make:session-table', () => {
     const db = connections.get();
     await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
     await sql`insert into sessions values (${'r'.repeat(40)}, '1', '{"_auth_id":"1"}', ${Date.now()})`.execute(db);
-    const { Schema } = await import('@bespokecore/database');
+    const { Schema } = await import('@marmeon/database');
     const { SESSIONS_UPGRADE_MIGRATION } = await import('./commands/make-session-table.ts');
     const upgrade = ((await import(SESSIONS_UPGRADE_MIGRATION.href)) as { default: { up(schema: InstanceType<typeof Schema>): Promise<void> } }).default;
     await upgrade.up(new Schema(db, connections.options().driver));

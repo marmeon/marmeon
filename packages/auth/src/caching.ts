@@ -1,5 +1,5 @@
-import { editableResponse, type HttpContext, type Next } from '@bespokecore/router';
-import { Session } from '@bespokecore/session';
+import { editableResponse, type HttpContext, type Next } from '@marmeon/router';
+import { Session } from '@marmeon/session';
 import { AUTH_SESSION_KEYS } from './auth.ts';
 
 /** What a response for a signed-in user may be kept as: nowhere — not in the HTTP cache, not on a proxy. */
@@ -11,9 +11,9 @@ export const NO_STORE = 'no-store, private';
  * "Back" after signing out shows them again — without asking the server (and Chromium keeps `no-store`
  * pages out of the back/forward cache).
  *
- * In the `web` group of every app with @bespokecore/auth (inside the session: it asks the session, after the
+ * In the `web` group of every app with @marmeon/auth (inside the session: it asks the session, after the
  * route, whether someone is signed in — no user lookup). A route that sets its own `Cache-Control` keeps it:
- * `cacheControl('private, max-age=60')` from @bespokecore/http, or the header on its response.
+ * `cacheControl('private, max-age=60')` from @marmeon/http, or the header on its response.
  */
 export class NoStoreWhenSignedIn {
   readonly #session: Session;

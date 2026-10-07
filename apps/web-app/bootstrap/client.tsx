@@ -1,6 +1,6 @@
-import { createBespokeApp, progressBar } from '@bespokecore/react';
+import { createMarmeonApp, progressBar } from '@marmeon/react';
 import { Confirm } from '../layouts/Confirm.tsx';
-import { routes } from 'virtual:bespoke/routes';
+import { routes } from 'virtual:marmeon/routes';
 import { title } from './head.ts';
 import { messages } from './i18n.ts';
 import { layer, layout } from './layouts.ts';
@@ -10,4 +10,4 @@ import { resolvePage } from './pages.ts';
 // `progress`: the progress bar for visits slower than 250 ms (E82: opt-in — an app without it carries none of its code).
 // `viewTransition: 'react'` (E185): each page change renders in a React transition with its direction — the views' <ViewTransition>
 // animate (the avatar from the list into the profile, the page sliding by direction: styles/app.css); none under reduced motion.
-void createBespokeApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm, viewTransition: 'react' });
+void createMarmeonApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm, viewTransition: 'react' });

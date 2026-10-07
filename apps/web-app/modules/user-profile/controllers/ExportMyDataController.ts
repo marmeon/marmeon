@@ -1,7 +1,7 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { Clock } from '@bespokecore/core';
-import { Controller, type HttpContext } from '@bespokecore/http';
-import { Storage } from '@bespokecore/storage';
+import type { Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Storage } from '@marmeon/storage';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
 /**

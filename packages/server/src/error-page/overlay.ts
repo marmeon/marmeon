@@ -1,4 +1,4 @@
-import type { Redactor, Solution } from '@bespokecore/core';
+import type { Redactor, Solution } from '@marmeon/core';
 import { parseStack, withSnippets } from './report.ts';
 
 /** Vite's error payload (`hot.send({ type: 'error', err })`) — what its overlay shows. */
@@ -26,7 +26,7 @@ export function overlayError(error: unknown, root: string, redactor: Redactor, s
   return {
     message: redactor.text(message),
     stack: redactor.text(failure.stack ?? ''),
-    plugin: 'bespokecore:ssr',
+    plugin: 'marmeon:ssr',
     ...(located ? { id: located.file, loc: { file: located.file, line: located.line, column: located.column } } : {}),
     ...(located?.snippet ? { frame: codeFrame(located.snippet, located.column) } : {}),
   };

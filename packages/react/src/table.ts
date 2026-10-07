@@ -1,14 +1,14 @@
 /**
- * `@bespokecore/react/table` — the headless table of `@bespokecore/table` for React (W9 step 6, E183): `useTable(props.members)` gives a
+ * `@marmeon/react/table` — the headless table of `@marmeon/table` for React (W9 step 6, E183): `useTable(props.members)` gives a
  * component what it needs to render a server-driven table its own way — the visible columns with their header attributes, the rows,
  * sorting, filters, search and pages (visits of the page's URL), the selection, row and bulk actions, exports and the text of a live
  * region. It renders nothing itself.
  *
- * A subpath of its own with `@bespokecore/table` as an optional peer: an app gets it only when it installs the table package and
- * imports this module — `@bespokecore/react` itself never imports it, so discovery never pulls the table into a React app that has
+ * A subpath of its own with `@marmeon/table` as an optional peer: an app gets it only when it installs the table package and
+ * imports this module — `@marmeon/react` itself never imports it, so discovery never pulls the table into a React app that has
  * no tables (E76, the W5.9 lesson with i18n). Its code is in the bundle of the page that imports it, nowhere else.
  */
-import { exportUrl, keyOf, sortUrl, tableStatus, TableController } from '@bespokecore/table/client';
+import { exportUrl, keyOf, sortUrl, tableStatus, TableController } from '@marmeon/table/client';
 import type {
   ActionOf,
   AnyTableData,
@@ -23,12 +23,12 @@ import type {
   TableColumn,
   TableRunOptions,
   TableRunOutcome,
-} from '@bespokecore/table/client';
-import type { SelectionKey } from '@bespokecore/http/client';
+} from '@marmeon/table/client';
+import type { SelectionKey } from '@marmeon/http/client';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type MouseEvent } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 
-export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterOf, RowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@bespokecore/table/client';
+export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterOf, RowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@marmeon/table/client';
 
 /**
  * The words of a table — English by default, the app's through its translations (E38): `labels: { column: (name) => t(`column.${name}`),
@@ -169,7 +169,7 @@ const STATUS_PROPS = { role: 'status', 'aria-live': 'polite', 'aria-atomic': tru
 const noSubscription = () => () => {};
 
 /**
- * A server-driven table (`@bespokecore/table`), headless — typed by its props (`TableProps<typeof MembersTable>`): only its sortable
+ * A server-driven table (`@marmeon/table`), headless — typed by its props (`TableProps<typeof MembersTable>`): only its sortable
  * columns sort, only its filters filter, only its actions run.
  *
  * ```tsx
@@ -221,7 +221,7 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
     const browser = (): TableController<T> => {
       if (!controller) {
         throw new Error(
-          process.env.NODE_ENV !== 'production' ? `[bespoke:R18] useTable(${data.name}): it changes something only in the browser — not while rendering on the server.` : `[bespoke:R18] ${data.name}`,
+          process.env.NODE_ENV !== 'production' ? `[marmeon:R18] useTable(${data.name}): it changes something only in the browser — not while rendering on the server.` : `[marmeon:R18] ${data.name}`,
         );
       }
       return controller;

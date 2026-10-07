@@ -1,4 +1,4 @@
-import { createTestApp } from '@bespokecore/testing';
+import { createTestApp } from '@marmeon/testing';
 import { it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 

@@ -1,10 +1,10 @@
-import type { Application, Container, ServiceProvider } from '@bespokecore/core';
+import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { CommandRegistry, type CommandClass } from './command.ts';
 import { DevProcesses } from './dev.ts';
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
-    /** Console commands this module adds to `bespoke`. */
+    /** Console commands this module adds to `marmeon`. */
     readonly commands?: readonly CommandClass[];
   }
 }

@@ -1,8 +1,8 @@
 import { isAbsolute, join } from 'node:path';
-import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
-import { Encrypter } from '@bespokecore/encryption';
-import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@bespokecore/http';
-import { CookieJar, MiddlewarePriority, Router } from '@bespokecore/router';
+import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Encrypter } from '@marmeon/encryption';
+import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@marmeon/http';
+import { CookieJar, MiddlewarePriority, Router } from '@marmeon/router';
 import { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
 import { insecureCookieWarning, SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
@@ -19,7 +19,7 @@ import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
 import { RedisSessionStore } from './stores/redis.ts';
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
     /** Paths of this module that skip CSRF verification, e.g. webhooks: `['/webhooks/*']`. */
     readonly csrfExcept?: readonly string[];
@@ -28,7 +28,7 @@ declare module '@bespokecore/core' {
 
 /**
  * Registers the session and its store (`SESSION_DRIVER`), and adds StartSession
- * and VerifyCsrfToken to the `web` group. Found by `bespoke discover`.
+ * and VerifyCsrfToken to the `web` group. Found by `marmeon discover`.
  */
 export class SessionServiceProvider implements ServiceProvider {
   static config = [SessionConfig, CsrfConfig];
@@ -72,7 +72,7 @@ export class SessionServiceProvider implements ServiceProvider {
     if (driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new SessionSetupError('SESSION_DRIVER=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).');
+        throw new SessionSetupError('SESSION_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
       }
       const connections = app.container.make(redis.RedisConnections);
       connections.options(connection);
@@ -80,18 +80,18 @@ export class SessionServiceProvider implements ServiceProvider {
     } else if (driver === 'database') {
       const database = await importDatabase();
       if (!app.container.has(database.Connections)) {
-        throw new SessionSetupError('SESSION_DRIVER=database needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).');
+        throw new SessionSetupError('SESSION_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
       }
       app.container.make(database.Connections).options(connection);
     }
 
-    // The scheduler runs `bespoke session:prune`: then it is the one sweeper, and requests no longer draw the lottery.
-    const scheduler = await import('@bespokecore/scheduler').catch(() => undefined);
+    // The scheduler runs `marmeon session:prune`: then it is the one sweeper, and requests no longer draw the lottery.
+    const scheduler = await import('@marmeon/scheduler').catch(() => undefined);
     if (scheduler && app.container.has(scheduler.Scheduler) && app.container.make(scheduler.Scheduler).schedules(PruneSessionsCommand.command)) {
       app.container.make(SessionLottery).chance = 0;
     }
 
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeSessionTableCommand, PruneSessionsCommand]);
   }
 }
@@ -118,11 +118,11 @@ const SESSION_INFRASTRUCTURE = {
   system: 'The session store (SESSION_DRIVER=database)',
   remedy:
     "Give the sessions their own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, SESSION_CONNECTION=system, " +
-    'and `bespoke migrate` (the migration of `bespoke make:session-table` follows SESSION_CONNECTION) — or use Redis (SESSION_DRIVER=redis).',
+    'and `marmeon migrate` (the migration of `marmeon make:session-table` follows SESSION_CONNECTION) — or use Redis (SESSION_DRIVER=redis).',
 };
 
 /**
- * The connection the `sessions` table belongs on — for the migration `bespoke make:session-table` writes (`connection` in
+ * The connection the `sessions` table belongs on — for the migration `marmeon make:session-table` writes (`connection` in
  * `defineMigration`): `SESSION_CONNECTION` with the database driver, else `default`.
  */
 export function sessionTableConnection(container: Resolver): string {
@@ -130,8 +130,8 @@ export function sessionTableConnection(container: Resolver): string {
   return config.driver === 'database' ? config.connection : 'default';
 }
 
-const importDatabase = () => importOptional(() => import('@bespokecore/database'), '@bespokecore/database', 'database', 'pnpm add @bespokecore/database');
-const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis', 'redis', 'pnpm add @bespokecore/redis redis');
+const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add @marmeon/database');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add @marmeon/redis redis');
 
 /** The store of `SESSION_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
 function storeFor(config: SessionConfig, container: Resolver): SessionStore {

@@ -1,9 +1,9 @@
-import { createApplication, defineModule, type Container } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@bespokecore/http';
-import type { RouteBinder } from '@bespokecore/router';
-import { createHttpKernel } from '@bespokecore/server';
-import { CsrfProtection, SessionServiceProvider } from '@bespokecore/session';
+import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
+import type { RouteBinder } from '@marmeon/router';
+import { createHttpKernel } from '@marmeon/server';
+import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import {
@@ -166,7 +166,7 @@ async function boot() {
     let cookie = '';
     if (as !== undefined) {
       const response = await kernel.request(`/as/${as}`, { method: 'POST', headers: { accept: 'application/json' } });
-      cookie = response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='))!.split(';')[0]!;
+      cookie = response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='))!.split(';')[0]!;
     }
     return async (method: string, path: string, json?: unknown) => {
       const response = await kernel.request(path, {

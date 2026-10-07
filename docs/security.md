@@ -1,6 +1,6 @@
 # Security
 
-What a BespokeCore app protects by itself, what it leaves to you, and where each part is explained. The defaults are chosen to
+What a Marmeon app protects by itself, what it leaves to you, and where each part is explained. The defaults are chosen to
 be safe when nobody changes them; where a protection costs something (a dependency, a migration, a cache), it is a switch, and
 this page says which way it points. Found a vulnerability? Report it privately — [SECURITY.md](../SECURITY.md).
 
@@ -12,7 +12,7 @@ Development tools — the error page with code and queries, the devtools, `Serve
 server where `NODE_ENV` was forgotten is protected like production (E139,
 [the environment](../packages/core/README.md#the-environment-node_env)). Where the process sets no `NODE_ENV`, the app's `.env`
 may (E170) — a new app's says `development`. Set `NODE_ENV` in the server's environment (the image does; it wins over `.env`) and
-never deploy a developer's `.env`: a `bespoke start`, `queue:work` or `schedule:work` that runs as development because of one
+never deploy a developer's `.env`: a `marmeon start`, `queue:work` or `schedule:work` that runs as development because of one
 warns loudly, and its start line says `development (from .env)`.
 
 ## Requests from other sites (CSRF)
@@ -45,7 +45,7 @@ webhooks that cannot carry a token go into a module's `csrfExcept`.
 ## Keys
 
 `APP_KEY` encrypts cookies and sealed sessions and signs URLs; anyone who has it can forge them. Generate it once per environment
-(`bespoke key:generate`), keep it out of the repository and the image (the generated `.dockerignore` keeps every `.env*` out), and
+(`marmeon key:generate`), keep it out of the repository and the image (the generated `.dockerignore` keeps every `.env*` out), and
 rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable until they expire
 ([key rotation](../packages/encryption/README.md#key-rotation)).
 
@@ -90,7 +90,7 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
 
 ## Tables and exports
 
-A table of [@bespokecore/table](../packages/table/README.md) is one definition the server enforces on every request — the attacks of
+A table of [@marmeon/table](../packages/table/README.md) is one definition the server enforces on every request — the attacks of
 hand-written tables, and what stops each ([the whole model](tables.md#the-security-model)):
 
 - **Hidden columns stay hidden.** A column the policy hides is not selected — not in the SQL, so not in the props, the devtools'

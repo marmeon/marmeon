@@ -121,7 +121,7 @@ export default defineGegenproben({
       title: 'tempDir without its clean-up: the run fails and lists what is left',
       patch: [{ file: 'scripts/test/temp-dir.js', find: '  rmSync(dir, { recursive: true, force: true, maxRetries: 3 });\n', replace: '' }],
       run: { vitest: 'packages/core/src/environment.test.ts' },
-      expect: /The tests left \d+ temporary entr(?:y|ies) behind[\s\S]*bespoke-env-/,
+      expect: /The tests left \d+ temporary entr(?:y|ies) behind[\s\S]*marmeon-env-/,
     },
     {
       id: 'X1',

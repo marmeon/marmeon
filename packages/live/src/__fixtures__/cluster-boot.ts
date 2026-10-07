@@ -1,10 +1,10 @@
-// Boots an app with live props the way a worker of `bespoke start --workers=N` does (E140): the primary forks one worker of
+// Boots an app with live props the way a worker of `marmeon start --workers=N` does (E140): the primary forks one worker of
 // node:cluster with the workers' mark (CLUSTER_WORKER) and ends with its code. `single` boots in this process instead, with the
 // mark left in the environment — no worker. Prints `booted` or `failed: <message>`. Used by server.test.ts.
 import cluster from 'node:cluster';
-import { CLUSTER_WORKER, createApplication } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
+import { CLUSTER_WORKER, createApplication } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
 import { LiveServiceProvider } from '../index.ts';
 
 const [root = '.', mode = 'worker'] = process.argv.slice(2);

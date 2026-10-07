@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 /** Where the READMEs come from and how long browsers and caches may keep a page. */

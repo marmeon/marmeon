@@ -1,4 +1,4 @@
-import { Head, useForm, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, useForm, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
 export default function ConfirmPassword() {

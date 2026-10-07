@@ -4,7 +4,7 @@
  * Preloaded into the worker (`--import`) of the checkout being measured; nothing of this exists outside `pnpm bench`.
  *
  * Each measure is a small rewrite of one source file as it is loaded (a `module.registerHooks` load hook): the measure's code is
- * routed through `globalThis.__bespokeBench.run(measure, original, args)`, which counts the call and runs the original — or,
+ * routed through `globalThis.__marmeonBench.run(measure, original, args)`, which counts the call and runs the original — or,
  * when the measure is off, returns what the code did before Wave 8 without running it. An anchor that is no longer found exactly
  * once in its file stops the process (the code moved: update the anchor here).
  *
@@ -38,7 +38,7 @@ interface Rewrite {
   readonly replace: string;
 }
 
-const BENCH = '(globalThis as any).__bespokeBench';
+const BENCH = '(globalThis as any).__marmeonBench';
 
 const REWRITES: Record<Measure, Rewrite> = {
   'session-hash': {
@@ -76,7 +76,7 @@ const BEFORE: Record<Measure, (args: unknown[]) => unknown> = {
 export function install(checkout: string, off: readonly Measure[]): void {
   const counters = Object.fromEntries(MEASURES.map((measure) => [measure, 0])) as Record<Measure, number>;
   const disabled = new Set(off);
-  (globalThis as { __bespokeBench?: unknown }).__bespokeBench = {
+  (globalThis as { __marmeonBench?: unknown }).__marmeonBench = {
     counters,
     run(measure: Measure, original: (...args: unknown[]) => unknown, args: unknown[]): unknown {
       if (disabled.has(measure) && measure !== 'csp') return BEFORE[measure](args);

@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@bespokecore/core';
-import { channels, messageBase, publishEnded, type DbQueryMessage } from '@bespokecore/core/diagnostics';
+import { runTransaction, TransactionError, transactionOf, token, type Application, type Logger } from '@marmeon/core';
+import { channels, messageBase, publishEnded, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode, type Transaction } from 'kysely';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
-import { BespokeDriver, DatabaseConnectionError, multipleConnections, withBespokeDriver } from './driver.ts';
+import { MarmeonDriver, DatabaseConnectionError, multipleConnections, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
@@ -62,7 +62,7 @@ export class Connections {
   /** Infrastructure handles (E108), per connection and user. */
   readonly #infrastructure = new Map<string, Kysely<any>>();
   /** Postgres: the infrastructure's own pool, per connection. */
-  readonly #pools = new Map<string, BespokeDriver>();
+  readonly #pools = new Map<string, MarmeonDriver>();
   readonly #listeners = new Set<(query: QueryEvent) => void>();
   #destroyed = false;
 
@@ -235,7 +235,7 @@ export class Connections {
     if (!instance) {
       const options = this.options(name);
       const metadata = new SchemaMetadata(options.driver);
-      const { dialect, driver } = withBespokeDriver(this.#dialect(options), { name, target: describeConnection(options), metadata });
+      const { dialect, driver } = withMarmeonDriver(this.#dialect(options), { name, target: describeConnection(options), metadata });
       const plugins = [metadata.plugin(), new RelationsPlugin(options.driver, metadata), new SecretColumnsPlugin(metadata)];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
@@ -245,12 +245,12 @@ export class Connections {
   }
 
   /** Postgres: the infrastructure's own pool of a connection, created on first use (it connects on its first query). */
-  #pool(name: string, options: Extract<ConnectionOptions, { driver: 'pgsql' }>): BespokeDriver {
+  #pool(name: string, options: Extract<ConnectionOptions, { driver: 'pgsql' }>): MarmeonDriver {
     if (this.#destroyed) throw new Error(`The database connections are closed (the application shut down); cannot use "${name}".`);
     let pool = this.#pools.get(name);
     if (!pool) {
       const dialect = this.#dialect({ ...options, poolMax: options.infrastructurePoolMax ?? DEFAULT_INFRASTRUCTURE_POOL_MAX });
-      pool = new BespokeDriver(dialect.createDriver(), { name, target: `${describeConnection(options)} (infrastructure pool)` }, { detached: true });
+      pool = new MarmeonDriver(dialect.createDriver(), { name, target: `${describeConnection(options)} (infrastructure pool)` }, { detached: true });
       this.#pools.set(name, pool);
     }
     return pool;
@@ -303,7 +303,7 @@ const queries = channels.tracing('db.query');
 
 interface Instance {
   db: Kysely<any>;
-  driver: BespokeDriver;
+  driver: MarmeonDriver;
   metadata: SchemaMetadata;
   file?: string;
 }

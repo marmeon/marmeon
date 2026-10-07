@@ -48,7 +48,7 @@ const last = (api: DevtoolsFeature): TimelineEntry => api.timeline.at(-1)!;
 const holds = (api: DevtoolsFeature) => JSON.stringify([api.timeline, api.snapshots, api.hydration, [...api.cache]]).includes(CANARY);
 
 afterEach(() => {
-  delete (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__;
+  delete (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__;
 });
 
 describe('the devtools data feature — every request of the client core, by kind (W7 step 9)', () => {
@@ -93,9 +93,9 @@ describe('the devtools data feature — every request of the client core, by kin
     await settle();
     expect(last(api)).toMatchObject({ kind: 'validation', status: 422, outcome: 'invalid', errors: { email: ['taken'] } });
     // A hint on the live stream (W6.10) — no request of its own.
-    const stream = new win.EventSource!(`/_bespoke/live?c=${CANARY}.users.1`) as unknown as FakeEventSource;
+    const stream = new win.EventSource!(`/_marmeon/live?c=${CANARY}.users.1`) as unknown as FakeEventSource;
     stream.emit('refresh', { channel: 'users.1', only: ['secret'], seq: 2 });
-    expect(last(api)).toMatchObject({ kind: 'live', method: 'SSE', url: '/_bespoke/live', channel: 'users.1', hinted: ['secret'] }); // not the signed channels
+    expect(last(api)).toMatchObject({ kind: 'live', method: 'SSE', url: '/_marmeon/live', channel: 'users.1', hinted: ['secret'] }); // not the signed channels
     // A newer visit cancels the one under way.
     const slow = navigator.visit('/slow');
     await navigator.visit('/users/2');
@@ -145,7 +145,7 @@ describe('the devtools data feature — every request of the client core, by kin
 describe('what only the dev hook sees — optimistic patches and hydration errors', () => {
   it('a patch: the props it changed, before and as shown, with the action it went with — and how it ended', async () => {
     const { api, navigator } = tab();
-    (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__ = devtoolsReports(() => api);
+    (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = devtoolsReports(() => api);
     const actions = withActions(navigator);
     await actions.action('/like', { optimistic: actions.optimistic(() => ({ liked: true, secret: 'patched' })) });
     await settle();
@@ -176,7 +176,7 @@ describe('what only the dev hook sees — optimistic patches and hydration error
 describe('the document is left (E36): nothing of it stays — in no slot, not in the feature’s lists', () => {
   it('signed out (a 409): timeline, patches, hydration errors and the bar’s cache are empty, `left` says so, listeners hear it', async () => {
     const { api, navigator, win } = tab();
-    (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__ = devtoolsReports(() => api);
+    (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = devtoolsReports(() => api);
     const actions = withActions(navigator);
     await navigator.visit('/users/1/edit', { layer: true });
     await actions.action('/like', { optimistic: actions.optimistic(() => ({ liked: CANARY })) });

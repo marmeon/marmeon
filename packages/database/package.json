@@ -1,23 +1,23 @@
 {
-  "name": "@bespokecore/database",
+  "name": "@marmeon/database",
   "version": "0.1.0",
-  "description": "Data access on Kysely for BespokeCore apps: connections, migrations per module, generated table types, repositories and pagination.",
+  "description": "Data access on Kysely for Marmeon apps: connections, migrations per module, generated table types, repositories and pagination.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "database",
     "kysely",
     "migrations",
     "sqlite",
     "postgres"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/database#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/database#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/database"
   },
   "engines": {
@@ -27,7 +27,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -56,23 +56,23 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "DatabaseServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/router": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/router": "workspace:*",
     "kysely": "^0.29.6",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
-    "@bespokecore/cli": "workspace:*",
+    "marmeon": "workspace:*",
     "pg": "^8.23.0"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     },
     "pg": {
@@ -80,7 +80,7 @@
     }
   },
   "devDependencies": {
-    "@bespokecore/cli": "workspace:*",
+    "marmeon": "workspace:*",
     "@types/pg": "^8.23.1",
     "pg": "^8.23.0"
   }

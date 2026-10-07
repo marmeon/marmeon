@@ -1,4 +1,4 @@
-import type { Application, ModuleDefinition } from '@bespokecore/core';
+import type { Application, ModuleDefinition } from '@marmeon/core';
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
@@ -78,7 +78,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     expect(source).toContain('password: Secret<string>;');
     expect(source).toContain('totp_secret: Secret<string | null>;');
     expect(source).toContain('recovery_code: Secret<string | null>;');
-    expect(source).toContain("import type { Generated, Secret, Timestamp } from '@bespokecore/database';");
+    expect(source).toContain("import type { Generated, Secret, Timestamp } from '@marmeon/database';");
   });
 
   it('leaves them out of every select-all and returning-all result', async () => {

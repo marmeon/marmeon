@@ -1,10 +1,10 @@
-import type { Cache, Lock } from '@bespokecore/cache';
-import { durationToMilliseconds, type Duration, type StandardSchemaV1 } from '@bespokecore/core';
+import type { Cache, Lock } from '@marmeon/cache';
+import { durationToMilliseconds, type Duration, type StandardSchemaV1 } from '@marmeon/core';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobMiddleware, JobStatics, SchemaOutput, UniqueDispatchOptions } from './job.ts';
 import { QueueError } from './registry.ts';
 
-// Unique jobs, `withoutOverlapping` and `job.once` (E85): locks and markers in the app's cache (@bespokecore/cache, an
+// Unique jobs, `withoutOverlapping` and `job.once` (E85): locks and markers in the app's cache (@marmeon/cache, an
 // optional peer — loaded where it is used). Every lock expires, so a crashed worker never blocks a key for good.
 
 /** Seconds a unique lock holds at most, unless `uniqueFor` says otherwise. */

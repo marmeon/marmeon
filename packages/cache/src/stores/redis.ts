@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { SystemClock, type Clock } from '@bespokecore/core';
-import type { RedisConnection, RedisScript } from '@bespokecore/redis';
+import { SystemClock, type Clock } from '@marmeon/core';
+import type { RedisConnection, RedisScript } from '@marmeon/redis';
 import type { CacheStore, Entry } from '../cache.ts';
 
-/** A named Lua script (the shape of `defineRedisScript` — built here, as @bespokecore/redis is an optional peer). */
+/** A named Lua script (the shape of `defineRedisScript` — built here, as @marmeon/redis is an optional peer). */
 function script(name: string, lua: string): RedisScript {
   return Object.freeze({ name, lua, sha: createHash('sha1').update(lua).digest('hex') });
 }

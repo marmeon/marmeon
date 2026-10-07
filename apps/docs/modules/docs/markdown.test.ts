@@ -28,12 +28,12 @@ describe('README markdown', () => {
 
   it('gives headings GitHub’s anchors — duplicates numbered — and builds the table of contents from H2 and H3', () => {
     const { title, toc, anchors } = render(
-      '# @bespokecore/x\n\n## Diagnostics: `@bespokecore/core/diagnostics` (E118)\n\n### The pages: `/_bespoke/devtools`\n\n## Auth & Mail\n\n#### Deep\n\n## Auth & Mail',
+      '# @marmeon/x\n\n## Diagnostics: `@marmeon/core/diagnostics` (E118)\n\n### The pages: `/_marmeon/devtools`\n\n## Auth & Mail\n\n#### Deep\n\n## Auth & Mail',
     );
-    expect(title).toBe('@bespokecore/x');
+    expect(title).toBe('@marmeon/x');
     expect(toc).toEqual([
-      { depth: 2, text: 'Diagnostics: @bespokecore/core/diagnostics (E118)', id: 'diagnostics-bespokecorecorediagnostics-e118' },
-      { depth: 3, text: 'The pages: /_bespoke/devtools', id: 'the-pages-_bespokedevtools' },
+      { depth: 2, text: 'Diagnostics: @marmeon/core/diagnostics (E118)', id: 'diagnostics-marmeoncorediagnostics-e118' },
+      { depth: 3, text: 'The pages: /_marmeon/devtools', id: 'the-pages-_marmeondevtools' },
       { depth: 2, text: 'Auth & Mail', id: 'auth--mail' },
       { depth: 2, text: 'Auth & Mail', id: 'auth--mail-1' },
     ]);
@@ -63,9 +63,9 @@ describe('README markdown', () => {
   });
 
   it('splits the page into sections for the search: heading, anchor and text (code included)', () => {
-    const { sections } = render('# @bespokecore/x\n\nIntro.\n\n## Locks\n\nUse `onOneServer()`.\n\n```ts\ns.command(x).onOneServer();\n```');
+    const { sections } = render('# @marmeon/x\n\nIntro.\n\n## Locks\n\nUse `onOneServer()`.\n\n```ts\ns.command(x).onOneServer();\n```');
     expect(sections).toEqual([
-      { heading: '@bespokecore/x', anchor: '', depth: 1, text: 'Intro.' },
+      { heading: '@marmeon/x', anchor: '', depth: 1, text: 'Intro.' },
       { heading: 'Locks', anchor: 'locks', depth: 2, text: 'Use onOneServer(). s.command(x).onOneServer();' },
     ]);
   });

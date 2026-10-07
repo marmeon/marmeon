@@ -1,9 +1,9 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Database, secret } from '@bespokecore/database';
-import { DevtoolsStore, FileStore } from '@bespokecore/devtools';
-import { createTestApp } from '@bespokecore/testing';
+import { Database, secret } from '@marmeon/database';
+import { DevtoolsStore, FileStore } from '@marmeon/devtools';
+import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserRepository } from '../auth/index.ts';
@@ -36,7 +36,7 @@ describe('the devtools', () => {
     expect(insert?.type === 'query' && insert.content.parameters.every((parameter) => parameter === '[redacted]')).toBe(true);
     // Queued with the registration's commit: the verification mail (a queued listener) and the welcome mail.
     const queued = batch.filter((entry) => entry.type === 'job').map((entry) => (entry.type === 'job' ? `${entry.content.name} ${entry.content.status}` : ''));
-    expect(queued).toEqual(expect.arrayContaining(['bespoke.listener queued', 'auth.send-welcome-mail queued']));
+    expect(queued).toEqual(expect.arrayContaining(['marmeon.listener queued', 'auth.send-welcome-mail queued']));
     app.devtools.assertRecorded('event', (event) => event.name === 'auth.registered');
 
     // A worker runs them — in other batches, still tied to the request (E131) — and sends the mails.
@@ -46,7 +46,7 @@ describe('the devtools', () => {
     expect(attempts.length).toBeGreaterThanOrEqual(2);
     expect(attempts.every((entry) => entry.requestId === requestId && entry.batch !== request.batch)).toBe(true);
     // The listener's payload is encrypted (E105): only "[encrypted]" is on record.
-    expect(attempts.find((entry) => entry.content.name === 'bespoke.listener')?.content.payload).toBe('[encrypted]');
+    expect(attempts.find((entry) => entry.content.name === 'marmeon.listener')?.content.payload).toBe('[encrypted]');
     const mails = app.devtools.entries('mail').filter((entry) => entry.requestId === requestId);
     expect(mails.map((entry) => entry.content.mailable).sort()).toEqual(expect.arrayContaining(['VerifyEmailMail', 'WelcomeMail']));
     // The verification link is signed: its signature is masked in the body.
@@ -72,10 +72,10 @@ describe('the devtools', () => {
     const users = app.make(UserRepository);
     await users.markEmailVerified((await users.findByEmail(email))!.id);
     const first = await app.post('/login', { form: { email, password } }).assertRedirect('/users/me');
-    const sessions = [first.cookie('bespoke_session')!];
+    const sessions = [first.cookie('marmeon_session')!];
     const csrf = decodeURIComponent(first.cookie('XSRF-TOKEN')!);
-    await app.withCookie('bespoke_session', sessions[0]!).post('/logout', { form: {} }).assertRedirect();
-    sessions.push((await app.post('/login', { form: { email, password } }).assertRedirect('/users/me')).cookie('bespoke_session')!);
+    await app.withCookie('marmeon_session', sessions[0]!).post('/logout', { form: {} }).assertRedirect();
+    sessions.push((await app.post('/login', { form: { email, password } }).assertRedirect('/users/me')).cookie('marmeon_session')!);
 
     // The reset: the worker makes the token and mails the link; the link moves it into a cookie.
     await app.post('/forgot-password', { form: { email }, headers: { referer: 'http://localhost/forgot-password' } }).assertRedirect('/forgot-password');
@@ -90,8 +90,8 @@ describe('the devtools', () => {
 
     // An API token: created (its plain text shown once), then used.
     const login = await app.post('/login', { form: { email, password: newPassword } }).assertRedirect('/users/me');
-    sessions.push(login.cookie('bespoke_session')!);
-    const created = await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).navigating().post('/settings/tokens', { json: { name: 'CLI', abilities: ['users:read'] } }).assertOk();
+    sessions.push(login.cookie('marmeon_session')!);
+    const created = await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).navigating().post('/settings/tokens', { json: { name: 'CLI', abilities: ['users:read'] } }).assertOk();
     const apiToken = (created.page()!.props as { plainText: string }).plainText;
     await app.withHeaders({ authorization: `Bearer ${apiToken}` }).expectingJson().get('/api/users').assertOk();
     await app.devtools.settled();
@@ -100,7 +100,7 @@ describe('the devtools', () => {
     expect(String(hash)).toMatch(/^\$argon2id\$/);
     if (driver === 'database') expect(app.devtools.entries('query').some((query) => query.content.sql.includes('"sessions"') || query.content.sql.includes('sessions'))).toBe(true);
     // What the store writes, as it writes it: NDJSON files.
-    const directory = mkdtempSync(join(tmpdir(), 'bespoke-devtools-plain-'));
+    const directory = mkdtempSync(join(tmpdir(), 'marmeon-devtools-plain-'));
     try {
       await new FileStore({ directory }).write(app.devtools.entries());
       const written = readdirSync(directory).map((name) => readFileSync(join(directory, name), 'utf8')).join('');
@@ -116,7 +116,7 @@ describe('the devtools', () => {
   // The pages (W7 step 8): the registration as a visit, its queries, the jobs it queued, then what the worker did for it; the
   // sign-in after it — the protocol's 409 reload across the sign-in boundary, no failure; the scheduler's lock warning (E123).
   // Two password hashes, a worker and seven pages (the first ones render cold): 0.13 s here, 7–8 s on a fully loaded machine (W9 step 1).
-  it('show a registration in /_bespoke/devtools: the request, its queries, then the jobs and mails a worker ran for it', { timeout: 20_000 }, async () => {
+  it('show a registration in /_marmeon/devtools: the request, its queries, then the jobs and mails a worker ran for it', { timeout: 20_000 }, async () => {
     const app = await createTestApp(application, { database: 'refresh', devtools: true });
     const password = 'correct horse battery';
     const browser = { referer: 'http://localhost/register', 'sec-fetch-site': 'same-origin' };
@@ -133,32 +133,32 @@ describe('the devtools', () => {
     expect(signIn.tags).toContain('reload');
 
     // Opened in the browser that is signed in to the app: the pages neither read nor write its session — no cookie comes back.
-    const session = response.cookie('bespoke_session')!;
+    const session = response.cookie('marmeon_session')!;
     expect(session).toBeTruthy();
-    const list = await app.withCookie('bespoke_session', session).get('/_bespoke/devtools/requests').assertOk();
+    const list = await app.withCookie('marmeon_session', session).get('/_marmeon/devtools/requests').assertOk();
     expect(list.body).toContain('409 reload (history)');
     expect(list.headers.get('set-cookie')).toBeNull();
-    expect((await app.get(`/_bespoke/devtools/requests/${signIn.id}`).assertOk()).body).toContain("409 is the protocol's full reload, not a failure");
-    const page = (await app.get(`/_bespoke/devtools/requests/${request.id}`).assertOk()).body;
+    expect((await app.get(`/_marmeon/devtools/requests/${signIn.id}`).assertOk()).body).toContain("409 is the protocol's full reload, not a failure");
+    const page = (await app.get(`/_marmeon/devtools/requests/${request.id}`).assertOk()).body;
     expect(page).toContain('RegisterController');
     expect(page).toMatch(/Queries \(\d+,/);
-    expect(page).toMatch(/Job bespoke\.listener — attempt 1, done/);
+    expect(page).toMatch(/Job marmeon\.listener — attempt 1, done/);
     expect(page).toContain('VerifyEmailMail');
     expect(page).not.toContain(password);
 
     const mail = app.devtools.assertRecorded('mail', (content) => content.mailable === 'VerifyEmailMail');
-    const mailPage = (await app.get(`/_bespoke/devtools/mails/${mail.id}`).assertOk()).body;
-    expect(mailPage).toMatch(/<iframe class="mail" sandbox src="\/_bespoke\/devtools\/mails\/[^"]+\/html"/);
-    expect((await app.get(`/_bespoke/devtools/mails/${mail.id}/html`).assertOk()).body).toMatch(/signature=\[redacted\]/);
+    const mailPage = (await app.get(`/_marmeon/devtools/mails/${mail.id}`).assertOk()).body;
+    expect(mailPage).toMatch(/<iframe class="mail" sandbox src="\/_marmeon\/devtools\/mails\/[^"]+\/html"/);
+    expect((await app.get(`/_marmeon/devtools/mails/${mail.id}/html`).assertOk()).body).toMatch(/signature=\[redacted\]/);
 
-    const overview = (await app.get('/_bespoke/devtools').assertOk()).body;
+    const overview = (await app.get('/_marmeon/devtools').assertOk()).body;
     expect(overview).toContain('Scheduler (E123): onOneServer()');
     expect(overview).toContain('CACHE_DRIVER=memory');
-    expect((await app.get('/_bespoke/devtools/schedule').assertOk()).body).toContain('bespoke schedule:test session:prune');
-    await app.get('/_bespoke/devtools/queue').assertOk();
+    expect((await app.get('/_marmeon/devtools/schedule').assertOk()).body).toContain('marmeon schedule:test session:prune');
+    await app.get('/_marmeon/devtools/queue').assertOk();
     await app.close();
     // A test without the opt-in has no such pages (E115).
-    await (await createTestApp(application)).get('/_bespoke/devtools').assertNotFound();
+    await (await createTestApp(application)).get('/_marmeon/devtools').assertNotFound();
   });
 
   it('record nothing in a test that does not opt in — also one running as development (never into storage/framework/devtools)', async () => {

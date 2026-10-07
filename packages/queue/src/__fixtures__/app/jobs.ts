@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { CommandInput } from '@bespokecore/cli';
-import { Database, sql } from '@bespokecore/database';
+import type { CommandInput } from 'marmeon';
+import { Database, sql } from '@marmeon/database';
 import * as v from 'valibot';
 import { Queue, withoutOverlapping, type JobContext, type JobPayload } from '../../index.ts';
 
@@ -178,7 +178,7 @@ export class MailOnceJob {
 export const fixtureJobs = [RecordJob, SlowJob, GateJob, StubbornJob, UserJob, GuardedJob, UnguardedJob, MailOnceJob];
 
 /**
- * `bespoke fixture:dispatch --count=20 [--unique=key] [--n=1]`: dispatches `fixture.record` jobs at once — after printing
+ * `marmeon fixture:dispatch --count=20 [--unique=key] [--n=1]`: dispatches `fixture.record` jobs at once — after printing
  * "ready" and reading "go" on stdin, so two processes start together — and prints how many were queued.
  */
 export class DispatchCommand {

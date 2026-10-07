@@ -1,6 +1,6 @@
 // --- Type checks: useTable is typed by the table's props (W9 step 6) -------------------------------------------------------------
-import type { PageProps } from '@bespokecore/http';
-import { useTable } from '@bespokecore/react/table';
+import type { PageProps } from '@marmeon/http';
+import { useTable } from '@marmeon/react/table';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { ListMembersController } from './controllers/ListMembersController.ts';
 

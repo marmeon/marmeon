@@ -1,4 +1,4 @@
-import { Database } from '@bespokecore/database';
+import { Database } from '@marmeon/database';
 import { ProfileConfig } from './config.ts';
 
 export interface ActivityEntry {

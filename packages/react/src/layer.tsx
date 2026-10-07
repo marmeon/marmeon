@@ -1,5 +1,5 @@
-import type { Layer, LayerCloseOptions } from '@bespokecore/http/client';
-import type { PageObject } from '@bespokecore/http/page';
+import type { Layer, LayerCloseOptions } from '@marmeon/http/client';
+import type { PageObject } from '@marmeon/http/page';
 import { createContext, useContext, useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 
 /*
@@ -8,7 +8,7 @@ import { createContext, useContext, useEffect, useRef, type ComponentType, type 
  * (`LayerDialog`, `layer-dialog.tsx`) with it unless the app imports it for a frame of its own.
  */
 
-export type { LayerCloseOptions } from '@bespokecore/http/client';
+export type { LayerCloseOptions } from '@marmeon/http/client';
 
 /** How a layer looks: a dialog in the middle (`modal`) or a panel from the side (`slideover`). */
 export type LayerVariant = 'modal' | 'slideover';
@@ -21,7 +21,7 @@ export interface LayerFrameProps {
 }
 
 /**
- * The chrome around a layer's view — the app's (`createBespokeApp({ layer })`) or a view's own (`View.layer = MyFrame`).
+ * The chrome around a layer's view — the app's (`createMarmeonApp({ layer })`) or a view's own (`View.layer = MyFrame`).
  * Default: {@link LayerDialog}. A frame is what makes a layer a dialog: focus, Escape, the backdrop, the close button.
  */
 export type LayerFrame = ComponentType<LayerFrameProps>;
@@ -57,7 +57,7 @@ const OUTSIDE: LayerState = {
   key: undefined,
   once: false,
   close: () => {
-    if (process.env.NODE_ENV !== 'production') console.warn('[bespoke] useLayer().close() outside a layer does nothing — check useLayer().isLayer first.');
+    if (process.env.NODE_ENV !== 'production') console.warn('[marmeon] useLayer().close() outside a layer does nothing — check useLayer().isLayer first.');
     return Promise.resolve();
   },
   onClose: () => () => {},

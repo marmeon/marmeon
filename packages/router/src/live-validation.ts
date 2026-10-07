@@ -2,17 +2,17 @@ import type { StandardIssue } from './request-definition.ts';
 
 /**
  * Live validation (E62, Laravel's Precognition): a request to the route a form submits to — same method, same URL, same
- * body — that names the fields to check: `x-bespoke-validate: name,email`. The route runs as far as its validation: its
+ * body — that names the fields to check: `x-marmeon-validate: name,email`. The route runs as far as its validation: its
  * middleware (CSRF, authentication, throttling), its bindings, `authorize`, the request schema — then it answers `204` (the
  * named fields are valid) or `422` with the errors of the named fields only. Its controller's `handle` never runs: nothing is
  * created, sent or changed (the kernel also makes the request read-only, like an island's).
  *
- * The browser's copy of these names is in `@bespokecore/http/page` (which may not import the router).
+ * The browser's copy of these names is in `@marmeon/http/page` (which may not import the router).
  */
-export const VALIDATE_HEADER = 'x-bespoke-validate';
+export const VALIDATE_HEADER = 'x-marmeon-validate';
 
 /** On a live validation's `204` and `422`: the fields it checked — what tells the client the answer is the validation's. */
-export const VALIDATED_HEADER = 'x-bespoke-validated';
+export const VALIDATED_HEADER = 'x-marmeon-validated';
 
 /** How many fields one live validation may name (a form, not a data structure). */
 const MAX_FIELDS = 64;
@@ -21,7 +21,7 @@ const MAX_FIELDS = 64;
 const FIELD = /^[\w-]{1,100}(?:\.[\w-]{1,100}){0,9}$/;
 
 /**
- * The fields a live validation names (`x-bespoke-validate`), or undefined for any other request. Unusable names are left out
+ * The fields a live validation names (`x-marmeon-validate`), or undefined for any other request. Unusable names are left out
  * — a request with none left is still a live validation (the router refuses it: 400), never a submit.
  */
 export function liveValidationFields(request: Request): readonly string[] | undefined {

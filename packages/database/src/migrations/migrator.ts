@@ -1,7 +1,7 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { Application } from '@bespokecore/core';
+import { Application } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { SECRETS_TABLE } from '../metadata.ts';

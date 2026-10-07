@@ -5,9 +5,9 @@ import { defineGegenproben } from '../define.ts';
  *
  * - **`useForm`** — a `reset()` inside `onSuccess`/`onFinish` read the defaults of before the submit, and the saved form stayed dirty
  *   (the guard asked on leaving): the saved defaults are taken in the next render, after the callbacks (G1).
- * - **One query at a time per connection** (`BespokeDriver`) — a transaction's and a test's pinned connection run `Promise.all`'s
+ * - **One query at a time per connection** (`MarmeonDriver`) — a transaction's and a test's pinned connection run `Promise.all`'s
  *   queries in turns: the driver's wrapper (G2), the wrapper's queue itself (G2b), and on Postgres per `pg` client (G2c, needs the
- *   container: `BESPOKE_TEST_PGSQL_URL`).
+ *   container: `MARMEON_TEST_PGSQL_URL`).
  * - **A server render with `router.reloading()`** — failed with R11 since Wave 9 step 3 (`/notifications`): an inert target (G3).
  * - **A filter on a hidden column** is hidden with it — its counts would tell the column's values (G4).
  * - **No CORS in development** — Vite's default answered any localhost page with `Access-Control-Allow-Origin` (G5).
@@ -21,7 +21,7 @@ import { defineGegenproben } from '../define.ts';
  * - **SMTP requires STARTTLS** (E192, Max 06.10.): without the measure a server that does not upgrade gets the mail in plain text (G12),
  *   and the configuration's default asks for it (G12b).
  */
-const PGSQL = { BESPOKE_TEST_PGSQL_URL: 'postgres://bespoke:secret@localhost:55432/bespoke', DB_CONNECTION: 'pgsql', DB_URL: 'postgres://bespoke:secret@localhost:55432/bespoke' };
+const PGSQL = { MARMEON_TEST_PGSQL_URL: 'postgres://marmeon:secret@localhost:55432/marmeon', DB_CONNECTION: 'pgsql', DB_URL: 'postgres://marmeon:secret@localhost:55432/marmeon' };
 const SERIAL = 'packages/database/src/serial-queries.test.ts';
 const START = 'packages/server/src/start-server.test.ts';
 
@@ -63,11 +63,11 @@ export default defineGegenproben({
         {
           file: 'packages/react/src/app.tsx',
           find: '  if (!navigator) return laterTarget(new Promise(() => {}));',
-          replace: "  if (!navigator) throw new Error('[bespoke:R11] Visits run in the browser, not while rendering on the server.');",
+          replace: "  if (!navigator) throw new Error('[marmeon:R11] Visits run in the browser, not while rendering on the server.');",
         },
       ],
       run: { vitest: 'packages/react/src/server.test.tsx', name: 'renders a page that builds reloads and optimistic patches' },
-      expect: /\[bespoke:R11\] Visits run in the browser/,
+      expect: /\[marmeon:R11\] Visits run in the browser/,
     },
     {
       id: 'G4',
@@ -93,7 +93,7 @@ export default defineGegenproben({
       id: 'G6',
       title: 'an S3 temporary URL without the type: HTML stored under .png is served inline as HTML',
       patch: [{ file: 'packages/storage/src/drivers/s3.ts', find: '      ResponseContentType: type,\n', replace: '' }],
-      run: { vitest: 'packages/storage/src/s3.test.ts', name: 'names the type by the file name', env: { BESPOKE_TEST_S3_ENDPOINT: 'http://127.0.0.1:56333' } },
+      run: { vitest: 'packages/storage/src/s3.test.ts', name: 'names the type by the file name', env: { MARMEON_TEST_S3_ENDPOINT: 'http://127.0.0.1:56333' } },
       expect: /expected \[ 'text\/html', 'inline' \] to deeply equal \[ 'image\/png', 'inline' \]/,
     },
     {

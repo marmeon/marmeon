@@ -1,5 +1,5 @@
-import { Clock, currentLogContext } from '@bespokecore/core';
-import { Database, sql } from '@bespokecore/database';
+import { Clock, currentLogContext } from '@marmeon/core';
+import { Database, sql } from '@marmeon/database';
 
 /** Records a run of its task — its name, the minute (by the app's clock) and the process — in the table `ran`. */
 export class RecordRun {

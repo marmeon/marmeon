@@ -1,5 +1,5 @@
 /**
- * `@bespokecore/react/table-tanstack` — a bridge from `useTable` to TanStack Table v9 (`@tanstack/react-table`, an optional peer) for an
+ * `@marmeon/react/table-tanstack` — a bridge from `useTable` to TanStack Table v9 (`@tanstack/react-table`, an optional peer) for an
  * app that wants TanStack's header and cell model, column sizing or pinning on a server-driven table (E183). The server still sorts,
  * filters and pages: TanStack runs in manual mode, and its sorting, pagination and row selection go back through `useTable` — a visit
  * of the page's URL, the entry's selection. Nothing of TanStack runs here (types only): TanStack is in a bundle only where the app
@@ -7,8 +7,8 @@
  *
  * ```tsx
  * import { rowPaginationFeature, rowSelectionFeature, rowSortingFeature, tableFeatures, useTable as useTanStackTable } from '@tanstack/react-table';
- * import { useTable } from '@bespokecore/react/table';
- * import { toTanStack } from '@bespokecore/react/table-tanstack';
+ * import { useTable } from '@marmeon/react/table';
+ * import { toTanStack } from '@marmeon/react/table-tanstack';
  *
  * const features = tableFeatures({ rowSortingFeature, rowPaginationFeature, rowSelectionFeature });   // module scope: stable
  * const table = useTable(props.members);
@@ -16,7 +16,7 @@
  * ```
  */
 import type { ColumnDef, OnChangeFn, PaginationState, RowSelectionState, SortingState, TableFeatures, TableOptions, Updater } from '@tanstack/react-table';
-import type { AnyTableData, RowOf, SortableOf } from '@bespokecore/table/client';
+import type { AnyTableData, RowOf, SortableOf } from '@marmeon/table/client';
 import type { Table } from './table.ts';
 
 export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {

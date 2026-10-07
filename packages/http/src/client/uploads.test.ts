@@ -60,7 +60,7 @@ async function start(options: { target?: (init: RequestInit) => Response | Promi
     if (options.target) return options.target(init);
     const upload = options.s3
       ? { method: 'POST', url: 'https://bucket.s3.example/', fields: { key: 'tmp/1', policy: 'p', 'x-amz-signature': 's' } }
-      : { method: 'PUT', url: '/_bespoke/uploads/1?expires=1&signature=x' };
+      : { method: 'PUT', url: '/_marmeon/uploads/1?expires=1&signature=x' };
     return Response.json({ token: TOKEN, upload });
   };
   document.cookie = 'XSRF-TOKEN=xsrf-of-the-session';
@@ -82,7 +82,7 @@ describe('uploads (W6.9): a target from the form’s route, the bytes with progr
     expect(targets[0]).toMatchObject({ method: 'PUT', body: JSON.stringify({ name: 'me.png', size: 4, type: 'image/png' }) });
     expect(targets[0]!.headers).toMatchObject({ [UPLOAD_HEADER]: 'avatar', accept: 'application/json', 'x-xsrf-token': 'xsrf-of-the-session' });
     // 2. The bytes: the file itself, to the signed URL, with progress.
-    expect(sent[0]).toMatchObject({ method: 'PUT', url: '/_bespoke/uploads/1?expires=1&signature=x', headers: { 'content-type': 'application/octet-stream', [UPLOAD_HEADER]: 'bytes' } });
+    expect(sent[0]).toMatchObject({ method: 'PUT', url: '/_marmeon/uploads/1?expires=1&signature=x', headers: { 'content-type': 'application/octet-stream', [UPLOAD_HEADER]: 'bytes' } });
     expect(sent[0]!.body).toBeInstanceOf(File);
     expect(states.map((state) => state && [state.status, state.progress])).toEqual([
       ['uploading', 0.25],

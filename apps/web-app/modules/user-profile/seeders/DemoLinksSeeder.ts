@@ -1,4 +1,4 @@
-import type { SeedContext } from '@bespokecore/database';
+import type { SeedContext } from '@marmeon/database';
 import { ProfileLinkFactory } from '../factories/ProfileLinkFactory.ts';
 
 /** Links on the demo profiles — after auth's DemoUsersSeeder (module order). */

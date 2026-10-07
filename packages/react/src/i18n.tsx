@@ -1,6 +1,6 @@
-// Types only: @bespokecore/i18n is an optional peer — apps without translations do not install it (and `bespoke discover`
+// Types only: @marmeon/i18n is an optional peer — apps without translations do not install it (and `marmeon discover`
 // does not find its provider, its middleware and the session it needs).
-import type { Catalog, Formatter, Namespace, Translate } from '@bespokecore/i18n/messages';
+import type { Catalog, Formatter, Namespace, Translate } from '@marmeon/i18n/messages';
 import { createContext, useContext, useMemo } from 'react';
 
 export interface I18nValue {
@@ -17,9 +17,9 @@ function useI18n(hook: string): I18nValue {
   if (!value) {
     throw new Error(
       process.env.NODE_ENV !== 'production'
-        ? `[bespoke:R12] ${hook} needs the app's messages: createBespokeApp({ messages }) and createSsrRenderer(resolve, { messages }) — ` +
-            "with `messages = createMessageLoader(lang)` from '@bespokecore/i18n/messages' and `lang` from 'virtual:bespoke/lang'."
-        : `[bespoke:R12] ${hook}`,
+        ? `[marmeon:R12] ${hook} needs the app's messages: createMarmeonApp({ messages }) and createSsrRenderer(resolve, { messages }) — ` +
+            "with `messages = createMessageLoader(lang)` from '@marmeon/i18n/messages' and `lang` from 'virtual:marmeon/lang'."
+        : `[marmeon:R12] ${hook}`,
     );
   }
   return value;

@@ -1,10 +1,10 @@
-import type { Html } from '@bespokecore/core';
+import type { Html } from '@marmeon/core';
 import type { MailContent } from './message.ts';
 
 // The escaping template lives in core (W7 step 8: the devtools render with it too); mail re-exports it unchanged.
-export { escapeHtml, Html, html, raw } from '@bespokecore/core';
+export { escapeHtml, Html, html, raw } from '@marmeon/core';
 /** @internal — shared by the `html` and `mjml` templates. */
-export { interpolateHtml as interpolate } from '@bespokecore/core';
+export { interpolateHtml as interpolate } from '@marmeon/core';
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#96': '`', nbsp: ' ' };
 

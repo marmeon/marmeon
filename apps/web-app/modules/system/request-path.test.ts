@@ -1,4 +1,4 @@
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
@@ -38,7 +38,7 @@ async function copies(run: () => PromiseLike<unknown>): Promise<number> {
 describe('response copies per request (W8 step 9)', () => {
   it('none for a page with a session — a visit and a document, with cookies, language, security headers and the CSP', async () => {
     const failed = await app.post('/login', { form: { email: 'nobody@example.com', password: 'wrong' }, headers: referer });
-    const guest = app.withCookie('bespoke_session', failed.cookie('bespoke_session')!);
+    const guest = app.withCookie('marmeon_session', failed.cookie('marmeon_session')!);
     expect(await copies(() => guest.navigating().get('/login').assertOk())).toBe(0);
     let document: Awaited<ReturnType<TestApp['get']>> | undefined;
     expect(await copies(async () => (document = await guest.get('/login', { headers: { accept: 'text/html' } }).assertOk()))).toBe(0);
@@ -50,7 +50,7 @@ describe('response copies per request (W8 step 9)', () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     let login: Awaited<ReturnType<TestApp['post']>> | undefined;
     expect(await copies(async () => (login = await app.post('/login', { form: { email: 'ada@example.com', password: 'password' }, headers: referer }).assertRedirect()))).toBe(0);
-    const ada = app.withCookie('bespoke_session', login!.cookie('bespoke_session')!);
+    const ada = app.withCookie('marmeon_session', login!.cookie('marmeon_session')!);
     let people: Awaited<ReturnType<TestApp['get']>> | undefined;
     expect(await copies(async () => (people = await ada.navigating().get('/people').assertOk()))).toBe(0);
     expect(people!.headers.get('cache-control')).toContain('no-store');

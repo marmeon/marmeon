@@ -412,6 +412,6 @@ function warnOnce(): (error: unknown, during: string) => void {
     const key = `${during}:${(error as { code?: unknown })?.code ?? (error instanceof Error ? error.message : String(error))}`;
     if (warned.has(key)) return;
     warned.add(key);
-    process.emitWarning(`The devtools could not ${during} their entries (storage/framework/devtools): ${error instanceof Error ? error.message : String(error)}`, 'BespokeDevtoolsWarning');
+    process.emitWarning(`The devtools could not ${during} their entries (storage/framework/devtools): ${error instanceof Error ? error.message : String(error)}`, 'MarmeonDevtoolsWarning');
   };
 }

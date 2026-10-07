@@ -1,5 +1,5 @@
 /**
- * Polling, UI-free (part of the client core — `usePoll` of @bespokecore/react builds on it): runs `run` every `interval` ms — one at a time, the
+ * Polling, UI-free (part of the client core — `usePoll` of @marmeon/react builds on it): runs `run` every `interval` ms — one at a time, the
  * next one `interval` after the last one finished — and pauses while the tab is in the background.
  */
 
@@ -29,7 +29,7 @@ export interface Poll {
  */
 export function createPoll(run: () => Promise<unknown>, interval: number, { keepAlive = false, document = globalThis.document }: PollOptions = {}): Poll {
   if (!(interval > 0)) {
-    throw new RangeError(process.env.NODE_ENV !== 'production' ? `[bespoke:C5] A poll needs an interval above 0 ms, got ${interval}.` : `[bespoke:C5] ${interval}`);
+    throw new RangeError(process.env.NODE_ENV !== 'production' ? `[marmeon:C5] A poll needs an interval above 0 ms, got ${interval}.` : `[marmeon:C5] ${interval}`);
   }
   let running = false;
   let inFlight = false;

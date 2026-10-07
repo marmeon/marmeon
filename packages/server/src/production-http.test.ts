@@ -3,10 +3,10 @@ import { get } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
-import { createApplication, CSP_NONCE_PLACEHOLDER, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { cacheControl, contentSecurityPolicy, HttpServiceProvider, PAGE_HEADER, view, type SsrRender } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { createApplication, CSP_NONCE_PLACEHOLDER, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { cacheControl, contentSecurityPolicy, HttpServiceProvider, PAGE_HEADER, view, type SsrRender } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { ASSET_CACHE_CONTROL } from './assets.ts';
 import { withNonce } from './html.ts';
@@ -109,7 +109,7 @@ describe('TRUSTED_PROXIES (E162)', async () => {
 
 describe('the build\'s assets (E162)', async () => {
   // Removed with the file (also when a filter skips this suite and its afterAll would not run).
-  const clientDir = tempDir('bespoke-assets-');
+  const clientDir = tempDir('marmeon-assets-');
   mkdirSync(join(clientDir, 'assets'));
   const script = `export const greeting = ${JSON.stringify('hello '.repeat(200))};\n`;
   writeFileSync(join(clientDir, 'assets/index-AbC123.js'), script);
@@ -136,7 +136,7 @@ describe('the build\'s assets (E162)', async () => {
     expect((await app.request('/assets/logo-Zz9.png')).headers.get('cache-control')).toBe(ASSET_CACHE_CONTROL);
   });
 
-  it('come as the .br bespoke build wrote (else .gz) when the browser accepts it — with the original Content-Type and Vary', async () => {
+  it('come as the .br marmeon build wrote (else .gz) when the browser accepts it — with the original Content-Type and Vary', async () => {
     const br = await app.request('/assets/index-AbC123.js', { headers: { 'accept-encoding': 'gzip, deflate, br, zstd' } });
     expect(br.headers.get('content-encoding')).toBe('br');
     expect(br.headers.get('content-type')).toMatch(/^text\/javascript/);
@@ -259,7 +259,7 @@ describe('the CSP nonce (E147)', async () => {
 
 describe('startServer and HOST (E162)', () => {
   it('listens on HOST only — 127.0.0.1 answers, the start line names it', async () => {
-    const root = tempDir('bespoke-host-');
+    const root = tempDir('marmeon-host-');
     mkdirSync(join(root, 'dist/client'), { recursive: true });
     mkdirSync(join(root, 'dist/server'), { recursive: true });
     writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
@@ -278,7 +278,7 @@ describe('startServer and HOST (E162)', () => {
       const address = running.server.address() as AddressInfo;
       expect(address.address).toBe('127.0.0.1');
       expect((await fetch(`http://127.0.0.1:${address.port}/up`)).status).toBe(200);
-      expect(lines.find((line) => line.startsWith('BespokeCore in'))).toContain(`on http://127.0.0.1:${address.port}`);
+      expect(lines.find((line) => line.startsWith('Marmeon in'))).toContain(`on http://127.0.0.1:${address.port}`);
     } finally {
       await running.close();
       await app.shutdown();
@@ -297,7 +297,7 @@ describe('keep-alive behind a proxy (W9 step 4)', () => {
     });
 
   it('keeps idle connections 65 s (longer than nginx keeps its own to the app, 60 s) — KEEP_ALIVE_TIMEOUT sets it; headers may take a second more', async () => {
-    const root = tempDir('bespoke-keepalive-');
+    const root = tempDir('marmeon-keepalive-');
     mkdirSync(join(root, 'dist/client'), { recursive: true });
     mkdirSync(join(root, 'dist/server'), { recursive: true });
     writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');

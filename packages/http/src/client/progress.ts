@@ -1,12 +1,12 @@
 /**
  * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one. An opt-in feature (E82): an app
- * that wants it passes `progressBar(options)` to its adapter (React: `createBespokeApp({ progress: progressBar({ delay: 250 }) })`)
+ * that wants it passes `progressBar(options)` to its adapter (React: `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`)
  * — one that does not carries none of it, and builds its own indicator from the visit events and `aria-busy` if it likes.
  * Styled through CSS variables, set as inline style properties (no `<style>` element, so a strict
  * Content-Security-Policy does not block it):
  *
  * ```css
- * :root { --bespoke-progress-color: #e11d48; --bespoke-progress-height: 2px; }
+ * :root { --marmeon-progress-color: #e11d48; --marmeon-progress-height: 2px; }
  * ```
  */
 import type { Navigator } from './navigation.ts';
@@ -14,14 +14,14 @@ import type { Navigator } from './navigation.ts';
 export interface ProgressOptions {
   /** Milliseconds before the bar shows — fast visits never show it. Default 250. */
   delay?: number;
-  /** The bar's color, unless `--bespoke-progress-color` sets one. */
+  /** The bar's color, unless `--marmeon-progress-color` sets one. */
   color?: string;
 }
 
 export const DEFAULT_PROGRESS_DELAY = 250;
 
 /** The attribute on the bar's element (for styles and tests). */
-export const PROGRESS_ATTRIBUTE = 'data-bespoke-progress';
+export const PROGRESS_ATTRIBUTE = 'data-marmeon-progress';
 
 /**
  * A progress indicator an adapter starts with its navigator (E82): attached to the navigator's visit events, it returns the
@@ -29,7 +29,7 @@ export const PROGRESS_ATTRIBUTE = 'data-bespoke-progress';
  */
 export type ProgressIndicator = (navigator: Pick<Navigator, 'on'>) => () => void;
 
-/** The progress bar as an adapter's indicator (E82): `createBespokeApp({ progress: progressBar({ delay: 250 }) })`. */
+/** The progress bar as an adapter's indicator (E82): `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`. */
 export function progressBar(options: ProgressOptions = {}): ProgressIndicator {
   return (navigator) => showProgress(navigator, options);
 }
@@ -61,9 +61,9 @@ export function showProgress(navigator: Pick<Navigator, 'on'>, { delay = DEFAULT
     style.top = '0';
     style.left = '0';
     style.width = '100%';
-    style.height = 'var(--bespoke-progress-height, 3px)';
-    style.background = `var(--bespoke-progress-color, ${color})`;
-    style.zIndex = 'var(--bespoke-progress-z-index, 2147483647)';
+    style.height = 'var(--marmeon-progress-height, 3px)';
+    style.background = `var(--marmeon-progress-color, ${color})`;
+    style.zIndex = 'var(--marmeon-progress-z-index, 2147483647)';
     style.transformOrigin = '0 0';
     style.transition = 'transform 200ms ease, opacity 300ms ease';
     style.pointerEvents = 'none';

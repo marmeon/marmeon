@@ -43,7 +43,7 @@ export function renderErrorPage(report: ErrorReport): string {
   <p class="where"><code>${escape(request.method)} ${escape(request.url)}</code>${route?.name ? ` · <code>${escape(route.name)}</code>` : ''}${route?.controller ? ` · <code>${escape(route.controller)}</code>` : ''}${report.requestId ? ` · request <code>${escape(report.requestId)}</code>` : ''}</p>
 </header>
 ${report.solutions.length > 0 ? `<section class="solutions" aria-label="Solutions">${report.solutions.map(solutionHtml).join('')}</section>` : ''}
-<nav aria-label="Sections">${nav.map(([id, label]) => `<a href="#${id}">${escape(label!)}</a>`).join('')}<button type="button" class="copy" data-copy="bespoke-markdown" hidden>Copy as Markdown</button></nav>
+<nav aria-label="Sections">${nav.map(([id, label]) => `<a href="#${id}">${escape(label!)}</a>`).join('')}<button type="button" class="copy" data-copy="marmeon-markdown" hidden>Copy as Markdown</button></nav>
 
 <section id="stack">
   <h2>Stack</h2>
@@ -125,16 +125,16 @@ ${
     ['NODE_ENV', report.environment.nodeEnv ?? '(unset)'],
     ['Platform', report.environment.platform],
     ['App', report.environment.app ?? ''],
-    ['BespokeCore', report.environment.packages.map((entry) => `${entry.name}${entry.version ? `@${entry.version}` : ''}`).join(', ') || '(no packages discovered)'],
+    ['Marmeon', report.environment.packages.map((entry) => `${entry.name}${entry.version ? `@${entry.version}` : ''}`).join(', ') || '(no packages discovered)'],
   ])}
 </section>
 
 <section id="markdown">
   <h2>Markdown</h2>
   <p class="muted">The report for an issue or a chat — redacted like this page. Select it and copy, or use the button above.</p>
-  <textarea id="bespoke-markdown" readonly rows="14" spellcheck="false">${escape(markdown)}</textarea>
+  <textarea id="marmeon-markdown" readonly rows="14" spellcheck="false">${escape(markdown)}</textarea>
 </section>
-<iframe name="bespoke-editor" title="Opens files in your editor" hidden></iframe>
+<iframe name="marmeon-editor" title="Opens files in your editor" hidden></iframe>
 </main>
 <script>${SCRIPT}</script>
 </body>
@@ -180,7 +180,7 @@ function stackHtml(frames: readonly StackFrame[], opened: StackFrame | undefined
 
 function frameHtml(frame: StackFrame, open: boolean): string {
   const label = `${frame.fn ? `<b>${escape(frame.fn)}</b> ` : ''}<span class="file">${escape(frame.display)}:${frame.line}:${frame.column}</span>`;
-  const editor = frame.internal ? '' : ` <a class="editor" href="${escape(editorLink(frame))}" target="bespoke-editor">open in editor</a>`;
+  const editor = frame.internal ? '' : ` <a class="editor" href="${escape(editorLink(frame))}" target="marmeon-editor">open in editor</a>`;
   const kind = frame.app ? 'app' : frame.internal ? 'internal' : 'vendor';
   if (!frame.snippet) return `<div class="frame ${kind}">${label}${editor}</div>`;
   const code = frame.snippet

@@ -1,4 +1,4 @@
-import { Storage, type PrivateDisk, type PublicDisk } from '@bespokecore/storage';
+import { Storage, type PrivateDisk, type PublicDisk } from '@marmeon/storage';
 
 // Disk names and visibility come from config/storage.ts (StorageTypes) — checked by `pnpm typecheck`, never run.
 export function storageTypes(storage: Storage) {

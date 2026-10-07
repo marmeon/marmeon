@@ -15,7 +15,7 @@ const fixtures = join(here, '../../fixtures/discovery');
 const corePackage = join(here, '../..');
 const tsc = join(here, '../../../../node_modules/.bin/tsc');
 
-const DEV = ['@bespokecore/source', ...runtimeConditions([], '')];
+const DEV = ['@marmeon/source', ...runtimeConditions([], '')];
 const PROD = runtimeConditions([], '');
 
 /**
@@ -24,7 +24,7 @@ const PROD = runtimeConditions([], '');
  * import @acme/clock — only @acme/mailer can.
  */
 function createFixtureApp(): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-discovery-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-discovery-')));
   // @acme/source plays a workspace package: linked from outside node_modules, like pnpm
   // does for workspace:* — the only place where Node strips types of a dependency.
   const store = (name: string) =>
@@ -42,23 +42,23 @@ function createFixtureApp(): string {
   }
   link(store('acme-clock'), join(root, 'store/acme-mailer/node_modules/@acme/clock'));
 
-  // Built with plain tsc, like any third-party package — no BespokeCore tooling.
+  // Built with plain tsc, like any third-party package — no Marmeon tooling.
   for (const name of ['acme-clock', 'acme-mailer', 'acme-source']) execFileSync(tsc, ['-p', store(name)]);
 
   const app = join(root, 'app');
   mkdirSync(app);
   writeFileSync(
     join(app, 'package.json'),
-    JSON.stringify({ type: 'module', dependencies: { '@acme/mailer': '1.0.0', '@acme/source': '1.0.0', '@bespokecore/core': '*' } }),
+    JSON.stringify({ type: 'module', dependencies: { '@acme/mailer': '1.0.0', '@acme/source': '1.0.0', '@marmeon/core': '*' } }),
   );
   link(store('acme-mailer'), join(app, 'node_modules/@acme/mailer'));
   link(store('acme-source'), join(app, 'node_modules/@acme/source'));
-  link(corePackage, join(app, 'node_modules/@bespokecore/core'));
+  link(corePackage, join(app, 'node_modules/@marmeon/core'));
   cpSync(join(fixtures, 'main.ts'), join(app, 'main.ts'));
   return app;
 }
 
-describe('bespoke discover', () => {
+describe('marmeon discover', () => {
   let app: string;
   beforeAll(() => {
     app = createFixtureApp();
@@ -67,7 +67,7 @@ describe('bespoke discover', () => {
 
   const run = () =>
     JSON.parse(
-      execFileSync(process.execPath, ['--conditions=@bespokecore/source', join(app, 'main.ts')], { cwd: app, encoding: 'utf8' }),
+      execFileSync(process.execPath, ['--conditions=@marmeon/source', join(app, 'main.ts')], { cwd: app, encoding: 'utf8' }),
     );
 
   it('makes classes of installed packages injectable and registers their providers', () => {
@@ -130,10 +130,10 @@ describe('bespoke discover', () => {
   });
 
   it('regenerates atomically — processes racing to rewrite the manifest never read half a file', async () => {
-    // The dev server, `bespoke` commands and test workers all regenerate after `pnpm add`.
+    // The dev server, `marmeon` commands and test workers all regenerate after `pnpm add`.
     writeFileSync(
       join(app, 'race.ts'),
-      `import { loadDiscoveredPackages } from '@bespokecore/core';
+      `import { loadDiscoveredPackages } from '@marmeon/core';
        let failures = 0;
        for (let i = 0; i < 25; i++) {
          try { await loadDiscoveredPackages({ root: import.meta.dirname, force: true }); } catch { failures++; }
@@ -141,21 +141,21 @@ describe('bespoke discover', () => {
        console.log(failures);`,
     );
     const race = () =>
-      promisify(execFile)(process.execPath, ['--conditions=@bespokecore/source', join(app, 'race.ts')], { cwd: app, encoding: 'utf8' });
+      promisify(execFile)(process.execPath, ['--conditions=@marmeon/source', join(app, 'race.ts')], { cwd: app, encoding: 'utf8' });
     const results = await Promise.all([race(), race(), race(), race()]);
 
     expect(results.map(({ stdout }) => stdout.trim())).toEqual(['0', '0', '0', '0']);
-    expect(readdirSync(join(app, '.bespoke')).filter((name) => name.endsWith('.tmp'))).toEqual([]); // no temporary files left behind
+    expect(readdirSync(join(app, '.marmeon')).filter((name) => name.endsWith('.tmp'))).toEqual([]); // no temporary files left behind
   }, 30_000);
 
   it('discovers again when a listed package is gone but package.json and the lockfile stayed — a production install without dev dependencies (E115)', async () => {
     writeFileSync(
       join(app, 'packages.ts'),
-      `import { loadDiscoveredPackages } from '@bespokecore/core';
+      `import { loadDiscoveredPackages } from '@marmeon/core';
        const { packages, regenerated } = await loadDiscoveredPackages({ root: import.meta.dirname });
        console.log(JSON.stringify({ packages, regenerated }));`,
     );
-    const packages = () => JSON.parse(execFileSync(process.execPath, ['--conditions=@bespokecore/source', join(app, 'packages.ts')], { cwd: app, encoding: 'utf8' })) as { packages: string[]; regenerated: boolean };
+    const packages = () => JSON.parse(execFileSync(process.execPath, ['--conditions=@marmeon/source', join(app, 'packages.ts')], { cwd: app, encoding: 'utf8' })) as { packages: string[]; regenerated: boolean };
     expect(packages().packages).toContain('@acme/source');
     // `pnpm install --prod`: the dev dependency's link and files are gone, package.json and the lockfile are the same.
     const workspace = join(dirname(app), 'workspace', 'acme-source');
@@ -171,35 +171,35 @@ describe('bespoke discover', () => {
   });
 
   it('keeps one manifest per set of conditions — switching between the monorepo source and the published dist rewrites nothing (E160)', async () => {
-    const mtime = (name: string) => statSync(join(app, '.bespoke', name)).mtimeMs;
+    const mtime = (name: string) => statSync(join(app, '.marmeon', name)).mtimeMs;
     await loadDiscoveredPackages({ root: app, conditions: DEV });
     await loadDiscoveredPackages({ root: app, conditions: PROD });
     const before = { source: mtime('manifest.source.json'), published: mtime('manifest.json') };
-    // `bespoke dev` → `bespoke start` → `bespoke dev`: each finds its own file up to date.
+    // `marmeon dev` → `marmeon start` → `marmeon dev`: each finds its own file up to date.
     expect((await loadDiscoveredPackages({ root: app, conditions: DEV })).regenerated).toBe(false);
     expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
     expect({ source: mtime('manifest.source.json'), published: mtime('manifest.json') }).toEqual(before);
-    expect(manifestPath(app, [...PROD, 'edge-light'])).toBe(join(app, '.bespoke', 'manifest.edge-light.json'));
+    expect(manifestPath(app, [...PROD, 'edge-light'])).toBe(join(app, '.marmeon', 'manifest.edge-light.json'));
   });
 
-  it('discovers in memory when .bespoke/ is read-only and the manifest is out of date — with one warning, never EACCES (E160)', async () => {
+  it('discovers in memory when .marmeon/ is read-only and the manifest is out of date — with one warning, never EACCES (E160)', async () => {
     await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
-    const file = join(app, '.bespoke', 'manifest.json');
+    const file = join(app, '.marmeon', 'manifest.json');
     writeFileSync(file, readFileSync(file, 'utf8').replace(/"hash": "\w+"/, '"hash": "outdated"'));
     const outdated = readFileSync(file, 'utf8');
-    chmodSync(join(app, '.bespoke'), 0o555);
+    chmodSync(join(app, '.marmeon'), 0o555);
     chmodSync(file, 0o444);
     try {
       const first = await loadDiscoveredPackages({ root: app, conditions: PROD });
       expect(first).toMatchObject({ regenerated: true, packages: ['@acme/clock', '@acme/mailer', '@acme/source'] });
-      expect(first.warning).toMatch(/^\.bespoke\/manifest\.json is out of date and \.bespoke\/ cannot be written \(EACCES\): the packages were discovered in memory/);
+      expect(first.warning).toMatch(/^\.marmeon\/manifest\.json is out of date and \.marmeon\/ cannot be written \(EACCES\): the packages were discovered in memory/);
       // Once per process — the next app of this process discovers in memory again, silently.
       const second = await loadDiscoveredPackages({ root: app, conditions: PROD });
       expect(second.regenerated).toBe(true);
       expect(second.warning).toBeUndefined();
       expect(readFileSync(file, 'utf8')).toBe(outdated);
     } finally {
-      chmodSync(join(app, '.bespoke'), 0o755);
+      chmodSync(join(app, '.marmeon'), 0o755);
       chmodSync(file, 0o644);
     }
     // Writable again: written as usual.
@@ -225,13 +225,13 @@ describe('peer dependencies', () => {
    * a peer is what the package depending on kit provides. Discovered only when the app has it.
    */
   function workspace(appHasExtra: boolean): string {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-peers-')));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-peers-')));
     const write = (dir: string, json: object) => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, 'package.json'), JSON.stringify(json));
     };
-    write(join(root, 'packages/kit'), { name: '@acme/kit', version: '1.0.0', peerDependencies: { '@acme/extra': '*' }, bespoke: {} });
-    write(join(root, 'packages/extra'), { name: '@acme/extra', version: '1.0.0', bespoke: {} });
+    write(join(root, 'packages/kit'), { name: '@acme/kit', version: '1.0.0', peerDependencies: { '@acme/extra': '*' }, marmeon: {} });
+    write(join(root, 'packages/extra'), { name: '@acme/extra', version: '1.0.0', marmeon: {} });
     mkdirSync(join(root, 'packages/kit/node_modules/@acme'), { recursive: true });
     symlinkSync(join(root, 'packages/extra'), join(root, 'packages/kit/node_modules/@acme/extra'), 'dir');
     const app = join(root, 'apps/app');
@@ -258,7 +258,7 @@ describe('exports resolution', () => {
   const pkg = (exports: unknown): PackageInfo => ({ name: 'x', dir: '/pkg', json: { exports } });
 
   it('follows the object key order, like Node', () => {
-    const exports = { '.': { '@bespokecore/source': './src/index.ts', types: './dist/index.d.ts', default: './dist/index.js' } };
+    const exports = { '.': { '@marmeon/source': './src/index.ts', types: './dist/index.d.ts', default: './dist/index.js' } };
     expect(resolveExports(pkg(exports), '.', DEV)).toBe('/pkg/src/index.ts');
     expect(resolveExports(pkg(exports), '.', PROD)).toBe('/pkg/dist/index.js');
   });

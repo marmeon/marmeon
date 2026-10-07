@@ -1,4 +1,4 @@
-import { AesGcmEncrypter } from '@bespokecore/encryption';
+import { AesGcmEncrypter } from '@marmeon/encryption';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EncryptedSessionCodec, plainSessionCodec, type SessionCodec } from '../codec.ts';
 import type { SessionConfig } from '../config.ts';

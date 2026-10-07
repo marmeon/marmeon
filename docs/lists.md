@@ -3,7 +3,7 @@
 Most pages of an app are lists: people, orders, notifications — searched, sorted, paged or loaded a bit more at a time, with
 actions on their rows. This guide puts the parts together: the **query schema** that makes the URL the list's typed state, **pages
 and cursors**, **merged props** for "load more", and what happens to a list when an action or a live hint reloads it. For a table
-with columns, selection, bulk actions and a CSV export there is @bespokecore/table — the guide [tables](tables.md) — built on the
+with columns, selection, bulk actions and a CSV export there is @marmeon/table — the guide [tables](tables.md) — built on the
 same parts.
 
 ## The URL is the state: query schemas
@@ -16,7 +16,7 @@ export const ListPeopleRequest = defineRequest({
   query: v.object({
     q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
     sort: v.optional(v.picklist(['name', '-name', 'joined', '-joined']), 'name'),
-    ...pageQuery({ perPage: [10, 25, 50] }),          // ?page= and ?per_page= — @bespokecore/database
+    ...pageQuery({ perPage: [10, 25, 50] }),          // ?page= and ?per_page= — @marmeon/database
   }),
 });
 // handle(ctx: ContextOf<typeof ListPeopleRequest>) — ctx.query: { q: string; sort: 'name' | …; page: number; per_page: 10 | 25 | 50 }
@@ -51,7 +51,7 @@ const page = await paginate(this.#db, query, ctx.query);        // or repository
 what to do ("this query has no page — spread pageQuery() into the route's query schema …"). `?page=-1` or `?per_page=100000` fall
 back to their defaults like every query field. `paginationFrom(ctx.query)` still works but is deprecated.
 
-`<Pagination meta={page.meta} />` of `@bespokecore/react` links the pages, built from the **parsed query**: the search, the sort and the
+`<Pagination meta={page.meta} />` of `@marmeon/react` links the pages, built from the **parsed query**: the search, the sort and the
 page size stay, the defaults stay out (`?page=1` is no page's URL), keys the schema does not know are not carried along. Its texts
 are English; give it the page's language through `labels` from the app's own messages (E38) — best in a small wrapper, as the web
 app's `layouts/Pagination.tsx`:
@@ -68,14 +68,14 @@ export function Pagination(props: Omit<PaginationProps, 'labels'>) {
 }
 ```
 
-A route whose schema has no page field gets a development warning (`[bespoke:R17]`) from `<Pagination>`.
+A route whose schema has no page field gets a development warning (`[marmeon:R17]`) from `<Pagination>`.
 
 ## Cursors and "load more"
 
 For long lists and feeds: keyset pagination — no count, no offset, nobody shown twice while rows are added.
 
 ```ts
-constructor(db: Database<'blog'>, encrypter: Encrypter) { … }      // Encrypter from @bespokecore/encryption
+constructor(db: Database<'blog'>, encrypter: Encrypter) { … }      // Encrypter from @marmeon/encryption
 
 const page = await cursorPaginate(this.#db.selectFrom('articles').select(['id', 'title', 'published_at']), {
   column: 'published_at', direction: 'desc', cursor: ctx.query.cursor, perPage: 20, encrypter: this.#encrypter,

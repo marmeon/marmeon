@@ -1,10 +1,10 @@
-# @bespokecore/scheduler
+# @marmeon/scheduler
 
-Scheduled tasks (E88): written in the modules, run by a process of their own — `bespoke schedule:work` (a tick at every
-minute; `bespoke dev` starts one) or `bespoke schedule:run` from a system cron every minute. Its locks and its last tick live in
-the app's cache ([@bespokecore/cache](../cache/README.md)); `s.job()` queues through [@bespokecore/queue](../queue/README.md).
+Scheduled tasks (E88): written in the modules, run by a process of their own — `marmeon schedule:work` (a tick at every
+minute; `marmeon dev` starts one) or `marmeon schedule:run` from a system cron every minute. Its locks and its last tick live in
+the app's cache ([@marmeon/cache](../cache/README.md)); `s.job()` queues through [@marmeon/queue](../queue/README.md).
 
-`bespoke discover` registers its `SchedulerServiceProvider` like any installed package. A scheduler process needs the cache's
+`marmeon discover` registers its `SchedulerServiceProvider` like any installed package. A scheduler process needs the cache's
 provider (without it `schedule:work` and `schedule:run` refuse to start, with a `ScheduleError`); the queue only when a
 schedule calls `s.job()`.
 
@@ -20,7 +20,7 @@ export const schedule = defineSchedule((s) => {
 ```
 
 ```text
-bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | schedule:test <name>
+marmeon schedule:work [--stop-timeout=30] | schedule:run | schedule:list | schedule:test <name>
 ```
 
 - **Tasks:** `s.command(name | CommandClass, args?)` runs a console command in the scheduler's process; `s.job(Job, payload?)`
@@ -52,7 +52,7 @@ bespoke schedule:work [--stop-timeout=30] | schedule:run | schedule:list | sched
 
   ```text
   onOneServer()/withoutOverlapping() lock in CACHE_DRIVER=file: locks only hold on this machine. With more than one
-  scheduler instance (more servers), use CACHE_DRIVER=database (bespoke make:cache-table) or redis. Tasks: auth:prune-tokens, session:prune
+  scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis. Tasks: auth:prune-tokens, session:prune
   ```
 
   Two `schedule:work` on one machine share a `file` cache: an `onOneServer()` task still runs once a minute. With `memory`
@@ -90,13 +90,13 @@ them in `app.events`:
 `reason` is why it ran: `due`, `catch-up` or `test` (`schedule:test`). Listen to one (`listen(ScheduledTaskFailed,
 AlertOnFailedTask)` — the web app raises an alert) or to all of them (`listen(ScheduledTaskEvent, …)`). They are not
 queueable: listeners run in the scheduler's process; a listener's error is logged as a warning and changes nothing about
-the run. Tools ([@bespokecore/devtools](../devtools/README.md), [@bespokecore/otel](../otel/README.md)) use the
+the run. Tools ([@marmeon/devtools](../devtools/README.md), [@marmeon/otel](../otel/README.md)) use the
 `schedule.task` channel instead ([the channels](../core/README.md#the-channels), E118): one traced message per run with `task`,
 `minute`, `reason`, `outcome`, `skipped` and `durationMs`.
 
 ## Testing
 
-Testing ([@bespokecore/testing](../testing/README.md), with the test clock): `app.schedule.due(time)` — the tasks due then;
+Testing ([@marmeon/testing](../testing/README.md), with the test clock): `app.schedule.due(time)` — the tasks due then;
 `await app.schedule.run(time)` — moves the clock there and runs them (catching up what was missed since the last `run`);
 `app.schedule.runTask(name)`; `app.schedule.tasks` — every task's name.
 
@@ -114,14 +114,14 @@ Prune commands of the framework to schedule — each one statement (or one guard
 ## Production
 
 In production run **one `schedule:work` per server** under a supervisor (or `schedule:run` from cron every minute:
-`* * * * * cd /app && bespoke schedule:run` — it waits for the runs and exits 1 if one failed), next to the web processes and
+`* * * * * cd /app && marmeon schedule:run` — it waits for the runs and exits 1 if one failed), next to the web processes and
 `queue:work`; `onOneServer()` tasks then run once across them. **SIGTERM/SIGINT:** no new tick; runs still going get
 `--stop-timeout` seconds, then the process ends and frees their overlap locks. `schedule:work` runs in the one Node process
-`bespoke` started (E159); its first line names its tasks and the environment `environments(…)` compares against (E139:
+`marmeon` started (E159); its first line names its tasks and the environment `environments(…)` compares against (E139:
 `Running the schedule every minute: 3 tasks (…) — in production (protected)`). As `development` only because the app's `.env`
 says so (E170) it logs a loud warning and runs anyway — set `NODE_ENV` in the supervisor's environment
 ([where it comes from](../core/README.md#the-environment-node_env)); a crontab line gets the server's environment from nowhere, so
-name it there (`* * * * * cd /app && NODE_ENV=production bespoke schedule:run`). `bespoke dev` starts it with the server when a
-module has a schedule (E101). `bespoke make:docker` writes the role as a `scheduler` container next to `web` and `worker` (one
+name it there (`* * * * * cd /app && NODE_ENV=production marmeon schedule:run`). `marmeon dev` starts it with the server when a
+module has a schedule (E101). `marmeon make:docker` writes the role as a `scheduler` container next to `web` and `worker` (one
 image, tini as PID 1, no health check) and as `deploy/systemd/scheduler.service`
-([@bespokecore/cli](../cli/README.md#production-files-makedocker-e141)).
+([marmeon](../cli/README.md#production-files-makedocker-e141)).

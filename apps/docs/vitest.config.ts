@@ -1,7 +1,7 @@
-import { bespoke } from '@bespokecore/vite';
+import { marmeon } from '@marmeon/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [bespoke({ test: true })],
+  plugins: [marmeon({ test: true })],
   test: { include: ['modules/**/*.test.ts'] },
 });

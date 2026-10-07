@@ -1,16 +1,16 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/board" }
-import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/page';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, usePage } from './app.tsx';
+import { MarmeonApp, usePage } from './app.tsx';
 import { useLiveUpdates } from './live.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useBlocker } from './state.ts';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,7 +68,7 @@ beforeEach(() => {
   FakeSource.opened = [];
   vi.stubGlobal('EventSource', FakeSource);
   vi.spyOn(window, 'fetch').mockImplementation(async (_input, init = {}) => {
-    reloads.push(new Headers(init.headers as Record<string, string>).get('x-bespoke-partial-data') ?? 'all');
+    reloads.push(new Headers(init.headers as Record<string, string>).get('x-marmeon-partial-data') ?? 'all');
     return new Response(JSON.stringify(board(['a', 'b'])), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: 'true' } });
   });
 });
@@ -85,7 +85,7 @@ const wait = (ms = 20) => act(async () => void (await new Promise((resolve) => s
 async function mount() {
   const initial = board(['a']);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={await resolve(initial.component)} resolve={resolve} />));
+  await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={await resolve(initial.component)} resolve={resolve} />));
   for (let i = 0; i < 50 && FakeSource.opened.length === 0; i++) await wait(5);
 }
 

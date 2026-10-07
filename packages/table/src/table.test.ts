@@ -29,7 +29,7 @@ async function page(application: TableTestApp, user: number, query = '', path = 
 
 const names = (members: Members) => members.rows.map((row) => row.name);
 
-describe.each(drivers)('@bespokecore/table on %s', (driver) => {
+describe.each(drivers)('@marmeon/table on %s', (driver) => {
   describe('the page prop (resolve)', () => {
     it('sends the visible columns only — a hidden one has no entry, no value in any row, no word in the response', async () => {
       const application = await app(driver);
@@ -144,7 +144,9 @@ describe.each(drivers)('@bespokecore/table on %s', (driver) => {
       expect(first.page).toMatchObject({ type: 'cursor', perPage: 2 });
       expect(first.query.cursor).toBe('feed_cursor');
       const cursor = (first.page as { nextCursor: string }).nextCursor;
-      expect(cursor).not.toContain('Ada');
+      // A plain cursor would be the row's values as JSON (`["Ada",1]`); quotes are outside the ciphertext's alphabet — a bare `Ada` is not
+      // (it turned up at random in an encrypted cursor once).
+      expect(cursor, 'the cursor holds the row in plain text').not.toContain('"Ada"');
       const second = (await feed(`feed_cursor=${encodeURIComponent(cursor)}`)).feed!;
       expect(names(second)).toEqual(['Edsger', 'Alan']);
       expect((await feed(`feed_cursor=${encodeURIComponent(`${cursor.slice(0, -4)}AAAA`)}`)).status, 'a changed cursor was taken').toBe(400);
@@ -401,7 +403,7 @@ describe.each(drivers)('@bespokecore/table on %s', (driver) => {
       await expect(tables.resolve(MembersTable, ctx as never)).rejects.toThrow('give its request the table\'s schema: defineRequest({ query: membersTable.query })');
     });
 
-    it('answers an action request (x-bespoke-action) like useAction expects — JSON, no-store', async () => {
+    it('answers an action request (x-marmeon-action) like useAction expects — JSON, no-store', async () => {
       const application = await app(driver);
       const response = await application.request('/teams/1/_tables/members/actions/deactivate', { method: 'POST', user: ADA, json: { key: 4 }, action: true });
       expect(response.status).toBe(200);

@@ -6,7 +6,7 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "ignore": [],
-  "fixed": [["@bespokecore/*", "bespokecore", "create-bespoke-app"]],
+  "fixed": [["@marmeon/*", "marmeon", "create-marmeon"]],
   "linked": [],
   "updateInternalDependencies": "patch",
   "privatePackages": { "version": false, "tag": false }

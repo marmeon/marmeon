@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
-import { CookieJar } from '@bespokecore/router';
+import { CookieJar } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
@@ -287,7 +287,7 @@ describe('Session', () => {
 });
 
 describe('session stores', () => {
-  const directory = () => tempDir('bespoke-sessions-');
+  const directory = () => tempDir('marmeon-sessions-');
 
   it('file: survives a restart (a new store instance), writes atomically, private files', async () => {
     const dir = directory();

@@ -1,18 +1,18 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
-import type { Kysely } from '@bespokecore/database';
+import { SystemClock, type Clock } from '@marmeon/core';
+import type { Kysely } from '@marmeon/database';
 import type { CacheStore, Entry } from '../cache.ts';
 
-/** The tables `bespoke make:cache-table` creates (E96: the app owns the migration; the store types them itself). */
+/** The tables `marmeon make:cache-table` creates (E96: the app owns the migration; the store types them itself). */
 export const CACHE_TABLE = 'cache';
 export const CACHE_LOCKS_TABLE = 'cache_locks';
 
-/** A connection of @bespokecore/database, and which SQL it speaks. */
+/** A connection of @marmeon/database, and which SQL it speaks. */
 export interface DatabaseStoreConnection {
   readonly db: Kysely<any>;
   readonly driver: 'sqlite' | 'pgsql';
 }
 
-type Sql = (typeof import('@bespokecore/database'))['sql'];
+type Sql = (typeof import('@marmeon/database'))['sql'];
 
 /**
  * The cache in the app's database (`CACHE_DRIVER=database`): a row per key in `cache` (the value as JSON, the expiry
@@ -126,8 +126,8 @@ export class DatabaseStore implements CacheStore {
   }
 
   async #use(): Promise<DatabaseStoreConnection & { sql: Sql }> {
-    // Imported here, not at the top: @bespokecore/database is an optional peer of the cache.
-    this.#sql ??= import('@bespokecore/database').then((module) => module.sql);
+    // Imported here, not at the top: @marmeon/database is an optional peer of the cache.
+    this.#sql ??= import('@marmeon/database').then((module) => module.sql);
     const [connection, sql] = await Promise.all([this.#connection(), this.#sql]);
     return { ...connection, sql };
   }

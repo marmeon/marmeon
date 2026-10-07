@@ -37,7 +37,7 @@ const thrown = (fn: () => unknown): unknown => {
 describe('the core solutions (E130)', () => {
   it('a binding that is missing: bind it in a provider', async () => {
     const [solution] = await solutions.find(thrown(() => new Container().make(WelcomeService)));
-    expect(solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'bespoke discover', docs: 'packages/core/README.md#the-containers-errors' });
+    expect(solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'marmeon discover', docs: 'packages/core/README.md#the-containers-errors' });
     expect(solution?.text).toContain('(needed by WelcomeService)');
   });
 
@@ -80,7 +80,7 @@ describe('the core solutions (E130)', () => {
   });
 
   it('TypeScript under node_modules: install the package as it is published (its dist/)', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-ts-in-node-modules-')));
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-ts-in-node-modules-')));
     try {
       mkdirSync(join(dir, 'node_modules/shipped'), { recursive: true });
       writeFileSync(join(dir, 'node_modules/shipped/index.ts'), 'export const value: number = 1;\n');
@@ -90,7 +90,7 @@ describe('the core solutions (E130)', () => {
       const error = Object.assign(new Error(thrownByNode.message), { code: thrownByNode.code });
       expect((error as { code?: string }).code).toBe('ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING');
       const [solution] = await solutions.find(error);
-      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'packages/core/README.md#discovery-the-bespoke-field-and-bespoke-discover' });
+      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'packages/core/README.md#discovery-the-marmeon-field-and-marmeon-discover' });
       expect(solution?.text).toContain('node_modules/shipped/index.ts');
     } finally {
       rmSync(dir, { recursive: true, force: true });

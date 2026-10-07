@@ -10,7 +10,7 @@ const PACKAGE = fileURLToPath(new URL('../..', import.meta.url));
 
 /** Starts a contender process and waits until it has its store open. */
 async function contender(target: StoreTarget, operation: 'hit' | 'add', count: number, key: string) {
-  const child = spawn(process.execPath, ['--conditions=@bespokecore/source', CONTENDER, JSON.stringify(target), operation, String(count), key], {
+  const child = spawn(process.execPath, ['--conditions=@marmeon/source', CONTENDER, JSON.stringify(target), operation, String(count), key], {
     cwd: PACKAGE,
     stdio: ['pipe', 'pipe', 'inherit'],
   });

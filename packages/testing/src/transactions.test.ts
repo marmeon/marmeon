@@ -1,8 +1,8 @@
 import { tmpdir } from 'node:os';
-import { defineModule, type ApplicationOptions } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, inTransaction, type Generated } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { AfterResponse, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
+import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, inTransaction, type Generated } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { AfterResponse, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
 
@@ -42,7 +42,7 @@ class DeferInTransactionController extends Controller {
   }
 }
 
-const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 describe.each(drivers)('work after the response on %s', (driver) => {

@@ -1,4 +1,4 @@
-import type { Application, ModuleDefinition } from '@bespokecore/core';
+import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';

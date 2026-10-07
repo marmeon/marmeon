@@ -1,5 +1,5 @@
 import { relative } from 'node:path';
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 import { TypeGenerator } from '../types-gen/generator.ts';
 
 /**
@@ -25,7 +25,7 @@ export class DbTypesCommand {
         output.success(`${file} matches the migrations.`);
         return 0;
       }
-      output.error(`${file} is out of date — run: bespoke db:types`);
+      output.error(`${file} is out of date — run: marmeon db:types`);
       return 1;
     }
     await writeTypes(this.#generator, output, root);

@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { connect, createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from 'node:net';
-import { runTransaction, type Logger } from '@bespokecore/core';
-import { RedisConnections, defineRedisScript } from '@bespokecore/redis';
+import { runTransaction, type Logger } from '@marmeon/core';
+import { RedisConnections, defineRedisScript } from '@marmeon/redis';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryLiveBackend, type LiveBackend, type LiveMessage } from './backend.ts';
 import { LiveBroadcaster } from './broadcaster.ts';
@@ -12,7 +12,7 @@ import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
 import { LiveStreamReader } from './test-stream.ts';
 
-const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 const OPTIONS: LiveHubOptions = { heartbeat: 20, retry: 3000, maxStreams: 100 };
@@ -70,8 +70,8 @@ describe('live tokens — the answer that declares a channel signs it for its se
   });
 });
 
-describe('the stream endpoint — GET /_bespoke/live (E89, E90)', () => {
-  const request = (query: string, headers: Record<string, string> = {}) => ({ request: new Request(`http://app.test/_bespoke/live?${query}`, { headers }) }) as never;
+describe('the stream endpoint — GET /_marmeon/live (E89, E90)', () => {
+  const request = (query: string, headers: Record<string, string> = {}) => ({ request: new Request(`http://app.test/_marmeon/live?${query}`, { headers }) }) as never;
   const pair = (channel: string, scope = ADA) => `c=${encodeURIComponent(`${tokens.sign(scope, channel)}.${channel}`)}`;
 
   it('opens a stream for channels signed for this session — with the headers of E104', async () => {
@@ -239,7 +239,7 @@ describe('the stream — hints, never data (E89, E104)', () => {
     expect(everyHint.length).toBeGreaterThan(2);
   });
 
-  it('the tab that caused a refresh (x-bespoke-connection) gets it with nothing to reload — the others with its props', async () => {
+  it('the tab that caused a refresh (x-marmeon-connection) gets it with nothing to reload — the others with its props', async () => {
     const backend = new MemoryLiveBackend();
     const hub = hubOf(backend);
     const a = await open(hub, ['users.1'], { connection: 'tab-a-0001' });
@@ -575,7 +575,7 @@ describe.runIf(REDIS_URL)('the redis backend — every process hears every hint 
   }
 
   it('a refresh in one process reaches a stream in the other — with the shared sequence', async () => {
-    const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
     const one = processOf(prefix);
     const two = processOf(prefix);
     const reader = await open(two.hub, ['users.1']);
@@ -594,7 +594,7 @@ describe.runIf(REDIS_URL)('the redis backend — every process hears every hint 
   });
 
   it('the sequence key expired (a day without hints) or was deleted: the open stream still hears the hints that count from 1 again', async () => {
-    const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
     const { backend, hub, connections } = processOf(prefix);
     const reader = await open(hub, ['users.1']);
     await reader.hello();
@@ -607,7 +607,7 @@ describe.runIf(REDIS_URL)('the redis backend — every process hears every hint 
   });
 
   it('a session that ended in one process closes its streams in the other', async () => {
-    const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
     const one = processOf(prefix);
     const two = processOf(prefix);
     const reader = await open(two.hub, ['users.1']);

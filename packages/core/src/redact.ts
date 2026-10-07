@@ -120,7 +120,7 @@ export interface RedactableQuery {
  * - **by key**, at any depth: {@link REDACTED_KEYS} (passwords, tokens, secrets, cookies, `authorization`, signatures — so also
  *   `set-cookie`, `x-xsrf-token`, `_token`) and the names packages add — the session's cookie (`addKeys`);
  * - **in text**: what {@link redactText} masks (values of sensitive keys, bearer credentials, URL passwords, password hashes,
- *   API tokens) and the values of the added names (`bespoke_session=…`);
+ *   API tokens) and the values of the added names (`marmeon_session=…`);
  * - **statements** that touch a table with secret columns show none of their parameters;
  * - **files and bytes** are never shown, only their size; every string is cut at {@link MAX_ENTRY_BYTES}.
  *
@@ -134,7 +134,7 @@ export class Redactor {
     this.addKeys(...keys);
   }
 
-  /** More names whose values are never shown — a cookie's name (`bespoke_session`), a header, a field. Case does not matter. */
+  /** More names whose values are never shown — a cookie's name (`marmeon_session`), a header, a field. Case does not matter. */
   addKeys(...keys: string[]): this {
     for (const key of keys) if (key !== '') this.#keys.add(key.toLowerCase());
     const names = [...this.#keys].map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));

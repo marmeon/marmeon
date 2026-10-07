@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>

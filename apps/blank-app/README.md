@@ -1,15 +1,15 @@
 # Blank app
 
-An app without modules — what `create-bespoke-app --minimal` writes ([create-bespoke-app](../../packages/create-bespoke-app/README.md),
+An app without modules — what `create-marmeon --minimal` writes ([create-marmeon](../../packages/create-marmeon/README.md),
 E167): `pnpm template:sync` copies it into the scaffolder's template (`.gitignore` and `package.json` stored as `_gitignore` and
 `_package.json`, a standalone `tsconfig.json`, empty `APP_KEY`s; this README stays here), and a test fails while the two differ.
-Edit it here, then sync. The starter kit is this app plus the home module and `bespoke make:auth`.
+Edit it here, then sync. The starter kit is this app plus the home module and `marmeon make:auth`.
 
-It is also what `bespoke make:auth` is tested against (`packages/auth/src/make-auth.test.ts`): the test copies it, generates the
+It is also what `marmeon make:auth` is tested against (`packages/auth/src/make-auth.test.ts`): the test copies it, generates the
 auth module, migrates, type-checks and runs the generated tests (on Postgres too with `pnpm test:pgsql`). Keep it minimal: it
-stands for a new project — with `@bespokecore/cli` as a dependency (production runs `bespoke start`), the devtools as a dev
+stands for a new project — with `marmeon` as a dependency (production runs `marmeon start`), the devtools as a dev
 dependency, a first test (`modules/system/system.test.ts`, `GET /up`) and `pnpm test`; `.env.example` with
-`NODE_ENV=development` (E170: this machine's environment for every `bespoke` command — never deployed) and a `storage/` skeleton
+`NODE_ENV=development` (E170: this machine's environment for every `marmeon` command — never deployed) and a `storage/` skeleton
 whose `.gitignore` files keep what the app writes out of git.
 
 Besides `system` it has what every new app should start with, both global middleware in `bootstrap/app.ts`:

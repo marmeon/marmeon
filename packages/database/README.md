@@ -1,7 +1,7 @@
-# @bespokecore/database
+# @marmeon/database
 
 Data access on [Kysely](https://kysely.dev) (E6): connections (`Connections`, the typed `Database`), migrations per module,
-table types generated from the migrations (`bespoke db:types`), repositories, relations without lazy loading, pagination,
+table types generated from the migrations (`marmeon db:types`), repositories, relations without lazy loading, pagination,
 factories, seeders — and transactions that everything awaited inside joins (E107). SQLite runs on Node's built-in
 `node:sqlite` (no native addon); Postgres needs `pg` (an optional peer: `pnpm add pg`).
 
@@ -15,14 +15,14 @@ handle(ctx: ContextOf<typeof ListUsersRequest>) {   // ctx.query: { page: number
 }
 ```
 
-`bespoke discover` registers its `DatabaseServiceProvider` through the `"bespoke"` field of its package.json: `Connections` and
-the default `Database` (singletons), the `db:*` and `migrate*` commands (when `@bespokecore/cli` is installed), a readiness
+`marmeon discover` registers its `DatabaseServiceProvider` through the `"marmeon"` field of its package.json: `Connections` and
+the default `Database` (singletons), the `db:*` and `migrate*` commands (when `marmeon` is installed), a readiness
 check and the "run the pending migrations" solution of the error page (E130). Every connection is closed on shutdown.
 
 ```text
-bespoke migrate [--force] [--no-types] | migrate:rollback [--step=<n>] [--force] | migrate:reset [--force]
-bespoke migrate:fresh [--seed] [--force] [--no-types] | migrate:status | db:types [--check] | db:show [--database=<connection>]
-bespoke db:seed [--module=<module>] [--class=<Seeder>] [--force] | make:migration <snake_case_name> --module=<module>
+marmeon migrate [--force] [--no-types] | migrate:rollback [--step=<n>] [--force] | migrate:reset [--force]
+marmeon migrate:fresh [--seed] [--force] [--no-types] | migrate:status | db:types [--check] | db:show [--database=<connection>]
+marmeon db:seed [--module=<module>] [--class=<Seeder>] [--force] | make:migration <snake_case_name> --module=<module>
 ```
 
 ## Configuration
@@ -31,8 +31,8 @@ The default connection reads Laravel's variables (`DatabaseConfig`, checked at t
 
 ```sh
 DB_CONNECTION=sqlite                  # sqlite (default) | pgsql
-DB_DATABASE=storage/database.sqlite   # SQLite: the file, relative to the app root (default), or :memory:; Postgres: the database name (default bespoke)
-DB_URL=postgres://bespoke:secret@localhost:55432/bespoke   # pgsql: a URL — or DB_HOST (127.0.0.1), DB_PORT (5432), DB_USERNAME (postgres), DB_PASSWORD
+DB_DATABASE=storage/database.sqlite   # SQLite: the file, relative to the app root (default), or :memory:; Postgres: the database name (default marmeon)
+DB_URL=postgres://marmeon:secret@localhost:55432/marmeon   # pgsql: a URL — or DB_HOST (127.0.0.1), DB_PORT (5432), DB_USERNAME (postgres), DB_PASSWORD
 DB_POOL_MAX=10                        # pgsql: the app's pool (default 10)
 DB_INFRA_POOL_MAX=4                   # pgsql: the infrastructure's own pool — cache, sessions, uploads (default 4, see E108 below)
 ```
@@ -49,13 +49,13 @@ export const SystemDatabase = defineConnection('system', {
 // connections.get('system'); or a Postgres one: resolve: (env) => ({ driver: 'pgsql', url: env.REPORTING_DB_URL, poolMax: 5 })
 ```
 
-`default` is reserved for `DB_CONNECTION`. An unknown connection name fails at the start with the known ones; `bespoke db:show`
+`default` is reserved for `DB_CONNECTION`. An unknown connection name fails at the start with the known ones; `marmeon db:show`
 prints where a connection points (password masked) and its tables.
 
 ## Migrations
 
 A module lists its migrations directory; files are named `YYYY_MM_DD_HHMMSS_what_it_does.ts` and run in the order of their
-timestamps across all modules. `bespoke make:migration create_profile_links_table --module=user-profile` writes one (a name
+timestamps across all modules. `marmeon make:migration create_profile_links_table --module=user-profile` writes one (a name
 `create_…_table` creates a table, `add_…_to_…_table` alters one, anything else is blank):
 
 ```ts
@@ -90,8 +90,8 @@ export default defineMigration({
   missing `NODE_ENV`) `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh` and `db:seed` refuse without `--force`:
   `The application is protected (staging (protected)). Pass --force to migrate — or, on a development machine, set NODE_ENV=development (in .env or the environment).`
   Each first names the environment it assumed
-  (`Environment: staging (protected)`). A deployment runs `bespoke migrate --force` (with `make:docker`'s files a one-off
-  container: `docker compose -f compose.production.yaml run --rm web migrate --force`), in the one Node process `bespoke`
+  (`Environment: staging (protected)`). A deployment runs `marmeon migrate --force` (with `make:docker`'s files a one-off
+  container: `docker compose -f compose.production.yaml run --rm web migrate --force`), in the one Node process `marmeon`
   started (E159). On a development machine the `.env`'s `NODE_ENV=development` (E170) needs no `--force` —
   `Environment: development (from .env)`; a server whose `.env` says the same is not protected either, so set `NODE_ENV` in the
   server's environment ([where it comes from](../core/README.md#the-environment-node_env)).
@@ -126,14 +126,14 @@ export default defineMigration({
 The record of the migration stays on `default` (one order, one batch number for all); the table's owner and its secret
 columns are kept on the connection the table is on, so `selectAll()` there never returns a secret column. A migration on
 another connection runs in a transaction of that connection, then is recorded — two databases, two transactions.
-`migrate:fresh` drops the tables of every connection a migration runs on. `bespoke db:types` runs every migration on one
+`migrate:fresh` drops the tables of every connection a migration runs on. `marmeon db:types` runs every migration on one
 scratch database: the generated `Tables` know every table, wherever it lives.
 
 The framework's own tables (`make:cache-table`, `make:session-table`, `make:queue-table`, `make:notifications-table`,
 `make:uploads-table`) are migrations the command writes into an app module — `system` unless `--module` names another (E96):
 the tables are the app's.
 
-## Table types: `bespoke db:types`
+## Table types: `marmeon db:types`
 
 The types of every table come **from the migrations**, never from the state of a database: `db:types` runs them on a scratch
 database of the app's driver (SQLite in memory, or a temporary Postgres database), introspects it and writes
@@ -146,7 +146,7 @@ type User = Row<'users'>;          // as read — secret columns left out; also 
 
 `migrate` and `migrate:fresh` regenerate the file when migrations ran — with `NODE_ENV=development` only (E164; `--no-types` skips
 it). Anywhere else — production, staging, a test — the committed file is final, and the app directory may not be writable (a
-container's image, systemd's `ProtectSystem=strict`). `bespoke db:types --check` only compares — for CI: it fails when a migration
+container's image, systemd's `ProtectSystem=strict`). `marmeon db:types --check` only compares — for CI: it fails when a migration
 changed without regenerating. Column types: `Generated<T>` (filled in by the database), `Timestamp`, `Decimal`, `JsonColumn` (read parsed, written
 as `JSON.stringify(value)`), `Secret<T>`.
 
@@ -209,7 +209,7 @@ this.#db.selectFrom('users').selectAll('users').select((eb) => [
   `v.object({ ...pageQuery({ perPage: [25, 50, 100] }), sort: … })` reads `?page=` (a whole number ≥ 1, default 1) and
   `?per_page=` (one of `perPage`, default its first; one number allows just that). Like every query field, an invalid value falls
   back to its default (`?page=-1`, `?per_page=100000`) — never a 422 — and the defaults stay out of URLs the browser builds.
-  `ctx.query.per_page` is typed `25 | 50 | 100`; `<Pagination>` of `@bespokecore/react` builds its links from the same parsed query.
+  `ctx.query.per_page` is typed `25 | 50 | 100`; `<Pagination>` of `@marmeon/react` builds its links from the same parsed query.
 - **`paginate(db, query, ctx.query)`** (or `repository.paginate(query, ctx.query)`): one page and the total —
   `{ data, meta: { page, perPage, total, lastPage, from, to } }`, the `meta` that `<Pagination>` takes. The count is a second
   query on the same filter. It takes the parsed query of a schema with `pageQuery()` — a query without a page is a type error
@@ -223,7 +223,7 @@ this.#db.selectFrom('users').selectAll('users').select((eb) => [
   - **Nullable columns:** NULLs come last in both directions (`NULLS LAST`, SQLite and Postgres alike), and a row whose value is
     NULL is a cursor like any other — the next page goes on among the NULLs instead of starting over.
   - **Encrypted cursors:** `meta.nextCursor` is the last row's values encrypted and authenticated with the app key — inject
-    `Encrypter` (`@bespokecore/encryption`) and pass it. A client can neither read a hidden sort column's value from the URL nor
+    `Encrypter` (`@marmeon/encryption`) and pass it. A client can neither read a hidden sort column's value from the URL nor
     make up a cursor. Each order has its own encryption context (the columns and the direction): one that does not decrypt —
     changed, made up, of another order, of a key that is gone, or the base64url format before Wave 9 — answers **400**
     (`InvalidCursorError`), never the first page again. (A cursor of another list with the same columns and direction does
@@ -255,7 +255,7 @@ builds the attributes (no insert — what mail previews use). In a definition, `
 row first and uses its id. Sequences are per app, never global.
 
 A seeder is a class with `handle({ factory, db })`, built by the container (constructor injection), listed by its module and
-run in module order by `bespoke db:seed` (or `migrate:fresh --seed`):
+run in module order by `marmeon db:seed` (or `migrate:fresh --seed`):
 
 ```ts
 // modules/auth/seeders/DemoUsersSeeder.ts — and `seeders: [DemoUsersSeeder]` in defineModule
@@ -360,15 +360,15 @@ is the same thing on the repository's connection. `{ connection: 'reporting' }` 
 | `queue.dispatch()` on `sync` or any other queue         | held until the outermost commit, dropped on a rollback; a `sync` job then runs outside the transaction |
 | in-process event listeners                              | run inside the transaction                                       |
 | queued listeners (`static queue`, E86, E109)            | dispatched like `queue.dispatch()` — on the `database` queue a row in the transaction, elsewhere held until the commit; there is no `afterCommit` option |
-| `mailer.queue(mail)`                                    | like `queue.dispatch()`: the composed, encrypted mail is a job (`bespoke.mail`) |
-| `notifications.send()` / `sendNow()`                    | `send` like `queue.dispatch()` (a `bespoke.notification` job); `sendNow` writes its row (and queues its mail) inside it |
-| `broadcast.refresh()` (`@bespokecore/live`)            | sent once the outermost transaction committed (`afterCommit`), nothing after a rollback — no tab reloads what is not there yet |
+| `mailer.queue(mail)`                                    | like `queue.dispatch()`: the composed, encrypted mail is a job (`marmeon.mail`) |
+| `notifications.send()` / `sendNow()`                    | `send` like `queue.dispatch()` (a `marmeon.notification` job); `sendNow` writes its row (and queues its mail) inside it |
+| `broadcast.refresh()` (`@marmeon/live`)            | sent once the outermost transaction committed (`afterCommit`), nothing after a rollback — no tab reloads what is not there yet |
 | the database cache store — rate limits, locks —, the database session store and `temporary_uploads` (uploads, `UPLOADS_CONNECTION`) | **never join** (E108): their own connection, see below — a used upload token stays used after a rollback |
 | `afterResponse.defer()`, terminate hooks                | run after the response, outside of any transaction               |
 | a job (worker, `sync`, `app.queue.work()`)              | runs outside of any transaction                                  |
 | another request, job or test running at the same time  | never sees it                                                    |
 
-The queue's side of this is in [@bespokecore/queue](../queue/README.md#transactions-e107-e109).
+The queue's side of this is in [@marmeon/queue](../queue/README.md#transactions-e107-e109).
 
 ### How it works — and its limits
 
@@ -415,14 +415,14 @@ drivers use the app's connection by default and join its transactions.) What thi
 ## The query channel (E118)
 
 Every statement — of every connection, the infrastructure handle included — goes to the `db.query` channel of
-[`@bespokecore/core/diagnostics`](../core/README.md#diagnostics-bespokecorecorediagnostics-e118) while something listens (the
+[`@marmeon/core/diagnostics`](../core/README.md#diagnostics-marmeoncorediagnostics-e118) while something listens (the
 error page, the devtools, `Server-Timing`, OpenTelemetry): `connection`, `driver`, `sql`, `parameters`, `durationMs`, `error`,
 and the request (`requestId`) or job (`jobId`) it ran in.
 **`secret: true`** marks a statement that touches a table with secret columns (`.secret()` in its migration) — every
 table the query builder names, and for raw SQL any secret table's name in its text. Its parameters may hold a password
 hash or a token: whatever records or shows queries redacts them all ([redaction, E125](../core/README.md#redaction-e125)).
 Without a subscriber nothing is built. `connections.onQuery(listener)` stays for code that counts queries itself (tests).
-OpenTelemetry ([@bespokecore/otel](../otel/README.md)) records a statement as a client span with its text only — never its
+OpenTelemetry ([@marmeon/otel](../otel/README.md)) records a statement as a client span with its text only — never its
 parameters.
 
 **Readiness (E126):** the provider registers `DatabaseHealthCheck` for `/up/ready` — `select 1` on every configured connection
@@ -431,7 +431,7 @@ parameters.
 
 ## Testing
 
-With `@bespokecore/testing`, `createTestApp(App, { database: 'refresh' })` gives a real database, reset for every test
+With `@marmeon/testing`, `createTestApp(App, { database: 'refresh' })` gives a real database, reset for every test
 (Laravel's `RefreshDatabase`, E21): each test worker gets its own — a temporary SQLite file, or a Postgres database named after
 the app's with `_test_<app hash>_<worker>` — migrated once; every test app runs inside one transaction that is rolled back when the test
 ends. `seed: true` also runs the modules' seeders for every test. More in [the database](../testing/README.md#the-database).

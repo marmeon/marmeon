@@ -1,7 +1,7 @@
-import { createApplication, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { CookieDefaults, HttpServiceProvider } from '@bespokecore/http';
-import { CookieJar } from '@bespokecore/router';
+import { createApplication, Logger, type Container, type LogContext } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { CookieDefaults, HttpServiceProvider } from '@marmeon/http';
+import { CookieJar } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { insecureCookieWarning, SessionConfig } from './config.ts';
 import { SessionServiceProvider } from './provider.ts';

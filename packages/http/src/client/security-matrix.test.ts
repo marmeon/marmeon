@@ -223,7 +223,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   win.confirmAnswer = true;
   const records: Recorded[] = [];
   // `lazyLayers`: the layers are not attached — their code arrives (recorded like the others) once the promise resolves (E71).
-  // The History fallback (E184) only where the tab has no Navigation API — as createBespokeApp attaches it.
+  // The History fallback (E184) only where the tab has no Navigation API — as createMarmeonApp attaches it.
   const features = [...ALL_FEATURES.filter((feature) => feature !== live && (!lazyLayers || feature !== layers) && (!win.navigation || feature !== historyFallback)), ...extra].map((feature) => recorded(feature, records));
   const restoreLive = recordInPlace(live, records);
   const loadLayers = lazyLayers && (async () => (await lazyLayers, recorded(layers, records) as Feature<LayerStack>));
@@ -232,8 +232,8 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
     const { pathname } = new URL(url);
     if (pathname === SESSION_PATH) return Response.json({ epoch: server.epoch });
     // An upload's target (W6.9): its token is the signed-in user's — the canary.
-    if ((init.headers as Record<string, string> | undefined)?.['x-bespoke-upload']) {
-      return Response.json({ token: `tu_${CANARY}`, upload: { method: 'PUT', url: `/_bespoke/uploads/1?signature=${CANARY}` } });
+    if ((init.headers as Record<string, string> | undefined)?.['x-marmeon-upload']) {
+      return Response.json({ token: `tu_${CANARY}`, upload: { method: 'PUT', url: `/_marmeon/uploads/1?signature=${CANARY}` } });
     }
     if (pathname === '/islands/activity') return islandResponse({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: pathname, version: null });
     if (pathname === '/users/1/like') return pending(init);
@@ -263,7 +263,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
   const submissions = () => api<ActionsFeature>('actions').submissions().list;
   api<RememberFeature>('remember').of(pageKey).set('draft', { note: CANARY });
   const liking = new AbortController();
-  (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__ = devtoolsReports(() => api<DevtoolsFeature>('devtools'));
+  (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = devtoolsReports(() => api<DevtoolsFeature>('devtools'));
   const action = api<ActionsFeature>('actions').run('/users/1/like', { data: { note: CANARY }, name: 'like', signal: liking.signal, optimistic: { target: api<PagePatches>('optimistic').target(pageKey), patch: (props) => ({ ...props, liked: CANARY }) } });
   host.flash.deliver([{ id: 'unheard', key: 'toast', data: CANARY } as unknown as FlashMessage]);
   if (!lazyLayers) await navigator.visit('/users/1/edit', { layer: true });
@@ -290,7 +290,7 @@ async function stocked({ extra = [], cacheSize, lazyLayers }: { extra?: readonly
 }
 
 afterEach(() => {
-  delete (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__;
+  delete (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__;
 });
 
 /**

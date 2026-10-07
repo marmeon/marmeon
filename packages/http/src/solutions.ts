@@ -1,8 +1,8 @@
-import { defineSolutions } from '@bespokecore/core';
-import { Router } from '@bespokecore/router';
+import { defineSolutions } from '@marmeon/core';
+import { Router } from '@marmeon/router';
 
 const UNDEFINED_ROUTE = /^Route \[([^\]]+)\] is not defined\.$/;
-const MISSING_PAGE = /^\[bespoke:R2\] Page \[([^\]]+)\] not found/;
+const MISSING_PAGE = /^\[marmeon:R2\] Page \[([^\]]+)\] not found/;
 
 /**
  * Solutions for HTTP errors (E130): a route name that is not defined ("did you mean" from the app's routes) and a page whose
@@ -22,8 +22,8 @@ export const httpSolutions = defineSolutions([
           `No route is named "${name}". ` +
           (close.length > 1 ? `Other routes with a similar name: ${close.slice(1).join(', ')}. ` : '') +
           `Name the route in its module's routes.ts — Route.get('/…', Controller).name('${name.split('.').pop()}') inside its name prefix — ` +
-          'or use one of the names "bespoke route:list" shows. Route names are typed: `bespoke route:types` makes a wrong one a type error.',
-        command: 'bespoke route:list',
+          'or use one of the names "marmeon route:list" shows. Route names are typed: `marmeon route:types` makes a wrong one a type error.',
+        command: 'marmeon route:list',
       };
     },
   },
@@ -39,8 +39,8 @@ export const httpSolutions = defineSolutions([
         text:
           `The controller renders the page [${name}], but there is no view for it. A page is the default export of ${file}: ` +
           `export default function ${rest.at(-1) ?? 'Page'}(props: PageProps<typeof YourController>) { … }. ` +
-          'Check the spelling in this.view(…) — page names are typed once `bespoke route:types` ran.',
-        command: 'bespoke route:types',
+          'Check the spelling in this.view(…) — page names are typed once `marmeon route:types` ran.',
+        command: 'marmeon route:types',
         docs: 'packages/http/README.md#error-codes',
       };
     },

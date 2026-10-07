@@ -1,7 +1,7 @@
-import { createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider, SharedData, view, type HttpContext, type Next, type PageObject, type SsrRender } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { createApplication, currentRequest, defineModule, Logger, type Container, type LogContext } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider, SharedData, view, type HttpContext, type Next, type PageObject, type SsrRender } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel, type KernelOptions } from './kernel.ts';
@@ -82,7 +82,7 @@ async function appWith(render: SsrRender, options: KernelOptions = {}) {
   return createHttpKernel(application, { renderer, ...options });
 }
 
-const page = (html: string) => JSON.parse(/<script type="application\/json" id="bespoke-page">(.*?)<\/script>/.exec(html)![1]!) as PageObject;
+const page = (html: string) => JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as PageObject;
 const markup = (html: string) => /<div id="app">([\s\S]*)<\/div>/.exec(html)![1];
 
 describe('server rendering gets the page as the browser does (W5.1 finding)', () => {
@@ -174,14 +174,14 @@ describe('streaming (E37)', () => {
     }));
     const response = await app.request('/profile', { headers: { accept: 'text/html' } });
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
-    expect(response.headers.get('vary')).toContain('x-bespoke');
+    expect(response.headers.get('vary')).toContain('x-marmeon');
 
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let received = '';
     while (!received.includes('<main>shell')) received += (await reader.read()).value;
     // The head (with the page object) and the shell are out before the slow part has rendered.
     expect(received).toContain('<title>Ada</title>');
-    expect(received).toContain('id="bespoke-page"');
+    expect(received).toContain('id="marmeon-page"');
     expect(received).not.toContain('late');
     finish();
     for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) received += chunk.value;
@@ -228,7 +228,7 @@ describe('streaming (E37)', () => {
       calls++;
       return { html: '' };
     });
-    const response = await app.request('/profile', { headers: { 'x-bespoke': 'true' } });
+    const response = await app.request('/profile', { headers: { 'x-marmeon': 'true' } });
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(((await response.json()) as PageObject).props).toEqual({ name: 'Ada', lastLoginAt: '2026-10-01T12:00:00.600Z' });
     expect(calls).toBe(0);

@@ -1,10 +1,10 @@
-import { ConsoleLogger, type Container } from '@bespokecore/core';
+import { ConsoleLogger, type Container } from '@marmeon/core';
 import type { Generated, Kysely } from 'kysely';
 import * as v from 'valibot';
 import { expectTypeOf, it } from 'vitest';
-import type { ModuleDefinition } from '@bespokecore/core';
+import type { ModuleDefinition } from '@marmeon/core';
 import type { Selectable } from 'kysely';
-import { defineRoutes } from '@bespokecore/router';
+import { defineRoutes } from '@marmeon/router';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import {

@@ -1,4 +1,4 @@
-import { Application, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 import { DbSeedCommand } from './commands/db-seed.ts';
@@ -10,7 +10,7 @@ import { databaseSolutions } from './solutions.ts';
 import { DatabaseHealthCheck } from './health.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
     /**
      * The module's migrations directory: `new URL('./migrations/', import.meta.url)` (or a path
@@ -24,7 +24,7 @@ import { Connections, Database } from './connections.ts';
 
 /**
  * Registers `Connections` and the default `Database`, adds `db:*` commands to the CLI (when it is
- * installed) and closes every connection on shutdown. Found by `bespoke discover`.
+ * installed) and closes every connection on shutdown. Found by `marmeon discover`.
  */
 export class DatabaseServiceProvider implements ServiceProvider {
   static config = [DatabaseConfig];
@@ -51,7 +51,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
 
   async boot(app: Application): Promise<void> {
     app.container.make(Connections).verify();
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) {
       app.container
         .make(cli.CommandRegistry)

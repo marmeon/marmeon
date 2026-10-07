@@ -1,8 +1,8 @@
 import { hash as oneShotHash, timingSafeEqual } from 'node:crypto';
-import { EventDispatcher, Logger } from '@bespokecore/core';
-import { ClientHistory, RequestInfo } from '@bespokecore/http';
-import { CookieJar } from '@bespokecore/router';
-import { Session, SESSION_USER_KEY, SessionConfig } from '@bespokecore/session';
+import { EventDispatcher, Logger } from '@marmeon/core';
+import { ClientHistory, RequestInfo } from '@marmeon/http';
+import { CookieJar } from '@marmeon/router';
+import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { AuthConfig } from './config.ts';
 import { Failed, Login, Logout, PasswordChanged, type LoginVia } from './events.ts';
 import { Hasher, type PasswordHash } from './hashing.ts';
@@ -21,7 +21,7 @@ export const AUTH_SESSION_KEYS = {
   viaRemember: '_auth_via_remember',
 } as const;
 
-declare module '@bespokecore/session' {
+declare module '@marmeon/session' {
   interface SessionData {
     _auth_id: string | number;
     _auth_password: string;
@@ -36,7 +36,7 @@ declare module '@bespokecore/session' {
  * The hash itself never goes into the session.
  */
 export function passwordFingerprint(hash: PasswordHash | null): string {
-  return oneShotHash('sha256', `bespoke-auth:${hash ?? ''}`, 'base64url');
+  return oneShotHash('sha256', `marmeon-auth:${hash ?? ''}`, 'base64url');
 }
 
 export interface LoginOptions {

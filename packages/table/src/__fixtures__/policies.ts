@@ -1,4 +1,4 @@
-import type { AuthUser } from '@bespokecore/auth';
+import type { AuthUser } from '@marmeon/auth';
 
 /** What the tests' members table asks: admins see e-mails and manage, they and exporters export; nobody deactivates themselves; Grace (id 3) is protected. */
 export class MemberPolicy {

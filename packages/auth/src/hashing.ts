@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto';
 import { promisify } from 'node:util';
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 
 declare const passwordHash: unique symbol;
 

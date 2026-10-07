@@ -1,5 +1,5 @@
 // The fixture app: discovers installed packages, registers their providers, resolves.
-import { createApplication, loadDiscoveredPackages } from '@bespokecore/core';
+import { createApplication, loadDiscoveredPackages } from '@marmeon/core';
 import { Greeting, Mailer, Money } from '@acme/mailer';
 import { FakeMailer } from '@acme/mailer/testing';
 

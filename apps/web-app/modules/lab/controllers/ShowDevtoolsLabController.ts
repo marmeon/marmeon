@@ -1,4 +1,4 @@
-import { defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
+import { defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
 import * as v from 'valibot';
 import { LabController } from './ShowLabPageController.ts';
 

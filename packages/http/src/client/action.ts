@@ -225,7 +225,7 @@ export class Actions {
         headers: { accept: 'application/json', [ACTION_HEADER]: 'true', ...request.headers, ...headers },
         body: request.body,
         signal,
-        // Never followed: the server reports where a redirect points (204 + x-bespoke-redirect).
+        // Never followed: the server reports where a redirect points (204 + x-marmeon-redirect).
         redirect: 'manual',
         // Never from, never into, the HTTP cache — the answer is about who asks, now.
         cache: 'no-store',

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { token, type Application, type Duration, type Resolver, type StandardSchemaV1, type Translator } from '@bespokecore/core';
-import { channels, messageBase, trace, type NotificationSendMessage } from '@bespokecore/core/diagnostics';
-import type { Connections } from '@bespokecore/database';
+import { token, type Application, type Duration, type Resolver, type StandardSchemaV1, type Translator } from '@marmeon/core';
+import { channels, messageBase, trace, type NotificationSendMessage } from '@marmeon/core/diagnostics';
+import type { Connections } from '@marmeon/database';
 import type { NotificationChannels } from './channels.ts';
 import type { AnyRecipient, CheckNotification, NotificationClass, Recipients, RecipientTypeOf, SendResult } from './notification.ts';
 import { NotificationError, type NotificationRegistry, type RecipientRegistry } from './registry.ts';
@@ -31,10 +31,10 @@ export type SendData<N> = N extends { readonly schema: infer S extends StandardS
  */
 export interface Notifications {
   /**
-   * Checks the data against the notification's schema **now** and queues the delivery (`bespoke.notification`, encrypted)
+   * Checks the data against the notification's schema **now** and queues the delivery (`marmeon.notification`, encrypted)
    * — one job per recipient, on the notification's `static queue`. A worker finds the recipient, asks `via()` and
    * delivers through each channel. Inside `connections.transaction()` it is queued only if the transaction commits
-   * (E107). Resolves with the notification's id (one per recipient for a list). Needs @bespokecore/queue.
+   * (E107). Resolves with the notification's id (one per recipient for a list). Needs @marmeon/queue.
    */
   send<const R extends Recipients, N extends abstract new (...args: any[]) => object>(
     recipient: R,
@@ -97,7 +97,7 @@ export function sendMessage(app: Application, pending: PendingDelivery, queued: 
 }
 
 /**
- * Delivers one notification to one recipient — for a worker (`bespoke.notification`) and for `sendNow`:
+ * Delivers one notification to one recipient — for a worker (`marmeon.notification`) and for `sendNow`:
  *
  * 1. the recipient's record, by its kind's resolver (gone: nothing is delivered);
  * 2. `via(record, data)` — the channels, each known to the app;
@@ -141,7 +141,7 @@ export class NotificationDeliverer {
     if (message) message.channels = names;
     const unknown = names.filter((name) => !registry.has(name));
     if (unknown.length > 0) {
-      const hint = unknown.includes('mail') ? ' (the mail channel needs @bespokecore/mail)' : '';
+      const hint = unknown.includes('mail') ? ' (the mail channel needs @marmeon/mail)' : '';
       throw new NotificationChannelError(`${Class.name} (${Class.notification}): via() returned ${unknown.map((name) => `"${name}"`).join(', ')}, which this app does not have${hint}. Channels: ${registry.names().join(', ')}.`);
     }
     if (names.length === 0) return 'delivered';
@@ -242,7 +242,7 @@ export class NotificationSender implements Notifications {
   }
 }
 
-/** Queues one notification's delivery — the `bespoke.notification` job (the provider wires it to @bespokecore/queue). */
+/** Queues one notification's delivery — the `marmeon.notification` job (the provider wires it to @marmeon/queue). */
 export type QueueNotification = (pending: PendingDelivery, options: SendOptions) => Promise<void>;
 
 function toList(recipient: Recipients): readonly AnyRecipient[] {

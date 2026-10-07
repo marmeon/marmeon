@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 
 /** The migration the command copies — a real file, so the store tests run exactly what apps get. */
 export const CACHE_MIGRATION = new URL('../../stubs/migrations/create_cache_table.ts', import.meta.url);
 
 /**
- * `bespoke make:cache-table [--module=system]`: writes the migration of the `database` cache driver's tables into an app
- * module (E96 — the tables are the app's, `db:types` sees them like any other). Then `bespoke migrate`.
+ * `marmeon make:cache-table [--module=system]`: writes the migration of the `database` cache driver's tables into an app
+ * module (E96 — the tables are the app's, `db:types` sees them like any other). Then `marmeon migrate`.
  */
 export class MakeCacheTableCommand {
   static command = 'make:cache-table';
@@ -15,7 +15,7 @@ export class MakeCacheTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@bespokecore/database');
+    const { publishMigration } = await import('@marmeon/database');
     return publishMigration(input, { name: 'create_cache_table', table: 'cache', contents: readFileSync(CACHE_MIGRATION, 'utf8') });
   }
 }

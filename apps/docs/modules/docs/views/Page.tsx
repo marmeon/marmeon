@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link } from '@marmeon/react';
 import type { ShowPackageController } from '../controllers/ShowPackageController.ts';
 import { Markdown } from '../components/Markdown.tsx';
 import { Toc } from '../components/Toc.tsx';

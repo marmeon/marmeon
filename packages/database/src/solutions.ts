@@ -1,4 +1,4 @@
-import { defineSolutions } from '@bespokecore/core';
+import { defineSolutions } from '@marmeon/core';
 import { missingTable } from './errors.ts';
 import { Migrator } from './migrations/migrator.ts';
 
@@ -22,7 +22,7 @@ export const databaseSolutions = defineSolutions([
         return {
           title: `Create the table "${table}" in a migration`,
           text: `Every migration has run, and none creates "${table}". Add one to the module the table belongs to — or check the table's name in the query.`,
-          command: `bespoke make:migration create_${table}_table`,
+          command: `marmeon make:migration create_${table}_table`,
           docs: 'packages/database/README.md#migrations-on-another-connection',
         };
       }
@@ -31,9 +31,9 @@ export const databaseSolutions = defineSolutions([
         title: pending ? `Run the ${pending.length} pending migration${pending.length === 1 ? '' : 's'}` : 'Run the migrations',
         text:
           `The table "${table}" does not exist in the database. ` +
-          (list ? `These migrations have not run yet: ${list}. ` : 'Its migration has probably not run yet ("bespoke migrate:status" lists them). ') +
-          'In development, "bespoke migrate:fresh --seed" starts over with the seeders.',
-        command: 'bespoke migrate',
+          (list ? `These migrations have not run yet: ${list}. ` : 'Its migration has probably not run yet ("marmeon migrate:status" lists them). ') +
+          'In development, "marmeon migrate:fresh --seed" starts over with the seeders.',
+        command: 'marmeon migrate',
         docs: 'packages/database/README.md#migrations-on-another-connection',
       };
     },

@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { describeError, outsideTransaction, redactText, type Clock, type Logger } from '@bespokecore/core';
+import { describeError, outsideTransaction, redactText, type Clock, type Logger } from '@marmeon/core';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
 import { releaseUnique } from './locks.ts';

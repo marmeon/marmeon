@@ -1,5 +1,5 @@
-import { deny, type AuthUser } from '@bespokecore/auth';
-import type { Row } from '@bespokecore/database';
+import { deny, type AuthUser } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
 
 /** What the policy needs of a link: whose it is. A bound row has it, and so has a link of the profile's read model. */
 type OwnedLink = Pick<Row<'profile_links'>, 'user_id'>;

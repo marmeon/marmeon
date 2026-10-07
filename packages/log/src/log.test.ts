@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { ConsoleLogger, createApplication, describeError, LogContextSources, redactText, runWithJob, runWithRequest, runWithTask } from '@bespokecore/core';
-import { channels, type LogMessage } from '@bespokecore/core/diagnostics';
+import { ConsoleLogger, createApplication, describeError, LogContextSources, redactText, runWithJob, runWithRequest, runWithTask } from '@marmeon/core';
+import { channels, type LogMessage } from '@marmeon/core/diagnostics';
 import { describe, expect, it } from 'vitest';
 import { createPinoLogger, LogConfig } from './index.ts';
 
@@ -18,7 +18,7 @@ function capture(level: 'info' | 'warn' = 'info') {
   return { lines, raw, logger: createPinoLogger({ level, format: 'json' }, stream) };
 }
 
-describe('@bespokecore/log', () => {
+describe('@marmeon/log', () => {
   it('logs pretty lines with NODE_ENV=development only — JSON everywhere else, a missing NODE_ENV included (E139, E164)', () => {
     const format = (NODE_ENV: string | undefined, LOG_FORMAT?: 'pretty' | 'json') => LogConfig.resolve({ LOG_LEVEL: 'info', NODE_ENV, LOG_FORMAT }).format;
     expect(format('development')).toBe('pretty');
@@ -119,14 +119,14 @@ describe('@bespokecore/log', () => {
       email: 'ada@example.com',
       password: 'hunter2',
       new_password: 'hunter3',
-      headers: { authorization: 'Bearer bc_1|abc', accept: 'application/json', cookie: 'bespoke_session=x' },
+      headers: { authorization: 'Bearer bc_1|abc', accept: 'application/json', cookie: 'marmeon_session=x' },
       remember_web: 'selector.validator',
       token: 'abc',
       api_key: 'k',
       nested: { deeper: { client_secret: 's', id: 7 } },
     });
     const line = JSON.stringify(lines[0]);
-    for (const secret of ['hunter2', 'hunter3', 'Bearer bc_1|abc', 'bespoke_session=x', 'selector.validator', '"abc"', '"k"', '"s"']) expect(line).not.toContain(secret);
+    for (const secret of ['hunter2', 'hunter3', 'Bearer bc_1|abc', 'marmeon_session=x', 'selector.validator', '"abc"', '"k"', '"s"']) expect(line).not.toContain(secret);
     expect(lines[0]).toMatchObject({ email: 'ada@example.com', headers: { accept: 'application/json', authorization: '[redacted]' }, nested: { deeper: { id: 7 } } });
   });
 

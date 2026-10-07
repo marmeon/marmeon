@@ -1,6 +1,6 @@
-import { authenticate, confirmedPassword, guest } from '@bespokecore/auth';
-import { throttle } from '@bespokecore/cache';
-import { defineRoutes, signed } from '@bespokecore/http';
+import { authenticate, confirmedPassword, guest } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { defineRoutes, signed } from '@marmeon/http';
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import { CreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';

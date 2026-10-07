@@ -1,13 +1,13 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { createApplication, defineModule, Logger, runWithRequest, type Application } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider, view } from '@bespokecore/http';
-import { html, Mailer, MailServiceProvider, type Mailable } from '@bespokecore/mail';
-import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@bespokecore/queue';
-import { defineRoutes, Router, type HttpContext } from '@bespokecore/router';
-import { createHttpKernel, DevDocument, ServerServiceProvider } from '@bespokecore/server';
+import { createApplication, defineModule, Logger, runWithRequest, type Application } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider, view } from '@marmeon/http';
+import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
+import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
+import { defineRoutes, Router, type HttpContext } from '@marmeon/router';
+import { createHttpKernel, DevDocument, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
 import { BASE, DevtoolsServiceProvider, DevtoolsStore, enableDevtoolsForTests, MAIL_CSP, type AnyEntry, type DevtoolsTester } from './index.ts';
@@ -29,7 +29,7 @@ class ScriptMail implements Mailable {
     return { to: 'ada@example.com', subject: 'Hello <b>Ada</b>' };
   }
   content() {
-    return html`<p>Hi</p>${html`<script>parent.document.title = 'pwned'; fetch('/_bespoke/devtools/api/entries')</script>`}<a href="http://localhost/reset-password/${'f'.repeat(40)}">Reset</a>`;
+    return html`<p>Hi</p>${html`<script>parent.document.title = 'pwned'; fetch('/_marmeon/devtools/api/entries')</script>`}<a href="http://localhost/reset-password/${'f'.repeat(40)}">Reset</a>`;
   }
 }
 
@@ -62,7 +62,7 @@ interface Booted {
 }
 
 async function boot(env: Record<string, string> = {}, { test = true }: { test?: boolean } = {}): Promise<Booted> {
-  const root = tempDir('bespoke-devtools-pages-');
+  const root = tempDir('marmeon-devtools-pages-');
   roots.push(root);
   let tester: DevtoolsTester | undefined;
   const app = await createApplication({
@@ -342,8 +342,8 @@ describe('what the pages show', () => {
       const page = await (await kernel.request(`${BASE}/queue`)).text();
       expect(page).toMatch(/<td class="mono">default<\/td><td class="num">2<\/td><td class="num">1<\/td><td class="num">1<\/td><td class="num">0<\/td>/);
       expect(page).toContain('Failed jobs (1)');
-      expect(page).toContain('bespoke queue:retry f00d-0001');
-      expect(page).toContain('bespoke queue:forget f00d-0001');
+      expect(page).toContain('marmeon queue:retry f00d-0001');
+      expect(page).toContain('marmeon queue:forget f00d-0001');
       expect(page).not.toContain('hunter2'); // the stored error and payload, redacted (E125)
       expect(page).toContain(`href="${BASE}/requests?requestId=req-1"`);
 
@@ -365,7 +365,7 @@ describe('the in-page bar’s side on the server (W7 step 9)', () => {
     try {
       mkdirSync(join(app.root, 'modules/people/controllers'), { recursive: true });
       mkdirSync(join(app.root, 'modules/people/views'), { recursive: true });
-      writeFileSync(join(app.root, 'modules/people/controllers/People.ts'), `import { Controller } from '@bespokecore/http';\n\nexport class ListPeopleController extends Controller {}\n\nexport class ShowPersonController extends Controller {}\n`);
+      writeFileSync(join(app.root, 'modules/people/controllers/People.ts'), `import { Controller } from '@marmeon/http';\n\nexport class ListPeopleController extends Controller {}\n\nexport class ShowPersonController extends Controller {}\n`);
       writeFileSync(join(app.root, 'modules/people/views/Show.tsx'), 'export default function Show() { return null; }\n');
       const source = async (query: string) => {
         const response = await kernel.request(`${BASE}/api/source?${query}`, { headers: { host: 'localhost' } });
@@ -393,7 +393,7 @@ describe('the in-page bar’s side on the server (W7 step 9)', () => {
     try {
       const head = runWithRequest({ requestId: '"><script>alert(1)</script>' }, () => app.container.make(DevDocument).head);
       expect(head).toBe(
-        '<meta name="bespoke-devtools" content="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" data-bespoke-devtools>\n<script type="module" src="/@id/@bespokecore/devtools/client" nonce="__bespoke_csp_nonce__" data-bespoke-devtools></script>',
+        '<meta name="marmeon-devtools" content="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" data-marmeon-devtools>\n<script type="module" src="/@id/@marmeon/devtools/client" nonce="__marmeon_csp_nonce__" data-marmeon-devtools></script>',
       );
       expect(app.container.make(DevDocument).body).toBe(''); // no link any more: the bar's pill is the way in
     } finally {

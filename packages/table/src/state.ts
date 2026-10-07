@@ -1,4 +1,4 @@
-import { HttpError } from '@bespokecore/router';
+import { HttpError } from '@marmeon/router';
 import * as v from 'valibot';
 import type { TableQueryKeys } from './client/index.ts';
 import type { TableDefinition, TableQuerySchema } from './define.ts';

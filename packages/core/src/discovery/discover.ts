@@ -1,16 +1,16 @@
 /**
- * `bespoke discover` — Composer's dump-autoload plus Laravel's package:discover.
+ * `marmeon discover` — Composer's dump-autoload plus Laravel's package:discover.
  *
- * Walks the installed packages that opt in with a `"bespoke"` field in their
- * package.json, reads the `.d.ts` files they ship, and writes `.bespoke/manifest.json`:
+ * Walks the installed packages that opt in with a `"marmeon"` field in their
+ * package.json, reads the `.d.ts` files they ship, and writes `.marmeon/manifest.json`:
  * - injection lists for their exported classes (from the constructor signatures),
  * - their service providers, in dependency order.
  *
  * One file per set of resolution conditions (E160): `manifest.json` for the published packages (production, an installed app),
- * `manifest.source.json` for the framework's monorepo (`@bespokecore/source`) — switching between `bespoke dev` and
- * `bespoke start` there rewrites nothing. Module references are file paths relative to the app (the classmap of Composer,
+ * `manifest.source.json` for the framework's monorepo (`@marmeon/source`) — switching between `marmeon dev` and
+ * `marmeon start` there rewrites nothing. Module references are file paths relative to the app (the classmap of Composer,
  * portable like a Docker build stage), so dependencies the app cannot import itself — transitive ones under pnpm — resolve.
- * `bespoke build` writes the production manifest; a start that finds `.bespoke/` read-only discovers in memory and says so once.
+ * `marmeon build` writes the production manifest; a start that finds `.marmeon/` read-only discovers in memory and says so once.
  *
  * The manifest is data (JSON), applied by {@link loadDiscoveredPackages}. Being read
  * rather than imported, it is never watched by `node --watch`, so regenerating it can
@@ -33,7 +33,7 @@ import {
 
 /** Bump when the manifest format changes, so old manifests are regenerated. */
 const MANIFEST_VERSION = '3';
-const UNRESOLVABLE = Symbol.for('bespokecore.injection.unresolvable');
+const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
 export class DiscoveryError extends Error {
@@ -41,7 +41,7 @@ export class DiscoveryError extends Error {
 }
 
 export interface DiscoverOptions {
-  /** App root: where package.json and `.bespoke/` live. */
+  /** App root: where package.json and `.marmeon/` live. */
   root: string;
   /** Resolution conditions — must match the runtime. Defaults to this process's conditions. */
   conditions?: readonly string[];
@@ -100,7 +100,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
     // hook derives the injection lists there, so only the providers are recorded. The
     // module URL is the one the runtime resolves too, so nothing is loaded twice.
     if (rootEntry && /\.[cm]?tsx?$/.test(rootEntry)) {
-      for (const provider of pkg.json.bespoke?.providers ?? []) {
+      for (const provider of pkg.json.marmeon?.providers ?? []) {
         providers.push([moduleIndex(pathToFileURL(rootEntry).href), provider]);
       }
       continue;
@@ -142,7 +142,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
       }
     }
 
-    for (const provider of pkg.json.bespoke?.providers ?? []) {
+    for (const provider of pkg.json.marmeon?.providers ?? []) {
       const typesEntry = rootEntry && resolveTypes(pkg, '.', rootEntry);
       if (!rootEntry || !typesEntry || !reader.read(typesEntry).exports.has(provider)) {
         throw new DiscoveryError(`${pkg.name} lists provider "${provider}" in package.json, but its entry does not export it.`);
@@ -174,7 +174,7 @@ function walkDependencies(root: string): PackageInfo[] {
 
   // A package's peers are what the package depending on it provides (as a package manager resolves them) — looked up from
   // that dependent's directory, not the package's own: in a workspace a package's own node_modules also links its dev
-  // dependencies, and an app with @bespokecore/testing would otherwise discover every package testing is tested with.
+  // dependencies, and an app with @marmeon/testing would otherwise discover every package testing is tested with.
   const visit = (pkg: PackageInfo, dependentDir: string) => {
     if (seen.has(pkg.dir)) return;
     seen.add(pkg.dir);
@@ -186,7 +186,7 @@ function walkDependencies(root: string): PackageInfo[] {
       const found = findPackage(dep, dependentDir);
       if (found) visit(found, dependentDir);
     }
-    if (pkg.json.bespoke) ordered.push(pkg);
+    if (pkg.json.marmeon) ordered.push(pkg);
   };
 
   // Like Composer, the app's dev dependencies count too — they are simply absent in production installs.
@@ -282,7 +282,7 @@ function publicRef(pkg: PackageInfo, declared: Location, reader: DeclarationRead
 
 /** Node's own conditions — present in every process; the others are the ones a manifest file is named after. */
 const NODE_CONDITIONS = new Set(['node', 'import', 'module-sync', 'node-addons', 'default', 'require']);
-/** What happens when `.bespoke/` cannot be written (E160): a read-only image, a locked-down directory. */
+/** What happens when `.marmeon/` cannot be written (E160): a read-only image, a locked-down directory. */
 const UNWRITABLE = new Set(['EACCES', 'EPERM', 'EROFS']);
 
 /** Changes whenever installed dependencies or resolution conditions change. */
@@ -305,18 +305,18 @@ function findLockfile(root: string): string | undefined {
 }
 
 /**
- * The manifest of one set of conditions (E160): `.bespoke/manifest.json` with Node's own (published packages, production),
- * `.bespoke/manifest.source.json` with `@bespokecore/source` (the monorepo), `manifest.<conditions>.json` for any other set.
+ * The manifest of one set of conditions (E160): `.marmeon/manifest.json` with Node's own (published packages, production),
+ * `.marmeon/manifest.source.json` with `@marmeon/source` (the monorepo), `manifest.<conditions>.json` for any other set.
  */
 export function manifestPath(root: string, conditions: readonly string[] = runtimeConditions()): string {
-  // `@bespokecore/source` reads as `source`; Vitest adds `development`: `manifest.development+source.json`.
+  // `@marmeon/source` reads as `source`; Vitest adds `development`: `manifest.development+source.json`.
   const own = [...new Set(conditions.filter((condition) => !NODE_CONDITIONS.has(condition)))].map((condition) =>
-    condition === '@bespokecore/source' ? 'source' : condition.replace(/[^\w.-]+/g, '_'),
+    condition === '@marmeon/source' ? 'source' : condition.replace(/[^\w.-]+/g, '_'),
   );
-  return join(root, '.bespoke', own.length === 0 ? 'manifest.json' : `manifest.${own.sort().join('+')}.json`);
+  return join(root, '.marmeon', own.length === 0 ? 'manifest.json' : `manifest.${own.sort().join('+')}.json`);
 }
 
-/** Writes the manifest of the given (or this process's) conditions — what `bespoke discover` and `bespoke build` run. */
+/** Writes the manifest of the given (or this process's) conditions — what `marmeon discover` and `marmeon build` run. */
 export function writeManifest(options: DiscoverOptions): DiscoverySummary & { readonly path: string } {
   const conditions = options.conditions ?? runtimeConditions();
   const result = regenerate({ ...options, conditions });
@@ -326,7 +326,7 @@ export function writeManifest(options: DiscoverOptions): DiscoverySummary & { re
 
 /**
  * Generates and writes the manifest atomically: a temporary file renamed into place.
- * Several processes may regenerate at once (the dev server, `bespoke` commands, test
+ * Several processes may regenerate at once (the dev server, `marmeon` commands, test
  * workers) — a reader must never see a half-written file. A directory that cannot be
  * written is no failure here: the manifest is returned with the error (E160).
  */
@@ -354,8 +354,8 @@ export interface DiscoveredPackages {
   /** Whether the manifest was (re)generated during this call. */
   readonly regenerated: boolean;
   /**
-   * Set when the manifest was out of date and `.bespoke/` could not be written (E160): the packages were discovered in memory —
-   * once per process, the app logs it (run `bespoke build` or `bespoke discover` where it can write, e.g. in the image's build stage).
+   * Set when the manifest was out of date and `.marmeon/` could not be written (E160): the packages were discovered in memory —
+   * once per process, the app logs it (run `marmeon build` or `marmeon discover` where it can write, e.g. in the image's build stage).
    */
   readonly warning?: string;
 }
@@ -407,7 +407,7 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     modules = await load(manifest!);
   } catch (error) {
     // A package the manifest lists is gone while package.json and the lockfile stayed — a production install without the dev
-    // dependencies (`pnpm install --prod`, a pruned image) next to a manifest written with them (@bespokecore/devtools, E115).
+    // dependencies (`pnpm install --prod`, a pruned image) next to a manifest written with them (@marmeon/devtools, E115).
     // Discover again from what is installed, once.
     if (regenerated || (error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     manifest = discover();
@@ -418,7 +418,7 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
 
   for (const entry of manifest!.injections) {
     const target = resolve(entry.class);
-    // Own lists win: an explicit `static inject` or one embedded by `bespoke package:build`.
+    // Own lists win: an explicit `static inject` or one embedded by `marmeon package:build`.
     if (Object.hasOwn(target, 'inject')) continue;
     if ('inject' in entry) target.inject = entry.inject.map(resolve);
     else target[UNRESOLVABLE] ??= entry.unresolvable;
@@ -428,8 +428,8 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   if (unwritable && !warned.has(path)) {
     warned.add(path);
     warning =
-      `${relative(options.root, path)} is out of date and .bespoke/ cannot be written (${unwritable.code}): the packages were discovered in memory, ` +
-      'on every start. Run `bespoke build` (or `bespoke discover`) where the app can write — in a Docker image, in its build stage.';
+      `${relative(options.root, path)} is out of date and .marmeon/ cannot be written (${unwritable.code}): the packages were discovered in memory, ` +
+      'on every start. Run `marmeon build` (or `marmeon discover`) where the app can write — in a Docker image, in its build stage.';
   }
   return { providers: manifest!.providers.map(resolve), packages: manifest!.packages, regenerated, ...(warning ? { warning } : {}) };
 }

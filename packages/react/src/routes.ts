@@ -1,8 +1,8 @@
-import { resolveRoute } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, Param, Query, RouteArgs, RouteManifest } from '@bespokecore/http/page';
+import { resolveRoute } from '@marmeon/http/client';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, Param, Query, RouteArgs, RouteManifest } from '@marmeon/http/page';
 import { createContext, useContext, useMemo } from 'react';
 
-/** The route manifest of the app (`virtual:bespoke/routes`), from `createBespokeApp({ routes })` / `createSsrRenderer(…, { routes })`. */
+/** The route manifest of the app (`virtual:marmeon/routes`), from `createMarmeonApp({ routes })` / `createSsrRenderer(…, { routes })`. */
 export const RoutesContext = createContext<RouteManifest | undefined>(undefined);
 
 /** A named route's URL, typed against the routes the browser knows: `route('user-profile.show', { user: 7 }, { tab: 'links' })`. */
@@ -16,7 +16,7 @@ export type RouteFunction = <const N extends BrowserRouteNameInput>(name: CheckB
  * <a href={route('user-profile.show', { user: profile.id }, { tab: 'links' })}>…</a>   // /users/7?tab=links
  * ```
  *
- * Names and path parameters are checked against `bootstrap/routes.ts` (`bespoke route:types`).
+ * Names and path parameters are checked against `bootstrap/routes.ts` (`marmeon route:types`).
  */
 export function useRoute(): RouteFunction {
   const manifest = useContext(RoutesContext);

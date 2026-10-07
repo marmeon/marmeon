@@ -1,5 +1,5 @@
-import { Controller, type HttpContext } from '@bespokecore/http';
-import { Router } from '@bespokecore/router';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Router } from '@marmeon/router';
 import { RESET_COOKIE, resetFromCookie } from '../reset-cookie.ts';
 
 /**

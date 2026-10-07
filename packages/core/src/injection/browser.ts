@@ -3,7 +3,7 @@ import { dirname, join, matchesGlob, relative, sep } from 'node:path';
 
 /**
  * A package's browser-only sources: globs relative to the package directory, from its package.json —
- * `"bespoke": { "browser": ["src/client/**", "src/page.ts"] }`.
+ * `"marmeon": { "browser": ["src/client/**", "src/page.ts"] }`.
  *
  * The injection transform leaves these files alone (roadmap E76). A browser class is never built by the
  * container, so it needs neither a list nor a reason — and every string attached to it would be shipped to
@@ -11,10 +11,10 @@ import { dirname, join, matchesGlob, relative, sep } from 'node:path';
  */
 export function browserSources(packageDir: string): readonly string[] {
   const json = readPackageJson(join(packageDir, 'package.json'));
-  const browser: unknown = json?.bespoke?.browser;
+  const browser: unknown = json?.marmeon?.browser;
   if (browser === undefined) return [];
   if (!Array.isArray(browser) || !browser.every((glob) => typeof glob === 'string')) {
-    throw new TypeError(`${join(packageDir, 'package.json')}: "bespoke.browser" must be a list of globs relative to the package, e.g. ["src/client/**"].`);
+    throw new TypeError(`${join(packageDir, 'package.json')}: "marmeon.browser" must be a list of globs relative to the package, e.g. ["src/client/**"].`);
   }
   return browser;
 }
@@ -50,7 +50,7 @@ function owningPackage(dir: string): { dir: string; globs: readonly string[] } |
   return found;
 }
 
-function readPackageJson(path: string): { bespoke?: { browser?: unknown } } | undefined {
+function readPackageJson(path: string): { marmeon?: { browser?: unknown } } | undefined {
   try {
     return JSON.parse(readFileSync(path, 'utf8'));
   } catch {

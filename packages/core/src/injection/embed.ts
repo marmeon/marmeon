@@ -8,7 +8,7 @@ type Node = { type: string; start: number; [key: string]: any };
 
 /**
  * Embeds injection lists into *compiled* JavaScript, using the TypeScript source
- * as the source of types. This is what `bespoke package:build` runs after `tsc`,
+ * as the source of types. This is what `marmeon package:build` runs after `tsc`,
  * so published packages carry their lists and consumers need no extra step.
  */
 export function embedInjections(tsSource: string, tsFile: string, jsSource: string, jsFile: string): string {
@@ -98,7 +98,7 @@ export interface EmbedPackageOptions {
   outDir: string;
   /**
    * Browser-only sources, as globs relative to the package directory (the parent of `srcDir`) — the package's
-   * `"bespoke": { "browser": [...] }`. Their classes get nothing (roadmap E76), and fields an earlier build left there are taken out.
+   * `"marmeon": { "browser": [...] }`. Their classes get nothing (roadmap E76), and fields an earlier build left there are taken out.
    */
   browser?: readonly string[];
 }

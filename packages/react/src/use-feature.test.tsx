@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
-import { defineFeature, loadHistoryFallback, type Navigator } from '@bespokecore/http/client';
-import type { PageObject } from '@bespokecore/http/page';
+import { defineFeature, loadHistoryFallback, type Navigator } from '@marmeon/http/client';
+import type { PageObject } from '@marmeon/http/page';
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { BespokeApp, RouterContext, useFeature, useRouterContext, type RouterValue } from './app.tsx';
+import { MarmeonApp, RouterContext, useFeature, useRouterContext, type RouterValue } from './app.tsx';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -39,7 +39,7 @@ describe('useFeature', () => {
     );
     const container = document.createElement('div');
     const root = createRoot(container);
-    await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={page} initialComponent={Show} resolve={async () => Show} />));
+    await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={page} initialComponent={Show} resolve={async () => Show} />));
     await act(async () => rerender());
     expect(seen.length).toBeGreaterThanOrEqual(6);
     expect(new Set(seen).size).toBe(1);

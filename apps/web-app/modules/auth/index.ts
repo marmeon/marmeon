@@ -1,5 +1,5 @@
-import { Login, Registered } from '@bespokecore/auth';
-import { defineModule, listen } from '@bespokecore/core';
+import { Login, Registered } from '@marmeon/auth';
+import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
 import { QueueWelcomeMail } from './listeners/QueueWelcomeMail.ts';
@@ -29,7 +29,7 @@ export default defineModule({
   // The module's notifications (a worker finds them by name) — and how a notification finds a user again.
   notifications: [NewSignInNotification],
   recipients: { user: UserRecipients },
-  // Queued work of this module — a worker (`bespoke queue:work`, started by `bespoke dev`) runs only registered jobs.
+  // Queued work of this module — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   // SendAccountExistsMailJob: private registration (E146) — the note to an account's owner that someone signed up with its address;
   // SendEmailChangeMailJob: the link to a new address, or the note to the owner of a taken one.
   jobs: [SendWelcomeMailJob, SendPasswordResetLinkJob, SendAccountExistsMailJob, SendEmailChangeMailJob],
@@ -38,6 +38,6 @@ export default defineModule({
   exposes: ['users'],
   seeders: [DemoUsersSeeder],
   routes,
-  // Scheduled work: the nightly prune of tokens and expired changes of address (bespoke schedule:work).
+  // Scheduled work: the nightly prune of tokens and expired changes of address (marmeon schedule:work).
   schedule,
 });

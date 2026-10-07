@@ -1,5 +1,5 @@
 import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
-import type { Container } from '@bespokecore/core';
+import type { Container } from '@marmeon/core';
 import type { Output } from './output.ts';
 
 export interface CommandInput {
@@ -7,10 +7,10 @@ export interface CommandInput {
   readonly args: readonly string[];
   readonly options: Readonly<Record<string, string | boolean | (string | boolean)[] | undefined>>;
   readonly output: Output;
-  /** The directory `bespoke` runs in — the app root. */
+  /** The directory `marmeon` runs in — the app root. */
   readonly root: string;
   /**
-   * Runs another `bespoke` command in a fresh process — one that boots the app anew, e.g. `route:types` after a
+   * Runs another `marmeon` command in a fresh process — one that boots the app anew, e.g. `route:types` after a
    * generator added a module. Its output goes to this console; resolves with its exit code.
    */
   readonly spawn: (...args: string[]) => Promise<number>;
@@ -42,12 +42,12 @@ export interface CommandClass {
   readonly options?: ParseArgsOptionsConfig;
   /**
    * Whether the application must boot first (default: true). Generators and
-   * tooling set this to false, so they work without a valid `.env`. `'build'`: the app as `bespoke build` has it (E187) — every
+   * tooling set this to false, so they work without a valid `.env`. `'build'`: the app as `marmeon build` has it (E187) — every
    * provider registered, none booted, no runtime secret needed (`route:types`). Read for the CLI's built-in commands, which it
    * knows before the app boots.
    */
   readonly boots?: boolean | 'build';
-  /** Hidden from `bespoke list`. */
+  /** Hidden from `marmeon list`. */
   readonly hidden?: boolean;
 }
 
@@ -80,12 +80,12 @@ export function parseCommandArgs(Command: CommandClass, argv: readonly string[])
     const parsed = parseArgs({ args: [...argv], options: Command.options ?? {}, allowPositionals: true, strict: true });
     return { args: parsed.positionals, options: parsed.values };
   } catch (error) {
-    throw new CommandArgumentsError(`${(error as Error).message}\nUsage: bespoke ${Command.command} ${Command.usage ?? ''}`.trimEnd());
+    throw new CommandArgumentsError(`${(error as Error).message}\nUsage: marmeon ${Command.command} ${Command.usage ?? ''}`.trimEnd());
   }
 }
 
 /**
- * Runs `Command` with `argv` — built through `container` (constructor injection), as `bespoke <command>` does: the
+ * Runs `Command` with `argv` — built through `container` (constructor injection), as `marmeon <command>` does: the
  * scheduler runs `s.command(…)` tasks this way, each in a scope of its own. Resolves with the exit code.
  */
 export async function runCommand(container: Container, Command: CommandClass, argv: readonly string[], context: Pick<CommandInput, 'output' | 'root' | 'spawn'>): Promise<number> {

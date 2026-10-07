@@ -1,7 +1,7 @@
 import { UserRepository, type User } from '#modules/auth';
-import type { AuthUser } from '@bespokecore/auth';
+import type { AuthUser } from '@marmeon/auth';
 import { LoginActivityRepository } from './LoginActivityRepository.ts';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowRecentSignInsController } from '../dashboard/controllers/ShowRecentSignInsController.ts';

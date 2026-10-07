@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { buffer } from 'node:stream/consumers';
 import type { ReadableStream as NodeWebStream } from 'node:stream/web';
-import { durationToMilliseconds, type Duration } from '@bespokecore/core';
+import { durationToMilliseconds, type Duration } from '@marmeon/core';
 import type { FileContents } from './disk.ts';
 
 /** Contents as a Node stream — what a file write pipes. */

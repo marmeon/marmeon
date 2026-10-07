@@ -1,6 +1,6 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useTranslation } from '@bespokecore/react';
-import { useTable, type TableRunOutcome } from '@bespokecore/react/table';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useTranslation } from '@marmeon/react';
+import { useTable, type TableRunOutcome } from '@marmeon/react/table';
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListMembersController } from '../controllers/ListMembersController.ts';

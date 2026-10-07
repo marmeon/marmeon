@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { sql, type Connections } from '@bespokecore/database';
+import { sql, type Connections } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import {
   connectionOptions,
@@ -35,7 +35,7 @@ interface Fixture {
   failed(): Promise<{ uuid: string; job: string; exception: string }[]>;
   until<T>(check: () => Promise<T | undefined | false>, ms?: number): Promise<T>;
   worker(args: readonly string[], env?: Record<string, string>): WorkerProcess;
-  /** `bespoke fixture:dispatch …` — started, ready, waiting for "go". */
+  /** `marmeon fixture:dispatch …` — started, ready, waiting for "go". */
   dispatcher(args: readonly string[]): Promise<WorkerProcess>;
   /** The env name of the target's retryAfter. */
   retryAfter(seconds: number): Record<string, string>;
@@ -112,7 +112,7 @@ async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) 
   }
 }
 
-// The Gegenproben of the queue core (W6 step 3) with real `bespoke queue:work` processes on a shared database.
+// The Gegenproben of the queue core (W6 step 3) with real `marmeon queue:work` processes on a shared database.
 describe.each(processKinds)('queue:work processes on %s', (kind) => {
   it(
     'runs each of 200 jobs exactly once with two workers taking from one queue',
@@ -339,5 +339,5 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
   });
 });
 
-if (!PGSQL_URL) describe.skip('queue:work processes on pgsql (set BESPOKE_TEST_PGSQL_URL: pnpm test:pgsql)', () => it('runs', () => {}));
-if (!REDIS_URL) describe.skip('queue:work processes on redis (set BESPOKE_TEST_REDIS_URL: pnpm test:redis)', () => it('runs', () => {}));
+if (!PGSQL_URL) describe.skip('queue:work processes on pgsql (set MARMEON_TEST_PGSQL_URL: pnpm test:pgsql)', () => it('runs', () => {}));
+if (!REDIS_URL) describe.skip('queue:work processes on redis (set MARMEON_TEST_REDIS_URL: pnpm test:redis)', () => it('runs', () => {}));

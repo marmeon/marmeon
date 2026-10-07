@@ -104,12 +104,12 @@ export default defineGegenproben({
     // --- Only with its import (dist/) --------------------------------------------------------------------------------------------
     {
       id: 'G6',
-      title: 'useTable in an app without tables: createBespokeApp’s module imports it',
+      title: 'useTable in an app without tables: createMarmeonApp’s module imports it',
       patch: [
         {
           file: 'packages/react/dist/client.js',
-          find: 'export async function createBespokeApp({',
-          replace: "import { useTable as __useTable } from './table.js';\nglobalThis.__bespokeTable = __useTable;\nexport async function createBespokeApp({",
+          find: 'export async function createMarmeonApp({',
+          replace: "import { useTable as __useTable } from './table.js';\nglobalThis.__marmeonTable = __useTable;\nexport async function createMarmeonApp({",
         },
       ],
       run: leak('the headless table and TanStack are in no bundle of emptyApp'),
@@ -138,14 +138,14 @@ export default defineGegenproben({
     },
     {
       id: 'G8',
-      title: '@bespokecore/table a hard dependency of the React adapter (discovery would add it to every React app)',
-      patch: [{ file: 'packages/react/package.json', find: '  "dependencies": {\n    "@bespokecore/http": "workspace:*"\n  },', replace: '  "dependencies": {\n    "@bespokecore/http": "workspace:*",\n    "@bespokecore/table": "workspace:*"\n  },' }],
+      title: '@marmeon/table a hard dependency of the React adapter (discovery would add it to every React app)',
+      patch: [{ file: 'packages/react/package.json', find: '  "dependencies": {\n    "@marmeon/http": "workspace:*"\n  },', replace: '  "dependencies": {\n    "@marmeon/http": "workspace:*",\n    "@marmeon/table": "workspace:*"\n  },' }],
       run: { vitest: 'packages/react/src/browser-safe.test.ts', name: 'optional peers, so discovery does not add the table package' },
-      expect: /to not have property "@bespokecore\/table"/,
+      expect: /to not have property "@marmeon\/table"/,
     },
     {
       id: 'G9',
-      title: 'discovery lists every exported subpath, injectable or not: an app without the table imports @bespokecore/react/table at boot (pack:smoke: ERR_MODULE_NOT_FOUND)',
+      title: 'discovery lists every exported subpath, injectable or not: an app without the table imports @marmeon/react/table at boot (pack:smoke: ERR_MODULE_NOT_FOUND)',
       patch: [
         {
           file: 'packages/core/src/discovery/discover.ts',

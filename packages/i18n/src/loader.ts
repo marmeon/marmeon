@@ -1,7 +1,7 @@
 import { Catalog } from './catalog.ts';
 import { baseLanguage, isLanguageTag } from './locale.ts';
 
-/** Language files by path, loaded lazily — `virtual:bespoke/lang` of `@bespokecore/vite` (one chunk per file). */
+/** Language files by path, loaded lazily — `virtual:marmeon/lang` of `@marmeon/vite` (one chunk per file). */
 export type LangFiles = Readonly<Record<string, () => Promise<unknown>>>;
 
 /** The namespace of the app-wide `lang/` folder (`lang/en.ts`); a module's is its name. */
@@ -34,7 +34,7 @@ export interface MessageLoader {
  * Loads language files on demand — in the browser and in the SSR entry, where pages render from the same messages:
  *
  * ```ts
- * import lang from 'virtual:bespoke/lang';
+ * import lang from 'virtual:marmeon/lang';
  * export const messages = createMessageLoader(lang);
  * ```
  *

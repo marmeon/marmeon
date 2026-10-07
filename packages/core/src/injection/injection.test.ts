@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { analyzeInjections, injectConstructorDependencies } from './analyze.ts';
 import { browserSources, isBrowserSource } from './browser.ts';
-import { bespokeInjection } from '../vite.ts';
+import { marmeonInjection } from '../vite.ts';
 import { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './embed.ts';
 
 const inject = (source: string) => injectConstructorDependencies(source, 'app/Example.ts');
@@ -63,7 +63,7 @@ describe('injectConstructorDependencies', () => {
     expect(output).toContain('  return class { static inject = [RateLimiter]; constructor');
     expect(output).toContain('  class Local { static inject = [RateLimiter]; constructor');
     // A type declared inside the function is not visible to the module: a reason, not a silent gap.
-    expect(output).toMatch(/class NeedsLocal \{ static \[Symbol\.for\("bespokecore\.injection\.unresolvable"\)\] = ".*Local/);
+    expect(output).toMatch(/class NeedsLocal \{ static \[Symbol\.for\("marmeon\.injection\.unresolvable"\)\] = ".*Local/);
   });
 
   it('erases type arguments', () => {
@@ -73,7 +73,7 @@ describe('injectConstructorDependencies', () => {
 
   it('stops at the first optional or defaulted parameter, so JavaScript defaults apply', () => {
     const source = "import { A, B } from './x.ts';\nclass C { constructor(a: A, b?: B, name = 'x') {} }";
-    expect(inject(source)).toContain('class C { static inject = [A]; static [Symbol.for("bespokecore.injection.warnings")] = ["C (app/Example.ts:2): the parameter \\"b?: B\\" is optional');
+    expect(inject(source)).toContain('class C { static inject = [A]; static [Symbol.for("marmeon.injection.warnings")] = ["C (app/Example.ts:2): the parameter \\"b?: B\\" is optional');
     // A tree's `parent?: Self` is no dependency: no warning.
     expect(inject('class Container { constructor(parent?: Container) {} }')).toBe(
       'class Container { constructor(parent?: Container) {} }',
@@ -83,7 +83,7 @@ describe('injectConstructorDependencies', () => {
   it('warns about a defaulted or optional parameter of an injectable type — never an error (E128)', () => {
     // The W6.6 case: the job took its own SystemClock, a test's TestClock never reached it.
     const source = [
-      "import { Clock, SystemClock } from '@bespokecore/core';",
+      "import { Clock, SystemClock } from '@marmeon/core';",
       "import type { Options } from './options.ts';",
       "import { TokenRepository } from './tokens.ts';",
       'export class PruneTokensJob {',
@@ -100,7 +100,7 @@ describe('injectConstructorDependencies', () => {
     // Only defaults: no list (JavaScript's defaults apply), but the warning still goes with the class.
     expect(onlyDefaults).toMatchObject({ className: 'OnlyDefaults', dependencies: [] });
     const output = injectConstructorDependencies(source, 'modules/auth/jobs/PruneTokensJob.ts');
-    expect(output).toContain('export class OnlyDefaults { static [Symbol.for("bespokecore.injection.warnings")] = ["OnlyDefaults (');
+    expect(output).toContain('export class OnlyDefaults { static [Symbol.for("marmeon.injection.warnings")] = ["OnlyDefaults (');
     expect(output).not.toContain('static inject = [];');
     expect(output.split('\n')).toHaveLength(source.split('\n').length);
     // A class that declares its own list made the choice: no warning.
@@ -110,7 +110,7 @@ describe('injectConstructorDependencies', () => {
   it('never throws for classes it cannot inject — it attaches the reason instead', () => {
     const output = inject('export class Money { constructor(amount: number) {} }');
     expect(output).toContain(
-      'export class Money { static [Symbol.for("bespokecore.injection.unresolvable")] = "Cannot inject app/Example.ts:1 — Money',
+      'export class Money { static [Symbol.for("marmeon.injection.unresolvable")] = "Cannot inject app/Example.ts:1 — Money',
     );
   });
 
@@ -154,7 +154,7 @@ describe('injectConstructorDependencies', () => {
   });
 });
 
-describe('embedInjections (bespoke package:build)', () => {
+describe('embedInjections (marmeon package:build)', () => {
   const ts = [
     "import { Clock } from '@acme/clock';",
     "import { Formatter } from './formatter.js';",
@@ -197,9 +197,9 @@ describe('embedInjections (bespoke package:build)', () => {
 describe('browser sources get no injection metadata (E76)', () => {
   /** A package with a browser class and a server class, both with a constructor parameter the container cannot fill. */
   function fixture(browser: readonly string[] | undefined): string {
-    const dir = mkdtempSync(join(tmpdir(), 'bespoke-embed-'));
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-embed-'));
     const files: Record<string, string> = {
-      'package.json': JSON.stringify({ name: '@acme/ui', bespoke: { providers: [], ...(browser ? { browser } : {}) } }),
+      'package.json': JSON.stringify({ name: '@acme/ui', marmeon: { providers: [], ...(browser ? { browser } : {}) } }),
       'src/client/widget.ts': 'export class Widget { constructor(label: string) {} }',
       'src/server.ts': 'export class Mailer { constructor(host: string) {} }',
       'dist/client/widget.js': 'export class Widget {\n    constructor(label) { }\n}',
@@ -214,7 +214,7 @@ describe('browser sources get no injection metadata (E76)', () => {
   const embed = (dir: string) => embedPackageInjections({ srcDir: join(dir, 'src'), outDir: join(dir, 'dist'), browser: browserSources(dir) });
   const read = (dir: string, file: string) => readFileSync(join(dir, 'dist', file), 'utf8');
 
-  it('bespoke package:build embeds only into server sources — the browser globs come from package.json', () => {
+  it('marmeon package:build embeds only into server sources — the browser globs come from package.json', () => {
     const dir = fixture(['src/client/**']);
     try {
       expect(embed(dir)).toEqual([join(dir, 'dist/server.js')]);
@@ -229,8 +229,8 @@ describe('browser sources get no injection metadata (E76)', () => {
     const dir = fixture(undefined);
     try {
       embed(dir);
-      expect(read(dir, 'client/widget.js')).toContain('bespokecore.injection.unresolvable');
-      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@acme/ui', bespoke: { browser: ['src/client/**'] } }));
+      expect(read(dir, 'client/widget.js')).toContain('marmeon.injection.unresolvable');
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@acme/ui', marmeon: { browser: ['src/client/**'] } }));
       expect(embed(dir)).toEqual([join(dir, 'dist/client/widget.js')]);
       expect(read(dir, 'client/widget.js')).toBe('export class Widget {\n    constructor(label) { }\n}');
       expect(read(dir, 'server.js')).toContain('Cannot inject');
@@ -240,7 +240,7 @@ describe('browser sources get no injection metadata (E76)', () => {
   });
 
   it('only removes what it inserted — never a list written by hand', () => {
-    const embedded = 'class A { static inject = [B]; static [Symbol.for("bespokecore.injection.unresolvable")] = "x";\n    constructor(b) {}\n}';
+    const embedded = 'class A { static inject = [B]; static [Symbol.for("marmeon.injection.unresolvable")] = "x";\n    constructor(b) {}\n}';
     expect(removeEmbeddedInjections(embedded, 'a.js')).toBe('class A {\n    constructor(b) {}\n}');
     const handWritten = 'class A {\n    static inject = [B];\n    constructor(b) {}\n}';
     expect(removeEmbeddedInjections(handWritten, 'a.js')).toBe(handWritten);
@@ -252,7 +252,7 @@ describe('browser sources get no injection metadata (E76)', () => {
       const widget = join(dir, 'src/client/widget.ts');
       const mailer = join(dir, 'src/server.ts');
       expect([isBrowserSource(widget), isBrowserSource(mailer)]).toEqual([true, false]);
-      const plugin = bespokeInjection();
+      const plugin = marmeonInjection();
       expect(plugin.transform(readFileSync(widget, 'utf8'), widget)).toBeNull();
       expect(plugin.transform(readFileSync(mailer, 'utf8'), mailer)?.code).toContain('Cannot inject');
     } finally {
@@ -263,15 +263,15 @@ describe('browser sources get no injection metadata (E76)', () => {
   it('a malformed list is an error, not silently ignored', () => {
     const dir = fixture(undefined);
     try {
-      writeFileSync(join(dir, 'package.json'), JSON.stringify({ bespoke: { browser: 'src/client/**' } }));
-      expect(() => browserSources(dir)).toThrow(/"bespoke\.browser" must be a list of globs/);
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ marmeon: { browser: 'src/client/**' } }));
+      expect(() => browserSources(dir)).toThrow(/"marmeon\.browser" must be a list of globs/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 });
 
-describe('@bespokecore/core/register (real Node process)', () => {
+describe('@marmeon/core/register (real Node process)', () => {
   it('injects constructor dependencies and keeps stack trace lines exact', () => {
     const register = fileURLToPath(new URL('../register.ts', import.meta.url));
     const main = fileURLToPath(new URL('./__fixtures__/main.ts', import.meta.url));

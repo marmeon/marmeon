@@ -1,8 +1,8 @@
-import { AuthConfig, type Authenticated } from '@bespokecore/auth';
-import { Clock } from '@bespokecore/core';
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
-import { Translator, Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
+import { AuthConfig, type Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { Translator, Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
 import { emailChangeTokenHash } from '../email-change.ts';
 import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
 import { UserRepository } from '../UserRepository.ts';

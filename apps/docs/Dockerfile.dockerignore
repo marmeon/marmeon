@@ -7,7 +7,7 @@
 # Installed and built inside the image.
 **/node_modules
 **/dist
-**/.bespoke
+**/.marmeon
 **/*.tsbuildinfo
 # What apps write when they run.
 apps/*/storage

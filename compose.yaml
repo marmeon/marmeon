@@ -1,28 +1,28 @@
 # Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`, `pnpm test:redis` and `pnpm test:s3`.
 # Own ports on purpose — 5432/3306 may belong to other projects on the same machine.
-name: bespokecore
+name: marmeon
 
 services:
   pgsql:
     image: postgres:18-alpine
-    container_name: bespokecore-pgsql
+    container_name: marmeon-pgsql
     ports:
       - '55432:5432'
     environment:
-      POSTGRES_USER: bespoke
+      POSTGRES_USER: marmeon
       POSTGRES_PASSWORD: secret
-      POSTGRES_DB: bespoke
+      POSTGRES_DB: marmeon
     # Test data is disposable: no volume, and fsync off for speed.
     command: ['postgres', '-c', 'fsync=off', '-c', 'synchronous_commit=off', '-c', 'full_page_writes=off']
     healthcheck:
-      test: ['CMD', 'pg_isready', '-U', 'bespoke']
+      test: ['CMD', 'pg_isready', '-U', 'marmeon']
       interval: 2s
       timeout: 2s
       retries: 15
 
   redis:
     image: redis:8-alpine
-    container_name: bespokecore-redis
+    container_name: marmeon-redis
     ports:
       - '56379:6379'
     # Test data is disposable: no snapshots, no append-only file.
@@ -38,7 +38,7 @@ services:
   # One process (`weed mini`), S3 on 56333, signatures checked against the identity below.
   s3:
     image: chrislusf/seaweedfs:4.48
-    container_name: bespokecore-s3
+    container_name: marmeon-s3
     ports:
       - '56333:8333'
     command: ['mini', '-dir=/data', '-s3.config=/etc/seaweedfs/s3.json', '-admin.ui=false', '-webdav=false']
@@ -52,7 +52,7 @@ services:
       retries: 30
 
 configs:
-  # Test credentials only (BESPOKE_TEST_S3_KEY / BESPOKE_TEST_S3_SECRET default to them).
+  # Test credentials only (MARMEON_TEST_S3_KEY / MARMEON_TEST_S3_SECRET default to them).
   s3-identities:
     content: |
-      {"identities": [{"name": "bespoke", "credentials": [{"accessKey": "bespoke", "secretKey": "bespoke-secret"}], "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+      {"identities": [{"name": "marmeon", "credentials": [{"accessKey": "marmeon", "secretKey": "marmeon-secret"}], "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}

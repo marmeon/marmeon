@@ -1,5 +1,5 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
-import type { CookieJar } from '@bespokecore/router';
+import { SystemClock, type Clock } from '@marmeon/core';
+import type { CookieJar } from '@marmeon/router';
 import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
 /**

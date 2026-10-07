@@ -1,6 +1,6 @@
-import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
+import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { trans, Translator } from '@marmeon/i18n';
 import * as v from 'valibot';
 import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
 

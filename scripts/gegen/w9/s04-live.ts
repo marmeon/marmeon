@@ -105,7 +105,7 @@ export default defineGegenproben({
     // --- Read-only at the path ----------------------------------------------------------------------------------------------
     {
       id: 'G5',
-      title: 'read-only only by the Accept header: GET /_bespoke/live without it writes the session’s cookies',
+      title: 'read-only only by the Accept header: GET /_marmeon/live without it writes the session’s cookies',
       patch: [
         {
           file: 'packages/server/src/kernel.ts',
@@ -146,7 +146,7 @@ export default defineGegenproben({
       id: 'G6d',
       title: 'the same against Redis: the sequence key deleted (its TTL), the stream hears nothing more',
       patch: [{ file: HUB, find: '    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).\n', replace: '    // evicted or flushed; the memory backend forgot it) — told, never dropped as "old" (W9 step 4).\n    if (message.seq <= (this.#seqs.get(message.channel) ?? 0)) return;\n' }],
-      run: { vitest: 'packages/live/src/live.test.ts', name: 'the sequence key expired (a day without hints) or was deleted', env: { BESPOKE_TEST_REDIS_URL: 'redis://127.0.0.1:56379' } },
+      run: { vitest: 'packages/live/src/live.test.ts', name: 'the sequence key expired (a day without hints) or was deleted', env: { MARMEON_TEST_REDIS_URL: 'redis://127.0.0.1:56379' } },
       expect: /The live stream did not get 4 hints/,
     },
     {
@@ -166,7 +166,7 @@ export default defineGegenproben({
     },
     {
       id: 'G7b',
-      title: 'the mark alone decides: a single process with BESPOKE_CLUSTER_WORKER left in its environment refuses to start',
+      title: 'the mark alone decides: a single process with MARMEON_CLUSTER_WORKER left in its environment refuses to start',
       patch: [{ file: 'packages/live/src/index.ts', find: " && process.env[CLUSTER_WORKER] === '1' && cluster.isWorker) {", replace: " && process.env[CLUSTER_WORKER] === '1') {" }],
       run: { vitest: 'packages/live/src/server.test.ts', name: 'one process starts with it' },
       expect: /code: 70/,
@@ -176,8 +176,8 @@ export default defineGegenproben({
       title: 'a worker whose app fails to boot hangs on its channel to the primary — the cluster never ends',
       patch: [
         {
-          file: 'packages/cli/bin/bespoke.js',
-          find: "  if (process.exitCode !== 0 && process.env.BESPOKE_CLUSTER_WORKER === '1' && process.connected) {",
+          file: 'packages/cli/bin/marmeon.js',
+          find: "  if (process.exitCode !== 0 && process.env.MARMEON_CLUSTER_WORKER === '1' && process.connected) {",
           replace: '  if (false) {',
         },
       ],

@@ -1,4 +1,4 @@
-import type { RecipientResolver } from '@bespokecore/notifications';
+import type { RecipientResolver } from '@marmeon/notifications';
 import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
 

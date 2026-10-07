@@ -1,11 +1,11 @@
-import { ownResponse } from '@bespokecore/router';
+import { ownResponse } from '@marmeon/router';
 import { withFlashMethod, type FlashMethod } from './flash.ts';
 
-const JSON_RESULT = Symbol.for('bespokecore.json-result');
+const JSON_RESULT = Symbol.for('marmeon.json-result');
 
 /**
  * What `this.json(data)` returns: data sent as JSON — typed, so the browser knows what it gets back. The answer of an
- * action (`useAction` of @bespokecore/react, E59): `result.data` is `Serialize<T>`, what JSON makes of it (a `Date` is its
+ * action (`useAction` of @marmeon/react, E59): `result.data` is `Serialize<T>`, what JSON makes of it (a `Date` is its
  * string). Also an API's answer.
  */
 export interface JsonResult<T = unknown> {

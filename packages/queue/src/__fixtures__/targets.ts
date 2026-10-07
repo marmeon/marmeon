@@ -5,19 +5,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { CACHE_MIGRATION } from '@bespokecore/cache';
-import { TestClock, type Clock, type Logger } from '@bespokecore/core';
-import { Connections, Schema, sql, type ConnectionOptions } from '@bespokecore/database';
-import { RedisConnections } from '@bespokecore/redis';
+import { CACHE_MIGRATION } from '@marmeon/cache';
+import { TestClock, type Clock, type Logger } from '@marmeon/core';
+import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
+import { RedisConnections } from '@marmeon/redis';
 import { QUEUE_MIGRATION } from '../commands/failed.ts';
 import type { FailedJobStore, QueueDriver } from '../driver.ts';
 import { DatabaseFailedJobStore, DatabaseQueueDriver } from '../drivers/database.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from '../drivers/memory.ts';
 import { RedisQueueDriver } from '../drivers/redis.ts';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), Redis when `BESPOKE_TEST_REDIS_URL` is (`pnpm test:redis`). */
-export const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
-export const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+/** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), Redis when `MARMEON_TEST_REDIS_URL` is (`pnpm test:redis`). */
+export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
+export const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 export const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
@@ -74,14 +74,14 @@ export async function freshTarget(kind: QueueKind): Promise<{ target: QueueTarge
       return { target: { kind }, drop: async () => {} };
     case 'sqlite':
     case 'redis': {
-      const directory = mkdtempSync(join(tmpdir(), 'bespoke-queue-'));
+      const directory = mkdtempSync(join(tmpdir(), 'marmeon-queue-'));
       const file = join(directory, 'queue.sqlite');
       const connections = databaseConnections({ driver: 'sqlite', database: file });
       await migrate(connections);
       await connections.destroy();
       const removeFile = async () => rmSync(directory, { recursive: true, force: true });
       if (kind === 'sqlite') return { target: { kind, file }, drop: removeFile };
-      const prefix = `bespoke-queue-test-${crypto.randomUUID().slice(0, 8)}:`;
+      const prefix = `marmeon-queue-test-${crypto.randomUUID().slice(0, 8)}:`;
       return {
         target: { kind, url: REDIS_URL!, prefix, file },
         drop: async () => {
@@ -94,7 +94,7 @@ export async function freshTarget(kind: QueueKind): Promise<{ target: QueueTarge
       };
     }
     case 'pgsql': {
-      const name = `bespoke_queue_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+      const name = `marmeon_queue_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
       const admin = databaseConnections({ driver: 'pgsql', url: PGSQL_URL! });
       await sql`create database ${sql.id(name)}`.execute(admin.get());
       const url = new URL(PGSQL_URL!);
@@ -170,10 +170,10 @@ export function targetEnv(target: SharedTarget, retryAfter?: number): Record<str
   }
 }
 
-const CLI = fileURLToPath(new URL('../../../cli/bin/bespoke.js', import.meta.url));
+const CLI = fileURLToPath(new URL('../../../cli/bin/marmeon.js', import.meta.url));
 const APP = fileURLToPath(new URL('./app/', import.meta.url));
 
-/** A `bespoke queue:work` process in the fixture app — the real command, with the real signal handling. */
+/** A `marmeon queue:work` process in the fixture app — the real command, with the real signal handling. */
 export interface WorkerProcess {
   readonly child: ChildProcess;
   /** Every line it wrote so far (stdout and stderr). */
@@ -185,18 +185,18 @@ export interface WorkerProcess {
 }
 
 export function startWorker(target: SharedTarget, args: readonly string[], env: Record<string, string> = {}): WorkerProcess {
-  return startProcess(['--conditions=@bespokecore/source', CLI, 'queue:work', ...args], { ...targetEnv(target), ...env });
+  return startProcess(['--conditions=@marmeon/source', CLI, 'queue:work', ...args], { ...targetEnv(target), ...env });
 }
 
-/** `bespoke fixture:dispatch` in the fixture app: says "ready", waits for "go" on stdin, then dispatches. */
+/** `marmeon fixture:dispatch` in the fixture app: says "ready", waits for "go" on stdin, then dispatches. */
 export function startDispatcher(target: SharedTarget, args: readonly string[], env: Record<string, string> = {}): WorkerProcess {
-  return startProcess(['--conditions=@bespokecore/source', CLI, 'fixture:dispatch', ...args], { ...targetEnv(target), ...env }, 'pipe');
+  return startProcess(['--conditions=@marmeon/source', CLI, 'fixture:dispatch', ...args], { ...targetEnv(target), ...env }, 'pipe');
 }
 
 function startProcess(argv: readonly string[], env: Record<string, string>, stdin: 'ignore' | 'pipe' = 'ignore'): WorkerProcess {
   const child = spawn(process.execPath, argv, {
     cwd: APP,
-    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs BESPOKE_CHILD.
+    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
     env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', ...env },
     stdio: [stdin, 'pipe', 'pipe'],
   });
@@ -205,7 +205,7 @@ function startProcess(argv: readonly string[], env: Record<string, string>, stdi
   for (const stream of [child.stdout!, child.stderr!]) {
     createInterface({ input: stream }).on('line', (line) => {
       lines.push(line);
-      if (process.env.BESPOKE_TEST_VERBOSE) console.log(`[worker ${child.pid}] ${line}`);
+      if (process.env.MARMEON_TEST_VERBOSE) console.log(`[worker ${child.pid}] ${line}`);
       for (const waiter of waiters) waiter();
     });
   }

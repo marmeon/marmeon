@@ -1,6 +1,6 @@
-// Type guarantees of the cache, locks and the test clock (W6 step 1) — compiled by `pnpm typecheck` / `bespoke build`, never run.
-import { Cache, RateLimiter } from '@bespokecore/cache';
-import type { TestApp } from '@bespokecore/testing';
+// Type guarantees of the cache, locks and the test clock (W6 step 1) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+import { Cache, RateLimiter } from '@marmeon/cache';
+import type { TestApp } from '@marmeon/testing';
 
 export async function LockCallbacks(cache: Cache) {
   const report: 'built' | false = await cache.lock('report', 60).get(() => 'built' as const);

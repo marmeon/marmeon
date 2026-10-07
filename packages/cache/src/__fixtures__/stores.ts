@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { TestClock, type Clock, type Logger } from '@bespokecore/core';
-import { Connections, Schema, sql, type ConnectionOptions } from '@bespokecore/database';
-import { RedisConnections } from '@bespokecore/redis';
+import { TestClock, type Clock, type Logger } from '@marmeon/core';
+import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
+import { RedisConnections } from '@marmeon/redis';
 import type { CacheStore } from '../cache.ts';
 import { CACHE_MIGRATION } from '../commands/make-cache-table.ts';
 import { DatabaseStore } from '../stores/database.ts';
@@ -12,9 +12,9 @@ import { FileStore } from '../stores/file.ts';
 import { MemoryStore } from '../stores/memory.ts';
 import { RedisStore } from '../stores/redis.ts';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), Redis when `BESPOKE_TEST_REDIS_URL` is (`pnpm test:redis`). */
-export const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
-export const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+/** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), Redis when `MARMEON_TEST_REDIS_URL` is (`pnpm test:redis`). */
+export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
+export const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 export const silent: Logger = { debug() {}, info() {}, warn() {}, error: (message, context) => console.error(message, context), child: () => silent };
 
@@ -52,11 +52,11 @@ export async function freshTarget(kind: StoreKind): Promise<{ target: StoreTarge
     case 'memory':
       return { target: { kind }, drop: async () => {} };
     case 'file': {
-      const directory = mkdtempSync(join(tmpdir(), 'bespoke-cache-'));
+      const directory = mkdtempSync(join(tmpdir(), 'marmeon-cache-'));
       return { target: { kind, directory }, drop: async () => rmSync(directory, { recursive: true, force: true }) };
     }
     case 'sqlite': {
-      const directory = mkdtempSync(join(tmpdir(), 'bespoke-cache-db-'));
+      const directory = mkdtempSync(join(tmpdir(), 'marmeon-cache-db-'));
       const file = join(directory, 'cache.sqlite');
       const connections = databaseConnections({ driver: 'sqlite', database: file });
       await migrate(connections);
@@ -64,7 +64,7 @@ export async function freshTarget(kind: StoreKind): Promise<{ target: StoreTarge
       return { target: { kind, file }, drop: async () => rmSync(directory, { recursive: true, force: true }) };
     }
     case 'pgsql': {
-      const name = `bespoke_cache_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+      const name = `marmeon_cache_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
       const admin = databaseConnections({ driver: 'pgsql', url: PGSQL_URL! });
       await sql`create database ${sql.id(name)}`.execute(admin.get());
       const url = new URL(PGSQL_URL!);
@@ -81,7 +81,7 @@ export async function freshTarget(kind: StoreKind): Promise<{ target: StoreTarge
       };
     }
     case 'redis': {
-      const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+      const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
       return {
         target: { kind, url: REDIS_URL!, prefix },
         drop: async () => {

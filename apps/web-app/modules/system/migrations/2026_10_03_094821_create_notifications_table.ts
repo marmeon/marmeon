@@ -1,10 +1,10 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
-// The table of the `database` notification channel (written by `bespoke make:notifications-table`): a row per notification
+// The table of the `database` notification channel (written by `marmeon make:notifications-table`): a row per notification
 // and recipient — who it is for (`recipient_type` and `recipient_id`, as `{ type, id }` was sent), its name (`static
 // notification`), what `toDatabase()` returned (JSON), when it was read (null: unread) and when it came. The id is the
 // notification's own (a UUID, the same over every attempt of its job — a second delivery finds it and stops).
-// The Inbox reads it, always for one recipient; `bespoke notifications:prune` empties it of old, read ones.
+// The Inbox reads it, always for one recipient; `marmeon notifications:prune` empties it of old, read ones.
 export default defineMigration({
   up: async (schema) => {
     await schema.create('notifications', (table) => {

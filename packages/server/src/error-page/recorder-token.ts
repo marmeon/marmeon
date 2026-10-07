@@ -1,5 +1,5 @@
-import { token, type RequestInfo } from '@bespokecore/core';
-import type { DbQueryMessage, LogMessage } from '@bespokecore/core/diagnostics';
+import { token, type RequestInfo } from '@marmeon/core';
+import type { DbQueryMessage, LogMessage } from '@marmeon/core/diagnostics';
 
 /** What the error page shows of a request's queries and log entries — raw; the page redacts them (E125). */
 export interface RequestRecording {

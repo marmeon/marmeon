@@ -1,8 +1,8 @@
 // One of two processes racing on a shared store (`atomic.test.ts`). Opens the store named by argv[2] (a JSON
 // StoreTarget), says "ready", waits for "go" on stdin, then fires argv[4] operations of kind argv[3] at once and prints
-// how many succeeded. Run with `node --conditions=@bespokecore/source`.
+// how many succeeded. Run with `node --conditions=@marmeon/source`.
 import { createInterface } from 'node:readline';
-import { SystemClock } from '@bespokecore/core';
+import { SystemClock } from '@marmeon/core';
 import { StoreCache } from '../cache.ts';
 import { RateLimiter } from '../rate-limiter.ts';
 import { openStore, type StoreTarget } from './stores.ts';

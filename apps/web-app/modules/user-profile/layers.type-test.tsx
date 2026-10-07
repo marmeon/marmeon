@@ -1,10 +1,10 @@
 /**
- * Type guarantees of layers (E53) against this app's routes — checked by `tsc` (`pnpm typecheck`, `bespoke build`), never
+ * Type guarantees of layers (E53) against this app's routes — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never
  * run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message they get (read with
  * the directive removed).
  */
-import { Controller, type PageProps } from '@bespokecore/http';
-import { Link, useLayer } from '@bespokecore/react';
+import { Controller, type PageProps } from '@marmeon/http';
+import { Link, useLayer } from '@marmeon/react';
 import { expectTypeOf } from 'vitest';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';

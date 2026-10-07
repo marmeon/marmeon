@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 const NUMBER = v.pipe(v.string(), v.transform(Number), v.integer());

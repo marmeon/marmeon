@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowResetPasswordController } from '../controllers/ShowResetPasswordController.ts';
 
 type Props = PageProps<ShowResetPasswordController>;

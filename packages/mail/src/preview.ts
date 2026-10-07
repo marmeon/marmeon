@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { Container, Key } from '@bespokecore/core';
+import type { Container, Key } from '@marmeon/core';
 import { escapeHtml } from './html.ts';
 import { compose } from './mailer.ts';
 import type { Address, Mailable, MailMessage } from './message.ts';
@@ -15,7 +15,7 @@ export interface MailPreviewContext {
 
 /**
  * A mail class with sample data — `static preview()` builds an instance (factory data, never real records: `make()`, not
- * `create()`), shown under `/_bespoke/mail/<module>/<Class>` in development (E106):
+ * `create()`), shown under `/_marmeon/mail/<module>/<Class>` in development (E106):
  *
  * ```ts
  * static preview({ make, locale }: MailPreviewContext) {
@@ -52,8 +52,8 @@ export async function findMailPreviews(root: string): Promise<Map<string, Previe
 const LOCALE = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,3}$/;
 
 /**
- * The preview pages (E106) — only ever registered with `NODE_ENV=development` (E115). `GET /_bespoke/mail` lists the previewable mails,
- * `GET /_bespoke/mail/<module>/<Class>` shows one: subject, sender, recipients and attachments above the HTML (in a
+ * The preview pages (E106) — only ever registered with `NODE_ENV=development` (E115). `GET /_marmeon/mail` lists the previewable mails,
+ * `GET /_marmeon/mail/<module>/<Class>` shows one: subject, sender, recipients and attachments above the HTML (in a
  * sandboxed frame — no script of a template runs), `?text` the text version, `?raw` the HTML alone, `?locale=de` another
  * language. A name finds a mail in the list found at startup — never a file path from the URL.
  */
@@ -69,14 +69,14 @@ export class MailPreviews {
     this.#from = from;
   }
 
-  /** Found on first use (`bespoke dev` restarts on a change). */
+  /** Found on first use (`marmeon dev` restarts on a change). */
   all(): Promise<Map<string, PreviewableMail>> {
     this.#found ??= findMailPreviews(this.#root);
     return this.#found;
   }
 
   async index(): Promise<Response> {
-    const items = [...(await this.all()).keys()].map((name) => `<li><a href="/_bespoke/mail/${escapeHtml(name)}">${escapeHtml(name)}</a></li>`);
+    const items = [...(await this.all()).keys()].map((name) => `<li><a href="/_marmeon/mail/${escapeHtml(name)}">${escapeHtml(name)}</a></li>`);
     const body = items.length > 0 ? `<ul>${items.join('')}</ul>` : '<p>No mail has a <code>static preview()</code> yet (<code>modules/&lt;module&gt;/mail/*.ts</code>).</p>';
     return page('Mail previews', `<h1>Mail previews</h1>${body}`);
   }
@@ -106,7 +106,7 @@ function header(name: string, message: MailMessage, locale: string | undefined):
     ...(message.attachments.length > 0 ? [['Attachments', message.attachments.map((attachment) => escapeHtml(attachment.filename)).join(', ')]] : []),
   ];
   return (
-    `<p><a href="/_bespoke/mail">All previews</a> · <a href="?text${query}">Text</a> · <a href="?raw${query}">HTML only</a></p>` +
+    `<p><a href="/_marmeon/mail">All previews</a> · <a href="?text${query}">Text</a> · <a href="?raw${query}">HTML only</a></p>` +
     `<h1>${escapeHtml(name)}</h1><table>${rows.map(([label, value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join('')}</table>`
   );
 }

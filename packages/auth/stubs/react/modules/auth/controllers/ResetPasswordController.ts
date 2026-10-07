@@ -1,7 +1,7 @@
-import { confirmed, password, PasswordBroker } from '@bespokecore/auth';
-import { Controller, defineRequest, ValidationError, type ContextOf } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
-import { Router } from '@bespokecore/router';
+import { confirmed, password, PasswordBroker } from '@marmeon/auth';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { trans, Translator } from '@marmeon/i18n';
+import { Router } from '@marmeon/router';
 import * as v from 'valibot';
 import { RESET_COOKIE, resetFromCookie } from '../reset-cookie.ts';
 

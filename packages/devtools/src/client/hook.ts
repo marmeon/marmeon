@@ -1,9 +1,9 @@
 /**
- * The dev hook (W7 step 9): `globalThis.__BESPOKE_DEVTOOLS_HOOK__`, set before the app starts. The client core calls it when a
- * navigator is made — the bar attaches its data feature (`devtools` of `@bespokecore/http/client`) there — and with what only it
+ * The dev hook (W7 step 9): `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set before the app starts. The client core calls it when a
+ * navigator is made — the bar attaches its data feature (`devtools` of `@marmeon/http/client`) there — and with what only it
  * sees: optimistic patches, and hydration errors from the React adapter. Those calls exist in development builds only.
  */
-import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal, type DevtoolsHook, type Navigator } from '@bespokecore/http/client';
+import { devtools, devtoolsReports, type DevtoolsFeature, type DevtoolsGlobal, type DevtoolsHook, type Navigator } from '@marmeon/http/client';
 
 /** A navigator the bar attached to, with what it records of it. */
 export interface Attached {
@@ -33,8 +33,8 @@ export function installDevtoolsHook(target: DevtoolsGlobal, onAttach: (attached:
     },
     ...reports,
   };
-  target.__BESPOKE_DEVTOOLS_HOOK__ = hook;
+  target.__MARMEON_DEVTOOLS_HOOK__ = hook;
   return () => {
-    if (target.__BESPOKE_DEVTOOLS_HOOK__ === hook) delete target.__BESPOKE_DEVTOOLS_HOOK__;
+    if (target.__MARMEON_DEVTOOLS_HOOK__ === hook) delete target.__MARMEON_DEVTOOLS_HOOK__;
   };
 }

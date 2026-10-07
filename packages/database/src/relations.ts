@@ -26,8 +26,8 @@ import { jsonArrayFrom as sqliteArray, jsonObjectFrom as sqliteObject } from 'ky
 import type { ColumnKind as Kind, SchemaMetadata } from './metadata.ts';
 import type { Driver } from './schema/blueprint.ts';
 
-const MANY = '__bespoke_relation_many__';
-const ONE = '__bespoke_relation_one__';
+const MANY = '__marmeon_relation_many__';
+const ONE = '__marmeon_relation_one__';
 
 type Build<DB, TB extends keyof DB, R extends keyof DB, O> = (query: SelectQueryBuilder<DB, TB | R, {}>) => SelectQueryBuilder<DB, any, O>;
 
@@ -155,7 +155,7 @@ class RelationTransformer extends OperationNodeTransformer {
 
 function mentionsRelation(node: OperationNode): boolean {
   // Cheap check before transforming: only selects can contain relations.
-  return node.kind === 'SelectQueryNode' && JSON.stringify(node, (_k, v: unknown) => (typeof v === 'bigint' ? String(v) : v)).includes('__bespoke_relation_');
+  return node.kind === 'SelectQueryNode' && JSON.stringify(node, (_k, v: unknown) => (typeof v === 'bigint' ? String(v) : v)).includes('__marmeon_relation_');
 }
 
 function isSelectAll(node: OperationNode): boolean {

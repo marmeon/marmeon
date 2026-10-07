@@ -1,9 +1,9 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { authenticate } from '@bespokecore/auth';
-import { defineModule } from '@bespokecore/core';
-import { AfterResponse, Controller, defineRoutes } from '@bespokecore/http';
-import { Session } from '@bespokecore/session';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { authenticate } from '@marmeon/auth';
+import { defineModule } from '@marmeon/core';
+import { AfterResponse, Controller, defineRoutes } from '@marmeon/http';
+import { Session } from '@marmeon/session';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileDirectory } from '../user-profile/ProfileDirectory.ts';
@@ -131,7 +131,7 @@ describe('the dashboard: a page of islands (E48)', () => {
 
   it('counter-check: an island is read-only (E52) — writing the session, flashing or deferring work throws in development', async () => {
     const login = await app.actingAs(ada).navigating().get('/dashboard').assertOk();
-    const browser = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    const browser = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     const wrote = await browser.islanding().get('/fixtures/islands/writes-session').assertStatus(500).assertIslandStatus('exception');
     expect(wrote.headers.getSetCookie()).toEqual([]);
     await browser.islanding().get('/fixtures/islands/flashes').assertStatus(500).assertIslandStatus('exception');
@@ -154,7 +154,7 @@ describe('the dashboard: a page of islands (E48)', () => {
 
   it('counter-check: islands consume no flash message — two polls between a redirect and its page leave the message for the page', async () => {
     const login = await app.actingAs(ada).navigating().get('/dashboard').assertOk();
-    const browser = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    const browser = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     await browser.post('/fixtures/save').assertRedirect('/dashboard');
     // Islands of the page before (a poll) answer while the redirect is followed.
     await browser.island('dashboard.activity').assertOk().assertNoFlash();

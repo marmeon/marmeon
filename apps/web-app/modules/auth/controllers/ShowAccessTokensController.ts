@@ -1,5 +1,5 @@
-import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
-import { Controller, type HttpContext } from '@bespokecore/http';
+import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
 
 /** The user's API tokens — behind confirmedPassword(): a token is as good as a session. */
 export class ShowAccessTokensController extends Controller {

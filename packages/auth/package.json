@@ -1,23 +1,23 @@
 {
-  "name": "@bespokecore/auth",
+  "name": "@marmeon/auth",
   "version": "0.1.0",
-  "description": "Authentication and authorization for BespokeCore apps: session guard, remember-me, password hashing and resets, e-mail verification, API tokens, policies and make:auth.",
+  "description": "Authentication and authorization for Marmeon apps: session guard, remember-me, password hashing and resets, e-mail verification, API tokens, policies and make:auth.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "auth",
     "authentication",
     "authorization",
     "policies",
     "api-tokens"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/auth#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/auth#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/auth"
   },
   "engines": {
@@ -27,7 +27,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -57,29 +57,29 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "AuthServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/session": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/session": "workspace:*",
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "marmeon": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/server": "workspace:*"
   },
   "peerDependencies": {
-    "@bespokecore/cli": "workspace:*"
+    "marmeon": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     }
   }

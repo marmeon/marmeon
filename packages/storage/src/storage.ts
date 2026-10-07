@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve, sep } from 'node:path';
-import { token, type Clock } from '@bespokecore/core';
+import { token, type Clock } from '@marmeon/core';
 import type { CheckDiskName, DefaultDiskName, DiskFor, DiskNameInput, DiskOptions, StorageOptions } from './config.ts';
 import type { Disk, Visibility } from './disk.ts';
 import { LocalDisk } from './drivers/local.ts';

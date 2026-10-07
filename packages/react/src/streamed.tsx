@@ -1,5 +1,5 @@
-import type { Navigator } from '@bespokecore/http/client';
-import { scriptJson, type DeferredResult, type RegionResult } from '@bespokecore/http/page';
+import type { Navigator } from '@marmeon/http/client';
+import { scriptJson, type DeferredResult, type RegionResult } from '@marmeon/http/page';
 import { createContext, Suspense, use, useContext, useEffect, useId, useState } from 'react';
 
 /**
@@ -74,7 +74,7 @@ export function StreamedDeferred({ groups, navigator }: { groups: readonly strin
   // Inside an element on purpose: a Suspense boundary at the top of the tree could still bring `<html>`/`<head>` (React's
   // preamble) — React would hold the whole shell back until it is done.
   return (
-    <div hidden data-bespoke-streamed="">
+    <div hidden data-marmeon-streamed="">
       {groups.map((group) => (
         <Suspense key={group} fallback={null}>
           <StreamedGroup group={group} navigator={navigator} />
@@ -86,7 +86,7 @@ export function StreamedDeferred({ groups, navigator }: { groups: readonly strin
 
 function StreamedGroup({ group, navigator }: { group: string; navigator: () => Navigator | null }) {
   const ssr = useContext(SsrContext);
-  const id = `bespoke-deferred-${useId()}`;
+  const id = `marmeon-deferred-${useId()}`;
   if (ssr) return <ServerGroup id={id} result={ssr.deferred(group)} />;
   return <BrowserGroup id={id} group={group} navigator={navigator} />;
 }

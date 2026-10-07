@@ -1,5 +1,5 @@
 /**
- * The ICU MessageFormat subset BespokeCore speaks — parsed once, formatted through `Intl`:
+ * The ICU MessageFormat subset Marmeon speaks — parsed once, formatted through `Intl`:
  *
  * - `{name}` — a value; numbers and dates are formatted for the locale
  * - `{n, number}`, `{n, number, integer|percent}`

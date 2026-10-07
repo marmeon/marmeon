@@ -1,7 +1,7 @@
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 
 /**
- * What a page needs to know of the request's session (E64) — bound per request by `@bespokecore/session`; without a session
+ * What a page needs to know of the request's session (E64) — bound per request by `@marmeon/session`; without a session
  * both are undefined. The http package knows no session itself.
  */
 export interface PageSession {

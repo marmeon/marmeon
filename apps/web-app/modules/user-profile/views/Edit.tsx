@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { FileInput, Head, Link, useForm, useLayer, useLiveUpdates, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { FileInput, Head, Link, useForm, useLayer, useLiveUpdates, useTranslation } from '@marmeon/react';
 import { useId } from 'react';
 import type { EditUserProfileController } from '../controllers/EditUserProfileController.ts';
 

@@ -1,7 +1,7 @@
 /**
- * `pnpm template:sync` — the blank app becomes the template of `create-bespoke-app` (E167: the blank app is what
- * `create-bespoke-app --minimal` writes). Edit `apps/blank-app`, then sync: its files (tracked and new, never ignored ones like
- * `.env`) go to `packages/create-bespoke-app/template/base/`, with three differences —
+ * `pnpm template:sync` — the blank app becomes the template of `create-marmeon` (E167: the blank app is what
+ * `create-marmeon --minimal` writes). Edit `apps/blank-app`, then sync: its files (tracked and new, never ignored ones like
+ * `.env`) go to `packages/create-marmeon/template/base/`, with three differences —
  *
  *   - `.gitignore` files are stored as `_gitignore` (npm would turn them into `.npmignore` when it packs) and `package.json` as
  *     `_package.json` (a nested package.json in a tarball confuses tools — publint, bundlers); the scaffolder renames them back;
@@ -12,7 +12,7 @@
  *     two apps share one (the blank app's test key stays in the repository).
  *
  *   pnpm template:sync                          # write the template
- *   node scripts/sync-template.ts --check       # exit 1 and name every file that differs (packages/create-bespoke-app tests it too)
+ *   node scripts/sync-template.ts --check       # exit 1 and name every file that differs (packages/create-marmeon tests it too)
  *
  * The starter kit's own files (`template/kit/`: the home module) are not synced — they live only there.
  */
@@ -23,10 +23,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const BLANK_APP = 'apps/blank-app';
-const TEMPLATE = 'packages/create-bespoke-app/template/base';
+const TEMPLATE = 'packages/create-marmeon/template/base';
 /** Files of the blank app the template does not take as they are. */
 const OWN = new Set(['README.md', 'tsconfig.json']);
-/** Names a file is stored under in the template (create-bespoke-app's `RENAMED` turns them back). */
+/** Names a file is stored under in the template (create-marmeon's `RENAMED` turns them back). */
 const STORED: Readonly<Record<string, string>> = { '.gitignore': '_gitignore', 'package.json': '_package.json' };
 
 /** Parses JSON with comments and trailing commas (tsconfig files). */

@@ -1,4 +1,4 @@
-import type { Translator } from '@bespokecore/i18n';
+import type { Translator } from '@marmeon/i18n';
 
 /** What an API token of this app may be allowed to do — offered on the token page, checked by abilities(). */
 export const TOKEN_ABILITIES = ['users:read'] as const;

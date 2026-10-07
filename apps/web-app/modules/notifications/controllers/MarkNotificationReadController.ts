@@ -1,7 +1,7 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
-import { Broadcaster, notificationsChannel } from '@bespokecore/live';
-import { Inbox } from '@bespokecore/notifications';
+import type { Authenticated } from '@marmeon/auth';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { Broadcaster, notificationsChannel } from '@marmeon/live';
+import { Inbox } from '@marmeon/notifications';
 
 /** Marks one of the user's notifications read — an action (`useAction('notifications.read')`), optimistic in the list. */
 export class MarkNotificationReadController extends Controller {

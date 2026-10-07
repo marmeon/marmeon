@@ -1,5 +1,5 @@
 import * as nodeCrypto from 'node:crypto';
-import { createApplication } from '@bespokecore/core';
+import { createApplication } from '@marmeon/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AesGcmEncrypter, DecryptError, Encrypter, EncryptionConfig, EncryptionServiceProvider, generateKey } from './index.ts';
 
@@ -68,7 +68,7 @@ describe('AesGcmEncrypter', () => {
     const old = await new AesGcmEncrypter(raw()).encrypt('x');
     imported.mockClear();
     for (let i = 0; i < 50; i++) {
-      await encrypter.decrypt(await encrypter.encrypt(`session ${i}`, 'cookie:bespoke_session'), 'cookie:bespoke_session');
+      await encrypter.decrypt(await encrypter.encrypt(`session ${i}`, 'cookie:marmeon_session'), 'cookie:marmeon_session');
       await failsToDecrypt(encrypter.decrypt(old));
     }
     expect(imported).not.toHaveBeenCalled();
@@ -116,7 +116,7 @@ describe('AesGcmEncrypter and the WebCrypto encrypter before it (W8 step 9)', ()
     const [oldKey, newKey] = [raw(), raw()];
     const now = new AesGcmEncrypter(newKey, [oldKey]);
     for (const text of texts) {
-      for (const context of ['', 'cookie:bespoke_session', 'session:' + 'a'.repeat(64)]) {
+      for (const context of ['', 'cookie:marmeon_session', 'session:' + 'a'.repeat(64)]) {
         expect(await now.decrypt(await new WebCryptoEncrypter(newKey).encrypt(text, context), context)).toBe(text);
         expect(await now.decrypt(await new WebCryptoEncrypter(oldKey).encrypt(text, context), context)).toBe(text);
         await failsToDecrypt(now.decrypt(await new WebCryptoEncrypter(newKey).encrypt(text, context), `${context}x`));
@@ -168,7 +168,7 @@ describe('EncryptionConfig & provider', () => {
   });
 
   it('refuses to boot without a valid key and says how to fix it', async () => {
-    await expect(boot({})).rejects.toThrow(/encryption: APP_KEY — .*bespoke key:generate/);
+    await expect(boot({})).rejects.toThrow(/encryption: APP_KEY — .*marmeon key:generate/);
     await expect(boot({ APP_KEY: 'base64:c2hvcnQ=' })).rejects.toThrow('32 base64-encoded bytes');
     await expect(boot({ APP_KEY: generateKey(), APP_PREVIOUS_KEYS: 'nope' })).rejects.toThrow('APP_PREVIOUS_KEYS');
   });

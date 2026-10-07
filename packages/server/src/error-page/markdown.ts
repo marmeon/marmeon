@@ -18,7 +18,7 @@ export function reportMarkdown(report: ErrorReport): string {
   const { node, nodeEnv, platform, app, packages } = report.environment;
   out.push(
     `- **Environment:** Node ${node}, NODE_ENV=${nodeEnv ?? '(unset)'}, ${platform}${app ? `, app ${app}` : ''}`,
-    `- **BespokeCore:** ${packages.map((entry) => `${entry.name}${entry.version ? `@${entry.version}` : ''}`).join(', ') || '(no packages discovered)'}`,
+    `- **Marmeon:** ${packages.map((entry) => `${entry.name}${entry.version ? `@${entry.version}` : ''}`).join(', ') || '(no packages discovered)'}`,
     '',
   );
 

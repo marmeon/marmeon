@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Cache, RateLimiter } from '@bespokecore/cache';
-import { Connections, Migrator, sql } from '@bespokecore/database';
-import { Queue } from '@bespokecore/queue';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Cache, RateLimiter } from '@marmeon/cache';
+import { Connections, Migrator, sql } from '@marmeon/database';
+import { Queue } from '@marmeon/queue';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
@@ -23,7 +23,7 @@ describe('the system connection (E108)', () => {
   });
 
   const open = async (): Promise<TestApp> => {
-    directory = mkdtempSync(join(tmpdir(), 'bespoke-web-system-'));
+    directory = mkdtempSync(join(tmpdir(), 'marmeon-web-system-'));
     const app = await createTestApp(application, {
       queue: 'real',
       env: {
@@ -75,7 +75,7 @@ describe('the system connection (E108)', () => {
       (await sql<{ user_id: string | null }>`select user_id from sessions`.execute(app.make(Connections).get('system'))).rows.map((row) => row.user_id);
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me').assertAuthenticated(ada);
     expect(await rows()).toEqual([String(ada.id)]);
-    await app.withCookie('bespoke_session', login.cookie('bespoke_session')!).post('/logout').assertRedirect('/login').assertGuest();
+    await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).post('/logout').assertRedirect('/login').assertGuest();
     expect(await rows()).toEqual([null]);
   });
 });

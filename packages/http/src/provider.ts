@@ -1,6 +1,6 @@
-import { Application, type Container, type ServiceProvider } from '@bespokecore/core';
-import { Encrypter } from '@bespokecore/encryption';
-import { defineRoutes, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@bespokecore/router';
+import { Application, type Container, type ServiceProvider } from '@marmeon/core';
+import { Encrypter } from '@marmeon/encryption';
+import { defineRoutes, GLOBAL, MiddlewarePriority, Router, type AnyMiddleware, type RouteDefinitions } from '@marmeon/router';
 import { AfterResponse } from './after-response.ts';
 import { AssetVersion, CheckAssetVersion } from './asset-version.ts';
 import { ClearClientHistory, ClientHistory } from './client-history.ts';
@@ -17,7 +17,7 @@ import { ServerClosing } from './server-closing.ts';
 import { UrlSigner } from './signed-urls.ts';
 import { SESSION_PATH } from './tab-sync-protocol.ts';
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
     /** The module's routes: middleware group `web` (cookies, session, CSRF). */
     readonly routes?: RouteDefinitions;
@@ -36,7 +36,7 @@ declare module '@bespokecore/core' {
       readonly api?: readonly AnyMiddleware[];
     };
     /**
-     * Which named routes the browser may learn (`virtual:bespoke/routes`) — Ziggy's lesson: do not ship what the
+     * Which named routes the browser may learn (`virtual:marmeon/routes`) — Ziggy's lesson: do not ship what the
      * browser has no business knowing. By default the named `web` routes; API routes only when listed in `include`;
      * `except` wins over both, and `.internal()` routes never go. `*` matches anything: `except: ['admin.*']`.
      * Of these, a client build ships only the names its code writes out (`<Link route>`, `useRoute()`, `useForm(name, …)`).
@@ -52,7 +52,7 @@ declare module '@bespokecore/core' {
 /**
  * Registers the router and the exception handler, sets up the `web` and `api`
  * middleware groups and loads every module's routes (while registering: E187) — Laravel's RouteServiceProvider.
- * Discovered like any installed package through the `"bespoke"` field in this package's package.json.
+ * Discovered like any installed package through the `"marmeon"` field in this package's package.json.
  *
  * Order within `web`, whatever order packages boot in (lower priority first):
  * EncryptCookies (100) → ClearClientHistory (150) → StartSession (200) → NoStoreWhenSignedIn (210, auth)
@@ -75,13 +75,13 @@ export class HttpServiceProvider implements ServiceProvider {
     // Who sent the request (E169): the kernel binds it per request; outside one (a job, a command) nobody.
     container.scoped(RequestInfo, () => NO_REQUEST_INFO);
     container.singleton(UrlSigner);
-    // The session's epoch (W8 step 8, E165): on every page object, and what `/_bespoke/session` answers.
+    // The session's epoch (W8 step 8, E165): on every page object, and what `/_marmeon/session` answers.
     container.singleton(SessionEpoch);
     container.scoped(SessionEpochController, (c) => new SessionEpochController(() => epochOfResolver(c)));
     container.singleton(ServerClosing);
     container.instance(AssetVersion, { value: null }); // the server kernel sets the build's version
 
-    // The routes are loaded here, not in boot(): `bespoke build` writes the route types from an app that registers its providers
+    // The routes are loaded here, not in boot(): `marmeon build` writes the route types from an app that registers its providers
     // and boots none (E187) — no secret, no connection. Loading a route builds nothing (controllers come per request).
     const router = container.make(Router);
     // The tabs' word from the server (W8 step 8): the epoch now — in the web group (the session and the locale say it), read-only
@@ -102,7 +102,7 @@ export class HttpServiceProvider implements ServiceProvider {
     // The `web` group encrypts cookies: fail at boot, not with a 500 on the first request.
     if (!app.container.has(Encrypter)) {
       throw new Error(
-        'The web middleware group needs the Encrypter — register EncryptionServiceProvider from @bespokecore/encryption ' +
+        'The web middleware group needs the Encrypter — register EncryptionServiceProvider from @marmeon/encryption ' +
           '(discovery does this automatically) and set APP_KEY.',
       );
     }

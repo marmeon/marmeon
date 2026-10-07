@@ -1,4 +1,4 @@
-import { defineConfig, environment, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, environment, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-token.ts';
 import { isProxyEntry } from './proxies.ts';
@@ -106,7 +106,7 @@ export type ServerConfig = ConfigOf<typeof ServerConfig>;
 /**
  * Brings the server's configuration — and, in development only, the `Server-Timing` header (E129) and the error page's
  * request recorder (E119): both listen to the app's channels until the app shuts down. In production neither is loaded,
- * and no channel gets a subscriber. Found by `bespoke discover` like any installed package.
+ * and no channel gets a subscriber. Found by `marmeon discover` like any installed package.
  */
 export class ServerServiceProvider implements ServiceProvider {
   static config = [ServerConfig];

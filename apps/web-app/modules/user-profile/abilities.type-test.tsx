@@ -1,10 +1,10 @@
 /**
  * Type guarantees of the abilities projection (E61) against this app's policies — checked by `tsc` (`pnpm typecheck`,
- * `bespoke build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the
+ * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the
  * message they get (read with the directive removed).
  */
-import { Gate, type Projection } from '@bespokecore/auth';
-import { Controller, type PageProps } from '@bespokecore/http';
+import { Gate, type Projection } from '@marmeon/auth';
+import { Controller, type PageProps } from '@marmeon/http';
 import { expectTypeOf } from 'vitest';
 import { DashboardPolicy } from '../dashboard/policies/DashboardPolicy.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';

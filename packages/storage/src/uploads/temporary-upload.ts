@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { ValidationError } from '@bespokecore/router';
+import { ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { normalizeDirectory } from '../keys.ts';
 
 /** Why an upload token was refused — the user sees one message per kind, never which check failed in detail. */
 export type UploadProblem = 'invalid' | 'expired' | 'used';
 
-/** Where the bytes of an upload are, and how it is used up — the service of @bespokecore/storage hands it over. */
+/** Where the bytes of an upload are, and how it is used up — the service of @marmeon/storage hands it over. */
 export interface UploadSource {
   /** The private disk of temporary uploads, and the file's key there. */
   readonly disk: Disk;
@@ -16,7 +16,7 @@ export interface UploadSource {
 }
 
 /** Where `translatable()` of the router leaves a message's key on an issue — the request's translator reads it. */
-const TRANSLATION = Symbol.for('bespokecore.translation');
+const TRANSLATION = Symbol.for('marmeon.translation');
 
 /** 26 characters of base32 (130 bits): a stored file's name — never the uploader's. */
 function randomName(): string {
@@ -70,7 +70,7 @@ export class TemporaryUpload {
   async store(disk: Disk, directory = ''): Promise<string> {
     if (!(await this.#source.consume())) {
       throw ValidationError.fromIssues(
-        [Object.assign({ message: 'This file was saved already — choose it again.', path: this.field.split('.') }, { [TRANSLATION]: { key: 'bespoke.validation.upload.used' } })],
+        [Object.assign({ message: 'This file was saved already — choose it again.', path: this.field.split('.') }, { [TRANSLATION]: { key: 'marmeon.validation.upload.used' } })],
         {},
       );
     }

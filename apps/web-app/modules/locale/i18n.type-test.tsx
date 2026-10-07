@@ -1,7 +1,7 @@
-// Type guarantees of the translations (E38) — compiled by `pnpm typecheck` / `bespoke build`, never run.
-import type { Messages } from '@bespokecore/i18n/messages';
-import { trans, type Translator } from '@bespokecore/i18n';
-import { useTranslation } from '@bespokecore/react';
+// Type guarantees of the translations (E38) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+import type { Messages } from '@marmeon/i18n/messages';
+import { trans, type Translator } from '@marmeon/i18n';
+import { useTranslation } from '@marmeon/react';
 import type en from '../auth/lang/en.ts';
 
 export function MissingKeyInATranslation() {

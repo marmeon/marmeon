@@ -21,15 +21,15 @@ import {
   type RegionObject,
   type RegionOutcomeStatus,
   type ViewOf,
-} from '@bespokecore/http/page';
-import type { AuthUser } from '@bespokecore/auth';
+} from '@marmeon/http/page';
+import type { AuthUser } from '@marmeon/auth';
 import type { SsrOutcome } from './ssr.ts';
 import type { CookieCrypto, SessionAccess } from './test-app.ts';
 
-/** Where @bespokecore/session keeps flash messages waiting for a response that is shown (E60). */
+/** Where @marmeon/session keeps flash messages waiting for a response that is shown (E60). */
 const FLASH_MESSAGES = '_flash_messages';
 
-/** `AUTH_SESSION_KEYS.id` of @bespokecore/auth — an optional peer, so not imported at runtime. */
+/** `AUTH_SESSION_KEYS.id` of @marmeon/auth — an optional peer, so not imported at runtime. */
 const AUTH_ID = '_auth_id';
 
 /** Something `PageProps` can infer from: a controller class instance or a route closure. */
@@ -230,7 +230,7 @@ export class TestResponse {
     return this;
   }
 
-  // --- Authentication (@bespokecore/auth) -------------------------------------------
+  // --- Authentication (@marmeon/auth) -------------------------------------------
 
   /** The session is signed in after the request — as `user`, when given (compared by id). */
   assertAuthenticated(user?: AuthUser): this {
@@ -277,7 +277,7 @@ export class TestResponse {
     return this;
   }
 
-  /** A live validation (`app.validating(…)`, E62) passed: `204` with `x-bespoke-validated` — naming `fields`, when given. */
+  /** A live validation (`app.validating(…)`, E62) passed: `204` with `x-marmeon-validated` — naming `fields`, when given. */
   assertLiveValid(...fields: string[]): this {
     const validated = this.headers.get(VALIDATED_HEADER);
     if (this.status !== 204 || validated === null) {
@@ -376,7 +376,7 @@ export class TestResponse {
   // --- Flash messages (E60) ------------------------------------------------------------
 
   /**
-   * The flash messages this response delivers — a page's or a layer's (`PageObject.flash`), an action's (`x-bespoke-flash`),
+   * The flash messages this response delivers — a page's or a layer's (`PageObject.flash`), an action's (`x-marmeon-flash`),
    * a layer's close. Empty for one that delivers none: a redirect (its target's response will), a prefetch, an island.
    */
   flash(): FlashMessage[] {
@@ -443,7 +443,7 @@ export class TestResponse {
 
   // --- Actions (E59) -----------------------------------------------------------------
 
-  /** The answer of an action (`acting()`) that redirected: `204` with `x-bespoke-redirect` — to `url`, when given. */
+  /** The answer of an action (`acting()`) that redirected: `204` with `x-marmeon-redirect` — to `url`, when given. */
   assertActionRedirect(url?: string): this {
     const target = this.headers.get(ACTION_REDIRECT_HEADER);
     if (this.status !== 204 || target === null) this.#fail(`Expected the action to redirect (204 with ${ACTION_REDIRECT_HEADER}), got status ${this.status}`);

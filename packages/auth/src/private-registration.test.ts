@@ -1,8 +1,8 @@
-import { createApplication, Logger, type Application, type Container, type LogContext } from '@bespokecore/core';
-import { DatabaseServiceProvider } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
-import { SessionServiceProvider } from '@bespokecore/session';
+import { createApplication, Logger, type Application, type Container, type LogContext } from '@marmeon/core';
+import { DatabaseServiceProvider } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
+import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { AuthConfig, AuthServiceProvider, PRIVATE_REGISTRATION_OFF_WARNING } from './index.ts';
 

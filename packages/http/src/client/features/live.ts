@@ -6,7 +6,7 @@
  * - **Bursts become one reload per target** (the page, a layer, an island): hints are collected until 250 ms pass without one
  *   (at most 2 s after the first), then each target reloads once — the union of what its subscriptions name.
  * - **Unsaved changes** on screen (a guard holds): no reload — `updates.pending`, until the user applies them (`apply()`).
- * - **Not the tab that caused it**: every request of this document names it (`x-bespoke-connection`) — the server sends that
+ * - **Not the tab that caused it**: every request of this document names it (`x-marmeon-connection`) — the server sends that
  *   tab the hint with nothing to reload.
  * - **Always connected** (E104), also in a hidden tab — except a page loaded over HTTP/1.1 (or an unknown protocol), where
  *   the browser allows six connections per host: then only while the tab is visible.
@@ -90,7 +90,7 @@ export interface LiveFeature {
   /** Looks at what is on screen again and follows its channels — the core calls it when an answer follows some. */
   sync(): void;
   readonly updates: LiveUpdates;
-  /** This document's id — what each of its requests names (`x-bespoke-connection`). */
+  /** This document's id — what each of its requests names (`x-marmeon-connection`). */
   readonly connection: string;
 }
 

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@bespokecore/http';
+import { OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@marmeon/http';
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
 import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
@@ -9,7 +9,7 @@ import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore
  * Typed session keys. Apps and packages declare what they store:
  *
  * ```ts
- * declare module '@bespokecore/session' {
+ * declare module '@marmeon/session' {
  *   interface SessionData { user_id: string }
  * }
  * ```

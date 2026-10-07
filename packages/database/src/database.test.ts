@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import { createApplication } from '@bespokecore/core';
+import { createApplication } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { jsonArrayFrom as pgJsonArrayFrom } from 'kysely/helpers/postgres';
 import { jsonArrayFrom as sqliteJsonArrayFrom } from 'kysely/helpers/sqlite';
@@ -100,10 +100,10 @@ describe.each(drivers)('a %s connection', (driver) => {
 
     expect((await db.selectFrom('posts').select('title').execute()).map((post) => post.title)).toEqual(['Kept']);
     expect(queries.filter((q) => /savepoint/i.test(q.sql)).map((q) => q.sql)).toEqual([
-      'savepoint bespoke_savepoint_1',
-      'rollback to savepoint bespoke_savepoint_1',
-      'savepoint bespoke_savepoint_1',
-      'release savepoint bespoke_savepoint_1',
+      'savepoint marmeon_savepoint_1',
+      'rollback to savepoint marmeon_savepoint_1',
+      'savepoint marmeon_savepoint_1',
+      'release savepoint marmeon_savepoint_1',
     ]);
   });
 
@@ -195,7 +195,7 @@ describe('connection errors', () => {
 });
 
 describe('DatabaseServiceProvider', () => {
-  const root = tempDir('bespoke-db-');
+  const root = tempDir('marmeon-db-');
   const Reporting = defineConnection('reporting', {
     env: v.object({ REPORTING_DB: v.string() }),
     resolve: (env) => ({ driver: 'sqlite', database: env.REPORTING_DB }),

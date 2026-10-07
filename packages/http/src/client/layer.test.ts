@@ -351,7 +351,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
   describe('Layers — deep links, sign-out, prefetch', () => {
     it('a deep link’s document brings the page and its layers: one history entry, closing it replaces the entry with the page', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1/edit`);
-      // The adapter attached the layers before it rendered the document (createBespokeApp loads them first).
+      // The adapter attached the layers before it rendered the document (createMarmeonApp loads them first).
       const app = boot(win, { ...page('/users/1', { name: 'Ada' }, 'users/Show'), layers: [layer('/users/1/edit', { profile: 1 })] }, { features: [layers] });
       expect(app.navigator.page).toMatchObject({ component: 'users/Show' });
       expect(app.navigator.page).not.toHaveProperty('layers');
@@ -428,7 +428,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
       await tick();
       // The answer is here, the code is not: nothing shown yet — not as a page, and it is not dropped.
       expect(code.loads).toEqual(['layers']);
-      expect(hints.mock.calls.map(([hint]) => String(hint).slice(0, 13))).toEqual(['[bespoke:C7] ']);
+      expect(hints.mock.calls.map(([hint]) => String(hint).slice(0, 13))).toEqual(['[marmeon:C7] ']);
       hints.mockRestore();
       expect(app.shown).toEqual([]);
       expect(win.entries).toHaveLength(1);

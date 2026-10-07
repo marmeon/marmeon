@@ -1,17 +1,17 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/page';
 import { act, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, usePage, useRouter } from './app.tsx';
+import { MarmeonApp, usePage, useRouter } from './app.tsx';
 import { Deferred } from './deferred.tsx';
 import { Head } from './head.tsx';
 import { resolveModulePages, type DefaultLayout, type PageComponent } from './pages.ts';
 import { useForm } from './use-form.ts';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -142,7 +142,7 @@ async function mount(initial: PageObject, options: { layout?: DefaultLayout; tit
   const Component = await resolve(initial.component);
   root = createRoot(container);
   await act(async () => {
-    root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} {...options} />);
+    root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} {...options} />);
   });
 }
 
@@ -209,7 +209,7 @@ describe('persistent layouts (E35)', () => {
     const inline = resolveModulePages({ '../modules/app/views/Inline.tsx': async () => ({ default: Inline }) });
     server = () => respond({ component: 'app/Inline', props: { name: 'b' }, url: '/b', version: null });
     root = createRoot(container);
-    await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));
+    await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));
     await click('count');
     await click('to-b');
     await settle();
@@ -268,7 +268,7 @@ describe('failed visits', () => {
     await click('count');
     await click('to-b');
     await settle();
-    expect($('[data-bespoke-failure="network"]')!.textContent).toContain('could not be reached');
+    expect($('[data-marmeon-failure="network"]')!.textContent).toContain('could not be reached');
     expect($('[data-page="a"]')).not.toBeNull();
     expect($('[data-testid="count"]')!.textContent).toBe('1');
     expect(location.pathname).toBe('/a');
@@ -280,7 +280,7 @@ describe('failed visits', () => {
     await mount(page('A', '/a'));
     await click('to-b');
     await settle();
-    const dialog = $('dialog[data-bespoke-failure="server"]')!;
+    const dialog = $('dialog[data-marmeon-failure="server"]')!;
     expect(dialog.querySelector('h1')!.textContent).toBe('Internal Server Error');
     expect(dialog.querySelector('pre')!.textContent).toContain('at ShowController.handle');
     expect($('[data-page="a"]')).not.toBeNull();
@@ -289,7 +289,7 @@ describe('failed visits', () => {
     server = () => respond(page('B', '/b'));
     await click('to-b');
     await settle();
-    expect($('[data-bespoke-failure]')).toBeNull();
+    expect($('[data-marmeon-failure]')).toBeNull();
   });
 });
 
@@ -349,7 +349,7 @@ describe('deferred and optional props (E7)', () => {
     // On screen without it — the request for it is out.
     expect($('[data-testid="loading"]')).not.toBeNull();
     expect($('h1')!.textContent).toBe('Ada');
-    expect(requests).toEqual([expect.objectContaining({ 'x-bespoke-partial-component': 'app/Profile', 'x-bespoke-partial-data': 'activity' })]);
+    expect(requests).toEqual([expect.objectContaining({ 'x-marmeon-partial-component': 'app/Profile', 'x-marmeon-partial-data': 'activity' })]);
 
     release();
     await settle();

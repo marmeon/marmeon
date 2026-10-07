@@ -1,9 +1,9 @@
-import { Login, Registered } from '@bespokecore/auth';
-import { EventDispatcher } from '@bespokecore/core';
-import { Connections, sql } from '@bespokecore/database';
-import { MailTransport, type MailMessage } from '@bespokecore/mail';
-import { QueueConnections, QueueRetryCommand } from '@bespokecore/queue';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Login, Registered } from '@marmeon/auth';
+import { EventDispatcher } from '@marmeon/core';
+import { Connections, sql } from '@marmeon/database';
+import { MailTransport, type MailMessage } from '@marmeon/mail';
+import { QueueConnections, QueueRetryCommand } from '@marmeon/queue';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -64,7 +64,7 @@ describe('the verification mail through the queue', () => {
     await app.post('/register', { form: form() }).assertRedirect('/register/sent');
     expect(await app.make(UserRepository).findForLogin('kj@example.com')).toBeDefined();
 
-    // The listener composes the mail (bespoke.listener), the mail job hands it to the transport (bespoke.mail): 5 tries.
+    // The listener composes the mail (marmeon.listener), the mail job hands it to the transport (marmeon.mail): 5 tries.
     await work(app);
     for (const seconds of [10, 60, 300, 300]) {
       app.travel({ seconds });
@@ -75,7 +75,7 @@ describe('the verification mail through the queue', () => {
     const failed = await sql<{ job: string; queue: string }>`select job, queue from failed_jobs order by job`.execute(app.make(Connections).get());
     expect(failed.rows.map((row) => [row.job, row.queue])).toEqual([
       ['auth.send-welcome-mail', 'default'],
-      ['bespoke.mail', 'mail'],
+      ['marmeon.mail', 'mail'],
     ]);
     expect(await queuePayloads(app)).not.toContain('/email/verify/'); // the signed link: encrypted, also in failed_jobs
 
@@ -83,7 +83,7 @@ describe('the verification mail through the queue', () => {
     const output = { success: () => {}, error: () => {}, line: () => {}, info: () => {}, warn: () => {}, table: () => {} };
     expect(await app.make(QueueRetryCommand).handle({ args: ['all'], options: {}, output, root: '', spawn: async () => 0 } as never)).toBe(0);
     await work(app);
-    expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to BespokeCore']);
+    expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to Marmeon']);
     await app.assertDatabaseCount('failed_jobs', 0);
   }, heavyTimeout);
 
@@ -193,18 +193,18 @@ describe('mails without a request', () => {
     await expect(createTestApp(application, { env: { APP_URL: undefined } })).rejects.toThrow(/APP_URL/);
   });
 
-  it('show in the development preview (E106): /_bespoke/mail lists them, a preview renders sample data in a language', async () => {
+  it('show in the development preview (E106): /_marmeon/mail lists them, a preview renders sample data in a language', async () => {
     // Development only (E115): a test app (NODE_ENV=test) has no previews unless it runs as development.
-    await (await createTestApp(application)).get('/_bespoke/mail').assertNotFound();
+    await (await createTestApp(application)).get('/_marmeon/mail').assertNotFound();
     const app = await createTestApp(application, { database: 'refresh', env: { NODE_ENV: 'development' } });
-    const index = await app.get('/_bespoke/mail').assertOk();
+    const index = await app.get('/_marmeon/mail').assertOk();
     for (const name of ['auth/EmailChangedMail', 'auth/ResetPasswordMail', 'auth/VerifyEmailMail', 'auth/WelcomeMail', 'auth/ConfirmNewEmailMail', 'auth/EmailInUseMail']) {
-      expect(index.body).toContain(`/_bespoke/mail/${name}`);
+      expect(index.body).toContain(`/_marmeon/mail/${name}`);
     }
     // The change of address (private registration, E146): the link to the new address, the note to the owner of a taken one.
-    expect((await app.get('/_bespoke/mail/auth/ConfirmNewEmailMail?locale=de').assertOk()).body).toContain('<th>Subject</th><td>Bestätige deine neue E-Mail-Adresse</td>');
-    expect((await app.get('/_bespoke/mail/auth/EmailInUseMail').assertOk()).body).toContain('<th>Subject</th><td>Someone wanted to use your e-mail address</td>');
-    const preview = await app.get('/_bespoke/mail/auth/VerifyEmailMail?locale=de').assertOk();
+    expect((await app.get('/_marmeon/mail/auth/ConfirmNewEmailMail?locale=de').assertOk()).body).toContain('<th>Subject</th><td>Bestätige deine neue E-Mail-Adresse</td>');
+    expect((await app.get('/_marmeon/mail/auth/EmailInUseMail').assertOk()).body).toContain('<th>Subject</th><td>Someone wanted to use your e-mail address</td>');
+    const preview = await app.get('/_marmeon/mail/auth/VerifyEmailMail?locale=de').assertOk();
     expect(preview.body).toContain('<th>Subject</th><td>Bestätige deine E-Mail-Adresse</td>');
     expect(preview.body).toContain('Ada Lovelace');
     expect(preview.headers.get('cache-control')).toBe('no-store');

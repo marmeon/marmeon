@@ -1,7 +1,7 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { pageQuery } from '@bespokecore/database';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { Storage } from '@bespokecore/storage';
+import type { Authenticated } from '@marmeon/auth';
+import { pageQuery } from '@marmeon/database';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Storage } from '@marmeon/storage';
 import * as v from 'valibot';
 import { PEOPLE_SORTS, ProfileDirectory } from '../ProfileDirectory.ts';
 

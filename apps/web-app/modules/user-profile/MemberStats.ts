@@ -1,4 +1,4 @@
-import { Cache } from '@bespokecore/cache';
+import { Cache } from '@marmeon/cache';
 import { ProfileDirectory } from './ProfileDirectory.ts';
 
 export type MemberNumbers = Awaited<ReturnType<ProfileDirectory['memberStats']>>;

@@ -1,16 +1,16 @@
 /**
- * `@bespokecore/react` — the React rendering layer on the UI-free client core `@bespokecore/http/client` (E39):
+ * `@marmeon/react` — the React rendering layer on the UI-free client core `@marmeon/http/client` (E39):
  * components, hooks, context, layouts, error boundaries and `<Head>`. Visits, history, caching, prefetching, polling
  * and the progress bar come from the core (import `Navigator`, `createPoll` … from there).
  */
-export { BespokeApp, useFeature, usePage, useRouter } from './app.tsx';
-// The progress bar (E82, opt-in): `createBespokeApp({ progress: progressBar({ delay: 250 }) })`.
-export { progressBar } from '@bespokecore/http/client';
-export type { ProgressIndicator, ViewTransitionOption } from '@bespokecore/http/client';
+export { MarmeonApp, useFeature, usePage, useRouter } from './app.tsx';
+// The progress bar (E82, opt-in): `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`.
+export { progressBar } from '@marmeon/http/client';
+export type { ProgressIndicator, ViewTransitionOption } from '@marmeon/http/client';
 export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {
-  BespokeAppProps,
+  MarmeonAppProps,
   CheckedPatch,
   PartialReloadOptions,
   PatchedProps,
@@ -50,8 +50,8 @@ export type { Action, ActionException, ActionField, ActionReload, ActionResultOf
 export type { FieldPath, Form as FormHandle, FormField, FormOptions, FormState, FormSubmitOptions, LiveValidationSetting, PasswordNeverRemembered, RememberFormOptions, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
 export { useRoute } from './routes.ts';
 export type { RouteFunction } from './routes.ts';
-export { createBespokeApp } from './client.tsx';
-export type { CreateBespokeAppOptions } from './client.tsx';
+export { createMarmeonApp } from './client.tsx';
+export type { CreateMarmeonAppOptions } from './client.tsx';
 export { ErrorPage } from './error-page.tsx';
 export { Link } from './link.tsx';
 export { Island, useIsland } from './island.tsx';

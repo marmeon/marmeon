@@ -56,15 +56,15 @@ async function run(repo: string): Promise<void> {
     const users = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
     const browser = { 'sec-fetch-site': 'same-origin', referer: 'http://localhost/login' };
     const failed = await app.post('/login', { form: { email: 'nobody@example.com', password: 'wrong' }, headers: browser });
-    const guestCookie = failed.cookie('bespoke_session');
+    const guestCookie = failed.cookie('marmeon_session');
     if (!guestCookie) throw new Error('A failed sign-in left no session cookie.');
     const signedIn = await app.post('/login', { form: { email: users[0].email, password: 'password' }, headers: browser });
-    const userCookie = signedIn.cookie('bespoke_session');
+    const userCookie = signedIn.cookie('marmeon_session');
     if (!userCookie) throw new Error('A sign-in left no session cookie.');
     // The server's work only: a kernel of the booted app, the request as a browser sends it (its cookies as the server set them),
     // the body read, the terminate hooks awaited — none of the test helpers' cookie decryption and session reading per response.
     const kernel = createHttpKernel(app.application);
-    const page = { 'x-bespoke': 'true', accept: 'text/html, application/xhtml+xml', ...browser };
+    const page = { 'x-marmeon': 'true', accept: 'text/html, application/xhtml+xml', ...browser };
     const guestInit = { headers: { ...page, cookie: cookiesOf(failed.headers) } };
     const userInit = { headers: { ...page, cookie: cookiesOf(signedIn.headers) } };
     const documentInit = { headers: { accept: 'text/html', 'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate', cookie: cookiesOf(failed.headers) } };
@@ -114,7 +114,7 @@ async function run(repo: string): Promise<void> {
       writeFileSync(process.env.BENCH_PROFILE!, JSON.stringify(profile));
       profiler.disconnect();
     }
-    const counters = (globalThis as { __bespokeBench?: { counters: Record<string, number> } }).__bespokeBench?.counters;
+    const counters = (globalThis as { __marmeonBench?: { counters: Record<string, number> } }).__marmeonBench?.counters;
     process.stdout.write(`${JSON.stringify({ scenarios: results, requests: requests * rounds, ...(counters ? { counters } : {}) })}\n`);
   } finally {
     await app.close();

@@ -1,4 +1,4 @@
-import type { StandardIssue as Issue, StandardSchemaV1 } from '@bespokecore/core';
+import type { StandardIssue as Issue, StandardSchemaV1 } from '@marmeon/core';
 
 /** `ip: Invalid type: Expected string but received 7` — issues as one line. */
 export function describeIssues(issues: readonly Issue[]): string {

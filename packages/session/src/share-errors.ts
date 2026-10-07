@@ -1,8 +1,8 @@
-import { always, SharedData, type ValidationErrors } from '@bespokecore/http';
-import type { HttpContext, Next } from '@bespokecore/router';
+import { always, SharedData, type ValidationErrors } from '@marmeon/http';
+import type { HttpContext, Next } from '@marmeon/router';
 import { Session } from './session.ts';
 
-declare module '@bespokecore/http/page' {
+declare module '@marmeon/http/page' {
   interface SharedProps {
     /** Validation errors of the previous request, `{}` if none — what `useForm` shows next to the fields. */
     errors: ValidationErrors;

@@ -1,6 +1,6 @@
 /**
- * The browser-safe core of `@bespokecore/i18n` — messages, the ICU subset, formatting, locale negotiation and the
- * loader of language files. No server code: UI adapters (`useTranslation` in @bespokecore/react) build on this.
+ * The browser-safe core of `@marmeon/i18n` — messages, the ICU subset, formatting, locale negotiation and the
+ * loader of language files. No server code: UI adapters (`useTranslation` in @marmeon/react) build on this.
  */
 import { Catalog, type Formatter } from './catalog.ts';
 import type { CheckKey, KeyOf, MessageAt, MessageTree, Namespace, TranslateArgs, Translations } from './types.ts';

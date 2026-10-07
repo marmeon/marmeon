@@ -6,7 +6,7 @@
  *   node scripts/npm-trust.ts            # write scripts/npm-trust.sh
  *   node scripts/npm-trust.ts --check    # exit 1 when the file is not what the package list makes (check-changesets runs this)
  *
- * Each package trusts `.github/workflows/release.yml` of `bespokecore/bespokecore` for **staged** publishing only
+ * Each package trusts `.github/workflows/release.yml` of `marmeon/marmeon` for **staged** publishing only
  * (`--allow-stage-publish`, never `--allow-publish`): the workflow can stage a version, a maintainer approves it with 2FA (E152).
  */
 import { readFileSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
@@ -16,7 +16,7 @@ import { frameworkPackages } from './packages.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 export const TRUST_SCRIPT = 'scripts/npm-trust.sh';
-export const REPOSITORY = 'bespokecore/bespokecore';
+export const REPOSITORY = 'marmeon/marmeon';
 export const WORKFLOW = 'release.yml';
 
 /** The script's text for the packages of `repository`. */

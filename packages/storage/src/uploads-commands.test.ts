@@ -12,7 +12,7 @@ function run(root: string, options: Record<string, string> = {}) {
 
 describe('make:uploads-table', () => {
   it('writes the migration of temporary_uploads into the system module (E96), next to the cache and session tables', async () => {
-    const root = tempDir('bespoke-uploads-table-');
+    const root = tempDir('marmeon-uploads-table-');
     mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/system/index.ts'), "export default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });");
     writeFileSync(join(root, 'modules/system/migrations/2026_10_02_195920_create_cache_table.ts'), '');
@@ -25,7 +25,7 @@ describe('make:uploads-table', () => {
     // Exactly the file the package's own tests migrate with; the table follows UPLOADS_CONNECTION (E108: infrastructure).
     expect(contents).toBe(readFileSync(UPLOADS_MIGRATION, 'utf8'));
     expect(contents).toContain('connection: uploadsTableConnection');
-    expect(first.lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: bespoke migrate']);
+    expect(first.lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);
 
     const again = run(root);
     expect(await new MakeUploadsTableCommand().handle(again.input)).toBe(1);

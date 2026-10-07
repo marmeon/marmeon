@@ -1,4 +1,4 @@
-import { defineFactory } from '@bespokecore/database';
+import { defineFactory } from '@marmeon/database';
 
 /**
  * `password`, hashed once — at the test costs of `.env.test`, so factory users sign in without

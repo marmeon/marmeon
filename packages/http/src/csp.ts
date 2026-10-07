@@ -1,8 +1,8 @@
-import { Logger, token } from '@bespokecore/core';
-import { editableResponse, RequestNonce, type CookieDefaults as CookieDefaultsOptions, type HttpContext, type MiddlewareClass, type Next } from '@bespokecore/router';
+import { Logger, token } from '@marmeon/core';
+import { editableResponse, RequestNonce, type CookieDefaults as CookieDefaultsOptions, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
 
 /**
- * What every cookie of a request gets unless its `set` says otherwise — `@bespokecore/session` binds it from its config
+ * What every cookie of a request gets unless its `set` says otherwise — `@marmeon/session` binds it from its config
  * (`secure`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`, E162), the kernel hands it to each request's cookie jar.
  */
 export type CookieDefaults = CookieDefaultsOptions;
@@ -102,7 +102,7 @@ export function compilePolicy(directives: CspDirectives): { pieces: readonly str
  * ```
  *
  * Each response gets its own nonce (`ctx.nonce()`), made only when a document is rendered: the server puts it on the
- * template's tags (Vite's `html.cspNonce`, set by `bespoke()`), on React's streamed scripts and styles and on `<Head>`'s
+ * template's tags (Vite's `html.cspNonce`, set by `marmeon()`), on React's streamed scripts and styles and on `<Head>`'s
  * scripts — and here into the header. Only HTML responses get the header, and only those without a policy of their own (the
  * devtools' pages, a sandboxed file): a JSON visit, an island or an API answer never needs a nonce.
  *

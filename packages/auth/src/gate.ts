@@ -1,4 +1,4 @@
-import { HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@bespokecore/router';
+import { HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@marmeon/router';
 import { Auth } from './auth.ts';
 import type { AuthUser, Authenticated } from './user.ts';
 
@@ -40,7 +40,7 @@ export class AuthorizationError extends HttpError {
   constructor(status: 403 | 404 = 403, message?: string) {
     // The policy's own reason is the app's text (translated by the app); the default is a framework text by key.
     const fallback = status === 403 && message === undefined;
-    super(status, status === 404 ? undefined : (message ?? 'This action is unauthorized.'), {}, fallback ? { key: 'bespoke.errors.unauthorized' } : undefined);
+    super(status, status === 404 ? undefined : (message ?? 'This action is unauthorized.'), {}, fallback ? { key: 'marmeon.errors.unauthorized' } : undefined);
   }
 }
 

@@ -1,5 +1,5 @@
-// @bespokecore/devtools (E115–E118, E124, E125): the recorder and its store — what a request, job, scheduled run or command
-// did, kept as redacted entries in `storage/framework/devtools/` (development only). The pages under `/_bespoke/devtools`
+// @marmeon/devtools (E115–E118, E124, E125): the recorder and its store — what a request, job, scheduled run or command
+// did, kept as redacted entries in `storage/framework/devtools/` (development only). The pages under `/_marmeon/devtools`
 // read them through the store (W7 step 8).
 export { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
 export {

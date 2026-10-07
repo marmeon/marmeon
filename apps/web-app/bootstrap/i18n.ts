@@ -1,5 +1,5 @@
-import { createMessageLoader } from '@bespokecore/i18n/messages';
-import lang from 'virtual:bespoke/lang';
+import { createMessageLoader } from '@marmeon/i18n/messages';
+import lang from 'virtual:marmeon/lang';
 
 /**
  * The language files for the browser and the SSR entry: each page renders with its locale's messages — only that

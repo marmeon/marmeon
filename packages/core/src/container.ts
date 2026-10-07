@@ -18,8 +18,8 @@ interface Binding {
   readonly create: (container: Container, path: readonly Key[]) => unknown;
 }
 
-const UNRESOLVABLE = Symbol.for('bespokecore.injection.unresolvable');
-const WARNINGS = Symbol.for('bespokecore.injection.warnings');
+const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
+const WARNINGS = Symbol.for('marmeon.injection.warnings');
 
 /** Why the container could not resolve something — for messages and the solutions of the error page (E130). */
 export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 'circular';
@@ -158,7 +158,7 @@ export class Container implements Resolver {
 
   /**
    * Every key bound here or in a parent — classes and tokens, the nearest binding first. For tooling that lists or
-   * completes what the app has (`bespoke tinker`); resolving stays `make`.
+   * completes what the app has (`marmeon tinker`); resolving stays `make`.
    */
   keys(): Key[] {
     const keys = new Map<unknown, Key>();
@@ -239,8 +239,8 @@ export class Container implements Resolver {
         `[${describeKey(concrete)}] needs ${concrete.length} constructor argument(s) but has no injection list` +
           `${neededBy(chain.slice(0, -1))}. ` +
           (reason ??
-            'Lists are generated from the constructor types by the BespokeCore loader (app code), ' +
-              '"bespoke package:build" or "bespoke discover" (packages).'),
+            'Lists are generated from the constructor types by the Marmeon loader (app code), ' +
+              '"marmeon package:build" or "marmeon discover" (packages).'),
         { reason: 'no-injection-list', key: describeKey(concrete), path: chain.slice(0, -1).map(describeKey), ...(reason ? { injection: reason } : {}) },
       );
     }

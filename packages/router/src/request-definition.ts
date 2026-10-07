@@ -75,7 +75,7 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
   /**
    * Runs after route binding, before validation; `false` answers 403 (or it throws its own `HttpError`).
    * Its context type is what the route must provide. `resolve` builds classes from the request's container
-   * scope — how `can(Policy, …)` of @bespokecore/auth gets its policy without the router knowing a container (E28).
+   * scope — how `can(Policy, …)` of @marmeon/auth gets its policy without the router knowing a container (E28).
    */
   readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
 }
@@ -198,7 +198,7 @@ export type BodyOf<TSchema extends StandardSchemaV1> = [TSchema] extends [never]
 export type ValidationErrors = Record<string, string[]>;
 
 /**
- * What {@link ValidationError.translate} needs of a translator — the `Translator` contract of @bespokecore/core
+ * What {@link ValidationError.translate} needs of a translator — the `Translator` contract of @marmeon/core
  * (the router depends on no package, so it is spelled out here).
  */
 export interface MessageTranslator {
@@ -207,7 +207,7 @@ export interface MessageTranslator {
 }
 
 /** Where {@link translatable} leaves its key on an issue (a symbol: never serialized, never shown). */
-const TRANSLATION = Symbol.for('bespokecore.translation');
+const TRANSLATION = Symbol.for('marmeon.translation');
 
 /**
  * A validation message by translation key, for schemas — a message function as Valibot (and Zod) accept them:
@@ -215,7 +215,7 @@ const TRANSLATION = Symbol.for('bespokecore.translation');
  * key on the issue, and the request's translator turns it into the request's language
  * ({@link ValidationError.translate}); without a translator, the issue keeps `fallback` (or the key).
  *
- * Apps use the typed `trans()` of @bespokecore/i18n. A plain string that is a known key works too, with any library.
+ * Apps use the typed `trans()` of @marmeon/i18n. A plain string that is a known key works too, with any library.
  */
 export function translatable(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): (issue: object) => string {
   return (issue) => {
@@ -297,7 +297,7 @@ export class ValidationError extends HttpError {
     const messages = Object.values(errors).flat();
     if (messages.length > 1) {
       const count = messages.length - 1;
-      translated.message = `${messages[0]} ${translator.text('bespoke.validation.more', { count }, `(and ${count} more error${count === 1 ? '' : 's'})`)}`;
+      translated.message = `${messages[0]} ${translator.text('marmeon.validation.more', { count }, `(and ${count} more error${count === 1 ? '' : 's'})`)}`;
     }
     return translated;
   }
@@ -313,7 +313,7 @@ export interface ValidatedRequest {
 
 /**
  * Runs before a body schema validates the input (`router.beforeValidation(hook)`) — after `authorize`, for a submit and a live
- * validation alike. A hook may replace values of `input` with what the schema expects instead: @bespokecore/storage puts the
+ * validation alike. A hook may replace values of `input` with what the schema expects instead: @marmeon/storage puts the
  * verified upload in place of an upload token (W6.9), which needs the request (its session) that a schema never sees.
  */
 export type ValidationHook = (input: Record<string, unknown>, context: ValidationHookContext) => void | Promise<void>;
@@ -339,7 +339,7 @@ export interface ValidateOptions {
 /** The request's `authorize` — a 403 when it says no. (What {@link validateRequest} runs first.) */
 export async function authorizeRequest(definition: RequestDefinition, ctx: HttpContext, resolve: ClassResolver = (Class) => new Class()): Promise<void> {
   if (definition.authorize && !(await definition.authorize(ctx, resolve))) {
-    throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'bespoke.errors.unauthorized' });
+    throw new HttpError(403, 'This action is unauthorized.', {}, { key: 'marmeon.errors.unauthorized' });
   }
 }
 

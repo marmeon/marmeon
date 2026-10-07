@@ -1,8 +1,8 @@
-import { ConsoleLogger, type Application, type Logger } from '@bespokecore/core';
-import { Connections, Migrator, sql, type ConnectionOptions } from '@bespokecore/database';
+import { ConsoleLogger, type Application, type Logger } from '@marmeon/core';
+import { Connections, Migrator, sql, type ConnectionOptions } from '@marmeon/database';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), like the database package's own tests. */
-export const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+/** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`), like the database package's own tests. */
+export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
@@ -12,7 +12,7 @@ export async function migratedConnections(driver: 'sqlite' | 'pgsql'): Promise<{
   let options: ConnectionOptions = { driver: 'sqlite', database: ':memory:' };
   let drop = async () => {};
   if (driver === 'pgsql') {
-    const name = `bespoke_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const name = `marmeon_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
     await sql`create database ${sql.id(name)}`.execute(admin.get());
     const url = new URL(PGSQL_URL!);

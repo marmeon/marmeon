@@ -35,7 +35,7 @@ export class ShowTitleController {
   }
 }
 
-const valid = { APP_NAME: 'BespokeCore', APP_URL: 'http://localhost:3000' };
+const valid = { APP_NAME: 'Marmeon', APP_URL: 'http://localhost:3000' };
 
 async function rejection(promise: Promise<unknown>): Promise<Error> {
   try {
@@ -49,7 +49,7 @@ async function rejection(promise: Promise<unknown>): Promise<Error> {
 describe('configuration', () => {
   it('validates, transforms and resolves typed configuration', async () => {
     const resolved = await resolveConfig([AppConfig], { ...valid, PORT: '8080' });
-    expect(resolved.get(AppConfig)).toEqual({ name: 'BespokeCore', url: 'http://localhost:3000', port: 8080 });
+    expect(resolved.get(AppConfig)).toEqual({ name: 'Marmeon', url: 'http://localhost:3000', port: 8080 });
   });
 
   it('applies schema defaults', async () => {
@@ -82,7 +82,7 @@ describe('configuration', () => {
 
 describe('loadEnv', () => {
   it('layers .env, .env.{mode} and the real environment, without touching process.env', () => {
-    const root = realpathSync(tempDir('bespoke-env-'));
+    const root = realpathSync(tempDir('marmeon-env-'));
     writeFileSync(join(root, '.env'), 'A=from-env\nB=from-env\n# comment\nQUOTED="x y"\n');
     writeFileSync(join(root, '.env.test'), 'B=from-env-test\nC=from-env-test\n');
 
@@ -95,7 +95,7 @@ describe('loadEnv', () => {
 describe('createApplication — configuration', () => {
   it('binds configuration as tokens, so it is constructor-injected', async () => {
     const app = await createApplication({ root: tmpdir(), discover: false, config: [AppConfig], env: valid });
-    expect(app.container.make(ShowTitleController).handle()).toBe('BespokeCore on port 3000');
+    expect(app.container.make(ShowTitleController).handle()).toBe('Marmeon on port 3000');
   });
 
   it('fails before anything boots, with the full list of problems and no stack noise', async () => {

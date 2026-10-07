@@ -2,20 +2,17 @@
  * `pnpm check-changesets` — the release rules (E152, E153, E157, E168), a part of `pnpm run ci`. Exit 1 names every broken rule.
  *
  *   1. **One fixed group** — `.changeset/config.json` has exactly one `fixed` group, and it covers every published package
- *      (`@bespokecore/*`, `bespokecore`, `create-bespoke-app`) and no private one; public access, `main`, private packages unversioned.
+ *      (`@marmeon/*`, `marmeon`, `create-marmeon`) and no private one; public access, `main`, private packages unversioned.
  *   2. **One version** — every published package has the same version (lockstep: the exact peers name it).
  *   3. **The changesets** — each names known, published packages with `patch`, `minor` or `major`; **no `major` below 1.0.0**:
  *      in 0.x a breaking change is a `minor` (with its UPGRADING.md entry) — Changesets would jump to 1.0.0.
- *   4. **The meta package** `bespokecore` — no code, its dependencies `workspace:*` (pnpm publishes them as the exact version; a
- *      `workspace:^` would become `^x.y.z`), exactly the blank app's runtime `@bespokecore/*` packages minus the UI adapters
- *      (`@bespokecore/react`, a later `vue`, … — the app chooses its UI), no peers (no `react`), nothing of the development tools.
- *   5. **The release workflow** — `.github/workflows/release.yml`: read-only by default, `id-token: write` only in the job that
+ *   4. **The release workflow** — `.github/workflows/release.yml`: read-only by default, `id-token: write` only in the job that
  *      stages the packages, staged with pnpm (`pnpm stage publish` through `release:stage`) after `pack:check`, never `npm publish`,
  *      a plain `pnpm publish` or an npm token; the version pull request through Changesets; a GitHub-hosted runner.
- *   6. **`scripts/npm-trust.sh`** names every package (`node scripts/npm-trust.ts` writes it) and allows staged publishing only.
- *   7. **`UPGRADING.md`** has every entry of the list below, under its wave — the 22 hints of the Wave 7 acceptance, the Wave 6
+ *   5. **`scripts/npm-trust.sh`** names every package (`node scripts/npm-trust.ts` writes it) and allows staged publishing only.
+ *   6. **`UPGRADING.md`** has every entry of the list below, under its wave — the 22 hints of the Wave 7 acceptance, the Wave 6
  *      hints, the Wave 8 changes —, each with an impact and its likelihood, and no placeholder left.
- *   8. **The policies** — `LICENSE` (MIT, holder "BespokeCode", E153), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
+ *   7. **The policies** — `LICENSE` (MIT, holder "BespokeCode", E153), `CONTRIBUTING.md` with the DCO sign-off, `SECURITY.md` with
  *      private vulnerability reporting, the deprecation policy in the root README.
  * Besides: actionlint over the workflows when it is installed (it is not on CI's runners — a note, never a failure).
  */
@@ -31,10 +28,10 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** The entries UPGRADING.md must keep, by wave — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
 export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
   'Wave 9': [
-    'low-bespoke-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187
-    'low-the-image-runs-bespoke-under-tini--rebuild-it',
+    'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187
+    'low-the-image-runs-marmeon-under-tini--rebuild-it',
     'low-pnpm-1291',
-    'low-a-new-apps-title-is-its-name-not-bespokecore',
+    'low-a-new-apps-title-is-its-name-not-marmeon',
     'medium-an-actions-or-a-live-hints-reload-replaces-merged-props--a-deleted-row-stays-gone', // W9.3, E183
     'medium-paginate-takes-ctxquery--pagequery-in-the-query-schema-paginationfrom-deprecated',
     'medium-pagination-takes-its-links-from-the-parsed-query-and-its-texts-from-labels',
@@ -42,7 +39,7 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-merge-of-a-paginator-appends-its-data-matchon-takes-paths-merge-marks-no-longer-pile-up',
     'low-cursors-are-encrypted--cursorpaginate-needs-the-encrypter-an-old-cursor-is-a-400',
     'medium-one-session-holds-at-most-16-live-streams-per-process--the-17th-tab-gets-a-429', // W9.4, E182
-    'medium-a-cluster-bespoke-start-with-workers-needs-live_driverredis',
+    'medium-a-cluster-marmeon-start-with-workers-needs-live_driverredis',
     'low-the-server-keeps-idle-connections-65-s-keep_alive_timeout',
     'medium-the-navigator-uses-the-navigation-api--historystate-is-null-its-navigate-events-are-visible', // W9.7, E184
     'low-the-guard-cancels-a-back-where-the-browser-lets-it--and-goes-back-by-the-browsers-key',
@@ -56,69 +53,69 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'low-a-tables-filter-on-a-hidden-column-is-hidden-with-it',
     'low-a-reset-in-a-submits-onsuccessonfinish-resets-to-the-defaults-before-the-submit--the-saved-form-is-not-dirty',
     'low-a-page-that-builds-its-reloads-while-rendering-renders-on-the-server-again',
-    'low-bespoke-dev-answers-other-origins-without-cors-headers',
+    'low-marmeon-dev-answers-other-origins-without-cors-headers',
     'low-an-s3-temporary-url-names-the-content-type-by-the-file-name',
     'low-a-private-s3-disk-that-shares-a-prefix-of-one-bucket-with-a-public-one-fails-the-start',
     'low-verified-treats-a-user-without-email_verified_at-as-unverified',
     'medium-smtp-requires-tls--starttls-or-no-mail-mail_require_tls', // E192
   ],
   'Wave 8': [
-    'high-bespokecorecli-is-a-dependency-of-the-app',
+    'high-marmeon-is-a-dependency-of-the-app',
     'high-session-keys-are-hashed--every-user-is-signed-out-once-a-database-sessions-table-needs-its-upgrade-migration',
     'medium-protections-apply-to-every-node_env-but-development-and-test--staging-and-a-missing-node_env-included',
     'medium-node_env-falls-back-to-the-apps-env', // E170
-    'medium-bespoke-start-respects-node_env',
+    'medium-marmeon-start-respects-node_env',
     'medium-migrate-writes-the-table-types-with-node_envdevelopment-only',
     'medium-cookies-are-secure-when-app_url-is-https--every-cookie-of-the-request',
     'medium-behind-trusted_proxies-x-forwarded-proto-and--host-set-the-requests-url-ranges-are-allowed-typos-fail-the-start',
     'medium-csrf--the-browsers-word-first-a-request-from-another-site-is-403-not-419',
     'medium-a-guests-page-starts-no-session--pagecsrf-and-xsrf-token-only-with-a-session',
     'medium-a-session-written-by-two-requests-at-once-is-merged-not-overwritten--and-custom-stores-compare-versions',
-    'medium-the-tabs-of-a-browser-follow-each-others-sign-in-sign-out-and-language--createbespokeapp-loads-tab-sync',
+    'medium-the-tabs-of-a-browser-follow-each-others-sign-in-sign-out-and-language--createmarmeonapp-loads-tab-sync',
     'medium-signing-out-clears-the-sites-storage-too--clear-site-data-cache-storage-clear-sitecache--is-clear-sitedata-',
     'low-session_encrypt-encrypts-the-session-data-in-its-store',
     'low-routeblock-runs-a-routes-requests-one-at-a-time-per-session',
-    'low-bespoke-keygenerate---force-keeps-the-old-key-in-app_previous_keys',
+    'low-marmeon-keygenerate---force-keeps-the-old-key-in-app_previous_keys',
     'low-csrf_trusted_origins-lists-origins--the-scheme-counts',
     'low-the-login-event-carries-the-requests-address-and-browser-by-itself--requestinfo',
-    'low-bespoke-makeauth---private-registration-the-generated-forms-carry-no-_token',
-    'low-one-process-for-bespoke-start-and-every-command',
-    'low-one-discovery-manifest-per-condition-set-relative-paths-written-by-bespoke-build',
-    'low-bespoke-build-precomputes-the-injection-lists--deploy-what-you-built',
-    'low-bespoke-start-writes-nodes-compile-cache-to-storageframeworkcompile-cache',
+    'low-marmeon-makeauth---private-registration-the-generated-forms-carry-no-_token',
+    'low-one-process-for-marmeon-start-and-every-command',
+    'low-one-discovery-manifest-per-condition-set-relative-paths-written-by-marmeon-build',
+    'low-marmeon-build-precomputes-the-injection-lists--deploy-what-you-built',
+    'low-marmeon-start-writes-nodes-compile-cache-to-storageframeworkcompile-cache',
     'low-oxc-parser-pino-pretty-and-the-tinker-repl-load-only-when-used',
     'low-environments-of-the-scheduler-counts-a-missing-node_env-as-production',
     'low-createtestapp-runs-as-node_envtest-unless-its-env-names-another',
     'low-the-packages-ship-their-sources-for-the-source-maps-and-a-license-each',
     'low-the-blank-app-has-a-envexample-and-a-storage-skeleton',
     'low-an-opt-in-content-security-policy-with-a-nonce-per-response--on-in-the-web-app-and-the-starters-shell',
-    'low-assets-cached-a-year-and-sent-precompressed--bespoke-build-writes-br-and-gz',
+    'low-assets-cached-a-year-and-sent-precompressed--marmeon-build-writes-br-and-gz',
     'low-host-chooses-the-interface-the-start-line-names-it-and-the-port-it-got',
     'low-the-development-error-page-and-the-mail-preview-bring-their-own-content-security-policy',
     'low-upready-answers-503-from-sigterm-on-and-keeps-a-result-for-a-second-shutdown_delay',
-    'low-bespoke-start---workersn-and-bespoke-makedocker',
+    'low-marmeon-start---workersn-and-marmeon-makedocker',
     'low-a-flash-message-stays-with-the-tab-that-flashed-it',
     'low-middleware-sets-the-headers-of-the-frameworks-responses-in-place--editableresponse',
     'low-middlewaregroupsget-and-routermiddlewarefor-return-the-same-frozen-list-until-a-group-changes',
     'low-the-encrypter-runs-on-nodecrypto--the-same-payloads-about-five-times-faster',
-    'low-bespoke-makeauth-no-longer-maps--to-the-sign-in-page',
-    'low-create-bespoke-app--the-blank-app-is-its---minimal-output-with-the-devtools-a-test-and-pnpm-test',
+    'low-marmeon-makeauth-no-longer-maps--to-the-sign-in-page',
+    'low-create-marmeon--the-blank-app-is-its---minimal-output-with-the-devtools-a-test-and-pnpm-test',
     'low-the-dev-server-pre-bundles-from-the-client-entry-and-the-pages',
-    'low-one-version-for-every-package--010-from-npm-and-the-meta-package-bespokecore',
+    'low-one-version-for-every-package--010-from-npm',
     'medium-trusted_proxies-trusts-the-direct-peer-only--a-client-can-no-longer-choose-its-address', // W8.13, E172
     'low-a-guests-island-that-follows-a-live-channel-answers-without-the-subscription--not-500',
     'low-the-file-stores-break-a-stale-guard-one-waiter-at-a-time--withfileguard',
     'low-an-idle-worker-names-a-queue-nobody-takes',
     'low-port0-asks-the-system-for-a-free-port',
     'low-with---workersn-the-boots-warnings-come-once-from-the-primary',
-    'low-bespoke-in-a-copy-under-node_modules-runs-its-dist-a-failed-start-names-nodes-error-code',
+    'low-marmeon-in-a-copy-under-node_modules-runs-its-dist-a-failed-start-names-nodes-error-code',
     'low-contributors-the-monorepo-needs-pnpm-12',
   ],
   // The 22 hints of the Wave 7 acceptance (W8 step 11), in their order there.
   'Wave 7': [
     'low-contributors-pnpm-run-ci-is-the-check-command--not-pnpm-ci', // 1
     'medium-development-features-run-with-node_envdevelopment-only--never-not-production', // 2 (E115; E139)
-    'low-bespoke-dev-sets-node_envdevelopment-when-it-is-missing', // 3
+    'low-marmeon-dev-sets-node_envdevelopment-when-it-is-missing', // 3
     'low-ononeserver-and-withoutoverlapping-with-a-file-or-memory-cache-warn-instead-of-throwing', // 4 (E123)
     'low-the-schedulers-events--the-field-is-skipped', // 5 (E127)
     'low-diagnostics-channels-for-observing-the-framework', // 6
@@ -127,9 +124,9 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 9' | 'Wave 8' | 'Wave 7' |
     'medium-shared-props-are-optional--layouts-must-cope-with-undefined', // 9
     'medium-discovery-follows-pnpm--an-app-discovers-only-what-it-installs', // 10
     'medium-client-code-imports-server-modules-with-import-type-only', // 11 (E121)
-    'low-bespoke-makelint-config-and-the-lint-preset', // 12
+    'low-marmeon-makelint-config-and-the-lint-preset', // 12
     'low-redaction-reaches-into-lists-child-loggers-and-the-request-log-line', // 13 (E125)
-    'low-html-raw-html-and-escapehtml-live-in-bespokecorecore', // 14
+    'low-html-raw-html-and-escapehtml-live-in-marmeoncore', // 14
     'low-the-devtools-are-a-package-of-their-own', // 15
     'low-opentelemetry--the-app-brings-the-sdk-as-dependencies', // 16 (E159)
     'low-a-defaulted-constructor-parameter-of-an-injectable-type-warns', // 17 (E128)
@@ -159,24 +156,9 @@ export function slug(heading: string): string {
     .replace(/\s/g, '-');
 }
 
-const META = 'bespokecore';
-/** Never in the meta package: development tools (E150 — dev dependencies of an app) and the scaffolder. */
-const NOT_IN_META = ['@bespokecore/devtools', '@bespokecore/testing', '@bespokecore/vite', 'create-bespoke-app'];
-/** UI frameworks: a peer on one of them makes a package a UI adapter; the meta package names none of them either. */
-const UI_FRAMEWORKS = ['react', 'react-dom', 'vue', 'svelte', 'solid-js', 'preact'];
-/** The UI adapters (E39: react now, vue later) — chosen by the app, never in the meta package (Max, 05.10.). */
-const UI_ADAPTERS = ['@bespokecore/react', '@bespokecore/vue', '@bespokecore/svelte', '@bespokecore/solid'];
-
-/** Whether a framework package is a UI adapter: named as one, or with a UI framework among its peers. */
-function isUiAdapter(name: string, packages: readonly FrameworkPackage[]): boolean {
-  if (UI_ADAPTERS.includes(name)) return true;
-  const peers = (packages.find((pkg) => pkg.name === name)?.manifest as Record<string, any> | undefined)?.peerDependencies ?? {};
-  return UI_FRAMEWORKS.some((framework) => framework in peers);
-}
-
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
 
-/** A glob of the Changesets config (`@bespokecore/*`) as a test — `*` is any run of characters but `/`. */
+/** A glob of the Changesets config (`@marmeon/*`) as a test — `*` is any run of characters but `/`. */
 function globTest(glob: string): (name: string) => boolean {
   const pattern = new RegExp(`^${glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`);
   return (name) => pattern.test(name);
@@ -285,41 +267,6 @@ export function checkChangesets(repository: string, packages: readonly Framework
   return problems;
 }
 
-/** 4 · the meta package. */
-export function checkMeta(repository: string, packages: readonly FrameworkPackage[]): string[] {
-  const meta = packages.find((pkg) => pkg.name === META);
-  if (!meta) return [`the meta package ${META} (packages/${META}) is missing (E157)`];
-  const problems: string[] = [];
-  const manifest = meta.manifest as Record<string, any>;
-  const dependencies = (manifest.dependencies ?? {}) as Record<string, string>;
-  for (const [name, range] of Object.entries(dependencies)) {
-    if (range !== 'workspace:*') problems.push(`${META}: dependencies.${name} is "${range}" — "workspace:*" (published as exactly the release's version, E157)`);
-  }
-  for (const field of ['exports', 'main', 'module', 'bin', 'bespoke'] as const) {
-    if (field in manifest) problems.push(`${META}: "${field}" — the meta package has no code, only its dependencies`);
-  }
-  for (const name of NOT_IN_META) if (name in dependencies) problems.push(`${META}: ${name} is a development tool — never in the meta package`);
-  for (const name of Object.keys(dependencies).filter((dependency) => isUiAdapter(dependency, packages))) {
-    problems.push(`${META}: ${name} is a UI adapter — the meta package is UI-agnostic; the app lists its adapter itself (Max, 05.10.)`);
-  }
-  for (const field of ['peerDependencies', 'optionalDependencies'] as const) {
-    for (const name of Object.keys((manifest[field] ?? {}) as Record<string, string>)) {
-      problems.push(`${META}: ${field}.${name} — the meta package has no peers${UI_FRAMEWORKS.includes(name) ? ' (no UI framework: the adapter brings its own)' : ''}`);
-    }
-  }
-  // The blank app's runtime packages minus the UI adapters: what every app runs, whichever UI it chose.
-  const blank = readJson<{ dependencies?: Record<string, string> }>(join(repository, 'apps/blank-app/package.json'));
-  const expected = Object.keys(blank.dependencies ?? {})
-    .filter((name) => name.startsWith('@bespokecore/') && !isUiAdapter(name, packages))
-    .sort();
-  const actual = Object.keys(dependencies).sort();
-  const missing = expected.filter((name) => !actual.includes(name));
-  const extra = actual.filter((name) => !expected.includes(name) && !NOT_IN_META.includes(name) && !isUiAdapter(name, packages));
-  if (missing.length > 0) problems.push(`${META}: lacks ${missing.join(', ')} — it holds the blank app's runtime @bespokecore/* packages minus the UI adapters`);
-  if (extra.length > 0) problems.push(`${META}: ${extra.join(', ')} ${extra.length === 1 ? 'is' : 'are'} not among the blank app's runtime packages — an opt-in package is added by the app`);
-  return problems;
-}
-
 /** The jobs of a workflow file: name → its lines (the YAML is simple enough to cut at the two-space job keys). */
 function jobsOf(workflow: string): Map<string, string> {
   const jobs = new Map<string, string>();
@@ -338,7 +285,7 @@ function jobsOf(workflow: string): Map<string, string> {
   return jobs;
 }
 
-/** 5 · the release workflow. */
+/** 4 · the release workflow. */
 export function checkWorkflow(repository: string): string[] {
   const file = join(repository, '.github/workflows/release.yml');
   if (!existsSync(file)) return ['.github/workflows/release.yml is missing (E152)'];
@@ -348,7 +295,7 @@ export function checkWorkflow(repository: string): string[] {
   const where = 'release.yml';
 
   if (!/^permissions:\s*\n\s+contents:\s*read\s*$/m.test(code)) problems.push(`${where}: the workflow's default "permissions:" must be "contents: read" — each job asks for what it needs`);
-  if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @bespokecore/source condition; pnpm stages the packages`);
+  if (/\bnpm\s+publish\b/.test(code)) problems.push(`${where}: "npm publish" — npm ignores publishConfig.exports and ships the @marmeon/source condition; pnpm stages the packages`);
   if (/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|registry-url:/.test(code)) problems.push(`${where}: an npm token or registry-url — trusted publishing (OIDC) needs no token, and none may sit in the repository`);
   if (/\bpnpm\s+(?:-r\s+|--recursive\s+)?publish\b/.test(code)) problems.push(`${where}: a plain "pnpm publish" — every release is staged (pnpm stage publish) and waits for a maintainer's 2FA approval (E152)`);
   if (!/changesets\/action\/version@v2/.test(code)) problems.push(`${where}: the version pull request comes from changesets/action/version@v2`);
@@ -374,7 +321,7 @@ export function checkWorkflow(repository: string): string[] {
   return problems;
 }
 
-/** 6 · `scripts/npm-trust.sh`. */
+/** 5 · `scripts/npm-trust.sh`. */
 export function checkTrust(repository: string): string[] {
   const file = join(repository, TRUST_SCRIPT);
   if (!existsSync(file) || readFileSync(file, 'utf8') !== trustScript(repository)) return [`${TRUST_SCRIPT} is missing or out of date — node scripts/npm-trust.ts`];
@@ -382,7 +329,7 @@ export function checkTrust(repository: string): string[] {
   return [];
 }
 
-/** 7 · `UPGRADING.md`. */
+/** 6 · `UPGRADING.md`. */
 export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANCHORS = UPGRADING_ANCHORS): string[] {
   const file = join(repository, 'UPGRADING.md');
   if (!existsSync(file)) return ['UPGRADING.md is missing (E168)'];
@@ -418,7 +365,7 @@ export function checkUpgrading(repository: string, anchors: typeof UPGRADING_ANC
   return problems;
 }
 
-/** 8 · licence and policies. */
+/** 7 · licence and policies. */
 export function checkPolicies(repository: string): string[] {
   const problems: string[] = [];
   const read = (file: string) => (existsSync(join(repository, file)) ? readFileSync(join(repository, file), 'utf8') : undefined);
@@ -448,7 +395,6 @@ export function check(repository: string = root): string[] {
   return [
     ...checkGroup(repository, packages),
     ...checkChangesets(repository, packages),
-    ...checkMeta(repository, packages),
     ...checkWorkflow(repository),
     ...checkTrust(repository),
     ...checkUpgrading(repository),
@@ -468,7 +414,7 @@ if (import.meta.main) {
   } else {
     const upgrading = Object.values(UPGRADING_ANCHORS).reduce((sum, list) => sum + list.length, 0);
     console.log(
-      `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, the meta package, release.yml, ` +
+      `check-changesets: ${packages.length} packages at ${packages[0]?.manifest.version} in one fixed group, the changesets, release.yml, ` +
         `npm-trust.sh, ${upgrading} UPGRADING entries and the policies are in order${lint === undefined ? ' (actionlint not installed — skipped)' : ', actionlint clean'}.`,
     );
   }

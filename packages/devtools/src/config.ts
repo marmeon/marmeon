@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ConfigError, defineConfig, environment, type ConfigOf } from '@bespokecore/core';
+import { ConfigError, defineConfig, environment, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 import { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES } from './file-store.ts';
 
@@ -15,23 +15,23 @@ export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications
 
 export const WATCHERS: readonly Watcher[] = ['requests', 'queries', 'jobs', 'mails', 'notifications', 'logs', 'exceptions', 'schedule', 'live', 'events', 'commands'];
 
-/** A request path to leave out: exact (`/up`), a prefix ending in `*` (`/_bespoke/live*`), or a pattern. */
+/** A request path to leave out: exact (`/up`), a prefix ending in `*` (`/_marmeon/live*`), or a pattern. */
 export type PathPattern = string | RegExp;
 
 /**
  * The app's devtools settings — the default export of `config/devtools.ts` (optional: the defaults suffice):
  *
  * ```ts
- * import { defineDevtools } from '@bespokecore/devtools';
+ * import { defineDevtools } from '@marmeon/devtools';
  *
  * export default defineDevtools({
- *   ignore: { paths: ['/_bespoke/live*'], queries: (query) => query.sql.startsWith('pragma') },
+ *   ignore: { paths: ['/_marmeon/live*'], queries: (query) => query.sql.startsWith('pragma') },
  *   slowQueryMs: 100,
  * });
  * ```
  *
  * The file is loaded only where the devtools run (`NODE_ENV=development`), by the devtools themselves — nothing else imports
- * it, so it may import `@bespokecore/devtools` while the package is a dev dependency (E115: absent in production installs).
+ * it, so it may import `@marmeon/devtools` while the package is a dev dependency (E115: absent in production installs).
  */
 export interface DevtoolsOptions {
   /** What to record (default: everything). */
@@ -61,7 +61,7 @@ export interface DevtoolsOptions {
   };
 }
 
-const DEFINITION: unique symbol = Symbol.for('bespokecore.devtools.options');
+const DEFINITION: unique symbol = Symbol.for('marmeon.devtools.options');
 
 /** Settings from {@link defineDevtools}. */
 export type DevtoolsDefinition = DevtoolsOptions & { readonly [DEFINITION]: true };
@@ -75,7 +75,7 @@ export function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition {
 }
 
 /** The devtools' own pages, Vite's modules and the editor link — never recorded. */
-export const DEFAULT_IGNORED_PATHS: readonly PathPattern[] = ['/_bespoke/devtools*', '/@vite/*', '/@id/*', '/@fs/*', '/@react-refresh', '/node_modules/*', '/__open-in-editor*', '/favicon.ico'];
+export const DEFAULT_IGNORED_PATHS: readonly PathPattern[] = ['/_marmeon/devtools*', '/@vite/*', '/@id/*', '/@fs/*', '/@react-refresh', '/node_modules/*', '/__open-in-editor*', '/favicon.ico'];
 
 /** Commands that run for long (a batch would never end) or are the devtools' own. */
 export const DEFAULT_IGNORED_COMMANDS: readonly string[] = ['queue:work', 'schedule:work', 'tinker', 'serve', 'devtools:clear', 'devtools:prune'];
@@ -127,7 +127,7 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
   const module = (await import(pathToFileURL(file).href)) as { default?: unknown };
   const options = module.default;
   if (options === undefined || options === null || typeof options !== 'object' || !(DEFINITION in options)) {
-    throw new DevtoolsConfigError('config/devtools.ts must `export default defineDevtools({ … })` (from @bespokecore/devtools).');
+    throw new DevtoolsConfigError('config/devtools.ts must `export default defineDevtools({ … })` (from @marmeon/devtools).');
   }
   return options as DevtoolsOptions;
 }
@@ -149,7 +149,7 @@ export const DevtoolsConfig = defineConfig('devtools', {
     if (env.DEVTOOLS_ENABLED === 'true' && environment.isProtected(env)) {
       throw new DevtoolsConfigError(
         `DEVTOOLS_ENABLED=true with ${environment.describe(env)}: the devtools record requests, queries and mails — they never run in production, staging or without NODE_ENV (E115, E139). ` +
-          'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @bespokecore/devtools as a dev dependency.',
+          'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @marmeon/devtools as a dev dependency.',
       );
     }
     return {

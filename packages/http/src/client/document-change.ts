@@ -1,6 +1,6 @@
 /**
- * Full loads the server asks for (E64): a `409` with `x-bespoke-location`. Signing in or out is a document change nothing
- * stops; a new build (`x-bespoke-reload: version`) is the one the client may postpone — the `version` event, or unsaved
+ * Full loads the server asks for (E64): a `409` with `x-marmeon-location`. Signing in or out is a document change nothing
+ * stops; a new build (`x-marmeon-reload: version`) is the one the client may postpone — the `version` event, or unsaved
  * changes the user keeps. Postponed, the user's next visit loads fully.
  */
 import { LOCATION_HEADER, RELOAD_HEADER } from '../page.ts';
@@ -52,7 +52,7 @@ export class DocumentChange {
   }
 
   /**
-   * A `409` with `x-bespoke-location`: the page loads fully. Signing in or out (`x-bespoke-reload: history`, or any reason but
+   * A `409` with `x-marmeon-location`: the page loads fully. Signing in or out (`x-marmeon-reload: history`, or any reason but
    * `version`) is a document change nothing stops — not the `version` event, not a navigation guard. A new build (`version`) is
    * the one the client may postpone: the `version` event can prevent it, and unsaved changes nobody agreed to leave (guards not
    * in `consented`) ask first. Postponed, the user's next visit loads fully. Resolves with whether the document is being left.

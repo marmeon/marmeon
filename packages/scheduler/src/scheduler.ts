@@ -1,9 +1,9 @@
 import { hostname } from 'node:os';
-import { Cache, CacheConfig, type Lock } from '@bespokecore/cache';
-import type { CommandClass } from '@bespokecore/cli';
-import { Application, Clock, EventDispatcher, Logger, outsideTransaction, runWithTask, type Container } from '@bespokecore/core';
-import { channels, messageBase, trace, type ScheduleTaskMessage } from '@bespokecore/core/diagnostics';
-import type { JobClass } from '@bespokecore/queue';
+import { Cache, CacheConfig, type Lock } from '@marmeon/cache';
+import type { CommandClass } from 'marmeon';
+import { Application, Clock, EventDispatcher, Logger, outsideTransaction, runWithTask, type Container } from '@marmeon/core';
+import { channels, messageBase, trace, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
+import type { JobClass } from '@marmeon/queue';
 import { ScheduleConfig } from './config.ts';
 import { CronExpression, ScheduleError } from './cron.ts';
 import { ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, type ScheduledTaskEvent } from './events.ts';
@@ -65,17 +65,17 @@ type OutputLike = { line(text?: string): void; info(text: string): void; success
 
 async function importQueue() {
   try {
-    return await import('@bespokecore/queue');
+    return await import('@marmeon/queue');
   } catch {
-    throw new ScheduleError('s.job() queues jobs — it needs @bespokecore/queue in the app: pnpm add @bespokecore/queue');
+    throw new ScheduleError('s.job() queues jobs — it needs @marmeon/queue in the app: pnpm add @marmeon/queue');
   }
 }
 
 async function importCli() {
   try {
-    return await import('@bespokecore/cli');
+    return await import('marmeon');
   } catch {
-    throw new ScheduleError('s.command() runs console commands — it needs @bespokecore/cli in the app: pnpm add -D @bespokecore/cli');
+    throw new ScheduleError('s.command() runs console commands — it needs marmeon in the app: pnpm add -D marmeon');
   }
 }
 
@@ -123,7 +123,7 @@ function summaryOf(definition: TaskDefinition): string {
   }
 }
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
     /** The module's scheduled tasks — `defineSchedule((s) => { s.command('auth:prune-tokens').daily(); })`. */
     readonly schedule?: ScheduleDefinition;
@@ -131,8 +131,8 @@ declare module '@bespokecore/core' {
 }
 
 /**
- * The app's schedule (E88): the tasks of every module's `schedule`, and what runs when. `bespoke schedule:work` calls
- * {@link tick} at every minute, `bespoke schedule:run` once (system cron); tests use `app.schedule`.
+ * The app's schedule (E88): the tasks of every module's `schedule`, and what runs when. `marmeon schedule:work` calls
+ * {@link tick} at every minute, `marmeon schedule:run` once (system cron); tests use `app.schedule`.
  *
  * Every run is a boundary like a request or a job: outside any transaction (E107), in a container scope of its own, with
  * `{ task }` in its log entries. Runs never wait for each other — a slow task does not hold up the next tick.
@@ -238,7 +238,7 @@ export class Scheduler {
   async checkProcess(): Promise<void> {
     const tasks = this.tasks;
     if (!this.#container.has(Cache)) {
-      throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @bespokecore/cache (installed packages register it: bespoke discover).');
+      throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).');
     }
     // A command limited to other environments is never run here — and may not exist here (`devtools:prune` in development:
     // its package is a dev dependency, absent in a production install).
@@ -255,7 +255,7 @@ export class Scheduler {
     const jobs = tasks.filter((task) => task.definition.kind === 'job');
     if (jobs.length > 0) {
       const queue = await importQueue();
-      if (!this.#container.has(queue.Queue)) throw new ScheduleError('s.job() queues jobs — register the QueueServiceProvider of @bespokecore/queue (installed packages register it: bespoke discover).');
+      if (!this.#container.has(queue.Queue)) throw new ScheduleError('s.job() queues jobs — register the QueueServiceProvider of @marmeon/queue (installed packages register it: marmeon discover).');
       if (this.#container.has(queue.JobRegistry)) {
         const registry = this.#container.make(queue.JobRegistry);
         for (const task of jobs) {
@@ -284,8 +284,8 @@ export class Scheduler {
     ].filter(Boolean);
     const scope =
       driver === 'file'
-        ? 'locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (bespoke make:cache-table) or redis.'
-        : 'locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (bespoke make:cache-table) or redis for more.';
+        ? 'locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis.'
+        : 'locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (marmeon make:cache-table) or redis for more.';
     return `${kinds.join('/')} ${kinds.length === 1 ? 'locks' : 'lock'} in CACHE_DRIVER=${driver}: ${scope} Tasks: ${locking.map((task) => task.name).join(', ')}`;
   }
 
@@ -329,7 +329,7 @@ export class Scheduler {
   }
 
   #cache(): Cache {
-    if (!this.#container.has(Cache)) throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @bespokecore/cache.');
+    if (!this.#container.has(Cache)) throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache.');
     return this.#container.make(Cache);
   }
 
@@ -460,8 +460,8 @@ export class Scheduler {
             : (definition.target as CommandClass);
         if (!Command) throw new ScheduleError(`The command "${String(definition.target)}" does not exist.`);
         const output = taskOutput(cli.Output, logger);
-        const code = await cli.runCommand(scope, Command, definition.args, { output, root: this.#app.root, spawn: (...args) => cli.spawnBespoke(this.#app.root, args) });
-        if (code !== 0) throw new ScheduleError(`bespoke ${[Command.command, ...definition.args].join(' ')} exited with code ${code}.`);
+        const code = await cli.runCommand(scope, Command, definition.args, { output, root: this.#app.root, spawn: (...args) => cli.spawnMarmeon(this.#app.root, args) });
+        if (code !== 0) throw new ScheduleError(`marmeon ${[Command.command, ...definition.args].join(' ')} exited with code ${code}.`);
         return;
       }
       case 'call': {

@@ -1,41 +1,41 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { Redactor } from '@bespokecore/core';
+import { Redactor } from '@marmeon/core';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { bespokeEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
+import { marmeonEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const vitePackage = dirname(createRequire(import.meta.url).resolve('vite/package.json'));
 
-/** A UI-free app: `bespoke()` with its own entries, a page, and Vite + @bespokecore/vite linked in (or not). */
+/** A UI-free app: `marmeon()` with its own entries, a page, and Vite + @marmeon/vite linked in (or not). */
 function app({ vite = true, framework = true, config }: { vite?: boolean; framework?: boolean; config?: string } = {}): string {
-  const root = tempDir('bespoke-vite-dev-');
+  const root = tempDir('marmeon-vite-dev-');
   const files: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
     'index.html': '<html><head><!--app-head--></head><body><!--app-html--></body></html>',
     'bootstrap/ssr.ts': [
-      "import pages from 'virtual:bespoke/pages';",
+      "import pages from 'virtual:marmeon/pages';",
       'export const render = async (page: { component: string }) => ({ html: `${page.component}: ${Object.keys(pages).join(",")}` });',
     ].join('\n'),
     'modules/demo/views/Home.ts': "export default 'home';\n",
     'vite.config.ts':
       config ??
       [
-        "import { bespoke } from '@bespokecore/vite';",
-        "export default { plugins: [bespoke({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts' })] };",
+        "import { marmeon } from '@marmeon/vite';",
+        "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts' })] };",
       ].join('\n'),
   };
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), content);
   }
-  mkdirSync(join(root, 'node_modules/@bespokecore'), { recursive: true });
+  mkdirSync(join(root, 'node_modules/@marmeon'), { recursive: true });
   if (vite) symlinkSync(vitePackage, join(root, 'node_modules/vite'), 'dir');
-  if (framework) symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@bespokecore/vite'), 'dir');
+  if (framework) symlinkSync(join(repo, 'packages/vite'), join(root, 'node_modules/@marmeon/vite'), 'dir');
   return root;
 }
 
@@ -50,14 +50,14 @@ async function start(root: string) {
 
 describe('createViteDevRenderer', () => {
   it('adds the development HTML (DevDocument: the devtools\' link) before </body> — outside the app\'s root, read per request', async () => {
-    let body = '<a href="/_bespoke/devtools" data-bespoke-devtools>Devtools</a>';
+    let body = '<a href="/_marmeon/devtools" data-marmeon-devtools>Devtools</a>';
     const httpServer = createServer();
     const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer, devBody: () => body });
     try {
       const render = () => renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} });
-      expect(await render()).toContain('<a href="/_bespoke/devtools" data-bespoke-devtools>Devtools</a>\n</body>');
+      expect(await render()).toContain('<a href="/_marmeon/devtools" data-marmeon-devtools>Devtools</a>\n</body>');
       body = '';
-      expect(await render()).not.toContain('data-bespoke-devtools');
+      expect(await render()).not.toContain('data-marmeon-devtools');
     } finally {
       await vite.close();
       httpServer.close();
@@ -66,10 +66,10 @@ describe('createViteDevRenderer', () => {
 
   it('adds development head HTML (DevDocument: the devtools\' bar, W7 step 9) before </head> — ahead of the app\'s entry', async () => {
     const httpServer = createServer();
-    const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer, devHead: () => '<script type="module" src="/@id/@bespokecore/devtools/client" data-bespoke-devtools></script>' });
+    const { vite, renderer } = await createViteDevRenderer({ root: app(), httpServer, devHead: () => '<script type="module" src="/@id/@marmeon/devtools/client" data-marmeon-devtools></script>' });
     try {
       const html = String(await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} }));
-      const bar = html.indexOf('/@id/@bespokecore/devtools/client');
+      const bar = html.indexOf('/@id/@marmeon/devtools/client');
       expect(bar).toBeGreaterThan(-1);
       expect(bar).toBeLessThan(html.indexOf('</head>'));
       expect(bar).toBeLessThan(html.indexOf('/bootstrap/client.ts'));
@@ -79,7 +79,7 @@ describe('createViteDevRenderer', () => {
     }
   });
 
-  it('takes the SSR entry from bespoke(), serves virtual:bespoke/pages to SSR, and adds the client entry', async () => {
+  it('takes the SSR entry from marmeon(), serves virtual:marmeon/pages to SSR, and adds the client entry', async () => {
     const { vite, renderer } = await start(app());
     try {
       const html = await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} });
@@ -136,14 +136,14 @@ describe('createViteDevRenderer', () => {
     }
   });
 
-  it('explains a missing Vite, a missing @bespokecore/vite, and a config without bespoke()', async () => {
+  it('explains a missing Vite, a missing @marmeon/vite, and a config without marmeon()', async () => {
     await expect(start(app({ vite: false }))).rejects.toThrow(
-      new ViteSetupError('Vite is not installed in this app. `bespoke dev` and `bespoke build` need it: pnpm add -D vite @bespokecore/vite'),
+      new ViteSetupError('Vite is not installed in this app. `marmeon dev` and `marmeon build` need it: pnpm add -D vite @marmeon/vite'),
     );
     await expect(start(app({ framework: false }))).rejects.toThrow(
-      new ViteSetupError('vite.config.ts imports @bespokecore/vite, which is not installed in this app: pnpm add -D vite @bespokecore/vite'),
+      new ViteSetupError('vite.config.ts imports @marmeon/vite, which is not installed in this app: pnpm add -D vite @marmeon/vite'),
     );
-    await expect(start(app({ config: 'export default {};' }))).rejects.toThrow(/^vite\.config\.ts does not use the bespoke\(\) plugin/);
+    await expect(start(app({ config: 'export default {};' }))).rejects.toThrow(/^vite\.config\.ts does not use the marmeon\(\) plugin/);
   });
 });
 
@@ -155,8 +155,8 @@ describe('Vite setup helpers', () => {
   });
 
   it('reads the entries from the plugin api', () => {
-    expect(bespokeEntries({ plugins: [{ name: 'bespokecore', api: { entries: { client: 'a.ts', ssr: 'b.ts' } } }] } as never)).toEqual({ client: 'a.ts', ssr: 'b.ts' });
-    expect(() => bespokeEntries({ plugins: [{ name: 'vite:react' }] } as never)).toThrow(ViteSetupError);
+    expect(marmeonEntries({ plugins: [{ name: 'marmeon', api: { entries: { client: 'a.ts', ssr: 'b.ts' } } }] } as never)).toEqual({ client: 'a.ts', ssr: 'b.ts' });
+    expect(() => marmeonEntries({ plugins: [{ name: 'vite:react' }] } as never)).toThrow(ViteSetupError);
   });
 
   it('imports the app\'s own Vite', async () => {

@@ -1,5 +1,5 @@
 import { hash } from 'node:crypto';
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 
 export type SessionPayload = Record<string, unknown>;
 
@@ -60,7 +60,7 @@ export const SESSION_ID = /^[A-Za-z0-9_-]{40}$/;
 export const SESSION_KEY = /^[0-9a-f]{64}$/;
 
 /**
- * The session key holding the signed-in user's id (`@bespokecore/auth` writes it). The `database` store keeps it in the
+ * The session key holding the signed-in user's id (`@marmeon/auth` writes it). The `database` store keeps it in the
  * `user_id` column, so an app can list or end a user's sessions.
  */
 export const SESSION_USER_KEY = '_auth_id';

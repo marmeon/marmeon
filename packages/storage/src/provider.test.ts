@@ -1,9 +1,9 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Clock, createApplication, TestClock, type ConfigDefinition } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
+import { Clock, createApplication, TestClock, type ConfigDefinition } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
+import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage } from './config.ts';
@@ -133,7 +133,7 @@ describe('serving public disks', () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     await storage.disk('local').put('exports/7.json', '{"secret":true}');
-    for (const path of ['/storage/exports/7.json', '/local/exports/7.json', '/_bespoke/storage/local/exports/7.json']) {
+    for (const path of ['/storage/exports/7.json', '/local/exports/7.json', '/_marmeon/storage/local/exports/7.json']) {
       expect((await kernel!.request(path)).status, path).not.toBe(200);
     }
     expect(() => storage.disk('local').url('exports/7.json')).toThrow('use temporaryUrl(key, { expiresIn })');
@@ -154,7 +154,7 @@ describe('temporary URLs of local disks', () => {
     const { storage, kernel, clock } = await boot(storageConfig(base));
     await storage.disk('local').put('exports/user 7.json', '{"a":1}');
     const url = await storage.disk('local').temporaryUrl('exports/user 7.json', { expiresIn: { minutes: 5 }, filename: 'my-data.json' });
-    expect(url).toMatch(/^\/_bespoke\/storage\/local\/exports\/user%207\.json\?filename=my-data\.json&expires=\d+&signature=[0-9a-f]{64}$/);
+    expect(url).toMatch(/^\/_marmeon\/storage\/local\/exports\/user%207\.json\?filename=my-data\.json&expires=\d+&signature=[0-9a-f]{64}$/);
     const response = await kernel!.request(url);
     expect(response.status).toBe(200);
     expect(Object.fromEntries(response.headers)).toMatchObject({
@@ -204,15 +204,15 @@ describe('temporary URLs of local disks', () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base));
     const url = await storage.disk('local').temporaryUrl('gone.txt', { expiresIn: 60, base: 'https://app.example' });
-    expect(url).toMatch(/^https:\/\/app\.example\/_bespoke\/storage\/local\/gone\.txt\?expires=/);
+    expect(url).toMatch(/^https:\/\/app\.example\/_marmeon\/storage\/local\/gone\.txt\?expires=/);
     const { pathname, search } = new URL(url);
     expect((await kernel!.request(pathname + search)).status).toBe(404);
   });
 
-  it('without @bespokecore/http: temporaryUrl() says what is missing', async () => {
+  it('without @marmeon/http: temporaryUrl() says what is missing', async () => {
     const base = freshDirectory();
     const { storage } = await boot(storageConfig(base), { http: false });
-    await expect(storage.disk('local').temporaryUrl('a.txt', { expiresIn: 60 })).rejects.toThrow('needs @bespokecore/http');
+    await expect(storage.disk('local').temporaryUrl('a.txt', { expiresIn: 60 })).rejects.toThrow('needs @marmeon/http');
   });
 });
 

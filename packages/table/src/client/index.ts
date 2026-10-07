@@ -1,7 +1,7 @@
 /**
- * The protocol of `@bespokecore/table` as the browser sees it (E183): what `tables.resolve(MembersTable, ctx)` sends as a page prop
+ * The protocol of `@marmeon/table` as the browser sees it (E183): what `tables.resolve(MembersTable, ctx)` sends as a page prop
  * — types and the small pure helpers that read them. UI-free and server-free: it imports nothing but the page contract, so a
- * client build may take it into any bundle (the headless `useTable` of `@bespokecore/react` builds on it).
+ * client build may take it into any bundle (the headless `useTable` of `@marmeon/react` builds on it).
  *
  * Everything here describes what the server decided for this request: only the columns, filters, actions and exports the user may
  * see are in it — a hidden column has no entry and no value in any row; sorting, filtering and paging go back to the server as the

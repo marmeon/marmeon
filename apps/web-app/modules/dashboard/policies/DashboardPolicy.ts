@@ -1,4 +1,4 @@
-import type { AuthUser } from '@bespokecore/auth';
+import type { AuthUser } from '@marmeon/auth';
 import { DashboardConfig } from '../config.ts';
 
 /** Who may see what on the dashboard. */

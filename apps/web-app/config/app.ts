@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 /** App-level settings. Packages bring their own (e.g. PORT → ServerConfig, LOG_LEVEL → LogConfig). */

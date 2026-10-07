@@ -1,6 +1,6 @@
-import { Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
-import type { JobContext, JobPayload } from '@bespokecore/queue';
+import { Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
+import type { JobContext, JobPayload } from '@marmeon/queue';
 import * as v from 'valibot';
 import { AppConfig } from '../../../config/app.ts';
 import { WelcomeMail } from '../mail/WelcomeMail.ts';

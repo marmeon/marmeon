@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -53,7 +53,7 @@ export function publishMigration(input: CommandInput, migration: { name: string;
       input.output.line(`  modules: [${variable}, …]`);
     }
   }
-  input.output.line('Then: bespoke migrate');
+  input.output.line('Then: marmeon migrate');
   return 0;
 }
 
@@ -91,9 +91,9 @@ function register(file: string, module: string): 'added' | 'manual' {
   return 'added';
 }
 
-const MODULE = (name: string) => `import { defineModule } from '@bespokecore/core';
+const MODULE = (name: string) => `import { defineModule } from '@marmeon/core';
 
-// The tables of the framework's drivers (cache, sessions, queue, …): \`bespoke make:*-table\` writes their migrations here.
+// The tables of the framework's drivers (cache, sessions, queue, …): \`marmeon make:*-table\` writes their migrations here.
 // They are the app's now — change them like any other migration.
 export default defineModule({
   name: '${name}',

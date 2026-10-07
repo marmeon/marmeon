@@ -1,8 +1,8 @@
-import { Limit, RateLimiter } from '@bespokecore/cache';
-import { Connections } from '@bespokecore/database';
-import { UrlSigner } from '@bespokecore/http';
-import type { Mailable } from '@bespokecore/mail';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Limit, RateLimiter } from '@marmeon/cache';
+import { Connections } from '@marmeon/database';
+import { UrlSigner } from '@marmeon/http';
+import type { Mailable } from '@marmeon/mail';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -32,7 +32,7 @@ type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
 const signIn = async (user: User): Promise<Session> => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
-  return app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 };
 const change = (session: Session, email: string) => session.put('/settings/email', { form: { email }, headers: { referer: 'http://localhost/settings/security' } });
 const reload = (user: User) => app.make(UserRepository).find(user.id) as Promise<User>;

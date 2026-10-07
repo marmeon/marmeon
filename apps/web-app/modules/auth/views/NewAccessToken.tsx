@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, useLayer, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, useLayer, useTranslation } from '@marmeon/react';
 import type { CreateAccessTokenController } from '../controllers/CreateAccessTokenController.ts';
 
 type Props = PageProps<CreateAccessTokenController>;

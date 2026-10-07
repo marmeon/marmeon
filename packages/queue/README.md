@@ -1,4 +1,4 @@
-# @bespokecore/queue
+# @marmeon/queue
 
 Work that should not happen in the request (E83–E86, E98): **jobs** are injectable classes with `handle()` — like
 controllers —, a stable name and a payload schema; drivers `sync`, `database` and `redis` behind one contract; a worker
@@ -6,11 +6,11 @@ with a scope per job, timeouts, retries, failed jobs and a clean shutdown; uniqu
 and a fake for tests. Queued listeners (`static queue`) and queued mails (`mailer.queue`,
 [queued mails](../mail/README.md#queued-mails-e105)) are jobs of this package too.
 
-`bespoke discover` registers its `QueueServiceProvider` like any installed package. The drivers' packages are optional peers,
-checked at the start — not at the first dispatch: `database` (the default) needs [@bespokecore/database](../database/README.md),
-`redis` needs [@bespokecore/redis](../redis/README.md), an encrypted job (and every queued listener)
-[@bespokecore/encryption](../encryption/README.md) with an `APP_KEY`; unique jobs, `job.once()` and `withoutOverlapping()` keep
-their locks in the app's cache ([@bespokecore/cache](../cache/README.md#locks-and-markers-of-the-queue)).
+`marmeon discover` registers its `QueueServiceProvider` like any installed package. The drivers' packages are optional peers,
+checked at the start — not at the first dispatch: `database` (the default) needs [@marmeon/database](../database/README.md),
+`redis` needs [@marmeon/redis](../redis/README.md), an encrypted job (and every queued listener)
+[@marmeon/encryption](../encryption/README.md) with an `APP_KEY`; unique jobs, `job.once()` and `withoutOverlapping()` keep
+their locks in the app's cache ([@marmeon/cache](../cache/README.md#locks-and-markers-of-the-queue)).
 
 ```ts
 // modules/auth/jobs/SendWelcomeMailJob.ts — and `jobs: [SendWelcomeMailJob]` in defineModule({ … })
@@ -38,17 +38,17 @@ await this.#queue.dispatch(SendWelcomeMailJob, { userId: 'x' });    // ✗ Type 
 ```
 
 ```text
-bespoke queue:work [--connection=database|redis] [--queue=mail,default|*] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]
-bespoke queue:failed | queue:retry <id…|all> | queue:forget <id> | queue:flush | queue:prune-failed [--hours=168]
-bespoke queue:size [queue…] [--connection=database|redis]
-bespoke make:queue-table [--module=system]
+marmeon queue:work [--connection=database|redis] [--queue=mail,default|*] [--max-jobs=N] [--max-time=S] [--sleep=1] [--stop-timeout=10] [--stop-when-empty]
+marmeon queue:failed | queue:retry <id…|all> | queue:forget <id> | queue:flush | queue:prune-failed [--hours=168]
+marmeon queue:size [queue…] [--connection=database|redis]
+marmeon make:queue-table [--module=system]
 ```
 
-`bespoke make:job <Name> --module=<module>` ([@bespokecore/cli](../cli/README.md)) writes a job class with a stable name and
-prints the line for its module. `bespoke dev` starts a worker next to the server, on every queue (`--queue=*`,
+`marmeon make:job <Name> --module=<module>` ([marmeon](../cli/README.md)) writes a job class with a stable name and
+prints the line for its module. `marmeon dev` starts a worker next to the server, on every queue (`--queue=*`,
 `--stop-timeout=5`), and restarts it when code changes (E101) — not with `QUEUE_CONNECTION=sync`, where jobs run at the dispatch.
 
-`queue:work` runs in the one Node process `bespoke` started (E159) — signals and its exit code reach the supervisor directly. Its
+`queue:work` runs in the one Node process `marmeon` started (E159) — signals and its exit code reach the supervisor directly. Its
 first line names the connection, the queues and the environment it assumed (E139): `Processing jobs of the database connection:
 mail, default — in production (protected)`. A worker that is `development` only because the app's `.env` says so (E170) logs a
 loud warning (`NODE_ENV=development comes from .env, not from the environment: …`) and runs anyway: on a server, set `NODE_ENV`
@@ -72,7 +72,7 @@ QUEUE_CONNECTION=database       # database (default) | redis | sync
 DB_QUEUE_CONNECTION=default     # the database connection of the jobs table
 DB_QUEUE=default                # the default queue
 DB_QUEUE_RETRY_AFTER=90         # seconds before a claimed job whose worker died is claimed again
-REDIS_QUEUE_CONNECTION=default  # the Redis connection of the redis queue (REDIS_URL, @bespokecore/redis + redis)
+REDIS_QUEUE_CONNECTION=default  # the Redis connection of the redis queue (REDIS_URL, @marmeon/redis + redis)
 REDIS_QUEUE=default
 REDIS_QUEUE_RETRY_AFTER=90
 QUEUE_FAILED_DRIVER=database    # failed jobs: database (failed_jobs) | null (only logged)
@@ -86,15 +86,15 @@ is not configured, an unknown database or Redis connection, a missing driver pac
 
 | Driver | Where jobs wait | Claim | Use it for |
 | --- | --- | --- | --- |
-| `database` | the `jobs` table (`bespoke make:queue-table`, E96) | one atomic statement: `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING` on Postgres; on SQLite one writing statement takes the lock before it reads | the default — no extra service, and a dispatch is part of the app's transaction |
+| `database` | the `jobs` table (`marmeon make:queue-table`, E96) | one atomic statement: `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING` on Postgres; on SQLite one writing statement takes the lock before it reads | the default — no extra service, and a dispatch is part of the app's transaction |
 | `redis` | `queues:<queue>` (a list), `…:delayed` and `…:reserved` (sorted sets by time) | one Lua script: move due and expired jobs, pop, count the attempt, reserve until `retryAfter` | many jobs, Redis anyway |
 | `sync` | nowhere — `handle()` runs at the dispatch, in a scope of its own; its error is the dispatch's | — | scripts, and tests that want the work done at once |
 
 Workers never decide by reading first: a job is claimed by exactly one worker (2 workers × 200 jobs, Postgres and Redis: none
 twice — a test of the package). `queue:size` counts per queue; `--queue=*` finds every queue that holds jobs (at most once a second).
 A driver may also split its count (`counts(queue)` → `{ ready, delayed, reserved }`: due, not yet due or released for later,
-claimed by a worker) — all three drivers do; the devtools' queue view (`/_bespoke/devtools/queue`, development only —
-[the pages](../devtools/README.md#the-pages-_bespokedevtools)) shows it.
+claimed by a worker) — all three drivers do; the devtools' queue view (`/_marmeon/devtools/queue`, development only —
+[the pages](../devtools/README.md#the-pages-_marmeondevtools)) shows it.
 
 ## At-least-once: what the queue promises (E85)
 
@@ -119,7 +119,7 @@ Node cannot stop a promise from outside. So a timeout is two lines of defence:
 1. At `timeout` (seconds, default 60) `job.signal` aborts — pass it on (`fetch(url, { signal: job.signal })`) or check
    `signal.aborted` between steps.
 2. A job that has not stopped `--stop-timeout` seconds later ends the **worker** (exit code 70, the process's own — no launcher
-   in between). A supervisor (systemd, Docker, Kubernetes — `bespoke dev` itself in development) starts a new one; the job comes
+   in between). A supervisor (systemd, Docker, Kubernetes — `marmeon dev` itself in development) starts a new one; the job comes
    back after `retryAfter`.
 
 **`retryAfter` must be longer than every job's `timeout` plus `--stop-timeout`** — otherwise a second worker claims a job that is
@@ -128,9 +128,9 @@ still running (Laravel's classic trap). `queue:work` checks every registered job
 **SIGTERM/SIGINT:** no new claim; the running job may finish within `--stop-timeout` (default 10 s), else it is released for
 another worker; exit 0. Later signals do not cut that short. The supervisor's grace period (Docker's `stop_grace_period`,
 systemd's `TimeoutStopSec`, Kubernetes' `terminationGracePeriodSeconds`) must be longer than `--stop-timeout` — raise both
-together for long jobs. `bespoke make:docker` writes both roles that way: a `worker` container with `restart: unless-stopped`
+together for long jobs. `marmeon make:docker` writes both roles that way: a `worker` container with `restart: unless-stopped`
 (exit 70 → a fresh worker, proved by `pnpm run ci`'s `image` part) and `deploy/systemd/worker.service` with `Restart=always`
-([@bespokecore/cli](../cli/README.md#production-files-makedocker-e141)).
+([marmeon](../cli/README.md#production-files-makedocker-e141)).
 
 ## Transactions (E107, E109)
 
@@ -158,8 +158,8 @@ The `jobs` and `failed_jobs` tables (and Redis) are a database: a reset link or 
 
 - **`static encrypted = true`** encrypts the payload with the app's `Encrypter` (`APP_KEY`, previous keys still decrypt). A
   plaintext payload for an encrypted job is poison (failed at once), never run.
-- The framework's own jobs are always encrypted: `bespoke.mail` (`mailer.queue`: the composed message with its links),
-  `bespoke.listener` (queued listeners — the event belongs to the app), `bespoke.notification`.
+- The framework's own jobs are always encrypted: `marmeon.mail` (`mailer.queue`: the composed message with its links),
+  `marmeon.listener` (queued listeners — the event belongs to the app), `marmeon.notification`.
 - `failed_jobs.exception` and the worker's log lines go through the log's redaction (passwords in SMTP errors —
   [redaction](../core/README.md#redaction-e125)).
 - Without encryption: IDs only — a test of the web app asserts that no reset token appears in `jobs`/`failed_jobs` in clear.
@@ -175,7 +175,7 @@ The `jobs` and `failed_jobs` tables (and Redis) are a database: a reset link or 
   matches the schema of auth.send-welcome-mail"), a payload that cannot be decrypted, no job record. A job name the worker does
   not know is released with backoff until its tries are used up (a rolling deploy), then failed.
 - A job claimed more often than its `tries` (its worker died each time) fails instead of looping.
-- `bespoke queue:retry <id|all>` puts failed jobs back (same id, attempts from zero); `queue:forget`, `queue:flush`,
+- `marmeon queue:retry <id|all>` puts failed jobs back (same id, attempts from zero); `queue:forget`, `queue:flush`,
   `queue:prune-failed --hours=168` (schedule it).
 
 ## Unique jobs, chains, middleware
@@ -206,7 +206,7 @@ static readonly middleware = [withoutOverlapping<typeof RebuildStatsJob>((p) => 
 cannot be queued (a queued listener of a job event would make jobs whose events … — a loop; a readable type error).
 
 **Where a job comes from (E131):** a job dispatched in a request carries the request's id in its record (`requestId`, also
-without any subscriber) — and, when a tracer ([@bespokecore/otel](../otel/README.md#what-it-records)) put one on the
+without any subscriber) — and, when a tracer ([@marmeon/otel](../otel/README.md#what-it-records)) put one on the
 `queue.dispatch` message, the trace context (`traceparent`). The [devtools](../devtools/README.md) and OpenTelemetry follow a
 request into its jobs that way. For tools, the `queue.dispatch` and `queue.job` channels
 ([the channels](../core/README.md#the-channels), E118) trace every dispatch (`kind`, `jobs`,
@@ -233,7 +233,7 @@ await app.queue.failed();                                                     //
 
 `app.queue.work()` builds each job in a scope, runs middleware, retries, chains and events — like a worker without the
 process. Like the real queue, the fake traces a dispatch on `queue.dispatch` while something listens — a tracer's `traceparent`
-reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it (`@bespokecore/otel`, E131).
+reaches the recorded job, and `work()` runs it in the trace of the request that dispatched it (`@marmeon/otel`, E131).
 The real worker is tested as a process too (`worker-processes.test.ts`: SIGKILL in the middle of a job, SIGTERM, a job
 that ignores its signal, two workers × 200 jobs — on SQLite, Postgres and Redis).
 

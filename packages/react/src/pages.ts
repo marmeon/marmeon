@@ -1,5 +1,5 @@
-import { revalidateOnBack, type Feature } from '@bespokecore/http/client';
-import { ERROR_PAGE, LAYER_BACKDROP, pageName, type InstantProps, type IslandProps, type PageProps } from '@bespokecore/http/page';
+import { revalidateOnBack, type Feature } from '@marmeon/http/client';
+import { ERROR_PAGE, LAYER_BACKDROP, pageName, type InstantProps, type IslandProps, type PageProps } from '@marmeon/http/page';
 import type { ComponentType, ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
 import { Backdrop } from './backdrop.tsx';
@@ -66,7 +66,7 @@ export type Placeholder<C> = [InstantProps<C>] extends [never]
   ? 'this controller declares no placeholder props — add `declare readonly instant: { … }` to it (`{}` for none)'
   : ComponentType<InstantProps<C>>;
 
-/** The app's default layout per page name — for pages without their own `layout`: `createBespokeApp({ layout: () => AppLayout })`. */
+/** The app's default layout per page name — for pages without their own `layout`: `createMarmeonApp({ layout: () => AppLayout })`. */
 export type DefaultLayout = (name: string) => PageLayout | undefined;
 
 /** The layouts a page renders in, outermost first: its own, else the app's default. */
@@ -92,15 +92,15 @@ function checkLayout(name: string, layout: unknown): void {
   if (invalid !== -1) {
     throw new Error(
       process.env.NODE_ENV !== 'production'
-        ? `[bespoke:R1] Page [${name}] has an invalid layout${Array.isArray(layout) ? ` at index ${invalid}` : ''}: expected a component (or a list of them), got ${String(layouts[invalid])}.`
-        : `[bespoke:R1] ${name}`,
+        ? `[marmeon:R1] Page [${name}] has an invalid layout${Array.isArray(layout) ? ` at index ${invalid}` : ''}: expected a component (or a list of them), got ${String(layouts[invalid])}.`
+        : `[marmeon:R1] ${name}`,
     );
   }
 }
 
 export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
   /**
-   * The client features its views use (E70) — `<BespokeApp>` attaches them to its navigator. `resolveModulePages` brings
+   * The client features its views use (E70) — `<MarmeonApp>` attaches them to its navigator. `resolveModulePages` brings
    * `revalidateOnBack` (E58): any of its views may declare it, and an app without the resolver carries none of its code.
    */
   readonly features?: readonly Feature[];
@@ -113,7 +113,7 @@ type PageModules = Record<string, () => Promise<unknown>>;
  * `modules/user-profile/views/Show.tsx` -> `user-profile/Show`.
  *
  * ```ts
- * import pages from 'virtual:bespoke/pages'; // from bespoke() in @bespokecore/vite
+ * import pages from 'virtual:marmeon/pages'; // from marmeon() in @marmeon/vite
  * resolveModulePages(pages)
  * ```
  */
@@ -131,31 +131,31 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     if (!load) {
       const [module, ...rest] = name.split('/');
       throw new Error(
-        process.env.NODE_ENV !== 'production' ? `[bespoke:R2] Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx` : `[bespoke:R2] ${name}`,
+        process.env.NODE_ENV !== 'production' ? `[marmeon:R2] Page [${name}] not found. Expected a default export in modules/${module}/views/${rest.join('/')}.tsx` : `[marmeon:R2] ${name}`,
       );
     }
     const module = await load();
     if (typeof module !== 'object' || module === null || !('default' in module)) {
-      throw new Error(process.env.NODE_ENV !== 'production' ? `[bespoke:R3] Page [${name}] has no default export.` : `[bespoke:R3] ${name}`);
+      throw new Error(process.env.NODE_ENV !== 'production' ? `[marmeon:R3] Page [${name}] has no default export.` : `[marmeon:R3] ${name}`);
     }
     const page = module.default as PageComponent;
     checkLayout(name, page.layout);
     if (page.ssr !== undefined && page.ssr !== true && page.ssr !== false && page.ssr !== 'complete') {
       throw new Error(
-        process.env.NODE_ENV !== 'production' ? `[bespoke:R4] Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.` : `[bespoke:R4] ${name}`,
+        process.env.NODE_ENV !== 'production' ? `[marmeon:R4] Page [${name}] has an invalid ssr: expected true, false or 'complete', got ${JSON.stringify(page.ssr)}.` : `[marmeon:R4] ${name}`,
       );
     }
     if (page.placeholder !== undefined && !isComponent(page.placeholder)) {
       throw new Error(
-        process.env.NODE_ENV !== 'production' ? `[bespoke:R5] Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.` : `[bespoke:R5] ${name}`,
+        process.env.NODE_ENV !== 'production' ? `[marmeon:R5] Page [${name}] has an invalid placeholder: expected a component, got ${String(page.placeholder)}.` : `[marmeon:R5] ${name}`,
       );
     }
     const revalidate: unknown = page.revalidateOnBack;
     if (revalidate !== undefined && typeof revalidate !== 'boolean' && !(Array.isArray(revalidate) && revalidate.every((prop) => typeof prop === 'string' && prop !== ''))) {
       throw new Error(
         process.env.NODE_ENV !== 'production'
-          ? `[bespoke:R6] Page [${name}] has an invalid revalidateOnBack: expected true, false or a list of prop names, got ${JSON.stringify(revalidate)}.`
-          : `[bespoke:R6] ${name}`,
+          ? `[marmeon:R6] Page [${name}] has an invalid revalidateOnBack: expected true, false or a list of prop names, got ${JSON.stringify(revalidate)}.`
+          : `[marmeon:R6] ${name}`,
       );
     }
     return page;

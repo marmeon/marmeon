@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
-import { HttpError, type HttpContext, type Next } from '@bespokecore/router';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
+import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import * as v from 'valibot';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -59,7 +59,7 @@ export class CsrfProtection {
     return this;
   }
 
-  /** Turns verification off — what `@bespokecore/testing` does by default, like Laravel. Never in production. */
+  /** Turns verification off — what `@marmeon/testing` does by default, like Laravel. Never in production. */
   disable(): this {
     this.#enabled = false;
     return this;
@@ -111,8 +111,8 @@ export class VerifyCsrfToken {
     const { request } = ctx;
     if (!READING.has(request.method) && !this.#protection.skips(new URL(request.url).pathname)) {
       const from = this.#origin(request);
-      if (from === 'foreign') throw new HttpError(403, 'Cross-site request refused.', {}, { key: 'bespoke.errors.cross_site' });
-      if (from === 'unknown' && !(await this.#tokenMatches(ctx))) throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'bespoke.errors.csrf' });
+      if (from === 'foreign') throw new HttpError(403, 'Cross-site request refused.', {}, { key: 'marmeon.errors.cross_site' });
+      if (from === 'unknown' && !(await this.#tokenMatches(ctx))) throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'marmeon.errors.csrf' });
     }
     // After the route: the token may have been rotated (login, logout).
     const response = await next();

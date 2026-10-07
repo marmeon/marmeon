@@ -1,21 +1,21 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
-import type { Kysely } from '@bespokecore/database';
+import { SystemClock, type Clock } from '@marmeon/core';
+import type { Kysely } from '@marmeon/database';
 import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
-/** The table `bespoke make:session-table` creates (E96: the app owns the migration; the store types it itself). */
+/** The table `marmeon make:session-table` creates (E96: the app owns the migration; the store types it itself). */
 export const SESSIONS_TABLE = 'sessions';
 
-/** A connection of @bespokecore/database. */
+/** A connection of @marmeon/database. */
 export interface DatabaseSessionConnection {
   readonly db: Kysely<any>;
 }
 
-type Sql = (typeof import('@bespokecore/database'))['sql'];
+type Sql = (typeof import('@marmeon/database'))['sql'];
 
 /** What a table without the `version` column (made before W8 step 7) needs. */
 const UPGRADE =
   'The sessions table has no version column: it was made before session keys were hashed (E144) and writes compare versions ' +
-  '(E145). Run `bespoke make:session-table --upgrade` and `bespoke migrate` — every user is signed out once.';
+  '(E145). Run `marmeon make:session-table --upgrade` and `marmeon migrate` — every user is signed out once.';
 
 /**
  * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
@@ -93,8 +93,8 @@ export class DatabaseSessionStore implements SessionStore {
   }
 
   async #use(): Promise<DatabaseSessionConnection & { sql: Sql }> {
-    // Imported here, not at the top: @bespokecore/database is an optional peer of the session.
-    this.#sql ??= import('@bespokecore/database').then((module) => module.sql);
+    // Imported here, not at the top: @marmeon/database is an optional peer of the session.
+    this.#sql ??= import('@marmeon/database').then((module) => module.sql);
     const [connection, sql] = await Promise.all([this.#connection(), this.#sql]);
     return { ...connection, sql };
   }

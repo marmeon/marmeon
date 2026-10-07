@@ -1,6 +1,6 @@
 import { UserRepository, type User } from '#modules/auth';
-import { FLASH_WAITING_HEADER } from '@bespokecore/http/page';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { FLASH_WAITING_HEADER } from '@marmeon/http/page';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
@@ -24,7 +24,7 @@ const profile = (user: User) => `/users/${user.id}`;
 async function saved() {
   const response = await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: '' } }).assertRedirect(profile(ada)).assertNoFlash();
   response.assertFlashed('toast', { kind: 'success', message: 'Profile saved.' });
-  return app.withCookie('bespoke_session', response.cookie('bespoke_session')!);
+  return app.withCookie('marmeon_session', response.cookie('marmeon_session')!);
 }
 
 describe('flash messages: taken only by an answer that is shown (E60)', () => {
@@ -62,7 +62,7 @@ describe('flash messages: taken only by an answer that is shown (E60)', () => {
 
   it('counter-check: a response with a message is never kept by a cache — a document from the HTTP cache would fire it again', async () => {
     const out = await app.actingAs(ada).post('/logout').assertRedirect('/login');
-    const login = await app.withCookie('bespoke_session', out.cookie('bespoke_session')!).get('/login', { headers: { accept: 'text/html' } }).assertOk();
+    const login = await app.withCookie('marmeon_session', out.cookie('marmeon_session')!).get('/login', { headers: { accept: 'text/html' } }).assertOk();
     login.assertFlash('toast', { message: 'You have been signed out.' }).assertHeader('cache-control', 'no-store');
   });
 

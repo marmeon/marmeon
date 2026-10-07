@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { createApplication, HealthChecks, Logger } from '@bespokecore/core';
+import { createApplication, HealthChecks, Logger } from '@marmeon/core';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { defineConnection } from './config.ts';
@@ -7,7 +7,7 @@ import { DatabaseHealthCheck } from './health.ts';
 import { DatabaseServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = tempDir('bespoke-db-health-');
+const root = tempDir('marmeon-db-health-');
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
 const boot = (extra: ReturnType<typeof defineConnection>[] = []) =>
@@ -30,7 +30,7 @@ describe('the database health check (E126)', () => {
 
   it('fails when one connection is unreachable — and says which', async () => {
     // A Postgres port nobody listens on: refused at once.
-    await using app = await boot([defineConnection('reporting', { env: v.object({}), resolve: () => ({ driver: 'pgsql', url: 'postgres://bespoke:secret@127.0.0.1:1/reporting' }) })]);
+    await using app = await boot([defineConnection('reporting', { env: v.object({}), resolve: () => ({ driver: 'pgsql', url: 'postgres://marmeon:secret@127.0.0.1:1/reporting' }) })]);
     const report = await app.container.make(HealthChecks).run(app.container);
     expect(report.ok).toBe(false);
     expect(report.checks[0]).toMatchObject({ name: 'database', status: 'failing' });

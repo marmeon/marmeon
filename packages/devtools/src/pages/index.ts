@@ -1,4 +1,4 @@
-import { outsideTransaction, type Application, type Redactor } from '@bespokecore/core';
+import { outsideTransaction, type Application, type Redactor } from '@marmeon/core';
 import { ENTRY_TYPES, type AnyEntry, type EntryType } from '../entry.ts';
 import { matchesEntry, MAX_LIMIT, type DevtoolsStore, type EntryQuery } from '../store.ts';
 import { MAIL_CSP } from './assets.ts';
@@ -33,7 +33,7 @@ export interface PagesOptions {
 }
 
 /**
- * Registers `/_bespoke/devtools` (W7 step 8, E113, E115, E117) — only ever called where the devtools run (`NODE_ENV=development`
+ * Registers `/_marmeon/devtools` (W7 step 8, E113, E115, E117) — only ever called where the devtools run (`NODE_ENV=development`
  * or a test's opt-in): in production the routes do not exist (404). Every route:
  *
  * - **GET only** — there is no endpoint that writes or runs anything (E113, E130): retrying a job is a command to copy;
@@ -45,18 +45,18 @@ export interface PagesOptions {
  * Pages are rendered on the server with the escaping `html` template; a recorded mail shows in a sandboxed frame.
  */
 export async function registerDevtoolsPages(options: PagesOptions): Promise<boolean> {
-  let router: typeof import('@bespokecore/router');
+  let router: typeof import('@marmeon/router');
   try {
-    router = await import('@bespokecore/router');
+    router = await import('@marmeon/router');
   } catch {
     return false; // no HTTP in this app
   }
   const { app } = options;
   if (!app.container.has(router.Router)) return false;
-  // A stream ends when the server closes (`ServerClosing` of @bespokecore/http — every app with routes has it).
-  const http = await import('@bespokecore/http').catch(() => undefined);
+  // A stream ends when the server closes (`ServerClosing` of @marmeon/http — every app with routes has it).
+  const http = await import('@marmeon/http').catch(() => undefined);
   const closing = () => (http && app.container.has(http.ServerClosing) ? app.container.make(http.ServerClosing).signal : undefined);
-  const pages = new DevtoolsPages(options, () => app.container.make(router.Router).routes.some((route) => route.path === '/_bespoke/mail'), closing);
+  const pages = new DevtoolsPages(options, () => app.container.make(router.Router).routes.some((route) => route.path === '/_marmeon/mail'), closing);
   const guard = router.defineMiddleware('DevtoolsGuard', async (ctx, next) => (hostAllowed(ctx.request, options.hosts) ? secured(await next()) : secured(forbiddenHost())));
 
   app.container.make(router.Router).load(
@@ -158,7 +158,7 @@ class DevtoolsPages {
     const warnings = [
       ...(schedule.available && schedule.warning ? [`Scheduler (E123): ${schedule.warning}`] : []),
       ...this.#app.container.warnings.map((warning) => `Injection (E128): ${warning.message}`),
-      ...(this.#maxBytes && usage.bytes > this.#maxBytes * 0.8 ? [`The devtools' files hold ${Math.round((usage.bytes / this.#maxBytes) * 100)} % of their limit — the oldest go first (bespoke devtools:clear empties them).`] : []),
+      ...(this.#maxBytes && usage.bytes > this.#maxBytes * 0.8 ? [`The devtools' files hold ${Math.round((usage.bytes / this.#maxBytes) * 100)} % of their limit — the oldest go first (marmeon devtools:clear empties them).`] : []),
     ];
     return htmlResponse(
       overviewPage(
@@ -207,7 +207,7 @@ class DevtoolsPages {
   }
 
   /**
-   * `GET /_bespoke/devtools/stream` — Server-Sent Events: each new entry of any process (the server, the worker, the scheduler)
+   * `GET /_marmeon/devtools/stream` — Server-Sent Events: each new entry of any process (the server, the worker, the scheduler)
    * as `event: entry` with `data: {"entry": …}` (and, with `rows=1`, the list row the pages insert), narrowed by `type`, `tag`
    * (both may repeat), `requestId`, `jobId`, `batch`, `search`. It starts with what arrives from now on.
    */

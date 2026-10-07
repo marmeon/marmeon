@@ -1,4 +1,4 @@
-import type { AuthUser } from '@bespokecore/auth';
+import type { AuthUser } from '@marmeon/auth';
 import { DashboardConfig } from '#modules/dashboard';
 
 /** Who may do what in the members table. Administrators are the dashboard's (`DASHBOARD_ADMINS`). */

@@ -1,4 +1,4 @@
-import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteLookup, RouteNameInput } from '@bespokecore/router';
+import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteLookup, RouteNameInput } from '@marmeon/router';
 import { LAYER_CLOSE_HEADER, regionOf, type LayerClose } from './page.ts';
 import { RedirectResult, type Flasher } from './redirect.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
@@ -6,7 +6,7 @@ import { carryFlash, serializedFlash, withFlashMethod, type FlashMethod } from '
 import { carryLive, withLiveMethod, type LiveMethod, type PagePropNames } from './live.ts';
 import type { ViewProps, ViewResult } from './view.ts';
 
-const LAYER_RESULT = Symbol.for('bespokecore.layer-result');
+const LAYER_RESULT = Symbol.for('marmeon.layer-result');
 
 /** The path parameters of the base: required when its path has required ones (like `<Link route params>`). */
 type BaseParams<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
@@ -109,7 +109,7 @@ export class CloseLayerResult extends RedirectResult {
     const flash = serializedFlash(flasher?.takeFlash(request.headers.get(DOCUMENT_HEADER) ?? undefined) ?? []);
     return new Response(JSON.stringify({ close: this.close, ...(flash.length > 0 ? { flash } : {}) }), {
       status: 200,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store', [LAYER_CLOSE_HEADER]: 'true', vary: 'x-bespoke, x-bespoke-region' },
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store', [LAYER_CLOSE_HEADER]: 'true', vary: 'x-marmeon, x-marmeon-region' },
     });
   }
 }

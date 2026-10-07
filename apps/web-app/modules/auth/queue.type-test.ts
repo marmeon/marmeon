@@ -1,7 +1,7 @@
-// Type guarantees of the queue (W6 step 3) — compiled by `pnpm typecheck` / `bespoke build`, never run.
-import { defineModule } from '@bespokecore/core';
-import { Queue, withoutOverlapping, type JobContext, type JobPayload } from '@bespokecore/queue';
-import type { TestApp } from '@bespokecore/testing';
+// Type guarantees of the queue (W6 step 3) — compiled by `pnpm typecheck` / `marmeon build`, never run.
+import { defineModule } from '@marmeon/core';
+import { Queue, withoutOverlapping, type JobContext, type JobPayload } from '@marmeon/queue';
+import type { TestApp } from '@marmeon/testing';
 import * as v from 'valibot';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';

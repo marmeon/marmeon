@@ -21,7 +21,7 @@ export function applyPatches(updates: readonly OptimisticUpdate[]): Map<PatchTar
     applied.set(target, ids);
   }
   // Development only (W7 step 9): the devtools' bar shows them with the request they go with — gone from a production build.
-  if (process.env.NODE_ENV !== 'production' && applied.size > 0) (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.patches?.([...applied.values()].flat());
+  if (process.env.NODE_ENV !== 'production' && applied.size > 0) (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.patches?.([...applied.values()].flat());
   return applied;
 }
 

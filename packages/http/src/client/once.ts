@@ -1,7 +1,7 @@
 /**
  * Once props (E64), UI-free: the values the browser keeps of props marked `once()` on the server — in this document's memory
- * only (never in `history.state` or any storage, E36). Every page request names the keys it holds (`x-bespoke-once`) with the
- * scope they came under (`x-bespoke-once-scope`); the server skips those, and the page they are missing from gets them back
+ * only (never in `history.state` or any storage, E36). Every page request names the keys it holds (`x-marmeon-once`) with the
+ * scope they came under (`x-marmeon-once-scope`); the server skips those, and the page they are missing from gets them back
  * here before anything renders.
  *
  * Scoped to who they were sent to (`PageObject.onceScope`): a page of another scope — someone else signed in in another tab,

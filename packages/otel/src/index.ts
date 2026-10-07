@@ -1,4 +1,4 @@
-import { defineConfig, defineSolutions, LogContextSources, Logger, Redactor, type Application, type ConfigOf, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, defineSolutions, LogContextSources, Logger, Redactor, type Application, type ConfigOf, type ServiceProvider } from '@marmeon/core';
 import * as v from 'valibot';
 import { contextPropagates, loadOtelApi, OTEL_INSTALL, OtelSetupError, sdkRegistered, type OtelApi } from './api.ts';
 import { instrument } from './tracer.ts';
@@ -19,7 +19,7 @@ const list = v.pipe(
  * The OpenTelemetry environment this package reads — the SDK reads its own (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_*`, …):
  *
  * ```sh
- * OTEL_SDK_DISABLED=true                                        # no spans from BespokeCore (the SDK honours it too)
+ * OTEL_SDK_DISABLED=true                                        # no spans from Marmeon (the SDK honours it too)
  * OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST=x-tenant,accept-language   # recorded request headers, redacted
  * ```
  */
@@ -40,17 +40,17 @@ export type OtelConfig = ConfigOf<typeof OtelConfig>;
  * (start it first: `node --import ./bootstrap/telemetry.ts`, see the README). Without one, nothing is subscribed: no span,
  * no cost, no error. `@opentelemetry/api` must be installed (an optional peer): the start fails with what to install.
  * On shutdown it unsubscribes and flushes the SDK's spans (≤ 2 s), so the last requests' and jobs' spans are not lost.
- * Found by `bespoke discover`.
+ * Found by `marmeon discover`.
  */
 export class OtelServiceProvider implements ServiceProvider {
   static config = [OtelConfig];
-  /** The missing API, on the error page and when `bespoke` cannot start the app (E130). */
+  /** The missing API, on the error page and when `marmeon` cannot start the app (E130). */
   static solutions = defineSolutions([
     {
       for: OtelSetupError,
       solve: () => ({
         title: 'Install the OpenTelemetry API',
-        text: '@bespokecore/otel records spans through @opentelemetry/api, an optional peer the app installs — the SDK and its exporter are the app\'s too.',
+        text: '@marmeon/otel records spans through @opentelemetry/api, an optional peer the app installs — the SDK and its exporter are the app\'s too.',
         command: OTEL_INSTALL,
         docs: 'packages/otel/README.md#starting-the-sdk',
       }),

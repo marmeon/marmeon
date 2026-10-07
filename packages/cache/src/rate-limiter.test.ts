@@ -1,7 +1,7 @@
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { defineRoutes, HttpServiceProvider } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { CacheServiceProvider } from './index.ts';
 import { Limit, RateLimiter, throttle } from './rate-limiter.ts';

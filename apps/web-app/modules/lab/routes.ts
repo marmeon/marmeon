@@ -1,4 +1,4 @@
-import { defineRoutes } from '@bespokecore/http';
+import { defineRoutes } from '@marmeon/http';
 import {
   ShowBrowserOnlyLabController,
   ShowClientOnlyLabController,

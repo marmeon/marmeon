@@ -1,4 +1,4 @@
-import { Application, defineConfig, environment, Logger, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, defineConfig, environment, Logger, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import * as v from 'valibot';
 import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
 import { MailPreviews } from './preview.ts';
@@ -42,7 +42,7 @@ export const MailConfig = defineConfig('mail', {
     from: env.MAIL_FROM_NAME ? { address: env.MAIL_FROM_ADDRESS, name: env.MAIL_FROM_NAME } : env.MAIL_FROM_ADDRESS,
     smtp: { host: env.MAIL_HOST, port: env.MAIL_PORT, secure: env.MAIL_SECURE, requireTls: env.MAIL_REQUIRE_TLS, username: env.MAIL_USERNAME, password: env.MAIL_PASSWORD },
     /**
-     * The mail previews under `/_bespoke/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
+     * The mail previews under `/_marmeon/mail` (E106): only with `NODE_ENV=development` (E115, W7 step 8) — never "not production":
      * a test, staging or a server without `NODE_ENV` has no such routes.
      */
     previews: environment.isDevelopment(env),
@@ -65,22 +65,22 @@ export const LOG_MAILER_WARNING =
   'reset, e-mail verification, signed URLs) in plain text. Set MAIL_MAILER=smtp (pnpm add nodemailer) and MAIL_HOST, ' +
   'MAIL_USERNAME, MAIL_PASSWORD.';
 
-type QueueModule = typeof import('@bespokecore/queue');
+type QueueModule = typeof import('@marmeon/queue');
 
-/** @bespokecore/queue is an optional peer: only `mailer.queue()` needs it. */
+/** @marmeon/queue is an optional peer: only `mailer.queue()` needs it. */
 async function importQueue(): Promise<QueueModule | undefined> {
   try {
-    return await import('@bespokecore/queue');
+    return await import('@marmeon/queue');
   } catch (error) {
-    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && String((error as Error).message).includes('@bespokecore/queue')) return undefined;
+    if ((error as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' && String((error as Error).message).includes('@marmeon/queue')) return undefined;
     throw error;
   }
 }
 
 /**
- * Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`) — built on first use —, the `bespoke.mail` job for
- * `mailer.queue()` when the app has @bespokecore/queue, and with `NODE_ENV=development` only the mail previews
- * (`/_bespoke/mail`, E106, E115). Found by `bespoke discover`.
+ * Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`) — built on first use —, the `marmeon.mail` job for
+ * `mailer.queue()` when the app has @marmeon/queue, and with `NODE_ENV=development` only the mail previews
+ * (`/_marmeon/mail`, E106, E115). Found by `marmeon discover`.
  */
 export class MailServiceProvider implements ServiceProvider {
   static config = [MailConfig];
@@ -99,7 +99,7 @@ export class MailServiceProvider implements ServiceProvider {
     const queue: MailQueue = async (payload, options) => {
       const module = await importQueue();
       if (!module || !container.has(module.Queue)) {
-        throw new MailError('mailer.queue() needs @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover) — or send the mail now: mailer.send().');
+        throw new MailError('mailer.queue() needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or send the mail now: mailer.send().');
       }
       return container.make(module.Queue).dispatch(SendQueuedMail, payload, options);
     };
@@ -108,9 +108,9 @@ export class MailServiceProvider implements ServiceProvider {
   }
 
   async boot(app: Application): Promise<void> {
-    // The job behind mailer.queue(): a framework job (`bespoke.mail`), registered with the app's jobs.
+    // The job behind mailer.queue(): a framework job (`marmeon.mail`), registered with the app's jobs.
     const queue = await importQueue();
-    if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@bespokecore/mail', { framework: true });
+    if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@marmeon/mail', { framework: true });
 
     const config = app.container.make(MailConfig);
     // Production on the log mailer (W7.11, Max 04.10.): no mail goes out, and reset links land in the log — said once, at boot.
@@ -125,9 +125,9 @@ export class MailServiceProvider implements ServiceProvider {
 }
 
 async function registerPreviews(app: Application): Promise<void> {
-  let router: typeof import('@bespokecore/router');
+  let router: typeof import('@marmeon/router');
   try {
-    router = await import('@bespokecore/router');
+    router = await import('@marmeon/router');
   } catch {
     return; // no HTTP in this app
   }
@@ -137,8 +137,8 @@ async function registerPreviews(app: Application): Promise<void> {
   // No middleware group: no session, no cookies — a page for the developer's browser only.
   app.container.make(router.Router).load(
     router.defineRoutes((Route) => {
-      Route.get('/_bespoke/mail', () => previews.index());
-      Route.get('/_bespoke/mail/:module/:mail', (ctx) => previews.show(`${ctx.params.module}/${ctx.params.mail}`, new URL(ctx.request.url)));
+      Route.get('/_marmeon/mail', () => previews.index());
+      Route.get('/_marmeon/mail/:module/:mail', (ctx) => previews.show(`${ctx.params.module}/${ctx.params.mail}`, new URL(ctx.request.url)));
     }),
   );
 }

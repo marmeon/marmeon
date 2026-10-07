@@ -1,4 +1,4 @@
-# @bespokecore/table
+# @marmeon/table
 
 Server-driven tables (E183): **one definition** per table — its base query, its columns with aliases, who may see which column,
 filters and sorts by allowlist, row actions, bulk actions and a CSV export. Per request the server decides what the user may see
@@ -7,11 +7,11 @@ and exports are endpoints on the page's own routes, which check everything again
 hidden columns in the props, raw identifiers in `ORDER BY`, IDs of another tenant in a bulk action, formulas in a CSV — are handled
 once, here, instead of in every app.
 
-`bespoke discover` registers its `TableServiceProvider` like any installed package. It builds on
-[@bespokecore/database](../database/README.md) (Kysely), [@bespokecore/auth](../auth/README.md) (policies, the `Gate`) and
-[@bespokecore/http](../http/README.md). The browser half — the props' types and the UI-free table controller, nothing of the
-server — is `@bespokecore/table/client`; the headless React hook (`useTable`) lives in
-[@bespokecore/react](../react/README.md#tables) — see [In the browser](#in-the-browser).
+`marmeon discover` registers its `TableServiceProvider` like any installed package. It builds on
+[@marmeon/database](../database/README.md) (Kysely), [@marmeon/auth](../auth/README.md) (policies, the `Gate`) and
+[@marmeon/http](../http/README.md). The browser half — the props' types and the UI-free table controller, nothing of the
+server — is `@marmeon/table/client`; the headless React hook (`useTable`) lives in
+[@marmeon/react](../react/README.md#tables) — see [In the browser](#in-the-browser).
 
 ```ts
 // modules/members/tables/MembersTable.ts
@@ -143,7 +143,7 @@ only the rest: `handle(rows, ctx)`. **"All matching"** sends the table's state (
 keys: the server parses it again, as strictly as the URL, and refuses more rows than the action's `max` (default 1000) with a 422 —
 it never acts on a cut-off list. Bulk actions take at most `max` chosen keys as well.
 
-The answer is JSON for an action request (`x-bespoke-action`, what `useAction` sends — `no-store` either way) and for an API client;
+The answer is JSON for an action request (`x-marmeon-action`, what `useAction` sends — `no-store` either way) and for an API client;
 a form posted without JavaScript, or a page visit, goes back to the page (303). A handler that returns a `JsonResult`, a redirect or
 a `Response` answers for itself; anything else it returns is `data`.
 
@@ -153,7 +153,7 @@ export over it is a 422 before a byte is streamed — never a file cut short), a
 in the handler; the later ones run once it has answered — a framework boundary (E107): in the request's context (logging, request id),
 **outside** any transaction that was open around the handler (`outsideTransaction`). An export reads the whole filtered table:
 **throttle the table's routes** — `tableRoutes(members.middleware(throttle('members-table')), MembersTable)` with a limiter of
-@bespokecore/cache (the web app: 60 a minute per user) — `Content-Disposition: attachment` with a safe file name
+@marmeon/cache (the web app: 60 a minute per user) — `Content-Disposition: attachment` with a safe file name
 (`members-2026-10-06.csv`), `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, a UTF-8 byte order mark (spreadsheets need it
 for umlauts). **Formula injection** (OWASP "CSV Injection") is escaped: a text cell that starts with `=`, `+`, `-`, `@`, a tab, a
 carriage return or a line feed gets a `'` in front; every field is quoted, quotes doubled. Numbers stay numbers (`-5` is no formula).
@@ -175,7 +175,7 @@ more looks it up by the key, or the column becomes part of the table.
 
 ## In the browser
 
-`useTable(props.members)` (`@bespokecore/react/table`) renders nothing — it gives a component what the props allow, typed by them
+`useTable(props.members)` (`@marmeon/react/table`) renders nothing — it gives a component what the props allow, typed by them
 (`TableProps<typeof MembersTable>`: only sortable columns sort, only the table's filters filter, only its actions run):
 
 ```tsx
@@ -190,7 +190,7 @@ table.exportUrl('csv'); table.status                           // a download; th
 
 - **The URL:** sorting, filters, search (after a pause in typing, one history entry) and pages are visits of the page's URL with the
   props' keys (`query`, `filter[…]` with the prefix) and the columns' **aliases** — the browser never names a database column, and
-  asking for what the props do not offer throws before a request goes out (`[bespoke:C9]`–`[bespoke:C12]`). Only the table's prop
+  asking for what the props do not offer throws before a request goes out (`[marmeon:C9]`–`[marmeon:C12]`). Only the table's prop
   reloads; the server parses the state again, as strictly as ever.
 - **The selection** is the core's (`navigator.use(selection)`, a slot of the history entry): a sort, a filter or another page is a
   visit with an entry of its own and starts with nothing selected — Back brings the old one back from memory; the core empties it
@@ -199,9 +199,9 @@ table.exportUrl('csv'); table.status                           // a download; th
   what the page had, a `merge()`d table too ([Merged props](../http/README.md#merged-props-revalidations-replace-load-more-appends-w9)).
   A bulk action clears the selection. Their code (the actions feature, the page's reloads) loads with a table's first run, in a chunk
   of its own. An action defined with `.confirm()` asks first (`labels.confirm`, or the run's `confirm`).
-- **UI-free:** `TableController` (`@bespokecore/table/client`) is all of this without React — `new TableController(navigator,
+- **UI-free:** `TableController` (`@marmeon/table/client`) is all of this without React — `new TableController(navigator,
   props, { entry })`, `update(props)` after a render; React's hook is a thin layer over it, a plain-DOM adapter its test.
-- **TanStack Table v9**, for an app that wants its column model: `toTanStack(table, { features })` (`@bespokecore/react/table-tanstack`,
+- **TanStack Table v9**, for an app that wants its column model: `toTanStack(table, { features })` (`@marmeon/react/table-tanstack`,
   `@tanstack/react-table` an optional peer) gives TanStack's `useTable` the rows, the columns and the state the server owns in
   manual mode — its sorting, pagination and row selection go back through `useTable`. The bridge has no TanStack code of its own:
   TanStack is in a bundle only where the app imports it.

@@ -1,0 +1,50 @@
+{
+  "name": "create-marmeon",
+  "version": "0.1.0",
+  "description": "Create a Marmeon app: pnpm create marmeon my-app — the starter kit (sign-in, layout, home page) or a blank app.",
+  "keywords": [
+    "marmeon",
+    "create",
+    "scaffolding",
+    "starter-kit",
+    "template"
+  ],
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/create-marmeon#readme",
+  "bugs": {
+    "url": "https://github.com/marmeon/marmeon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
+    "directory": "packages/create-marmeon"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
+  "type": "module",
+  "bin": {
+    "create-marmeon": "./bin/create-marmeon.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    "template",
+    "template/base/.env.test",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

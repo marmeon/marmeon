@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, EventDispatcher, token } from '@bespokecore/core';
-import { Connections } from '@bespokecore/database';
+import { Clock, EventDispatcher, token } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
@@ -37,7 +37,7 @@ export interface PasswordResetTokenStore {
   /** Whether `token` is the current token of `email` and younger than `maxAgeSeconds` — and if so, it is used up. */
   consume(email: string, token: string, maxAgeSeconds: number): Promise<boolean>;
   forget(email: string): Promise<void>;
-  /** Deletes every token older than `maxAgeSeconds` — expired ones nobody used (`bespoke auth:prune-tokens`). How many. */
+  /** Deletes every token older than `maxAgeSeconds` — expired ones nobody used (`marmeon auth:prune-tokens`). How many. */
   prune(maxAgeSeconds: number): Promise<number>;
 }
 export const PasswordResetTokenStore = token<PasswordResetTokenStore>('PasswordResetTokenStore');

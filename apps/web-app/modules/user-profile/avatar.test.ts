@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Connections, InfrastructureTransactionError, Migrator } from '@bespokecore/database';
-import { UPLOAD_HEADER } from '@bespokecore/http';
-import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@bespokecore/storage';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Connections, InfrastructureTransactionError, Migrator } from '@marmeon/database';
+import { UPLOAD_HEADER } from '@marmeon/http';
+import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@marmeon/storage';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserRepository } from '../auth/UserRepository.ts';
@@ -193,7 +193,7 @@ describe('the avatar (W6.9: uploaded ahead, a token in the form, checked by its 
   it('an upload never writes the session: the errors of a failed submit, flashed for the next page, survive a target and the bytes', async () => {
     const { ada } = await setUp();
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect();
-    const browser = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    const browser = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     const edit = `http://localhost/users/${ada.id}/edit`;
     // A failed submit without JavaScript: back to the form, the errors flashed for exactly the next request that renders it.
     await browser.put(`/users/${ada.id}`, { form: { name: 'A', bio: '' }, headers: { referer: edit, accept: 'text/html' } }).assertRedirect(`/users/${ada.id}/edit`);
@@ -256,7 +256,7 @@ describe('a used token stays used when the transaction around it rolls back (E10
   });
 
   it('on SQLite with a file of its own (the app’s .env.example: UPLOADS_CONNECTION=system) — after the rollback the token is still used', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'bespoke-web-uploads-'));
+    directory = mkdtempSync(join(tmpdir(), 'marmeon-web-uploads-'));
     app = await createTestApp(application, {
       env: { DB_CONNECTION: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite'), SYSTEM_DB_DATABASE: join(directory, 'system.sqlite'), UPLOADS_CONNECTION: 'system' },
     });

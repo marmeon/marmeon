@@ -1,8 +1,8 @@
 import { readdirSync } from 'node:fs';
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { defineRoutes, HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
+import { createHttpKernel } from '@marmeon/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
@@ -65,7 +65,7 @@ describe.each(storeKinds)('guests and the %s session store', (kind) => {
     });
     const kernel = createHttpKernel(application);
 
-    const pages = await Promise.all(Array.from({ length: 100 }, (_, i) => kernel.request('/login', { headers: i % 2 ? { 'x-bespoke': 'true' } : { accept: 'application/json', 'x-bespoke': 'true' } })));
+    const pages = await Promise.all(Array.from({ length: 100 }, (_, i) => kernel.request('/login', { headers: i % 2 ? { 'x-marmeon': 'true' } : { accept: 'application/json', 'x-marmeon': 'true' } })));
     for (const page of pages) {
       expect(page.status).toBe(200);
       expect(page.headers.getSetCookie()).toEqual([]);
@@ -75,7 +75,7 @@ describe.each(storeKinds)('guests and the %s session store', (kind) => {
 
     const failed = await kernel.request('/login', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' }, body: new URLSearchParams({ email: 'ada@example.com' }) });
     expect(failed.status).toBe(303);
-    expect(failed.headers.getSetCookie().some((cookie) => cookie.startsWith('bespoke_session='))).toBe(true);
+    expect(failed.headers.getSetCookie().some((cookie) => cookie.startsWith('marmeon_session='))).toBe(true);
     expect([writes, await stored(current, writes)]).toEqual([1, 1]);
     await application.shutdown();
   });

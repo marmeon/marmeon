@@ -8,8 +8,8 @@ import type { ServiceProviderClass } from './provider.ts';
  * providers; other packages add what they contribute through declaration merging:
  *
  * ```ts
- * // in @bespokecore/http
- * declare module '@bespokecore/core' {
+ * // in @marmeon/http
+ * declare module '@marmeon/core' {
  *   interface ModuleDefinition { readonly routes?: RouteDefinitions }
  * }
  * ```

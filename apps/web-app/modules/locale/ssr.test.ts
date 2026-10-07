@@ -1,6 +1,6 @@
 import { UserFactory } from '#modules/auth';
 import { ProfileLinkFactory } from '../user-profile/factories/ProfileLinkFactory.ts';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
@@ -19,9 +19,9 @@ describe('translated pages, rendered on the server', () => {
   it('renders German markup in <html lang="de"> — and it hydrates from the same messages', async () => {
     const response = await app.get('/login', html('de')).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<html lang="de">');
-    expect(response.body).toContain('<title data-bespoke-head="ssr">Anmelden — BespokeCore</title>');
+    expect(response.body).toContain('<title data-marmeon-head="ssr">Anmelden — Marmeon</title>');
     // One text node: the app name is a placeholder of the message, not glued around it.
-    expect(response.body).toContain('<h1>Bei BespokeCore (test) anmelden</h1>');
+    expect(response.body).toContain('<h1>Bei Marmeon (test) anmelden</h1>');
     expect(response.body).toContain('Angemeldet bleiben');
     expect(response.body).not.toContain('Keep me signed in');
 

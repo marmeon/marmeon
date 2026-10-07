@@ -1,4 +1,4 @@
-import { Application, defineConfig, Logger, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@bespokecore/core';
+import { Application, defineConfig, Logger, type ConfigDefinition, type ConfigOf, type Container, type InferOutput, type ServiceProvider, type StandardSchemaV1 } from '@marmeon/core';
 import * as v from 'valibot';
 import { RedisConnections, type RedisConnectionOptions } from './connections.ts';
 import { RedisHealthCheck } from './health.ts';
@@ -17,7 +17,7 @@ function prefixOf(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return `${slug || 'bespoke'}:`;
+  return `${slug || 'marmeon'}:`;
 }
 
 /**
@@ -32,7 +32,7 @@ export const RedisConfig = defineConfig('redis', {
   env: v.object({
     REDIS_URL: v.optional(redisUrl, 'redis://127.0.0.1:6379'),
     REDIS_PREFIX: v.optional(v.string()),
-    APP_NAME: v.optional(v.string(), 'bespoke'),
+    APP_NAME: v.optional(v.string(), 'marmeon'),
   }),
   resolve: (env): { default: RedisConnectionOptions } => ({ default: { url: env.REDIS_URL, prefix: env.REDIS_PREFIX ?? prefixOf(env.APP_NAME) } }),
 });
@@ -68,7 +68,7 @@ export function isRedisConnectionDefinition(value: unknown): value is RedisConne
   return typeof (value as Partial<RedisConnectionDefinition> | undefined)?.redisConnection === 'string';
 }
 
-/** Registers `RedisConnections` and closes every connection on shutdown. Found by `bespoke discover`. */
+/** Registers `RedisConnections` and closes every connection on shutdown. Found by `marmeon discover`. */
 export class RedisServiceProvider implements ServiceProvider {
   static config = [RedisConfig];
   /** The connections in use answer `PING`, for `/up/ready` (E126). */

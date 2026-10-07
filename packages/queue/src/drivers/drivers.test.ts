@@ -1,4 +1,4 @@
-import { sql } from '@bespokecore/database';
+import { sql } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { connectionOptions, databaseConnections, databaseKinds, queueKinds, queueUnderTest, type QueueUnderTest } from '../__fixtures__/targets.ts';
 import type { ReservedJob } from '../driver.ts';

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createProductionRenderer } from './production.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = tempDir('bespoke-prod-');
+const root = tempDir('marmeon-prod-');
 
 function build(asset: string): void {
   mkdirSync(join(root, 'dist/client'), { recursive: true });
@@ -16,7 +16,7 @@ function build(asset: string): void {
 describe('createProductionRenderer', () => {
   it('asks for a build when there is none', async () => {
     await expect(createProductionRenderer({ root: join(root, 'nothing-built') })).rejects.toThrow(
-      'No production build in dist/client — run `bespoke build` first.',
+      'No production build in dist/client — run `marmeon build` first.',
     );
   });
 

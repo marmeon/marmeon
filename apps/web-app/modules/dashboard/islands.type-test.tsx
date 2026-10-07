@@ -1,11 +1,11 @@
 /**
  * Type guarantees of islands (E48, E51, E52) against this app's dashboard — checked by `tsc` (`pnpm typecheck`,
- * `bespoke build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the
+ * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the
  * message they get (read with the directive removed).
  */
-import { authenticate } from '@bespokecore/auth';
-import { defineRoutes, type IslandProps } from '@bespokecore/http';
-import { Island, Link, useIsland } from '@bespokecore/react';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes, type IslandProps } from '@marmeon/http';
+import { Island, Link, useIsland } from '@marmeon/react';
 import { expectTypeOf } from 'vitest';
 import { ShowMyActivityController } from './controllers/ShowMyActivityController.ts';
 import type { ShowRecentSignInsController } from './controllers/ShowRecentSignInsController.ts';

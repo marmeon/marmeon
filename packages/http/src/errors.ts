@@ -1,11 +1,11 @@
-import { Logger, token, type Translator } from '@bespokecore/core';
-import { expectsJson, HttpError, statusText, ValidationError } from '@bespokecore/router';
+import { Logger, token, type Translator } from '@marmeon/core';
+import { expectsJson, HttpError, statusText, ValidationError } from '@marmeon/router';
 import { ERROR_PAGE, PAGE_HEADER, type ErrorPageProps } from './page.ts';
 import { RedirectResult } from './redirect.ts';
 import { view } from './view.ts';
 
 // HttpError and abort() live in the router (the request parser throws them too); re-exported for apps.
-export { abort, HttpError } from '@bespokecore/router';
+export { abort, HttpError } from '@marmeon/router';
 
 /**
  * Decides what happens with errors — Laravel's exception handler. Bound as a
@@ -16,14 +16,14 @@ export interface ExceptionHandler {
   report(error: unknown): void;
   /**
    * Turns the error into a result: a view for pages and navigations, JSON for APIs — in the request's language when
-   * a `translator` is given (the kernel passes the request's, when @bespokecore/i18n binds one).
+   * a `translator` is given (the kernel passes the request's, when @marmeon/i18n binds one).
    */
   render(error: unknown, request: Request, options: ExceptionRenderOptions): unknown;
 }
 
 export interface ExceptionRenderOptions {
   debug: boolean;
-  /** The request's translator (`Translator` of @bespokecore/core); without one, texts stay in English. */
+  /** The request's translator (`Translator` of @marmeon/core); without one, texts stay in English. */
   translator?: Translator;
 }
 export const ExceptionHandler = token<ExceptionHandler>('ExceptionHandler');
@@ -44,8 +44,8 @@ export class DefaultExceptionHandler implements ExceptionHandler {
   render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown {
     if (error instanceof ValidationError) return renderInvalid(translator ? error.translate(translator) : error, request);
     const status = error instanceof HttpError ? error.status : 500;
-    // Framework texts by key (`bespoke.status.404`), English without a translator.
-    const title = translator ? translator.text(`bespoke.status.${status}`, {}, statusText(status)) : statusText(status);
+    // Framework texts by key (`marmeon.status.404`), English without a translator.
+    const title = translator ? translator.text(`marmeon.status.${status}`, {}, statusText(status)) : statusText(status);
     const exposed = error instanceof HttpError || debug;
     const translation = error instanceof HttpError ? error.translation : undefined;
     // An error's own message may be a key too: `abort(403, 'auth.verify.wrong_account')`, `deny('…')` of a policy.

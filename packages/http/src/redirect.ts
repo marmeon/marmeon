@@ -1,14 +1,14 @@
-import { token } from '@bespokecore/core';
-import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@bespokecore/router';
+import { token } from '@marmeon/core';
+import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@marmeon/router';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 
-const REDIRECT_RESULT = Symbol.for('bespokecore.redirect-result');
+const REDIRECT_RESULT = Symbol.for('marmeon.redirect-result');
 
 /**
  * Keeps data for the next request only — what `redirect().with()` needs — and hands out values
- * stored earlier (`redirect().intended()`). Bound by `@bespokecore/session` (to the request's
+ * stored earlier (`redirect().intended()`). Bound by `@marmeon/session` (to the request's
  * session), so http needs no session itself.
  */
 export interface Flasher {
@@ -23,7 +23,7 @@ export interface Flasher {
   /**
    * The flash messages waiting, taken — by the response that delivers them (a page, a layer, an action's answer). Empty
    * for a read-only request (an island) and without a session. A 409 that reloads the page puts them back (`reflash()`).
-   * `document`: the document the request names (`x-bespoke-document`, E165) — a message bound to another document (another
+   * `document`: the document the request names (`x-marmeon-document`, E165) — a message bound to another document (another
    * tab's request flashed it) is left waiting; without one (a full page load), every message is taken.
    */
   takeFlash(document?: string): FlashEntry[];
@@ -140,11 +140,11 @@ export class RedirectResult {
 
   toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response {
     if (this.#flash.size > 0) {
-      if (!flasher) throw new Error('redirect().with() needs a session: install @bespokecore/session and start it for this route.');
+      if (!flasher) throw new Error('redirect().with() needs a session: install @marmeon/session and start it for this route.');
       for (const [key, value] of this.#flash) flasher.flash(key, value);
     }
     if (this.#messages.length > 0) {
-      if (!flasher) throw new Error('redirect().flash() needs a session: install @bespokecore/session and start it for this route.');
+      if (!flasher) throw new Error('redirect().flash() needs a session: install @marmeon/session and start it for this route.');
       // Bound to the document whose request flashed them (E165): another tab's request (a poll, a visit) never takes them —
       // this tab's next answer does, or the full page load that follows a 409.
       const document = request.headers.get(DOCUMENT_HEADER);
@@ -166,7 +166,7 @@ export class RedirectResult {
   }
 }
 
-/** Session keys shared with @bespokecore/session (`old()`) and the shared `errors` prop. */
+/** Session keys shared with @marmeon/session (`old()`) and the shared `errors` prop. */
 export const ERRORS_KEY = 'errors';
 export const OLD_INPUT_KEY = '_old_input';
 /** Where `authenticate()` keeps the page a guest wanted, for `redirect().intended()`. */

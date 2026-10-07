@@ -1,6 +1,6 @@
 /** App-wide texts (namespace `app`): the layout around every page and the language switcher. */
 const en = {
-  name: 'BespokeCore',
+  name: 'Marmeon',
   main: 'Main',
   people: 'People',
   notifications: 'Notifications',
@@ -47,7 +47,7 @@ const en = {
 
 export default en;
 
-declare module '@bespokecore/i18n/messages' {
+declare module '@marmeon/i18n/messages' {
   interface Translations {
     app: typeof en;
   }

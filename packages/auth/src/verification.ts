@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { UrlSigner, type Duration } from '@bespokecore/http';
-import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@bespokecore/router';
+import { UrlSigner, type Duration } from '@marmeon/http';
+import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
 
 /** What a verifiable user has: an id, an e-mail and when it was verified. */
 export interface VerifiableUser {

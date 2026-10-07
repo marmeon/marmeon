@@ -1,6 +1,6 @@
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import * as v from 'valibot';
-import { Gate } from '@bespokecore/auth';
+import { Gate } from '@marmeon/auth';
 import { ProfileDirectory, ProfilePolicy, SIGN_INS_CHANNEL } from '#modules/user-profile';
 
 /** The time ranges of the range picker, in the order the island offers them. */

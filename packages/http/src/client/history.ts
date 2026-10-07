@@ -119,7 +119,7 @@ export class HistoryWriter {
   /**
    * Commits an entry: with the Navigation API (`navigation.navigate` with the navigator's own `info`; the same URL replaced:
    * `updateCurrentEntry`) — the History fallback feature puts its own here where the browser has none. Without either (an
-   * adapter that did not attach the fallback, `[bespoke:C13]`), the History API writes it: nothing follows Back/Forward then.
+   * adapter that did not attach the fallback, `[marmeon:C13]`), the History API writes it: nothing follows Back/Forward then.
    */
   commit: Commit = (state, url, how) => {
     const { navigation, location, history } = this.#window;
@@ -169,7 +169,7 @@ export class HistoryWriter {
       // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the message.
       else if (process.env.NODE_ENV !== 'production') {
         throw new Error(
-          `[bespoke] A history entry holds where it is, never what it showed (E36): "${name}" is ${this.#fields.has(name) ? 'not a position' : 'no field of it'}. ` +
+          `[marmeon] A history entry holds where it is, never what it showed (E36): "${name}" is ${this.#fields.has(name) ? 'not a position' : 'no field of it'}. ` +
             'Keep what a page showed in memory — a slot of the feature (host.entry, host.document) — and register a position a feature needs with host.history.field().',
         );
       }

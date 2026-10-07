@@ -1,5 +1,5 @@
-import { Application, currentLogContext, defineConfig, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@bespokecore/core';
-import { channels, messageBase } from '@bespokecore/core/diagnostics';
+import { Application, currentLogContext, defineConfig, environment, logContextSourcesOf, redact, Logger, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
+import { channels, messageBase } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { pino, type Logger as Pino } from 'pino';
 import type pinoPretty from 'pino-pretty';
@@ -75,7 +75,7 @@ export class PinoLogger implements Logger {
 }
 
 // The redaction lives in core: the queue redacts a failed job's error the same way (E105).
-export { redact, REDACTED_KEYS } from '@bespokecore/core';
+export { redact, REDACTED_KEYS } from '@marmeon/core';
 
 /** The log context without the keys `instance` (a child logger) is bound with — each key once in a JSON line. */
 function withoutBound(context: Readonly<Record<string, unknown>>, instance: unknown): Readonly<Record<string, unknown>> {
@@ -97,7 +97,7 @@ function pretty(): typeof pinoPretty {
 export function createPinoLogger(config: LogConfig, destination?: NodeJS.WritableStream, app?: Application): Logger {
   const stream =
     destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname' }) : undefined);
-  // What the app's packages add to every entry (@bespokecore/otel: `trace_id`, `span_id`) — nothing to merge without a source.
+  // What the app's packages add to every entry (@marmeon/otel: `trace_id`, `span_id`) — nothing to merge without a source.
   const sources = logContextSourcesOf(app);
   const logger = pino(
     {
@@ -117,7 +117,7 @@ export function createPinoLogger(config: LogConfig, destination?: NodeJS.Writabl
   return new PinoLogger(logger, app);
 }
 
-/** Found by `bespoke discover` through the "bespoke" field in package.json. */
+/** Found by `marmeon discover` through the "marmeon" field in package.json. */
 export class LogServiceProvider implements ServiceProvider {
   static config = [LogConfig];
 

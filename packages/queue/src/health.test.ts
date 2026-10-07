@@ -1,5 +1,5 @@
-import { createApplication, HealthChecks, Logger } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider } from '@bespokecore/database';
+import { createApplication, HealthChecks, Logger } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
 import { QueueServiceProvider } from './index.ts';

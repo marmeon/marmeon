@@ -1,5 +1,5 @@
-import type { Cache } from '@bespokecore/cache';
-import type { Duration, IsJson, StandardSchemaV1 } from '@bespokecore/core';
+import type { Cache } from '@marmeon/cache';
+import type { Duration, IsJson, StandardSchemaV1 } from '@marmeon/core';
 
 /**
  * What a job's `handle(payload, job)` gets besides its payload: who it is, which attempt this is, a signal that aborts
@@ -9,7 +9,7 @@ import type { Duration, IsJson, StandardSchemaV1 } from '@bespokecore/core';
  * acknowledgement. `id` stays the same across every attempt and retry, so a job can recognize work it already did.
  */
 export interface JobContext {
-  /** The job's id — stable over retries (also after `bespoke queue:retry`). */
+  /** The job's id — stable over retries (also after `marmeon queue:retry`). */
   readonly id: string;
   /** The job's stable name, `static job`. */
   readonly name: string;
@@ -43,7 +43,7 @@ export interface JobContext {
    * **Honest about the gap:** the marker is written after `fn` — a worker that dies between the two (after the mail
    * went out, before the marker) runs `fn` again on the next attempt. `once` makes repeats rare, not impossible:
    * delivery stays at-least-once. While one attempt runs `fn` for a key, another with the same key fails its attempt
-   * (and retries) instead of running it alongside. Needs a cache (@bespokecore/cache) — `database` or `redis` when
+   * (and retries) instead of running it alongside. Needs a cache (@marmeon/cache) — `database` or `redis` when
    * workers run on several machines.
    */
   once(key: string, fn: () => unknown, options?: { readonly for?: number }): Promise<boolean>;
@@ -57,7 +57,7 @@ export interface JobMiddlewareContext<P = unknown> {
   readonly timeout: number;
   /** Seconds a claim holds before another worker may take the job again (`retryAfter`) — undefined on the sync connection. */
   readonly retryAfter: number | undefined;
-  /** The app's `Cache` (@bespokecore/cache) — for locks across workers. */
+  /** The app's `Cache` (@marmeon/cache) — for locks across workers. */
   cache(): Promise<Cache>;
 }
 
@@ -160,7 +160,7 @@ export type DispatchResult<O> = O extends { readonly unique: string } ? string |
 
 /**
  * A unique job (E85): while one with this key waits (or runs), dispatching another is a no-op — `dispatch()` resolves
- * `undefined` instead of an id. The key is held by a lock in the app's cache (`cache.lock`, @bespokecore/cache), taken
+ * `undefined` instead of an id. The key is held by a lock in the app's cache (`cache.lock`, @marmeon/cache), taken
  * at the dispatch — outside any transaction, so other processes see it at once — and freed again when a transaction
  * around the dispatch rolls back (`afterRollback`), when the worker starts the job (`uniqueUntil: 'processing'`) or
  * when the job leaves the queue (`'done'`, the default: processed, failed, discarded).

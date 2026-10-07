@@ -10,7 +10,7 @@ import { build, type InlineConfig, type Rolldown } from 'vite';
 
 /**
  * Bundle measurements for the size budget, the leak test (Wave 5c, E75) and `pnpm size` — the method of the spike
- * `2026-10-02-client-kern-tree-shaking`, made repeatable: Vite's **app** mode as `bespoke build` runs it (not `lib`
+ * `2026-10-02-client-kern-tree-shaking`, made repeatable: Vite's **app** mode as `marmeon build` runs it (not `lib`
  * mode, which leaves ES libraries partly unminified), production defines, minified, gzip level 9 per chunk.
  */
 
@@ -18,7 +18,7 @@ import { build, type InlineConfig, type Rolldown } from 'vite';
 export const PACKAGES = realpathSync(fileURLToPath(new URL('../../../', import.meta.url)));
 
 /** Not part of the measurement: React comes from the app, i18n only when the app translates (an optional peer). */
-export const EXTERNAL = /^(react|react-dom|@bespokecore\/i18n)(\/|$)/;
+export const EXTERNAL = /^(react|react-dom|@marmeon\/i18n)(\/|$)/;
 
 export interface BundleChunk {
   readonly fileName: string;
@@ -66,13 +66,13 @@ let workspace: string | undefined;
 
 /**
  * An app directory that depends on the framework packages as an app's `node_modules` would (symlinks to the workspace
- * packages), so their `exports` resolve without the `@bespokecore/source` condition: to `dist/`, what an app gets from
+ * packages), so their `exports` resolve without the `@marmeon/source` condition: to `dist/`, what an app gets from
  * a published package. One per workspace checkout, reused (test workers end without an `exit` event to clean up after).
  */
 function appDirectory(): string {
   if (workspace) return workspace;
-  const dir = join(realpathSync(tmpdir()), `bespoke-bundle-${createHash('sha256').update(PACKAGES).digest('hex').slice(0, 12)}`);
-  mkdirSync(join(dir, 'node_modules', '@bespokecore'), { recursive: true });
+  const dir = join(realpathSync(tmpdir()), `marmeon-bundle-${createHash('sha256').update(PACKAGES).digest('hex').slice(0, 12)}`);
+  mkdirSync(join(dir, 'node_modules', '@marmeon'), { recursive: true });
   const link = (target: string, path: string) => {
     try {
       symlinkSync(target, path, 'dir');
@@ -80,7 +80,7 @@ function appDirectory(): string {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; // made by an earlier (or a parallel) run
     }
   };
-  for (const name of ['http', 'i18n', 'react', 'table']) link(join(PACKAGES, name), join(dir, 'node_modules', '@bespokecore', name));
+  for (const name of ['http', 'i18n', 'react', 'table']) link(join(PACKAGES, name), join(dir, 'node_modules', '@marmeon', name));
   // TanStack Table (W9 step 6): an optional peer of the React adapter, for its bridge's scenario — where the adapter has it installed.
   mkdirSync(join(dir, 'node_modules', '@tanstack'), { recursive: true });
   link(realpathSync(join(PACKAGES, 'react/node_modules/@tanstack/react-table')), join(dir, 'node_modules', '@tanstack', 'react-table'));
@@ -99,7 +99,7 @@ export interface BundleOptions {
 
 /**
  * Builds `code` as an app's client entry, against the packages' `dist/` (run `pnpm build` first). Keep what you
- * measure reachable, e.g. `globalThis.__keep = { createBespokeApp }`, or tree-shaking drops it.
+ * measure reachable, e.g. `globalThis.__keep = { createMarmeonApp }`, or tree-shaking drops it.
  */
 export async function appBundle(code: string, { external = EXTERNAL, sourcemap = false }: BundleOptions = {}): Promise<AppBundle> {
   const root = appDirectory();
@@ -117,7 +117,7 @@ export async function appBundle(code: string, { external = EXTERNAL, sourcemap =
           outDir: join(root, 'dist'),
           minify: true,
           modulePreload: false,
-          // The first page's code in one chunk, as `bespoke()` splits an app's client build (`CLIENT_CHUNKS` of @bespokecore/vite —
+          // The first page's code in one chunk, as `marmeon()` splits an app's client build (`CLIENT_CHUNKS` of @marmeon/vite —
           // its `vendor` group stays empty here, React being external): not a chunk for each module a lazy chunk shares with it.
           rolldownOptions: { input: { entry }, external: (id) => external.test(id), output: { codeSplitting: { groups: [{ name: 'index', tags: ['$initial'] }] } } },
         },
@@ -131,7 +131,7 @@ export async function appBundle(code: string, { external = EXTERNAL, sourcemap =
 
 /**
  * The client build of a real app (its own `vite.config.ts`), measured the same way — nothing is written. In the
- * monorepo the framework packages come from `dist/` too: a build never takes the `@bespokecore/source` condition.
+ * monorepo the framework packages come from `dist/` too: a build never takes the `@marmeon/source` condition.
  */
 export async function appClientBuild(root: string, { sourcemap = false }: Pick<BundleOptions, 'sourcemap'> = {}): Promise<AppBundle> {
   writeBrowserRoutes(root);
@@ -141,16 +141,16 @@ export async function appClientBuild(root: string, { sourcemap = false }: Pick<B
 }
 
 /**
- * The browser's route manifest (`.bespoke/routes.json`, E57) the build reads — `bespoke build` writes it first, a fresh
- * checkout (CI) has none: `bespoke route:types` writes it, in the app's committed test environment (no `.env` needed).
+ * The browser's route manifest (`.marmeon/routes.json`, E57) the build reads — `marmeon build` writes it first, a fresh
+ * checkout (CI) has none: `marmeon route:types` writes it, in the app's committed test environment (no `.env` needed).
  * It also writes `bootstrap/routes.ts`, unchanged while `pnpm types:check` is green.
  */
 function writeBrowserRoutes(root: string): void {
-  if (existsSync(join(root, '.bespoke/routes.json'))) return;
-  const { BESPOKE_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...env } = process.env;
-  const bin = join(PACKAGES, 'cli/bin/bespoke.js');
+  if (existsSync(join(root, '.marmeon/routes.json'))) return;
+  const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...env } = process.env;
+  const bin = join(PACKAGES, 'cli/bin/marmeon.js');
   const result = spawnSync(process.execPath, [bin, 'route:types'], { cwd: root, encoding: 'utf8', env: { ...env, NODE_ENV: 'test' } });
-  if (result.status !== 0) throw new Error(`bespoke route:types failed in ${root}:\n${result.stdout}${result.stderr}`);
+  if (result.status !== 0) throw new Error(`marmeon route:types failed in ${root}:\n${result.stdout}${result.stderr}`);
 }
 
 /** Vite's helper around every `import()` of a client build (it preloads a lazy chunk's dependencies). */
@@ -162,7 +162,7 @@ const PRELOAD_HELPER = '\0vite/preload-helper.js';
  * takes its place in the measured builds only (it loads the chunk without preloading its dependencies); nothing ships it.
  */
 const withoutPreloadHelper = {
-  name: 'bespokecore:measure-without-preload-helper',
+  name: 'marmeon:measure-without-preload-helper',
   enforce: 'pre' as const,
   resolveId: (id: string) => (id === PRELOAD_HELPER ? id : undefined),
   load: (id: string) => (id === PRELOAD_HELPER ? 'export const __vitePreload = (load) => load();' : undefined),
@@ -173,7 +173,7 @@ async function measure(config: InlineConfig, { sourcemap, entry }: { sourcemap: 
   const result = (await build({
     ...config,
     mode: 'production',
-    plugins: [...(config.plugins ?? []), withoutPreloadHelper, { name: 'bespokecore:measure', configResolved: (resolved) => void (outDir = resolve(resolved.root, resolved.build.outDir)) }],
+    plugins: [...(config.plugins ?? []), withoutPreloadHelper, { name: 'marmeon:measure', configResolved: (resolved) => void (outDir = resolve(resolved.root, resolved.build.outDir)) }],
     // `hidden`: no `sourceMappingURL` comment, so the measured code is the shipped code.
     build: { ...config.build, write: false, sourcemap: sourcemap ? 'hidden' : false, reportCompressedSize: false },
   })) as Rolldown.RolldownOutput | Rolldown.RolldownOutput[];
@@ -349,25 +349,25 @@ const CORE = [
   ...['resolveRoute', 'defaultTitle', 'TitleRegistry', 'loadPageMessages', 'pageLocale'],
 ];
 /** An entry with the client core and `names` from it. */
-export const coreEntry = (...names: string[]) => entryOf('@bespokecore/http/client', [...CORE, ...names]);
-/** An entry with `createBespokeApp` and `names` from `@bespokecore/react`. */
-export const appEntry = (...names: string[]) => entryOf('@bespokecore/react', ['createBespokeApp', ...names]);
+export const coreEntry = (...names: string[]) => entryOf('@marmeon/http/client', [...CORE, ...names]);
+/** An entry with `createMarmeonApp` and `names` from `@marmeon/react`. */
+export const appEntry = (...names: string[]) => entryOf('@marmeon/react', ['createMarmeonApp', ...names]);
 
 /** An app without pages that renders a server-driven table (`useTable`, W9 step 6) — on top of {@link appEntry}. */
 export const tableEntry = (...extra: string[]) =>
-  `${appEntry()}import { useTable } from '@bespokecore/react/table';\n${extra.join('')}globalThis.__table = useTable;\n`;
+  `${appEntry()}import { useTable } from '@marmeon/react/table';\n${extra.join('')}globalThis.__table = useTable;\n`;
 
 /** The measured scenarios; `size-budget.json` holds a limit for each. */
 export const SCENARIOS = {
   /** The client core alone. */
   core: coreEntry(),
-  /** An app without a single page (`createBespokeApp`). */
+  /** An app without a single page (`createMarmeonApp`). */
   emptyApp: appEntry(),
   /** Pages with links and forms. */
   minimalApp: appEntry('Link', 'useForm', 'usePage', 'Head'),
-  /** All of `@bespokecore/react` — its main entry: subpaths with optional peers (`./table`, `./table-tanstack`) are not part of it. */
-  everything: `import * as all from '@bespokecore/react';\nglobalThis.__keep = all;\n`,
-  /** An app without pages and the headless table (`@bespokecore/react/table`, W9 step 6, E186: its own limit). */
+  /** All of `@marmeon/react` — its main entry: subpaths with optional peers (`./table`, `./table-tanstack`) are not part of it. */
+  everything: `import * as all from '@marmeon/react';\nglobalThis.__keep = all;\n`,
+  /** An app without pages and the headless table (`@marmeon/react/table`, W9 step 6, E186: its own limit). */
   table: tableEntry(),
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
@@ -417,7 +417,7 @@ export const RESERVE_KB = 0.5;
 export const SHRINK_KB = 0.6;
 /** The rule, for the messages. */
 export const BUDGET_RULE =
-  `E75/E186: limits only go down; a limit is the measured size + ${RESERVE_KB} KB at most — BESPOKE_SIZE_BUDGET=update lowers it ` +
+  `E75/E186: limits only go down; a limit is the measured size + ${RESERVE_KB} KB at most — MARMEON_SIZE_BUDGET=update lowers it ` +
   'to that after a saving and never raises one; extra cost eats the reserve, which is never refilled';
 
 export const kb = (bytes: number): number => Math.round((bytes / 1024) * 100) / 100;
@@ -428,7 +428,7 @@ export function limitFor(size: number): number {
 }
 
 /**
- * What `BESPOKE_SIZE_BUDGET=update` writes for a size of `size` KB: its {@link limitFor} when that is lower than the line's limit,
+ * What `MARMEON_SIZE_BUDGET=update` writes for a size of `size` KB: its {@link limitFor} when that is lower than the line's limit,
  * otherwise `undefined` — the limit stays (a ceiling is never moved, and no limit ever goes up).
  */
 export function loweredLimit(size: number, line: BudgetLine): number | undefined {
@@ -448,7 +448,7 @@ export function budgetProblem(name: string, size: number, line: BudgetLine): str
   if (!line.ceiling && size < Math.round((line.limit - SHRINK_KB) * 100) / 100) {
     return (
       `${name} shrank to ${size} KB gzip, more than ${SHRINK_KB} KB under its limit of ${line.limit} KB — lower it in ${BUDGET_WHERE} ` +
-      `to ${limitFor(size).toFixed(2)} so the gain is kept (or run with BESPOKE_SIZE_BUDGET=update; ${BUDGET_RULE}).`
+      `to ${limitFor(size).toFixed(2)} so the gain is kept (or run with MARMEON_SIZE_BUDGET=update; ${BUDGET_RULE}).`
     );
   }
   return undefined;

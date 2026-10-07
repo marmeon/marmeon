@@ -94,7 +94,7 @@ describe('injection warnings in the log (E128)', () => {
 });
 
 /**
- * The build phase (E187): what `bespoke build` needs of the app — every provider registered, none booted, and the configuration
+ * The build phase (E187): what `marmeon build` needs of the app — every provider registered, none booted, and the configuration
  * that does not validate (the runtime secrets) left out instead of failing. Two measures, each with its own scenario: a boot
  * that would connect (here: one that records itself) and a configuration that cannot validate without `.env`.
  */

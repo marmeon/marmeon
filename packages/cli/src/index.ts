@@ -5,4 +5,4 @@ export type { DevProcess } from './dev.ts';
 export { Output } from './output.ts';
 export { CliServiceProvider } from './provider.ts';
 export { run } from './main.ts';
-export { spawnBespoke, startBespoke } from './spawn.ts';
+export { spawnMarmeon, startMarmeon } from './spawn.ts';

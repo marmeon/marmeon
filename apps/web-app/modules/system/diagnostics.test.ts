@@ -1,9 +1,9 @@
 import { UserRepository, type User } from '#modules/auth';
-import { EventDispatcher, Logger, type LogContext } from '@bespokecore/core';
-import { channels, type ChannelName, type DbQueryMessage, type HttpRequestMessage, type LiveRefreshMessage, type MailSendMessage, type NotificationSendMessage, type QueueJobMessage } from '@bespokecore/core/diagnostics';
-import { Database, sql } from '@bespokecore/database';
-import { ScheduledTaskFailed } from '@bespokecore/scheduler';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { EventDispatcher, Logger, type LogContext } from '@marmeon/core';
+import { channels, type ChannelName, type DbQueryMessage, type HttpRequestMessage, type LiveRefreshMessage, type MailSendMessage, type NotificationSendMessage, type QueueJobMessage } from '@marmeon/core/diagnostics';
+import { Database, sql } from '@marmeon/database';
+import { ScheduledTaskFailed } from '@marmeon/scheduler';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { WARM_UP_TIMEOUT, warmUp } from '../auth/warm-up.ts';

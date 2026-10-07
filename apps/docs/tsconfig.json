@@ -7,7 +7,7 @@
     "types": [
       "node",
       "vite/client",
-      "@bespokecore/vite/client"
+      "@marmeon/vite/client"
     ]
   },
   "include": [

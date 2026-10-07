@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigDefinition, type InferOutput, type StandardSchemaV1 } from '@bespokecore/core';
+import { defineConfig, type ConfigDefinition, type InferOutput, type StandardSchemaV1 } from '@marmeon/core';
 import * as v from 'valibot';
 import type { Disk, PrivateDisk, PublicDisk, Visibility } from './disk.ts';
 
@@ -73,7 +73,7 @@ const NO_ENV = v.object({});
  *     s3: { driver: 's3', bucket: env.S3_BUCKET, region: env.S3_REGION },
  *   }),
  * });
- * declare module '@bespokecore/storage' { interface StorageTypes { storage: typeof Storage } }
+ * declare module '@marmeon/storage' { interface StorageTypes { storage: typeof Storage } }
  * ```
  *
  * Without a definition the app has `local` (private, `storage/app/private`) and `public` (`storage/app/public` under
@@ -116,7 +116,7 @@ export const DEFAULT_STORAGE: StorageOptions = {
  * The app's storage, for typed disk names (declaration merging):
  *
  * ```ts
- * declare module '@bespokecore/storage' { interface StorageTypes { storage: typeof Storage } }
+ * declare module '@marmeon/storage' { interface StorageTypes { storage: typeof Storage } }
  * ```
  *
  * Then `storage.disk('pubic')` is a type error, and `url()` on a private disk too.

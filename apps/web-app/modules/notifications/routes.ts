@@ -1,5 +1,5 @@
-import { authenticate, verified } from '@bespokecore/auth';
-import { defineRoutes } from '@bespokecore/http';
+import { authenticate, verified } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
 import { DeleteNotificationController } from './controllers/DeleteNotificationController.ts';
 import { MarkAllNotificationsReadController } from './controllers/MarkAllNotificationsReadController.ts';
 import { MarkNotificationReadController } from './controllers/MarkNotificationReadController.ts';

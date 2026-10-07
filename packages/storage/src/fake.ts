@@ -1,4 +1,4 @@
-import type { Container } from '@bespokecore/core';
+import type { Container } from '@marmeon/core';
 import type { CheckDiskName, DefaultDiskName, DiskFor, DiskNameInput, DiskOptions } from './config.ts';
 import type { Disk } from './disk.ts';
 import type { MemoryDisk } from './drivers/memory.ts';

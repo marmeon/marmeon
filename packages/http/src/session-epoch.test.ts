@@ -1,4 +1,4 @@
-import { EncryptionConfig, generateKey } from '@bespokecore/encryption';
+import { EncryptionConfig, generateKey } from '@marmeon/encryption';
 import { describe, expect, it } from 'vitest';
 import { SessionEpoch } from './session-epoch.ts';
 

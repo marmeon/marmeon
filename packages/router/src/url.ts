@@ -1,7 +1,7 @@
 /**
  * Building URLs for named routes — the one code path behind `Router.url()`, signed URLs and the
  * browser's `route()`. Free of imports and server code: the browser loads it through
- * `@bespokecore/http/page` (as `@bespokecore/router/url`).
+ * `@marmeon/http/page` (as `@marmeon/router/url`).
  */
 
 /** A value for a path parameter: `{ user: 7 }` or `{ user: 'ada' }`. */

@@ -1,9 +1,9 @@
-import { createApplication, defineModule, listen, type Container } from '@bespokecore/core';
-import { DatabaseServiceProvider, Migrator } from '@bespokecore/database';
-import { Encrypter, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@bespokecore/http';
-import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
-import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@bespokecore/session';
+import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { DatabaseServiceProvider, Migrator } from '@marmeon/database';
+import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { ClientHistory, Controller, NO_REQUEST_INFO, defineRoutes, HttpServiceProvider, type HttpContext } from '@marmeon/http';
+import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
+import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   Auth,
@@ -211,7 +211,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
       }
       return response;
     };
-    return { send, cookie: () => (jar.has('bespoke_session') ? `bespoke_session=${jar.get('bespoke_session')}` : ''), jar };
+    return { send, cookie: () => (jar.has('marmeon_session') ? `marmeon_session=${jar.get('marmeon_session')}` : ''), jar };
   };
   return { application, users, add, browser, kernel, store: application.container.make(SessionStore) };
 }
@@ -234,7 +234,7 @@ describe('Auth (session guard)', () => {
     const { add, browser, store, application } = await boot();
     await add(ada);
     const { send, cookie } = browser();
-    const sessionId = (header: string) => application.container.make(Encrypter).decrypt(decodeURIComponent(header.split('=')[1]!), 'cookie:bespoke_session');
+    const sessionId = (header: string) => application.container.make(Encrypter).decrypt(decodeURIComponent(header.split('=')[1]!), 'cookie:marmeon_session');
     const before = (await (await send('/token')).json()) as { token: string };
     const planted = cookie();
     await login(send);
@@ -443,7 +443,7 @@ describe('remember me (E26)', () => {
     const reopened = browser(new Map([['remember_web', first!]]));
     expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true });
     expect(reopened.jar.get('remember_web')).not.toBe(first); // rotated
-    expect(reopened.jar.has('bespoke_session')).toBe(true); // and a session again
+    expect(reopened.jar.has('marmeon_session')).toBe(true); // and a session again
     expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true }); // from the session now
   });
 

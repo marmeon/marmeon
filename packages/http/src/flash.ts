@@ -12,7 +12,7 @@ export interface FlashEntry {
   readonly key: string;
   readonly data: unknown;
   /**
-   * The document whose request flashed it (E165, `x-bespoke-document` — the tabSync feature names it): only a request of that
+   * The document whose request flashed it (E165, `x-marmeon-document` — the tabSync feature names it): only a request of that
    * document, or one naming none (a full page load), takes it. Never sent to the browser.
    */
   readonly document?: string;

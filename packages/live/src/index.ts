@@ -1,7 +1,7 @@
 import cluster from 'node:cluster';
-import { Application, CLUSTER_WORKER, Logger, token, type Container, type Resolver, type ServiceProvider } from '@bespokecore/core';
-import { EncryptionConfig } from '@bespokecore/encryption';
-import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@bespokecore/http';
+import { Application, CLUSTER_WORKER, Logger, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { EncryptionConfig } from '@marmeon/encryption';
+import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { LiveConfig } from './config.ts';
@@ -32,7 +32,7 @@ export { BroadcastRecorder } from './recorder.ts';
 export type { RecordedRefresh } from './recorder.ts';
 export { LiveStreamReader } from './test-stream.ts';
 export type { LiveEvent } from './test-stream.ts';
-export { CONNECTION_HEADER, LIVE_PATH } from '@bespokecore/http';
+export { CONNECTION_HEADER, LIVE_PATH } from '@marmeon/http';
 
 /** Where this app's hints travel — `memory` or `redis` (`LIVE_DRIVER`). */
 export type LiveBackend = Backend;
@@ -83,13 +83,13 @@ function connectionOf(container: Resolver): string | undefined {
   }
 }
 
-type RedisModule = typeof import('@bespokecore/redis');
+type RedisModule = typeof import('@marmeon/redis');
 
 /**
- * Registers the `Broadcaster`, the signer of `PageObject.live` (E90), the stream endpoint `GET /_bespoke/live` (web group,
- * read-only) and the pub/sub backend (`LIVE_DRIVER`); closes the streams of a session that ended (with @bespokecore/session),
- * adds the notifications' `live` channel (with @bespokecore/notifications) and closes every stream when the server or the app
- * stops. Found by `bespoke discover`.
+ * Registers the `Broadcaster`, the signer of `PageObject.live` (E90), the stream endpoint `GET /_marmeon/live` (web group,
+ * read-only) and the pub/sub backend (`LIVE_DRIVER`); closes the streams of a session that ended (with @marmeon/session),
+ * adds the notifications' `live` channel (with @marmeon/notifications) and closes every stream when the server or the app
+ * stops. Found by `marmeon discover`.
  */
 export class LiveServiceProvider implements ServiceProvider {
   static config = [LiveConfig];
@@ -106,7 +106,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const config = c.make(LiveConfig);
       if (config.driver === 'memory') return new MemoryLiveBackend();
       const redis = this.#redis;
-      if (!redis) throw new LiveSetupError('LIVE_DRIVER=redis needs @bespokecore/redis (pnpm add @bespokecore/redis redis; bespoke discover).');
+      if (!redis) throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis (pnpm add @marmeon/redis redis; marmeon discover).');
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
@@ -117,7 +117,7 @@ export class LiveServiceProvider implements ServiceProvider {
     // Signs the channels a page follows for the session of its request (E90).
     // A read-only request (an island) cannot keep a session for the signature: a guest without one gets no subscription there.
     container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c, true), () => readOnlyRequest(c)));
-    // Per resolution: in a request it knows the tab that sent it (x-bespoke-connection); in a job or a command, none.
+    // Per resolution: in a request it knows the tab that sent it (x-marmeon-connection); in a job or a command, none.
     container.bind(Broadcaster, (c) => {
       const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
       return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application) });
@@ -128,18 +128,18 @@ export class LiveServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     const { container } = app;
     const config = container.make(LiveConfig);
-    // A worker of `bespoke start --workers=N` (E140): with the memory backend a hint reaches the streams of its own worker only,
+    // A worker of `marmeon start --workers=N` (E140): with the memory backend a hint reaches the streams of its own worker only,
     // and a stream that reconnects to another worker compares its sequences with another counter — live updates would go
     // missing without a sound. The start fails instead (W9 step 4).
     if (config.driver === 'memory' && process.env[CLUSTER_WORKER] === '1' && cluster.isWorker) {
       throw new LiveSetupError(
-        'LIVE_DRIVER=memory cannot serve bespoke start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @bespokecore/redis), or start one process without --workers.',
+        'LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
       );
     }
     if (config.driver === 'redis') {
-      this.#redis = await importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis');
+      this.#redis = await importOptional(() => import('@marmeon/redis'), '@marmeon/redis');
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
-        throw new LiveSetupError('LIVE_DRIVER=redis needs @bespokecore/redis and its provider (pnpm add @bespokecore/redis redis; bespoke discover).');
+        throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add @marmeon/redis redis; marmeon discover).');
       }
       // An unknown connection name fails the start, with the known ones.
       container.make(this.#redis.RedisConnections).options(config.redisConnection);
@@ -156,7 +156,7 @@ export class LiveServiceProvider implements ServiceProvider {
     );
 
     // Signed in or out (the session's id regenerated): the streams of the old session close — in every process.
-    const session = await importOptional(() => import('@bespokecore/session'), '@bespokecore/session');
+    const session = await importOptional(() => import('@marmeon/session'), '@marmeon/session');
     if (session && container.has(session.SessionEndings)) {
       const logger = container.make(Logger).child({ channel: 'live' });
       container.make(session.SessionEndings).listen(async (scope) => {
@@ -169,7 +169,7 @@ export class LiveServiceProvider implements ServiceProvider {
     }
 
     // Notifications (E92): the `live` channel — a hint on the recipient's channel once the delivery committed.
-    const notifications = await importOptional(() => import('@bespokecore/notifications'), '@bespokecore/notifications');
+    const notifications = await importOptional(() => import('@marmeon/notifications'), '@marmeon/notifications');
     if (notifications && container.has(notifications.NotificationChannels)) {
       container.make(notifications.NotificationChannels).add('live', (scope) => new LiveChannel(scope.make(Broadcaster)));
     }

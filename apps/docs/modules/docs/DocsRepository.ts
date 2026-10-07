@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
-import type { RouteBinder } from '@bespokecore/http';
+import type { RouteBinder } from '@marmeon/http';
 import docsConfig, { GUIDES_GROUP, PACKAGES, type DocsDefinition, type DocsGuide } from '../../docs.config.ts';
 import { createCodeHighlighter, type CodeHighlighter } from './highlight.ts';
 import { renderMarkdown, type RenderedMarkdown } from './markdown.ts';
@@ -187,7 +187,7 @@ export class DocsRepository implements RouteBinder<DocPage> {
           name,
           path: pageOf(file)!,
           file,
-          title: rendered.title || (kind === 'package' ? `@bespokecore/${name}` : kind === 'guide' ? name! : 'BespokeCore'),
+          title: rendered.title || (kind === 'package' ? `@marmeon/${name}` : kind === 'guide' ? name! : 'Marmeon'),
           group,
           body: rendered.body,
           toc: rendered.toc,

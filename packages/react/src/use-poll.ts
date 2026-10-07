@@ -1,4 +1,4 @@
-import { createPoll, type Poll } from '@bespokecore/http/client';
+import { createPoll, type Poll } from '@marmeon/http/client';
 import { useEffect, useMemo, useRef } from 'react';
 import { useRouterContext, type ReloadOptions } from './app.tsx';
 

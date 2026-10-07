@@ -1,9 +1,9 @@
-import { html, raw, type Html } from '@bespokecore/core';
+import { html, raw, type Html } from '@marmeon/core';
 import type { EntryType } from '../entry.ts';
 import { SCRIPT, STYLE } from './assets.ts';
 
 /** Where the pages live. */
-export const BASE = '/_bespoke/devtools';
+export const BASE = '/_marmeon/devtools';
 
 /** Each entry type's list, by its path segment. */
 export const SLUGS: Readonly<Record<EntryType, string>> = {
@@ -56,7 +56,7 @@ export interface LayoutOptions {
   readonly current?: EntryType | 'overview' | 'queue';
   /** The store's usage, for the header. */
   readonly usage?: { readonly bytes: number; readonly entries: number };
-  /** Whether the app has mail previews (`/_bespoke/mail`) — linked in the navigation. */
+  /** Whether the app has mail previews (`/_marmeon/mail`) — linked in the navigation. */
   readonly mailPreviews?: boolean;
 }
 
@@ -74,7 +74,7 @@ export function layout(options: LayoutOptions, content: Html): string {
 <style>${raw(STYLE)}</style>
 </head>
 <body>
-<header class="top"><a class="brand" href="${BASE}">BespokeCore devtools</a><span class="dev">development only</span>${
+<header class="top"><a class="brand" href="${BASE}">Marmeon devtools</a><span class="dev">development only</span>${
     options.usage ? html`<span class="usage">${options.usage.entries} entries · ${megabytes(options.usage.bytes)}</span>` : ''
   }</header>
 <nav class="types" aria-label="Devtools">
@@ -83,7 +83,7 @@ ${NAV_TYPES.map((type) => nav(type, `/${SLUGS[type]}`, TITLES[type]))}
 <span class="sep" aria-hidden="true"></span>
 ${nav('queue', '/queue', 'Queue')}
 ${nav('schedule', '/schedule', 'Schedule')}
-${options.mailPreviews ? html`<a href="/_bespoke/mail">Mail previews</a>` : ''}
+${options.mailPreviews ? html`<a href="/_marmeon/mail">Mail previews</a>` : ''}
 </nav>
 <main>
 ${content}

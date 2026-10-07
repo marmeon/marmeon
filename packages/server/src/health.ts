@@ -1,6 +1,6 @@
-import { Clock, HealthChecks, Redactor, type Application, type Container, type HealthReport } from '@bespokecore/core';
-import { ServerClosing } from '@bespokecore/http';
-import type { RouteDefinition } from '@bespokecore/router';
+import { Clock, HealthChecks, Redactor, type Application, type Container, type HealthReport } from '@marmeon/core';
+import { ServerClosing } from '@marmeon/http';
+import type { RouteDefinition } from '@marmeon/router';
 
 /**
  * The health endpoints (E126), answered by the kernel before anything else runs for a request — no request id, no session, no

@@ -1,13 +1,13 @@
-import type { Container, Resolver } from '@bespokecore/core';
-import { HttpError, type ClassResolver, type HttpContext, type RequestDefinition, type StandardSchemaV1 } from '@bespokecore/router';
+import type { Container, Resolver } from '@marmeon/core';
+import { HttpError, type ClassResolver, type HttpContext, type RequestDefinition, type StandardSchemaV1 } from '@marmeon/router';
 import { RejectedUpload } from './temporary-upload.ts';
 import { uploadFields } from './rule.ts';
 import type { TemporaryUploads } from './service.ts';
 
-type Http = typeof import('@bespokecore/http');
+type Http = typeof import('@marmeon/http');
 
-/** Where the bytes of a local (or memory) upload go: `PUT /_bespoke/uploads/<id>?expires=…&signature=…`. */
-export const UPLOADS_PREFIX = '/_bespoke/uploads';
+/** Where the bytes of a local (or memory) upload go: `PUT /_marmeon/uploads/<id>?expires=…&signature=…`. */
+export const UPLOADS_PREFIX = '/_marmeon/uploads';
 
 /** A field path an upload target may name (`avatar`, `profile.photo`). */
 const FIELD = /^[\w-]{1,100}(?:\.[\w-]{1,100}){0,9}$/;
@@ -41,10 +41,10 @@ function locate(input: Record<string, unknown>, path: string): { holder: Record<
 /**
  * Wires uploads into the router (W6.9):
  *
- * 1. **The target** — the form's own route, its method and URL, with `x-bespoke-upload: <field>`: the route's middleware,
+ * 1. **The target** — the form's own route, its method and URL, with `x-marmeon-upload: <field>`: the route's middleware,
  *    bindings and `authorize` run (who may send the form may upload its files, by the same rules), its controller does not;
  *    the field's `upload()` rule decides the limit. No such rule: 404.
- * 2. **The bytes** — `PUT /_bespoke/uploads/<id>` behind a signature, for the session the target was made for.
+ * 2. **The bytes** — `PUT /_marmeon/uploads/<id>` behind a signature, for the session the target was made for.
  * 3. **The submit** — before the body schema runs, every upload field's token is replaced by the verified upload (or why it
  *    is refused), which the `upload()` rule then checks.
  */
@@ -61,7 +61,7 @@ export function registerUploads(http: Http, container: Container, uploads: () =>
       if (!rule || !route) throw new HttpError(404);
       const session = sessionScope(http, resolve as (key: unknown) => unknown);
       // A guest's page that lets them upload keeps its session (`session.persist()` in its controller, E143): an upload belongs to one.
-      if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'bespoke.status.419' });
+      if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'marmeon.status.419' });
       const input = await ctx.input();
       const { name, size } = input;
       if (typeof name !== 'string' || typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
@@ -99,7 +99,7 @@ export function registerUploads(http: Http, container: Container, uploads: () =>
     async handle(ctx: HttpContext<{}, { id: string }>): Promise<Response> {
       const session = this.#session();
       // A guest's page that lets them upload keeps its session (`session.persist()` in its controller, E143): an upload belongs to one.
-      if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'bespoke.status.419' });
+      if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'marmeon.status.419' });
       const length = ctx.request.headers.get('content-length');
       const declared = length !== null && /^\d{1,16}$/.test(length) ? Number(length) : undefined;
       const size = await uploads().receive(ctx.params.id, session, ctx.request.body, declared);

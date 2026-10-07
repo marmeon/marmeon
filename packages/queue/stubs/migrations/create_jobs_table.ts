@@ -1,8 +1,8 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
-// The tables of QUEUE_CONNECTION=database (written by `bespoke make:queue-table`): a row per queued job — its record as
+// The tables of QUEUE_CONNECTION=database (written by `marmeon make:queue-table`): a row per queued job — its record as
 // JSON, the attempts so far, when a worker claimed it (null: waiting) and when it may run, all in epoch milliseconds —
-// and a row per failed job, with the error (redacted) that ended it. `bespoke queue:prune-failed` empties the second.
+// and a row per failed job, with the error (redacted) that ended it. `marmeon queue:prune-failed` empties the second.
 export default defineMigration({
   up: async (schema) => {
     await schema.create('jobs', (table) => {

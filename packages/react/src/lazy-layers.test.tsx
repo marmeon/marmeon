@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
-import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject, type RouteManifest } from '@bespokecore/http/page';
+import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject, type RouteManifest } from '@marmeon/http/page';
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 /**
@@ -20,7 +20,7 @@ const HISTORY = [await loadHistoryFallback()];
 
 /** The adapter as a fresh tab has it — and views made with its own hooks (contexts are per module instance). */
 async function freshApp() {
-  const [{ BespokeApp, useRouter }, { createBespokeApp }, { createSsrRenderer }, { Link }, { useLayer }, { resolveModulePages }] = await Promise.all([
+  const [{ MarmeonApp, useRouter }, { createMarmeonApp }, { createSsrRenderer }, { Link }, { useLayer }, { resolveModulePages }] = await Promise.all([
     import('./app.tsx'),
     import('./client.tsx'),
     import('./server.tsx'),
@@ -61,7 +61,7 @@ async function freshApp() {
   }
   const views = { Profile, Linked, Edit };
   const resolve = resolveModulePages(Object.fromEntries(Object.entries(views).map(([name, view]) => [`../modules/app/views/${name}.tsx`, async () => ({ default: view })])));
-  return { BespokeApp, createBespokeApp, createSsrRenderer, resolve };
+  return { MarmeonApp, createMarmeonApp, createSsrRenderer, resolve };
 }
 
 const routes: RouteManifest = { edit: { method: 'get', path: '/users/1/edit' } };
@@ -87,18 +87,18 @@ afterEach(async () => {
 });
 
 const $ = (selector: string) => document.querySelector(selector);
-const dialogs = () => [...document.querySelectorAll('dialog[data-bespoke-layer]')];
+const dialogs = () => [...document.querySelectorAll('dialog[data-marmeon-layer]')];
 const wait = (ms = 20) => act(async () => void (await new Promise((done) => setTimeout(done, ms))));
 const click = (selector: string) => act(async () => ($(selector) as HTMLElement).click());
 /** The development hint that the layers loaded only once the server answered with one (E71). */
-const loadedLate = () => info.mock.calls.filter(([message]) => String(message).includes('[bespoke:C7]'));
+const loadedLate = () => info.mock.calls.filter(([message]) => String(message).includes('[marmeon:C7]'));
 
 async function mount(initial: PageObject) {
-  const { BespokeApp, resolve } = await freshApp();
+  const { MarmeonApp, resolve } = await freshApp();
   const { createRoot } = await import('react-dom/client');
   const Component = await resolve(initial.component);
   root = createRoot($('#app')!);
-  await act(async () => root!.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
+  await act(async () => root!.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 describe('layers loaded on demand in React (E71)', () => {
@@ -139,9 +139,9 @@ describe('layers loaded on demand in React (E71)', () => {
     const server = await freshApp();
     const { html } = await server.createSsrRenderer(server.resolve, { routes })(document_, { complete: true });
     const markup = await new Response(html).text();
-    expect(markup).toContain('data-bespoke-layer="app/Edit"');
+    expect(markup).toContain('data-marmeon-layer="app/Edit"');
 
-    // The browser: fresh modules — nothing of the layers loaded until createBespokeApp loads them.
+    // The browser: fresh modules — nothing of the layers loaded until createMarmeonApp loads them.
     vi.resetModules();
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     history.replaceState(null, '', '/users/1/edit');
@@ -150,11 +150,11 @@ describe('layers loaded on demand in React (E71)', () => {
     const browser = await freshApp();
     const dialog = $('dialog');
     await act(async () => {
-      await browser.createBespokeApp({ resolve: browser.resolve, routes });
+      await browser.createMarmeonApp({ resolve: browser.resolve, routes });
       await new Promise((done) => setTimeout(done, 20));
     });
     expect(errors.mock.calls.filter(([message]) => !String(message).includes('multiple renderers'))).toEqual([]);
-    expect($('[data-bespoke-hydration]')).toBeNull();
+    expect($('[data-marmeon-hydration]')).toBeNull();
     // Hydrated, not rendered again: the server's dialog element is the one on screen — and it is the layer's.
     expect($('dialog')).toBe(dialog);
     expect(loadedLate()).toEqual([]);

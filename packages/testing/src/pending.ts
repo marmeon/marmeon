@@ -1,5 +1,5 @@
 import type { DeepPartial, FieldOf, IslandNameOf, IslandPropsOf, PageNameOf, PageSource, PropsOf, TestResponse } from './response.ts';
-import type { CheckFlashKey, FlashValue, LayerClose, RegionOutcomeStatus } from '@bespokecore/http/page';
+import type { CheckFlashKey, FlashValue, LayerClose, RegionOutcomeStatus } from '@marmeon/http/page';
 
 type Assertions = {
   [K in keyof TestResponse as TestResponse[K] extends (...args: any[]) => TestResponse ? K : never]: TestResponse[K];

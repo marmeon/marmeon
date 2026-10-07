@@ -1,8 +1,8 @@
-# @bespokecore/router
+# @marmeon/router
 
 Routes, invokable controllers with their request definitions (REPR), route model binding, middleware groups and the
 pipeline, typed query strings, URL generation, request input and cookies — the router that
-[@bespokecore/http](../http/README.md) registers and the server kernel dispatches to (Hono matches the URL, this package runs
+[@marmeon/http](../http/README.md) registers and the server kernel dispatches to (Hono matches the URL, this package runs
 the route). It knows no container, no database and no validation library: classes are built through a resolver, records come
 from binders, schemas are [Standard Schema](https://standardschema.dev) (Valibot in the docs and generators, E5).
 
@@ -23,15 +23,15 @@ export default defineRoutes((Route) => {
 });
 ```
 
-Apps import the everyday names from `@bespokecore/http`, which re-exports them: `defineRoutes`, `defineRequest`,
+Apps import the everyday names from `@marmeon/http`, which re-exports them: `defineRoutes`, `defineRequest`,
 `defineMiddleware`, `Router`, `ValidationError`, `translatable`, `abort`, `HttpError` and the types `HttpContext`, `ContextOf`,
-`FormOf`, `QueryOf`, `Next`, `MiddlewareClass`, `RouteBinder`, `RouteName`, `Routes` … Import from `@bespokecore/router` what it
+`FormOf`, `QueryOf`, `Next`, `MiddlewareClass`, `RouteBinder`, `RouteName`, `Routes` … Import from `@marmeon/router` what it
 does not re-export (`MiddlewarePriority`, `GLOBAL`, `parseQuery`, `urlFor`).
 
 ## Registration
 
-The package has no `"bespoke"` field and no provider of its own — it is a library. `HttpServiceProvider` of
-`@bespokecore/http` (found by `bespoke discover`) registers the `Router` as a singleton, sets up the `web` and `api` groups and
+The package has no `"marmeon"` field and no provider of its own — it is a library. `HttpServiceProvider` of
+`@marmeon/http` (found by `marmeon discover`) registers the `Router` as a singleton, sets up the `web` and `api` groups and
 loads every module's routes:
 
 | `defineModule({ … })` | Group | Prefix |
@@ -43,8 +43,8 @@ Two entry points:
 
 | Import | Runs in | What |
 | --- | --- | --- |
-| `@bespokecore/router` | server | everything below |
-| `@bespokecore/router/url` | server **and** browser | `urlFor`, `fillPath`, `toSearchParams`, `matchesPath` — no imports at all; the browser gets them through `@bespokecore/http/page` |
+| `@marmeon/router` | server | everything below |
+| `@marmeon/router/url` | server **and** browser | `urlFor`, `fillPath`, `toSearchParams`, `matchesPath` — no imports at all; the browser gets them through `@marmeon/http/page` |
 
 ## Configuration
 
@@ -55,9 +55,9 @@ No config class and no environment variable of its own. What shapes it:
 - **What the browser may learn** — `defineApplication({ clientRoutes: { include, except } })`: by default the named `web`
   routes, API routes only when listed in `include`, `except` wins over both (`*` matches anything: `except: ['admin.*']`),
   `.internal()` routes never. Of these, a client build ships only the names its code writes out (E57, see
-  [@bespokecore/vite](../vite/README.md#the-route-manifest-e57)). The server knows every route either way.
+  [@marmeon/vite](../vite/README.md#the-route-manifest-e57)). The server knows every route either way.
 - **Request bodies and addresses** — `MAX_BODY_SIZE` (default `8m`; bytes or `512k`, `8m`, `1g`) and `TRUSTED_PROXIES`
-  (addresses or CIDR ranges, comma-separated, or `*`) of [@bespokecore/server](../server/README.md#configuration)'s
+  (addresses or CIDR ranges, comma-separated, or `*`) of [@marmeon/server](../server/README.md#configuration)'s
   `ServerConfig`; the kernel hands them to `createRequestState` (`maxBodySize`, `ip`), with the request's `RequestNonce` and the
   cookie defaults (`cookies: CookieDefaults`, E162). Without a server, `DEFAULT_MAX_BODY_SIZE` (8 MiB) applies.
 
@@ -79,22 +79,22 @@ export default defineRoutes((Route) => {
   `group((Route) => { … })` to write them once for a block.
 - **Names** are an API (redirects, links, `<Link route>`): a name used twice is a boot error naming both routes.
   `name('show')` in `name('profile.')` is `profile.show`.
-- **`.internal()`** — on a route or a registrar — keeps a route out of the browser for good: `bespoke route:types` marks it
+- **`.internal()`** — on a route or a registrar — keeps a route out of the browser for good: `marmeon route:types` marks it
   `browser: false`, naming it in client code is a compile error, and it never enters the browser's manifest. For links only
   the server builds, like the signed verification link it mails:
   `signedIn.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal()`.
 - **`.block(lockSeconds = 10, waitSeconds = lockSeconds)`** — on a route — runs its requests one at a time per session (Laravel's
-  `block()`, E145): `StartSession` of [@bespokecore/session](../session/README.md#blocking-routes-block) holds the session's lock
+  `block()`, E145): `StartSession` of [@marmeon/session](../session/README.md#blocking-routes-block) holds the session's lock
   (through the cache) from before it reads the session until it saved it; a request that waits longer answers 423.
   `RouteDefinition.blocking` says what a route asked for.
 - **What the types refuse** (and the router at boot, for code they did not check): a GET route whose controller validates a
   body (E65: validate its URL with `query`), a route of another method whose controller answers `this.island(…)` (E52:
   islands only read), a `bind('user', …)` without a `:user` in the path.
-- **`bespoke route:types`** writes `bootstrap/routes.ts` — `declare module '@bespokecore/router' { interface Routes { … } }`
+- **`marmeon route:types`** writes `bootstrap/routes.ts` — `declare module '@marmeon/router' { interface Routes { … } }`
   with each route's method, path and controller — which types every API that takes a route name: `router.url()`,
-  `this.redirect().route()`, signed URLs, `<Link route>`, `useForm(name, …)`. `bespoke dev` and `bespoke build` run it; CI checks
+  `this.redirect().route()`, signed URLs, `<Link route>`, `useForm(name, …)`. `marmeon dev` and `marmeon build` run it; CI checks
   it with `--check`. It reads the routes of an app that registered and booted nothing (E187: no `.env`, no key needed) — a module's
-  `routes` are loaded while the http provider registers; routes a provider loads in `boot()` are not in it. `bespoke route:list` prints method, path, name, group, middleware (in the order they run) and action.
+  `routes` are loaded while the http provider registers; routes a provider loads in `boot()` are not in it. `marmeon route:list` prints method, path, name, group, middleware (in the order they run) and action.
 
 ## Controllers and requests
 
@@ -129,7 +129,7 @@ A request runs in this order, and the controller is built only when everything b
 1. global, group and route middleware (authentication answers before a 404 could tell what exists);
 2. route bindings — a missing record is a 404;
 3. `authorize(ctx, resolve)` — `false` is a 403 (or it throws its own `HttpError`); `resolve` builds classes from the request's
-   scope, which is how `can(Policy, …)` of [@bespokecore/auth](../auth/README.md#authorization-policies-and-the-gate-e28) gets its
+   scope, which is how `can(Policy, …)` of [@marmeon/auth](../auth/README.md#authorization-policies-and-the-gate-e28) gets its
    policy (E28);
 4. the query, parsed by `query` — never fails (see [Query schemas](#query-schemas-e55-e56));
 5. the body, validated by `schema` — a 422 `ValidationError` with the errors per field (`address.city` for nested ones);
@@ -143,10 +143,10 @@ A request runs in this order, and the controller is built only when everything b
   `QueryOf<typeof Controller>` the parsed query. `handle`'s context is checked against what the route provides: a controller
   that needs `ctx.user` on a route without the authentication middleware is a compile error.
 - **Messages** may be translation keys: `translatable(key, params, fallback)` (apps use the typed `trans()` of
-  [@bespokecore/i18n](../i18n/README.md)) leaves the key on the issue, and the exception handler shows it in the request's language
+  [@marmeon/i18n](../i18n/README.md)) leaves the key on the issue, and the exception handler shows it in the request's language
   (`ValidationError.translate`).
 - The base class `Controller` (`this.view()`, `this.json()`, `this.redirect()`, `this.island()`, `this.closeLayer()`) and what a
-  result becomes are [@bespokecore/http](../http/README.md)'s.
+  result becomes are [@marmeon/http](../http/README.md)'s.
 
 ## Query schemas (E55, E56)
 
@@ -158,7 +158,7 @@ export const ListPeopleRequest = defineRequest({
   query: v.object({
     q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
     sort: v.optional(v.picklist(PEOPLE_SORTS), 'name'),
-    ...pageQuery({ perPage: [10, 25, 50] }),   // @bespokecore/database: ?page= and ?per_page=, for paginate(…, ctx.query) and <Pagination>
+    ...pageQuery({ perPage: [10, 25, 50] }),   // @marmeon/database: ?page= and ?per_page=, for paginate(…, ctx.query) and <Pagination>
   }),
 });
 // handle(ctx: ContextOf<typeof ListPeopleRequest>) — ctx.query: { q: string; sort: 'name' | '-name' | …; page: number; per_page: 10 | 25 | 50 }
@@ -173,13 +173,13 @@ export const ListPeopleRequest = defineRequest({
   what `toSearchParams` writes for a list, and what the browser sends for a list in a GET's `data` (`reload({ data: { tag:
   ['a', 'b'] } })`, since Wave 9; before, `?tag=a%2Cb`); unknown keys are ignored; `__proto__` is no key. `/people?sort=DROP
   TABLE` is the list by name, 200. A schema that **throws** instead of reporting an issue stops the request with its error —
-  what the keys of a server-driven table do on purpose ([@bespokecore/table](../table/README.md#the-url--strict-on-purpose):
+  what the keys of a server-driven table do on purpose ([@marmeon/table](../table/README.md#the-url--strict-on-purpose):
   an unknown sort, filter or page size is a 400, W9).
 - **`queryOptions: { onInvalid: 'redirect' }`**: a GET with an invalid or unknown field is answered `302` to its canonical
   URL — only the valid fields that differ from their defaults — so the address bar shows what the page shows. Other methods
   always fall back. Default `'fallback'`.
 - **The page object** gets the parsed query without defaults (`PageObject.query`) and the defaults (`queryDefaults`): the
-  browser never parses a URL (`useQueryState`, `<Link query>` — see [@bespokecore/http](../http/README.md#the-protocol)).
+  browser never parses a URL (`useQueryState`, `<Link query>` — see [@marmeon/http](../http/README.md#the-protocol)).
 - Without a query schema, `ctx.query` stays the raw `URLSearchParams`.
 
 ## Route model binding
@@ -193,7 +193,7 @@ users.bind('user', ProfileDirectory).get('/:user', ShowUserProfileController).na
 ```
 
 - **A binder** is any injectable class with `resolveRouteBinding(value, { ctx, scope })` (`RouteBinder<T>`), built per request.
-  Repositories of [@bespokecore/database](../database/README.md) are binders: the row whose `routeKey` (default `id`, digits
+  Repositories of [@marmeon/database](../database/README.md) are binders: the row whose `routeKey` (default `id`, digits
   only — `routeKeyPattern` for another) is the value. A repository's `static table` must match the table it is typed for.
 - **Scoped** (`{ scopedBy: 'team', column?: 'team_id' }`): the child is looked up *within* its already resolved parent
   (`column` defaults to `<parent>_id`) — another parent's id is a 404, so an insecure direct object reference cannot happen by
@@ -224,7 +224,7 @@ const requireAdmin = defineMiddleware<EmptyObject, { user: User }>('admin', (ctx
 
 ### Adding headers to the response — `editableResponse`
 
-A middleware that adds a header takes the response through `editableResponse` (also exported by @bespokecore/http):
+A middleware that adds a header takes the response through `editableResponse` (also exported by @marmeon/http):
 
 ```ts
 export class SecurityHeaders {
@@ -269,14 +269,14 @@ were sorted on every request):
 | `limitLiveValidation` | 1100 | `LimitLiveValidation` ([cache](../cache/README.md)) — the last of the **global** stack |
 
 The rest are in `web`. `GLOBAL` (`'global'`) names the global stack. Rate limits are middleware of
-[@bespokecore/cache](../cache/README.md) — `Route.middleware(throttle('register')).post(…)` with a limiter defined by
-`RateLimiter.for(…)`; `signed()` (a valid, unexpired signature or 403) is [@bespokecore/http](../http/README.md)'s.
+[@marmeon/cache](../cache/README.md) — `Route.middleware(throttle('register')).post(…)` with a limiter defined by
+`RateLimiter.for(…)`; `signed()` (a valid, unexpired signature or 403) is [@marmeon/http](../http/README.md)'s.
 
 ## Live validation (E62)
 
-A form's own request — same method, URL and body — with `x-bespoke-validate: name,email` runs the route as far as its
+A form's own request — same method, URL and body — with `x-marmeon-validate: name,email` runs the route as far as its
 validation: middleware (CSRF, authentication, throttling), bindings, `authorize` and the request schema. Its controller is
-never built. The answer is `204`, or `422` with the named fields' errors only — both with `x-bespoke-validated: name,email`
+never built. The answer is `204`, or `422` with the named fields' errors only — both with `x-marmeon-validated: name,email`
 and `no-store`. Issues of fields not named are dropped (they are not filled in yet), and so are issues of the whole body.
 
 - Field names are paths (`email`, `address.city`, `links.0.url`), at most 64 per request; unusable ones are left out. A
@@ -302,7 +302,7 @@ list repeats its key.
 
 `urlFor(lookup, name, params, query)` is the one code path behind `router.url()`, signed URLs and the browser's `route()` —
 any `{ findByName }` works, the router or the browser's manifest. Signed URLs (`UrlSigner.signedRoute`,
-`temporarySignedRoute`, `signedPath`) are [@bespokecore/http](../http/README.md)'s.
+`temporarySignedRoute`, `signedPath`) are [@marmeon/http](../http/README.md)'s.
 
 ## Request input and cookies
 
@@ -316,14 +316,14 @@ Every context has the raw `request`, its `route`, `params` and:
   whatever `Content-Length` says), malformed JSON a 400.
 - **`ctx.query`** — the `URLSearchParams`, or the parsed query behind a query schema.
 - **`ctx.ip`** — the client's address: the right-most `X-Forwarded-For` entry that is not a trusted proxy (`clientIp`; the
-  server's `TRUSTED_PROXIES` with ranges, [@bespokecore/server](../server/README.md#behind-a-proxy-e162)).
+  server's `TRUSTED_PROXIES` with ranges, [@marmeon/server](../server/README.md#behind-a-proxy-e162)).
 - **`ctx.nonce()`** — the response's CSP nonce (E147): made on the first call, the same for the whole response — for HTML a
-  controller writes itself under `contentSecurityPolicy()` ([@bespokecore/http](../http/README.md#content-security-policy-e147)).
+  controller writes itself under `contentSecurityPolicy()` ([@marmeon/http](../http/README.md#content-security-policy-e147)).
 - **`ctx.expectsJson()`** — JSON is the first accepted type, or an XHR that accepts anything (Laravel's).
 - **`ctx.cookies`** — a `CookieJar`: `get`, `has`, `all` read what the client sent; `set(name, value, options)` and
   `delete(name, { path, domain })` queue cookies for whatever response the request ends with — a view, a redirect or an
   error page. Defaults: `Path=/`, `HttpOnly`, `SameSite=Lax`, a session cookie, `Secure` as the jar's defaults say (with
-  `@bespokecore/session`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`, E162 — `secure: false` opts out); `sameSite:
+  `@marmeon/session`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`, E162 — `secure: false` opts out); `sameSite:
   'none'` requires `secure`. In the
   `web` group `EncryptCookies` installs a codec, so values are encrypted on the wire; read-only requests (an island) lock the
   jar, and a `set` there is refused.
@@ -331,24 +331,24 @@ Every context has the raw `request`, its `route`, `params` and:
 ## Errors
 
 - **`abort(404)`**, `abort(403, 'Not yours.')` — throws an `HttpError(status, message?, headers?, translation?)`. Its message
-  is meant for the client; without one, the status text and the key `bespoke.status.<status>` (translated when a translator
+  is meant for the client; without one, the status text and the key `marmeon.status.<status>` (translated when a translator
   is bound). Controllers and middleware alike may throw it.
 - **`ValidationError`** (422): `errors` (`{ field: [messages] }`), `input` (for the old input), `issues`;
   `ValidationError.fromIssues(issues, input)`; the message is the first error plus a count.
 - `statusText(404)` → `Not Found`. How errors are rendered (pages, JSON, the development error page) is the exception handler's,
-  in [@bespokecore/http](../http/README.md) and [@bespokecore/server](../server/README.md#error-page-e119--development-only).
+  in [@marmeon/http](../http/README.md) and [@marmeon/server](../server/README.md#error-page-e119--development-only).
 
 ## For packages
 
 - `router.beforeValidation(hook)` — runs before every body schema (after `authorize`; a submit and a live validation alike)
-  and may replace input values: `@bespokecore/storage` puts a verified upload in place of its token.
+  and may replace input values: `@marmeon/storage` puts a verified upload in place of its token.
 - `router.intercept({ claims, answer })` — answers requests it claims in the route's place, after the route's middleware,
-  bindings and `authorize`; the controller is never built. Upload targets (`x-bespoke-upload`) are answered this way.
+  bindings and `authorize`; the controller is never built. Upload targets (`x-marmeon-upload`) are answered this way.
 - `router.load({ group, prefix }, ...definitions)` — loads route files into a group (what the http provider does per module).
 
 ## Testing
 
-`createTestApp` of [@bespokecore/testing](../testing/README.md#requests) sends requests through the whole kernel:
+`createTestApp` of [@marmeon/testing](../testing/README.md#requests) sends requests through the whole kernel:
 
 ```ts
 const app = await createTestApp(application, { database: 'refresh', seed: true });

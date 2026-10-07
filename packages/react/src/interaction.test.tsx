@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
-import { PAGE_HEADER, type FlashMessage, type PageObject, type RouteManifest } from '@bespokecore/http/page';
+import { PAGE_HEADER, type FlashMessage, type PageObject, type RouteManifest } from '@marmeon/http/page';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp } from './app.tsx';
+import { MarmeonApp } from './app.tsx';
 import { ConfirmDialog } from './confirm.tsx';
 import { useFlash } from './flash.ts';
 import { Link } from './link.tsx';
@@ -12,9 +12,9 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { usePending } from './state.ts';
 import { useAction } from './use-action.ts';
 import { useForm } from './use-form.ts';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -134,7 +134,7 @@ afterEach(async () => {
 async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} confirm={ConfirmDialog} />));
+  await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} confirm={ConfirmDialog} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector.startsWith('[') || selector.includes(' ') ? selector : `[data-testid="${selector}"]`)! as HTMLElement;
@@ -145,7 +145,7 @@ const type = (element: HTMLInputElement, value: string) =>
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value);
     element.dispatchEvent(new Event('input', { bubbles: true }));
   });
-const dialog = () => document.querySelector('[data-bespoke-confirm]') as HTMLDialogElement | null;
+const dialog = () => document.querySelector('[data-marmeon-confirm]') as HTMLDialogElement | null;
 const answer = (label: 'confirm' | 'cancel') => act(async () => (dialog()!.querySelector(label === 'confirm' ? '[data-confirm]' : 'button[type="button"]') as HTMLElement).click());
 
 describe('toasts: useFlash (E60)', () => {
@@ -280,7 +280,7 @@ describe('the navigation guard (E64)', () => {
 
 describe('confirm (E64)', () => {
   it('counter-check: type-to-confirm — the yes stays off for a wrong text, a submitted wrong text sends nothing; the exact text sends', async () => {
-    server = () => new Response(null, { status: 204, headers: { 'x-bespoke-redirect': '/projects' } });
+    server = () => new Response(null, { status: 204, headers: { 'x-marmeon-redirect': '/projects' } });
     await mount(page('Edit', '/users/1/edit', { name: 'Ada' }));
     await click('delete');
     const field = dialog()!.querySelector('input')!;

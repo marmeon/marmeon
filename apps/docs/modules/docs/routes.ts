@@ -1,5 +1,5 @@
-import { throttle } from '@bespokecore/cache';
-import { defineRoutes } from '@bespokecore/http';
+import { throttle } from '@marmeon/cache';
+import { defineRoutes } from '@marmeon/http';
 import { SearchController } from './controllers/SearchController.ts';
 import { ShowGuideController } from './controllers/ShowGuideController.ts';
 import { ShowHomeController } from './controllers/ShowHomeController.ts';

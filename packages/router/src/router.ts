@@ -32,7 +32,7 @@ export function defineRoutes(register: (Route: Route) => void): RouteDefinitions
 /**
  * A request a package answers in the route's place (`router.intercept(…)`): it runs the route's middleware and bindings, then the
  * route's `authorize` (403) — and the interceptor answers; the controller is never built (like a live validation, E62).
- * @bespokecore/storage answers upload targets this way (W6.9: `x-bespoke-upload` names the field) — who may submit the form
+ * @marmeon/storage answers upload targets this way (W6.9: `x-marmeon-upload` names the field) — who may submit the form
  * may upload its files, by the same rules.
  */
 export interface RouteInterceptor {

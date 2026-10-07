@@ -1,4 +1,4 @@
-import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 
 export default function ForgotPassword() {
   const route = useRoute();

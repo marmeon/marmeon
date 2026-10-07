@@ -1,7 +1,7 @@
-import { Container, defineConfig, resolveConfig } from '@bespokecore/core';
-import { Database } from '@bespokecore/database';
-import { abort, Controller, SharedData, type HttpContext } from '@bespokecore/http';
-import { Router } from '@bespokecore/router';
+import { Container, defineConfig, resolveConfig } from '@marmeon/core';
+import { Database } from '@marmeon/database';
+import { abort, Controller, SharedData, type HttpContext } from '@marmeon/http';
+import { Router } from '@marmeon/router';
 import * as v from 'valibot';
 import { LabConfig } from '../config.ts';
 import { CheckoutService, LabReport, Money, Orders, ReminderSchedule } from '../errors.ts';
@@ -110,8 +110,8 @@ export class TriggerErrorLabController extends LabController {
       case 'config':
         return resolveConfig([defineConfig('payments', { env: v.object({ PAYMENTS_API_URL: v.pipe(v.string(), v.url()) }), resolve: (env) => env })], {});
       case 'app-key':
-        // As the start checks it (@bespokecore/encryption's configuration) — here with an empty key.
-        return resolveConfig([defineConfig('encryption', { env: v.object({ APP_KEY: v.pipe(v.string(), v.nonEmpty('Missing — run "bespoke key:generate"')) }), resolve: (env) => env })], { APP_KEY: '' });
+        // As the start checks it (@marmeon/encryption's configuration) — here with an empty key.
+        return resolveConfig([defineConfig('encryption', { env: v.object({ APP_KEY: v.pipe(v.string(), v.nonEmpty('Missing — run "marmeon key:generate"')) }), resolve: (env) => env })], { APP_KEY: '' });
       case 'route':
         return (this.#router.url as (this: Router, name: string) => string).call(this.#router, 'user-profile.shwo');
       case 'table':

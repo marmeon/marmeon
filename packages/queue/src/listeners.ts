@@ -8,7 +8,7 @@ import {
   type QueuedListenerOptions,
   type Resolver,
   type StandardSchemaV1,
-} from '@bespokecore/core';
+} from '@marmeon/core';
 import * as v from 'valibot';
 import type { JobContext } from './job.ts';
 import { RECORD_OPTIONS, type Queue } from './queue.ts';
@@ -112,7 +112,7 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
  * Encrypted (E105) — an event's payload is the app's, and may carry more than IDs.
  */
 export class CallQueuedListener {
-  static readonly job = 'bespoke.listener';
+  static readonly job = 'marmeon.listener';
   static readonly schema = v.object({ event: v.string(), listener: v.string(), payload: v.unknown() });
   static readonly encrypted = true;
 
@@ -137,7 +137,7 @@ export class CallQueuedListener {
 
 /**
  * Queues queued listeners (E86) — the app's `ListenerQueue`: the event checked against its schema now (a mismatch is the
- * dispatcher's error), as JSON, in a `bespoke.listener` job on the listener's queue — dispatched like any job (E107,
+ * dispatcher's error), as JSON, in a `marmeon.listener` job on the listener's queue — dispatched like any job (E107,
  * E109): inside a transaction it exists only with the commit (a database queue writes it into the transaction itself,
  * other connections hold it until the commit), never after a rollback.
  */

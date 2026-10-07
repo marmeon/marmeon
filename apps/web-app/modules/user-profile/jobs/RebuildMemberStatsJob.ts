@@ -1,4 +1,4 @@
-import { withoutOverlapping, type JobPayload } from '@bespokecore/queue';
+import { withoutOverlapping, type JobPayload } from '@marmeon/queue';
 import * as v from 'valibot';
 import { MemberStats } from '../MemberStats.ts';
 

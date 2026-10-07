@@ -1,5 +1,5 @@
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
   browserRoutes,
   ClientHistory,
@@ -15,8 +15,8 @@ import {
   type HttpContext,
   type Next,
   type PageObject,
-} from '@bespokecore/http';
-import { defineRoutes, Router } from '@bespokecore/router';
+} from '@marmeon/http';
+import { defineRoutes, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { METHOD_FIELD_WINDOW, overrideMethod } from './method-override.ts';
@@ -59,7 +59,7 @@ describe('once props on the server (E64)', async () => {
   application.container.scoped(PageSession, () => ({ csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined }));
   const app = createHttpKernel(application);
   const visit = async (path: string, headers: Record<string, string> = {}) =>
-    (await (await app.request(path, { headers: { 'x-bespoke': 'true', ...headers } })).json()) as PageObject;
+    (await (await app.request(path, { headers: { 'x-marmeon': 'true', ...headers } })).json()) as PageObject;
   const reset = () => {
     for (const key of Object.keys(computed)) delete computed[key];
   };
@@ -75,7 +75,7 @@ describe('once props on the server (E64)', async () => {
 
   it('counter-check: skips what the browser holds under the same scope — not computed, still announced', async () => {
     reset();
-    const page = await visit('/a', { 'x-bespoke-once': 'countries,pages/A:rates', 'x-bespoke-once-scope': 'ada-session' });
+    const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': 'ada-session' });
     expect(page.props).toEqual({ name: 'A' });
     expect(Object.keys(page.onceProps ?? {})).toEqual(['countries', 'rates']);
     expect(computed).toEqual({});
@@ -85,7 +85,7 @@ describe('once props on the server (E64)', async () => {
     reset();
     scope = 'alan-session';
     try {
-      const page = await visit('/a', { 'x-bespoke-once': 'countries,pages/A:rates', 'x-bespoke-once-scope': 'ada-session' });
+      const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': 'ada-session' });
       expect(page.props).toMatchObject({ countries: ['DE', 'GB'], rates: [1.1, 1.2] });
       expect(page.onceScope).toBe('alan-session');
       expect(computed).toEqual({ countries: 1, rates: 1 });
@@ -96,9 +96,9 @@ describe('once props on the server (E64)', async () => {
 
   it('a partial reload that names a once prop gets it fresh; a full load (a document) always computes everything', async () => {
     reset();
-    const page = await visit('/a', { 'x-bespoke-once': 'pages/A:rates', 'x-bespoke-once-scope': 'ada-session', 'x-bespoke-partial-component': 'pages/A', 'x-bespoke-partial-data': 'rates' });
+    const page = await visit('/a', { 'x-marmeon-once': 'pages/A:rates', 'x-marmeon-once-scope': 'ada-session', 'x-marmeon-partial-component': 'pages/A', 'x-marmeon-partial-data': 'rates' });
     expect(page.props).toEqual({ rates: [1.1, 1.2] });
-    const html = await (await app.request('/a', { headers: { 'x-bespoke-once': 'countries', 'x-bespoke-once-scope': 'ada-session' } })).text();
+    const html = await (await app.request('/a', { headers: { 'x-marmeon-once': 'countries', 'x-marmeon-once-scope': 'ada-session' } })).text();
     expect(html).toContain('"countries":["DE","GB"]');
   });
 
@@ -128,9 +128,9 @@ describe('the two kinds of 409 (E64) — a new build may wait, signing in or out
   });
   application.container.make(Router).middleware.append('web', SignsInEarly, 220);
   const app = createHttpKernel(application, { version: 'build-2' });
-  const stale = (path: string) => app.request(path, { headers: { 'x-bespoke': 'true', 'x-bespoke-version': 'build-1' } });
+  const stale = (path: string) => app.request(path, { headers: { 'x-marmeon': 'true', 'x-marmeon-version': 'build-1' } });
 
-  it('a new build: 409 with `x-bespoke-reload: version` — the one the client may postpone', async () => {
+  it('a new build: 409 with `x-marmeon-reload: version` — the one the client may postpone', async () => {
     const response = await stale('/a');
     expect(response.status).toBe(409);
     expect(response.headers.get(LOCATION_HEADER)).toBe('http://localhost/a');

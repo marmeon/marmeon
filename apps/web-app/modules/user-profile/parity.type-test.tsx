@@ -1,10 +1,10 @@
 /**
  * Type guarantees of remembered state (E63), once props, `<Form>` and instant visits (E64) against this app's routes — checked
- * by `tsc` (`pnpm typecheck`, `bespoke build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the
+ * by `tsc` (`pnpm typecheck`, `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the
  * comment above it is the message they get (read with the directive removed).
  */
-import { Controller, once } from '@bespokecore/http';
-import { Form, Link, useForm, useRemember, type Placeholder } from '@bespokecore/react';
+import { Controller, once } from '@marmeon/http';
+import { Form, Link, useForm, useRemember, type Placeholder } from '@marmeon/react';
 import { expectTypeOf } from 'vitest';
 import type { ListPeopleController } from './controllers/ListPeopleController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';

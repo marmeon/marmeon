@@ -1,5 +1,5 @@
 import { AssertionError } from 'node:assert';
-import { token, type Container } from '@bespokecore/core';
+import { token, type Container } from '@marmeon/core';
 import type { AnyEntry, Entry, EntryContents, EntryType } from './entry.ts';
 import { Recorder } from './recorder.ts';
 import { MemoryStore } from './store.ts';

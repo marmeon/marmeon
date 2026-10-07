@@ -1,4 +1,4 @@
-import { LayerDialog, useTranslation, type LayerFrameProps } from '@bespokecore/react';
+import { LayerDialog, useTranslation, type LayerFrameProps } from '@marmeon/react';
 
 /**
  * Around every layer's view (E53): the framework's native modal `<dialog>` — focus kept inside, Escape and the backdrop

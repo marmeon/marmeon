@@ -1,4 +1,4 @@
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import * as v from 'valibot';
 import { DocsRepository } from '../DocsRepository.ts';
 

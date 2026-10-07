@@ -1,6 +1,6 @@
-import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
-import { Translator } from '@bespokecore/i18n';
+import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
 
 export class RevokeAccessTokenController extends Controller {
   readonly #tokens: AccessTokenStore;

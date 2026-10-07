@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { HealthCheck } from '@bespokecore/core';
+import type { HealthCheck } from '@marmeon/core';
 import { Cache } from './cache.ts';
 import { CacheConfig } from './config.ts';
 

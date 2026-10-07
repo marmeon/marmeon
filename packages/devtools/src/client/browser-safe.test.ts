@@ -9,20 +9,20 @@ const packages = fileURLToPath(new URL('../../../', import.meta.url));
  * The in-page bar's client (W7 step 9) as the Vite dev server serves it: browser code only — the bar, the client core and the
  * page contract. None of the devtools' server side (recorder, store, pages: Node built-ins), whatever the client imports types of.
  */
-describe('@bespokecore/devtools/client is browser-safe', () => {
+describe('@marmeon/devtools/client is browser-safe', () => {
   it('bundles the bar and the client core only — no server code, no Node built-ins', async () => {
     const externals = new Set<string>();
     const output = (await build({
       configFile: false,
       logLevel: 'silent',
-      resolve: { conditions: ['@bespokecore/source', 'browser', 'module', 'import', 'default'] },
+      resolve: { conditions: ['@marmeon/source', 'browser', 'module', 'import', 'default'] },
       build: {
         write: false,
         minify: false,
         lib: { entry: fileURLToPath(new URL('./index.ts', import.meta.url)), formats: ['es'], fileName: 'entry' },
         rolldownOptions: {
           external: (id, importer) => {
-            const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@bespokecore/');
+            const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@marmeon/');
             if (bare || id.startsWith('node:')) {
               externals.add(id);
               return true;

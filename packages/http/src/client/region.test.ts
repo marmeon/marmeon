@@ -28,7 +28,7 @@ function held() {
 const islandRequests = (win: FakeWindow) => win.requests.filter((request) => request.headers[REGION_HEADER] === 'island');
 
 describe('Region — islands in the client core (E48, E50)', () => {
-  it('loads an island with the page headers, x-bespoke-region and the asset version — never following a redirect', async () => {
+  it('loads an island with the page headers, x-marmeon-region and the asset version — never following a redirect', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     let init: RequestInit | undefined;
     win.handler = (url, given) => {

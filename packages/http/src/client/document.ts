@@ -1,7 +1,7 @@
 import { isPageObject, PAGE_SCRIPT_ID, type PageObject } from '../page.ts';
 
 /**
- * The page the server rendered — the JSON in `<script id="bespoke-page" type="application/json">` (in the document
+ * The page the server rendered — the JSON in `<script id="marmeon-page" type="application/json">` (in the document
  * head, so it is there before the streamed markup is). Every adapter's hydration entry starts here.
  */
 export function readInitialPage(doc: Pick<Document, 'getElementById'> = document): PageObject {

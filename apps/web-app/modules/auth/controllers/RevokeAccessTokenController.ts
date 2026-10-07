@@ -1,6 +1,6 @@
-import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
-import { Translator } from '@bespokecore/i18n';
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
+import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
+import { Translator } from '@marmeon/i18n';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
 
 /**
  * Revoking a token — an action (E59, `useAction('auth.tokens.destroy')`): the list drops it at once (optimistic), the answer

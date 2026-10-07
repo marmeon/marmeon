@@ -1,5 +1,5 @@
-import { Database, hasMany, hasOne, paginate, sql } from '@bespokecore/database';
-import type { RouteBinder } from '@bespokecore/http';
+import { Database, hasMany, hasOne, paginate, sql } from '@marmeon/database';
+import type { RouteBinder } from '@marmeon/http';
 
 /**
  * The module's read model: people with their last sign-in and links. It opts into module boundaries

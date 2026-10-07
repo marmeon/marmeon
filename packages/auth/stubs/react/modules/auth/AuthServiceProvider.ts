@@ -1,8 +1,8 @@
-import { Auth, UserProvider } from '@bespokecore/auth';
-import { Limit, RateLimiter } from '@bespokecore/cache';
-import type { Application, Container, ServiceProvider } from '@bespokecore/core';
-import { LocalePreference } from '@bespokecore/i18n';
-import { MiddlewarePriority, Router } from '@bespokecore/router';
+import { Auth, UserProvider } from '@marmeon/auth';
+import { Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, Container, ServiceProvider } from '@marmeon/core';
+import { LocalePreference } from '@marmeon/i18n';
+import { MiddlewarePriority, Router } from '@marmeon/router';
 import { ShareAuthProps } from './middleware/ShareAuthProps.ts';
 import { UserRepository } from './UserRepository.ts';
 
@@ -11,7 +11,7 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(UserRepository);
     // Authentication finds users through the repository (E24).
     container.bind(UserProvider, (c) => c.make(UserRepository));
-    // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @bespokecore/i18n).
+    // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @marmeon/i18n).
     container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await c.make(Auth).user())?.locale }));
   }
 

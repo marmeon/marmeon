@@ -1,9 +1,9 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { Encrypter } from '@bespokecore/encryption';
-import { Controller, defineRequest, merge, type ContextOf } from '@bespokecore/http';
-import { Translator } from '@bespokecore/i18n';
-import { notificationsChannel } from '@bespokecore/live';
-import { Inbox, notificationData, type StoredNotification } from '@bespokecore/notifications';
+import type { Authenticated } from '@marmeon/auth';
+import { Encrypter } from '@marmeon/encryption';
+import { Controller, defineRequest, merge, type ContextOf } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
+import { notificationsChannel } from '@marmeon/live';
+import { Inbox, notificationData, type StoredNotification } from '@marmeon/notifications';
 import * as v from 'valibot';
 import { NewSignInNotification } from '#modules/auth';
 

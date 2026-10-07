@@ -1,4 +1,4 @@
-import { Controller, type HttpContext } from '@bespokecore/http';
+import { Controller, type HttpContext } from '@marmeon/http';
 import { DocsRepository, type DocPage } from '../DocsRepository.ts';
 
 /** What `docs/Page` shows of a package's README or a guide: the page, and the pages before and after it in the navigation. */

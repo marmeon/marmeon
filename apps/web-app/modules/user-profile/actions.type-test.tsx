@@ -1,9 +1,9 @@
 /**
  * Type guarantees of actions and optimistic UI (E58, E59) against this app's routes — checked by `tsc` (`pnpm typecheck`,
- * `bespoke build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message
+ * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message
  * they get (read with the directive removed).
  */
-import { useAction, useIsland, usePendingSubmissions, useRouter, type RevalidateOnBack } from '@bespokecore/react';
+import { useAction, useIsland, usePendingSubmissions, useRouter, type RevalidateOnBack } from '@marmeon/react';
 import { expectTypeOf } from 'vitest';
 import type { ShowAccessTokensController } from '../auth/controllers/ShowAccessTokensController.ts';
 import type { ShowRecentSignInsController } from '../dashboard/controllers/ShowRecentSignInsController.ts';

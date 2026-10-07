@@ -111,7 +111,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       expect(visible().url).toBe('/0');
     });
 
-    it('loads fully on 409 + x-bespoke-location and forgets every page kept in memory', async () => {
+    it('loads fully on 409 + x-marmeon-location and forgets every page kept in memory', async () => {
       const win = new FakeWindow(`${ORIGIN}/settings/tokens`);
       const { navigator } = boot(win, page('/settings/tokens', { plainText: 'bc_1|secret-token' }));
       win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
@@ -452,7 +452,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       win.handler = () => pageResponse(page('/users/1', { audit: ['log'] }));
       const { navigator, visible } = boot(win, streamed());
       // Only the group that is not streamed is asked for.
-      expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual(['audit']);
+      expect(win.requests.map((request) => request.headers['x-marmeon-partial-data'])).toEqual(['audit']);
       const landing = navigator.receiveStreamed('default', { props: { activity: ['signed in'] } });
       await settle();
       // Still streaming: an update now would make the adapter render a part that is still on its way in the browser.
@@ -469,7 +469,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       win.handler = () => pageResponse(page('/users/1', {}));
       const { streamedProps: _streamed, ...withoutStreaming } = streamed();
       boot(win, withoutStreaming);
-      expect(win.requests.map((request) => request.headers['x-bespoke-partial-data']).sort()).toEqual(['activity', 'audit']);
+      expect(win.requests.map((request) => request.headers['x-marmeon-partial-data']).sort()).toEqual(['activity', 'audit']);
     });
 
     it('asks for a streamed group that did not come (null) — and takes nothing for a group it never waited for', async () => {
@@ -478,7 +478,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       const { navigator, visible } = boot(win, streamed());
       await navigator.receiveStreamed('default', null);
       await settle();
-      expect(win.requests.map((request) => request.headers['x-bespoke-partial-data']).sort()).toEqual(['activity', 'audit']);
+      expect(win.requests.map((request) => request.headers['x-marmeon-partial-data']).sort()).toEqual(['activity', 'audit']);
       expect(visible().props).toMatchObject({ activity: ['fetched'] });
       await navigator.receiveStreamed('slow', { props: { audit: ['forged'] } });
       expect(visible().props).toMatchObject({ audit: ['log'] });
@@ -500,9 +500,9 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       await navigator.reload({ only: ['stats'] });
 
       expect(win.requests.at(-1)!.headers).toMatchObject({
-        'x-bespoke': 'true',
-        'x-bespoke-partial-component': 'pages/Show',
-        'x-bespoke-partial-data': 'stats',
+        'x-marmeon': 'true',
+        'x-marmeon-partial-component': 'pages/Show',
+        'x-marmeon-partial-data': 'stats',
       });
       expect(visible().props).toEqual({ name: 'Ada', errors: {}, stats: { links: 3 } });
       expect(win.entries).toHaveLength(1); // a reload replaces
@@ -523,8 +523,8 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       win.handler = () => pageResponse(page('/login', { status: null }, 'auth/Login'));
       const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
       await navigator.reload({ except: ['others'] });
-      expect(win.requests.at(-1)!.headers).toMatchObject({ 'x-bespoke-partial-component': 'pages/Show', 'x-bespoke-partial-except': 'others' });
-      expect(win.requests.at(-1)!.headers).not.toHaveProperty('x-bespoke-partial-data');
+      expect(win.requests.at(-1)!.headers).toMatchObject({ 'x-marmeon-partial-component': 'pages/Show', 'x-marmeon-partial-except': 'others' });
+      expect(win.requests.at(-1)!.headers).not.toHaveProperty('x-marmeon-partial-data');
       expect(visible()).toMatchObject({ component: 'auth/Login', props: { status: null } });
     });
 
@@ -565,7 +565,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       expect(shown).toEqual([]);
       expect(navigator.page.props).not.toHaveProperty('activity');
       expect(win.requests).toHaveLength(1);
-      expect(win.requests[0]!.headers).toMatchObject({ 'x-bespoke-partial-component': 'pages/Show', 'x-bespoke-partial-data': 'activity' });
+      expect(win.requests[0]!.headers).toMatchObject({ 'x-marmeon-partial-component': 'pages/Show', 'x-marmeon-partial-data': 'activity' });
 
       slow.open();
       await settle();
@@ -579,13 +579,13 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       const slow = gate();
       win.handler = async (url, init) => {
-        const asked = (init.headers as Record<string, string>)['x-bespoke-partial-data'];
+        const asked = (init.headers as Record<string, string>)['x-marmeon-partial-data'];
         if (asked === 'audit') await slow.opened;
         if (asked === undefined) return pageResponse(page('/other', { other: true }, 'pages/Other'));
         return pageResponse(page('/users/1', asked === 'audit' ? { audit: ['log'] } : { activity: ['a'], teams: ['t'] }));
       };
       const { navigator, visible } = boot(win, { ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity', 'teams'], slow: ['audit'] } });
-      expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual(['activity,teams', 'audit']);
+      expect(win.requests.map((request) => request.headers['x-marmeon-partial-data'])).toEqual(['activity,teams', 'audit']);
       await settle();
       expect(visible().props).toEqual({ name: 'Ada', activity: ['a'], teams: ['t'] });
       expect(visible().deferredProps).toEqual({ slow: ['audit'] });
@@ -607,7 +607,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
       const slow = gate();
       win.handler = async (url, init) => {
-        if ((init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'activity') {
+        if ((init.headers as Record<string, string>)['x-marmeon-partial-data'] === 'activity') {
           await slow.opened;
           return pageResponse(page('/users/1', { activity: ['of user 1'] }));
         }
@@ -625,7 +625,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       const slow = gate();
       let signal: AbortSignal | undefined;
       win.handler = async (url, init) => {
-        if ((init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'activity') {
+        if ((init.headers as Record<string, string>)['x-marmeon-partial-data'] === 'activity') {
           signal = init.signal ?? undefined;
           await slow.opened;
           return pageResponse(page('/users/1', { activity: ['of ada'] }));
@@ -644,14 +644,14 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
     it('loads the deferred props of a page a visit arrives at — and of one Back brings from the server', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
       win.handler = (url, init) =>
-        (init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'activity'
+        (init.headers as Record<string, string>)['x-marmeon-partial-data'] === 'activity'
           ? pageResponse(page('/users/1', { activity: ['x'] }))
           : pageResponse({ ...page('/users/1', { name: 'Ada' }), deferredProps: { default: ['activity'] } });
       const { navigator, visible } = boot(win, page('/a'));
       await navigator.visit('/users/1');
       await settle();
       expect(visible().props).toEqual({ name: 'Ada', activity: ['x'] });
-      expect(win.requests.map((request) => request.headers['x-bespoke-partial-data'])).toEqual([undefined, 'activity']);
+      expect(win.requests.map((request) => request.headers['x-marmeon-partial-data'])).toEqual([undefined, 'activity']);
     });
   });
 
@@ -907,7 +907,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       const slow = gate();
       const cancelled: string[] = [];
       win.handler = async (url, init) => {
-        if ((init.headers as Record<string, string>)['x-bespoke-partial-data'] === 'count') {
+        if ((init.headers as Record<string, string>)['x-marmeon-partial-data'] === 'count') {
           await slow.opened;
           return pageResponse(page('/a', { count: 2 }));
         }

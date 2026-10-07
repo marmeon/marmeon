@@ -11,10 +11,10 @@ const blank = join(repo, 'apps', 'blank-app');
 
 /** A copy of the blank app (its installed packages linked in), outside the workspace. */
 function blankApp(): string {
-  const dir = tempDir('bespoke-make-auth-');
+  const dir = tempDir('marmeon-make-auth-');
   cpSync(blank, dir, {
     recursive: true,
-    filter: (source) => !/[/\\](node_modules|\.bespoke|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !source.endsWith('.env'),
+    filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !source.endsWith('.env'),
   });
   symlinkSync(join(blank, 'node_modules'), join(dir, 'node_modules'), 'dir');
   mkdirSync(join(dir, 'storage'), { recursive: true });
@@ -57,7 +57,7 @@ describe('make:auth', () => {
     // The blank app has its lint preset, the devtools (E150) and a Content-Security-Policy (E147): none is named.
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
-    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (bespoke make:queue-table, once) and a worker (bespoke dev starts one; in production: bespoke queue:work --queue=mail,default).');
+    expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work --queue=mail,default).');
   });
 
   it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app, W7.6)', async () => {
@@ -66,15 +66,15 @@ describe('make:auth', () => {
     const bootstrap = join(root, 'bootstrap/app.ts');
     writeFileSync(bootstrap, readFileSync(bootstrap, 'utf8').replace(', contentSecurityPolicy()', ''));
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { devDependencies: Record<string, string> };
-    delete pkg.devDependencies['@bespokecore/devtools'];
+    delete pkg.devDependencies['@marmeon/devtools'];
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const without = fakeInput(root);
     expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
-    expect(without.lines).toContain("Lint: bespoke make:lint-config writes the app's preset (views import controllers only with import type).");
-    expect(without.lines).toContain('Devtools for bespoke dev (requests, queries, jobs, mails at /_bespoke/devtools): pnpm add -D @bespokecore/devtools');
-    expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @bespokecore/http to the app's global middleware (a nonce per page, E147).");
+    expect(without.lines).toContain("Lint: marmeon make:lint-config writes the app's preset (views import controllers only with import type).");
+    expect(without.lines).toContain('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -D @marmeon/devtools');
+    expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page, E147).");
     writeFileSync(join(root, '.oxlintrc.json'), '{}\n');
-    pkg.devDependencies['@bespokecore/devtools'] = 'workspace:*';
+    pkg.devDependencies['@marmeon/devtools'] = 'workspace:*';
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const both = fakeInput(root, { force: true });
     expect(await new MakeAuthCommand().handle(both.input)).toBe(0);
@@ -107,7 +107,7 @@ describe('make:auth', () => {
       return [...names].sort();
     };
     const module = imported(false);
-    expect(module).toContain('@bespokecore/i18n');
+    expect(module).toContain('@marmeon/i18n');
     expect(module.filter((name) => !NEEDED.includes(name))).toEqual([]);
     expect(imported(true).filter((name) => !NEEDED.includes(name) && !NEEDED_FOR_TESTS.includes(name))).toEqual([]);
   });
@@ -115,26 +115,26 @@ describe('make:auth', () => {
   it('reports what the app lacks — the module\'s packages and its tests\'', async () => {
     const root = blankApp();
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
-    delete pkg.dependencies['@bespokecore/i18n'];
-    delete pkg.devDependencies['@bespokecore/testing'];
+    delete pkg.dependencies['@marmeon/i18n'];
+    delete pkg.devDependencies['@marmeon/testing'];
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const { input, lines, spawned } = fakeInput(root);
     expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines).toContain('Install what the module uses: pnpm add @bespokecore/i18n');
-    expect(lines).toContain('And what its tests use: pnpm add -D @bespokecore/testing');
+    expect(lines).toContain('Install what the module uses: pnpm add @marmeon/i18n');
+    expect(lines).toContain('And what its tests use: pnpm add -D @marmeon/testing');
     // Without the module's packages the route types would not load: not generated now.
     expect(spawned).toEqual([]);
   });
 
-  it('names what the module runs with in production but the app has as a dev dependency — @bespokecore/cli (E159)', async () => {
+  it('names what the module runs with in production but the app has as a dev dependency — marmeon (E159)', async () => {
     const root = blankApp();
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
-    pkg.devDependencies['@bespokecore/cli'] = pkg.dependencies['@bespokecore/cli']!;
-    delete pkg.dependencies['@bespokecore/cli'];
+    pkg.devDependencies['marmeon'] = pkg.dependencies['marmeon']!;
+    delete pkg.dependencies['marmeon'];
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const { input, lines } = fakeInput(root);
     expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines).toContain('Production needs these as dependencies, not dev dependencies: pnpm add @bespokecore/cli');
+    expect(lines).toContain('Production needs these as dependencies, not dev dependencies: pnpm add marmeon');
     expect(lines.filter((line) => line.startsWith('Install what the module uses'))).toEqual([]);
   });
 
@@ -185,13 +185,13 @@ describe('make:auth', () => {
       // The CLI steps stay on the app's SQLite file; under `pnpm test:pgsql` only the generated tests use Postgres
       // (their own worker databases) — never the shared one.
       const { DB_CONNECTION: _connection, DB_URL: _url, ...sqliteEnv } = env;
-      const bespoke = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/bespoke.js'), ...args], { NODE_ENV: 'development' }, sqliteEnv);
+      const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], { NODE_ENV: 'development' }, sqliteEnv);
 
-      expect(bespoke('discover').code).toBe(0);
-      const generated = bespoke('make:auth');
+      expect(marmeon('discover').code).toBe(0);
+      const generated = marmeon('make:auth');
       expect(generated.out).toContain('Created modules/auth');
       expect(generated.code).toBe(0);
-      // make:auth ran `bespoke route:types`: the module's routes, controllers and views are typed (W5.2).
+      // make:auth ran `marmeon route:types`: the module's routes, controllers and views are typed (W5.2).
       const routeTypes = readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8');
       expect(generated.out).toContain('Wrote bootstrap/routes.ts');
       expect(routeTypes).toContain("'auth.login.store': { method: 'post'; path: '/login'; controller: typeof LoginController };");
@@ -200,8 +200,8 @@ describe('make:auth', () => {
       // Private registration (E146, the default): its page and the change link — answered with 404 when the switch is off.
       expect(routeTypes).toContain("'auth.register.sent': { method: 'get'; path: '/register/sent'; controller: typeof ShowRegistrationSentController };");
       expect(routeTypes).toContain("'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };");
-      expect(bespoke('route:types', '--check').code).toBe(0);
-      const migrated = bespoke('migrate');
+      expect(marmeon('route:types', '--check').code).toBe(0);
+      const migrated = marmeon('migrate');
       expect(migrated.out).toContain('create_personal_access_tokens_table');
       expect(migrated.out).toContain('add_pending_email_to_users_table');
       expect(migrated.code).toBe(0);
@@ -218,10 +218,10 @@ describe('make:auth', () => {
       // with `import type`, other modules through their entry.
       const lint = () => run(join(root, 'node_modules/.bin/oxlint'), ['--deny-warnings']);
       expect(lint()).toMatchObject({ code: 0 });
-      expect(bespoke('make:lint-config', '--boundaries', '--force').code).toBe(0);
+      expect(marmeon('make:lint-config', '--boundaries', '--force').code).toBe(0);
       expect(lint()).toMatchObject({ code: 0 });
 
-      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@bespokecore/source', NODE_ENV: 'test' });
+      const tests = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
       const failed = [...tests.out.matchAll(/^\s*× (modules\/\S+ > .+?)(?: \d+ms)?$/gm)].map((match) => match[1]);
       expect(failed, `generated tests failed: ${failed.join(' | ')}`).toEqual([]);
       expect(tests.out).toMatch(/Tests\s+\d+ passed \(\d+\)/);
@@ -238,13 +238,13 @@ describe('make:auth', () => {
       const stalled = routeTypes.replace(/^ {4}'dashboard': .*\n/m, '');
       expect(stalled).not.toBe(routeTypes);
       writeFileSync(join(root, 'bootstrap/routes.ts'), stalled);
-      const stale = bespoke('route:types', '--check');
-      expect(stale.out).toContain('bootstrap/routes.ts is out of date — run: bespoke route:types');
+      const stale = marmeon('route:types', '--check');
+      expect(stale.out).toContain('bootstrap/routes.ts is out of date — run: marmeon route:types');
       expect(stale.code).toBe(1);
 
       // The build regenerates it, and the client bundle carries only the routes its code names (E57): no API route, no
       // `.internal()` route, none that only the server redirects to — their names and patterns stay on the server.
-      const built = bespoke('build');
+      const built = marmeon('build');
       expect(built.out).toContain('Built dist/client and dist/server');
       expect(built.code).toBe(0);
       expect(readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8')).toContain("'auth.verification.verify': { method: 'get'; path: '/email/verify/:id/:hash'; controller: typeof VerifyEmailController; browser: false };");
@@ -254,7 +254,7 @@ describe('make:auth', () => {
         .join('\n');
       expect(client).toContain('auth.login.store');
       expect(client).toContain('/dashboard');
-      expect(readFileSync(join(root, '.bespoke/routes.json'), 'utf8')).toContain('"auth.password.reset"'); // the browser may learn it …
+      expect(readFileSync(join(root, '.marmeon/routes.json'), 'utf8')).toContain('"auth.password.reset"'); // the browser may learn it …
       for (const serverOnly of ['auth.password.reset', 'auth.password.confirm', 'auth.verification.notice']) {
         expect(client).not.toMatch(new RegExp(`[\`"']${serverOnly.replaceAll('.', '\\.')}[\`"']`)); // … but no view names it
       }

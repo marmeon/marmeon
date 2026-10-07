@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Application, ErrorSolutions, Redactor, Solution } from '@bespokecore/core';
+import type { Application, ErrorSolutions, Redactor, Solution } from '@marmeon/core';
 import type { RequestRecording } from './recorder-token.ts';
 
 /** Lines of code shown above and below the line of a frame. */

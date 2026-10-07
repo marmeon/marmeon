@@ -56,7 +56,7 @@ function git(repo: string, args: string[]): string {
 }
 
 function fixture(): Fixture {
-  const base = tempDir('bespoke-gegen-fixture-');
+  const base = tempDir('marmeon-gegen-fixture-');
   const repo = join(base, 'repo');
   const files: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'gegen-fixture', private: true, type: 'module', scripts: { test: `${VITEST} run --globals` } }),

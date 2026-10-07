@@ -14,7 +14,7 @@ async function bundled(entry: string, external: RegExp[] = []): Promise<{ module
   const output = (await build({
     configFile: false,
     logLevel: 'silent',
-    resolve: { conditions: ['@bespokecore/source', 'browser', 'module', 'import', 'default'] },
+    resolve: { conditions: ['@marmeon/source', 'browser', 'module', 'import', 'default'] },
     build: {
       write: false,
       minify: false,
@@ -23,7 +23,7 @@ async function bundled(entry: string, external: RegExp[] = []): Promise<{ module
         external: (id, importer) => {
           // Node built-ins and npm packages are collected, not bundled (Vite would stub the built-ins): the browser
           // core brings no dependency of its own.
-          const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@bespokecore/');
+          const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@marmeon/');
           if (bare || id.startsWith('node:') || external.some((pattern) => pattern.test(id))) {
             externals.add(id);
             return true;
@@ -44,7 +44,7 @@ async function bundled(entry: string, external: RegExp[] = []): Promise<{ module
 /** The shared page contract and the router's URL builder — the only code outside `client/` the browser core may run. */
 const SHARED = ['http/src/page.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
 
-describe('@bespokecore/http/client is browser-safe', () => {
+describe('@marmeon/http/client is browser-safe', () => {
   it('bundles nothing but the client core, the page contract and URL building — no server code, no Node built-ins', async () => {
     const { modules, externals } = await bundled(fileURLToPath(new URL('./index.ts', import.meta.url)));
     expect(externals).toEqual([]);
@@ -54,7 +54,7 @@ describe('@bespokecore/http/client is browser-safe', () => {
     expect(modules).toEqual(expect.arrayContaining(['http/src/client/index.ts', 'http/src/client/navigation.ts', 'http/src/page.ts']));
   }, 30_000);
 
-  it('the page contract (@bespokecore/http/page) is browser-safe too', async () => {
+  it('the page contract (@marmeon/http/page) is browser-safe too', async () => {
     const { modules, externals } = await bundled(fileURLToPath(new URL('../page.ts', import.meta.url)));
     expect(externals).toEqual([]);
     expect(modules.filter((id) => !SHARED.includes(id))).toEqual([]);

@@ -1,9 +1,9 @@
 import { fileURLToPath } from 'node:url';
-import { Clock, createApplication, defineModule, Logger, TestClock, type HealthCheck } from '@bespokecore/core';
-import { channels } from '@bespokecore/core/diagnostics';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider, ServerClosing } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { Clock, createApplication, defineModule, Logger, TestClock, type HealthCheck } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider, ServerClosing } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';

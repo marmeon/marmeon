@@ -8,7 +8,7 @@ export type { DevMarkup, DevRequest } from './dev-document.ts';
 export { DevRequestRecorder, MAX_RECORDED } from './error-page/recorder-token.ts';
 export type { RequestRecorder, RequestRecording } from './error-page/recorder-token.ts';
 export { documentOf, renderDocument, HEAD_OUTLET, HTML_OUTLET } from './html.ts';
-export { bespokeEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
+export { marmeonEntries, createViteDevRenderer, explainConfigError, importVite, ViteSetupError } from './vite.ts';
 export type { ViteDevOptions } from './vite.ts';
 export { createProductionRenderer } from './production.ts';
 export { ServerConfig, ServerServiceProvider } from './provider.ts';

@@ -1,4 +1,4 @@
-import { defineSchedule } from '@bespokecore/scheduler';
+import { defineSchedule } from '@marmeon/scheduler';
 
 // Housekeeping of the framework's tables in this module (E88): expired sessions (the requests' lottery is off once this
 // runs), expired cache entries and locks, failed jobs older than a week, notifications read a month ago, uploads older than

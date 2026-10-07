@@ -1,6 +1,6 @@
-import type { CommandClass } from '@bespokecore/cli';
-import type { Container } from '@bespokecore/core';
-import type { JobClass } from '@bespokecore/queue';
+import type { CommandClass } from 'marmeon';
+import type { Container } from '@marmeon/core';
+import type { JobClass } from '@marmeon/queue';
 import { ScheduleError } from './cron.ts';
 
 /** What a task does: queue a job (`s.job`), run a console command (`s.command`), or call an invokable class (`s.call`). */

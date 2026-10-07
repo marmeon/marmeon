@@ -5,13 +5,13 @@ import { analyzeInjections, applyInsertions, injectConstructorDependencies, inse
 import { isBrowserSource } from './browser.ts';
 
 /**
- * The app's injection lists, precomputed by `bespoke build` (E138) — so a production start neither parses the app with oxc
+ * The app's injection lists, precomputed by `marmeon build` (E138) — so a production start neither parses the app with oxc
  * nor loads oxc-parser. The app stays `.ts` (Leitprinzip 4): the file keeps, per module, only what the load hook would insert
  * (the same analysis, {@link analyzeInjections} + {@link insertionsOf}, line-preserving) and the SHA-256 of the source it was
  * derived from. A start checks the hash of every module it loads; one that changed since the build (or is not in the file) is
  * analysed as in development — never trusted blindly — and the start says so once ("build artifacts are stale").
  */
-export const INJECTIONS_FILE = '.bespoke/injections.json';
+export const INJECTIONS_FILE = '.marmeon/injections.json';
 
 const FORMAT = 1;
 
@@ -58,7 +58,7 @@ export function computeInjectionArtifacts(root: string): InjectionsFile {
 }
 
 /**
- * Writes {@link INJECTIONS_FILE} for the app in `root` (atomically: a temporary file renamed into place) — what `bespoke build`
+ * Writes {@link INJECTIONS_FILE} for the app in `root` (atomically: a temporary file renamed into place) — what `marmeon build`
  * runs first. One line per module.
  */
 export function writeInjectionArtifacts({ root }: { root: string }): { path: string; modules: number; classes: number } {
@@ -117,7 +117,7 @@ export class PrecomputedInjections {
   }
 
   /**
-   * The module's source with its injection lists — the precomputed ones when the source is the one `bespoke build` saw,
+   * The module's source with its injection lists — the precomputed ones when the source is the one `marmeon build` saw,
    * otherwise derived now (and the module counted as stale). Modules outside the app (a workspace package's sources) are
    * analysed without counting: the file covers the app only.
    */
@@ -148,15 +148,15 @@ export class PrecomputedInjections {
     const modules = `${count} file${count === 1 ? '' : 's'}`;
     const names = this.#stale.slice(0, 3).join(', ') + (count > 3 ? ', …' : '');
     return this.#missing
-      ? `Build artifacts are missing (${INJECTIONS_FILE}): the injection lists of ${modules} (${names}) were derived at start, with oxc-parser — run bespoke build before starting.`
-      : `Build artifacts are stale (${modules}: ${names}): they changed since bespoke build, so their injection lists were derived at start, with oxc-parser — run bespoke build again.`;
+      ? `Build artifacts are missing (${INJECTIONS_FILE}): the injection lists of ${modules} (${names}) were derived at start, with oxc-parser — run marmeon build before starting.`
+      : `Build artifacts are stale (${modules}: ${names}): they changed since marmeon build, so their injection lists were derived at start, with oxc-parser — run marmeon build again.`;
   }
 }
 
 let active: PrecomputedInjections | undefined;
 let warned = false;
 
-/** Called by the load hook (`@bespokecore/core/register`) when it uses the precomputed lists — in a protected environment. */
+/** Called by the load hook (`@marmeon/core/register`) when it uses the precomputed lists — in a protected environment. */
 export function usePrecomputedInjections(precomputed: PrecomputedInjections): void {
   active = precomputed;
 }

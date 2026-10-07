@@ -1,5 +1,5 @@
-import { Application } from '@bespokecore/core';
-import type { CommandInput } from '@bespokecore/cli';
+import { Application } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
 import { loadDevtoolsOptions, resolveOptions } from './config.ts';
 import { FileStore } from './file-store.ts';
 import { DevtoolsStore } from './store.ts';
@@ -15,7 +15,7 @@ function megabytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** `bespoke devtools:clear`: removes every recorded entry (`storage/framework/devtools/`). */
+/** `marmeon devtools:clear`: removes every recorded entry (`storage/framework/devtools/`). */
 export class DevtoolsClearCommand {
   static command = 'devtools:clear';
   static description = 'Remove every entry the devtools recorded';
@@ -35,7 +35,7 @@ export class DevtoolsClearCommand {
   }
 }
 
-/** `bespoke devtools:prune`: removes entries past the ring's age, then the oldest until it is within its size (E116). */
+/** `marmeon devtools:prune`: removes entries past the ring's age, then the oldest until it is within its size (E116). */
 export class DevtoolsPruneCommand {
   static command = 'devtools:prune';
   static description = "Remove the devtools' entries past their age or size limit";

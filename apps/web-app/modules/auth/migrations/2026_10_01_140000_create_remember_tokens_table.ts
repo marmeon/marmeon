@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 // Remember-me, one row per device (E26): the selector finds the row, the validator is only stored as a hash.
 export default defineMigration({

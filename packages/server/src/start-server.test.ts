@@ -2,15 +2,15 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer as createNetServer, type AddressInfo, type Server as NetServer } from 'node:net';
 import { dirname, join } from 'node:path';
-import { createApplication, Logger } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
+import { createApplication, Logger } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it, vi } from 'vitest';
 import { startServer } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-const root = tempDir('bespoke-serve-');
+const root = tempDir('marmeon-serve-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
 writeFileSync(join(root, 'ssr.ts'), 'export const render = async () => ({ html: "" });');
 // The app's own Vite (an optional peer of the server); no vite.config.ts, so the SSR entry is passed explicitly.

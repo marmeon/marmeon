@@ -237,7 +237,7 @@ describe('without the Navigation API (E184)', () => {
     const win = new FakeWindow(`${ORIGIN}/a`, undefined, 'history');
     const navigator = new Navigator({ initialPage: page('/a'), window: win, render: async () => undefined });
     navigator.start();
-    expect(warn.mock.calls.map(([message]) => String(message).slice(0, 18))).toEqual(['[bespoke:C13] This']);
+    expect(warn.mock.calls.map(([message]) => String(message).slice(0, 18))).toEqual(['[marmeon:C13] This']);
     expect(JSON.parse(win.current.state)).toMatchObject({ url: '/a' });
   });
 });

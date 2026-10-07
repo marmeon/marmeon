@@ -1,4 +1,4 @@
-import { Link, useTranslation, type LayoutProps } from '@bespokecore/react';
+import { Link, useTranslation, type LayoutProps } from '@marmeon/react';
 
 /**
  * The settings pages, inside the app layout: `Page.layout = [AppLayout, SettingsLayout]`. The link to the page on screen

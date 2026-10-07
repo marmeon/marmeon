@@ -1,4 +1,4 @@
-import { Head, Link, useForm, useRoute, useTranslation } from '@bespokecore/react';
+import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
 export default function ForgotPassword() {

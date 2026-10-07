@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/scheduler",
+  "name": "@marmeon/scheduler",
   "version": "0.1.0",
-  "description": "Scheduled tasks for BespokeCore apps: written in the modules, run by schedule:work or cron, with locks against overlaps.",
+  "description": "Scheduled tasks for Marmeon apps: written in the modules, run by schedule:work or cron, with locks against overlaps.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "scheduler",
     "cron",
     "tasks"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/scheduler#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/scheduler#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/scheduler"
   },
   "engines": {
@@ -25,7 +25,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -54,34 +54,34 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "SchedulerServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/queue": "workspace:*"
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/queue": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     },
-    "@bespokecore/queue": {
+    "@marmeon/queue": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/redis": "workspace:*"
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/redis": "workspace:*"
   }
 }

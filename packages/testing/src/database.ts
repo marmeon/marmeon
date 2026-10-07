@@ -1,9 +1,9 @@
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Logger, resolveConfig, type Application } from '@bespokecore/core';
+import { Logger, resolveConfig, type Application } from '@marmeon/core';
 
-type DatabaseModule = typeof import('@bespokecore/database');
+type DatabaseModule = typeof import('@marmeon/database');
 type Env = Readonly<Record<string, string | undefined>>;
 
 /** Per process (a Vitest worker): the databases already created and migrated. */
@@ -22,7 +22,7 @@ export interface WorkerDatabase {
 }
 
 export async function workerDatabase(database: DatabaseModule, root: string, env: Env): Promise<WorkerDatabase> {
-  const config = (await resolveConfig([database.DatabaseConfig], env)).get(database.DatabaseConfig) as { default: import('@bespokecore/database').ConnectionOptions };
+  const config = (await resolveConfig([database.DatabaseConfig], env)).get(database.DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
   const options = config.default;
   // Named after the worker slot, not the process: the next run reuses (and first resets) it, so
   // databases do not pile up — like Laravel's parallel testing. Two runs at once would share them.
@@ -30,12 +30,12 @@ export async function workerDatabase(database: DatabaseModule, root: string, env
 
   if (options.driver === 'sqlite') {
     // A file, not `:memory:`: an in-memory database lives only as long as its connection, and every test app has its own.
-    const file = join(tmpdir(), `bespoke-test-${hash(root)}-${worker}.sqlite`);
+    const file = join(tmpdir(), `marmeon-test-${hash(root)}-${worker}.sqlite`);
     return { key: file, env: { DB_CONNECTION: 'sqlite', DB_DATABASE: file } };
   }
   const url = new URL(options.url);
   // Per app too (like the SQLite file): two apps' tests in one worker must not share a schema.
-  url.pathname = `/${url.pathname.slice(1) || 'bespoke'}_test_${hash(root)}_${worker}`;
+  url.pathname = `/${url.pathname.slice(1) || 'marmeon'}_test_${hash(root)}_${worker}`;
   return { key: url.href, env: { DB_CONNECTION: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
 }
 

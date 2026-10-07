@@ -1,4 +1,4 @@
-import type { Container, Key } from '@bespokecore/core';
+import type { Container, Key } from '@marmeon/core';
 
 /**
  * The page request an island's request runs inside of — set by the kernel when it resolves an island in-process while

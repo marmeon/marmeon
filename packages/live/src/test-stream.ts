@@ -1,4 +1,4 @@
-import type { LiveHint } from '@bespokecore/http';
+import type { LiveHint } from '@marmeon/http';
 import type { LiveHello } from './hub.ts';
 
 /** One event of a live stream as a test reads it. */

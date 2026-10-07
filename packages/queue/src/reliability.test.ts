@@ -1,8 +1,8 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Cache, CacheServiceProvider } from '@bespokecore/cache';
-import { Clock, createApplication, EventRegistry, listen, Logger, TestClock, type Application } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, InfrastructureTransactionError } from '@bespokecore/database';
-import { RedisServiceProvider } from '@bespokecore/redis';
+import { Cache, CacheServiceProvider } from '@marmeon/cache';
+import { Clock, createApplication, EventRegistry, listen, Logger, TestClock, type Application } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, InfrastructureTransactionError } from '@marmeon/database';
+import { RedisServiceProvider } from '@marmeon/redis';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { connectionOptions, databaseConnections, freshTarget, openDriver, PGSQL_URL, processKinds, REDIS_URL, silent, targetEnv, type SharedTarget } from './__fixtures__/targets.ts';
@@ -495,5 +495,5 @@ describe('QueueFake (W6 step 4)', () => {
   });
 });
 
-if (!PGSQL_URL) describe.skip('W6 step 4 on pgsql (set BESPOKE_TEST_PGSQL_URL: pnpm test:pgsql)', () => it('runs', () => {}));
-if (!REDIS_URL) describe.skip('W6 step 4 on redis (set BESPOKE_TEST_REDIS_URL: pnpm test:redis)', () => it('runs', () => {}));
+if (!PGSQL_URL) describe.skip('W6 step 4 on pgsql (set MARMEON_TEST_PGSQL_URL: pnpm test:pgsql)', () => it('runs', () => {}));
+if (!REDIS_URL) describe.skip('W6 step 4 on redis (set MARMEON_TEST_REDIS_URL: pnpm test:redis)', () => it('runs', () => {}));

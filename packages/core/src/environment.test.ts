@@ -42,7 +42,7 @@ describe('environment (E115, E139)', () => {
 
 describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
   const app = (files: Record<string, string>) => {
-    const root = tempDir('bespoke-env-');
+    const root = tempDir('marmeon-env-');
     for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
     return root;
   };
@@ -60,7 +60,7 @@ describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
     expect(resolveEnvironment(app({ '.env': 'APP_NAME=x\nNODE_ENV=development\n' }), { env, fallback: 'production' })).toMatchObject({ name: 'development', source: '.env' });
     expect(env).toEqual({ NODE_ENV: 'development', [DOTENV_MARKER]: 'development' });
     expect(environment.describe(env)).toBe('development (from .env)');
-    expect(environment.dotEnvDevelopmentWarning('start', env)).toMatch(/^NODE_ENV=development comes from \.env, not from the environment: bespoke start runs with the development tools/);
+    expect(environment.dotEnvDevelopmentWarning('start', env)).toMatch(/^NODE_ENV=development comes from \.env, not from the environment: marmeon start runs with the development tools/);
     // Resolving again (a re-executed child, createApplication after the CLI): still from .env.
     expect(resolveEnvironment(app({}), { env })).toMatchObject({ name: 'development', source: '.env' });
     const staging: Record<string, string | undefined> = {};

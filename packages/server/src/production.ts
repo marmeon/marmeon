@@ -2,12 +2,12 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { SsrRender } from '@bespokecore/http';
+import type { SsrRender } from '@marmeon/http';
 import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
 export interface ProductionOptions {
   root: string;
-  /** Build output, relative to `root` (what `bespoke()` from `@bespokecore/vite` writes). */
+  /** Build output, relative to `root` (what `marmeon()` from `@marmeon/vite` writes). */
   clientDir?: string;
   /** The SSR bundle, relative to `root`. */
   ssrBundle?: string;
@@ -20,7 +20,7 @@ export async function createProductionRenderer({
   ssrBundle = 'dist/server/ssr.js',
 }: ProductionOptions): Promise<PageRenderer> {
   const template = await readFile(join(root, clientDir, 'index.html'), 'utf8').catch((error: NodeJS.ErrnoException) => {
-    throw error.code === 'ENOENT' ? new Error(`No production build in ${clientDir} — run \`bespoke build\` first.`) : error;
+    throw error.code === 'ENOENT' ? new Error(`No production build in ${clientDir} — run \`marmeon build\` first.`) : error;
   });
   const { render } = (await import(pathToFileURL(join(root, ssrBundle)).href)) as { render: SsrRender };
 

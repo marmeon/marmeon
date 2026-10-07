@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, inTransaction, Logger, TestClock, TransactionError, type Application } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
+import { Clock, createApplication, inTransaction, Logger, TestClock, TransactionError, type Application } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectionOptions, databaseConnections, databaseKinds, freshTarget, silent, type QueueTarget } from './__fixtures__/targets.ts';

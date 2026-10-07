@@ -1,4 +1,4 @@
-import { Clock, SystemClock, token } from '@bespokecore/core';
+import { Clock, SystemClock, token } from '@marmeon/core';
 import type { LabConfig } from './config.ts';
 
 /**

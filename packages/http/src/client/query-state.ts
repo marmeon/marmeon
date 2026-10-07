@@ -49,7 +49,7 @@ export function withoutDefaults(values: Readonly<Record<string, unknown>>, defau
 
 /** The URL of the page on screen with `values` as its query (defaults left out; values as `String()`, lists as repeated keys). */
 export function queryUrl(page: Pick<PageObject, 'url' | 'queryDefaults'>, values: Readonly<Record<string, unknown>>): string {
-  const pathname = new URL(page.url, 'http://bespoke.invalid').pathname;
+  const pathname = new URL(page.url, 'http://marmeon.invalid').pathname;
   const search = toSearchParams(withoutDefaults(values, page.queryDefaults)).toString();
   return search ? `${pathname}?${search}` : pathname;
 }
@@ -60,7 +60,7 @@ export function queryUrl(page: Pick<PageObject, 'url' | 'queryDefaults'>, values
  */
 export function linkQuery(page: Pick<PageObject, 'url' | 'queryDefaults'>, url: string, query: Query): Query {
   if (!page.queryDefaults) return query;
-  const base = 'http://bespoke.invalid';
+  const base = 'http://marmeon.invalid';
   return new URL(url, base).pathname === new URL(page.url, base).pathname ? withoutDefaults(query, page.queryDefaults) : query;
 }
 
@@ -69,19 +69,19 @@ export function linkQuery(page: Pick<PageObject, 'url' | 'queryDefaults'>, url: 
  * route's page. Throws a message saying which of the two it is not.
  */
 export function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void {
-  const pathname = new URL(page.url, 'http://bespoke.invalid').pathname;
+  const pathname = new URL(page.url, 'http://marmeon.invalid').pathname;
   if (!matchesPath(path, pathname)) {
     throw new Error(
       process.env.NODE_ENV !== 'production'
-        ? `[bespoke:C3] Query state of [${name}] (${path}) is used on ${pathname}, a page of another route — it belongs to the page of its route.`
-        : `[bespoke:C3] ${name}`,
+        ? `[marmeon:C3] Query state of [${name}] (${path}) is used on ${pathname}, a page of another route — it belongs to the page of its route.`
+        : `[marmeon:C3] ${name}`,
     );
   }
   if (!page.queryDefaults) {
     throw new Error(
       process.env.NODE_ENV !== 'production'
-        ? `[bespoke:C4] Route [${name}] has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\`.`
-        : `[bespoke:C4] ${name}`,
+        ? `[marmeon:C4] Route [${name}] has no query schema to keep state in — give its controller \`static request = defineRequest({ query })\`.`
+        : `[marmeon:C4] ${name}`,
     );
   }
 }

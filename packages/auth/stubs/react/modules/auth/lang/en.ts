@@ -2,7 +2,7 @@
  * The texts of the auth module — the source language. Another language is a file next to this one, checked against it:
  *
  *   // lang/de.ts
- *   import type { Messages } from '@bespokecore/i18n/messages';
+ *   import type { Messages } from '@marmeon/i18n/messages';
  *   import type en from './en.ts';
  *   export default { login: { title: 'Anmelden', … }, … } satisfies Messages<typeof en>;
  *
@@ -173,7 +173,7 @@ const en = {
     throttled: 'Too many attempts. Please try again in {seconds, plural, one {# second} other {# seconds}}.',
   },
   mail: {
-    app: 'BespokeCore',
+    app: 'Marmeon',
     hello: 'Hello {name},',
     reset: {
       subject: 'Reset your password',
@@ -223,7 +223,7 @@ const en = {
 
 export default en;
 
-declare module '@bespokecore/i18n/messages' {
+declare module '@marmeon/i18n/messages' {
   interface Translations {
     auth: typeof en;
   }

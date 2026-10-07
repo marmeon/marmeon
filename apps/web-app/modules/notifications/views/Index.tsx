@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useAction, useRouter, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useAction, useRouter, useTranslation } from '@marmeon/react';
 import { ActionFailure } from '../../../layouts/ActionFailure.tsx';
 import type { ShowNotificationsController } from '../controllers/ShowNotificationsController.ts';
 

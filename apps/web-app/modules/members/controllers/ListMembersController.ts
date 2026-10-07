@@ -1,6 +1,6 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { Tables } from '@bespokecore/table';
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Tables } from '@marmeon/table';
 import { MembersTable } from '../tables/MembersTable.ts';
 
 /**

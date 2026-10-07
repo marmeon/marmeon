@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/testing",
+  "name": "@marmeon/testing",
   "version": "0.1.0",
-  "description": "Feature tests for BespokeCore apps: the real application and HTTP kernel without a server, with assertions, fakes and database helpers.",
+  "description": "Feature tests for Marmeon apps: the real application and HTTP kernel without a server, with assertions, fakes and database helpers.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "testing",
     "vitest",
     "feature-tests"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/testing#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/testing#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/testing"
   },
   "engines": {
@@ -25,7 +25,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -55,53 +55,53 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "@marmeon/core": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/server": "workspace:*"
   },
   "peerDependencies": {
-    "@bespokecore/auth": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/devtools": "workspace:*",
-    "@bespokecore/live": "workspace:*",
-    "@bespokecore/mail": "workspace:*",
-    "@bespokecore/notifications": "workspace:*",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/session": "workspace:*",
-    "@bespokecore/storage": "workspace:*",
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/devtools": "workspace:*",
+    "@marmeon/live": "workspace:*",
+    "@marmeon/mail": "workspace:*",
+    "@marmeon/notifications": "workspace:*",
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/scheduler": "workspace:*",
+    "@marmeon/session": "workspace:*",
+    "@marmeon/storage": "workspace:*",
     "vitest": "^5.0.0"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/auth": {
+    "@marmeon/auth": {
       "optional": true
     },
-    "@bespokecore/database": {
+    "@marmeon/database": {
       "optional": true
     },
-    "@bespokecore/devtools": {
+    "@marmeon/devtools": {
       "optional": true
     },
-    "@bespokecore/live": {
+    "@marmeon/live": {
       "optional": true
     },
-    "@bespokecore/mail": {
+    "@marmeon/mail": {
       "optional": true
     },
-    "@bespokecore/notifications": {
+    "@marmeon/notifications": {
       "optional": true
     },
-    "@bespokecore/queue": {
+    "@marmeon/queue": {
       "optional": true
     },
-    "@bespokecore/scheduler": {
+    "@marmeon/scheduler": {
       "optional": true
     },
-    "@bespokecore/session": {
+    "@marmeon/session": {
       "optional": true
     },
-    "@bespokecore/storage": {
+    "@marmeon/storage": {
       "optional": true
     },
     "vitest": {
@@ -109,15 +109,15 @@
     }
   },
   "devDependencies": {
-    "@bespokecore/auth": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/devtools": "workspace:*",
-    "@bespokecore/live": "workspace:*",
-    "@bespokecore/mail": "workspace:*",
-    "@bespokecore/notifications": "workspace:*",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/session": "workspace:*",
-    "@bespokecore/storage": "workspace:*"
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/devtools": "workspace:*",
+    "@marmeon/live": "workspace:*",
+    "@marmeon/mail": "workspace:*",
+    "@marmeon/notifications": "workspace:*",
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/scheduler": "workspace:*",
+    "@marmeon/session": "workspace:*",
+    "@marmeon/storage": "workspace:*"
   }
 }

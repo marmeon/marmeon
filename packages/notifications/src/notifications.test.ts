@@ -1,7 +1,7 @@
-import { createApplication, Logger } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
-import { Encrypter } from '@bespokecore/encryption';
-import { Queue } from '@bespokecore/queue';
+import { createApplication, Logger } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
+import { Encrypter } from '@marmeon/encryption';
+import { Queue } from '@marmeon/queue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, Faxed, KEY, Members, notificationApp, OrderShipped, ShippedMail, silent, Welcome, type TestApp } from './__fixtures__/app.ts';
 import { Inbox, notificationData } from './inbox.ts';
@@ -42,7 +42,7 @@ const output = () => {
 };
 
 describe.each(drivers)('notifications on %s', (driver) => {
-  describe('send → bespoke.notification → channels', () => {
+  describe('send → marmeon.notification → channels', () => {
     it('queues one encrypted job per recipient, then a worker writes the row and queues the mail in the recipient\'s language', async () => {
       const application = await app(driver);
       const notifications = application.container.make(Notifications);
@@ -372,7 +372,7 @@ describe('without a queue in the app', () => {
       override: (c) => c.instance(Logger, silent),
     });
     try {
-      await expect(application.container.make(Notifications).send(ada, Welcome, { code: 'x' })).rejects.toThrow(/needs @bespokecore\/queue/);
+      await expect(application.container.make(Notifications).send(ada, Welcome, { code: 'x' })).rejects.toThrow(/needs @marmeon\/queue/);
     } finally {
       await application.shutdown();
     }

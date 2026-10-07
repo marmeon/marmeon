@@ -1,9 +1,9 @@
 /**
  * Type guarantees of the merged, paginated list (W9 step 3) against this app's notifications — checked by `tsc` (`pnpm typecheck`,
- * `bespoke build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message
+ * `marmeon build`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment above it is the message
  * they get (read with the directive removed).
  */
-import { Pagination, useRouter } from '@bespokecore/react';
+import { Pagination, useRouter } from '@marmeon/react';
 import { expectTypeOf } from 'vitest';
 import type { ShowNotificationsController } from './controllers/ShowNotificationsController.ts';
 

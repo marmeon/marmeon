@@ -64,7 +64,7 @@ export function isCurrentLink(page: { readonly url: string; readonly route?: str
     const patterns = typeof activeMatch === 'string' ? [activeMatch] : activeMatch;
     if (patterns.some((pattern) => matchesRouteName(pattern, page.route!))) return true;
   }
-  const base = 'http://bespoke.invalid';
+  const base = 'http://marmeon.invalid';
   let link: URL;
   let current: URL;
   try {

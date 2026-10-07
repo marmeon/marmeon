@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { heldOnLoopback } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@bespokecore/core';
-import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@bespokecore/core/diagnostics';
+import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
   AssetVersion,
@@ -37,7 +37,7 @@ import {
   type PropOrigins,
   type RegionObject,
   type RegionResult,
-} from '@bespokecore/http';
+} from '@marmeon/http';
 import {
   clientIp,
   CookieJar,
@@ -55,7 +55,7 @@ import {
   type MiddlewareHandler,
   type RequestState,
   ValidationError,
-} from '@bespokecore/router';
+} from '@marmeon/router';
 import { Hono } from 'hono';
 import { overrideMethod } from './method-override.ts';
 import { createProductionRenderer } from './production.ts';
@@ -136,7 +136,7 @@ export type HttpKernel = Hono & {
 };
 
 /**
- * The HTTP kernel: Hono does the URL matching, the BespokeCore router runs the
+ * The HTTP kernel: Hono does the URL matching, the Marmeon router runs the
  * typed middleware pipeline and the action. Controllers and middleware classes
  * are resolved from a fresh container scope per request.
  *
@@ -188,7 +188,7 @@ export function createHttpKernel(
 
   /**
    * An island, resolved in-process while its page renders (E49): a GET of its URL with the page request's cookies and
-   * headers plus `x-bespoke-region: island`, matched by Hono and run through the island route's own middleware and
+   * headers plus `x-marmeon-region: island`, matched by Hono and run through the island route's own middleware and
    * authorization — in a scope of its own, read-only (E52), its session a copy of the page's. What it answers becomes
    * the island's outcome, as for the browser's request (`toRegionResponse`); a 409 — the document is out of date — is
    * left to the browser, whose request reloads the page.
@@ -228,7 +228,7 @@ export function createHttpKernel(
 
   /**
    * The base of a layer whose URL was loaded as a document (E53): a GET of its URL as a layer's client would send it
-   * (`x-bespoke`, `x-bespoke-region: layer`) with the page request's cookies and headers, run in-process through the base
+   * (`x-marmeon`, `x-marmeon-region: layer`) with the page request's cookies and headers, run in-process through the base
    * route's own middleware and authorization — read-only, its session a copy of the request's. Its page object, or what kept
    * it from showing one: a redirect, 401 or 403 (E54: the layer shows alone), anything else.
    */
@@ -286,7 +286,7 @@ export function createHttpKernel(
     handler.report(error);
     if (regionOf(request) === 'island') return renderRegionError(handler, error, request, scope);
     try {
-      // In the request's language, when a translator is bound (@bespokecore/i18n) — the error page, its title, validation messages.
+      // In the request's language, when a translator is bound (@marmeon/i18n) — the error page, its title, validation messages.
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
       const result = handler.render(error, request, { debug, translator });
       if (debug) {
@@ -460,7 +460,7 @@ export function createHttpKernel(
       }
       const answer = response();
       ended.status = answer.status;
-      // Where it sends the browser: a redirect, or the protocol's full reload (409 + x-bespoke-location) — not a failure.
+      // Where it sends the browser: a redirect, or the protocol's full reload (409 + x-marmeon-location) — not a failure.
       const location = answer.status === 409 ? answer.headers.get(LOCATION_HEADER) : answer.status >= 300 && answer.status < 400 ? answer.headers.get('location') : null;
       if (location) ended.location = location;
       const reload = answer.status === 409 && location ? answer.headers.get(RELOAD_HEADER) : null;
@@ -473,7 +473,7 @@ export function createHttpKernel(
   };
 
   if (clientDir) {
-    // The build's hashed files (E162): cached for a year, `immutable`; the `.br`/`.gz` that `bespoke build` wrote next to them by
+    // The build's hashed files (E162): cached for a year, `immutable`; the `.br`/`.gz` that `marmeon build` wrote next to them by
     // `Accept-Encoding`. Never compressed here — documents least of all (BREACH): that is the proxy's business.
     app.use('/assets/*', ...serveAssets(clientDir));
   }
@@ -497,7 +497,7 @@ export function createHttpKernel(
     const state = createRequestState(request, { maxBodySize, ip, nonce, ...(cookieDefaults ? { cookies: cookieDefaults } : {}) });
     if (debug || requests.hasSubscribers) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request, e.g. into a cookie session driver
-    scope.instance(IncomingRequest, request); // which tab sent it (`x-bespoke-connection`), for the live Broadcaster
+    scope.instance(IncomingRequest, request); // which tab sent it (`x-marmeon-connection`), for the live Broadcaster
     // Who sent it (E169) — for services without `ctx`: `Auth`'s Login event. The header is read only when asked for.
     scope.instance(RequestInfo, {
       ip,
@@ -717,7 +717,7 @@ function remoteAddress(env: unknown): string | undefined {
 
 export interface ServeOptions {
   app: Application;
-  /** Development: SSR entry relative to `root`. Defaults to the entry of the `bespoke()` Vite plugin. */
+  /** Development: SSR entry relative to `root`. Defaults to the entry of the `marmeon()` Vite plugin. */
   ssrEntry?: string;
   /** Defaults to `ServerConfig.port` (env `PORT`). */
   port?: number;
@@ -731,7 +731,7 @@ export interface ServeOptions {
   mode?: 'development' | 'production';
   /**
    * How long `close()` waits for work after the responses — `afterResponse.defer(…)` tasks, `terminate` hooks — before
-   * it gives up on them (default 8 s; `bespoke serve` exits after 10 s at the latest).
+   * it gives up on them (default 8 s; `marmeon serve` exits after 10 s at the latest).
    */
   drainTimeoutMs?: number;
   /**
@@ -749,7 +749,7 @@ export interface ServeOptions {
 }
 
 export interface CloseOptions {
-  /** Skip the shutdown delay (`SHUTDOWN_DELAY`) — `bespoke serve` on Ctrl+C (SIGINT): nobody routes to a terminal. */
+  /** Skip the shutdown delay (`SHUTDOWN_DELAY`) — `marmeon serve` on Ctrl+C (SIGINT): nobody routes to a terminal. */
   readonly immediately?: boolean;
 }
 
@@ -860,7 +860,7 @@ export async function startServer({
       const serving = mode === 'development' ? "Vite's dev server" : 'the build';
       app.container
         .make(Logger)
-        .info(`BespokeCore in ${environment.describe()} on http://${shownHost(host)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
+        .info(`Marmeon in ${environment.describe()} on http://${shownHost(host)}:${listening} (${serving}; ${routes} routes, ${app.modules.length} modules${packages})`);
       resolve({ server, port: listening, close });
     });
   });

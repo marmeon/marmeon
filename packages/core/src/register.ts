@@ -1,13 +1,13 @@
 /**
- * Node loader hook for app code: `node --import @bespokecore/core/register app.ts`.
+ * Node loader hook for app code: `node --import @marmeon/core/register app.ts`.
  *
  * Reads constructor parameter types *before* Node strips them and inserts the
  * generated `static inject` list, so classes get constructor injection without
  * decorators or hand-written lists. Files in node_modules are left alone — packages
- * carry their lists from `bespoke package:build` or get them from `bespoke discover`.
+ * carry their lists from `marmeon package:build` or get them from `marmeon discover`.
  *
- * In a protected environment (production, staging, no `NODE_ENV` — E139) the lists come from `bespoke build`
- * (`.bespoke/injections.json`, E138): a module whose source is the one the build saw gets its precomputed insertions, and
+ * In a protected environment (production, staging, no `NODE_ENV` — E139) the lists come from `marmeon build`
+ * (`.marmeon/injections.json`, E138): a module whose source is the one the build saw gets its precomputed insertions, and
  * oxc-parser is never loaded; any other module of the app is analysed as in development and counted for the one
  * "build artifacts are stale" warning. In development and tests every module is analysed (the file may be old there).
  */

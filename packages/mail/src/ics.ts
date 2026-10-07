@@ -47,7 +47,7 @@ export function calendarEvent(event: CalendarEvent): Attachment {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//BespokeCore//Mail//EN',
+    'PRODID:-//Marmeon//Mail//EN',
     'CALSCALE:GREGORIAN',
     `METHOD:${method}`,
     'BEGIN:VEVENT',

@@ -1,11 +1,11 @@
-import { RedisConnections } from '@bespokecore/redis';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { RedisConnections } from '@marmeon/redis';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
-/** Redis runs when `BESPOKE_TEST_REDIS_URL` is set (`pnpm test:redis`). */
-const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+/** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 // The app's rate limits run on the store CACHE_DRIVER names — in production `database` (this app, see .env.example) or
 // `redis`; the other tests use `memory` (.env.test). Here they run on the real stores, with requests sent at once:

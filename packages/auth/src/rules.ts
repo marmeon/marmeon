@@ -1,11 +1,11 @@
-import { translatable } from '@bespokecore/router';
+import { translatable } from '@marmeon/router';
 import * as v from 'valibot';
 import { MAX_PASSWORD_BYTES } from './hashing.ts';
 
 export interface PasswordRuleOptions {
   /** At least this many characters (default 8). Counted after NFKC normalization, in code points — an emoji is one. */
   readonly min?: number;
-  /** Own messages — texts, or translation keys (`trans('auth.password.short')` of @bespokecore/i18n). Default: the framework's (`bespoke.validation.password.*`). */
+  /** Own messages — texts, or translation keys (`trans('auth.password.short')` of @marmeon/i18n). Default: the framework's (`marmeon.validation.password.*`). */
   readonly messages?: { readonly required?: Message; readonly min?: Message; readonly max?: Message };
 }
 
@@ -25,13 +25,13 @@ const bytes = (value: string) => Buffer.byteLength(value.normalize('NFKC'), 'utf
  * ```
  */
 export function password({ min = 8, messages = {} }: PasswordRuleOptions = {}) {
-  // Framework texts by key, in the request's language (English without @bespokecore/i18n).
-  const required = messages.required ?? translatable('bespoke.validation.password.required', {}, 'Enter a password.');
+  // Framework texts by key, in the request's language (English without @marmeon/i18n).
+  const required = messages.required ?? translatable('marmeon.validation.password.required', {}, 'Enter a password.');
   return v.pipe(
     v.string(required),
     v.check((value) => value.isWellFormed(), required),
-    v.check((value) => length(value) >= min, messages.min ?? translatable('bespoke.validation.password.min', { min }, 'The password needs at least {min} characters.')),
-    v.check((value) => bytes(value) <= MAX_PASSWORD_BYTES, messages.max ?? translatable('bespoke.validation.password.max', {}, 'The password is too long.')),
+    v.check((value) => length(value) >= min, messages.min ?? translatable('marmeon.validation.password.min', { min }, 'The password needs at least {min} characters.')),
+    v.check((value) => bytes(value) <= MAX_PASSWORD_BYTES, messages.max ?? translatable('marmeon.validation.password.max', {}, 'The password is too long.')),
   );
 }
 
@@ -67,7 +67,7 @@ export function confirmed(
   {
     field = 'password',
     confirmation = `${field}_confirmation`,
-    message = translatable('bespoke.validation.confirmed', {}, 'The passwords do not match.'),
+    message = translatable('marmeon.validation.confirmed', {}, 'The passwords do not match.'),
   }: ConfirmedOptions = {},
 ): unknown {
   const same = (input: Record<string, unknown>) =>

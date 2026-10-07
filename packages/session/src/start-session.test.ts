@@ -1,10 +1,10 @@
-import { CacheServiceProvider } from '@bespokecore/cache';
-import { CliServiceProvider } from '@bespokecore/cli';
-import { createApplication, defineModule, type ModuleDefinition, type ServiceProviderClass } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
-import { defineSchedule, SchedulerServiceProvider } from '@bespokecore/scheduler';
-import { createHttpKernel } from '@bespokecore/server';
+import { CacheServiceProvider } from '@marmeon/cache';
+import { CliServiceProvider } from 'marmeon';
+import { createApplication, defineModule, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { defineSchedule, SchedulerServiceProvider } from '@marmeon/scheduler';
+import { createHttpKernel } from '@marmeon/server';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { CsrfProtection } from './csrf.ts';
@@ -71,7 +71,7 @@ const apiRoutes = defineRoutes((Route) => {
   Route.post('/no-session', () => new SaveController().handle());
 });
 
-const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
+const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='));
 
 async function boot(env: Record<string, string> = {}, kernelOptions: { version?: string } = {}, extra: { providers?: ServiceProviderClass[]; schedule?: ModuleDefinition['schedule'] } = {}) {
   const application = await createApplication({
@@ -88,7 +88,7 @@ async function boot(env: Record<string, string> = {}, kernelOptions: { version?:
   let cookie = '';
   const send = async (path: string, init: RequestInit & { headers?: Record<string, string> } = {}) => {
     const response = await kernel.request(path, { ...init, headers: { cookie, accept: 'application/json', ...init.headers } });
-    const set = response.headers.getSetCookie().find((header) => header.startsWith('bespoke_session='));
+    const set = response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='));
     if (set) cookie = set.split(';')[0]!;
     return response;
   };
@@ -100,7 +100,7 @@ describe('StartSession', () => {
     const { send } = await boot();
     const first = await send('/count');
     expect(await first.json()).toEqual({ visits: 1, status: null });
-    expect(sessionCookie(first)).toMatch(/^bespoke_session=[\w-]{60,}; Path=\/; Max-Age=7200; HttpOnly; SameSite=Lax$/);
+    expect(sessionCookie(first)).toMatch(/^marmeon_session=[\w-]{60,}; Path=\/; Max-Age=7200; HttpOnly; SameSite=Lax$/);
     expect(await (await send('/count')).json()).toEqual({ visits: 2, status: null });
   });
 
@@ -116,7 +116,7 @@ describe('StartSession', () => {
     const { send } = await boot();
     const failed = await send('/fail', { method: 'POST' });
     expect(failed.status).toBe(422);
-    expect(sessionCookie(failed)).toMatch(/^bespoke_session=/);
+    expect(sessionCookie(failed)).toMatch(/^marmeon_session=/);
   });
 
   it('fails loudly (500) for redirect().with() on a route without a session', async () => {
@@ -154,7 +154,7 @@ describe('StartSession', () => {
   it('keeps flash data through an asset-version reload (409)', async () => {
     const { send } = await boot({ ASSET_VERSION: 'v2' }, { version: 'v2' });
     await send('/save', { method: 'POST' });
-    const stale = await send('/count', { headers: { 'x-bespoke': 'true', 'x-bespoke-version': 'v1' } });
+    const stale = await send('/count', { headers: { 'x-marmeon': 'true', 'x-marmeon-version': 'v1' } });
     expect(stale.status).toBe(409);
     expect(await (await send('/count')).json()).toMatchObject({ status: 'Saved.' }); // still there after the reload
   });
@@ -184,7 +184,7 @@ describe('StartSession', () => {
     // A page request gets the error page — the session readable, never written.
     const [, page] = await Promise.all([send('/slow/blocked', { method: 'POST' }), sleep(2).then(() => send('/slow/impatient', { method: 'POST', headers: { accept: 'text/html' } }))]);
     expect(page.status).toBe(423);
-    expect(page.headers.getSetCookie().filter((header) => header.startsWith('bespoke_session='))).toEqual([]);
+    expect(page.headers.getSetCookie().filter((header) => header.startsWith('marmeon_session='))).toEqual([]);
     // Without a session cookie there is nothing to lock: a new session is nobody else's.
     const fresh = await boot({ LOG_LEVEL: 'silent' });
     expect((await fresh.send('/slow/blocked', { method: 'POST' })).status).toBe(200);

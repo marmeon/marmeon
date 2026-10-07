@@ -1,7 +1,7 @@
 /**
  * The History fallback (E184): where the browser has no Navigation API (Safari before 26.2, older browsers), the navigator
  * writes its entries with `pushState`/`replaceState` and follows Back/Forward by `popstate` — this feature, a chunk of its own,
- * attached before the navigator writes its first entry (`loadHistoryFallback`: createBespokeApp loads it beside the first page's
+ * attached before the navigator writes its first entry (`loadHistoryFallback`: createMarmeonApp loads it beside the first page's
  * component, only when `window.navigation` is missing). Every entry it writes is counted (`index`, a position like the scroll):
  * the browser moved already when `popstate` fires, so the navigation guard (E64) goes back (`history.go`), asks, and goes again.
  */

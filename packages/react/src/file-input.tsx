@@ -1,5 +1,5 @@
-import { loadUploads } from '@bespokecore/http/client';
-import type { Upload } from '@bespokecore/http/page';
+import { loadUploads } from '@marmeon/http/client';
+import type { Upload } from '@marmeon/http/page';
 import { useCallback, useEffect, useRef, type InputHTMLAttributes } from 'react';
 import { useRouterContext } from './app.tsx';
 import type { FormField } from './use-form.ts';

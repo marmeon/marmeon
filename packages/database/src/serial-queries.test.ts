@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { CompiledQuery, sql, type DatabaseConnection, type Driver, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { BespokeDriver, serialQueries } from './driver.ts';
+import { MarmeonDriver, serialQueries } from './driver.ts';
 import type { Connections } from './index.ts';
 
 // One query at a time per connection (W9 step 10b): a transaction's connection and a test's isolated one are shared by everything
@@ -108,11 +108,11 @@ function fakeDriver(connection: DatabaseConnection): Driver {
   };
 }
 
-describe('the BespokeDriver hands out connections whose queries take turns', () => {
+describe('the MarmeonDriver hands out connections whose queries take turns', () => {
   it('a test’s isolated connection: two "requests" at once never overlap on it — the transaction statements included', async () => {
     const log: string[] = [];
     const inner = new CountingConnection(log);
-    const driver = new BespokeDriver(fakeDriver(inner), { name: 'default', target: 'fake' });
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', target: 'fake' });
     const isolation = await driver.isolate();
     const [first, second] = await Promise.all([driver.acquireConnection(), driver.acquireConnection()]);
     expect(first).toBe(second);
@@ -124,7 +124,7 @@ describe('the BespokeDriver hands out connections whose queries take turns', () 
 
   it('a connection of its own (the pool) is wrapped once, the same wrapper every time', async () => {
     const inner = new CountingConnection([]);
-    const driver = new BespokeDriver(fakeDriver(inner), { name: 'default', target: 'fake' });
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', target: 'fake' });
     const first = await driver.acquireConnection();
     await driver.releaseConnection(first);
     const second = await driver.acquireConnection();

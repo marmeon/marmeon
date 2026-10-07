@@ -4,7 +4,7 @@
  *
  *   the image: runs as a user other than root · no .env*, no test, no other app's code, no config of the build (vite, vitest,
  *   tsconfig) · no dev dependency · every README and guide in /app/content · a command besides start (route:types --check, no
- *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and bespoke gives the
+ *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and marmeon gives the
  *   source condition only inside the workspace (E187) · tini is PID 1 and reaps an orphaned process
  *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page,
  *   every guide and every package 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
@@ -13,7 +13,7 @@
  *   own CA): HTTP/2 · no Set-Cookie · Strict-Transport-Security · X-Forwarded-Proto/-Host trusted (an old client's 409 names
  *   https://localhost:<port>) · documents compressed, and a revalidation with the compressed ETag answers 304
  *
- * The image is tagged `bespokecore-docs:smoke-…`, the Compose project `bespokecore-docs-smoke-…`; both, the containers and the
+ * The image is tagged `marmeon-docs:smoke-…`, the Compose project `marmeon-docs-smoke-…`; both, the containers and the
  * volumes are removed afterwards (the build cache stays). Without Docker, or when the build cannot reach the registry, it ends
  * with exit 75 — skipped, never green.
  *
@@ -34,7 +34,7 @@ const DOCKER_OFFLINE = /failed to resolve source metadata|failed to do request|d
 /** The docs' policy in production (apps/docs DocsServiceProvider, DOCS_CSP). */
 const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 /** Never in the image: what only builds or tests the docs. */
-const DEV_PACKAGES = /^(vite|vitest|typescript|@vitejs\+|oxlint|@oxlint\+|@bespokecore\+(devtools|testing|vite))(@|$)/;
+const DEV_PACKAGES = /^(vite|vitest|typescript|@vitejs\+|oxlint|@oxlint\+|@marmeon\+(devtools|testing|vite))(@|$)/;
 
 const env = cleanEnvironment();
 
@@ -76,7 +76,7 @@ const fs = require('fs'), path = require('path');
 const walk = (dir, out = []) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) { if (p !== 'node_modules') walk(p, out); } else out.push(p); } return out; };
 const app = walk('.');
 const store = fs.readdirSync('node_modules/.pnpm');
-const framework = store.filter((e) => e.startsWith('@bespokecore+')).flatMap((e) => { const dir = path.join('node_modules/.pnpm', e, 'node_modules/@bespokecore'); return fs.readdirSync(dir).map((n) => path.join(dir, n)); });
+const framework = store.filter((e) => e.startsWith('@marmeon+')).flatMap((e) => { const dir = path.join('node_modules/.pnpm', e, 'node_modules/@marmeon'); return fs.readdirSync(dir).map((n) => path.join(dir, n)); });
 const frameworkFiles = framework.flatMap((dir) => walk(dir));
 console.log(JSON.stringify({
   top: fs.readdirSync('.').sort(),
@@ -112,14 +112,14 @@ export async function assertReapsOrphans(run: (args: string[]) => { output: stri
   run(['exec', container, 'sh', '-c', 'sleep 0.2 >/dev/null 2>&1 & exit 0']);
   await new Promise((resolve) => setTimeout(resolve, 1_500));
   const zombies = JSON.parse(run(['exec', container, 'node', '-e', ZOMBIES]).output.trim().split('\n').at(-1)!) as string[];
-  if (zombies.length > 0) throw new SmokeError(`an orphaned process stayed a zombie (<defunct>: ${zombies.join(', ')}) — PID 1 is "${init}", which reaps none; the image must run bespoke under tini.`);
+  if (zombies.length > 0) throw new SmokeError(`an orphaned process stayed a zombie (<defunct>: ${zombies.join(', ')}) — PID 1 is "${init}", which reaps none; the image must run marmeon under tini.`);
   if (init !== 'tini') throw new SmokeError(`PID 1 of the container is "${init}", not tini.`);
 }
 
 /** The files the image must not have and the ones it must — `problems` empty when all is well. */
 export function inspectionProblems(found: Inspection, repository = root): string[] {
   const problems: string[] = [];
-  const expected = ['.bespoke', 'README.md', 'bootstrap', 'config', 'content', 'dist', 'docs.config.ts', 'index.html', 'layouts', 'modules', 'node_modules', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'storage', 'styles'];
+  const expected = ['.marmeon', 'README.md', 'bootstrap', 'config', 'content', 'dist', 'docs.config.ts', 'index.html', 'layouts', 'modules', 'node_modules', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'storage', 'styles'];
   const extra = found.top.filter((name) => !expected.includes(name));
   const missing = expected.filter((name) => !found.top.includes(name));
   if (extra.length > 0) problems.push(`/app has what the docs do not run on: ${extra.join(', ')} (apps/docs "files", the Dockerfile's copies)`);
@@ -170,10 +170,10 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
   }
   const id = `${process.pid}-${Date.now().toString(36)}`;
   const tag = `smoke-${id}`;
-  const image = `bespokecore-docs:${tag}`;
-  const volume = `bespokecore-docs-smoke-${id}`;
-  const project = `bespokecore-docs-smoke-${id}`;
-  const work = mkdtempSync(join(tmpdir(), 'bespoke-docs-image-'));
+  const image = `marmeon-docs:${tag}`;
+  const volume = `marmeon-docs-smoke-${id}`;
+  const project = `marmeon-docs-smoke-${id}`;
+  const work = mkdtempSync(join(tmpdir(), 'marmeon-docs-image-'));
   const containers = new Set<string>();
   const key = `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
   let built = false;
@@ -214,14 +214,14 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       const problems = inspectionProblems(found);
       if (problems.length > 0) throw new SmokeError(`the image:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);
       // A command besides start in the pnpm deploy copy (W8.12): the framework's manifests keep the workspace's source condition —
-      // bespoke must not take the copy for the monorepo (E187), or Node refuses the TypeScript under node_modules. No APP_KEY given:
+      // marmeon must not take the copy for the monorepo (E187), or Node refuses the TypeScript under node_modules. No APP_KEY given:
       // route:types registers the app without booting it (the build phase).
       const types = docker(['run', '--rm', '-e', 'NODE_ENV=production', image, 'route:types', '--check'], { expect: 'any' });
-      if (types.code !== 0) throw new SmokeError(`bespoke route:types --check in the image ended with ${types.code}:\n${types.output}`);
+      if (types.code !== 0) throw new SmokeError(`marmeon route:types --check in the image ended with ${types.code}:\n${types.output}`);
     });
     await step('read-only root, the storage volume → /up, every page 200 without Set-Cookie, the static policy, healthy, a quiet log; SIGTERM → exit 0', async () => {
       const port = await freePort();
-      const name = `bespokecore-docs-smoke-${id}-docs`;
+      const name = `marmeon-docs-smoke-${id}-docs`;
       containers.add(name);
       docker(['run', '-d', '--name', name, '--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, '-e', `APP_KEY=${key}`, '-e', `APP_URL=http://127.0.0.1:${port}`, '-v', `${volume}:/app/storage`, '--health-interval=1s', '--health-start-period=1s', image]);
       const base = `http://127.0.0.1:${port}`;
@@ -264,9 +264,9 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
         if (page.headers.get('content-security-policy') !== POLICY) problems.push(`${path}: Content-Security-Policy "${page.headers.get('content-security-policy')}"`);
       }
       // An old client's visit: the docs build the reload URL from what Caddy forwarded — trusted, it is Caddy's https address.
-      const stale = curl(`${base}/guides/deployment`, { 'x-bespoke': 'true', 'x-bespoke-version': 'stale', accept: 'text/html, application/json' });
-      if (stale.status !== 409 || stale.headers.get('x-bespoke-location') !== `${base}/guides/deployment`) {
-        problems.push(`an old client's visit: ${stale.status}, x-bespoke-location "${stale.headers.get('x-bespoke-location')}" — expected 409 and ${base}/guides/deployment (TRUSTED_PROXIES)`);
+      const stale = curl(`${base}/guides/deployment`, { 'x-marmeon': 'true', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
+      if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/guides/deployment`) {
+        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/guides/deployment (TRUSTED_PROXIES)`);
       }
       const compressed = curl(`${base}/guides/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
       const plain = curl(`${base}/guides/upgrading`, { accept: 'text/html' });

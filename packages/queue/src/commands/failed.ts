@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
-import { Clock } from '@bespokecore/core';
-import type { CommandInput } from '@bespokecore/cli';
+import { Clock } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import type { FailedJob } from '../driver.ts';
 
 /** The migration `make:queue-table` copies — a real file, so the driver tests run exactly what apps get. */
 export const QUEUE_MIGRATION = new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url);
 
-/** `bespoke make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module (E96). */
+/** `marmeon make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module (E96). */
 export class MakeQueueTableCommand {
   static command = 'make:queue-table';
   static description = 'Create the migration for the database queue (jobs, failed_jobs)';
@@ -15,7 +15,7 @@ export class MakeQueueTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@bespokecore/database');
+    const { publishMigration } = await import('@marmeon/database');
     return publishMigration(input, { name: 'create_jobs_table', table: 'jobs', contents: readFileSync(QUEUE_MIGRATION, 'utf8') });
   }
 }
@@ -26,7 +26,7 @@ function headline(job: FailedJob): string {
   return line.length > 120 ? `${line.slice(0, 117)}…` : line;
 }
 
-/** `bespoke queue:failed`: the failed jobs, newest first. */
+/** `marmeon queue:failed`: the failed jobs, newest first. */
 export class QueueFailedCommand {
   static command = 'queue:failed';
   static description = 'List the failed jobs';
@@ -47,12 +47,12 @@ export class QueueFailedCommand {
       output.line(`${new Date(job.failedAt).toISOString()}  ${job.uuid}  ${job.job}  (${job.connection}/${job.queue})`);
       output.line(`    ${headline(job)}`);
     }
-    output.line(`${jobs.length} failed ${jobs.length === 1 ? 'job' : 'jobs'} — bespoke queue:retry <id|all>, queue:forget <id>`);
+    output.line(`${jobs.length} failed ${jobs.length === 1 ? 'job' : 'jobs'} — marmeon queue:retry <id|all>, queue:forget <id>`);
     return 0;
   }
 }
 
-/** `bespoke queue:retry <id…|all>`: puts failed jobs back on their queue — same job id, attempts from zero. */
+/** `marmeon queue:retry <id…|all>`: puts failed jobs back on their queue — same job id, attempts from zero. */
 export class QueueRetryCommand {
   static command = 'queue:retry';
   static description = 'Put failed jobs back on their queue';
@@ -66,7 +66,7 @@ export class QueueRetryCommand {
 
   async handle({ args, output }: CommandInput): Promise<number> {
     if (args.length === 0) {
-      output.error('Pass the ids of the failed jobs (bespoke queue:failed lists them), or all.');
+      output.error('Pass the ids of the failed jobs (marmeon queue:failed lists them), or all.');
       return 1;
     }
     const store = this.#connections.failed();
@@ -90,7 +90,7 @@ export class QueueRetryCommand {
   }
 }
 
-/** `bespoke queue:forget <id>`: deletes a failed job. */
+/** `marmeon queue:forget <id>`: deletes a failed job. */
 export class QueueForgetCommand {
   static command = 'queue:forget';
   static description = 'Delete a failed job';
@@ -105,7 +105,7 @@ export class QueueForgetCommand {
   async handle({ args, output }: CommandInput): Promise<number> {
     const [id] = args;
     if (!id) {
-      output.error('Pass the id of the failed job (bespoke queue:failed lists them).');
+      output.error('Pass the id of the failed job (marmeon queue:failed lists them).');
       return 1;
     }
     if (!(await this.#connections.failed().forget(id))) {
@@ -117,7 +117,7 @@ export class QueueForgetCommand {
   }
 }
 
-/** `bespoke queue:flush`: deletes every failed job. */
+/** `marmeon queue:flush`: deletes every failed job. */
 export class QueueFlushCommand {
   static command = 'queue:flush';
   static description = 'Delete all failed jobs';
@@ -135,7 +135,7 @@ export class QueueFlushCommand {
   }
 }
 
-/** `bespoke queue:prune-failed [--hours=168]`: deletes failed jobs older than the given hours — for the scheduler (W6 step 6). */
+/** `marmeon queue:prune-failed [--hours=168]`: deletes failed jobs older than the given hours — for the scheduler (W6 step 6). */
 export class QueuePruneFailedCommand {
   static command = 'queue:prune-failed';
   static description = 'Delete failed jobs older than --hours (default 168)';
@@ -162,7 +162,7 @@ export class QueuePruneFailedCommand {
   }
 }
 
-/** `bespoke queue:size [queue…] [--connection=…]`: how many jobs wait (or run) per queue. */
+/** `marmeon queue:size [queue…] [--connection=…]`: how many jobs wait (or run) per queue. */
 export class QueueSizeCommand {
   static command = 'queue:size';
   static description = 'Show how many jobs each queue holds';

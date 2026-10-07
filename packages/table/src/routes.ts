@@ -1,5 +1,5 @@
-import { Controller } from '@bespokecore/http';
-import type { HttpContext, Route } from '@bespokecore/router';
+import { Controller } from '@marmeon/http';
+import type { HttpContext, Route } from '@marmeon/router';
 import type { Table } from './define.ts';
 import { endpointOf, recordEndpoint, Tables } from './tables.ts';
 

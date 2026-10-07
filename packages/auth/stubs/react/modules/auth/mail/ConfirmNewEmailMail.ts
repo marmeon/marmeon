@@ -1,5 +1,5 @@
-import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
+import type { Translator } from '@marmeon/i18n';
+import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
 import type { User } from '../users.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
@@ -21,7 +21,7 @@ export class ConfirmNewEmailMail implements Mailable {
     this.#t = t;
   }
 
-  /** The preview (`/_bespoke/mail/auth/ConfirmNewEmailMail`, development only). */
+  /** The preview (`/_marmeon/mail/auth/ConfirmNewEmailMail`, development only). */
   static preview(context: MailPreviewContext): ConfirmNewEmailMail {
     const { user, url, t } = previewData(context);
     return new ConfirmNewEmailMail(user, 'ada.lovelace@example.com', url('/email/change/1/preview?expires=0&signature=preview'), t);

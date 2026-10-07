@@ -1,4 +1,4 @@
-import { deny, type AuthUser } from '@bespokecore/auth';
+import { deny, type AuthUser } from '@marmeon/auth';
 
 /** Who may do what with a profile. Profiles come as different rows (UserRepository, ProfileDirectory) — the policy needs only the id. */
 export class ProfilePolicy {

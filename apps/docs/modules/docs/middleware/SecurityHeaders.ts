@@ -1,4 +1,4 @@
-import { editableResponse, type HttpContext, type Next } from '@bespokecore/http';
+import { editableResponse, type HttpContext, type Next } from '@marmeon/http';
 
 /**
  * Global middleware (see DocsServiceProvider): every answer — pages, assets' 404s, the search — is never sniffed into another

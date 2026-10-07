@@ -1,5 +1,5 @@
-import type { Logger } from '@bespokecore/core';
-import type { RedisConnection, RedisScript } from '@bespokecore/redis';
+import type { Logger } from '@marmeon/core';
+import type { RedisConnection, RedisScript } from '@marmeon/redis';
 import { parseMessage, type LiveBackend, type LiveMessage } from './backend.ts';
 
 /** How long Redis keeps a channel's sequence after its last hint — a stream away longer reloads once (unknown = changed). */
@@ -16,7 +16,7 @@ redis.call('PUBLISH', KEYS[2], ARGV[2] .. seq .. '}')
 return seq
 `;
 
-/** The parts of @bespokecore/redis this backend uses (its module is an optional peer: imported when the driver is `redis`). */
+/** The parts of @marmeon/redis this backend uses (its module is an optional peer: imported when the driver is `redis`). */
 export interface RedisLiveDependencies {
   readonly connection: RedisConnection;
   readonly script: (name: string, lua: string) => RedisScript;
@@ -42,7 +42,7 @@ export class RedisLiveBackend implements LiveBackend {
   constructor({ connection, script, logger }: RedisLiveDependencies) {
     this.#connection = connection;
     this.#logger = logger;
-    this.#refresh = script('bespoke-live-refresh', REFRESH);
+    this.#refresh = script('marmeon-live-refresh', REFRESH);
     this.#channel = connection.key('live');
   }
 

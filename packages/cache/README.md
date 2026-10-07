@@ -1,4 +1,4 @@
-# @bespokecore/cache
+# @marmeon/cache
 
 The cache, rate limits (`RateLimiter`, `throttle()`) and locks (`cache.lock()`) — injected like any service. The queue's unique
 jobs and `job.once` markers, the scheduler's locks, the session's `block()` locks and the limit on live validations are kept
@@ -16,11 +16,11 @@ statement, a Lua script or `SET NX`, a per-key guard file — so concurrent requ
 limit together. (The `file` store takes over a guard older than 2 s, left by a crashed process: one that stalls longer than that
 inside its few-microsecond step loses its exclusivity.)
 
-`bespoke discover` registers its `CacheServiceProvider` through the `"bespoke"` field of its package.json: the `Cache` of
+`marmeon discover` registers its `CacheServiceProvider` through the `"marmeon"` field of its package.json: the `Cache` of
 `CACHE_DRIVER` and the `RateLimiter` (singletons), the live-validation limit in the global middleware stack, a readiness check,
-and `make:cache-table`, `cache:prune` and `cache:clear` (when `@bespokecore/cli` is installed). The `database` and `redis` drivers
+and `make:cache-table`, `cache:prune` and `cache:clear` (when `marmeon` is installed). The `database` and `redis` drivers
 need their packages — optional peers; a missing one fails the start with what to install (`CacheSetupError`: "CACHE_DRIVER=redis
-needs @bespokecore/redis, which is not installed in this app: pnpm add @bespokecore/redis redis").
+needs @marmeon/redis, which is not installed in this app: pnpm add @marmeon/redis redis").
 
 **Readiness (E126):** the provider registers `CacheHealthCheck` for `/up/ready` — the store of `CACHE_DRIVER` takes a new key
 (`add`) and lets it go (`forget`); the database store writes on its infrastructure connection (E108), as the cache always does.
@@ -43,8 +43,8 @@ runs `CACHE_DRIVER=database` with `CACHE_CONNECTION=system` (a SQLite file of it
 | Driver     | Where the data lives                                                              | Use it for                                    |
 | ---------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
 | `file`     | a file per key (`CACHE_PATH`) — the default                                       | one server                                    |
-| `database` | rows in `cache` and `cache_locks` (`bespoke make:cache-table`, `CACHE_CONNECTION`) | several processes or servers                  |
-| `redis`    | `<REDIS_PREFIX>cache:<key>` and `<REDIS_PREFIX>lock:<name>` ([@bespokecore/redis](../redis/README.md) + `redis`, `CACHE_CONNECTION`) | several servers, Redis anyway |
+| `database` | rows in `cache` and `cache_locks` (`marmeon make:cache-table`, `CACHE_CONNECTION`) | several processes or servers                  |
+| `redis`    | `<REDIS_PREFIX>cache:<key>` and `<REDIS_PREFIX>lock:<name>` ([@marmeon/redis](../redis/README.md) + `redis`, `CACHE_CONNECTION`) | several servers, Redis anyway |
 | `memory`   | the process                                                                       | tests                                         |
 
 ### `database`: its own connection, never the app's transactions (E108)
@@ -65,8 +65,8 @@ A second connection to the app's own SQLite file cannot help: it would wait for 
 forever, if the transaction waits for the cache.
 
 ```sh
-bespoke make:cache-table   # modules/system/migrations/…_create_cache_table.ts (E96: the tables are the app's; --module=<name> for another)
-bespoke migrate            # creates them on CACHE_CONNECTION
+marmeon make:cache-table   # modules/system/migrations/…_create_cache_table.ts (E96: the tables are the app's; --module=<name> for another)
+marmeon migrate            # creates them on CACHE_CONNECTION
 ```
 
 The migration follows the cache: `connection: cacheTablesConnection` puts the tables on `CACHE_CONNECTION` (with the
@@ -97,14 +97,14 @@ a job) to release it. `forceRelease()` frees it whoever holds it, `owned()` says
 ### Undoing a lock with the transaction
 
 A lock taken for work that is part of a transaction — a unique job whose row is in it — must be released if the
-transaction rolls back: `afterRollback(() => lock.release())` (from `@bespokecore/database`,
+transaction rolls back: `afterRollback(() => lock.release())` (from `@marmeon/database`,
 [the rules](../database/README.md#the-rules)) runs right after the rollback and never after a commit.
 The queue does exactly this for unique jobs (`queue.dispatch(Job, payload, { unique })`): lock, then `afterRollback`, then the
 dispatch.
 
 ### Locks and markers of the queue
 
-`@bespokecore/queue` keeps three things in this cache: the locks of unique jobs (`queue:unique:<job>:<key>`, owner = the
+`@marmeon/queue` keeps three things in this cache: the locks of unique jobs (`queue:unique:<job>:<key>`, owner = the
 job's id, so the worker that finishes the job frees it), the locks of the `withoutOverlapping` job middleware
 (`queue:overlap:…`) and the markers of `job.once` (`queue:once:<key>`, kept a day by default). With workers on several
 machines the cache must be shared: `database` or `redis` — `file` and `memory` lock only one machine (one process). See
@@ -112,7 +112,7 @@ machines the cache must be shared: `database` or `redis` — `file` and `memory`
 
 ### Locks of the session
 
-A route that `block()`s ([@bespokecore/session](../session/README.md#blocking-routes-block), E145) runs its requests one at a
+A route that `block()`s ([@marmeon/session](../session/README.md#blocking-routes-block), E145) runs its requests one at a
 time per session through a lock of this cache: `session:<key>` — the session's store key (the SHA-256 of its id, never the id),
 held for the route's `lockSeconds`, waited for with `block(waitSeconds)` (then **423**). Without this package such a route
 answers 500 naming it. With several processes or servers the cache must be shared (`database` or `redis`) — `file` locks one
@@ -120,7 +120,7 @@ machine, `memory` one process.
 
 ### Locks of the scheduler
 
-The scheduler ([@bespokecore/scheduler](../scheduler/README.md)) keeps its locks here too: `schedule:<task>:<minute>` for
+The scheduler ([@marmeon/scheduler](../scheduler/README.md)) keeps its locks here too: `schedule:<task>:<minute>` for
 `onOneServer()` (an hour), `schedule:overlap:<task>` for `withoutOverlapping()`, and its last tick (`schedule:last-tick`,
 `schedule:last-tick:<host>`) for catching up missed runs. With `file` or `memory` these locks hold on one machine (`file`) or in
 one process (`memory`) only: since E123 `schedule:work` and `schedule:run` **start anyway and warn** (and `schedule:list` shows
@@ -146,7 +146,7 @@ guests.middleware(throttle('register')).post('/register', RegisterController).na
 - **`ctx.ip`** is the client's address — behind a proxy only when the proxy is in `TRUSTED_PROXIES`
   ([behind a proxy](../server/README.md#behind-a-proxy-e162)); otherwise every visitor shares the proxy's address, and its limit.
 - **Answers:** a used-up limit is a `429` with `Retry-After` and `X-RateLimit-*` headers (the message is the translated
-  `bespoke.errors.throttled`); passing responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`. A limiter that is not
+  `marmeon.errors.throttled`); passing responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`. A limiter that is not
   defined throws on the first request.
 - **Live validations (E62):** a field checked on blur is held to the route's limit but does not count against it. They have a
   limit of their own in the global stack — `live-validation`, 30 a minute per route and client address (`LimitLiveValidation`);
@@ -155,14 +155,14 @@ guests.middleware(throttle('register')).post('/register', RegisterController).na
 ## Expired entries: `cache:prune`, emptying: `cache:clear`
 
 Expired entries and locks stay in `memory`, `file` and `database` stores until they are read or overwritten.
-`bespoke cache:prune` deletes them (each in one statement or under its guard — a live one is never touched); Redis expires
+`marmeon cache:prune` deletes them (each in one statement or under its guard — a live one is never touched); Redis expires
 keys itself. Schedule it: `s.command('cache:prune').hourlyAt(25).withoutOverlapping().onOneServer()` (the web app's
-`modules/system/schedule.ts`). `bespoke cache:clear` empties the cache — every entry, never a lock: rate-limit windows,
+`modules/system/schedule.ts`). `marmeon cache:clear` empties the cache — every entry, never a lock: rate-limit windows,
 `job.once` markers and the scheduler's last tick are gone too (after `migrate:fresh`, when ids start over and old markers would
 match new records). On Redis it deletes only the `cache:` keys (`SCAN` + `UNLINK`), never `FLUSHDB`.
 
 ## Testing
 
 Tests usually run `CACHE_DRIVER=memory` (the web app's `.env.test`). The cache, locks and rate limits read the time through the
-app's `Clock`: with `@bespokecore/testing`, `app.travel({ minutes: 1 })` lets a rate-limit window pass without waiting.
+app's `Clock`: with `@marmeon/testing`, `app.travel({ minutes: 1 })` lets a rate-limit window pass without waiting.
 `pnpm test:redis` runs the store tests against Redis too ([testing](../redis/README.md#testing)).

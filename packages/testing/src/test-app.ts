@@ -12,9 +12,9 @@ import {
   type EventClass,
   type Key,
   type Resolve,
-} from '@bespokecore/core';
-import { Encrypter } from '@bespokecore/encryption';
-import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router, writeAppBrowserRoutes } from '@bespokecore/http';
+} from '@marmeon/core';
+import { Encrypter } from '@marmeon/encryption';
+import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router, writeAppBrowserRoutes } from '@marmeon/http';
 import {
   ACTION_HEADER,
   PAGE_HEADER,
@@ -40,18 +40,18 @@ import {
   type RouteNameInput,
   type LiveSubscription,
   type PageObject,
-} from '@bespokecore/http/page';
-import { createHttpKernel, DevRequestRecorder } from '@bespokecore/server';
+} from '@marmeon/http/page';
+import { createHttpKernel, DevRequestRecorder } from '@marmeon/server';
 import { AssertionError } from 'node:assert';
-import type { AuthUser } from '@bespokecore/auth';
-import type { MailFake } from '@bespokecore/mail';
-import type { NotificationFake } from '@bespokecore/notifications';
-import type { BroadcastRecorder, LiveStreamReader } from '@bespokecore/live';
-import type { QueueFake } from '@bespokecore/queue';
-import type { StorageFake } from '@bespokecore/storage';
-import type { DevtoolsTester } from '@bespokecore/devtools';
-import type { ScheduleTester } from '@bespokecore/scheduler';
-import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@bespokecore/database';
+import type { AuthUser } from '@marmeon/auth';
+import type { MailFake } from '@marmeon/mail';
+import type { NotificationFake } from '@marmeon/notifications';
+import type { BroadcastRecorder, LiveStreamReader } from '@marmeon/live';
+import type { QueueFake } from '@marmeon/queue';
+import type { StorageFake } from '@marmeon/storage';
+import type { DevtoolsTester } from '@marmeon/devtools';
+import type { ScheduleTester } from '@marmeon/scheduler';
+import type { FactoryDefinition, PendingFactory, Selectable, Tables } from '@marmeon/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { PendingTestResponse } from './pending.ts';
 import { SSR_TEST_HEADER, TestSsr } from './ssr.ts';
@@ -71,7 +71,7 @@ export interface TestAppOptions {
   /**
    * `'refresh'`: a real database, reset for every test (Laravel's `RefreshDatabase`, E21). Each test
    * worker gets its own database, migrated once; every test app runs inside one transaction that is
-   * rolled back when the test ends. Needs @bespokecore/database.
+   * rolled back when the test ends. Needs @marmeon/database.
    */
   database?: 'refresh';
   /** With `database: 'refresh'`: run the modules' seeders for every test (inside its transaction). */
@@ -84,21 +84,21 @@ export interface TestAppOptions {
   /**
    * Jobs are recorded, not queued (default `'fake'`, E101): the `Queue` is a `QueueFake`, available as `app.queue` —
    * `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`, and `await app.queue.work()` runs them for real in the
-   * test. `'real'` keeps the configured connection (`QUEUE_CONNECTION`). Needs @bespokecore/queue.
+   * test. `'real'` keeps the configured connection (`QUEUE_CONNECTION`). Needs @marmeon/queue.
    */
   queue?: 'fake' | 'real';
   /**
    * Notifications are recorded, not delivered (default `'fake'`): `Notifications` is a `NotificationFake`, available as
    * `app.notifications` — `app.notifications.assertSent({ type: 'user', id }, NewSignInNotification)`, and
    * `await app.notifications.deliver()` delivers them for real. `'real'` keeps the real one (a `send` then queues
-   * `bespoke.notification` — on the `QueueFake`, unless `queue: 'real'`). Needs @bespokecore/notifications.
+   * `marmeon.notification` — on the `QueueFake`, unless `queue: 'real'`). Needs @marmeon/notifications.
    */
   notifications?: 'fake' | 'real';
   /**
    * Disks are in memory (default `'fake'`): `Storage` is a `StorageFake`, available as `app.storage` — every configured
    * disk a memory disk with its name, visibility and URL, empty in each test: `app.storage.disk('public').assertExists(key)`.
    * The app's routes serve them (`/storage/…`, signed temporary URLs). `'real'` keeps the configured disks. Needs
-   * @bespokecore/storage.
+   * @marmeon/storage.
    */
   storage?: 'fake' | 'real';
   /**
@@ -108,7 +108,7 @@ export interface TestAppOptions {
    */
   events?: 'real' | 'fake' | readonly EventClass[];
   /**
-   * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `bespoke dev` does) — so the markup
+   * Render pages on the server, through the app's Vite setup (`vite.config.ts`, as `marmeon dev` does) — so the markup
    * and `<Head>` are testable (`assertSee`, `assertServerRendered`, `assertHydrates`). Off by default: responses carry
    * the page object only (fast, no Vite). Every page renders completely, as for a bot — islands included (E49).
    * `'stream'`: as for a browser — the shell first, islands and deferred props streamed into the same response
@@ -116,7 +116,7 @@ export interface TestAppOptions {
    */
   ssr?: boolean | 'stream';
   /**
-   * Development error handling, as `bespoke dev` has it (E119): a page request that fails with a 5xx gets the development
+   * Development error handling, as `marmeon dev` has it (E119): a page request that fails with a 5xx gets the development
    * error page (code, request, route, queries and log of the request, solutions), JSON errors carry the exception and a
    * `solution`. Off by default — tests see the error page production shows.
    */
@@ -125,7 +125,7 @@ export interface TestAppOptions {
    * Record what the app does, as the devtools do in development (E115, E116) — into memory, available as `app.devtools`:
    * `app.devtools.assertRecorded('query', (query) => query.sql.includes('from "users"'))`, `app.devtools.entries('request')`.
    * The only way to run them outside `NODE_ENV=development` (never in production). Without it they are off in every test —
-   * also one that runs as development (`env: { NODE_ENV: 'development' }`). Needs @bespokecore/devtools.
+   * also one that runs as development (`env: { NODE_ENV: 'development' }`). Needs @marmeon/devtools.
    */
   devtools?: boolean;
 }
@@ -184,7 +184,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
 
   let worker: WorkerDatabase | undefined;
   if (options.database === 'refresh') {
-    if (!database) throw new Error("createTestApp(…, { database: 'refresh' }) needs @bespokecore/database installed.");
+    if (!database) throw new Error("createTestApp(…, { database: 'refresh' }) needs @marmeon/database installed.");
     if (openRefreshed.size > 0) {
       // Two open transactions on the worker's database: SQLite has one writer, so the second app would
       // wait for the first one's lock (5 s, then "database is locked"). One database app per test.
@@ -238,13 +238,13 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
 
   if (devtools && !application.container.has(devtools.Recorder)) {
     await application.shutdown();
-    throw new Error("createTestApp(…, { devtools: true }): the app does not register @bespokecore/devtools — add it to the app's package.json (pnpm add -D @bespokecore/devtools), so discovery finds its provider.");
+    throw new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json (pnpm add -D @marmeon/devtools), so discovery finds its provider.");
   }
 
   let ssr: TestSsr | undefined;
   try {
     if (options.ssr) {
-      // The SSR entry imports `virtual:bespoke/routes`, which `bespoke route:types` writes — maybe never yet in this checkout.
+      // The SSR entry imports `virtual:marmeon/routes`, which `marmeon route:types` writes — maybe never yet in this checkout.
       writeAppBrowserRoutes(application);
       ssr = await TestSsr.start(definition.root, { stream: options.ssr === 'stream' });
     }
@@ -255,7 +255,7 @@ export async function createTestApp(definition: ApplicationOptions, options: Tes
   const scheduler = await importScheduler();
   // The error page's recorder, as the server's provider binds it in development — until the app closes.
   const recorder =
-    options.debug && !application.container.has(DevRequestRecorder) ? (await import('@bespokecore/server/error-page')).createRequestRecorder(application) : undefined;
+    options.debug && !application.container.has(DevRequestRecorder) ? (await import('@marmeon/server/error-page')).createRequestRecorder(application) : undefined;
   if (recorder) application.container.instance(DevRequestRecorder, recorder);
   const shared: Shared = {
     kernel: createHttpKernel(application, { ...(ssr ? { renderer: ssr.renderer } : {}), ...(options.debug === undefined ? {} : { debug: options.debug }) }),
@@ -323,14 +323,14 @@ interface Shared {
   readonly storage: StorageFake | undefined;
   /** What the devtools recorded, with `createTestApp(…, { devtools: true })`. */
   readonly devtools: DevtoolsTester | undefined;
-  /** What the app's Broadcaster sent — when it has @bespokecore/live. */
+  /** What the app's Broadcaster sent — when it has @marmeon/live. */
   readonly broadcast: BroadcastRecorder | undefined;
   readonly live: LiveModule | undefined;
   /** Every dispatched event. */
   readonly events: EventFake;
   /** The app's `Clock`. */
   readonly clock: TestClock;
-  /** The app's schedule, run with the test clock — when the app has @bespokecore/scheduler. */
+  /** The app's schedule, run with the test clock — when the app has @marmeon/scheduler. */
   readonly schedule: ScheduleTester | undefined;
   /** Server rendering, with `ssr: true`. */
   readonly ssr: TestSsr | undefined;
@@ -362,7 +362,7 @@ interface Defaults {
   readonly sessionId?: { value?: string };
 }
 
-/** Access to the app's session store — when the app uses @bespokecore/session (an optional peer). */
+/** Access to the app's session store — when the app uses @marmeon/session (an optional peer). */
 export interface SessionAccess {
   readonly cookie: string;
   /** Writes a session holding `data` (under `id`, or a new id) — returns its id. */
@@ -370,95 +370,95 @@ export interface SessionAccess {
   read(id: string): Promise<Record<string, unknown> | undefined>;
 }
 
-type DatabaseModule = typeof import('@bespokecore/database');
+type DatabaseModule = typeof import('@marmeon/database');
 
-/** @bespokecore/database is an optional peer, like the session. */
+/** @marmeon/database is an optional peer, like the session. */
 async function importDatabase(): Promise<DatabaseModule | undefined> {
   try {
-    return await import('@bespokecore/database');
+    return await import('@marmeon/database');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/mail is an optional peer, like the session. */
-async function importMail(): Promise<typeof import('@bespokecore/mail') | undefined> {
+/** @marmeon/mail is an optional peer, like the session. */
+async function importMail(): Promise<typeof import('@marmeon/mail') | undefined> {
   try {
-    return await import('@bespokecore/mail');
+    return await import('@marmeon/mail');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/queue is an optional peer, like the session. */
-async function importQueue(): Promise<typeof import('@bespokecore/queue') | undefined> {
+/** @marmeon/queue is an optional peer, like the session. */
+async function importQueue(): Promise<typeof import('@marmeon/queue') | undefined> {
   try {
-    return await import('@bespokecore/queue');
+    return await import('@marmeon/queue');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/devtools is an optional peer (a dev dependency of the app, E115) — needed only with `devtools: true`. */
-async function importDevtools(): Promise<typeof import('@bespokecore/devtools')> {
+/** @marmeon/devtools is an optional peer (a dev dependency of the app, E115) — needed only with `devtools: true`. */
+async function importDevtools(): Promise<typeof import('@marmeon/devtools')> {
   try {
-    return await import('@bespokecore/devtools');
+    return await import('@marmeon/devtools');
   } catch (error) {
-    throw new Error('createTestApp(…, { devtools: true }) needs @bespokecore/devtools (pnpm add -D @bespokecore/devtools).', { cause: error });
+    throw new Error('createTestApp(…, { devtools: true }) needs @marmeon/devtools (pnpm add -D @marmeon/devtools).', { cause: error });
   }
 }
 
-/** @bespokecore/storage is an optional peer, like the session. */
-async function importStorage(): Promise<typeof import('@bespokecore/storage') | undefined> {
+/** @marmeon/storage is an optional peer, like the session. */
+async function importStorage(): Promise<typeof import('@marmeon/storage') | undefined> {
   try {
-    return await import('@bespokecore/storage');
+    return await import('@marmeon/storage');
   } catch {
     return undefined;
   }
 }
 
-type LiveModule = typeof import('@bespokecore/live');
+type LiveModule = typeof import('@marmeon/live');
 
-/** @bespokecore/live is an optional peer, like the session. */
+/** @marmeon/live is an optional peer, like the session. */
 async function importLive(): Promise<LiveModule | undefined> {
   try {
-    return await import('@bespokecore/live');
+    return await import('@marmeon/live');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/notifications is an optional peer, like the session. */
-async function importNotifications(): Promise<typeof import('@bespokecore/notifications') | undefined> {
+/** @marmeon/notifications is an optional peer, like the session. */
+async function importNotifications(): Promise<typeof import('@marmeon/notifications') | undefined> {
   try {
-    return await import('@bespokecore/notifications');
+    return await import('@marmeon/notifications');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/scheduler is an optional peer, like the session. */
-async function importScheduler(): Promise<typeof import('@bespokecore/scheduler') | undefined> {
+/** @marmeon/scheduler is an optional peer, like the session. */
+async function importScheduler(): Promise<typeof import('@marmeon/scheduler') | undefined> {
   try {
-    return await import('@bespokecore/scheduler');
+    return await import('@marmeon/scheduler');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/auth is an optional peer, like the session. */
-async function importAuth(): Promise<typeof import('@bespokecore/auth') | undefined> {
+/** @marmeon/auth is an optional peer, like the session. */
+async function importAuth(): Promise<typeof import('@marmeon/auth') | undefined> {
   try {
-    return await import('@bespokecore/auth');
+    return await import('@marmeon/auth');
   } catch {
     return undefined;
   }
 }
 
-/** @bespokecore/session is an optional peer: only apps that use it have it installed. */
-async function importSession(): Promise<typeof import('@bespokecore/session') | undefined> {
+/** @marmeon/session is an optional peer: only apps that use it have it installed. */
+async function importSession(): Promise<typeof import('@marmeon/session') | undefined> {
   try {
-    return await import('@bespokecore/session');
+    return await import('@marmeon/session');
   } catch {
     return undefined;
   }
@@ -548,48 +548,48 @@ export class TestApp {
 
   /**
    * The mail the app sent — recorded, not delivered: `app.mail.assertSent(ResetPasswordMail, (mail, message) => …)`.
-   * Needs @bespokecore/mail in the app.
+   * Needs @marmeon/mail in the app.
    */
   get mail(): MailFake {
-    if (!this.#shared.mail) throw new Error("app.mail needs @bespokecore/mail in the app (and not createTestApp(…, { mail: 'real' })).");
+    if (!this.#shared.mail) throw new Error("app.mail needs @marmeon/mail in the app (and not createTestApp(…, { mail: 'real' })).");
     return this.#shared.mail;
   }
 
   /**
    * The jobs the app dispatched — recorded, not queued: `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`;
-   * `await app.queue.work()` runs them for real (injection, a scope per attempt, retries). Needs @bespokecore/queue.
+   * `await app.queue.work()` runs them for real (injection, a scope per attempt, retries). Needs @marmeon/queue.
    */
   get queue(): QueueFake {
-    if (!this.#shared.queue) throw new Error("app.queue needs @bespokecore/queue in the app (and not createTestApp(…, { queue: 'real' })).");
+    if (!this.#shared.queue) throw new Error("app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: 'real' })).");
     return this.#shared.queue;
   }
 
   /**
    * The notifications the app sent — recorded, not delivered: `app.notifications.assertSent({ type: 'user', id: ada.id },
    * NewSignInNotification, { ip })`; `await app.notifications.deliver()` delivers them for real (rows, queued mails).
-   * Needs @bespokecore/notifications.
+   * Needs @marmeon/notifications.
    */
   get notifications(): NotificationFake {
-    if (!this.#shared.notifications) throw new Error("app.notifications needs @bespokecore/notifications in the app (and not createTestApp(…, { notifications: 'real' })).");
+    if (!this.#shared.notifications) throw new Error("app.notifications needs @marmeon/notifications in the app (and not createTestApp(…, { notifications: 'real' })).");
     return this.#shared.notifications;
   }
 
   /**
    * The app's disks, in memory: `app.storage.disk('public').assertExists('avatars/7.webp')`, `assertMissing`,
-   * `assertCount`, `files()`. Needs @bespokecore/storage.
+   * `assertCount`, `files()`. Needs @marmeon/storage.
    */
   get storage(): StorageFake {
-    if (!this.#shared.storage) throw new Error("app.storage needs @bespokecore/storage in the app (and not createTestApp(…, { storage: 'real' })).");
+    if (!this.#shared.storage) throw new Error("app.storage needs @marmeon/storage in the app (and not createTestApp(…, { storage: 'real' })).");
     return this.#shared.storage;
   }
 
   /**
    * What the app's `Broadcaster` sent (W6.10) — every refresh once it went out (after its commit): `app.broadcast.assertRefreshed(
    * \`users.${ada.id}\`, { only: ['profile'] })`, `assertNotRefreshed`, `assertNothingRefreshed`. The hints reach the streams as in
-   * production (`app.live(path)`). Needs @bespokecore/live.
+   * production (`app.live(path)`). Needs @marmeon/live.
    */
   get broadcast(): BroadcastRecorder {
-    if (!this.#shared.broadcast) throw new Error('app.broadcast needs @bespokecore/live in the app.');
+    if (!this.#shared.broadcast) throw new Error('app.broadcast needs @marmeon/live in the app.');
     return this.#shared.broadcast;
   }
 
@@ -601,20 +601,20 @@ export class TestApp {
    * const ada$ = app.actingAs(ada);
    * const stream = await ada$.live(\`/users/${ada.id}\`);
    * await stream.hello();
-   * await app.actingAs(ada).withHeaders({ 'x-bespoke-connection': 'another-tab' }).post(\`/users/${ada.id}/links\`, { json });
+   * await app.actingAs(ada).withHeaders({ 'x-marmeon-connection': 'another-tab' }).post(\`/users/${ada.id}/links\`, { json });
    * await stream.waitFor(1);
    * expect(stream.hints).toEqual([{ channel: \`users.${ada.id}\`, only: ['profile'], seq: 1 }]);
    * ```
    *
    * The stream belongs to this view's session (`actingAs`/`withSession`): signing out through the same view ends it. It closes
-   * when the app does — or with `stream.close()`. `connection` is the tab's id (`x-bespoke-connection`, default `test-tab-0001`).
+   * when the app does — or with `stream.close()`. `connection` is the tab's id (`x-marmeon-connection`, default `test-tab-0001`).
    */
   async live(
     target: string | readonly LiveSubscription[],
     { connection = 'test-tab-0001', lastEventId }: { connection?: string; lastEventId?: string } = {},
   ): Promise<LiveStreamReader> {
     const module = this.#shared.live;
-    if (!module) throw new Error('app.live() needs @bespokecore/live in the app.');
+    if (!module) throw new Error('app.live() needs @marmeon/live in the app.');
     let subscriptions = target;
     if (typeof target === 'string') {
       const answer = await this.navigating().get(target);
@@ -638,7 +638,7 @@ export class TestApp {
    * `app.devtools.assertRecorded('mail', (mail) => mail.to.includes('ada@example.com'))`.
    */
   get devtools(): DevtoolsTester {
-    if (!this.#shared.devtools) throw new Error('app.devtools needs createTestApp(…, { devtools: true }) (and @bespokecore/devtools in the app).');
+    if (!this.#shared.devtools) throw new Error('app.devtools needs createTestApp(…, { devtools: true }) (and @marmeon/devtools in the app).');
     return this.#shared.devtools;
   }
 
@@ -654,10 +654,10 @@ export class TestApp {
   /**
    * The app's schedule (E88), with the test clock: `app.schedule.due('2026-10-04T03:10:00+02:00')` lists the tasks due
    * then, `await app.schedule.run(time)` moves the clock there and runs them (catching up what was missed since the last
-   * `run`, like a scheduler), `app.schedule.runTask(name)` runs one now. Needs @bespokecore/scheduler.
+   * `run`, like a scheduler), `app.schedule.runTask(name)` runs one now. Needs @marmeon/scheduler.
    */
   get schedule(): ScheduleTester {
-    if (!this.#shared.schedule) throw new Error('app.schedule needs @bespokecore/scheduler in the app.');
+    if (!this.#shared.schedule) throw new Error('app.schedule needs @marmeon/scheduler in the app.');
     return this.#shared.schedule;
   }
 
@@ -706,7 +706,7 @@ export class TestApp {
 
   /**
    * Rows from a factory, in this app's database (Laravel's `User::factory()`):
-   * `await app.factory(UserFactory).count(3).create()`. Needs @bespokecore/database.
+   * `await app.factory(UserFactory).count(3).create()`. Needs @marmeon/database.
    */
   factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S> {
     return this.application.container.make(this.#requireDatabase('app.factory()').Factories).for(definition);
@@ -752,7 +752,7 @@ export class TestApp {
   }
 
   #requireDatabase(feature: string): DatabaseModule {
-    if (!this.#shared.database) throw new Error(`${feature} needs @bespokecore/database installed.`);
+    if (!this.#shared.database) throw new Error(`${feature} needs @marmeon/database installed.`);
     return this.#shared.database;
   }
 
@@ -783,7 +783,7 @@ export class TestApp {
   /**
    * Signed in as `user` — the session holds exactly what a login leaves (Laravel's `actingAs`):
    * `app.actingAs(ada).get('/users/me')`. With `{ guard: 'api' }`, through a real API token instead
-   * (`Authorization: Bearer …`, Sanctum's `actingAs`). Needs @bespokecore/auth; the user must exist.
+   * (`Authorization: Bearer …`, Sanctum's `actingAs`). Needs @marmeon/auth; the user must exist.
    */
   actingAs(user: AuthUser, options: { guard?: 'web' } | { guard: 'api'; abilities?: readonly string[] } = {}): TestApp {
     if (options.guard === 'api') return this.#with({ token: { user, abilities: options.abilities ?? ['*'] } });
@@ -826,7 +826,7 @@ export class TestApp {
   }
 
   /**
-   * Requests as an `<Island route>` does (E48): a client-side request with `x-bespoke-region: island` — answered with the
+   * Requests as an `<Island route>` does (E48): a client-side request with `x-marmeon-region: island` — answered with the
    * island's region object, or (redirect, 401, 403) with its outcome. For a partial reload of the island, chain
    * `reloading(component, { only })`.
    */
@@ -845,7 +845,7 @@ export class TestApp {
 
   /**
    * Requests as a layer does (E53) — opening one (`<Link layer>`), or a visit or form inside one: a client-side request
-   * with `x-bespoke-region: layer`. A layer route answers with its page object (`assertLayer`), `closeLayer()` with "close"
+   * with `x-marmeon-region: layer`. A layer route answers with its page object (`assertLayer`), `closeLayer()` with "close"
    * (`assertLayerClosed`), a page route with its page.
    */
   layering(): TestApp {
@@ -859,9 +859,9 @@ export class TestApp {
   }
 
   /**
-   * Requests as an action does (E59, `useAction`): `x-bespoke-action` and `Accept: application/json` — answered with its data
+   * Requests as an action does (E59, `useAction`): `x-marmeon-action` and `Accept: application/json` — answered with its data
    * (`this.json(…)`), a 422 with the field errors, an `exception` status, or — a redirect, not followed — `204` with
-   * `x-bespoke-redirect` (`assertActionRedirect`). Never cached (`no-store`).
+   * `x-marmeon-redirect` (`assertActionRedirect`). Never cached (`no-store`).
    */
   acting(): TestApp {
     return this.withHeaders({ [ACTION_HEADER]: 'true', accept: 'application/json' });
@@ -869,7 +869,7 @@ export class TestApp {
 
   /**
    * Requests as a live validation does (E62, `useForm(…, { validate })`): the form's own request naming the fields to check
-   * (`x-bespoke-validate`) — answered `204` (`assertLiveValid()`), `422` with those fields' errors (`assertInvalid`), or a
+   * (`x-marmeon-validate`) — answered `204` (`assertLiveValid()`), `422` with those fields' errors (`assertInvalid`), or a
    * failure (403, 419, 429). The controller never runs. `app.validating('name', 'email').post('/register', { json })`.
    */
   validating(...fields: string[]): TestApp {
@@ -975,18 +975,18 @@ export class TestApp {
     const tokenHeader: Record<string, string> = {};
     if (this.#defaults.token) {
       const auth = await importAuth();
-      if (!auth) throw new Error("actingAs(…, { guard: 'api' }) needs @bespokecore/auth in the app.");
+      if (!auth) throw new Error("actingAs(…, { guard: 'api' }) needs @marmeon/auth in the app.");
       const { user, abilities } = this.#defaults.token;
       tokenHeader.authorization = `Bearer ${await auth.authenticatedToken(this.application.container, user, abilities)}`;
     }
     if (this.#defaults.user !== undefined) {
       const auth = await importAuth();
-      if (!auth) throw new Error('actingAs() needs @bespokecore/auth in the app.');
+      if (!auth) throw new Error('actingAs() needs @marmeon/auth in the app.');
       data = { ...data, ...(await auth.authenticatedSession(this.application.container, this.#defaults.user)) };
     }
     if (data) {
       const session = await this.#session;
-      if (!session) throw new Error('withSession() and actingAs() need @bespokecore/session in the app.');
+      if (!session) throw new Error('withSession() and actingAs() need @marmeon/session in the app.');
       const holder = this.#defaults.sessionId;
       const id = await session.create(data, holder?.value);
       if (holder) holder.value = id;

@@ -1,5 +1,5 @@
-import { CSP_NONCE_PLACEHOLDER } from '@bespokecore/core';
-import { PAGE_SCRIPT_ID, scriptJson, type PageObject, type SsrResult } from '@bespokecore/http';
+import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core';
+import { PAGE_SCRIPT_ID, scriptJson, type PageObject, type SsrResult } from '@marmeon/http';
 
 /** Placeholders an app's `index.html` provides. */
 export const HEAD_OUTLET = '<!--app-head-->';
@@ -8,7 +8,7 @@ export const HTML_OUTLET = '<!--app-html-->';
 /** Minimal template used when no app template is configured (tests, API-only apps). */
 export const FALLBACK_TEMPLATE = `<!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8" /><title>BespokeCore</title>${HEAD_OUTLET}</head>
+  <head><meta charset="utf-8" /><title>Marmeon</title>${HEAD_OUTLET}</head>
   <body><div id="app">${HTML_OUTLET}</div></body>
 </html>`;
 
@@ -16,7 +16,7 @@ const NONCE_ATTRIBUTE = ` nonce="${CSP_NONCE_PLACEHOLDER}"`;
 
 /**
  * The template with the response's CSP nonce (E147) in place of {@link CSP_NONCE_PLACEHOLDER} — which Vite's `html.cspNonce`
- * (set by `bespoke()`) put on every script, style and preload tag, and `DevDocument`'s HTML carries — or, for a response
+ * (set by `marmeon()`) put on every script, style and preload tag, and `DevDocument`'s HTML carries — or, for a response
  * without one, with those `nonce` attributes taken out.
  */
 export function withNonce(template: string, nonce: string | undefined): string {

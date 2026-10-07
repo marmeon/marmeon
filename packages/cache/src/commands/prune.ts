@@ -1,9 +1,9 @@
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 import { Cache } from '../cache.ts';
 import { CacheConfig } from '../config.ts';
 
 /**
- * `bespoke cache:prune`: removes expired entries and locks — in memory, file and database stores they stay until read
+ * `marmeon cache:prune`: removes expired entries and locks — in memory, file and database stores they stay until read
  * or overwritten (`job.once` markers, rate-limit windows, the scheduler's locks …). For the scheduler:
  * `s.command('cache:prune').hourly()`. Redis expires them itself.
  */
@@ -28,7 +28,7 @@ export class CachePruneCommand {
 }
 
 /**
- * `bespoke cache:clear`: empties the cache — every entry, never a lock (a lock belongs to whoever holds it). Also gone:
+ * `marmeon cache:clear`: empties the cache — every entry, never a lock (a lock belongs to whoever holds it). Also gone:
  * rate-limit counters, `job.once` markers and the scheduler's last tick — e.g. after `migrate:fresh`, when ids start
  * over and old markers would match new records.
  */

@@ -1,6 +1,6 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { sql } from '@bespokecore/database';
-import { action, bulk, column, defineTable, exportCsv, filter, type RowOfTable, type TableContext } from '@bespokecore/table';
+import type { Authenticated } from '@marmeon/auth';
+import { sql } from '@marmeon/database';
+import { action, bulk, column, defineTable, exportCsv, filter, type RowOfTable, type TableContext } from '@marmeon/table';
 import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
 import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
 import { MemberPolicy } from '../policies/MemberPolicy.ts';

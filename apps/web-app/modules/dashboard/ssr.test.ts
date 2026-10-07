@@ -1,5 +1,5 @@
 import { UserRepository, type User } from '#modules/auth';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
@@ -18,7 +18,7 @@ beforeEach(async () => {
 const document = { headers: { accept: 'text/html' } };
 /** The data blocks of the islands in a document, parsed. */
 const islandsIn = (html: string) =>
-  [...html.matchAll(/<script type="application\/json" id="bespoke-island-[^"]*">(.*?)<\/script>/g)].map(([, json]) => JSON.parse(json!) as { status: string; region?: { component: string; props: Record<string, unknown> } });
+  [...html.matchAll(/<script type="application\/json" id="marmeon-island-[^"]*">(.*?)<\/script>/g)].map(([, json]) => JSON.parse(json!) as { status: string; region?: { component: string; props: Record<string, unknown> } });
 
 describe('the dashboard, rendered on the server with its islands (E49)', () => {
   it('has every eager island in the HTML — with its data, for the browser to show without a request — and hydrates', async () => {

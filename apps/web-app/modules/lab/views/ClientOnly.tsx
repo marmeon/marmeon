@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head } from '@marmeon/react';
 import type { ShowClientOnlyLabController } from '../controllers/ShowLabPageController.ts';
 
 /**

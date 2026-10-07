@@ -1,4 +1,4 @@
-import { defineSchedule } from '@bespokecore/scheduler';
+import { defineSchedule } from '@marmeon/scheduler';
 import { RebuildMemberStatsJob } from './jobs/RebuildMemberStatsJob.ts';
 import { PruneDataExports } from './tasks/PruneDataExports.ts';
 

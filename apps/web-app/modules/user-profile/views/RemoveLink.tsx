@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useLayer, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useLayer, useTranslation } from '@marmeon/react';
 import type { ConfirmRemoveLinkController } from '../controllers/ConfirmRemoveLinkController.ts';
 
 type Props = PageProps<ConfirmRemoveLinkController>;

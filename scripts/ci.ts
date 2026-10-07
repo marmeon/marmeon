@@ -13,7 +13,7 @@
  * again — exit 0, nothing checked). `node scripts/ci.ts …` works too.
  *
  * The suites that need a database start it with `docker compose up -d --wait <service>` from this repository's
- * `compose.yaml` — only its own containers (`bespokecore-*`), never another project's. The Postgres and Redis suites run
+ * `compose.yaml` — only its own containers (`marmeon-*`), never another project's. The Postgres and Redis suites run
  * one after the other, never at once: they share their test databases.
  *
  * A new check is one more entry in `parts`. Never the Gegenproben (`pnpm gegen`, E188): they patch the working tree —
@@ -39,8 +39,10 @@ const pnpm = (script: string) => ['pnpm', 'run', script] as const;
 export const parts: readonly Part[] = [
   { name: 'build', command: pnpm('build') },
   { name: 'typecheck', command: pnpm('typecheck'), after: ['build'] },
-  // oxlint over the repository; the apps' own .oxlintrc.json (bespoke make:lint-config) for their files.
+  // oxlint over the repository; the apps' own .oxlintrc.json (marmeon make:lint-config) for their files.
   { name: 'lint', command: pnpm('lint') },
+  // Rules over the repository's own files (scripts/check-source.ts): no file or path says the old name (E196).
+  { name: 'check:source', command: pnpm('check:source') },
   // The bundle-size test measures the packages' dist/ — after the build.
   { name: 'test', command: pnpm('test'), after: ['build'] },
   { name: 'test:pgsql', command: pnpm('test:pgsql'), services: ['pgsql'], after: ['build'] },
@@ -52,14 +54,14 @@ export const parts: readonly Part[] = [
   { name: 'docs:check', command: pnpm('docs:check'), after: ['build'] },
   // The tarballs (E156–E158): a clean build, pnpm pack of every package, the content rules, publint and attw.
   { name: 'pack:check', command: pnpm('pack:check') },
-  // create-bespoke-app from the tarballs, outside the monorepo: the starter kit with pnpm and a blank app with npm — install, tests,
+  // create-marmeon from the tarballs, outside the monorepo: the starter kit with pnpm and a blank app with npm — install, tests,
   // lint, build, start. Without a store/cache and the registry it is skipped (exit 75) — reported as such, never as green.
   { name: 'pack:smoke', command: pnpm('pack:smoke'), after: ['build', 'pack:check'] },
-  // create-bespoke-app --docker as an image (bespoke make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
+  // create-marmeon --docker as an image (marmeon make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
   // --workers, a worker's exit 70, the image's size; then the docs' image (apps/docs/Dockerfile) — its contents, read-only, behind
   // Caddy over HTTP/2 (deploy/docs). Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },
-  // The release rules (E152, E153, E157, E168): one fixed group and one version, no `major` changeset below 1.0.0, the meta package,
+  // The release rules (E152, E153, E157, E168): one fixed group and one version, no `major` changeset below 1.0.0,
   // release.yml (staged publishing with OIDC), npm-trust.sh, every UPGRADING.md entry (the 22 Wave 7 hints), LICENSE and policies.
   { name: 'check-changesets', command: pnpm('check-changesets') },
 ];

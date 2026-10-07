@@ -1,5 +1,5 @@
-import { layers } from '@bespokecore/http/client';
-import type { PageObject } from '@bespokecore/http/page';
+import { layers } from '@marmeon/http/client';
+import type { PageObject } from '@marmeon/http/page';
 import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { RegionOwnerContext, reloadsOf, RouterContext, type RouterValue } from './app.tsx';
 import { ErrorBoundary, RenderErrorFallback } from './fallbacks.tsx';
@@ -11,7 +11,7 @@ import { loadView, viewOf } from './views.ts';
 
 /*
  * The layer stack (E53) — loaded with the first layer (E71): the core loads it when the server answers with one (the app's
- * navigator is given it as `loadLayers`: one chunk with the core's layers), `<Link layer>` when it renders, `createBespokeApp`
+ * navigator is given it as `loadLayers`: one chunk with the core's layers), `<Link layer>` when it renders, `createMarmeonApp`
  * and the SSR entry before they render a deep link's document.
  */
 
@@ -41,7 +41,7 @@ export function LayerStack({ entries, resolve, frame, base }: { entries: readonl
   if (!open) return null;
   // In an element: a Suspense boundary at the top of the tree would hold the server's whole shell back.
   return (
-    <div data-bespoke-layers="">
+    <div data-marmeon-layers="">
       {entries.map((entry, index) => (
         <LayerScope key={entry.id} entry={entry} isTop={index === entries.length - 1} resolve={resolve} frame={frame} base={base} />
       ))}
@@ -82,11 +82,11 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       prefetch: (url, options) => base.prefetch(url, { ...options, layer: true }),
       // An action's patches and reloads from inside the layer are the layer's (E59).
       optimistic: (patch) => {
-        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');
+        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
         return layer.optimistic(patch as never);
       },
       reloading: (options) => {
-        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');
+        if (!layer) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
         return reloadsOf((spec) => layer.reloading(spec), layer.owner, manifest, options as { islands?: readonly string[] });
       },
     }),

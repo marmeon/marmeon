@@ -1,5 +1,5 @@
-import type { IslandProps } from '@bespokecore/http';
-import { Link, useTranslation } from '@bespokecore/react';
+import type { IslandProps } from '@marmeon/http';
+import { Link, useTranslation } from '@marmeon/react';
 import type { ShowMemberStatsController } from '../controllers/ShowMemberStatsController.ts';
 
 /** Island "Members" (`dashboard.members`): for administrators only — its route decides, not this view. */

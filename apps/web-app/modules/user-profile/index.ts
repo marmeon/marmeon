@@ -1,5 +1,5 @@
-import { Login, Registered } from '@bespokecore/auth';
-import { defineModule, listen } from '@bespokecore/core';
+import { Login, Registered } from '@marmeon/auth';
+import { defineModule, listen } from '@marmeon/core';
 import { RebuildMemberStatsJob } from './jobs/RebuildMemberStatsJob.ts';
 import { RecordLastLogin } from './listeners/RecordLastLogin.ts';
 import { RefreshMemberStats } from './listeners/RefreshMemberStats.ts';
@@ -29,6 +29,6 @@ export default defineModule({
   seeders: [DemoLinksSeeder],
   routes,
   apiRoutes,
-  // The member numbers, also rebuilt hourly (a queued job — bespoke schedule:work queues it, a worker runs it).
+  // The member numbers, also rebuilt hourly (a queued job — marmeon schedule:work queues it, a worker runs it).
   schedule,
 });

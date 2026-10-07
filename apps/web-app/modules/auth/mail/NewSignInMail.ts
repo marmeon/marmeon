@@ -1,5 +1,5 @@
-import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
+import type { Translator } from '@marmeon/i18n';
+import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
 import type { User } from '../users.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
@@ -25,7 +25,7 @@ export class NewSignInMail implements Mailable {
     this.#t = t;
   }
 
-  /** The preview (`/_bespoke/mail/auth/NewSignInMail`, development only). */
+  /** The preview (`/_marmeon/mail/auth/NewSignInMail`, development only). */
   static preview(context: MailPreviewContext): NewSignInMail {
     const { user, url, t } = previewData(context);
     return new NewSignInMail(user, { at: new Date().toISOString(), ip: '203.0.113.7', browser: 'Firefox · macOS' }, url('/settings/security'), t);

@@ -1,7 +1,7 @@
-import { createApplication, Logger, runWithRequest, type Application } from '@bespokecore/core';
-import { channels, type QueueDispatchMessage, type QueueJobMessage } from '@bespokecore/core/diagnostics';
-import { Connections, DatabaseServiceProvider } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
+import { createApplication, Logger, runWithRequest, type Application } from '@marmeon/core';
+import { channels, type QueueDispatchMessage, type QueueJobMessage } from '@marmeon/core/diagnostics';
+import { Connections, DatabaseServiceProvider } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
@@ -91,7 +91,7 @@ describe('the queue.dispatch and queue.job channels (E118)', () => {
     const attempts: QueueJobMessage[] = [];
     const offs = [
       channels.subscribe(application, 'queue.dispatch', {
-        // What @bespokecore/otel will do: put the current trace context on the message.
+        // What @marmeon/otel will do: put the current trace context on the message.
         start: (message) => void (message.traceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`),
         end: (message) => void dispatched.push(message),
       }),

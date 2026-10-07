@@ -1,22 +1,22 @@
 {
-  "name": "@bespokecore/core",
+  "name": "@marmeon/core",
   "version": "0.1.0",
-  "description": "The BespokeCore application kernel: service container with constructor injection, providers, modules, configuration, events and diagnostics.",
+  "description": "The Marmeon application kernel: service container with constructor injection, providers, modules, configuration, events and diagnostics.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "framework",
     "dependency-injection",
     "container",
     "application"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/core#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/core#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/core"
   },
   "engines": {
@@ -26,27 +26,27 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./register": {
-      "@bespokecore/source": "./src/register.ts",
+      "@marmeon/source": "./src/register.ts",
       "types": "./dist/register.d.ts",
       "default": "./dist/register.js"
     },
     "./environment": {
-      "@bespokecore/source": "./src/environment.ts",
+      "@marmeon/source": "./src/environment.ts",
       "types": "./dist/environment.d.ts",
       "default": "./dist/environment.js"
     },
     "./vite": {
-      "@bespokecore/source": "./src/vite.ts",
+      "@marmeon/source": "./src/vite.ts",
       "types": "./dist/vite.d.ts",
       "default": "./dist/vite.js"
     },
     "./diagnostics": {
-      "@bespokecore/source": "./src/diagnostics.ts",
+      "@marmeon/source": "./src/diagnostics.ts",
       "types": "./dist/diagnostics.d.ts",
       "default": "./dist/diagnostics.js"
     }

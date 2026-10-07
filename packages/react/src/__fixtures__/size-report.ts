@@ -9,7 +9,7 @@
  *
  *   pnpm size                 # scenarios and apps
  *   pnpm size web-app         # one app (or scenario), with every module
- *   BESPOKE_SIZE_BUDGET=update pnpm size   # lower the apps' limits to the measured size + 0.5 KB (E186), never raise one
+ *   MARMEON_SIZE_BUDGET=update pnpm size   # lower the apps' limits to the measured size + 0.5 KB (E186), never raise one
  */
 import { join } from 'node:path';
 import {
@@ -82,7 +82,7 @@ function print(key: string, title: string, bundle: AppBundle, { top }: { top: nu
 
 const problems: string[] = [];
 const lowered: Record<string, number> = {};
-const update = process.env.BESPOKE_SIZE_BUDGET === 'update';
+const update = process.env.MARMEON_SIZE_BUDGET === 'update';
 const top = only.length ? Infinity : 8;
 
 for (const scenario of Object.keys(SCENARIOS) as Scenario[]) {

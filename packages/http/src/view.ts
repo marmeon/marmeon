@@ -4,7 +4,7 @@ import { toLayer, type LayerMethod } from './layer.ts';
 import { addFlash, type FlashMethod } from './flash.ts';
 import { addLive, type LiveMethod, type PagePropNames } from './live.ts';
 
-const VIEW_RESULT = Symbol.for('bespokecore.view-result');
+const VIEW_RESULT = Symbol.for('marmeon.view-result');
 
 export type ViewProps = Record<string, unknown>;
 
@@ -42,14 +42,14 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
   /**
    * Follows a live channel (W6.10, E89, E90): when the server hints that it changed (`broadcast.refresh('users.7', { only })`),
    * the browser reloads `only` of this page — `this.view('user-profile/Show', { profile }).live(\`users.${id}\`, { only:
-   * ['profile'] })`. Signed for the session: whoever may see the page may hear its hints. Needs @bespokecore/live.
+   * ['profile'] })`. Signed for the session: whoever may see the page may hear its hints. Needs @marmeon/live.
    */
   readonly live: LiveMethod<PageResult<TProps, TComponent>, PagePropNames<TProps>>;
 }
 
 /**
  * A page: the component's name — checked against the app's views (`modules/<module>/views/<Page>.tsx`,
- * see `bespoke route:types`) — and its props.
+ * see `marmeon route:types`) — and its props.
  */
 export function view<const V extends string, const TProps extends ViewProps>(
   component: CheckViewName<V>,

@@ -1,4 +1,4 @@
-import { actions, resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading, type Submission } from '@bespokecore/http/client';
+import { actions, resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading, type Submission } from '@marmeon/http/client';
 import type {
   ActionBodyOf,
   ActionDataOf,
@@ -12,13 +12,13 @@ import type {
   ParamsOf,
   Query,
   QueryParams,
-} from '@bespokecore/http/page';
+} from '@marmeon/http/page';
 import { useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 import type { RouteFormFields } from './use-form.ts';
 
-export type { ActionException } from '@bespokecore/http/client';
+export type { ActionException } from '@marmeon/http/client';
 
 /** The fields of an action's body (its request schema's input), by name — any string without a schema. */
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
@@ -168,7 +168,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
     async (options: Partial<ActionSubmitOptions<string>> & { params?: Readonly<Record<string, Param>>; query?: Query } = {}): Promise<ActionResultOf<string>> => {
       const navigator = router.navigator();
       if (!navigator) {
-        throw new Error(process.env.NODE_ENV !== 'production' ? `[bespoke:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[bespoke:R7] ${name}`);
+        throw new Error(process.env.NODE_ENV !== 'production' ? `[marmeon:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[marmeon:R7] ${name}`);
       }
       const target = resolveRoute(manifest, name, { ...boundParams.current, ...options.params }, options.query);
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;

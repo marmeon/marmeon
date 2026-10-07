@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import type * as S3 from '@aws-sdk/client-s3';
 import type * as Presigner from '@aws-sdk/s3-request-presigner';
 import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
-import type { Clock } from '@bespokecore/core';
+import type { Clock } from '@marmeon/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import type { S3DiskOptions } from '../config.ts';
 import { secondsOf, toBytes } from '../contents.ts';

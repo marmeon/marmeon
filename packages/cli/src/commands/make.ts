@@ -26,7 +26,7 @@ function moduleDir(input: CommandInput): string | undefined {
   }
   const dir = join(input.root, 'modules', module);
   if (!existsSync(dir)) {
-    input.output.error(`Module "${module}" does not exist. Create it first: bespoke make:module ${module}`);
+    input.output.error(`Module "${module}" does not exist. Create it first: marmeon make:module ${module}`);
     return undefined;
   }
   return dir;
@@ -53,7 +53,7 @@ export class MakeModuleCommand {
   handle(input: CommandInput): number {
     const [name] = input.args;
     if (!name || !KEBAB.test(name)) {
-      input.output.error('Pass a kebab-case name, e.g. bespoke make:module billing');
+      input.output.error('Pass a kebab-case name, e.g. marmeon make:module billing');
       return 1;
     }
     const dir = join(input.root, 'modules', name);
@@ -162,7 +162,7 @@ export class MakeJobCommand {
     input.output.line();
     input.output.line(`Register it in modules/${module}/index.ts:`);
     input.output.line(style('dim', `  jobs: [${name}]`));
-    input.output.line(style('dim', `Dispatch it: await queue.dispatch(${name}, { id: 1 });   (constructor(queue: Queue), from @bespokecore/queue)`));
+    input.output.line(style('dim', `Dispatch it: await queue.dispatch(${name}, { id: 1 });   (constructor(queue: Queue), from @marmeon/queue)`));
     return 0;
   }
 }
@@ -195,9 +195,9 @@ export class MakeNotificationCommand {
     input.output.line(`Register it in modules/${module}/index.ts:`);
     input.output.line(style('dim', `  notifications: [${name}]`));
     input.output.line(
-      style('dim', `Send it: await notifications.send({ type: 'user', id: user.id }, ${name}, { id: 1 });   (constructor(notifications: Notifications), from @bespokecore/notifications)`),
+      style('dim', `Send it: await notifications.send({ type: 'user', id: user.id }, ${name}, { id: 1 });   (constructor(notifications: Notifications), from @marmeon/notifications)`),
     );
-    input.output.line(style('dim', 'The database channel needs its table once: bespoke make:notifications-table && bespoke migrate'));
+    input.output.line(style('dim', 'The database channel needs its table once: marmeon make:notifications-table && marmeon migrate'));
     return 0;
   }
 }
@@ -235,7 +235,7 @@ export class MakeMigrationCommand {
   handle(input: CommandInput): number {
     const [name] = input.args;
     if (!name || !SNAKE.test(name)) {
-      input.output.error('Pass a snake_case name, e.g. bespoke make:migration create_invoices_table --module=billing');
+      input.output.error('Pass a snake_case name, e.g. marmeon make:migration create_invoices_table --module=billing');
       return 1;
     }
     const dir = moduleDir(input);
@@ -255,7 +255,7 @@ export class MakeMigrationCommand {
   }
 }
 
-const MODULE = (name: string) => `import { defineModule } from '@bespokecore/core';
+const MODULE = (name: string) => `import { defineModule } from '@marmeon/core';
 import routes from './routes.ts';
 
 export default defineModule({
@@ -264,14 +264,14 @@ export default defineModule({
 });
 `;
 
-const ROUTES = `import { defineRoutes } from '@bespokecore/http';
+const ROUTES = `import { defineRoutes } from '@marmeon/http';
 
 export default defineRoutes((Route) => {
   // Route.get('/path', ShowSomethingController).name('module.something');
 });
 `;
 
-const CONTROLLER = (name: string, page: string | undefined) => `import { Controller, type HttpContext } from '@bespokecore/http';
+const CONTROLLER = (name: string, page: string | undefined) => `import { Controller, type HttpContext } from '@marmeon/http';
 
 /** One endpoint. Dependencies go into the constructor — they are injected automatically. */
 export class ${name} extends Controller {
@@ -285,7 +285,7 @@ ${page ? `    return this.view('${page}', {});` : `    return this.json({ path: 
 const READING = /^(Show|List|Index|Search|Get|Find|Browse)[A-Z]/;
 
 /** REPR for a GET: the query schema (every field optional or with a default — an invalid one falls back to it, E56). */
-const QUERY_REQUEST_CONTROLLER = (name: string, subject: string, page: string | undefined) => `import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+const QUERY_REQUEST_CONTROLLER = (name: string, subject: string, page: string | undefined) => `import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import * as v from 'valibot';
 
 export const ${subject}Request = defineRequest({
@@ -308,7 +308,7 @@ ${page ? `    return this.view('${page}', { q: ctx.query.q, page: ctx.query.page
 `;
 
 /** REPR: the request (schema + authorize), the endpoint and its answer in one file. */
-const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
+const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
 import * as v from 'valibot';
 
 export const ${subject}Request = defineRequest({
@@ -330,7 +330,7 @@ export class ${name} extends Controller {
 }
 `;
 
-const VIEW = (controller: string, page: string) => `import type { PageProps } from '@bespokecore/http';
+const VIEW = (controller: string, page: string) => `import type { PageProps } from '@marmeon/http';
 import type { ${controller} } from '../controllers/${controller}.ts';
 
 type Props = PageProps<${controller}>;
@@ -358,7 +358,7 @@ export class ${name} {
 }
 `;
 
-const JOB = (name: string, job: string) => `import type { JobContext, JobPayload } from '@bespokecore/queue';
+const JOB = (name: string, job: string) => `import type { JobContext, JobPayload } from '@marmeon/queue';
 import * as v from 'valibot';
 
 /**
@@ -381,7 +381,7 @@ export class ${name} {
 }
 `;
 
-const NOTIFICATION = (name: string, notification: string) => `import type { DatabaseInput, NotificationData } from '@bespokecore/notifications';
+const NOTIFICATION = (name: string, notification: string) => `import type { DatabaseInput, NotificationData } from '@marmeon/notifications';
 import * as v from 'valibot';
 
 /**
@@ -409,7 +409,7 @@ export class ${name} {
 }
 `;
 
-const MIDDLEWARE = (name: string) => `import type { HttpContext, Next } from '@bespokecore/http';
+const MIDDLEWARE = (name: string) => `import type { HttpContext, Next } from '@marmeon/http';
 
 /** Built per request from the container. What you pass to next() becomes available downstream. */
 export class ${name} {
@@ -435,7 +435,7 @@ function migrationStamp(directory: string): string {
   return format(new Date(Math.max(Date.now(), latest + 1000)));
 }
 
-const CREATE_MIGRATION = (table: string) => `import { defineMigration } from '@bespokecore/database';
+const CREATE_MIGRATION = (table: string) => `import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>
@@ -447,7 +447,7 @@ export default defineMigration({
 });
 `;
 
-const ALTER_MIGRATION = (table: string) => `import { defineMigration } from '@bespokecore/database';
+const ALTER_MIGRATION = (table: string) => `import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>
@@ -461,7 +461,7 @@ export default defineMigration({
 });
 `;
 
-const BLANK_MIGRATION = `import { defineMigration } from '@bespokecore/database';
+const BLANK_MIGRATION = `import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: async (schema) => {

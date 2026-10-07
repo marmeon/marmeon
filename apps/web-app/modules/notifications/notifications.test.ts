@@ -1,8 +1,8 @@
-import { Login } from '@bespokecore/auth';
-import { Connections, sql } from '@bespokecore/database';
-import { notificationsChannel } from '@bespokecore/live';
-import { Inbox, Notifications, SendQueuedNotification } from '@bespokecore/notifications';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { Login } from '@marmeon/auth';
+import { Connections, sql } from '@marmeon/database';
+import { notificationsChannel } from '@marmeon/live';
+import { Inbox, Notifications, SendQueuedNotification } from '@marmeon/notifications';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { NewSignInNotification } from '../auth/index.ts';
@@ -39,7 +39,7 @@ describe('"New sign-in" (W6.7)', () => {
     app.notifications.assertSent(me(ada), NewSignInNotification, (data) => data.agent === FIREFOX && !Number.isNaN(Date.parse(data.at)));
     await app.notifications.deliver();
     expect(await rows(app, ada)).toEqual([expect.objectContaining({ type: 'auth.new-sign-in', data: { at: expect.any(String), ip: null, browser: 'Firefox · macOS' }, read_at: null })]);
-    app.mail.assertQueued(NewSignInMail, (_mail, message, options) => message.to[0]!.address === ada.email && message.subject === 'A new sign-in to BespokeCore' && options.queue === 'mail');
+    app.mail.assertQueued(NewSignInMail, (_mail, message, options) => message.to[0]!.address === ada.email && message.subject === 'A new sign-in to Marmeon' && options.queue === 'mail');
   });
 
   it('writes the mail in the user\'s language, not the language of the sign-in (a German user, an English request)', async () => {
@@ -49,7 +49,7 @@ describe('"New sign-in" (W6.7)', () => {
     await app.queue.work();
     await app.notifications.deliver();
     const [queued] = app.mail.queued(NewSignInMail);
-    expect(queued!.message.subject).toBe('Neue Anmeldung bei BespokeCore');
+    expect(queued!.message.subject).toBe('Neue Anmeldung bei Marmeon');
     expect(queued!.message.text).toContain('Firefox · macOS');
   });
 

@@ -1,4 +1,4 @@
-import { defineStorage } from '@bespokecore/storage';
+import { defineStorage } from '@marmeon/storage';
 import * as v from 'valibot';
 
 /**
@@ -33,7 +33,7 @@ export const AppStorage = defineStorage({
 });
 
 // Disk names and their visibility as types: `storage.disk('pubic')` and `storage.disk('local').url(…)` are type errors.
-declare module '@bespokecore/storage' {
+declare module '@marmeon/storage' {
   interface StorageTypes {
     storage: typeof AppStorage;
   }

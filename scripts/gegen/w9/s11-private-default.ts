@@ -107,10 +107,10 @@ export default defineGegenproben({
     },
     {
       id: 'G4b',
-      title: 'create-bespoke-app takes --private-registration without a word',
-      patch: [{ file: 'packages/create-bespoke-app/src/main.ts', find: "  if (values['private-registration'] !== undefined) err(PRIVATE_REGISTRATION_FLAG_GONE);\n", replace: '' }],
-      run: { vitest: 'packages/create-bespoke-app/src/create.test.ts', name: 'the starter kit adds the home module' },
-      expect: /expected '' to be 'create-bespoke-app: --private-registr/,
+      title: 'create-marmeon takes --private-registration without a word',
+      patch: [{ file: 'packages/create-marmeon/src/main.ts', find: "  if (values['private-registration'] !== undefined) err(PRIVATE_REGISTRATION_FLAG_GONE);\n", replace: '' }],
+      run: { vitest: 'packages/create-marmeon/src/create.test.ts', name: 'the starter kit adds the home module' },
+      expect: /expected '' to be 'create-marmeon: --private-registr/,
     },
     // --- The boot warning -----------------------------------------------------------------------------------------------------
     {

@@ -1,5 +1,5 @@
-import type { Registered } from '@bespokecore/auth';
-import { Queue } from '@bespokecore/queue';
+import type { Registered } from '@marmeon/auth';
+import { Queue } from '@marmeon/queue';
 import { RebuildMemberStatsJob } from '../jobs/RebuildMemberStatsJob.ts';
 
 /**

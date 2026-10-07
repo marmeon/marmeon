@@ -1,10 +1,10 @@
-import { defineMigration } from '@bespokecore/database';
-import { uploadsTableConnection } from '@bespokecore/storage';
+import { defineMigration } from '@marmeon/database';
+import { uploadsTableConnection } from '@marmeon/storage';
 
-// The table of temporary uploads (written by `bespoke make:uploads-table`): a row per file uploaded ahead of its form — the
+// The table of temporary uploads (written by `marmeon make:uploads-table`): a row per file uploaded ahead of its form — the
 // session it belongs to (a hash, never the id), the route and field it is for, where it waits (disk and key), the name the
 // browser sent (for showing only), the field's limit, its size once complete, and times in epoch milliseconds: made, expires,
-// sending started, complete, used. `bespoke uploads:prune` deletes rows older than a day, then their files. It lives on the
+// sending started, complete, used. `marmeon uploads:prune` deletes rows older than a day, then their files. It lives on the
 // uploads' connection (UPLOADS_CONNECTION) — infrastructure like the cache and sessions (E108): with SQLite best a file of
 // its own, so a token can be used inside a transaction and a rollback never makes it usable again.
 export default defineMigration({

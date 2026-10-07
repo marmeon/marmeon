@@ -13,8 +13,8 @@ export class QueueError extends Error {
 /** `auth.send-welcome-mail`, `billing:invoice.send` — lower case, digits, and `.`, `-`, `_`, `:` between parts. */
 const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
 
-/** Names under `bespoke.` belong to the framework's own jobs (queued mails and listeners). */
-export const FRAMEWORK_PREFIX = 'bespoke.';
+/** Names under `marmeon.` belong to the framework's own jobs (queued mails and listeners). */
+export const FRAMEWORK_PREFIX = 'marmeon.';
 
 /**
  * Which job class has which name — from the modules' `jobs: [...]` (E84). The worker finds a job's class here, so a job

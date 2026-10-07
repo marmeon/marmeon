@@ -2,7 +2,7 @@
  * Types of messages, keys and placeholders — computed from the English (source) files themselves, without code
  * generation (E38). Browser-safe: types only.
  */
-import type { Suggest } from '@bespokecore/router';
+import type { Suggest } from '@marmeon/router';
 
 /** The messages of one namespace: `{ login: { title: 'Sign in' } }` — strings, nested in objects. */
 export type MessageTree = { readonly [key: string]: string | MessageTree };
@@ -14,7 +14,7 @@ export type MessageTree = { readonly [key: string]: string | MessageTree };
  * ```ts
  * const en = { login: { title: 'Sign in' } } as const;
  * export default en;
- * declare module '@bespokecore/i18n/messages' {
+ * declare module '@marmeon/i18n/messages' {
  *   interface Translations { auth: typeof en }
  * }
  * ```

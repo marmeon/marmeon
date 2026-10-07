@@ -1,13 +1,13 @@
-import { NO_STORE } from '@bespokecore/auth';
-import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { actions, layers, loadHistoryFallback, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@bespokecore/http/client';
-import { createHttpKernel } from '@bespokecore/server';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { NO_STORE } from '@marmeon/auth';
+import { LOCATION_HEADER, PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/page';
+import { actions, layers, loadHistoryFallback, Navigator, optimistic, prefetchWith, type ActionOptions, type NavigatorWindow, type OptimisticUpdate, type PropsPatch, type Reloading, type ReloadSpec } from '@marmeon/http/client';
+import { createHttpKernel } from '@marmeon/server';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
-// The tab below is a browser without the Navigation API (History, popstate): the History fallback, as createBespokeApp attaches it (E184).
+// The tab below is a browser without the Navigation API (History, popstate): the History fallback, as createMarmeonApp attaches it (E184).
 const HISTORY = await loadHistoryFallback();
 
 /**
@@ -16,7 +16,7 @@ const HISTORY = await loadHistoryFallback();
  * one live document per "document state" (pushState entries share their document), the back/forward cache
  * for documents that were not `no-store`, and an HTTP cache that Back/Forward prefers (Chromium does — a
  * document without `Cache-Control` came back from it, without a request, in the browser check).
- * Each document runs the real client navigator of @bespokecore/react against the app's kernel.
+ * Each document runs the real client navigator of @marmeon/react against the app's kernel.
  */
 
 const ORIGIN = 'http://localhost';
@@ -188,7 +188,7 @@ class FakeTab {
     }
   }
 
-  /** A full page load: GET without `x-bespoke`, the document comes from its HTML. */
+  /** A full page load: GET without `x-marmeon`, the document comes from its HTML. */
   async #load(path: string, mode: 'push' | 'replace' | 'traverse' | 'reload'): Promise<void> {
     const url = new URL(path, this.entries[this.index]?.url ?? ORIGIN).href;
     // Back/Forward take a stored document when there is one — without asking the server. (A reload revalidates.)
@@ -228,7 +228,7 @@ class FakeTab {
       layers: page.layers ?? [],
       navigator: new Navigator({
         initialPage: page,
-        // A deep link's document: the layers attached before it is shown, as an adapter does (createBespokeApp loads them first,
+        // A deep link's document: the layers attached before it is shown, as an adapter does (createMarmeonApp loads them first,
         // E71). Any other document loads them when an answer is a layer.
         features: page.layers ? [HISTORY, layers] : [HISTORY],
         window: this.#window(listeners),
@@ -444,19 +444,19 @@ describe('Back after signing out (E36)', () => {
     }
   });
 
-  it('signs in and out with a full page load: the server answers the visit with 409 + x-bespoke-location', async () => {
+  it('signs in and out with a full page load: the server answers the visit with 409 + x-marmeon-location', async () => {
     const { ada } = await createTokenThenSignOut();
     // The 303s of login and logout never reach the client as page JSON: each is followed by a document load.
     expect(tab.requests).toEqual([
       'GET /login',
-      'POST /login (visit)', // → 409, x-bespoke-location: /users/me
+      'POST /login (visit)', // → 409, x-marmeon-location: /users/me
       'GET /users/me',
       `GET /users/${ada.id}`,
       `GET /users/${ada.id} (visit)`, // the profile's deferred activity, loaded after the page (a partial reload)
       'GET /settings/tokens (visit)',
       'GET /settings/tokens/create (visit)', // the form: a layer
       'POST /settings/tokens (visit)', // its answer: the plain text, a layer shown once
-      'POST /logout (visit)', // → 409, x-bespoke-location: /login, Clear-Site-Data: "cache", "storage"
+      'POST /logout (visit)', // → 409, x-marmeon-location: /login, Clear-Site-Data: "cache", "storage"
       'GET /login',
     ]);
   });
@@ -482,11 +482,11 @@ describe('Cache headers', () => {
     expect(response.headers.get('cache-control')).toBeNull();
   });
 
-  it('varies pages on x-bespoke (and the partial-reload and prefetch headers, and the language): the HTML document and the page JSON of one URL are two cache entries', async () => {
+  it('varies pages on x-marmeon (and the partial-reload and prefetch headers, and the language): the HTML document and the page JSON of one URL are two cache entries', async () => {
     const html = await app.get('/login').assertOk();
     const json = await app.navigating().get('/login').assertOk();
     for (const response of [html, json]) {
-      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-bespoke-region', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose', 'x-bespoke-once', 'x-bespoke-once-scope', 'accept-language']);
+      expect(response.headers.get('vary')?.split(', ')).toEqual([PAGE_HEADER, 'x-marmeon-region', 'x-marmeon-partial-component', 'x-marmeon-partial-data', 'x-marmeon-partial-except', 'purpose', 'x-marmeon-once', 'x-marmeon-once-scope', 'accept-language']);
     }
   });
 

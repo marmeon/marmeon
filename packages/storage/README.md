@@ -1,13 +1,13 @@
-# @bespokecore/storage
+# @marmeon/storage
 
 Disks (E91): files under keys — on the local file system, in S3 (or an S3-compatible store) or in memory — behind one
 contract. Public disks are served by the app with safe headers; **private disks are never public**: their files leave only
 through signed URLs that expire. On top of the disks: [uploads](#uploads) — a file goes ahead of its form, onto a private
 disk, and the form's request checks it.
 
-`bespoke discover` registers its `StorageServiceProvider` like any installed package. What it serves needs
-[@bespokecore/http](../http/README.md) (public disks, temporary URLs); uploads also need `@bespokecore/database` and
-[@bespokecore/encryption](../encryption/README.md); S3 needs the AWS SDK (optional peers, [below](#s3)).
+`marmeon discover` registers its `StorageServiceProvider` like any installed package. What it serves needs
+[@marmeon/http](../http/README.md) (public disks, temporary URLs); uploads also need `@marmeon/database` and
+[@marmeon/encryption](../encryption/README.md); S3 needs the AWS SDK (optional peers, [below](#s3)).
 
 ```ts
 // config/storage.ts — listed in the app's `config` (defineApplication({ config: [AppConfig, AppStorage] }))
@@ -21,7 +21,7 @@ export const AppStorage = defineStorage({
     s3: { driver: 's3', bucket: env.S3_BUCKET, region: env.S3_REGION, endpoint: env.S3_ENDPOINT },
   }),
 });
-declare module '@bespokecore/storage' { interface StorageTypes { storage: typeof AppStorage } }
+declare module '@marmeon/storage' { interface StorageTypes { storage: typeof AppStorage } }
 // → storage.disk('pubic') and storage.disk('local').url(…) are type errors
 
 // anywhere — constructor(storage: Storage)
@@ -80,8 +80,8 @@ S3 keys are checked too: some S3-compatible stores map keys onto paths.
 
 - **Public local (or memory) disks** whose `url` is a path get a route `GET {url}/<key>` — outside every middleware group
   (no session, no cookies). An absolute `url` (a CDN) gets none.
-- **Temporary URLs** of local and memory disks: `GET /_bespoke/storage/<disk>/<key>?expires=…&signature=…`, signed by `UrlSigner` of
-  [@bespokecore/http](../http/README.md) (its own key from `APP_KEY`; path, `filename` and expiry signed; the time from the app's
+- **Temporary URLs** of local and memory disks: `GET /_marmeon/storage/<disk>/<key>?expires=…&signature=…`, signed by `UrlSigner` of
+  [@marmeon/http](../http/README.md) (its own key from `APP_KEY`; path, `filename` and expiry signed; the time from the app's
   `Clock`), behind `signed()` — tampered or expired: 403. Works for public and private disks; S3 disks presign instead.
 - Every file goes out with `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and — for everything but
   raster images (PNG, JPEG, GIF, WebP, AVIF) — `Content-Disposition: attachment`. HTML, SVG (it can carry script), XML, PDF
@@ -112,11 +112,11 @@ community edition is archived and LocalStack's image needs an account token), th
 
 Livewire's three steps (W6.9), with what the route already knows deciding everything:
 
-1. **A target for the field.** The browser asks the form's own route — its method and URL, with `x-bespoke-upload: avatar` and
+1. **A target for the field.** The browser asks the form's own route — its method and URL, with `x-marmeon-upload: avatar` and
    `{ name, size, type }` — for a target. The route's middleware, bindings and `authorize` run (whoever may send the form may
    upload its files — no second policy); its controller does not. The field's `upload()` rule in the request schema decides the
    limit (no such rule: 404; a file the browser says is too large: 422). The answer is a token `tu_<id>.<hmac>` and where the
-   bytes go: a signed URL of the app (`PUT /_bespoke/uploads/<id>`, 15 minutes) or — when the uploads disk is S3 — a
+   bytes go: a signed URL of the app (`PUT /_marmeon/uploads/<id>`, 15 minutes) or — when the uploads disk is S3 — a
    **presigned POST** with `content-length-range` (the store refuses one byte more; the bucket needs CORS for the app's origin,
    and `pnpm add @aws-sdk/s3-presigned-post`). A target belongs to a **session** — without one it is a 419. A guest's page keeps
    none by itself (E143), so a guest's page with an upload field keeps it: the injected `Session`'s `persist()` in its
@@ -141,23 +141,23 @@ const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'
 - **Once:** `store()` marks the token used with one `UPDATE … WHERE consumed_at IS NULL` — of two submits racing, exactly one
   stores the file; the other is a 422 of its field. A failed submit keeps the token usable (fix another field, send again).
 - **Infrastructure ([E108](../database/README.md#infrastructure-connections-e108)):** the table `temporary_uploads`
-  (`bespoke make:uploads-table [--module=system]`, E96) is written on its own connection
+  (`marmeon make:uploads-table [--module=system]`, E96) is written on its own connection
   (`UPLOADS_CONNECTION`), never in the app's transaction — a rollback never makes a used token usable again. With SQLite give it
   the file of the cache and sessions (`system`); on Postgres it opens its small pool by itself.
 - **Never echoed:** a `TemporaryUpload` serializes to nothing — old input after a failed submit, logs and JSON never hold the
   token or the file.
-- **Housekeeping:** `bespoke uploads:prune [--hours=24]` deletes uploads made more than a day ago — the rows first (one
+- **Housekeeping:** `marmeon uploads:prune [--hours=24]` deletes uploads made more than a day ago — the rows first (one
   statement), then their files. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` —
-  [@bespokecore/scheduler](../scheduler/README.md); with a local uploads disk on several servers, on each, without `onOneServer()`).
+  [@marmeon/scheduler](../scheduler/README.md); with a local uploads disk on several servers, on each, without `onOneServer()`).
 - **Not yet:** lists of files (`v.array(upload(…))`) and a `<Form>` without JavaScript (it would post the file itself — refused).
 
-The browser side is the `uploads` feature of `@bespokecore/http/client` ([features](../http/README.md#features)) and `<FileInput
-field={form.field('avatar')} />` of [@bespokecore/react](../react/README.md). Tests: `app.upload(route, field, file, params)`
+The browser side is the `uploads` feature of `@marmeon/http/client` ([features](../http/README.md#features)) and `<FileInput
+field={form.field('avatar')} />` of [@marmeon/react](../react/README.md). Tests: `app.upload(route, field, file, params)`
 (below).
 
 ## Testing
 
-`createTestApp` ([@bespokecore/testing](../testing/README.md)) replaces `Storage` with a `StorageFake` (`storage: 'fake'`, the
+`createTestApp` ([@marmeon/testing](../testing/README.md)) replaces `Storage` with a `StorageFake` (`storage: 'fake'`, the
 default): every configured disk is a memory disk with its name, visibility and URL — the app's routes serve it, temporary URLs are
 signed for real. Assertions:
 

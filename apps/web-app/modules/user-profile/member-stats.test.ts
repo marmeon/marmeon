@@ -1,6 +1,6 @@
-import { Registered } from '@bespokecore/auth';
-import { EventRegistry } from '@bespokecore/core';
-import { createTestApp } from '@bespokecore/testing';
+import { Registered } from '@marmeon/auth';
+import { EventRegistry } from '@marmeon/core';
+import { createTestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { RebuildMemberStatsJob } from './jobs/RebuildMemberStatsJob.ts';

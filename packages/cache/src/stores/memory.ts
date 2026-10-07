@@ -1,4 +1,4 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
+import { SystemClock, type Clock } from '@marmeon/core';
 import type { CacheStore, Entry } from '../cache.ts';
 
 /**

@@ -1,7 +1,7 @@
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@bespokecore/core';
-import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@marmeon/core';
+import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { ServerConfig, ServerServiceProvider } from './provider.ts';
@@ -96,7 +96,7 @@ describe('createHttpKernel — errors & logging', async () => {
   const app = createHttpKernel(application);
   const debugApp = createHttpKernel(application, { debug: true });
   const json = { headers: { accept: 'application/json' } };
-  const page = { headers: { 'x-bespoke': 'true' } };
+  const page = { headers: { 'x-marmeon': 'true' } };
 
   it('hides unexpected errors from clients, but reports them with the request id', async () => {
     entries.length = 0;
@@ -132,7 +132,7 @@ describe('createHttpKernel — errors & logging', async () => {
   it('renders the error page for page requests and navigations', async () => {
     const response = await app.request('/forbidden', page);
     expect(response.status).toBe(403);
-    expect(response.headers.get('x-bespoke')).toBe('true');
+    expect(response.headers.get('x-marmeon')).toBe('true');
     expect(await response.json()).toMatchObject({
       component: 'errors/Error',
       props: { status: 403, title: 'Forbidden', message: 'Only admins.', exception: null },
@@ -408,7 +408,7 @@ describe('createHttpKernel — shared props', async () => {
   const app = createHttpKernel(application, { debug: true });
 
   it('merges shared props into every page — a prop of the controller wins', async () => {
-    const page = (await (await app.request('/page', { headers: { 'x-bespoke': 'true' } })).json()) as { props: unknown };
+    const page = (await (await app.request('/page', { headers: { 'x-marmeon': 'true' } })).json()) as { props: unknown };
     expect(page.props).toEqual({ theme: 'dark', title: 'own' });
   });
 });
@@ -430,13 +430,13 @@ describe('createHttpKernel — asset versioning', async () => {
     ],
   });
   const visit = (app: ReturnType<typeof createHttpKernel>, version?: string, method = 'GET', path = '/page') =>
-    app.request(path, { method, headers: { 'x-bespoke': 'true', ...(version ? { 'x-bespoke-version': version } : {}) } });
+    app.request(path, { method, headers: { 'x-marmeon': 'true', ...(version ? { 'x-marmeon-version': version } : {}) } });
 
   it('answers a client-side visit from an older build with 409 and the URL to load fully', async () => {
     const app = createHttpKernel(application, { version: 'v2' });
     const stale = await visit(app, 'v1');
     expect(stale.status).toBe(409);
-    expect(stale.headers.get('x-bespoke-location')).toBe('http://localhost/page');
+    expect(stale.headers.get('x-marmeon-location')).toBe('http://localhost/page');
 
     const current = await visit(app, 'v2');
     expect(current.status).toBe(200);
@@ -499,7 +499,7 @@ describe('createHttpKernel — response copies (W8 step 9)', async () => {
 
   it('sets the headers of a response it made for the request in place — no copy, also with cookies and the request id', async () => {
     let response: Response | undefined;
-    expect(await copies(async () => (response = await app.request('/page', { headers: { 'x-bespoke': 'true' } })))).toBe(0);
+    expect(await copies(async () => (response = await app.request('/page', { headers: { 'x-marmeon': 'true' } })))).toBe(0);
     expect(response!.headers.get('x-request-id')).toBeTruthy();
     expect(response!.headers.getSetCookie().some((cookie) => cookie.startsWith('visit='))).toBe(true);
   });

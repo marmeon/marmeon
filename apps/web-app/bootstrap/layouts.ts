@@ -1,4 +1,4 @@
-import type { DefaultLayout } from '@bespokecore/react';
+import type { DefaultLayout } from '@marmeon/react';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
 export { LayerFrame as layer } from '../layouts/LayerFrame.tsx';

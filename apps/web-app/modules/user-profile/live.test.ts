@@ -1,6 +1,6 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { notificationsChannel } from '@bespokecore/live';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { notificationsChannel } from '@marmeon/live';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
@@ -15,8 +15,8 @@ beforeEach(async () => {
 });
 
 const profile = (user: User) => `/users/${user.id}`;
-/** A tab of `user` — its requests name its document (x-bespoke-connection), as the client core's do. */
-const tab = (user: User, connection: string) => app.actingAs(user).withHeaders({ 'x-bespoke-connection': connection });
+/** A tab of `user` — its requests name its document (x-marmeon-connection), as the client core's do. */
+const tab = (user: User, connection: string) => app.actingAs(user).withHeaders({ 'x-marmeon-connection': connection });
 
 describe('live props in the web app (W6.10)', () => {
   it('the profile follows users.<id> (profile, activity) and the bell its notifications — signed for the session', async () => {
@@ -115,7 +115,7 @@ describe('live props in the web app (W6.10)', () => {
     const ada$ = app.actingAs(ada); // both tabs in one browser — one session
     const tabB = await ada$.live(profile(ada), { connection: 'tab-b-ada-0001' });
     await tabB.hello();
-    await ada$.withHeaders({ 'x-bespoke-connection': 'tab-a-ada-0001' }).post('/logout').assertRedirect('/login');
+    await ada$.withHeaders({ 'x-marmeon-connection': 'tab-a-ada-0001' }).post('/logout').assertRedirect('/login');
     await tabB.closed;
     expect(tabB.events.map((each) => each.event)).toEqual(['hello', 'end']);
     await app.actingAs(ada).post(`${profile(ada)}/links`, { json: { label: 'After', url: 'https://after.example' } });

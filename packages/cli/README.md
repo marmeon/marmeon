@@ -1,49 +1,49 @@
-# @bespokecore/cli
+# marmeon
 
-The `bespoke` command: the launcher (`bespoke dev`, `bespoke start`), the built-in commands (`build`, `route:types`,
+The `marmeon` command: the launcher (`marmeon dev`, `marmeon start`), the built-in commands (`build`, `route:types`,
 `route:list`, `discover`, `key:generate`, `make:*`, `tinker`) and the commands of the installed packages and the app's
-modules. It is a **dependency** of the app, not a dev dependency (E159): `bespoke start`, `queue:work`, `schedule:work` and
-`migrate` run on the server, and `pnpm install --prod` (a Docker image) leaves dev dependencies out. Its `CliServiceProvider` is found by `bespoke discover` like any package's and collects the modules' commands. Run
-it in the app root — `bespoke list` (or plain `bespoke`) shows every command the app has.
+modules. It is a **dependency** of the app, not a dev dependency (E159): `marmeon start`, `queue:work`, `schedule:work` and
+`migrate` run on the server, and `pnpm install --prod` (a Docker image) leaves dev dependencies out. Its `CliServiceProvider` is found by `marmeon discover` like any package's and collects the modules' commands. Run
+it in the app root — `marmeon list` (or plain `marmeon`) shows every command the app has.
 
 ## Commands
 
-### `bespoke dev`
+### `marmeon dev`
 
 The development server: Vite's dev server with HMR and server rendering inside the app's HTTP server, restarted by
 `node --watch` when server code changes. It sets `NODE_ENV=development` when neither the environment nor the app's `.env` sets
 it (E170) — the switch for
 everything that exists only in development (E115): the error page and `Server-Timing`
-([@bespokecore/server](../server/README.md#error-page-e119--development-only)), the [devtools](../devtools/README.md), the
+([@marmeon/server](../server/README.md#error-page-e119--development-only)), the [devtools](../devtools/README.md), the
 [mail previews](../mail/README.md#previews-e106). Next to the server it starts what packages add to
 `DevProcesses` — a queue worker on every queue (`queue:work --queue=*`, unless the default connection is `sync`,
-[@bespokecore/queue](../queue/README.md)) and the scheduler (`schedule:work`, when the app schedules tasks,
-[@bespokecore/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
+[@marmeon/queue](../queue/README.md)) and the scheduler (`schedule:work`, when the app schedules tasks,
+[@marmeon/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
 when one ends on its own. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed. All of
-this — Vite's dev server included — needs `NODE_ENV=development`: with another `NODE_ENV` set (`staging`, `test`), `bespoke dev`
+this — Vite's dev server included — needs `NODE_ENV=development`: with another `NODE_ENV` set (`staging`, `test`), `marmeon dev`
 says so and serves the build, without workers or watchers (never "anything but production", E115).
 
-### `bespoke build` and `bespoke start`
+### `marmeon build` and `marmeon start`
 
 ```sh
-bespoke build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), .br/.gz of the assets, the manifest
-bespoke build --no-typecheck   # without the type check
-bespoke start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless set (environment, then .env)
-NODE_ENV=staging bespoke start # staging: protected like production (E139) — the environment wins over .env (E170)
-bespoke start --workers=4      # four servers on one port (node:cluster, E140) — each drains on SIGTERM
-SHUTDOWN_DELAY=5 bespoke start # SIGTERM: /up/ready 503 at once, 5 more seconds of requests, then the drain (E163)
+marmeon build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), .br/.gz of the assets, the manifest
+marmeon build --no-typecheck   # without the type check
+marmeon start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless set (environment, then .env)
+NODE_ENV=staging marmeon start # staging: protected like production (E139) — the environment wins over .env (E170)
+marmeon start --workers=4      # four servers on one port (node:cluster, E140) — each drains on SIGTERM
+SHUTDOWN_DELAY=5 marmeon start # SIGTERM: /up/ready 503 at once, 5 more seconds of requests, then the drain (E163)
 ```
 
-`build` precomputes the app's injection lists (`.bespoke/injections.json`, [A fast start](#a-fast-start-e138)), runs
-`bespoke route:types` (in the app's build phase, E187: providers registered, none booted, no `.env` or secret needed), type-checks the app against the
+`build` precomputes the app's injection lists (`.marmeon/injections.json`, [A fast start](#a-fast-start-e138)), runs
+`marmeon route:types` (in the app's build phase, E187: providers registered, none booted, no `.env` or secret needed), type-checks the app against the
 generated route types (a renamed route or a missing view fails the build) and builds with the app's own Vite config and the
-`bespoke()` plugin ([@bespokecore/vite](../vite/README.md)). A route name the browser's manifest cannot know and client code
+`marmeon()` plugin ([@marmeon/vite](../vite/README.md)). A route name the browser's manifest cannot know and client code
 that imports server code as a value fail it too, each with file and line
 ([Server code in the browser](../vite/README.md#server-code-in-the-browser-e121)). Then it compresses the client's assets once —
 a `.br` and a `.gz` next to each file in `dist/client/assets`, which the server sends by `Accept-Encoding` (E162; it never
 compresses per request). Last, `build` writes the production
-discovery manifest (`.bespoke/manifest.json`, [Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)),
-so the first `start` rewrites nothing and `.bespoke/` may be read-only on the server.
+discovery manifest (`.marmeon/manifest.json`, [Discovery](../core/README.md#discovery-the-marmeon-field-and-marmeon-discover)),
+so the first `start` rewrites nothing and `.marmeon/` may be read-only on the server.
 
 `start` respects a `NODE_ENV` that is set and sets `production` only when it is missing (E139) — set in the environment or,
 failing that, in the app's `.env` (E170, [Where it comes from](../core/README.md#the-environment-node_env)). A `.env` that says
@@ -51,17 +51,17 @@ failing that, in the app's `.env` (E170, [Where it comes from](../core/README.md
 `development (from .env)` in the start line; on a server set `NODE_ENV` in the environment. Every `NODE_ENV` but
 `development` and `test` is **protected** — JSON logs, `migrate` asks for `--force`, no lab pages, the boot warnings — so
 staging behaves like production; the development tools still need `NODE_ENV=development` (E115,
-[@bespokecore/core](../core/README.md#the-environment-node_env)). The start line names it:
-`BespokeCore in staging (protected) on http://localhost:3000 (the build; 54 routes, …)`. Queue workers and the scheduler run as
-processes of their own there (`bespoke queue:work`, `bespoke schedule:work`, under a supervisor); each names the environment it
+[@marmeon/core](../core/README.md#the-environment-node_env)). The start line names it:
+`Marmeon in staging (protected) on http://localhost:3000 (the build; 54 routes, …)`. Queue workers and the scheduler run as
+processes of their own there (`marmeon queue:work`, `marmeon schedule:work`, under a supervisor); each names the environment it
 assumed when it starts, and so do `migrate` and its siblings. `dev` and `start` stop gracefully on SIGINT/SIGTERM
-([@bespokecore/server](../server/README.md#startserver-and-the-drain)) — the handlers are in place before the server listens, so
+([@marmeon/server](../server/README.md#startserver-and-the-drain)) — the handlers are in place before the server listens, so
 a SIGTERM that comes while it starts still drains once it listens. **SIGTERM** (a deployment, `docker stop`, Kubernetes,
 systemd) first waits `SHUTDOWN_DELAY` seconds with `/up/ready` at 503 (E163, default 0); **SIGINT** (Ctrl+C) skips the delay.
 
 ### Several processes: `--workers` (E140)
 
-`bespoke start --workers=N` runs N servers in worker processes of `node:cluster`, sharing the port; the process you started is
+`marmeon start --workers=N` runs N servers in worker processes of `node:cluster`, sharing the port; the process you started is
 the primary. It passes SIGTERM/SIGINT on to every worker — each drains like a single server (readiness, `SHUTDOWN_DELAY`, the
 requests in flight, the work after the response) — and exits with 0 once all exited with 0, else with the first worker's code
 (after 10 s plus the delay a worker that hangs is killed). A worker that ends while the cluster runs is started again after a
@@ -70,26 +70,26 @@ forever. The warnings of the boot (a log mailer in production, cookies without `
 `.env`) are said once, by the primary — the workers boot the same app and keep them to themselves; what a worker warns about
 later is its own. With `PORT=0` the system picks the port and all workers share the one the start line names. Each worker has its own readiness, rate-limit memory and `memory` stores — use `redis` or `database` drivers for
 sessions, cache and locks, and `LIVE_DRIVER=redis` for live hints (as with several containers). `LIVE_DRIVER=memory` with
-`--workers` fails the start ([@bespokecore/live](../live/README.md#configuration)): a hint would reach the streams of one worker
+`--workers` fails the start ([@marmeon/live](../live/README.md#configuration)): a hint would reach the streams of one worker
 only. One process per container (more containers) is the default
-model; `--workers` is for a machine with several cores and one service. `bespoke dev` refuses it.
+model; `--workers` is for a machine with several cores and one service. `marmeon dev` refuses it.
 
 ### Production files: `make:docker` (E141)
 
 ```sh
-bespoke make:docker                    # Dockerfile, .dockerignore, compose.production.yaml (web, worker, scheduler)
-bespoke make:docker --caddy            # … with Caddy in front (TLS, HTTP/2 + 3) — deploy/Caddyfile
-bespoke make:docker --nginx --systemd  # … nginx on the host (deploy/nginx.conf) and systemd units (deploy/systemd/*.service)
+marmeon make:docker                    # Dockerfile, .dockerignore, compose.production.yaml (web, worker, scheduler)
+marmeon make:docker --caddy            # … with Caddy in front (TLS, HTTP/2 + 3) — deploy/Caddyfile
+marmeon make:docker --nginx --systemd  # … nginx on the host (deploy/nginx.conf) and systemd units (deploy/systemd/*.service)
 ```
 
 - **Dockerfile** — multi-stage on `node:26-slim`: the app's package manager (`pnpm` pinned from `packageManager`, else
   `pnpm@12.9.1`, installed with `npm i -g` — Node ships no Corepack; `npm ci` for an app with `package-lock.json`), a frozen
-  install with a cache mount, `bespoke build` (no `.env`, no key — the build phase needs no secret, E187), a fresh production install, `bespoke discover`; the final stage has Node and the app only, the code owned by root and
+  install with a cache mount, `marmeon build` (no `.env`, no key — the build phase needs no secret, E187), a fresh production install, `marmeon discover`; the final stage has Node and the app only, the code owned by root and
   readable for everyone, `storage/` owned by `node`, `USER node`, `NODE_ENV=production`, `HOST=0.0.0.0`, a `HEALTHCHECK` with
-  Node's `fetch` on `/up` (no curl in the image), `tini` as PID 1 (`ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]`, E187),
+  Node's `fetch` on `/up` (no curl in the image), `tini` as PID 1 (`ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]`, E187),
   `CMD ["start"]`. Local packages the lockfile points
   to (`file:./vendor/…`) are copied before the install.
-- **`.dockerignore`** — every `.env*`, `node_modules`, `dist`, `.bespoke`,
+- **`.dockerignore`** — every `.env*`, `node_modules`, `dist`, `.marmeon`,
   `storage`.
 - **`compose.production.yaml`** — one image, a role per container: `web` (`start`), `worker` (`queue:work --queue=mail,default`;
   a stuck job's exit 70 is restarted by `restart: unless-stopped`), `scheduler` (`schedule:work`); `env_file:
@@ -112,37 +112,37 @@ The files are the app's afterwards; an existing one is overwritten only with `--
 
 ### One process (E159)
 
-`bespoke` runs a command in its own process: `bespoke start` **is** the server — PID 1 in a container — so a supervisor's SIGTERM,
+`marmeon` runs a command in its own process: `marmeon start` **is** the server — PID 1 in a container — so a supervisor's SIGTERM,
 a worker's exit code (70 for a job that ignored its timeout) and `NODE_OPTIONS='--import ./bootstrap/telemetry.ts'` reach exactly
 one Node process. The injection hook is registered in that process (`module.registerHooks`) before the command loads. Node is
-started a second time only for what a running process cannot switch on: `node --watch` for `bespoke dev`, and the
-`@bespokecore/source` condition when the CLI runs inside the framework's own monorepo — a `pnpm-workspace.yaml` above it lists its
+started a second time only for what a running process cannot switch on: `node --watch` for `marmeon dev`, and the
+`@marmeon/source` condition when the CLI runs inside the framework's own monorepo — a `pnpm-workspace.yaml` above it lists its
 directory among `packages` (E187; its packages resolve to their TypeScript sources there; a published package does not carry the
-condition) — never for `bespoke start`, which serves the packages' `dist/` there too. A copy of the CLI (what `pnpm deploy` or an
+condition) — never for `marmeon start`, which serves the packages' `dist/` there too. A copy of the CLI (what `pnpm deploy` or an
 injected workspace dependency leaves under `node_modules`, with the workspace manifest and its source condition) is no workspace
 package: it runs its `dist/` like a published package — Node resolves the condition only when the launcher gives it. In an image,
 `tini` is PID 1 in front of it (E187: signals passed on, orphans reaped).
 
-When the app cannot start, `bespoke` prints the error with Node's code when it has one (`ERR_…`) and the solutions below it
+When the app cannot start, `marmeon` prints the error with Node's code when it has one (`ERR_…`) and the solutions below it
 ([Solutions](../core/README.md#solutions-e130)) — e.g. for `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, a package that reaches
 Node with its TypeScript sources instead of its `dist/`; exit code 1.
 
 ### A fast start (E138)
 
-`bespoke build` precomputes the app's injection lists first (`.bespoke/injections.json`,
-[@bespokecore/core](../core/README.md#precomputed-lists-in-production-e138)) and writes the production discovery manifest last;
-`bespoke start` applies the lists without loading oxc-parser and turns on Node's compile cache before anything loads —
+`marmeon build` precomputes the app's injection lists first (`.marmeon/injections.json`,
+[@marmeon/core](../core/README.md#precomputed-lists-in-production-e138)) and writes the production discovery manifest last;
+`marmeon start` applies the lists without loading oxc-parser and turns on Node's compile cache before anything loads —
 `storage/framework/compile-cache`, or Node's own `NODE_COMPILE_CACHE`; `NODE_DISABLE_COMPILE_CACHE=1` turns it off. The cache
 is written once the server listens. What it does with the injection hook, the numbers and what is deliberately not cached:
-[Start in production](../server/README.md#start-in-production-e138-e161). The tinker REPL loads with `bespoke tinker` only.
+[Start in production](../server/README.md#start-in-production-e138-e161). The tinker REPL loads with `marmeon tinker` only.
 
 ### Built-in commands
 
 | Command | What |
 | --- | --- |
 | `route:list` | every registered route: method, path, name, group, middleware, action |
-| `route:types [--check]` | writes `bootstrap/routes.ts` (route names, parameters and views for the type checker) and `.bespoke/routes.json` (the routes the browser may learn); `--check` fails when it is out of date (CI) |
-| `discover` | writes `.bespoke/manifest.json` (`manifest.source.json` in the monorepo) — the installed packages' providers and injection lists ([Discovery](../core/README.md#discovery-the-bespoke-field-and-bespoke-discover)); also runs by itself when dependencies change |
+| `route:types [--check]` | writes `bootstrap/routes.ts` (route names, parameters and views for the type checker) and `.marmeon/routes.json` (the routes the browser may learn); `--check` fails when it is out of date (CI) |
+| `discover` | writes `.marmeon/manifest.json` (`manifest.source.json` in the monorepo) — the installed packages' providers and injection lists ([Discovery](../core/README.md#discovery-the-marmeon-field-and-marmeon-discover)); also runs by itself when dependencies change |
 | `key:generate [--show] [--force]` | sets `APP_KEY` in `.env` (copied from `.env.example` when missing); `--show` prints a key only; an existing key needs `--force`, which moves it to the front of `APP_PREVIOUS_KEYS` (E169) — sessions, encrypted cookies and signed links stay valid ([Key rotation](../encryption/README.md#key-rotation)) |
 | `tinker [--sandbox] [-e "<code>"] [--no-history]` | a REPL with the booted app ([tinker](#tinker)) |
 | `make:lint-config [--boundaries] [--force]` | writes `.oxlintrc.json` ([Lint](#lint)) |
@@ -163,15 +163,15 @@ file without `--force`:
 
 | Package | Commands |
 | --- | --- |
-| [@bespokecore/database](../database/README.md) | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh [--seed]`, `migrate:status`, `db:seed`, `db:show`, `db:types [--check]` |
-| [@bespokecore/queue](../queue/README.md) | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table` |
-| [@bespokecore/scheduler](../scheduler/README.md) | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test` |
-| [@bespokecore/cache](../cache/README.md) | `cache:clear`, `cache:prune`, `make:cache-table` |
-| [@bespokecore/session](../session/README.md) | `session:prune`, `make:session-table` |
-| [@bespokecore/storage](../storage/README.md) | `uploads:prune`, `make:uploads-table` |
-| [@bespokecore/notifications](../notifications/README.md) | `notifications:prune`, `make:notifications-table` |
-| [@bespokecore/auth](../auth/README.md) | `make:auth [--adapter=react] [--force]` ([private registration](../auth/README.md#private-registration-e146-e193) by default, E146/E193), `auth:prune-tokens` |
-| [@bespokecore/devtools](../devtools/README.md) | `devtools:clear`, `devtools:prune` |
+| [@marmeon/database](../database/README.md) | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh [--seed]`, `migrate:status`, `db:seed`, `db:show`, `db:types [--check]` |
+| [@marmeon/queue](../queue/README.md) | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table` |
+| [@marmeon/scheduler](../scheduler/README.md) | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test` |
+| [@marmeon/cache](../cache/README.md) | `cache:clear`, `cache:prune`, `make:cache-table` |
+| [@marmeon/session](../session/README.md) | `session:prune`, `make:session-table` |
+| [@marmeon/storage](../storage/README.md) | `uploads:prune`, `make:uploads-table` |
+| [@marmeon/notifications](../notifications/README.md) | `notifications:prune`, `make:notifications-table` |
+| [@marmeon/auth](../auth/README.md) | `make:auth [--adapter=react] [--force]` ([private registration](../auth/README.md#private-registration-e146-e193) by default, E146/E193), `auth:prune-tokens` |
+| [@marmeon/devtools](../devtools/README.md) | `devtools:clear`, `devtools:prune` |
 
 ### Writing a command
 
@@ -180,7 +180,7 @@ its own (constructor injection, scoped services like a request's), the app shut 
 exit code:
 
 ```ts
-// @bespokecore/auth (shortened)
+// @marmeon/auth (shortened)
 export class PruneTokensCommand {
   static command = 'auth:prune-tokens';
   static description = 'Delete expired password reset, remember-me and API tokens';
@@ -200,11 +200,11 @@ export class PruneTokensCommand {
 
 An app's module lists its commands in `defineModule({ commands: [...] })`; a package adds its own in its provider's `boot()`
 (`app.container.make(CommandRegistry).add([PruneTokensCommand])`). `static usage` shows in errors and help,
-`static boots = false` runs a command without booting the app (generators), `static boots = 'build'` with the app as `bespoke build`
+`static boots = false` runs a command without booting the app (generators), `static boots = 'build'` with the app as `marmeon build`
 has it (registered, not booted, no runtime secret — `route:types`, E187) — both read for the built-in commands only: an app's or
-a package's commands are found by booting the app, so they always run in a booted one. `static hidden` keeps it out of `bespoke list`. The
+a package's commands are found by booting the app, so they always run in a booted one. `static hidden` keeps it out of `marmeon list`. The
 scheduler runs commands as tasks (`s.command('auth:prune-tokens').daily()`), each in a scope of its own. Each run is reported on
-the `command.run` channel ([Diagnostics](../core/README.md#diagnostics-bespokecorecorediagnostics-e118)).
+the `command.run` channel ([Diagnostics](../core/README.md#diagnostics-marmeoncorediagnostics-e118)).
 
 ## tinker
 
@@ -212,8 +212,8 @@ A REPL with the booted application (E122) — Node's own (`await` at the top lev
 TypeScript input and a few helpers:
 
 ```text
-$ bespoke tinker
-BespokeCore tinker · web-app · NODE_ENV=development · db sqlite (storage/database.sqlite) · .ls lists helpers
+$ marmeon tinker
+Marmeon tinker · web-app · NODE_ENV=development · db sqlite (storage/database.sqlite) · .ls lists helpers
 > const user = await repos.users.find(1)
 > const n: number = await repos.users.count()
 > await jobs.dispatch(SendWelcomeMailJob, { userId: user!.id })
@@ -226,13 +226,13 @@ BespokeCore tinker · web-app · NODE_ENV=development · db sqlite (storage/data
 |---|---|
 | `app` | the `Application` — container, modules, root |
 | `make(Key)` · `make('Name')` | resolves a class or token in the session's scope (by name, too) |
-| `db` | Kysely on the default connection (`@bespokecore/database`) |
+| `db` | Kysely on the default connection (`@marmeon/database`) |
 | `repos.<table>` | the app's repositories: every `*Repository.ts` under the app (not `node_modules`, `dist`, `storage`), by its `static table` — by class name where two share a table |
-| `jobs` | the `Queue` (`@bespokecore/queue`) |
+| `jobs` | the `Queue` (`@marmeon/queue`) |
 | `events` | the `EventDispatcher` |
-| `mail` | the `Mailer` (`@bespokecore/mail`) |
+| `mail` | the `Mailer` (`@marmeon/mail`) |
 | `url(name, params?, query?)` | the path of a named route |
-| `t(key, params?)` | a text in `APP_LOCALE` (`@bespokecore/i18n`) |
+| `t(key, params?)` | a text in `APP_LOCALE` (`@marmeon/i18n`) |
 | `config.<name>` | the resolved configuration, by name (`config.app`, `config.mail`, …) |
 
 - **By name:** every class and token the container binds, every class a module lists (jobs, notifications, seeders,
@@ -251,7 +251,7 @@ BespokeCore tinker · web-app · NODE_ENV=development · db sqlite (storage/data
 ### `--sandbox`: everything rolled back
 
 ```sh
-bespoke tinker --sandbox
+marmeon tinker --sandbox
 ```
 
 The whole session runs in one transaction on the default connection (E107) — the context holds from input to input — and
@@ -273,9 +273,9 @@ their own file (`CACHE_CONNECTION`, `SESSION_CONNECTION`) or Redis.
 ### `--execute`: for scripts
 
 ```sh
-bespoke tinker --execute "await repos.users.count()"          # prints 3
-bespoke tinker -e "url('user-profile.show', { user: 1 })"     # prints /users/1 (strings as they are)
-bespoke tinker --sandbox -e "await repos.users.insert({ … })"  # tries it, rolls back
+marmeon tinker --execute "await repos.users.count()"          # prints 3
+marmeon tinker -e "url('user-profile.show', { user: 1 })"     # prints /users/1 (strings as they are)
+marmeon tinker --sandbox -e "await repos.users.insert({ … })"  # tries it, rolls back
 ```
 
 Evaluates the code like one input of the REPL and prints the value (a string as it is, anything else inspected; nothing for
@@ -297,11 +297,11 @@ holds inputs only, never output, and the banner never shows a secret.
 
 ## Lint
 
-`bespoke make:lint-config` writes an [oxlint](https://oxc.rs/docs/guide/usage/linter) config for the app (E121) —
+`marmeon make:lint-config` writes an [oxlint](https://oxc.rs/docs/guide/usage/linter) config for the app (E121) —
 `.oxlintrc.json` in the app root, yours to change (`--force` writes it anew):
 
 ```text
-$ bespoke make:lint-config [--boundaries]
+$ marmeon make:lint-config [--boundaries]
 ✓ Created .oxlintrc.json
 $ pnpm add -D oxlint && pnpm exec oxlint
 modules/auth/views/Login.tsx:3:1: error eslint(no-restricted-imports): '../controllers/ShowLoginController.ts' import is
@@ -319,7 +319,7 @@ driver …), into the browser bundle. The preset restricts, in `modules/*/views/
 `import { type X }` to `import type { X }` (`typescript/no-import-type-side-effects`): the inline form also stays in the
 output, as `import {} from …`, and loads the module.
 
-oxlint sees the import's text, not the file it resolves to. The authoritative check is the `bespoke()` Vite plugin's: it
+oxlint sees the import's text, not the file it resolves to. The authoritative check is the `marmeon()` Vite plugin's: it
 resolves every import of client code, follows indirect ones (view → helper → controller) and knows more server modules
 (jobs, listeners, mails, policies, `config/` …) — an error in the dev overlay and a failed build, without a linter
 ([Server code in the browser](../vite/README.md#server-code-in-the-browser-e121)). The preset shows the common case in the editor.
@@ -328,7 +328,7 @@ resolves every import of client code, follows indirect ones (view → helper →
 `import { MemberStats } from '#modules/user-profile'` (the app's `package.json` maps `"#modules/*": "./modules/*/index.ts"`),
 never `../../user-profile/MemberStats.ts`. The module's `index.ts` decides what it shares; its tables stay its own with
 `Database<'module'>` and `exposes` (E20). Tests may reach into any module (factories, jobs). Without the flag nothing about
-module structure is checked — BespokeCore imposes no architecture.
+module structure is checked — Marmeon imposes no architecture.
 
 Why the generated file is long: oxlint matches import specifiers as text, so "leaves the module" depends on the folder depth
 (`../billing/x.ts` from `modules/auth/a.ts`, `../../billing/x.ts` from `modules/auth/listeners/b.ts` — but
@@ -344,7 +344,7 @@ instead of merging (an app's preset is complete on its own).
 **Before E121**, nothing enforced `import type` (W7 plan, finding 8). A value import of a controller in a view failed the
 build only by accident — after 144 "externalized for browser compatibility" warnings, with
 `Rolldown failed to resolve import "@oxc-parser/binding-wasm32-wasip1"` (core's injection analyzer pulls in oxc-parser), and
-the view named nowhere; a server module that did not reach `@bespokecore/core` built green and shipped its code. The dev
+the view named nowhere; a server module that did not reach `@marmeon/core` built green and shipped its code. The dev
 server showed the same unrelated error in the overlay, and the page did not hydrate.
 
 **The repository** lints itself with `pnpm lint` (`oxlint --deny-warnings`, part of `pnpm run ci`): the root

@@ -1,17 +1,17 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/page';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp } from './app.tsx';
+import { MarmeonApp } from './app.tsx';
 import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { usePoll } from './use-poll.ts';
 import { WhenVisible } from './when-visible.tsx';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -91,7 +91,7 @@ afterEach(async () => {
 async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} />));
+  await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector);
@@ -161,7 +161,7 @@ describe('usePoll', () => {
     await wait(100);
     const polled = requests.length;
     expect(polled).toBeGreaterThanOrEqual(1);
-    expect(requests[0]!.headers).toMatchObject({ 'x-bespoke-partial-data': 'count' });
+    expect(requests[0]!.headers).toMatchObject({ 'x-marmeon-partial-data': 'count' });
     expect($('[data-testid="count"]')!.textContent).toBe(String(polls));
 
     visibility('hidden');
@@ -211,7 +211,7 @@ describe('<WhenVisible>', () => {
     FakeObserver.all = [];
     vi.stubGlobal('IntersectionObserver', FakeObserver);
     server = (url, init) => {
-      const only = (init.headers as Record<string, string>)['x-bespoke-partial-data'];
+      const only = (init.headers as Record<string, string>)['x-marmeon-partial-data'];
       if (only === 'stats') return respond(page('Lazy', '/a', { stats: 42 }));
       const cursor = new URL(url, location.href).searchParams.get('cursor');
       return respond({ ...page('Lazy', `/a?cursor=${cursor}`, { list: cursor === 'p2' ? { data: [3, 4], next: 'p3' } : { data: [5], next: null } }), deepMergeProps: ['list'] });
@@ -228,7 +228,7 @@ describe('<WhenVisible>', () => {
     await wait(10);
     expect($('[data-testid="stats"]')!.textContent).toBe('42');
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.headers).toMatchObject({ 'x-bespoke-partial-component': 'app/Lazy', 'x-bespoke-partial-data': 'stats' });
+    expect(requests[0]!.headers).toMatchObject({ 'x-marmeon-partial-component': 'app/Lazy', 'x-marmeon-partial-data': 'stats' });
 
     await act(async () => FakeObserver.show());
     await wait(10);

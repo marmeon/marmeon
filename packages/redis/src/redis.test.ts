@@ -1,15 +1,15 @@
-import { createApplication, type Logger } from '@bespokecore/core';
+import { createApplication, type Logger } from '@marmeon/core';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { defineRedisScript, RedisConnections, RedisSetupError } from './connections.ts';
 import { defineRedisConnection, RedisConfig, RedisServiceProvider } from './index.ts';
 
-/** Redis runs when `BESPOKE_TEST_REDIS_URL` is set (`docker compose up -d`, then `pnpm test:redis`). */
-const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+/** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`docker compose up -d`, then `pnpm test:redis`). */
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
-function connections(prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`, url = REDIS_URL ?? 'redis://127.0.0.1:1') {
+function connections(prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`, url = REDIS_URL ?? 'redis://127.0.0.1:1') {
   return new RedisConnections({ connections: { default: { url, prefix } }, logger: silent });
 }
 
@@ -20,7 +20,7 @@ describe('RedisConnections without a server', () => {
       logger: silent,
       importClient: () => import('redis-is-not-installed' as string).catch(() => {
         // What Node throws for a package the app lacks (the name says which).
-        throw Object.assign(new Error("Cannot find package 'redis' imported from /app/node_modules/@bespokecore/redis/dist/connections.js"), { code: 'ERR_MODULE_NOT_FOUND' });
+        throw Object.assign(new Error("Cannot find package 'redis' imported from /app/node_modules/@marmeon/redis/dist/connections.js"), { code: 'ERR_MODULE_NOT_FOUND' });
       }),
     });
     const error = await missing.verify().catch((caught: unknown) => caught);

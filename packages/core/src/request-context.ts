@@ -23,7 +23,7 @@ const requests = new AsyncLocalStorage<RequestInfo>();
 const jobs = new AsyncLocalStorage<JobInfo>();
 const tasks = new AsyncLocalStorage<TaskInfo>();
 
-/** What every log entry of a scheduled task carries — its name (@bespokecore/scheduler). */
+/** What every log entry of a scheduled task carries — its name (@marmeon/scheduler). */
 export interface TaskInfo {
   readonly task: string;
 }

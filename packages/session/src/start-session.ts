@@ -1,6 +1,6 @@
-import { Container, Logger } from '@bespokecore/core';
-import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@bespokecore/http';
-import { HttpError, type HttpContext, type Next } from '@bespokecore/router';
+import { Container, Logger } from '@marmeon/core';
+import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@marmeon/http';
+import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig } from './config.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
 import { Session } from './session.ts';
@@ -106,9 +106,9 @@ export class StartSession {
   async #block(ctx: HttpContext, id: string | undefined): Promise<{ release(): Promise<boolean> } | undefined> {
     const blocking = ctx.route?.blocking;
     if (!blocking || !id || !SESSION_ID.test(id)) return undefined;
-    const cache = await import('@bespokecore/cache').catch(() => undefined);
+    const cache = await import('@marmeon/cache').catch(() => undefined);
     if (!cache || !this.#container.has(cache.Cache)) {
-      throw new Error(`Route ${ctx.route.path} uses block(): that needs the cache's atomic locks — install @bespokecore/cache (pnpm add @bespokecore/cache).`);
+      throw new Error(`Route ${ctx.route.path} uses block(): that needs the cache's atomic locks — install @marmeon/cache (pnpm add @marmeon/cache).`);
     }
     const lock = this.#container.make(cache.Cache).lock(`session:${sessionKey(id)}`, blocking.lockSeconds);
     try {

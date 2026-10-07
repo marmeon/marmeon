@@ -1,8 +1,8 @@
-import type { DeferredResult, PageObject, RegionResult } from '@bespokecore/http/page';
-import { createViteDevRenderer, type PageRenderer } from '@bespokecore/server';
+import type { DeferredResult, PageObject, RegionResult } from '@marmeon/http/page';
+import { createViteDevRenderer, type PageRenderer } from '@marmeon/server';
 
 /** Marks a test request, so the SSR errors of exactly that request reach its response. */
-export const SSR_TEST_HEADER = 'x-bespoke-test-render';
+export const SSR_TEST_HEADER = 'x-marmeon-test-render';
 
 /** What server rendering did for one response (`createTestApp(…, { ssr: true })`). */
 export interface SsrOutcome {
@@ -28,7 +28,7 @@ interface Resolved {
 }
 
 /**
- * Server rendering for tests, through the app's Vite setup (as `bespoke dev` renders): `<Head>` and markup become
+ * Server rendering for tests, through the app's Vite setup (as `marmeon dev` renders): `<Head>` and markup become
  * testable. Every page is rendered completely — like for a bot — so the markup does not depend on timing; with
  * `stream`, as for a browser (the shell first, the rest as it is ready).
  */

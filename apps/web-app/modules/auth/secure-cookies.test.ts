@@ -1,4 +1,4 @@
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -27,7 +27,7 @@ async function signInRemembered(env: Record<string, string>) {
 describe('Secure cookies (E162)', () => {
   it('APP_URL=https://… — the session, XSRF and remember-me cookies are Secure', async () => {
     const cookies = await signInRemembered({ APP_URL: 'https://example.com' });
-    for (const name of ['bespoke_session', 'XSRF-TOKEN', 'remember_web']) {
+    for (const name of ['marmeon_session', 'XSRF-TOKEN', 'remember_web']) {
       expect(cookies[name], name).toBeDefined();
       expect(cookies[name], name).toMatch(/; Secure(;|$)/);
     }

@@ -1,19 +1,19 @@
 {
-  "name": "@bespokecore/redis",
+  "name": "@marmeon/redis",
   "version": "0.1.0",
-  "description": "Redis connections for BespokeCore apps — the driver behind Redis cache, sessions, queues and live hints.",
+  "description": "Redis connections for Marmeon apps — the driver behind Redis cache, sessions, queues and live hints.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "redis"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/redis#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/redis#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/redis"
   },
   "engines": {
@@ -23,7 +23,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -52,13 +52,13 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "RedisServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {

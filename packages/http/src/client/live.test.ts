@@ -24,7 +24,7 @@ async function arrived(win: FakeWindow, sources = 1) {
 }
 
 /** The partial reloads a tab sent: their URL and `only`. */
-const reloads = (win: FakeWindow) => win.requests.filter((request) => request.headers['x-bespoke-partial-data'] !== undefined).map((request) => `${new URL(request.url).pathname} ${request.headers['x-bespoke-partial-data']}`);
+const reloads = (win: FakeWindow) => win.requests.filter((request) => request.headers['x-marmeon-partial-data'] !== undefined).map((request) => `${new URL(request.url).pathname} ${request.headers['x-marmeon-partial-data']}`);
 
 /** A signed-in tab on Ada's profile, which follows `users.1` (only its profile) and — shared, the layout's bell — `notifications.user.1`. */
 async function tab({ protocol = 'h2', features = [] as readonly Feature[] } = {}) {
@@ -47,7 +47,7 @@ describe('live props in the client core — server-driven, one stream per docume
     expect(win.sources).toHaveLength(1);
     const source = win.source!;
     const url = new URL(source.url, ORIGIN);
-    expect(url.pathname).toBe('/_bespoke/live');
+    expect(url.pathname).toBe('/_marmeon/live');
     expect(url.searchParams.get('connection')).toMatch(/^[0-9a-f]{24}$/);
     expect(url.searchParams.getAll('c')).toEqual(['t-notifications_user_1.notifications.user.1', 't-users_1.users.1']);
     // An island that follows a channel of its own joins the same stream (one connection: the old one closes).
@@ -66,14 +66,14 @@ describe('live props in the client core — server-driven, one stream per docume
     expect(win.sources).toEqual([]);
   });
 
-  it('every request of the tab names its document (x-bespoke-connection) — visits and actions', async () => {
+  it('every request of the tab names its document (x-marmeon-connection) — visits and actions', async () => {
     const { win, navigator } = await tab();
     const connection = new URL(win.source!.url, ORIGIN).searchParams.get('connection');
     await navigator.visit('/users/1/links', { method: 'post', data: { url: 'https://x.test' } });
-    expect(win.requests.at(-1)!.headers['x-bespoke-connection']).toBe(connection);
+    expect(win.requests.at(-1)!.headers['x-marmeon-connection']).toBe(connection);
     win.handler = () => Response.json({ ok: true });
     await navigator.use(actions).run('/notifications/1/read', { method: 'post' });
-    expect(win.requests.at(-1)!.headers['x-bespoke-connection']).toBe(connection);
+    expect(win.requests.at(-1)!.headers['x-marmeon-connection']).toBe(connection);
   });
 
   it('a hint reloads what follows its channel — only the props its subscription names of those the hint names', async () => {
@@ -110,7 +110,7 @@ describe('live props in the client core — server-driven, one stream per docume
     win.source!.emit('refresh', { channel: 'dashboard.sign-ins', only: null, seq: 2 });
     win.source!.emit('refresh', { channel: 'users.1', only: ['profile', 'name'], seq: 1 });
     await wait(LIVE_QUIET + 50);
-    const sent = win.requests.slice(before).map((request) => `${new URL(request.url).pathname} ${request.headers[REGION_HEADER] ?? 'page'} ${request.headers['x-bespoke-partial-data'] ?? 'all'}`);
+    const sent = win.requests.slice(before).map((request) => `${new URL(request.url).pathname} ${request.headers[REGION_HEADER] ?? 'page'} ${request.headers['x-marmeon-partial-data'] ?? 'all'}`);
     expect(sent.sort()).toEqual(['/islands/sign-ins island all', '/users/1 page profile', '/users/1/edit layer name']);
   });
 

@@ -1,11 +1,11 @@
 /**
- * `pnpm bench boot` — how long `bespoke start` takes until `GET /up` answers 200 (E161: measured and documented, no gate).
+ * `pnpm bench boot` — how long `marmeon start` takes until `GET /up` answers 200 (E161: measured and documented, no gate).
  *
  *   pnpm bench boot --app apps/web-app                       # median of 7 starts + a breakdown from one profiled start
  *   pnpm bench boot --app <dir A> --app <dir B> [--runs 9]   # A/B: the apps start alternately (fair under changing load)
  *   pnpm bench boot --app apps/web-app --no-profile
  *
- * Each app needs a build (`bespoke build`): the starts run what production runs — `node_modules/@bespokecore/cli/bin/bespoke.js
+ * Each app needs a build (`marmeon build`): the starts run what production runs — `node_modules/marmeon/bin/marmeon.js
  * start` in the app, without `NODE_ENV` (so: production), without this process's `NODE_OPTIONS`, a fresh process each time.
  * One unmeasured start per app comes first (it warms the disk cache and Node's compile cache).
  *
@@ -35,9 +35,9 @@ export async function main(argv: string[]): Promise<number> {
   });
   const options: Options = { apps: (values.app ?? ['apps/web-app']).map((app) => resolve(app)), runs: Number(values.runs), profile: values['no-profile'] !== true };
   for (const app of options.apps) {
-    const missing = ['node_modules/@bespokecore/cli/bin/bespoke.js', 'dist/server/ssr.js'].filter((path) => !existsSync(join(app, path)));
+    const missing = ['node_modules/marmeon/bin/marmeon.js', 'dist/server/ssr.js'].filter((path) => !existsSync(join(app, path)));
     if (missing.length > 0) {
-      process.stderr.write(`${app}: ${missing.join(', ')} missing — install and build it first (pnpm build && cd <app> && bespoke build).\n`);
+      process.stderr.write(`${app}: ${missing.join(', ')} missing — install and build it first (pnpm build && cd <app> && marmeon build).\n`);
       return 1;
     }
   }
@@ -51,7 +51,7 @@ export async function main(argv: string[]): Promise<number> {
 
   for (const app of options.apps) {
     const measured = times.get(app)!;
-    process.stdout.write(`\n${app}\n  bespoke start → /up 200: median ${Math.round(median(measured))} ms (${measured.map(Math.round).join(' · ')}, n = ${measured.length})\n`);
+    process.stdout.write(`\n${app}\n  marmeon start → /up 200: median ${Math.round(median(measured))} ms (${measured.map(Math.round).join(' · ')}, n = ${measured.length})\n`);
     if (options.profile) printBreakdown(await profile(app, port));
   }
   return 0;
@@ -61,19 +61,19 @@ export async function main(argv: string[]): Promise<number> {
 function environment(port: number, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (!/^(npm_|PNPM_|BESPOKE_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) env[key] = value;
+    if (!/^(npm_|PNPM_|MARMEON_|VITEST|NODE_OPTIONS$|NODE_ENV$|INIT_CWD$)/.test(key)) env[key] = value;
   }
   // On the address /up is asked at (W9.2): on every interface the server could start beside a program holding the port on 127.0.0.1.
   return { ...env, HOST: '127.0.0.1', PORT: String(port), ...extra };
 }
 
-/** One `bespoke start` until `/up` answers 200, in milliseconds; then SIGTERM and wait for the exit. */
+/** One `marmeon start` until `/up` answers 200, in milliseconds; then SIGTERM and wait for the exit. */
 async function start(app: string, port: number): Promise<number> {
   const started = performance.now();
-  const child = spawn(process.execPath, [join(app, 'node_modules/@bespokecore/cli/bin/bespoke.js'), 'start'], { cwd: app, env: environment(port), stdio: 'ignore' });
+  const child = spawn(process.execPath, [join(app, 'node_modules/marmeon/bin/marmeon.js'), 'start'], { cwd: app, env: environment(port), stdio: 'ignore' });
   try {
     while (!(await up(port))) {
-      if (child.exitCode !== null) throw new Error(`${app}: bespoke start exited with ${child.exitCode} before /up answered`);
+      if (child.exitCode !== null) throw new Error(`${app}: marmeon start exited with ${child.exitCode} before /up answered`);
       if (performance.now() - started > 30_000) throw new Error(`${app}: no /up 200 within 30 s`);
       await new Promise((resolve) => setTimeout(resolve, 3));
     }
@@ -102,11 +102,11 @@ interface Profile {
 
 /** One start with `--cpu-prof`, ended by `loads.ts` at its first request. */
 async function profile(app: string, port: number): Promise<Profile> {
-  const dir = mkdtempSync(join(tmpdir(), 'bespoke-bench-boot-'));
+  const dir = mkdtempSync(join(tmpdir(), 'marmeon-bench-boot-'));
   try {
     const loadsOut = join(dir, 'loads.json');
     const preload = new URL('./loads.ts', import.meta.url).href;
-    const child = spawn(process.execPath, [join(app, 'node_modules/@bespokecore/cli/bin/bespoke.js'), 'start'], {
+    const child = spawn(process.execPath, [join(app, 'node_modules/marmeon/bin/marmeon.js'), 'start'], {
       cwd: app,
       env: environment(port, { NODE_OPTIONS: `--cpu-prof --cpu-prof-interval=100 --cpu-prof-dir=${dir} --import=${preload}`, BENCH_LOADS_OUT: loadsOut }),
       stdio: 'ignore',

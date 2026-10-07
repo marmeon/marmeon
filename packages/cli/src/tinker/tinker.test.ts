@@ -3,17 +3,17 @@ import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApplication, defineModule, token, type Application } from '@bespokecore/core';
-import { defineRoutes, Router } from '@bespokecore/router';
+import { createApplication, defineModule, token, type Application } from '@marmeon/core';
+import { defineRoutes, Router } from '@marmeon/router';
 import { completer } from './repl.ts';
 import { TinkerSession } from './session.ts';
 import { toJavaScript } from './typescript.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const bin = join(repo, 'packages/cli/bin/bespoke.js');
+const bin = join(repo, 'packages/cli/bin/marmeon.js');
 const webApp = join(repo, 'apps/web-app');
-const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 
 interface Run {
   readonly code: number | null;
@@ -21,18 +21,18 @@ interface Run {
   readonly stderr: string;
 }
 
-/** The parent's environment for a `bespoke` child: the launcher must re-exec, and the database is the one a test names. */
+/** The parent's environment for a `marmeon` child: the launcher must re-exec, and the database is the one a test names. */
 function environment(env: Record<string, string>): NodeJS.ProcessEnv {
-  const { BESPOKE_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
+  const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
   return { ...parent, NO_COLOR: '1', ...env };
 }
 
-function bespoke(args: readonly string[], env: Record<string, string>): Run {
+function marmeon(args: readonly string[], env: Record<string, string>): Run {
   const result = spawnSync(process.execPath, [bin, ...args], { cwd: webApp, encoding: 'utf8', env: environment(env) });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-/** `bespoke tinker` with piped input (W6.4: `stdin.end(…)`, or the REPL never sees the end of its input). */
+/** `marmeon tinker` with piped input (W6.4: `stdin.end(…)`, or the REPL never sees the end of its input). */
 function session(args: readonly string[], env: Record<string, string>, input: string): Promise<Run> {
   const child = spawn(process.execPath, [bin, 'tinker', ...args], { cwd: webApp, env: environment(env) });
   let stdout = '';
@@ -70,8 +70,8 @@ describe('a tinker session (in-process)', () => {
   let app: Application;
 
   beforeAll(async () => {
-    root = tempDir('bespoke-tinker-');
-    // Repositories are found by file name and told apart by shape — without importing @bespokecore/database.
+    root = tempDir('marmeon-tinker-');
+    // Repositories are found by file name and told apart by shape — without importing @marmeon/database.
     const repository = (name: string, table: string) => `export class ${name} { static table = '${table}'; query() {} find() {} }\n`;
     mkdirSync(join(root, 'modules/shop'), { recursive: true });
     writeFileSync(join(root, 'modules/shop/OrderRepository.ts'), repository('OrderRepository', 'orders'));
@@ -112,7 +112,7 @@ describe('a tinker session (in-process)', () => {
     expect(context.Mailer).toBe(Mailer); // names are their class or token
     expect(context.URL).toBe(URL); // … a name the context had stays
     expect(Object.getOwnPropertyDescriptor(context, 'db')?.get).toBeTypeOf('function'); // built on first use
-    expect(() => context.db).toThrow('db needs @bespokecore/database (pnpm add @bespokecore/database; bespoke discover).');
+    expect(() => context.db).toThrow('db needs @marmeon/database (pnpm add @marmeon/database; marmeon discover).');
     context.db = 'replaced'; // like any variable
     expect(context.db).toBe('replaced');
     await tinker.loadRepositories();
@@ -132,48 +132,48 @@ describe('a tinker session (in-process)', () => {
     expect(await run('1 + ')).toEqual([['(fallback)'], '1 + ']);
   });
 
-  it('refuses --sandbox without @bespokecore/database', async () => {
-    await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @bespokecore/database');
+  it('refuses --sandbox without @marmeon/database', async () => {
+    await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @marmeon/database');
   });
 });
 
-describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
+describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
   let dir: string;
   let env: Record<string, string>;
-  const count = (extra: Record<string, string> = {}) => Number(bespoke(['tinker', '--execute', 'await repos.users.count()'], { ...env, ...extra }).stdout.trim());
+  const count = (extra: Record<string, string> = {}) => Number(marmeon(['tinker', '--execute', 'await repos.users.count()'], { ...env, ...extra }).stdout.trim());
 
   beforeAll(() => {
-    dir = tempDir('bespoke-tinker-app-');
+    dir = tempDir('marmeon-tinker-app-');
     env = { DB_DATABASE: join(dir, 'app.sqlite') };
-    const fresh = bespoke(['migrate:fresh', '--seed', '--no-types'], env);
+    const fresh = marmeon(['migrate:fresh', '--seed', '--no-types'], env);
     expect(fresh.code, fresh.stderr).toBe(0);
   });
 
   it('prints the value of --execute — the number of users', () => {
-    const { code, stdout, stderr } = bespoke(['tinker', '--execute', 'await repos.users.count()'], env);
+    const { code, stdout, stderr } = marmeon(['tinker', '--execute', 'await repos.users.count()'], env);
     expect(code, stderr).toBe(0);
-    const query = bespoke(['tinker', '-e', "Number((await db.selectFrom('users').select(db.fn.countAll().as('n')).executeTakeFirstOrThrow()).n)"], env);
+    const query = marmeon(['tinker', '-e', "Number((await db.selectFrom('users').select(db.fn.countAll().as('n')).executeTakeFirstOrThrow()).n)"], env);
     expect(stdout).toBe(`${query.stdout.trim()}\n`);
     expect(Number(stdout)).toBeGreaterThan(0);
   });
 
   it('takes TypeScript and prints strings as they are (for scripts)', () => {
-    const typed = bespoke(['tinker', '-e', 'interface Greeting { name: string }\nconst hello = (g: Greeting): string => `hello ${g.name}`;\nhello({ name: "Ada" } satisfies Greeting)'], env);
+    const typed = marmeon(['tinker', '-e', 'interface Greeting { name: string }\nconst hello = (g: Greeting): string => `hello ${g.name}`;\nhello({ name: "Ada" } satisfies Greeting)'], env);
     expect(typed.stdout).toBe('hello Ada\n');
-    expect(bespoke(['tinker', '-e', "url('user-profile.show', { user: 7 }, { tab: 'links' })"], env).stdout).toBe('/users/7?tab=links\n');
+    expect(marmeon(['tinker', '-e', "url('user-profile.show', { user: 7 }, { tab: 'links' })"], env).stdout).toBe('/users/7?tab=links\n');
   });
 
   it('evaluates in the process’s own realm — a Date typed in is the framework’s Date', () => {
     // In a context of its own, `new Date()` is another realm's Date: the SQLite driver could not bind it.
-    const { stdout, stderr } = bespoke(['tinker', '--sandbox', '-e', 'await repos.users.update(1, { email_verified_at: new Date(0) }); (await repos.users.find(1))!.email_verified_at'], env);
+    const { stdout, stderr } = marmeon(['tinker', '--sandbox', '-e', 'await repos.users.update(1, { email_verified_at: new Date(0) }); (await repos.users.find(1))!.email_verified_at'], env);
     expect(stdout, stderr).toBe('1970-01-01T00:00:00.000Z\n');
   });
 
   it('exits with 1 on an error — its stack without the evaluation, a TypeScript error by name', () => {
-    const failed = bespoke(['tinker', '-e', 'await repos.users.findOrFail(987654)'], env);
+    const failed = marmeon(['tinker', '-e', 'await repos.users.findOrFail(987654)'], env);
     expect(failed.code).toBe(1);
     expect(failed.stderr).toMatch(/^✗ RecordNotFoundError: Not Found\n {4}at UserRepository\.findOrFail \(.*repository\.ts:\d+:\d+\)\n {4}at async REPL:1:\d+\n$/);
-    const typescript = bespoke(['tinker', '-e', 'enum Role { Admin }'], env);
+    const typescript = marmeon(['tinker', '-e', 'enum Role { Admin }'], env);
     expect(typescript.code).toBe(1);
     expect(typescript.stderr).toBe('✗ SyntaxError: TypeScript enum is not supported in strip-only mode\n');
   });
@@ -194,7 +194,7 @@ describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(stdout).toContain("'jobs:1'");
     expect(stdout).toContain('ℹ Sandbox: rolled back.');
     expect(count()).toBe(before);
-    expect(bespoke(['tinker', '-e', '(await db.selectFrom("jobs").selectAll().execute()).length'], env).stdout).toBe('0\n');
+    expect(marmeon(['tinker', '-e', '(await db.selectFrom("jobs").selectAll().execute()).length'], env).stdout).toBe('0\n');
   });
 
   it('rolls the sandbox back on SIGINT', async () => {
@@ -213,37 +213,37 @@ describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
   });
 
   it('says why the cache cannot write on the app’s SQLite file inside the sandbox (E108) — instead of waiting', () => {
-    const { code, stderr } = bespoke(['tinker', '--sandbox', '-e', "await make('Cache').put('greeting', 'hello', 60)"], { ...env, CACHE_DRIVER: 'database', CACHE_CONNECTION: 'default' });
+    const { code, stderr } = marmeon(['tinker', '--sandbox', '-e', "await make('Cache').put('greeting', 'hello', 60)"], { ...env, CACHE_DRIVER: 'database', CACHE_CONNECTION: 'default' });
     expect(code).toBe(1);
     expect(stderr).toContain('✗ InfrastructureTransactionError: The cache (CACHE_DRIVER=database');
     expect(stderr).toContain('! In --sandbox the whole session runs in one transaction on the default connection');
     // Without the sandbox, the same write works.
-    expect(bespoke(['tinker', '-e', "await make('Cache').put('greeting', 'hello', 60); await make('Cache').get('greeting')"], { ...env, CACHE_DRIVER: 'database', CACHE_CONNECTION: 'default' }).stdout).toBe('hello\n');
+    expect(marmeon(['tinker', '-e', "await make('Cache').put('greeting', 'hello', 60); await make('Cache').get('greeting')"], { ...env, CACHE_DRIVER: 'database', CACHE_CONNECTION: 'default' }).stdout).toBe('hello\n');
   });
 
   it('logs without a request context', () => {
-    const { stdout } = bespoke(['tinker', '-e', "make('Logger').info('from tinker', { step: 4 }); 'logged'"], { ...env, LOG_LEVEL: 'info', LOG_FORMAT: 'json' });
+    const { stdout } = marmeon(['tinker', '-e', "make('Logger').info('from tinker', { step: 4 }); 'logged'"], { ...env, LOG_LEVEL: 'info', LOG_FORMAT: 'json' });
     const line = stdout.split('\n').find((text) => text.includes('from tinker'));
     expect(JSON.parse(line!)).toEqual({ level: 30, time: expect.any(Number), step: 4, msg: 'from tinker' });
   });
 
   it('shows the environment and the database in the banner — in production as a warning, never a secret', async () => {
     // Outside NODE_ENV=test the app reads .env, which a fresh checkout (CI) does not have: the test brings its configuration.
-    const config = { APP_NAME: 'BespokeCore', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent' };
+    const config = { APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent' };
     const production = { ...env, ...config, NODE_ENV: 'production' };
     const development = await session(['--no-history'], { ...env, ...config, NODE_ENV: 'development', DEVTOOLS_ENABLED: 'false' }, '.exit\n');
-    expect(development.stdout).toContain(`BespokeCore tinker · @bespokecore/web-app · NODE_ENV=development · db sqlite (${env.DB_DATABASE}) · .ls lists helpers`);
+    expect(development.stdout).toContain(`Marmeon tinker · @marmeon/web-app · NODE_ENV=development · db sqlite (${env.DB_DATABASE}) · .ls lists helpers`);
     expect(development.stdout).not.toContain('PRODUCTION');
     const interactive = await session(['--no-history'], production, '.exit\n');
     expect(interactive.stdout).toContain(`PRODUCTION — NODE_ENV=production, db sqlite (${env.DB_DATABASE}): every change is real.`);
     expect(interactive.stdout).not.toContain(production.APP_KEY);
     // --execute: the value alone on stdout, the warning on stderr.
-    const script = bespoke(['tinker', '--sandbox', '-e', '1 + 1'], production);
+    const script = marmeon(['tinker', '--sandbox', '-e', '1 + 1'], production);
     expect(script.stdout).toBe('2\n');
     expect(script.stderr).toContain('PRODUCTION — NODE_ENV=production, db sqlite');
     expect(script.stderr).toContain('changes are rolled back at the end (--sandbox).');
     // Fail-closed (E139): staging is protected like production.
-    const staging = bespoke(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'staging' });
+    const staging = marmeon(['tinker', '-e', '1 + 1'], { ...env, ...config, NODE_ENV: 'staging' });
     expect(staging.stderr).toContain('PROTECTED (staging) — NODE_ENV=staging, db sqlite');
   });
 
@@ -258,22 +258,22 @@ describe('bespoke tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
   });
 });
 
-describe.runIf(PGSQL_URL)('bespoke tinker --sandbox on Postgres', { timeout: 60_000 }, () => {
-  const database = 'bespoke_tinker_test';
+describe.runIf(PGSQL_URL)('marmeon tinker --sandbox on Postgres', { timeout: 60_000 }, () => {
+  const database = 'marmeon_tinker_test';
   const url = new URL(PGSQL_URL ?? 'postgres://localhost');
   const admin = { DB_CONNECTION: 'pgsql', DB_URL: url.href };
   const env = { DB_CONNECTION: 'pgsql', DB_URL: Object.assign(new URL(url.href), { pathname: `/${database}` }).href };
-  const recreate = `const { sql } = await import('@bespokecore/database'); await sql.raw('drop database if exists ${database}').execute(db);`;
+  const recreate = `const { sql } = await import('@marmeon/database'); await sql.raw('drop database if exists ${database}').execute(db);`;
 
   beforeAll(() => {
-    expect(bespoke(['tinker', '-e', `${recreate} await sql.raw('create database ${database}').execute(db)`], admin).code).toBe(0);
-    const fresh = bespoke(['migrate:fresh', '--seed', '--no-types'], env);
+    expect(marmeon(['tinker', '-e', `${recreate} await sql.raw('create database ${database}').execute(db)`], admin).code).toBe(0);
+    const fresh = marmeon(['migrate:fresh', '--seed', '--no-types'], env);
     expect(fresh.code, fresh.stderr).toBe(0);
   });
-  afterAll(() => bespoke(['tinker', '-e', recreate], admin));
+  afterAll(() => marmeon(['tinker', '-e', recreate], admin));
 
   it('rolls back, and a failed statement takes back only its own input', async () => {
-    const before = Number(bespoke(['tinker', '-e', 'await repos.users.count()'], env).stdout);
+    const before = Number(marmeon(['tinker', '-e', 'await repos.users.count()'], env).stdout);
     const insert = `await repos.users.insert({ name: 'Tinker', email: 'tinker@example.com', password: 'x', locale: 'en' })`;
     const { stdout } = await session(['--sandbox', '--no-history'], env, [`${insert}; 'first'`, `${insert}; 'twice'`, '`users:${await repos.users.count()}`', '.exit', ''].join('\n'));
     expect(stdout).toContain("'first'");
@@ -282,6 +282,6 @@ describe.runIf(PGSQL_URL)('bespoke tinker --sandbox on Postgres', { timeout: 60_
     expect(stdout).toContain(`'users:${before + 1}'`);
     expect(stdout).toContain(`db pgsql (${url.host}/${database})`);
     expect(stdout).not.toContain(url.password || 'never');
-    expect(Number(bespoke(['tinker', '-e', 'await repos.users.count()'], env).stdout)).toBe(before);
+    expect(Number(marmeon(['tinker', '-e', 'await repos.users.count()'], env).stdout)).toBe(before);
   });
 });

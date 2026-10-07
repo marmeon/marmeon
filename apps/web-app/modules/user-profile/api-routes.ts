@@ -1,5 +1,5 @@
-import { abilities, authenticate } from '@bespokecore/auth';
-import { defineRoutes } from '@bespokecore/http';
+import { abilities, authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
 import { ListUsersController } from './controllers/ListUsersController.ts';
 
 // Loaded into the stateless `api` group under /api — no cookies, no session: API tokens (E27).

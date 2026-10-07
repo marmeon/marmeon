@@ -5,11 +5,11 @@ import { MakeNotificationsTableCommand, NOTIFICATIONS_MIGRATION } from './comman
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function app(): string {
-  const root = tempDir('bespoke-notifications-table-');
+  const root = tempDir('marmeon-notifications-table-');
   mkdirSync(join(root, 'bootstrap'));
   writeFileSync(
     join(root, 'bootstrap/app.ts'),
-    "import { defineApplication } from '@bespokecore/core';\nimport auth from '#modules/auth';\n\nexport default defineApplication({ root: '', modules: [auth] });\n",
+    "import { defineApplication } from '@marmeon/core';\nimport auth from '#modules/auth';\n\nexport default defineApplication({ root: '', modules: [auth] });\n",
   );
   return root;
 }
@@ -36,7 +36,7 @@ describe('make:notifications-table', () => {
       '✓ Created modules/system/index.ts',
       `✓ Created modules/system/migrations/${migration}`,
       '✓ Registered the module in bootstrap/app.ts',
-      'Then: bespoke migrate',
+      'Then: marmeon migrate',
     ]);
 
     const again = run(root, { module: 'inbox' });

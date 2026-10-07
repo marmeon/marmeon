@@ -77,7 +77,7 @@
       "path": "packages/vite"
     },
     {
-      "path": "packages/create-bespoke-app"
+      "path": "packages/create-marmeon"
     }
   ]
 }

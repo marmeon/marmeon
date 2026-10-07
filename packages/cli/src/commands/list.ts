@@ -1,9 +1,9 @@
 import type { CommandClass, CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
-/** `bespoke` without arguments: every command, grouped by namespace (like `artisan list`). */
+/** `marmeon` without arguments: every command, grouped by namespace (like `artisan list`). */
 export function printCommandList({ output }: Pick<CommandInput, 'output'>, commands: readonly CommandClass[]): void {
-  output.line(`${style('bold', 'BespokeCore')}  ${style('dim', 'usage: bespoke <command> [arguments] [--options]')}`);
+  output.line(`${style('bold', 'Marmeon')}  ${style('dim', 'usage: marmeon <command> [arguments] [--options]')}`);
   const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden)];
   const width = Math.max(...visible.map((command) => command.command.length));
   let group: string | undefined;
@@ -21,8 +21,8 @@ function namespace(command: Pick<CommandClass, 'command'>): string {
   return command.command.includes(':') ? command.command.split(':')[0]! : '';
 }
 
-/** Handled by the launcher (bin/bespoke.js), listed for completeness. */
+/** Handled by the launcher (bin/marmeon.js), listed for completeness. */
 const LAUNCHER = [
   { command: 'dev', description: 'Start the development server (restarts on changes, HMR for views)' },
-  { command: 'start', description: 'Start the production server (after bespoke build)' },
+  { command: 'start', description: 'Start the production server (after marmeon build)' },
 ] as unknown as CommandClass[];

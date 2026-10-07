@@ -1,6 +1,6 @@
-import { EmailVerification } from '@bespokecore/auth';
-import { Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
+import { EmailVerification } from '@marmeon/auth';
+import { Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
 import { AppConfig } from '../../config/app.ts';
 import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 import type { User } from './users.ts';

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TestClock } from '@bespokecore/core';
+import { TestClock } from '@marmeon/core';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ensureBucket, S3_ENDPOINT, s3Options } from './__fixtures__/disks.ts';
 import { S3Disk } from './drivers/s3.ts';
@@ -78,6 +78,6 @@ describe.skipIf(!S3_ENDPOINT)('the s3 disk against an S3-compatible store', () =
 
   it('url() of a public disk: endpoint/bucket/root/key', async () => {
     const disk = await make('public');
-    expect(disk.url('avatars/ä.png')).toMatch(new RegExp(`^${S3_ENDPOINT}/bespoke-test/t-[0-9a-f-]+/avatars/%C3%A4\\.png$`));
+    expect(disk.url('avatars/ä.png')).toMatch(new RegExp(`^${S3_ENDPOINT}/marmeon-test/t-[0-9a-f-]+/avatars/%C3%A4\\.png$`));
   });
 });

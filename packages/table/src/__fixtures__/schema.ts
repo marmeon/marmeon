@@ -1,7 +1,7 @@
-import type { Generated, Secret, Timestamp } from '@bespokecore/database';
+import type { Generated, Secret, Timestamp } from '@marmeon/database';
 
 /** The tables of the package's tests: members of teams, and their links. */
-declare module '@bespokecore/database' {
+declare module '@marmeon/database' {
   interface Tables {
     teams: {
       id: Generated<number>;
@@ -21,7 +21,7 @@ declare module '@bespokecore/database' {
 }
 
 
-declare module '@bespokecore/auth' {
+declare module '@marmeon/auth' {
   interface AuthTypes {
     user: { id: number; name: string; email: string; team: number; admin?: boolean; exporter?: boolean };
   }

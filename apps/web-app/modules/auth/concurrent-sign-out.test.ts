@@ -1,6 +1,6 @@
-import { RedisConnections } from '@bespokecore/redis';
-import { createHttpKernel } from '@bespokecore/server';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { RedisConnections } from '@marmeon/redis';
+import { createHttpKernel } from '@marmeon/server';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -12,8 +12,8 @@ import { UserFactory } from './factories/UserFactory.ts';
  * (E45: the store's atomic compare-and-set — `gone`, E145): `memory` (.env.test), `database` (this app's, .env.example) and `redis`.
  */
 
-/** Redis runs when `BESPOKE_TEST_REDIS_URL` is set (`pnpm test:redis`). */
-const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
+/** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const drivers: [string, () => Record<string, string>][] = [
   ['memory', () => ({})],
   ['database', () => ({ SESSION_DRIVER: 'database' })],
@@ -61,11 +61,11 @@ describe.each(drivers)('signing out while a deferred prop is still loading (%s s
     const browser = new Browser(createHttpKernel(app.application));
     const form = { 'content-type': 'application/x-www-form-urlencoded' };
     expect((await browser.request('/login', { method: 'POST', headers: form, body: 'email=ada%40example.com&password=password' })).status).toBe(303);
-    expect((await browser.request(`/users/${ada.id}`, { headers: { 'x-bespoke': 'true' } })).status).toBe(200);
+    expect((await browser.request(`/users/${ada.id}`, { headers: { 'x-marmeon': 'true' } })).status).toBe(200);
 
     // The page asks for its deferred activity — and before the answer is there, the user signs out.
     const deferred = browser.request(`/users/${ada.id}`, {
-      headers: { 'x-bespoke': 'true', 'x-bespoke-partial-component': 'user-profile/Show', 'x-bespoke-partial-data': 'activity' },
+      headers: { 'x-marmeon': 'true', 'x-marmeon-partial-component': 'user-profile/Show', 'x-marmeon-partial-data': 'activity' },
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect((await browser.request('/logout', { method: 'POST' })).status).toBe(303);

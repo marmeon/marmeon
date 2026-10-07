@@ -1,7 +1,7 @@
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { defineModule, type ApplicationOptions } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@bespokecore/database';
-import { Controller, defineRoutes, HttpServiceProvider } from '@bespokecore/http';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@marmeon/database';
+import { Controller, defineRoutes, HttpServiceProvider } from '@marmeon/http';
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from './index.ts';
@@ -31,7 +31,7 @@ class CreateNoteController extends Controller {
   }
 }
 
-const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 describe.each(drivers)('a refreshed database on %s', (driver) => {

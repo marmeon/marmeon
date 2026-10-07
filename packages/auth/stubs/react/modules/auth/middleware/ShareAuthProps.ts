@@ -1,7 +1,7 @@
-import { Auth } from '@bespokecore/auth';
-import { SharedData, type HttpContext, type Next } from '@bespokecore/http';
+import { Auth } from '@marmeon/auth';
+import { SharedData, type HttpContext, type Next } from '@marmeon/http';
 
-declare module '@bespokecore/http/page' {
+declare module '@marmeon/http/page' {
   interface SharedProps {
     /**
      * The signed-in user, on every page of the `web` group — or null. Optional on purpose: a path without a route (a 404)

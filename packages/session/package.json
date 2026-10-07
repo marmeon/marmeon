@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/session",
+  "name": "@marmeon/session",
   "version": "0.1.0",
-  "description": "Sessions for BespokeCore apps: an injectable session, file, database, Redis and cookie stores, flash data and CSRF protection.",
+  "description": "Sessions for Marmeon apps: an injectable session, file, database, Redis and cookie stores, flash data and CSRF protection.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "session",
     "csrf",
     "flash"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/session#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/session#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/session"
   },
   "engines": {
@@ -25,7 +25,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -55,48 +55,48 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "SessionServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/router": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/router": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/redis": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*"
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/redis": "workspace:*",
+    "@marmeon/scheduler": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/cache": {
+    "@marmeon/cache": {
       "optional": true
     },
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     },
-    "@bespokecore/database": {
+    "@marmeon/database": {
       "optional": true
     },
-    "@bespokecore/redis": {
+    "@marmeon/redis": {
       "optional": true
     },
-    "@bespokecore/scheduler": {
+    "@marmeon/scheduler": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/redis": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/redis": "workspace:*",
+    "@marmeon/scheduler": "workspace:*",
+    "@marmeon/server": "workspace:*"
   }
 }

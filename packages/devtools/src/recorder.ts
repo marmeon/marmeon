@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { currentJob, currentRequest, currentTask, outsideTransaction, type Application, type ErrorSolutions, type Redactor } from '@bespokecore/core';
+import { currentJob, currentRequest, currentTask, outsideTransaction, type Application, type ErrorSolutions, type Redactor } from '@marmeon/core';
 import {
   channels,
   type CommandRunMessage,
@@ -16,7 +16,7 @@ import {
   type QueueJobMessage,
   type ScheduleTaskMessage,
   type SsrRenderMessage,
-} from '@bespokecore/core/diagnostics';
+} from '@marmeon/core/diagnostics';
 import { ignoresPath, type ResolvedDevtoolsOptions } from './config.ts';
 import { EntryIds, type AnyEntry, type EntryContents, type EntryType, type ErrorContent, type ExceptionContent, type RequestContent } from './entry.ts';
 import type { DevtoolsStore } from './store.ts';

@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@bespokecore/core';
-import { channels, messageBase, trace, type CommandRunMessage } from '@bespokecore/core/diagnostics';
+import { Application, ConfigError, Container, coreSolutions, createApplication, ErrorSolutions, loadDiscoveredPackages, type ApplicationOptions, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
+import { channels, messageBase, trace, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, parseCommandArgs, runCommand, type CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
 import { DiscoverCommand } from './commands/discover.ts';
@@ -26,9 +26,9 @@ import { RouteTypesCommand } from './commands/route-types.ts';
 import { ServeCommand } from './commands/serve.ts';
 import { TinkerCommand } from './commands/tinker.ts';
 import { Output } from './output.ts';
-import { spawnBespoke } from './spawn.ts';
+import { spawnMarmeon } from './spawn.ts';
 
-export { spawnBespoke, startBespoke } from './spawn.ts';
+export { spawnMarmeon, startMarmeon } from './spawn.ts';
 
 const BUILT_IN: readonly CommandClass[] = [
   ServeCommand,
@@ -53,7 +53,7 @@ const BUILT_IN: readonly CommandClass[] = [
 
 const commands = channels.tracing('command.run');
 
-/** Runs one `bespoke` invocation in the app root (`cwd`) and returns the exit code. */
+/** Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. */
 export async function run(argv: readonly string[], root = process.cwd()): Promise<number> {
   const output = new Output();
   const [name = 'list', ...rest] = argv;
@@ -63,7 +63,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // Boot the application unless the command works without it (generators, tooling).
   let app: Application | undefined;
   if (listing || !builtIn || builtIn.boots !== false) {
-    // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `bespoke build` needs (E187).
+    // `boots = 'build'` (route:types): registered, not booted, without runtime secrets — what `marmeon build` needs (E187).
     const loaded = await loadApplication(root, !listing && builtIn?.boots === 'build' ? 'build' : 'run');
     if (loaded instanceof Error) {
       if (!listing) {
@@ -89,7 +89,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
 
   const Command = registry.get(name);
   if (!Command) {
-    output.error(`Command "${name}" is not defined. Run "bespoke list" to see all commands.`);
+    output.error(`Command "${name}" is not defined. Run "marmeon list" to see all commands.`);
     return 1;
   }
 
@@ -105,7 +105,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   // request or a job: scoped services (a Translator, in APP_LOCALE) resolve, and start fresh for each command.
   // The app shuts down afterwards (pools, handles), or an open connection would keep the process alive.
   try {
-    const execute = () => runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnBespoke(root, args) });
+    const execute = () => runCommand(app?.container.createScope() ?? new Container(), Command, rest, { output, root, spawn: (...args) => spawnMarmeon(root, args) });
     // On the `command.run` channel while something listens (E118): the devtools keep what a command did as one batch.
     if (!app || !commands.hasSubscribers) return await execute();
     const message: CommandRunMessage = { ...messageBase(app), command: Command.command, args: rest };
@@ -132,7 +132,7 @@ function printError(output: Output, error: unknown): void {
 
 /**
  * What to do about an error the app could not start with (E130) — the solutions of the core and of the installed packages
- * (`APP_KEY` → `bespoke key:generate`), as text. Never fails itself.
+ * (`APP_KEY` → `marmeon key:generate`), as text. Never fails itself.
  */
 async function printSolutions(output: Output, error: Error, root: string): Promise<void> {
   try {
@@ -153,7 +153,7 @@ async function printSolutions(output: Output, error: Error, root: string): Promi
 /** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it (in the build phase: registers it, E187). */
 async function loadApplication(root: string, phase: ApplicationPhase): Promise<Application | Error> {
   const entry = join(root, 'bootstrap', 'app.ts');
-  if (!existsSync(entry)) return new Error(`No BespokeCore app in ${root} (bootstrap/app.ts not found)`);
+  if (!existsSync(entry)) return new Error(`No Marmeon app in ${root} (bootstrap/app.ts not found)`);
   try {
     const module = (await import(pathToFileURL(entry).href)) as { default?: ApplicationOptions };
     if (!module.default || typeof module.default.root !== 'string') {

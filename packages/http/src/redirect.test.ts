@@ -1,4 +1,4 @@
-import { defineRoutes, Router, type HttpContext } from '@bespokecore/router';
+import { defineRoutes, Router, type HttpContext } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { Controller } from './controller.ts';
 import { INTENDED_KEY, isLocalPath, isRedirectResult, RedirectResult } from './redirect.ts';
@@ -55,7 +55,7 @@ describe('RedirectResult', () => {
     expect(flashed).toEqual({ status: 'Saved.', count: 2 });
 
     expect(() => new RedirectResult('/').with('status', 'x').toResponse(request(), router)).toThrow(
-      'redirect().with() needs a session: install @bespokecore/session and start it for this route.',
+      'redirect().with() needs a session: install @marmeon/session and start it for this route.',
     );
   });
 

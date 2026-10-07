@@ -1,7 +1,7 @@
-import { can } from '@bespokecore/auth';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { Broadcaster } from '@bespokecore/live';
-import { trans, Translator } from '@bespokecore/i18n';
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Broadcaster } from '@marmeon/live';
+import { trans, Translator } from '@marmeon/i18n';
 import * as v from 'valibot';
 import { UserRepository } from '#modules/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
@@ -34,7 +34,7 @@ export class UpdateUserProfileController extends Controller {
   async handle(ctx: ContextOf<typeof UpdateUserProfileRequest>) {
     // ctx.body is { name: string; bio: string } — validated and trimmed
     await this.#users.update(ctx.params.user.id, ctx.body);
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     // Saved from the edit layer: it closes, and what is beneath shows the new name (and the message). Without JavaScript
     // (or the form opened as a page): to the profile.

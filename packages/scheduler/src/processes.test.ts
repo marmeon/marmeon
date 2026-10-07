@@ -6,19 +6,19 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { CACHE_MIGRATION } from '@bespokecore/cache';
-import { Connections, Schema, sql, type ConnectionOptions } from '@bespokecore/database';
-import { RedisConnections } from '@bespokecore/redis';
+import { CACHE_MIGRATION } from '@marmeon/cache';
+import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
+import { RedisConnections } from '@marmeon/redis';
 import { describe, expect, it } from 'vitest';
 import { MINUTE } from './time.ts';
 
-// The real `bespoke schedule:work` / `schedule:run` in the fixture app (`__fixtures__/app`), several at once — what a
+// The real `marmeon schedule:work` / `schedule:run` in the fixture app (`__fixtures__/app`), several at once — what a
 // deployment with a scheduler on every server does. The fixture's clock runs ahead by FIXTURE_CLOCK_OFFSET, so a test
 // places the next minute boundary a few seconds after the processes are up instead of waiting up to a minute.
 
-const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
-const REDIS_URL = process.env.BESPOKE_TEST_REDIS_URL;
-const CLI = fileURLToPath(new URL('../../cli/bin/bespoke.js', import.meta.url));
+const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
+const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
+const CLI = fileURLToPath(new URL('../../cli/bin/marmeon.js', import.meta.url));
 const APP = fileURLToPath(new URL('./__fixtures__/app/', import.meta.url));
 const silent = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
 
@@ -36,7 +36,7 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
   let target: Target;
   let drop: () => Promise<void>;
   if (kind === 'pgsql') {
-    const name = `bespoke_schedule_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const name = `marmeon_schedule_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
     await sql`create database ${sql.id(name)}`.execute(admin.get());
     const url = new URL(PGSQL_URL!);
@@ -47,7 +47,7 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
       await admin.destroy();
     };
   } else {
-    const directory = mkdtempSync(join(tmpdir(), 'bespoke-schedule-'));
+    const directory = mkdtempSync(join(tmpdir(), 'marmeon-schedule-'));
     const file = join(directory, 'app.sqlite');
     const removeFile = async () => rmSync(directory, { recursive: true, force: true });
     if (kind === 'sqlite') {
@@ -57,7 +57,7 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
       target = { kind, file, cache: join(directory, 'cache') };
       drop = removeFile;
     } else {
-      const prefix = `bespoke-schedule-test-${crypto.randomUUID().slice(0, 8)}:`;
+      const prefix = `marmeon-schedule-test-${crypto.randomUUID().slice(0, 8)}:`;
       target = { kind, file, url: REDIS_URL!, prefix };
       drop = async () => {
         const redis = new RedisConnections({ connections: { default: { url: REDIS_URL!, prefix } }, logger: silent });
@@ -116,9 +116,9 @@ function kill(processes: readonly SchedulerProcess[]): void {
 }
 
 function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule:run', processEnv: Record<string, string>): SchedulerProcess {
-  const child = spawn(process.execPath, ['--conditions=@bespokecore/source', CLI, command], {
+  const child = spawn(process.execPath, ['--conditions=@marmeon/source', CLI, command], {
     cwd: APP,
-    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs BESPOKE_CHILD.
+    // Through the launcher, in this one process (E159): the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
     env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', LOG_LEVEL: 'info', ...processEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -127,7 +127,7 @@ function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule
   for (const stream of [child.stdout!, child.stderr!]) {
     createInterface({ input: stream }).on('line', (line) => {
       lines.push(line);
-      if (process.env.BESPOKE_TEST_VERBOSE) console.log(`[${command} ${child.pid}] ${line}`);
+      if (process.env.MARMEON_TEST_VERBOSE) console.log(`[${command} ${child.pid}] ${line}`);
       for (const waiter of waiters) waiter();
     });
   }
@@ -265,10 +265,10 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
   // E123 (revises E88): a cache that is not shared is no reason to refuse — a single scheduler runs correctly with it, in
   // production too. The start says where the locks hold.
   it.each([
-    ['file', 'onOneServer() locks in CACHE_DRIVER=file: locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (bespoke make:cache-table) or redis. Tasks: record'],
+    ['file', 'onOneServer() locks in CACHE_DRIVER=file: locks only hold on this machine. With more than one scheduler instance (more servers), use CACHE_DRIVER=database (marmeon make:cache-table) or redis. Tasks: record'],
     ['memory', 'onOneServer() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again.'],
   ])('starts with onOneServer() on a %s cache, in production too — and warns (E123)', { timeout: 30_000 }, async (driver, warning) => {
-    const directory = mkdtempSync(join(tmpdir(), 'bespoke-schedule-file-'));
+    const directory = mkdtempSync(join(tmpdir(), 'marmeon-schedule-file-'));
     const started: SchedulerProcess[] = [];
     try {
       // Production without a .env: everything it needs is given here.

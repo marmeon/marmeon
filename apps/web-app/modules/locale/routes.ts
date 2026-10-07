@@ -1,4 +1,4 @@
-import { defineRoutes } from '@bespokecore/http';
+import { defineRoutes } from '@marmeon/http';
 import { UpdateLocaleController } from './controllers/UpdateLocaleController.ts';
 
 export default defineRoutes((Route) => {

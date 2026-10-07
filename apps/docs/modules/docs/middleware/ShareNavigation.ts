@@ -1,7 +1,7 @@
-import { once, SharedData, type HttpContext, type Next } from '@bespokecore/http';
+import { once, SharedData, type HttpContext, type Next } from '@marmeon/http';
 import { DocsRepository, type Navigation } from '../DocsRepository.ts';
 
-declare module '@bespokecore/http/page' {
+declare module '@marmeon/http/page' {
   interface SharedProps {
     /**
      * The side navigation. Optional on purpose: a path without a route (a 404) passes no group's middleware, so its error

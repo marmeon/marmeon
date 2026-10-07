@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * The ambient transaction context (E107): which database transaction the current async call chain runs in.
  *
  * A transaction is entered ONLY by an explicit `transaction(callback)` (`connections.transaction`,
- * `repository.transaction` in @bespokecore/database) and lasts exactly as long as its callback. Everything awaited
+ * `repository.transaction` in @marmeon/database) and lasts exactly as long as its callback. Everything awaited
  * inside joins it — repositories, the database queue driver, in-process event listeners — without passing the
  * transaction around. AsyncLocalStorage follows one async call chain: a transaction never reaches another request, job
  * or test running at the same time.

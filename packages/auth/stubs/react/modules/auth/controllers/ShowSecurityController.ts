@@ -1,6 +1,6 @@
-import { Auth, AuthConfig, type Authenticated } from '@bespokecore/auth';
-import { Clock } from '@bespokecore/core';
-import { Controller, type HttpContext } from '@bespokecore/http';
+import { Auth, AuthConfig, type Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
+import { Controller, type HttpContext } from '@marmeon/http';
 
 /** Password and devices — behind confirmedPassword() ("sudo mode"). */
 export class ShowSecurityController extends Controller {

@@ -1,4 +1,4 @@
-import { parseQuery } from '@bespokecore/router';
+import { parseQuery } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { FeedTable, MembersTable } from './__fixtures__/app.ts';

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, token } from '@bespokecore/core';
-import { Connections, type Generated } from '@bespokecore/database';
+import { Clock, token } from '@marmeon/core';
+import { Connections, type Generated } from '@marmeon/database';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link RememberTokenTable}. */
 export const REMEMBER_TABLE = 'remember_tokens';
@@ -57,7 +57,7 @@ export interface RememberTokenStore {
   forget(cookie: string): Promise<void>;
   /** Drops every token of the user — except the one of `except` (the current device). */
   forgetUser(userId: number | string, except?: string): Promise<void>;
-  /** Deletes every expired token (`bespoke auth:prune-tokens`) — a lookup drops only the one it finds. How many. */
+  /** Deletes every expired token (`marmeon auth:prune-tokens`) — a lookup drops only the one it finds. How many. */
   prune(): Promise<number>;
 }
 export const RememberTokenStore = token<RememberTokenStore>('RememberTokenStore');

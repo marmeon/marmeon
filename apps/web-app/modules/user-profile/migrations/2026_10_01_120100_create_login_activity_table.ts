@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 // When each user last signed in — this module's own table; `users` belongs to auth.
 export default defineMigration({

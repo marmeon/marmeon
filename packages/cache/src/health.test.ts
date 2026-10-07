@@ -1,4 +1,4 @@
-import { createApplication, HealthChecks } from '@bespokecore/core';
+import { createApplication, HealthChecks } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { Cache } from './cache.ts';
 import { CacheServiceProvider } from './index.ts';

@@ -1,5 +1,5 @@
-import { currentRequest, type Application, type RequestInfo } from '@bespokecore/core';
-import { channels } from '@bespokecore/core/diagnostics';
+import { currentRequest, type Application, type RequestInfo } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
 
 /** What one request spent — its queries and server rendering (filled from the channels while it runs). */
 interface Timing {
@@ -14,7 +14,7 @@ interface Timing {
  * request until its response), `db` (the queries' time, and how many) and `ssr` (server rendering until the shell). The
  * browser's network panel shows it per request.
  *
- * It listens to `db.query` and `render.ssr` for its app (`@bespokecore/core/diagnostics`), from its provider's `boot` to
+ * It listens to `db.query` and `render.ssr` for its app (`@marmeon/core/diagnostics`), from its provider's `boot` to
  * its `shutdown`. In production it does not exist: the channels keep no subscriber, the kernel sets no header.
  */
 export class ServerTiming {

@@ -128,7 +128,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
 
     // A visit: the next page as JSON, rendered by the adapter; the history entry holds no props (E36).
     await navigator.visit('/users/2');
-    expect(requests.at(-1)).toMatchObject({ method: 'GET', url: '/users/2', headers: { [PAGE_HEADER]: 'true', 'x-bespoke-version': 'v1' } });
+    expect(requests.at(-1)).toMatchObject({ method: 'GET', url: '/users/2', headers: { [PAGE_HEADER]: 'true', 'x-marmeon-version': 'v1' } });
     expect(window.location.pathname).toBe('/users/2');
     expect(text()).toContain('"user":"Grace"');
     expect(isHistoryState(window.history.state)).toBe(true);
@@ -272,13 +272,13 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     // What the SSR stream left in the document: the island's markup and, in its boundary, the `RegionResult` the kernel resolved.
     const streamed: RegionResult = { status: 'ready', region: { component: 'dashboard/SignIns', props: { who: ['Ada'] }, url: '/islands/sign-ins', version: 'v1' } };
     serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
-    document.getElementById('app')!.innerHTML = `<p>users/Show</p><div id="island">dashboard/SignIns {"who":["Ada"]}</div><script type="application/json" id="bespoke-island-0">${scriptJson(streamed)}</script>`;
+    document.getElementById('app')!.innerHTML = `<p>users/Show</p><div id="island">dashboard/SignIns {"who":["Ada"]}</div><script type="application/json" id="marmeon-island-0">${scriptJson(streamed)}</script>`;
     const initialPage = readInitialPage();
     const root = await rootElement('app');
     let navigator!: Navigator;
     const renderIsland = (element: Element, owner: RegionOwner) => {
       // The adapter reads the data block once, while hydrating — a later render (Back) finds the region in the entry's memory.
-      const block = document.getElementById('bespoke-island-0');
+      const block = document.getElementById('marmeon-island-0');
       const initial = block ? regionInitial(JSON.parse(block.textContent!) as RegionResult) : undefined;
       block?.remove();
       const region = navigator.use(islands).region('/islands/sign-ins', { owner, initial });
@@ -503,7 +503,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     await vi.waitFor(() => expect(window.location.pathname).toBe('/users/1'));
     await vi.waitFor(() => expect(remembered().get('tab')).toBe('links'));
 
-    // A new build (409 + `x-bespoke-reload: version`): the adapter keeps the page — "a new version is available".
+    // A new build (409 + `x-marmeon-reload: version`): the adapter keeps the page — "a new version is available".
     newBuild = true;
     navigator.on('version', (event) => event.preventDefault());
     expect(await navigator.visit('/users/2')).toBeUndefined();

@@ -1,4 +1,4 @@
-import { editableResponse, type HttpContext, type Next } from '@bespokecore/http';
+import { editableResponse, type HttpContext, type Next } from '@marmeon/http';
 
 /**
  * `Strict-Transport-Security` (E162): browsers then refuse plain HTTP for this host for `max-age` seconds — turn it on once the

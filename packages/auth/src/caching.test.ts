@@ -1,5 +1,5 @@
-import type { HttpContext } from '@bespokecore/router';
-import type { Session } from '@bespokecore/session';
+import type { HttpContext } from '@marmeon/router';
+import type { Session } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { AUTH_SESSION_KEYS } from './auth.ts';
 import { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';

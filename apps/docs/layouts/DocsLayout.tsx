@@ -1,4 +1,4 @@
-import { Link, usePage, useRouter, type LayoutProps } from '@bespokecore/react';
+import { Link, usePage, useRouter, type LayoutProps } from '@marmeon/react';
 import { useEffect, useState, type FormEvent } from 'react';
 
 /**
@@ -28,7 +28,7 @@ export function DocsLayout({ children }: LayoutProps) {
           </button>
         )}
         <Link route="docs.home" className="brand">
-          BespokeCore <span>docs</span>
+          Marmeon <span>docs</span>
         </Link>
         {!url.startsWith('/search') && (
           <form method="get" action="/search" role="search" className="top-search" onSubmit={search}>

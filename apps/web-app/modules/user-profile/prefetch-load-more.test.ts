@@ -1,6 +1,6 @@
-import { NO_STORE } from '@bespokecore/auth';
-import { INTENDED_KEY } from '@bespokecore/http';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { NO_STORE } from '@marmeon/auth';
+import { INTENDED_KEY } from '@marmeon/http';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
@@ -23,7 +23,7 @@ describe('prefetching (W5 step 6)', () => {
     // A guest hovers a link to a protected page: the login page, but no intended URL.
     const prefetch = await app.prefetching().get(`/users/${ada.id}`).assertRedirect('/login').assertSessionMissing(INTENDED_KEY);
     // Nothing remembered — so no session is kept at all (W6.2: new, empty sessions are not written).
-    expect(prefetch.cookie('bespoke_session')).toBeUndefined();
+    expect(prefetch.cookie('marmeon_session')).toBeUndefined();
     await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me'); // not to the hovered page
     // The visit itself is remembered.
     await app.navigating().get(`/users/${ada.id}`).assertRedirect('/login').assertSessionHas(INTENDED_KEY, `/users/${ada.id}`);

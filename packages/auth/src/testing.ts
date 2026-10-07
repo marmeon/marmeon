@@ -1,11 +1,11 @@
-import type { Container } from '@bespokecore/core';
+import type { Container } from '@marmeon/core';
 import { AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
 import { AccessTokenStore } from './tokens.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /**
  * Session data that signs `user` in, exactly as a login would leave it — what `actingAs(user)` of
- * @bespokecore/testing starts a request with.
+ * @marmeon/testing starts a request with.
  */
 export async function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>> {
   const id = idOf(user);

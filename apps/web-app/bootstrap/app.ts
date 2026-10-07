@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { defineApplication } from '@bespokecore/core';
-import { contentSecurityPolicy } from '@bespokecore/http';
+import { defineApplication } from '@marmeon/core';
+import { contentSecurityPolicy } from '@marmeon/http';
 import auth from '#modules/auth';
 import dashboard from '#modules/dashboard';
 import lab from '#modules/lab';
@@ -16,9 +16,9 @@ import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 import { ShareAppProps } from '../middleware/ShareAppProps.ts';
 
 /**
- * The composition root. It only describes the app: `bespoke` boots it, and tests
+ * The composition root. It only describes the app: `marmeon` boots it, and tests
  * boot a fresh instance per test. Installed packages (including the framework's
- * own, like @bespokecore/http) register themselves through discovery.
+ * own, like @marmeon/http) register themselves through discovery.
  */
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
@@ -32,6 +32,6 @@ export default defineApplication({
     global: [SecurityHeaders, contentSecurityPolicy({ frameAncestors: ["'none'"] })],
     web: [ShareAppProps],
   },
-  // The browser learns only the `web` routes its code names (virtual:bespoke/routes). API routes stay on the server
+  // The browser learns only the `web` routes its code names (virtual:marmeon/routes). API routes stay on the server
   // unless listed in `clientRoutes: { include }`; `.internal()` routes (the signed e-mail verification link) always do.
 });

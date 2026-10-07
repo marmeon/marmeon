@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:net';
-import { ConsoleLogger, createApplication, Logger, type Container, type LogContext } from '@bespokecore/core';
+import { ConsoleLogger, createApplication, Logger, type Container, type LogContext } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   ArrayTransport,

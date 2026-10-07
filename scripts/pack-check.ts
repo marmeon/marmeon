@@ -7,18 +7,18 @@
  *
  * The rules, per tarball (made with `pnpm pack` — only pnpm applies `publishConfig.exports`):
  *   - no tests, type tests, `__fixtures__`, `test-helpers` or build info — except in `stubs/` and `template/`, which ship whole
- *     (the generators and create-bespoke-app copy them into apps, tests included);
+ *     (the generators and create-marmeon copy them into apps, tests included);
  *   - nothing in `dist/` without its source in `src/` (a leftover of an earlier build — `tsc -b` never deletes), and every
  *     source map's sources are in the tarball (declaration and source maps point to `src/`, which ships for them);
  *   - `LICENSE` (the root's, byte for byte — `pnpm license:sync`) and `README.md`;
- *   - the packed manifest without the `@bespokecore/source` condition and without `workspace:` ranges; every internal
+ *   - the packed manifest without the `@marmeon/source` condition and without `workspace:` ranges; every internal
  *     dependency (also optional peers) at exactly the package's own version (lockstep, E152 — the exact peers name the release);
  *   - every `exports`/`bin` target in the tarball, none of them TypeScript source (Node does not strip types under node_modules);
  *   - the metadata: MIT, repository with the package's directory, `engines.node`, public access with provenance;
  * then publint (warnings count) and @arethetypeswrong/cli with the `esm-only` profile: the packages are ESM only and need
  * Node ≥ 26.10, so `node10` and `node16` from CommonJS are not checked (a `require()` of them is not supported); a package with
- * only a bin (create-bespoke-app) has no entry point for attw to check.
- * `create-bespoke-app` besides (E167): no dependencies at all (it is the first thing a stranger runs — no supply chain behind
+ * only a bin (create-marmeon) has no entry point for attw to check.
+ * `create-marmeon` besides (E167): no dependencies at all (it is the first thing a stranger runs — no supply chain behind
  * it), and its template has no `.env` and no `APP_KEY` with a value (a new app gets a fresh one).
  * Also: the root `tsconfig.json` references every package.
  */
@@ -34,7 +34,7 @@ import { frameworkPackages, packAll, type FrameworkPackage, type PackageManifest
 import { licenseDrift } from './sync-license.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const SOURCE_CONDITION = '@bespokecore/source';
+const SOURCE_CONDITION = '@marmeon/source';
 const DEPENDENCY_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies'] as const;
 
 /** Files no tarball carries: tests and what only they use, and the compiler's build info. */
@@ -52,7 +52,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   const files = new Set(packed.files);
   const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as PackageManifest & Record<string, any>;
 
-  // stubs/ and template/ are copied into apps — tests included (make:auth writes the auth module's tests, create-bespoke-app the app's).
+  // stubs/ and template/ are copied into apps — tests included (make:auth writes the auth module's tests, create-marmeon the app's).
   for (const file of packed.files.filter((name) => !name.startsWith('stubs/') && !name.startsWith('template/'))) {
     const test = TEST_FILES.find(([pattern]) => pattern.test(file));
     if (test) problems.push(`${file} is ${test[1]} — exclude it in "files"`);
@@ -63,13 +63,13 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
       if (!files.has(path)) problems.push(`${path} is missing — ${part}/ ships whole (it is copied into apps)`);
     }
   }
-  if (pkg.short === 'create-bespoke-app') problems.push(...checkScaffolder(packed, dir, manifest));
+  if (pkg.short === 'create-marmeon') problems.push(...checkScaffolder(packed, dir, manifest));
 
   // Leftovers: a compiled file needs its source next to it (a renamed or deleted source leaves its output behind).
   for (const file of packed.files) {
     const compiled = /^dist\/(.+?)(\.d\.ts\.map|\.d\.ts|\.js\.map|\.js)$/.exec(file);
     if (compiled && !files.has(`src/${compiled[1]}.ts`) && !files.has(`src/${compiled[1]}.tsx`)) {
-      problems.push(`${file} has no source in src/ — a leftover of an earlier build? (bespoke package:build --clean)`);
+      problems.push(`${file} has no source in src/ — a leftover of an earlier build? (marmeon package:build --clean)`);
     }
   }
   for (const file of packed.files.filter((name) => name.endsWith('.map'))) {
@@ -96,7 +96,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   for (const field of DEPENDENCY_FIELDS) {
     for (const [name, range] of Object.entries((manifest[field] ?? {}) as Record<string, string>)) {
       if (range.startsWith('workspace:')) problems.push(`${field}.${name} is "${range}" — a workspace range in a tarball`);
-      else if (name.startsWith('@bespokecore/') && range !== manifest.version) {
+      else if ((name.startsWith('@marmeon/') || name === 'marmeon') && range !== manifest.version) {
         problems.push(`${field}.${name} is "${range}", not exactly ${manifest.version} — internal versions are exact (lockstep, workspace:*)`);
       }
     }
@@ -112,8 +112,8 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
 
   const source = pkg.manifest as Record<string, any>;
   if (manifest.license !== 'MIT') problems.push(`license is ${JSON.stringify(manifest.license)}, not "MIT"`);
-  if (manifest.repository?.directory !== `packages/${pkg.short}` || !String(manifest.repository?.url ?? '').includes('github.com/bespokecore/bespokecore')) {
-    problems.push(`repository must name github.com/bespokecore/bespokecore with directory "packages/${pkg.short}"`);
+  if (manifest.repository?.directory !== `packages/${pkg.short}` || !String(manifest.repository?.url ?? '').includes('github.com/marmeon/marmeon')) {
+    problems.push(`repository must name github.com/marmeon/marmeon with directory "packages/${pkg.short}"`);
   }
   if (manifest.engines?.node !== '>=26.10') problems.push('engines.node must be ">=26.10"');
   for (const field of ['description', 'keywords', 'homepage', 'bugs'] as const) if (!manifest[field]) problems.push(`${field} is missing`);
@@ -124,7 +124,7 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
 }
 
 /**
- * `create-bespoke-app` (E167): no dependencies — the first thing a stranger runs pulls in nothing else; its template carries no
+ * `create-marmeon` (E167): no dependencies — the first thing a stranger runs pulls in nothing else; its template carries no
  * `.env` and no `APP_KEY` with a value (each app gets its own).
  */
 function checkScaffolder(packed: PackedPackage, dir: string, manifest: Record<string, any>): string[] {
@@ -132,7 +132,7 @@ function checkScaffolder(packed: PackedPackage, dir: string, manifest: Record<st
   for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies']) {
     const list = manifest[field] as Record<string, string> | string[] | undefined;
     const names = Array.isArray(list) ? list : Object.keys(list ?? {});
-    if (names.length > 0) problems.push(`${field}: ${names.join(', ')} — create-bespoke-app has no dependencies (prompts over node:readline, E167)`);
+    if (names.length > 0) problems.push(`${field}: ${names.join(', ')} — create-marmeon has no dependencies (prompts over node:readline, E167)`);
   }
   for (const file of packed.files.filter((name) => name.startsWith('template/'))) {
     if (/(^|\/)\.env$/.test(file)) problems.push(`${file} is a .env — the template never carries one (the app's .env is written with a fresh APP_KEY)`);
@@ -189,8 +189,8 @@ async function main(): Promise<number> {
   const report = (name: string, list: string[]) => list.length > 0 && problems.set(name, [...(problems.get(name) ?? []), ...list]);
 
   if (values['no-build'] !== true) {
-    console.log('pack:check: bespoke package:build --clean');
-    const build = spawnSync(process.execPath, [join(root, 'packages/cli/bin/bespoke.js'), 'package:build', '--clean', ...packages.map((pkg) => relative(root, pkg.dir))], {
+    console.log('pack:check: marmeon package:build --clean');
+    const build = spawnSync(process.execPath, [join(root, 'packages/cli/bin/marmeon.js'), 'package:build', '--clean', ...packages.map((pkg) => relative(root, pkg.dir))], {
       cwd: root,
       stdio: ['ignore', 'ignore', 'inherit'],
     });
@@ -212,7 +212,7 @@ async function main(): Promise<number> {
     report(pkg?.name ?? file, [`${file} is missing or not the root LICENSE — pnpm license:sync`]);
   }
 
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-pack-check-')));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-pack-check-')));
   try {
     const packed = packAll(root, join(work, 'tarballs'));
     const license = readFileSync(join(root, 'LICENSE'), 'utf8');
@@ -228,7 +228,7 @@ async function main(): Promise<number> {
         if (tar.status !== 0) return report(pkg.name, [`could not unpack ${tarball.tarball}: ${tar.stderr}`]);
         report(pkg.name, checkTarball(tarball, join(unpacked, 'package'), pkg, license));
         report(pkg.name, await lint(tarball));
-        // attw checks what importing the package resolves to — a package that only has a bin (create-bespoke-app) has nothing to import.
+        // attw checks what importing the package resolves to — a package that only has a bin (create-marmeon) has nothing to import.
         const packedManifest = JSON.parse(readFileSync(join(unpacked, 'package', 'package.json'), 'utf8')) as Record<string, unknown>;
         if (['exports', 'main', 'types', 'module'].some((field) => field in packedManifest)) report(pkg.name, typesWrong(tarball));
       }),

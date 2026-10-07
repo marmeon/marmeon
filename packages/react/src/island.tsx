@@ -12,7 +12,7 @@ import {
   type ReloadSpec,
   type RegionSnapshot,
   type RegionStatus,
-} from '@bespokecore/http/client';
+} from '@marmeon/http/client';
 import type {
   BrowserRouteNameInput,
   CheckIslandRouteName,
@@ -23,8 +23,8 @@ import type {
   QueryParams,
   RegionObject,
   RegionResult,
-} from '@bespokecore/http/page';
-import { scriptJson } from '@bespokecore/http/page';
+} from '@marmeon/http/page';
+import { scriptJson } from '@marmeon/http/page';
 import {
   createContext,
   createElement,
@@ -55,7 +55,7 @@ type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf
 
 /**
  * `<Island>`'s props for route `N` — checked against `bootstrap/routes.ts`. (The props of the island's *view* are
- * `IslandProps<Controller>` of @bespokecore/http, like `PageProps`.)
+ * `IslandProps<Controller>` of @marmeon/http, like `PageProps`.)
  */
 export type IslandElementProps<N extends string = string> = {
   /** An island route (its controller answers `this.island(…)`) — a page route is a compile error. */
@@ -126,7 +126,7 @@ export function Island<const N extends BrowserRouteNameInput>(props: IslandEleme
     params?: Record<string, string | number>;
   };
   const url = resolveRoute(manifest, route, params, query).url;
-  const scriptId = `bespoke-island-${useId()}`;
+  const scriptId = `marmeon-island-${useId()}`;
   // Until its part has rendered in the browser (hydrated), the element stays the same: a page update reaching a boundary
   // that is still streaming would make React render it in the browser instead — and load the island again.
   const [shown, setShown] = useState(false);
@@ -342,7 +342,7 @@ function IslandView({ resolve, region }: { resolve: ResolvePage; region: RegionO
 /** The default `error` of an island — a short notice with a retry (framework text, English like the other fallbacks). */
 function IslandFailure({ failure, retry }: { failure: RegionFailure | undefined; retry: () => void }) {
   return (
-    <p role="alert" data-bespoke-failure="island">
+    <p role="alert" data-marmeon-failure="island">
       {failure?.status === undefined ? 'This part could not be loaded — the server could not be reached.' : 'This part could not be loaded.'}{' '}
       <button type="button" onClick={retry}>
         Try again
@@ -396,7 +396,7 @@ export interface IslandState<C extends IslandAction = IslandAction> {
 }
 
 function onServer(): never {
-  throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R14] Actions run in the browser, not while rendering on the server.' : '[bespoke:R14]');
+  throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
 }
 
 /**
@@ -413,7 +413,7 @@ function onServer(): never {
  */
 export function useIsland<C extends IslandAction = IslandAction>(): IslandState<C> {
   const value = useContext(IslandContext);
-  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[bespoke:R15] useIsland() is for the view of an island — the component an <Island route> renders.' : '[bespoke:R15]');
+  if (!value) throw new Error(process.env.NODE_ENV !== 'production' ? '[marmeon:R15] useIsland() is for the view of an island — the component an <Island route> renders.' : '[marmeon:R15]');
   return useMemo(
     () =>
       ({

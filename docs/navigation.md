@@ -1,6 +1,6 @@
 # Navigation, history and view transitions
 
-A BespokeCore app moves between pages without full loads: a link asks the server for the next page's props as JSON, the client
+A Marmeon app moves between pages without full loads: a link asks the server for the next page's props as JSON, the client
 renders it and writes a history entry. This guide is about that history — how the client follows Back and Forward (through the
 Navigation API, or the History fallback where a browser lacks it), what the navigation guard can and cannot stop, what is kept in
 the browser's history and what never is — and about animating page changes with view transitions. The client core's README is the
@@ -39,9 +39,9 @@ Entry keys survive a reload and a session restore, so Back after a reload is sti
 no full load). Visits keep the app's own progress indicator; a navigation that starts before the answer (`precommitHandler`) is not
 used.
 
-`createBespokeApp` loads the fallback only when `window.navigation` is missing, beside the first page's component — no first download
+`createMarmeonApp` loads the fallback only when `window.navigation` is missing, beside the first page's component — no first download
 carries it. An adapter of your own does the same: `features: [await loadHistoryFallback()]` where `!window.navigation`
-(development warns `[bespoke:C13]` when neither is there).
+(development warns `[marmeon:C13]` when neither is there).
 
 ## The navigation guard and its limits
 
@@ -76,8 +76,8 @@ renders a page change.
 ```tsx
 <Link route="user-profile.show" params={{ user: person.id }} viewTransition>…</Link>       // one link
 router.visit('/people', { viewTransition: { types: ['slide'] } });                        // one visit, with a type of its own
-createBespokeApp({ /* … */, viewTransition: true });                                      // every page change: the core's
-createBespokeApp({ /* … */, viewTransition: 'react' });                                   // every page change: React 19.3's <ViewTransition>
+createMarmeonApp({ /* … */, viewTransition: true });                                      // every page change: the core's
+createMarmeonApp({ /* … */, viewTransition: 'react' });                                   // every page change: React 19.3's <ViewTransition>
 ```
 
 **The core's** (`true`): the page is loaded first; then only its swap runs in `document.startViewTransition({ update, types })` — the

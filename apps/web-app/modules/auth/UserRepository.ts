@@ -1,5 +1,5 @@
-import type { Credentials, PasswordHash, UserProvider } from '@bespokecore/auth';
-import { Repository, secret, sql } from '@bespokecore/database';
+import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
+import { Repository, secret, sql } from '@marmeon/database';
 import type { User } from './users.ts';
 
 /**

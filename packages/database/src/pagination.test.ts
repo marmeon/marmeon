@@ -1,4 +1,4 @@
-import type { Application, ModuleDefinition } from '@bespokecore/core';
+import type { Application, ModuleDefinition } from '@marmeon/core';
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
@@ -156,7 +156,7 @@ describe.each(drivers)('pagination on %s', (driver) => {
   });
 
   it('pages by ctx.query: what pageQuery() parses', async () => {
-    const { parseQuery } = await import('@bespokecore/router');
+    const { parseQuery } = await import('@marmeon/router');
     const schema = v.object({ ...pageQuery({ perPage: [5, 10] }), q: v.optional(v.string(), '') });
     const parsed = await parseQuery(schema, new URLSearchParams('page=2&per_page=5&q=x'));
     expect(parsed.value).toEqual({ page: 2, per_page: 5, q: 'x' });

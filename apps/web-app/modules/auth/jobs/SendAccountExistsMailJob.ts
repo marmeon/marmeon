@@ -1,7 +1,7 @@
-import { Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
-import type { JobPayload } from '@bespokecore/queue';
-import { Router } from '@bespokecore/router';
+import { Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
+import type { JobPayload } from '@marmeon/queue';
+import { Router } from '@marmeon/router';
 import * as v from 'valibot';
 import { AppConfig } from '../../../config/app.ts';
 import { AccountExistsMail } from '../mail/AccountExistsMail.ts';

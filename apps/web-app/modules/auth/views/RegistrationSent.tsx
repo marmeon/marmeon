@@ -1,4 +1,4 @@
-import { Head, Link, useTranslation } from '@bespokecore/react';
+import { Head, Link, useTranslation } from '@marmeon/react';
 
 /** After a sign-up (private registration, E146): the same for every address — what happens next is in the mail. */
 export default function RegistrationSent() {

@@ -87,7 +87,7 @@ const en = {
 
 export default en;
 
-declare module '@bespokecore/i18n/messages' {
+declare module '@marmeon/i18n/messages' {
   interface Translations {
     'user-profile': typeof en;
   }

@@ -1,4 +1,4 @@
-import type { Resolver, Translator } from '@bespokecore/core';
+import type { Resolver, Translator } from '@marmeon/core';
 import type { AnyRecipient, NotificationClass, NotificationInstance, NotificationMail } from './notification.ts';
 import { NotificationError, NotificationSetupError } from './registry.ts';
 import type { NotificationStore } from './store.ts';
@@ -32,7 +32,7 @@ export interface Delivery {
 
 /**
  * A way to reach a recipient — the open channel contract (E92, E93). `mail` and `database` come with this package;
- * others with theirs (`live` with @bespokecore/live, Web Push with @bespokecore/pwa) — each adds its name to
+ * others with theirs (`live` with @marmeon/live, Web Push with @marmeon/pwa) — each adds its name to
  * `interface NotificationChannelMap` and registers itself at boot:
  *
  * ```ts
@@ -74,7 +74,7 @@ export class NotificationChannels {
   make(name: string, container: Resolver): NotificationChannel {
     const factory = this.#factories.get(name);
     if (!factory) {
-      const hint = name === 'mail' ? ' (the mail channel needs @bespokecore/mail: pnpm add @bespokecore/mail; bespoke discover)' : '';
+      const hint = name === 'mail' ? ' (the mail channel needs @marmeon/mail: pnpm add @marmeon/mail; marmeon discover)' : '';
       throw new NotificationError(`via() returned the channel "${name}", which this app does not have${hint}. Channels: ${this.names().join(', ') || 'none'}.`);
     }
     return factory(container);
@@ -102,12 +102,12 @@ export class DatabaseChannel implements NotificationChannel {
   }
 }
 
-/** Queues a mail — `mailer.queue` of @bespokecore/mail, so its transport (and its retries) are the mail job's. */
+/** Queues a mail — `mailer.queue` of @marmeon/mail, so its transport (and its retries) are the mail job's. */
 export type QueueMail = (mail: NotificationMail, options: { readonly queue?: string; readonly connection?: string }) => Promise<unknown>;
 
 /**
  * The `mail` channel: `toMail(recipient, data, t)` composes the mail in the recipient's language, and it is **queued**
- * (`mailer.queue`, E105: composed now, encrypted, sent by a worker — `bespoke.mail`, 5 tries) on the notification's
+ * (`mailer.queue`, E105: composed now, encrypted, sent by a worker — `marmeon.mail`, 5 tries) on the notification's
  * queue. A mail server that is down retries the mail alone — never the notification's other channels. With a database
  * queue on the same connection the queued mail is part of the delivery's transaction.
  */

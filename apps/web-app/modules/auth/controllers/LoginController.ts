@@ -1,8 +1,8 @@
-import { Auth, Lockout } from '@bespokecore/auth';
-import { RateLimiter } from '@bespokecore/cache';
-import { EventDispatcher } from '@bespokecore/core';
-import { Controller, defineRequest, ValidationError, type ContextOf } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
+import { Auth, Lockout } from '@marmeon/auth';
+import { RateLimiter } from '@marmeon/cache';
+import { EventDispatcher } from '@marmeon/core';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { trans, Translator } from '@marmeon/i18n';
 import * as v from 'valibot';
 
 export const LoginRequest = defineRequest({

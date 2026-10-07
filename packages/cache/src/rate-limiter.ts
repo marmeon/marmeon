@@ -1,5 +1,5 @@
-import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@bespokecore/router';
-import { Clock } from '@bespokecore/core';
+import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@marmeon/router';
+import { Clock } from '@marmeon/core';
 import { Cache } from './cache.ts';
 
 /** How many attempts per window, and whose attempts count together (`by`). */
@@ -145,7 +145,7 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
               'x-ratelimit-remaining': '0',
               'x-ratelimit-reset': String(Math.ceil(this.#clock.now() / 1000) + retryAfter),
             },
-            { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } },
+            { key: 'marmeon.errors.throttled', params: { seconds: retryAfter } },
           );
         }
         if (live) continue;
@@ -171,7 +171,7 @@ export const LIVE_VALIDATION_LIMITER = 'live-validation';
 export const DEFAULT_LIVE_VALIDATION_LIMIT = 30;
 
 /**
- * The limit of live validations (E62), in the global stack: every request naming fields to check (`x-bespoke-validate`) counts
+ * The limit of live validations (E62), in the global stack: every request naming fields to check (`x-marmeon-validate`) counts
  * once against its own counter per route — `live-validation:<route>` — by the client's address: 30 a minute (a form checked on
  * blur needs a few), then `429` until the window passes. Never the route's own counters (`throttle(name)` holds a live
  * validation to them without counting it), never the session's. An app sets its own with
@@ -199,7 +199,7 @@ export class LimitLiveValidation {
       const key = `${LIVE_VALIDATION_LIMITER}:${name}:${limit.decaySeconds}:${limit.key}`;
       if (!(await this.#limiter.attempt(key, limit.maxAttempts, limit.decaySeconds))) {
         const retryAfter = await this.#limiter.availableIn(key);
-        throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfter) }, { key: 'bespoke.errors.throttled', params: { seconds: retryAfter } });
+        throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfter) }, { key: 'marmeon.errors.throttled', params: { seconds: retryAfter } });
       }
     }
     return next();

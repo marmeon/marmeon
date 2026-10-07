@@ -1,5 +1,5 @@
-import { SystemClock } from '@bespokecore/core';
-import type { Connections } from '@bespokecore/database';
+import { SystemClock } from '@marmeon/core';
+import type { Connections } from '@marmeon/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabaseRememberTokens, REMEMBER_TABLE } from './remember.ts';

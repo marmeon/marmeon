@@ -1,11 +1,11 @@
 /**
- * The heart of the UI-free client core (`@bespokecore/http/client`): the Navigator — visits and their pipeline, the browser
+ * The heart of the UI-free client core (`@marmeon/http/client`): the Navigator — visits and their pipeline, the browser
  * history and Back/Forward, the request primitives and leaving the document. What it builds on lives next to it (history,
  * cache, scroll, request, events, document-change, deferred); the features (`features/`: layers, guard, prefetch, instant,
  * optimistic patches, actions, islands' requests, revalidateOnBack, …) attach through the feature host (`feature.ts`): hooks
  * into the pipeline, and slots the core empties itself. None is attached by default (Wave 5c): the adapter attaches each where
  * it is used — and the core loads the layers itself when the server answers with one (E71).
- * No UI framework in here — an adapter (`<BespokeApp>` of @bespokecore/react) renders what the navigator hands it.
+ * No UI framework in here — an adapter (`<MarmeonApp>` of @marmeon/react) renders what the navigator hands it.
  */
 import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type DeferredResult, type FlashKey, type FlashMessage, type PageObject, type ValidationErrors } from '../page.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
@@ -93,7 +93,7 @@ export interface VisitOptions extends VisitCallbacks {
    */
   async?: boolean;
   /**
-   * Open the answer as a layer (E53) — `<Link layer>`: sent as a layer's request (`x-bespoke-region: layer`). An answer
+   * Open the answer as a layer (E53) — `<Link layer>`: sent as a layer's request (`x-marmeon-region: layer`). An answer
    * that is a layer opens over what is on screen whatever this says; one that is a page is shown as the page.
    */
   layer?: boolean;
@@ -224,7 +224,7 @@ export interface ViewTransitionLike {
 }
 
 export interface NavigatorOptions {
-  /** The page the server rendered (from `#bespoke-page`) — always fresh: a full load asks the server. */
+  /** The page the server rendered (from `#marmeon-page`) — always fresh: a full load asks the server. */
   initialPage: PageObject;
   /**
    * Shows a page: resolve its component and render it. Resolves once it is on screen (scroll restores after that).
@@ -283,10 +283,10 @@ function held<T>(slots: Map<Slot<unknown>, unknown>, slot: Slot<T>): T {
 }
 
 /**
- * Navigates without full page loads: a visit fetches the next page object as JSON (`x-bespoke`), keeps it
+ * Navigates without full page loads: a visit fetches the next page object as JSON (`x-marmeon`), keeps it
  * in memory and pushes a history entry *without* its props. Back and Forward show the page from memory —
  * or ask the server when it is not there — and restore where it was scrolled to. A `409` with
- * `x-bespoke-location` (a new build, or signing in or out — `ClientHistory` on the server) loads that URL
+ * `x-marmeon-location` (a new build, or signing in or out — `ClientHistory` on the server) loads that URL
  * fully and drops every page kept in memory. Every request reports its events (`on('start', …)`).
  */
 export class Navigator {
@@ -428,8 +428,8 @@ export class Navigator {
     // first entry is written.
     if (process.env.NODE_ENV !== 'production' && !win.navigation && !this.#has('history')) {
       console.warn(
-        '[bespoke:C13] This browser has no Navigation API, and the History fallback is not attached — the navigator writes its entries, but nothing follows Back/Forward. ' +
-          'Load it before the navigator is made and pass it with the features: features: [await loadHistoryFallback()] (createBespokeApp does).',
+        '[marmeon:C13] This browser has no Navigation API, and the History fallback is not attached — the navigator writes its entries, but nothing follows Back/Forward. ' +
+          'Load it before the navigator is made and pass it with the features: features: [await loadHistoryFallback()] (createMarmeonApp does).',
       );
     }
     // The first page's flash messages (E60) fire once the app has started — never kept with the page.
@@ -437,9 +437,9 @@ export class Navigator {
     const page = this.#collect(withFlash);
     core.page = page;
     core.props = new PropLoader(core, page, initialPage.streamedProps ?? []);
-    // Development only (W7 step 9): the devtools' bar attaches to the navigator (`__BESPOKE_DEVTOOLS_HOOK__`, set by its client,
+    // Development only (W7 step 9): the devtools' bar attaches to the navigator (`__MARMEON_DEVTOOLS_HOOK__`, set by its client,
     // which the Vite dev server alone serves) — a production build drops this line.
-    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.navigator?.(this);
+    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.navigator?.(this);
   }
 
   /**
@@ -813,8 +813,8 @@ export class Navigator {
     const pageKey = this.#first('adopt', key, position) ?? key;
     if (process.env.NODE_ENV !== 'production' && pageKey === key && core.initial?.layers?.length) {
       console.warn(
-        '[bespoke:C8] The document is a layer’s URL (a deep link, a reload), but the layers were not attached before the navigator took over the history — ' +
-          'the page beneath shows without them. Attach them before the first render: await navigator.load(loadLayers) (createBespokeApp does).',
+        '[marmeon:C8] The document is a layer’s URL (a deep link, a reload), but the layers were not attached before the navigator took over the history — ' +
+          'the page beneath shows without them. Attach them before the first render: await navigator.load(loadLayers) (createMarmeonApp does).',
       );
     }
     core.initial = undefined;
@@ -1227,7 +1227,7 @@ export class Navigator {
     // Development: a layer nobody here asked for — the server's answer, or Back/Forward.
     if (process.env.NODE_ENV !== 'production' && !asked) {
       console.info(
-        '[bespoke:C7] The server answered with a layer (or Back/Forward went to one), but no code here had loaded the layers yet — loading them now, one round trip. ' +
+        '[marmeon:C7] The server answered with a layer (or Back/Forward went to one), but no code here had loaded the layers yet — loading them now, one round trip. ' +
           'Open layers with <Link layer> or visit(url, { layer: true }) to load them before.',
       );
     }

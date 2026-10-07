@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import type { Resolver } from '@bespokecore/core';
-import { Clock } from '@bespokecore/core';
-import type { CommandInput } from '@bespokecore/cli';
+import type { Resolver } from '@marmeon/core';
+import { Clock } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
 import { UploadsConfig } from './config.ts';
 import { TemporaryUploads } from './service.ts';
 
@@ -13,7 +13,7 @@ export function uploadsTableConnection(container: Resolver): string {
   return container.make(UploadsConfig).connection;
 }
 
-/** `bespoke make:uploads-table [--module=system]`: the migration of `temporary_uploads` into an app module (E96). */
+/** `marmeon make:uploads-table [--module=system]`: the migration of `temporary_uploads` into an app module (E96). */
 export class MakeUploadsTableCommand {
   static command = 'make:uploads-table';
   static description = 'Create the migration for temporary uploads (temporary_uploads)';
@@ -21,7 +21,7 @@ export class MakeUploadsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@bespokecore/database');
+    const { publishMigration } = await import('@marmeon/database');
     return publishMigration(input, { name: 'create_temporary_uploads_table', table: 'temporary_uploads', contents: readFileSync(UPLOADS_MIGRATION, 'utf8') });
   }
 }
@@ -29,7 +29,7 @@ export class MakeUploadsTableCommand {
 const HOUR = 3_600_000;
 
 /**
- * `bespoke uploads:prune [--hours=24]`: deletes temporary uploads made more than `--hours` ago — used, expired or never
+ * `marmeon uploads:prune [--hours=24]`: deletes temporary uploads made more than `--hours` ago — used, expired or never
  * sent — the rows first (one statement), then their files. A token never works longer than a day (`UPLOADS_LIFETIME`), so
  * nothing usable goes. For the scheduler: `s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` (with a
  * local uploads disk on several servers: without `onOneServer`, on each).

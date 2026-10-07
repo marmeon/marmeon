@@ -1,5 +1,5 @@
-import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, type Application, type Container, type Logger, type Solution } from '@bespokecore/core';
-import { channels, messageBase, trace, type SsrRenderMessage } from '@bespokecore/core/diagnostics';
+import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, type Application, type Container, type Logger, type Solution } from '@marmeon/core';
+import { channels, messageBase, trace, type SsrRenderMessage } from '@marmeon/core/diagnostics';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
@@ -55,8 +55,8 @@ import {
   type RegionOutcomeStatus,
   type RegionResult,
   type SsrRender,
-} from '@bespokecore/http';
-import { defaultToResponse, ownResponse, RequestNonce, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@bespokecore/router';
+} from '@marmeon/http';
+import { defaultToResponse, ownResponse, RequestNonce, urlFor, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseContext, type ResponseFactory, type RouteLookup } from '@marmeon/router';
 import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce } from './html.ts';
 
 export interface PageRenderOptions {
@@ -175,7 +175,7 @@ const BOTS =
   /bot\b|bot\/|crawl|spider|slurp|archiver|bingpreview|facebookexternalhit|embedly|quora link preview|outbrain|pinterest|vkshare|w3c_validator|whatsapp|telegram|discord|slack|linkedin|skype|lighthouse|headlesschrome|prerender/i;
 
 /**
- * Page responses differ by these request headers: a page document or its JSON (`x-bespoke`), all props or some
+ * Page responses differ by these request headers: a page document or its JSON (`x-marmeon`), all props or some
  * (a partial reload), a prefetch or the visit (`Purpose` — a page may skip side effects for a prefetch). A cache
  * (`Cache-Control: private, max-age=…`) must never answer one with the other.
  */
@@ -183,12 +183,12 @@ const PAGE_VARY = [PAGE_HEADER, REGION_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL
 
 /**
  * The live subscriptions of a response (W6.10), signed for the request's session — `PageObject.live`. A result that declares
- * some in an app without @bespokecore/live is a mistake that says so.
+ * some in an app without @marmeon/live is a mistake that says so.
  */
 async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope: Container | undefined, component: string): Promise<{ live?: PageObject['live'] }> {
   const live = await signedLive(declarations, () => {
     if (!scope?.has(LiveSigner)) {
-      throw new Error(`[${component}] follows a live channel (.live() or shared.live()), which needs @bespokecore/live in the app: pnpm add @bespokecore/live (bespoke discover registers it).`);
+      throw new Error(`[${component}] follows a live channel (.live() or shared.live()), which needs @marmeon/live in the app: pnpm add @marmeon/live (marmeon discover registers it).`);
     }
     return scope.make(LiveSigner);
   });
@@ -530,7 +530,7 @@ function withFlash(response: Response, flash: readonly FlashMessage[]): Response
 
 /**
  * The answer to an island's request (E48, E52): its region object as JSON — the page object of the island route, without
- * shared props and without the page's locale. Only for a region request (`x-bespoke-region: island`): anything else —
+ * shared props and without the page's locale. Only for a region request (`x-marmeon-region: island`): anything else —
  * a direct hit, a page visit or a prefetch of the island's URL — is a 404 (an island has no head, layout or title).
  */
 async function islandResponse(
@@ -550,7 +550,7 @@ async function islandResponse(
     throw new HttpError(
       404,
       debug
-        ? `[${result.component}] is an island: it is loaded by <Island route> on a page (x-bespoke-region: island), never visited, linked or prefetched by itself.`
+        ? `[${result.component}] is an island: it is loaded by <Island route> on a page (x-marmeon-region: island), never visited, linked or prefetched by itself.`
         : undefined,
     );
   }
@@ -571,7 +571,7 @@ async function islandResponse(
 /**
  * What a region request's response becomes on its way out (E52) — whatever the island route's middleware or controller
  * answered: the region object passes, so does a 409 (a new build: the client loads the whole page again). A redirect, a
- * 401 or a 423 is `unauthorized`, a 403 `forbidden` — `204` with `x-bespoke-region-status`, the redirect never followed,
+ * 401 or a 423 is `unauthorized`, a 403 `forbidden` — `204` with `x-marmeon-region-status`, the redirect never followed,
  * so the island shows its fallback and the page never navigates. Anything else is an `exception`, with its status (an
  * error's JSON body, from the kernel, stays for development).
  */
@@ -599,7 +599,7 @@ export async function toRegionResponse(response: Response): Promise<Response> {
  * What an action's response becomes on its way out (E59) — whatever its route's middleware or controller answered:
  * - a redirect is not followed (the browser's `fetch` would, and the action would read the next page): `204` with
  *   {@link ACTION_REDIRECT_HEADER} — the client reports where it pointed;
- * - a 409 with `x-bespoke-location` (signed out through the action, a new build) passes: the client loads that page;
+ * - a 409 with `x-marmeon-location` (signed out through the action, a new build) passes: the client loads that page;
  * - never kept by any cache (`no-store`, whatever the route set): the answer is about who asked, at that moment.
  */
 export async function toActionResponse(response: Response): Promise<Response> {
@@ -619,8 +619,8 @@ export async function toActionResponse(response: Response): Promise<Response> {
 
 /**
  * The answer of a live validation (E62): never cached (`no-store`, `Vary`), and a redirect of its route — middleware that sends
- * a guest away, say — becomes `204` with `x-bespoke-redirect`, like an action's: reported, not followed. Only its own `204` and
- * `422` carry `x-bespoke-validated` (the router's and the kernel's) — what the client takes for a result.
+ * a guest away, say — becomes `204` with `x-marmeon-redirect`, like an action's: reported, not followed. Only its own `204` and
+ * `422` carry `x-marmeon-validated` (the router's and the kernel's) — what the client takes for a result.
  */
 export async function toLiveValidationResponse(response: Response): Promise<Response> {
   const headers = new Headers(response.headers);
@@ -649,7 +649,7 @@ function describe(error: unknown): { exception: string; message: string; stack?:
     : { exception: 'Error', message: String(error) };
 }
 
-/** The document a request of the client core names (`x-bespoke-document`, the tabSync feature) — undefined: none (a full page load). */
+/** The document a request of the client core names (`x-marmeon-document`, the tabSync feature) — undefined: none (a full page load). */
 function documentOfRequest(request: Request): string | undefined {
   return request.headers.get(DOCUMENT_HEADER) ?? undefined;
 }

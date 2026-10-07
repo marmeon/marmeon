@@ -1,4 +1,4 @@
-import { outsideTransaction, type Application, type Redactor } from '@bespokecore/core';
+import { outsideTransaction, type Application, type Redactor } from '@marmeon/core';
 
 /**
  * The queue and the scheduler as they are now (E113: Horizon's idea, development only, read-only) — read through their own
@@ -88,8 +88,8 @@ async function optional<T>(load: () => Promise<T>): Promise<T | undefined> {
 
 /** The queues of every connection that keeps jobs, and the failed jobs. */
 export async function queueSnapshot(app: Application, redactor: Redactor): Promise<QueueSnapshot> {
-  const module = await optional(() => import('@bespokecore/queue'));
-  if (!module || !app.container.has(module.QueueConnections)) return { available: false, reason: 'The app has no queue (@bespokecore/queue).' };
+  const module = await optional(() => import('@marmeon/queue'));
+  if (!module || !app.container.has(module.QueueConnections)) return { available: false, reason: 'The app has no queue (@marmeon/queue).' };
   const connections = app.container.make(module.QueueConnections);
   const views: QueueView[] = [];
   for (const name of connections.names()) {
@@ -136,8 +136,8 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
         exception: redactor.text(exception),
         payload: redactor.fit(redactor.payload(record.data, record.encrypted === true), 16 * 1024),
         ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
-        retry: `bespoke queue:retry ${job.uuid}`,
-        forget: `bespoke queue:forget ${job.uuid}`,
+        retry: `marmeon queue:retry ${job.uuid}`,
+        forget: `marmeon queue:forget ${job.uuid}`,
       };
     });
   } catch (error) {
@@ -148,8 +148,8 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
 
 /** The scheduled tasks — when each is due next (the logic of `schedule:list`) — and the lock warning (E123). */
 export async function scheduleSnapshot(app: Application): Promise<ScheduleSnapshot> {
-  const module = await optional(() => import('@bespokecore/scheduler'));
-  if (!module || !app.container.has(module.Scheduler)) return { available: false, reason: 'The app has no scheduler (@bespokecore/scheduler).' };
+  const module = await optional(() => import('@marmeon/scheduler'));
+  if (!module || !app.container.has(module.Scheduler)) return { available: false, reason: 'The app has no scheduler (@marmeon/scheduler).' };
   const scheduler = app.container.make(module.Scheduler);
   const tasks = scheduler.tasks.map((task): TaskView => {
     const { definition } = task;
@@ -161,7 +161,7 @@ export async function scheduleSnapshot(app: Application): Promise<ScheduleSnapsh
       definition.environments ? `only ${definition.environments.join('/')}` : '',
       definition.when.length + definition.skip.length > 0 ? 'filtered' : '',
     ].filter(Boolean);
-    return { name: task.name, expression: task.expression.source, timeZone: task.timeZone, summary: task.summary, ...(next === undefined ? {} : { next }), options, test: `bespoke schedule:test ${task.name}` };
+    return { name: task.name, expression: task.expression.source, timeZone: task.timeZone, summary: task.summary, ...(next === undefined ? {} : { next }), options, test: `marmeon schedule:test ${task.name}` };
   });
   const warning = scheduler.lockWarning();
   return { available: true, tasks, ...(warning ? { warning } : {}) };

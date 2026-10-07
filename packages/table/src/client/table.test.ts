@@ -5,12 +5,12 @@
  * through sorting, filtering and paging (query-state visits with the props' aliases and keys), selecting (the entry's slot), row and
  * bulk actions (the actions feature, then the table's prop reloaded — replacing what the page had) and an export URL. No UI framework.
  */
-import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@bespokecore/http/page';
-import { loadHistoryFallback, Navigator, selection } from '@bespokecore/http/client';
+import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/page';
+import { loadHistoryFallback, Navigator, selection } from '@marmeon/http/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TableController, tableStatus, type TableData } from './index.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 type Row = { id: number; name: string; joined: string; email?: string };
@@ -155,8 +155,8 @@ describe('the headless table on the client core alone', () => {
     await settle();
     expect(requests.map((request) => request.url), 'a sort the props do not offer went out').toEqual([]);
     expect(refused).toEqual([
-      '[bespoke:C9] The table "members" does not sort by "created_at" — it sorts by name, joined (the columns\' names in its props, never a database column).',
-      '[bespoke:C9] The table "members" does not sort by "email" — it sorts by name, joined (the columns\' names in its props, never a database column).',
+      '[marmeon:C9] The table "members" does not sort by "created_at" — it sorts by name, joined (the columns\' names in its props, never a database column).',
+      '[marmeon:C9] The table "members" does not sort by "email" — it sorts by name, joined (the columns\' names in its props, never a database column).',
     ]);
   });
 
@@ -168,7 +168,7 @@ describe('the headless table on the client core alone', () => {
     new TableController(app.navigator, app.navigator.page.props.members as Members).filter('locale', 'de');
     await settle();
     expect(requests.at(-1)!.url).toBe('/members?filter%5Blocale%5D=de');
-    expect(() => table.filter('locale', 'fr')).toThrow('[bespoke:C10] The filter "locale" of the table "members" takes en, de — not "fr".');
+    expect(() => table.filter('locale', 'fr')).toThrow('[marmeon:C10] The filter "locale" of the table "members" takes en, de — not "fr".');
     // @ts-expect-error — no such filter
     expect(() => table.filter('role', 'admin')).toThrow('has no filter "role"');
     new TableController(app.navigator, app.navigator.page.props.members as Members).filter('locale', null);
@@ -272,7 +272,7 @@ describe('the headless table on the client core alone', () => {
     const table = app.table();
     expect(table.exportUrl('csv')).toBe('/members/_tables/members/export/csv?');
     // @ts-expect-error — no such export
-    expect(() => table.exportUrl('xlsx')).toThrow('[bespoke:C12] The table "members" offers no export "xlsx" to this user — it offers csv.');
+    expect(() => table.exportUrl('xlsx')).toThrow('[marmeon:C12] The table "members" offers no export "xlsx" to this user — it offers csv.');
     // @ts-expect-error — no such action
     expect(() => table.run('promote', table.data.rows[0]!)).toThrow('offers no row action "promote"');
   });

@@ -1,4 +1,4 @@
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 import { sql } from 'kysely';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';

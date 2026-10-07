@@ -10,7 +10,7 @@
  * Deferred work runs outside of any transaction (E107): registered inside `connections.transaction()`, it does not
  * join it — it runs after the response, on its own. For work that must wait for a commit, use `afterCommit()`.
  *
- * Not a queue: the work dies with the process. Durable background work: `@bespokecore/queue`.
+ * Not a queue: the work dies with the process. Durable background work: `@marmeon/queue`.
  */
 export class AfterResponse {
   readonly #tasks: (() => unknown)[] = [];

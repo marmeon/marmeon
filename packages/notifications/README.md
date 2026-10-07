@@ -1,11 +1,11 @@
-# @bespokecore/notifications
+# @marmeon/notifications
 
 Notifications (E92): a class per notification — a stable name, the schema of its data, `via()` for its channels and a
 `to…()` per channel —, sent to **recipients as data** (`{ type: 'user', id }`), delivered by a worker through the
 channels `mail` and `database`, read back from an **Inbox that is always bound to its recipient**. The channel contract is
-open: `live` comes with [@bespokecore/live](../live/README.md#notifications-the-live-channel) (W6.10: once the delivery
+open: `live` comes with [@marmeon/live](../live/README.md#notifications-the-live-channel) (W6.10: once the delivery
 committed, a hint on `notificationsChannel(recipient)` — the bell and the list of the recipient's open tabs reload); Web Push
-is planned with `@bespokecore/pwa` (E93) — not part of BespokeCore yet.
+is planned with `@marmeon/pwa` (E93) — not part of Marmeon yet.
 
 ```ts
 // modules/auth/notifications/NewSignInNotification.ts — and `notifications: [NewSignInNotification]` in defineModule
@@ -31,15 +31,15 @@ if (!(await this.#inbox.markRead(me, ctx.params.notification))) abort(404);   //
 ```
 
 ```text
-bespoke make:notification <Name> --module=<module>   # a class with a stable name, schema, static database, via() and toDatabase()
-bespoke make:notifications-table [--module=system] | notifications:prune [--days=30] [--unread-days=N]
+marmeon make:notification <Name> --module=<module>   # a class with a stable name, schema, static database, via() and toDatabase()
+marmeon make:notifications-table [--module=system] | notifications:prune [--days=30] [--unread-days=N]
 ```
 
-`bespoke discover` registers its `NotificationServiceProvider` through the `"bespoke"` field of its package.json:
-`Notifications` (`send`, `sendNow`), the `Inbox`, the channels `database` and — with `@bespokecore/mail` — `mail`, the modules'
-notifications and recipient resolvers, the framework job `bespoke.notification` and the `notifications:*` commands. It needs
-`@bespokecore/database` (its rows); `@bespokecore/queue` (for `send`), `@bespokecore/mail` (the `mail` channel) and
-`@bespokecore/i18n` (the recipient's language) are optional peers. The start fails for two notifications with one name, a class
+`marmeon discover` registers its `NotificationServiceProvider` through the `"marmeon"` field of its package.json:
+`Notifications` (`send`, `sendNow`), the `Inbox`, the channels `database` and — with `@marmeon/mail` — `mail`, the modules'
+notifications and recipient resolvers, the framework job `marmeon.notification` and the `notifications:*` commands. It needs
+`@marmeon/database` (its rows); `@marmeon/queue` (for `send`), `@marmeon/mail` (the `mail` channel) and
+`@marmeon/i18n` (the recipient's language) are optional peers. The start fails for two notifications with one name, a class
 without one, two resolvers for one kind of recipient, or an unknown connection.
 
 ## Configuration
@@ -50,7 +50,7 @@ NOTIFICATIONS_CONNECTION=default   # the database connection of the `notificatio
 
 `NotificationConfig` (`config.connection`) is the package's config class. The connection is an app connection — notifications
 are the app's data and join its transactions (unlike the cache, E108). Their jobs and mails run on the queue
-([@bespokecore/queue](../queue/README.md#connections-and-drivers)); a notification's `static queue` picks its queue,
+([@marmeon/queue](../queue/README.md#connections-and-drivers)); a notification's `static queue` picks its queue,
 `connection`, `delay`, `tries` (default 3) and `backoff` (default 10 s, 1 min, 5 min).
 
 ## Recipients
@@ -60,7 +60,7 @@ module that owns it — by id, never by a record carried in the job:
 
 ```ts
 // modules/auth/users.ts
-declare module '@bespokecore/notifications' { interface NotificationRecipients { user: User } }
+declare module '@marmeon/notifications' { interface NotificationRecipients { user: User } }
 
 // modules/auth/UserRecipients.ts — and `recipients: { user: UserRecipients }` in defineModule({ name: 'auth', … })
 export class UserRecipients implements RecipientResolver<'user'> {
@@ -74,7 +74,7 @@ export class UserRecipients implements RecipientResolver<'user'> {
 
 - **`send(recipient | recipients, Notification, data, { delay })`** checks now — the class is registered (`notifications: [...]` of a
   module), a module finds the kind of recipient (`recipients: { user: … }`), the data matches `static schema` — and queues
-  one **`bespoke.notification`** job per recipient (encrypted, E105; three tries, or `static queue.tries`). Inside
+  one **`marmeon.notification`** job per recipient (encrypted, E105; three tries, or `static queue.tries`). Inside
   `connections.transaction()` it is queued with the commit (E107) — on the database queue it is a row in the transaction.
 - **`sendNow(…)`** delivers in the calling process (a job, a queued listener — already in a worker). Inside a transaction
   the delivery is part of it.
@@ -95,15 +95,15 @@ export class UserRecipients implements RecipientResolver<'user'> {
   `notificationData(row, NewSignInNotification)` reads a row back typed (undefined for a row a deploy changed).
 - **`mail`** — `toMail(recipient, data, t)` with `t` in the **recipient's** language (never the request's); the mail is
   **queued** (`mailer.queue`, [queued mails](../mail/README.md#queued-mails-e105)) on the notification's queue: composed now,
-  sent by `bespoke.mail` with its own retries — a mail server that is down never repeats the row or another channel. Needs
-  `@bespokecore/mail` (and a queue).
-- **`live`** — with `@bespokecore/live`, which registers it: once the delivery committed, the recipient's open tabs reload their
+  sent by `marmeon.mail` with its own retries — a mail server that is down never repeats the row or another channel. Needs
+  `@marmeon/mail` (and a queue).
+- **`live`** — with `@marmeon/live`, which registers it: once the delivery committed, the recipient's open tabs reload their
   bell and list. A hint from a worker needs `LIVE_DRIVER=redis` ([configuration](../live/README.md#configuration)).
 - **Your own** (Web Push will be one): add the name and what a notification needs for it to `interface NotificationChannelMap`,
-  and register the channel at boot — this is how `@bespokecore/live` adds `live`:
+  and register the channel at boot — this is how `@marmeon/live` adds `live`:
 
   ```ts
-  declare module '@bespokecore/notifications' { interface NotificationChannelMap { live: {} } }
+  declare module '@marmeon/notifications' { interface NotificationChannelMap { live: {} } }
   container.make(NotificationChannels).add('live', (scope) => new LiveChannel(scope.make(Broadcaster)));
   ```
 
@@ -114,7 +114,7 @@ export class UserRecipients implements RecipientResolver<'user'> {
 ### Web Push (E93): generic payloads
 
 A push message goes through the browser vendor's push service and shows on a **lock screen**. The planned Web Push channel
-(with `@bespokecore/pwa`) therefore sends a **generic** text by default — "You have a new notification" —, never the
+(with `@marmeon/pwa`) therefore sends a **generic** text by default — "You have a new notification" —, never the
 notification's content: the details load after the click, behind authentication, from the inbox. Opting into more text will
 be per notification and explicit.
 
@@ -130,9 +130,9 @@ are refused before any query. The recipient comes from who is signed in, never f
 
 ## The table (E96)
 
-`bespoke make:notifications-table` writes the migration into an app module (`system` by default): `id` (uuid),
+`marmeon make:notifications-table` writes the migration into an app module (`system` by default): `id` (uuid),
 `recipient_type`, `recipient_id`, `type`, `data` (json), `read_at`, `created_at`. It lands on `NOTIFICATIONS_CONNECTION`
-(default `default`) — see [Configuration](#configuration). `bespoke notifications:prune` deletes, in one statement,
+(default `default`) — see [Configuration](#configuration). `marmeon notifications:prune` deletes, in one statement,
 notifications read more than `--days` (30) ago — unread ones only with `--unread-days`:
 
 ```ts

@@ -98,7 +98,7 @@ export function regionInitial(result: RegionResult): RegionInitial | undefined {
 
 /** A region's identity: its URL with the query sorted (`?b=2&a=1` and `?a=1&b=2` are one island). */
 export function regionId(url: string): string {
-  const parsed = new URL(url, 'http://bespoke.invalid');
+  const parsed = new URL(url, 'http://marmeon.invalid');
   parsed.searchParams.sort();
   return parsed.pathname + parsed.search;
 }

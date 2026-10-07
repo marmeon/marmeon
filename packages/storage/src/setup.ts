@@ -1,4 +1,4 @@
-import { token } from '@bespokecore/core';
+import { token } from '@marmeon/core';
 import type { StorageOptions } from './config.ts';
 import type { StorageDependencies } from './storage.ts';
 

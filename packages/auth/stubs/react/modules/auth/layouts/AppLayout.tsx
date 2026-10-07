@@ -1,9 +1,9 @@
-import { Link, useFlash, usePage, useTranslation, type LayoutProps } from '@bespokecore/react';
+import { Link, useFlash, usePage, useTranslation, type LayoutProps } from '@marmeon/react';
 import { useState } from 'react';
 
 /**
  * Navigation and flash messages around the auth pages: `Page.layout = AppLayout`. It stays mounted while
- * you navigate between pages that use it (E35). Make it the app's default with `createBespokeApp({ layout })`.
+ * you navigate between pages that use it (E35). Make it the app's default with `createMarmeonApp({ layout })`.
  */
 export function AppLayout({ children }: LayoutProps) {
   // `auth` is missing on the 404 of a path without a route (no group's middleware ran) — a guest's header then.

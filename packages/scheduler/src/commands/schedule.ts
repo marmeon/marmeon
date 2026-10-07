@@ -1,5 +1,5 @@
-import type { CommandInput } from '@bespokecore/cli';
-import { Clock, environment, Logger } from '@bespokecore/core';
+import type { CommandInput } from 'marmeon';
+import { Clock, environment, Logger } from '@marmeon/core';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute } from '../time.ts';
@@ -30,8 +30,8 @@ async function checked(scheduler: Scheduler, output: CommandInput['output'], opt
 }
 
 /**
- * `bespoke schedule:work`: the scheduler as a process of its own (E88) — a tick at the start of every minute, until
- * stopped. `bespoke dev` starts it next to the server (E101); in production run one per server under a supervisor (or
+ * `marmeon schedule:work`: the scheduler as a process of its own (E88) — a tick at the start of every minute, until
+ * stopped. `marmeon dev` starts it next to the server (E101); in production run one per server under a supervisor (or
  * `schedule:run` from cron). SIGTERM/SIGINT: no new tick; runs still going get `--stop-timeout` seconds, then the process
  * ends and frees their overlap locks.
  */
@@ -93,8 +93,8 @@ export class ScheduleWorkCommand {
 }
 
 /**
- * `bespoke schedule:run`: one tick, for the current minute — for a system cron that calls it every minute
- * (`* * * * * cd /app && bespoke schedule:run`). Waits for the runs, then exits (1 if one failed). Missed minutes are
+ * `marmeon schedule:run`: one tick, for the current minute — for a system cron that calls it every minute
+ * (`* * * * * cd /app && marmeon schedule:run`). Waits for the runs, then exits (1 if one failed). Missed minutes are
  * caught up like in `schedule:work`.
  */
 export class ScheduleRunCommand {
@@ -122,7 +122,7 @@ export class ScheduleRunCommand {
   }
 }
 
-/** `bespoke schedule:list`: every task, when it runs (in its time zone), when next, and its options. */
+/** `marmeon schedule:list`: every task, when it runs (in its time zone), when next, and its options. */
 export class ScheduleListCommand {
   static command = 'schedule:list';
   static description = 'List the scheduled tasks';
@@ -164,7 +164,7 @@ export class ScheduleListCommand {
   }
 }
 
-/** `bespoke schedule:test <name>`: runs one task now — whatever its frequency, filters and environments say. */
+/** `marmeon schedule:test <name>`: runs one task now — whatever its frequency, filters and environments say. */
 export class ScheduleTestCommand {
   static command = 'schedule:test';
   static description = 'Run one scheduled task now';
@@ -179,7 +179,7 @@ export class ScheduleTestCommand {
   async handle({ args, output }: CommandInput): Promise<number> {
     const name = args.join(' ').trim();
     if (name === '') {
-      output.error(`Which task? bespoke schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
+      output.error(`Which task? marmeon schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
       return 1;
     }
     // A test run ignores onOneServer(): no word about where its lock lives.

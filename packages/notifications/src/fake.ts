@@ -1,8 +1,8 @@
 import { AssertionError } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { afterCommit, Application, inTransaction, type Container } from '@bespokecore/core';
-import { channels, trace } from '@bespokecore/core/diagnostics';
+import { afterCommit, Application, inTransaction, type Container } from '@marmeon/core';
+import { channels, trace } from '@marmeon/core/diagnostics';
 import type { AnyRecipient, NotificationClass, NotificationData, RecipientRef, Recipients } from './notification.ts';
 import { checkSend, NotificationDeliverer, sendMessage, type DeliveryOutcome, type Notifications, type SendOptions } from './notifications.ts';
 import { NotificationRegistry, RecipientRegistry } from './registry.ts';
@@ -27,7 +27,7 @@ export interface SentNotification<N extends NotificationClass = NotificationClas
 export type NotificationMatch<N extends NotificationClass> = Partial<NotificationData<N>> | ((data: NotificationData<N>, sent: SentNotification<N>) => boolean);
 
 /**
- * Records notifications instead of delivering them — `@bespokecore/testing` puts it in place of `Notifications`
+ * Records notifications instead of delivering them — `@marmeon/testing` puts it in place of `Notifications`
  * (`app.notifications`), like `MailFake` and `QueueFake`. Every send is still checked as for real: the class is
  * registered, a resolver finds its kind of recipient, the data matches the schema (a bad send fails the test). Inside
  * a transaction a notification is recorded with the commit — never after a rollback.

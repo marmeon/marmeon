@@ -11,7 +11,7 @@ export type LiveMessage =
       readonly channel: string;
       readonly only: readonly string[] | null;
       readonly seq: number;
-      /** The connection that caused it (`x-bespoke-connection`): it gets the hint with nothing to reload. */
+      /** The connection that caused it (`x-marmeon-connection`): it gets the hint with nothing to reload. */
       readonly except?: string | undefined;
     }
   | { readonly kind: 'end'; readonly scope: string };

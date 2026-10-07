@@ -1,8 +1,8 @@
-import { Gate } from '@bespokecore/auth';
-import type { Container, ServiceProvider } from '@bespokecore/core';
-import { Database } from '@bespokecore/database';
-import { Encrypter } from '@bespokecore/encryption';
-import { Router } from '@bespokecore/router';
+import { Gate } from '@marmeon/auth';
+import type { Container, ServiceProvider } from '@marmeon/core';
+import { Database } from '@marmeon/database';
+import { Encrypter } from '@marmeon/encryption';
+import { Router } from '@marmeon/router';
 import { Tables } from './tables.ts';
 
 /** Binds `Tables` per request — its policies are the request user's (the request's `Gate`). */

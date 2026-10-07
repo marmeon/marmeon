@@ -1,13 +1,13 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { Application } from '@bespokecore/core';
-import { Router, type RouteDefinition } from '@bespokecore/router';
+import type { Application } from '@marmeon/core';
+import { Router, type RouteDefinition } from '@marmeon/router';
 
 /**
- * Where `bespoke route:types` writes the routes the browser may learn, relative to the app root — read by the
- * `bespoke()` Vite plugin for `virtual:bespoke/routes`. Generated, not committed (like `.bespoke/manifest.json`).
+ * Where `marmeon route:types` writes the routes the browser may learn, relative to the app root — read by the
+ * `marmeon()` Vite plugin for `virtual:marmeon/routes`. Generated, not committed (like `.marmeon/manifest.json`).
  */
-export const BROWSER_ROUTES_FILE = '.bespoke/routes.json';
+export const BROWSER_ROUTES_FILE = '.marmeon/routes.json';
 
 /** Why a named route never reaches the browser. */
 export type HiddenReason = 'internal' | 'api' | 'except';
@@ -96,7 +96,7 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * Writes {@link BROWSER_ROUTES_FILE} under `root` when its content changed — atomically, as the dev server, `bespoke`
+ * Writes {@link BROWSER_ROUTES_FILE} under `root` when its content changed — atomically, as the dev server, `marmeon`
  * commands and test workers may write it at once. Returns whether it changed.
  */
 export function writeBrowserRoutes(root: string, routes: BrowserRoutes): boolean {
@@ -114,7 +114,7 @@ export function writeBrowserRoutes(root: string, routes: BrowserRoutes): boolean
   return true;
 }
 
-/** Writes the booted app's {@link BROWSER_ROUTES_FILE} — what `bespoke route:types` does, for server rendering in tests. */
+/** Writes the booted app's {@link BROWSER_ROUTES_FILE} — what `marmeon route:types` does, for server rendering in tests. */
 export function writeAppBrowserRoutes(app: Application): boolean {
   return writeBrowserRoutes(app.root, browserRoutes(app.container.make(Router).routes, app.options.clientRoutes));
 }

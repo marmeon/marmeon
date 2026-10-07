@@ -5,8 +5,8 @@
  * anywhere — the client core, a dozen lines that render a page as text, and the bar beside it. What it records comes from the
  * core's own requests; what it shows of the server comes from the devtools' JSON API (E131).
  */
-import { devtools, islands, Navigator, type DevtoolsFeature, type DevtoolsGlobal } from '@bespokecore/http/client';
-import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@bespokecore/http/page';
+import { devtools, islands, Navigator, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client';
+import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/page';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevtoolsBar, SHORTCUT, STATE_KEY } from './bar.ts';
 import { installDevtoolsHook } from './hook.ts';
@@ -20,12 +20,12 @@ const page = (component: string, url: string, props: Record<string, unknown>, ex
 const json = (body: unknown, headers: Record<string, string> = {}, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'x-request-id': `req-${++ids}`, ...headers } });
 
-/** The server: pages with a secret prop, an island, a sign-out (409) — and the devtools' API (`/_bespoke/devtools/api/…`, `/__open-in-editor`). */
+/** The server: pages with a secret prop, an island, a sign-out (409) — and the devtools' API (`/_marmeon/devtools/api/…`, `/__open-in-editor`). */
 async function server(input: string, init: RequestInit = {}): Promise<Response> {
   const url = new URL(input, 'https://app.test');
   const headers = { ...(init.headers as Record<string, string>) };
   requests.push({ method: init.method ?? 'GET', url: url.pathname + url.search });
-  if (url.pathname.startsWith('/_bespoke/devtools/api/requests/')) {
+  if (url.pathname.startsWith('/_marmeon/devtools/api/requests/')) {
     const requestId = decodeURIComponent(url.pathname.split('/').at(-1)!);
     return json({
       requestId,
@@ -33,11 +33,11 @@ async function server(input: string, init: RequestInit = {}): Promise<Response> 
       entries: [
         { id: 'e1', type: 'request', at: 1, batch: 'b1', requestId, tags: [], content: { method: 'GET', url: '/users/1', path: '/users/1', route: 'users.show', routePath: '/users/:user', controller: 'ShowUserController', status: 200, durationMs: 12, inProcess: false, headers: {}, query: {}, ssr: { component: 'users/Show', durationMs: 7, complete: true }, page: { kind: 'page', component: 'users/Show', props: {}, bytes: 0, shared: ['auth'], optional: ['stats'] } } },
         { id: 'e2', type: 'query', at: 2, batch: 'b1', requestId, tags: [], content: { connection: 'default', sql: 'select * from "users" where "id" = ?', durationMs: 0.4 } },
-        { id: 'e3', type: 'job', at: 3, batch: 'b2', requestId, tags: [], content: { job: 'bespoke.listener', status: 'done', durationMs: 5, attempt: 1 } },
+        { id: 'e3', type: 'job', at: 3, batch: 'b2', requestId, tags: [], content: { job: 'marmeon.listener', status: 'done', durationMs: 5, attempt: 1 } },
       ],
     });
   }
-  if (url.pathname === '/_bespoke/devtools/api/source') return json({ file: '/app/modules/users/controllers/ShowUserController.ts', display: 'modules/users/controllers/ShowUserController.ts', line: 7, editor: '/__open-in-editor?file=x' });
+  if (url.pathname === '/_marmeon/devtools/api/source') return json({ file: '/app/modules/users/controllers/ShowUserController.ts', display: 'modules/users/controllers/ShowUserController.ts', line: 7, editor: '/__open-in-editor?file=x' });
   if (url.pathname === '/__open-in-editor') return void editors.push(url.search), new Response(null, { status: 200 });
   if (url.pathname === '/logout') return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', [RELOAD_HEADER]: 'history' } });
   if (headers[REGION_HEADER] === 'island') return json({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: url.pathname, version: 'v1' }, { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' });
@@ -96,7 +96,7 @@ describe('the dev hook (W7 step 9)', () => {
     const uninstall = installDevtoolsHook(globalThis as DevtoolsGlobal, ({ navigator }) => void attached.push(navigator));
     try {
       // A hydration error before any navigator started: it waits for the app's.
-      (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__!.recoverable!(new Error('mismatch'), 'users/Show', false);
+      (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__!.recoverable!(new Error('mismatch'), 'users/Show', false);
       const render = async () => {};
       const discarded = new Navigator({ initialPage: page('users/Show', '/users/1', {}), render });
       const app = new Navigator({ initialPage: page('users/Show', '/users/1', {}), render });
@@ -124,7 +124,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     expect(document.querySelector('#app')!.contains(bar.host)).toBe(false);
     expect(bar.root.querySelector('.pill')?.getAttribute('title')).toContain(SHORTCUT);
     expect(bar.open).toBe(false);
-    expect(text()).toContain('BespokeCore');
+    expect(text()).toContain('Marmeon');
     stop();
   });
 
@@ -144,7 +144,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     (bar.root.querySelector('tbody tr:nth-child(2) button.link') as HTMLButtonElement).click();
     await flush();
     expect(bar.tab).toBe('server');
-    expect(requests.some((request) => request.url.startsWith('/_bespoke/devtools/api/requests/req-'))).toBe(true);
+    expect(requests.some((request) => request.url.startsWith('/_marmeon/devtools/api/requests/req-'))).toBe(true);
     expect(text()).toContain('select * from "users" where "id" = ?');
     expect(text()).toContain('Jobs (1)');
     expect(text()).toContain('ShowUserController');
@@ -170,7 +170,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     expect(open).toHaveLength(2);
     open[1]!.click();
     await flush();
-    expect(requests.map((request) => request.url)).toContain('/_bespoke/devtools/api/source?controller=ShowUserController');
+    expect(requests.map((request) => request.url)).toContain('/_marmeon/devtools/api/source?controller=ShowUserController');
     expect(editors).toEqual(['?file=x']);
     expect(text()).toContain('opened modules/users/controllers/ShowUserController.ts');
     stop();
@@ -186,7 +186,7 @@ describe('the in-page bar on a plain-DOM adapter (W7 step 9, E117)', () => {
     await flush();
     expect(text()).toContain('ready');
     expect(text()).toContain('dashboard/Activity');
-    (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__!.recoverable!(new Error('Hydration failed because the server rendered text didn’t match the client.'), 'users/Show', false);
+    (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__!.recoverable!(new Error('Hydration failed because the server rendered text didn’t match the client.'), 'users/Show', false);
     bar.show('ssr');
     await flush();
     expect(text()).toContain('Mismatch in users/Show: Hydration failed');

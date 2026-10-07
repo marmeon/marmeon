@@ -1,4 +1,4 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
+import { SystemClock, type Clock } from '@marmeon/core';
 import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 interface Entry {

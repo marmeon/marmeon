@@ -64,7 +64,7 @@ export interface VisitEvents {
    */
   flash: (message: FlashMessage) => void;
   /**
-   * A new build is out (E64): a request was answered `409` with `x-bespoke-reload: version`. By default the page loads fully —
+   * A new build is out (E64): a request was answered `409` with `x-marmeon-reload: version`. By default the page loads fully —
    * after asking, when that would lose unsaved changes (a navigation guard). `event.preventDefault()` keeps the page as it is
    * ("a new version is available" instead); then the user's next visit loads fully, and `event.reload()` loads it now.
    * Signing in or out (the other 409) never fires it: that full load is never postponed.

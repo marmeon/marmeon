@@ -1,7 +1,7 @@
 /**
- * `pnpm image:smoke` — the app as an image (E158, E140, E141, E163): `create-bespoke-app app --docker` from the tarballs (as in
+ * `pnpm image:smoke` — the app as an image (E158, E140, E141, E163): `create-marmeon app --docker` from the tarballs (as in
  * `pack:smoke`: outside the monorepo, the framework from its tarballs inside the app's `vendor/` — the build context) — the
- * starter kit with the files of `bespoke make:docker` — is built with Docker; then the container's life:
+ * starter kit with the files of `marmeon make:docker` — is built with Docker; then the container's life:
  *
  *   compose.production.yaml valid · docker build → runs as a user other than root · no .env* in the image (.env and
  *   .env.production are in the context) · migrate --force · start → GET /up 200, /login 200
@@ -13,13 +13,13 @@
  * Then the docs' image (`scripts/docs-image.ts`, `pnpm docs:image` alone): `apps/docs/Dockerfile` built from this checkout, its
  * contents, the container read-only, and `deploy/docs/compose.yaml` behind Caddy over HTTP/2 (E142).
  *
- * Containers, the volume and the image are named `bespokecore-image-smoke-…` and removed afterwards (Docker's build cache
+ * Containers, the volume and the image are named `marmeon-image-smoke-…` and removed afterwards (Docker's build cache
  * stays — the next build reuses the dependency layers). Without Docker, or when the build cannot reach the registry, the run
  * ends with exit 75 — `pnpm run ci` shows it as skipped, never as green.
  *
  *   pnpm image:smoke          # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm image:smoke --keep   # leaves the app, the image and the volume (printed) — a red run keeps its app only with --keep
- *   pnpm image:smoke --npm    # create-bespoke-app --npm (package-lock.json) — make:docker writes the npm variant (without the docs)
+ *   pnpm image:smoke --npm    # create-marmeon --npm (package-lock.json) — make:docker writes the npm variant (without the docs)
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -107,7 +107,7 @@ function addStuckJob(app: string): void {
   );
   writeFileSync(
     join(app, 'modules/smoke/index.ts'),
-    "import { defineModule } from '@bespokecore/core';\nimport { StuckJob } from './jobs/StuckJob.ts';\n\nexport default defineModule({ name: 'smoke', jobs: [StuckJob] });\n",
+    "import { defineModule } from '@marmeon/core';\nimport { StuckJob } from './jobs/StuckJob.ts';\n\nexport default defineModule({ name: 'smoke', jobs: [StuckJob] });\n",
   );
   const file = join(app, 'bootstrap/app.ts');
   const source = readFileSync(file, 'utf8');
@@ -136,9 +136,9 @@ async function main(): Promise<number> {
     return SKIPPED;
   }
   const id = `${process.pid}-${Date.now().toString(36)}`;
-  const image = `bespokecore-image-smoke:${id}`;
-  const volume = `bespokecore-image-smoke-${id}`;
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-image-smoke-')));
+  const image = `marmeon-image-smoke:${id}`;
+  const volume = `marmeon-image-smoke-${id}`;
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-image-smoke-')));
   const app = join(work, 'app');
   const key = `base64:${crypto.getRandomValues(new Uint8Array(32)).toBase64()}`;
   // The app with its node_modules is kept only when asked — a red run says how to keep it (E187: red runs piled up in $TMPDIR).
@@ -161,15 +161,15 @@ async function main(): Promise<number> {
 
   try {
     assertIsolated(app);
-    await step(`create-bespoke-app app --docker${npm ? ' --npm' : ''} --no-git (the starter kit: install, make:auth, migrate, make:docker) + a stuck job`, () => {
+    await step(`create-marmeon app --docker${npm ? ' --npm' : ''} --no-git (the starter kit: install, make:auth, migrate, make:docker) + a stuck job`, () => {
       const tarballs = join(work, 'tarballs');
-      const bin = unpackScaffolder(new Map(packAll(root, tarballs).map((tarball) => [tarball.name, tarball])), join(work, 'create-bespoke-app'));
-      // The tarballs end up inside the app (vendor/bespokecore/): the Docker build sees only its context, and the Dockerfile copies them first.
+      const bin = unpackScaffolder(new Map(packAll(root, tarballs).map((tarball) => [tarball.name, tarball])), join(work, 'create-marmeon'));
+      // The tarballs end up inside the app (vendor/marmeon/): the Docker build sees only its context, and the Dockerfile copies them first.
       const output = scaffold(bin, work, ['app', '--yes', '--docker', '--no-git', ...(npm ? ['--npm'] : [])], {
         tarballs,
         env: npm ? { npm_config_prefer_offline: 'true' } : { pnpm_config_prefer_offline: 'true' },
       });
-      if (!output.includes('bespoke make:docker')) throw new SmokeError(`create-bespoke-app wrote no Docker files:\n${output}`);
+      if (!output.includes('marmeon make:docker')) throw new SmokeError(`create-marmeon wrote no Docker files:\n${output}`);
       // A .env in the context (the scaffolder wrote it) — the image must not get it; the server's configuration next to the compose
       // file — in the build context too, so the image must keep it out as well.
       writeFileSync(join(app, '.env.production'), `APP_KEY=${key}\nAPP_NAME=Smoke\nAPP_URL=https://smoke.example\n`);
@@ -194,7 +194,7 @@ async function main(): Promise<number> {
       const listed = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "console.log(require('fs').readdirSync('.').join('\\n'))"]).output.split('\n');
       const leaked = listed.filter((file) => file.startsWith('.env'));
       if (leaked.length > 0) throw new SmokeError(`the image contains ${leaked.join(', ')} — .dockerignore must keep every .env* out.`);
-      if (!listed.includes('dist') || !listed.includes('.bespoke')) throw new SmokeError(`the image has no build (dist/, .bespoke/): ${listed.join(' ')}`);
+      if (!listed.includes('dist') || !listed.includes('.marmeon')) throw new SmokeError(`the image has no build (dist/, .marmeon/): ${listed.join(' ')}`);
       // Production dependencies only (E159): the dev dependencies of the build stage are not in the image, not even unlinked.
       const store = docker.run(['run', '--rm', '--entrypoint', 'node', image, '-e', "const fs = require('fs'); console.log([...(fs.existsSync('node_modules/.pnpm') ? fs.readdirSync('node_modules/.pnpm') : []), ...fs.readdirSync('node_modules')].join('\\n'))"]).output.split('\n');
       // npm keeps the optional peers of production packages that a dev dependency brought (vite, typescript, @vitejs) — only what
@@ -202,10 +202,10 @@ async function main(): Promise<number> {
       const dev = store.filter((entry) => (npm ? /^(vitest|oxlint)(@|$|\+)/ : /^(vitest|vite|typescript|@vitejs|oxlint)(@|$|\+)/).test(entry));
       if (dev.length > 0) throw new SmokeError(`the image carries dev dependencies: ${dev.join(', ')}`);
     });
-    await step('bespoke migrate --force (into the storage volume)', () => docker.run(['run', '--rm', ...common, image, 'migrate', '--force']));
+    await step('marmeon migrate --force (into the storage volume)', () => docker.run(['run', '--rm', ...common, image, 'migrate', '--force']));
     await step('start → /up 200, /login 200, healthy; SIGTERM (SHUTDOWN_DELAY=1) → /up/ready 503, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-web`, ['-p', `127.0.0.1:${port}:3000`, '-e', 'SHUTDOWN_DELAY=1', '--health-interval=1s', '--health-start-period=1s', ...common, image]);
+      const name = docker.detached(`marmeon-image-smoke-${id}-web`, ['-p', `127.0.0.1:${port}:3000`, '-e', 'SHUTDOWN_DELAY=1', '--health-interval=1s', '--health-start-period=1s', ...common, image]);
       const base = `http://127.0.0.1:${port}`;
       await until('GET /up 200', async () => ((await status(`${base}/up`)) === 200 ? true : undefined), 30_000, logs(name));
       if ((await status(`${base}/login`)) !== 200) throw new SmokeError(`GET /login did not answer 200:\n${logs(name)()}`);
@@ -227,14 +227,14 @@ async function main(): Promise<number> {
     });
     await step('tini is PID 1 and reaps an orphaned process (no <defunct>)', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-orphans`, ['-p', `127.0.0.1:${port}:3000`, ...common, image]);
+      const name = docker.detached(`marmeon-image-smoke-${id}-orphans`, ['-p', `127.0.0.1:${port}:3000`, ...common, image]);
       await until('GET /up 200', async () => ((await status(`http://127.0.0.1:${port}/up`)) === 200 ? true : undefined), 30_000, logs(name));
       await assertReapsOrphans((args) => docker.run(args), name);
       docker.remove(name);
     });
     await step('read-only root file system → /up 200, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-readonly`, ['--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, ...common, image]);
+      const name = docker.detached(`marmeon-image-smoke-${id}-readonly`, ['--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, ...common, image]);
       await until('GET /up 200 (read-only)', async () => ((await status(`http://127.0.0.1:${port}/login`)) === 200 ? true : undefined), 30_000, logs(name));
       docker.run(['kill', '--signal', 'SIGTERM', name]);
       const code = docker.run(['wait', name]).output.trim();
@@ -245,8 +245,8 @@ async function main(): Promise<number> {
     });
     await step('start --workers=2 → /up 200; SIGTERM → both drain, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`bespokecore-image-smoke-${id}-cluster`, ['-p', `127.0.0.1:${port}:3000`, ...common, image, 'start', '--workers=2']);
-      await until('two workers listening', () => (logs(name)().split('BespokeCore in production').length - 1 >= 2 ? true : undefined), 30_000, logs(name));
+      const name = docker.detached(`marmeon-image-smoke-${id}-cluster`, ['-p', `127.0.0.1:${port}:3000`, ...common, image, 'start', '--workers=2']);
+      await until('two workers listening', () => (logs(name)().split('Marmeon in production').length - 1 >= 2 ? true : undefined), 30_000, logs(name));
       if ((await status(`http://127.0.0.1:${port}/up`)) !== 200) throw new SmokeError(`GET /up did not answer 200:\n${logs(name)()}`);
       docker.run(['kill', '--signal', 'SIGTERM', name]);
       const code = docker.run(['wait', name]).output.trim();
@@ -257,7 +257,7 @@ async function main(): Promise<number> {
     });
     await step('a worker with a stuck job → container exit 70', () => {
       docker.run(['run', '--rm', ...common, '--entrypoint', 'node', image, '-e', INSERT_STUCK_JOB]);
-      const name = `bespokecore-image-smoke-${id}-worker`;
+      const name = `marmeon-image-smoke-${id}-worker`;
       docker.containers.add(name);
       const { code, output } = docker.run(['run', '--name', name, ...common, image, 'queue:work', '--stop-timeout=1'], { expect: 'any' });
       if (code !== 70) throw new SmokeError(`the worker container ended with ${code}, expected 70 (a stuck job):\n${output}`);

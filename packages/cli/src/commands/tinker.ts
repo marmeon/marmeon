@@ -1,17 +1,17 @@
 import { join } from 'node:path';
-import { Application, environment } from '@bespokecore/core';
+import { Application, environment } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import type { TinkerSession } from '../tinker/session.ts';
 
-/** The REPL (`node:repl`, the TypeScript transform) and the session, loaded when tinker runs — never on `bespoke start` (E138). */
+/** The REPL (`node:repl`, the TypeScript transform) and the session, loaded when tinker runs — never on `marmeon start` (E138). */
 type Repl = typeof import('../tinker/repl.ts');
 
-/** Where the history of `bespoke tinker` is kept (plain text), relative to the app root. */
+/** Where the history of `marmeon tinker` is kept (plain text), relative to the app root. */
 export const TINKER_HISTORY = 'storage/framework/tinker_history';
 
 /**
- * `bespoke tinker` (E122): a REPL with the booted application — available in every environment (access to the shell is
+ * `marmeon tinker` (E122): a REPL with the booted application — available in every environment (access to the shell is
  * the gate), with a banner that says which environment and database it talks to.
  *
  * - `--sandbox`: the whole session in one transaction on the default connection (E107), rolled back at the end — also
@@ -93,7 +93,7 @@ export class TinkerCommand {
   #banner(session: TinkerSession, output: CommandInput['output'], history: string | undefined): void {
     const env = process.env.NODE_ENV ?? '(not set)';
     const database = session.database();
-    const parts = [style('bold', 'BespokeCore tinker'), session.appName(), `NODE_ENV=${env}`, ...(database ? [`db ${database}`] : []), '.ls lists helpers'];
+    const parts = [style('bold', 'Marmeon tinker'), session.appName(), `NODE_ENV=${env}`, ...(database ? [`db ${database}`] : []), '.ls lists helpers'];
     output.line(parts.join(' · '));
     if (session.sandbox) {
       output.line(style('cyan', 'Sandbox: every change to the default connection is rolled back when the session ends (mails, files and Redis are real).'));

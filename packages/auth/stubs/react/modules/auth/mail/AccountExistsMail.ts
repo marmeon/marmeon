@@ -1,5 +1,5 @@
-import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
+import type { Translator } from '@marmeon/i18n';
+import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
 import type { User } from '../users.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
@@ -21,7 +21,7 @@ export class AccountExistsMail implements Mailable {
     this.#t = t;
   }
 
-  /** The preview (`/_bespoke/mail/auth/AccountExistsMail`, development only). */
+  /** The preview (`/_marmeon/mail/auth/AccountExistsMail`, development only). */
   static preview(context: MailPreviewContext): AccountExistsMail {
     const { user, url, t } = previewData(context);
     return new AccountExistsMail(user, url('/login'), url('/forgot-password'), t);

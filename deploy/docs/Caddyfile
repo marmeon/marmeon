@@ -4,7 +4,7 @@
 # Trying it locally: DOCS_DOMAIN=localhost — Caddy then signs with its own local CA instead.
 {$DOCS_DOMAIN} {
 	# The docs' pages carry no secret — no session, no CSRF token, no cookie — so compressing them is safe (BREACH needs a secret
-	# in the page; an app's Caddyfile from `bespoke make:docker` has no `encode`). The assets come compressed already (.br/.gz).
+	# in the page; an app's Caddyfile from `marmeon make:docker` has no `encode`). The assets come compressed already (.br/.gz).
 	encode zstd gzip
 	# Browsers come back over HTTPS only, for a year (this host only, no subdomains).
 	header Strict-Transport-Security "max-age=31536000"

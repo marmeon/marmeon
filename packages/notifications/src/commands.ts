@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { Clock } from '@bespokecore/core';
-import type { CommandInput } from '@bespokecore/cli';
+import { Clock } from '@marmeon/core';
+import type { CommandInput } from 'marmeon';
 import { NotificationStore } from './store.ts';
 
 /** The migration `make:notifications-table` copies — a real file, so the tests run exactly what apps get. */
 export const NOTIFICATIONS_MIGRATION = new URL('../stubs/migrations/create_notifications_table.ts', import.meta.url);
 
-/** `bespoke make:notifications-table [--module=system]`: the migration of `notifications` into an app module (E96). */
+/** `marmeon make:notifications-table [--module=system]`: the migration of `notifications` into an app module (E96). */
 export class MakeNotificationsTableCommand {
   static command = 'make:notifications-table';
   static description = 'Create the migration for the database notification channel (notifications)';
@@ -14,7 +14,7 @@ export class MakeNotificationsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@bespokecore/database');
+    const { publishMigration } = await import('@marmeon/database');
     return publishMigration(input, { name: 'create_notifications_table', table: 'notifications', contents: readFileSync(NOTIFICATIONS_MIGRATION, 'utf8') });
   }
 }
@@ -22,7 +22,7 @@ export class MakeNotificationsTableCommand {
 const DAY = 86_400_000;
 
 /**
- * `bespoke notifications:prune [--days=30] [--unread-days=N]`: deletes notifications read more than `--days` ago — and,
+ * `marmeon notifications:prune [--days=30] [--unread-days=N]`: deletes notifications read more than `--days` ago — and,
  * with `--unread-days`, unread ones older than that (kept by default: unread is unread). One statement, the time from
  * the app's `Clock`. For the scheduler: `s.command('notifications:prune').daily().at('03:30').onOneServer()`.
  */

@@ -2,7 +2,7 @@
  * The framework's packages and their tarballs — shared by `pack:check`, `pack:smoke` and `license:sync`.
  *
  * Tarballs are always made with **pnpm** (`pnpm pack`): only pnpm applies `publishConfig.exports` (the exports without the
- * `@bespokecore/source` condition) and turns `workspace:*` into the exact version; `npm pack` would ship the source condition.
+ * `@marmeon/source` condition) and turns `workspace:*` into the exact version; `npm pack` would ship the source condition.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -16,7 +16,7 @@ export interface PackageManifest {
 }
 
 export interface FrameworkPackage {
-  /** `@bespokecore/<short>` */
+  /** `@marmeon/<short>` — or one of the two unscoped ones: the CLI `marmeon` (`packages/cli`) and `create-marmeon` (E195). */
   readonly name: string;
   /** The directory name under `packages/`. */
   readonly short: string;

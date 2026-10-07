@@ -1,5 +1,5 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
-import type { RedisConnection, RedisScript } from '@bespokecore/redis';
+import { SystemClock, type Clock } from '@marmeon/core';
+import type { RedisConnection, RedisScript } from '@marmeon/redis';
 import type { QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
 /**
@@ -30,7 +30,7 @@ end
 
 /**
  * The scripts, defined once per process with `defineRedisScript` (step 1: run by hash, loaded when Redis does not know
- * them). @bespokecore/redis is an optional peer of the queue — imported when the redis driver is first used.
+ * them). @marmeon/redis is an optional peer of the queue — imported when the redis driver is first used.
  */
 interface Scripts {
   readonly push: RedisScript;
@@ -42,7 +42,7 @@ interface Scripts {
 let scripts: Promise<Scripts> | undefined;
 
 function loadScripts(): Promise<Scripts> {
-  scripts ??= import('@bespokecore/redis').then(({ defineRedisScript }) => ({
+  scripts ??= import('@marmeon/redis').then(({ defineRedisScript }) => ({
     // KEYS: list, delayed, queue index. ARGV: queue name, member, available at (ms), now (ms).
     push: defineRedisScript(
       'queue.push',

@@ -3,14 +3,14 @@
  * through the page's URL (query state, E55: the server parses it again, strictly), select rows (a slot of the history entry, emptied
  * with it and with the document), run row and bulk actions (the actions feature, E59: an action request, then the table's prop
  * reloaded — a revalidation, so it **replaces** what the page had, W9 step 3) and download an export. Adapters render it: React's
- * `useTable` (`@bespokecore/react/table`), a plain-DOM one in this package's tests.
+ * `useTable` (`@marmeon/react/table`), a plain-DOM one in this package's tests.
  *
  * Everything it sends comes from the props: a sort is a column's alias (`column.name`), a filter's key is the one the props name
  * (`filter[role]`, with the table's prefix), an action goes to the URL the props carry — the browser never names a database column,
  * and asking for anything the props do not offer is a programming error (thrown before a request goes out).
  */
-import { pageQuery, queryState, queryUrl, selection, type ActionOutcome, type Confirm, type Navigator, type QueryState, type Selection, type SelectionKey } from '@bespokecore/http/client';
-import type { PageObject } from '@bespokecore/http/page';
+import { pageQuery, queryState, queryUrl, selection, type ActionOutcome, type Confirm, type Navigator, type QueryState, type Selection, type SelectionKey } from '@marmeon/http/client';
+import type { PageObject } from '@marmeon/http/page';
 import { sortValue, type SortDirection, type TableActionResult, type TableData } from './index.ts';
 
 /** Any table's props. */
@@ -52,9 +52,9 @@ export interface TableControllerOptions {
 
 /**
  * Thrown for anything the props do not offer — in production a code and the table's name (packages/http/README.md, "Error codes"):
- * call it as `refuse('[bespoke:C9]', name, process.env.NODE_ENV !== 'production' && …)`, so a production build drops the explanation (E80).
+ * call it as `refuse('[marmeon:C9]', name, process.env.NODE_ENV !== 'production' && …)`, so a production build drops the explanation (E80).
  */
-function refuse(code: `[bespoke:${string}]`, table: string, explanation: string | false): never {
+function refuse(code: `[marmeon:${string}]`, table: string, explanation: string | false): never {
   throw new Error(`${code} ${explanation || table}`);
 }
 
@@ -151,7 +151,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
     const found = data.columns.find((entry) => entry.name === column);
     if (!found?.sortable) {
       refuse(
-        '[bespoke:C9]',
+        '[marmeon:C9]',
         data.name,
         process.env.NODE_ENV !== 'production' &&
           `The table "${data.name}" does not sort by "${String(column)}" — it sorts by ${list(data.columns.filter((entry) => entry.sortable).map((entry) => entry.name))} (the columns' names in its props, never a database column).`,
@@ -188,9 +188,9 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   #checkFilter(name: FilterOf<T>, value: string | null) {
     const data = this.#data;
     const found = data.filters.find((entry) => entry.name === name);
-    if (!found) refuse('[bespoke:C10]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" has no filter "${String(name)}" — it has ${list(data.filters.map((entry) => entry.name))}.`);
+    if (!found) refuse('[marmeon:C10]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" has no filter "${String(name)}" — it has ${list(data.filters.map((entry) => entry.name))}.`);
     if (value !== null && value !== '' && found.type === 'select' && !found.options.includes(value)) {
-      refuse('[bespoke:C10]', data.name, process.env.NODE_ENV !== 'production' && `The filter "${found.name}" of the table "${data.name}" takes ${list(found.options)} — not "${value}".`);
+      refuse('[marmeon:C10]', data.name, process.env.NODE_ENV !== 'production' && `The filter "${found.name}" of the table "${data.name}" takes ${list(found.options)} — not "${value}".`);
     }
     return found;
   }
@@ -198,7 +198,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   /** Searches the searchable columns — after a pause in typing (`searchDebounce`), one history entry for all of it. */
   search(value: string): void {
     const data = this.#data;
-    if (!data.search) refuse('[bespoke:C10]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" cannot search — none of its visible columns is searchable.`);
+    if (!data.search) refuse('[marmeon:C10]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" cannot search — none of its visible columns is searchable.`);
     this.#set({ [data.query.search]: value === '' ? undefined : value, ...this.#firstPage() }, { debounce: this.#options.searchDebounce ?? 300, history: 'replace' });
   }
 
@@ -206,7 +206,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   goTo(page: number): void {
     const data = this.#data;
     if (data.page.type !== 'offset' || !Number.isInteger(page) || page < 1 || page > Math.max(data.page.lastPage, 1)) {
-      refuse('[bespoke:C11]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" has no page ${page}.`);
+      refuse('[marmeon:C11]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" has no page ${page}.`);
     }
     this.#set({ [data.query.page]: page });
   }
@@ -214,14 +214,14 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   /** The next page of a table paged by cursor. */
   next(): void {
     const data = this.#data;
-    if (data.page.type !== 'cursor' || data.page.nextCursor === null) refuse('[bespoke:C11]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" has no next page.`);
+    if (data.page.type !== 'cursor' || data.page.nextCursor === null) refuse('[marmeon:C11]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" has no next page.`);
     this.#set({ [data.query.cursor]: data.page.nextCursor });
   }
 
   /** Rows per page — one of `page.perPageOptions`. Back to the first page. */
   perPage(size: number): void {
     const data = this.#data;
-    if (!data.page.perPageOptions.includes(size)) refuse('[bespoke:C11]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" shows ${list(data.page.perPageOptions.map(String))} rows per page — not ${size}.`);
+    if (!data.page.perPageOptions.includes(size)) refuse('[marmeon:C11]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" shows ${list(data.page.perPageOptions.map(String))} rows per page — not ${size}.`);
     this.#set({ [data.query.perPage]: size, ...this.#firstPage() });
   }
 
@@ -301,7 +301,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   run(name: ActionOf<T>, row: RowOf<T>, options: TableRunOptions = {}): Promise<TableRunOutcome> {
     const data = this.#data;
     const entry = data.actions.find((action) => action.name === name);
-    if (!entry) refuse('[bespoke:C12]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" offers no row action "${String(name)}" to this user — it offers ${list(data.actions.map((action) => action.name))}.`);
+    if (!entry) refuse('[marmeon:C12]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" offers no row action "${String(name)}" to this user — it offers ${list(data.actions.map((action) => action.name))}.`);
     return this.#run(entry.url, { key: keyOf(data, row) }, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, 1)) : options.confirm, options.signal, false);
   }
 
@@ -312,7 +312,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   runBulk(name: BulkOf<T>, options: TableRunOptions = {}): Promise<TableRunOutcome> {
     const data = this.#data;
     const entry = data.bulk.find((action) => action.name === name);
-    if (!entry) refuse('[bespoke:C12]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" offers no bulk action "${String(name)}" to this user — it offers ${list(data.bulk.map((action) => action.name))}.`);
+    if (!entry) refuse('[marmeon:C12]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" offers no bulk action "${String(name)}" to this user — it offers ${list(data.bulk.map((action) => action.name))}.`);
     const selected = this.selection;
     const body = selected.matching ? { all: true, query: data.state } : { keys: selected.keys };
     return this.#run(entry.url, body, entry.confirm ? (options.confirm ?? this.confirmText(entry.name, this.selectedCount)) : options.confirm, options.signal, true);
@@ -348,7 +348,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
 /** The URL of export `name` of table `data` — with its sort, search and filters (the server's state: what the page shows). */
 export function exportUrl<T extends AnyTableData>(data: T, name: ExportOf<T>): string {
   const entry = data.exports.find((item) => item.name === name);
-  if (!entry) refuse('[bespoke:C12]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" offers no export "${String(name)}" to this user — it offers ${list(data.exports.map((item) => item.name))}.`);
+  if (!entry) refuse('[marmeon:C12]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" offers no export "${String(name)}" to this user — it offers ${list(data.exports.map((item) => item.name))}.`);
   return entry.url;
 }
 
@@ -358,7 +358,7 @@ export function exportUrl<T extends AnyTableData>(data: T, name: ExportOf<T>): s
  */
 export function sortUrl<T extends AnyTableData>(data: T, column: SortableOf<T>, page: Pick<PageObject, 'url' | 'query' | 'queryDefaults'>): string {
   const found = data.columns.find((entry) => entry.name === column && entry.sortable);
-  if (!found) refuse('[bespoke:C9]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" does not sort by "${String(column)}".`);
+  if (!found) refuse('[marmeon:C9]', data.name, process.env.NODE_ENV !== 'production' && `The table "${data.name}" does not sort by "${String(column)}".`);
   const first = data.page.type === 'offset' ? data.query.page : data.query.cursor;
   return urlOf(page, { [data.query.sort]: sortValue(found.name, found.sort === 'asc' ? 'desc' : 'asc'), [first]: undefined });
 }

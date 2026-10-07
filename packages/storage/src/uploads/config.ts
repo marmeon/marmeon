@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 const MINUTES = v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1));
@@ -9,7 +9,7 @@ export const UploadsConfig = defineConfig('uploads', {
     /** The private disk the files wait on until a form stores them (default `uploads`; never a public disk — a startup error). */
     UPLOADS_DISK: v.optional(v.string(), 'uploads'),
     /**
-     * The database connection of `temporary_uploads` (`bespoke make:uploads-table`). Infrastructure like the cache and sessions
+     * The database connection of `temporary_uploads` (`marmeon make:uploads-table`). Infrastructure like the cache and sessions
      * (E108): it never joins the app's transactions — on Postgres a small pool of its own; on SQLite name a connection with a
      * file of its own here (`system`), or a token cannot be used inside a transaction.
      */

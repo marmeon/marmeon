@@ -1,15 +1,15 @@
-import { Clock, createApplication, Logger, TestClock, type Application, type ModuleDefinition } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, Schema, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
-import { Mailer, MailFake, MailServiceProvider, type Mailable } from '@bespokecore/mail';
-import { Queue, QUEUE_MIGRATION, QueueFake, QueueServiceProvider } from '@bespokecore/queue';
+import { Clock, createApplication, Logger, TestClock, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, Schema, sql } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
+import { Mailer, MailFake, MailServiceProvider, type Mailable } from '@marmeon/mail';
+import { Queue, QUEUE_MIGRATION, QueueFake, QueueServiceProvider } from '@marmeon/queue';
 import * as v from 'valibot';
 import { NOTIFICATIONS_MIGRATION } from '../commands.ts';
 import { NotificationServiceProvider } from '../index.ts';
 import type { DatabaseInput, Notification, NotificationData, RecipientResolver } from '../notification.ts';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
-export const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+/** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
+export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 export type TestDriver = (typeof drivers)[number];
 
@@ -124,7 +124,7 @@ export interface TestApp extends Application {
 /** A fresh database per app: SQLite in memory, or a new Postgres database (dropped by `close()`). */
 async function freshDatabase(driver: TestDriver): Promise<{ env: Record<string, string>; drop: () => Promise<void> }> {
   if (driver === 'sqlite') return { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' }, drop: async () => {} };
-  const name = `bespoke_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);

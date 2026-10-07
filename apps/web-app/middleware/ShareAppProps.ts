@@ -1,10 +1,10 @@
-import { Auth } from '@bespokecore/auth';
-import { once, SharedData, type HttpContext, type Next } from '@bespokecore/http';
-import { Locales } from '@bespokecore/i18n';
-import { Inbox } from '@bespokecore/notifications';
-import { notificationsChannel } from '@bespokecore/live';
+import { Auth } from '@marmeon/auth';
+import { once, SharedData, type HttpContext, type Next } from '@marmeon/http';
+import { Locales } from '@marmeon/i18n';
+import { Inbox } from '@marmeon/notifications';
+import { notificationsChannel } from '@marmeon/live';
 
-declare module '@bespokecore/http/page' {
+declare module '@marmeon/http/page' {
   /**
    * Optional on purpose: shared by the `web` group's middleware — a path without a route (a 404) passes no group, so its error
    * page has none of them, and the layout around it renders without them (no session is started for a bot's scan either).

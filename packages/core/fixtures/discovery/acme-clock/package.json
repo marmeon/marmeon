@@ -3,5 +3,5 @@
   "version": "1.0.0",
   "type": "module",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "bespoke": { "providers": ["ClockServiceProvider"] }
+  "marmeon": { "providers": ["ClockServiceProvider"] }
 }

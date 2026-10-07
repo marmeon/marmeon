@@ -17,8 +17,8 @@ import {
   type VisitMethod,
   type VisitOptions,
   type VisitProgress,
-} from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, ParamsOf, RouteQueryOf, Routes } from '@bespokecore/http/page';
+} from '@marmeon/http/client';
+import type { BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, ParamsOf, RouteQueryOf, Routes } from '@marmeon/http/page';
 import {
   useCallback,
   useContext,

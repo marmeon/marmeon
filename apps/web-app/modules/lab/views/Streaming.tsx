@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head } from '@marmeon/react';
 import { Suspense, use } from 'react';
 import type { ShowStreamingLabController } from '../controllers/ShowLabPageController.ts';
 

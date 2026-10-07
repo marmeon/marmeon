@@ -1,12 +1,12 @@
-import { Factories } from '@bespokecore/database';
-import { Translators } from '@bespokecore/i18n';
-import type { MailPreviewContext } from '@bespokecore/mail';
+import { Factories } from '@marmeon/database';
+import { Translators } from '@marmeon/i18n';
+import type { MailPreviewContext } from '@marmeon/mail';
 import { AppConfig } from '../../../config/app.ts';
 import { UserFactory } from '../factories/UserFactory.ts';
 import type { User } from '../users.ts';
 
 /**
- * Sample data for the mail previews (`/_bespoke/mail`, development only, E106): a user from the factory — made, never
+ * Sample data for the mail previews (`/_marmeon/mail`, development only, E106): a user from the factory — made, never
  * stored —, the translator of the preview's `?locale=`, and links from APP_URL.
  */
 export function previewData({ make, locale }: MailPreviewContext) {

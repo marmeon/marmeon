@@ -1,5 +1,5 @@
-import type { IslandProps } from '@bespokecore/http';
-import { useTranslation } from '@bespokecore/react';
+import type { IslandProps } from '@marmeon/http';
+import { useTranslation } from '@marmeon/react';
 import type { ShowMyActivityController } from '../controllers/ShowMyActivityController.ts';
 
 /** Island "My activity" (`dashboard.activity`): loads when it scrolls into view, then polls. */

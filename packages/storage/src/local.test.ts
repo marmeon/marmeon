@@ -100,7 +100,7 @@ describe('the local disk keeps every access inside its root', () => {
     const writing = disk.put('doc.txt', body);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(await disk.text('doc.txt')).toBe('old'); // readers see the old file, not half the new one
-    expect(readdirSync(root).some((name) => name.startsWith('.bespoke-tmp-'))).toBe(true);
+    expect(readdirSync(root).some((name) => name.startsWith('.marmeon-tmp-'))).toBe(true);
     expect(await disk.list()).toEqual(['doc.txt']);
     release();
     await writing;

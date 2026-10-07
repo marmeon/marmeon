@@ -1,11 +1,11 @@
 /**
  * Type guarantees of flash messages (E60), state attributes, the navigation guard and confirm (E64) against this app's
- * `FlashData` and routes — checked by `tsc` (`pnpm typecheck`, `bespoke build`), never run. Each `@ts-expect-error` is a
+ * `FlashData` and routes — checked by `tsc` (`pnpm typecheck`, `marmeon build`), never run. Each `@ts-expect-error` is a
  * mistake an app developer makes; the comment above it is the message they get (read with the directive removed).
  */
-import { Controller, type HttpContext } from '@bespokecore/http';
-import { Link, useAction, useFlash, useForm, usePending } from '@bespokecore/react';
-import type { TestApp } from '@bespokecore/testing';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Link, useAction, useFlash, useForm, usePending } from '@marmeon/react';
+import type { TestApp } from '@marmeon/testing';
 import { expectTypeOf } from 'vitest';
 
 export class FlashingController extends Controller {
@@ -13,7 +13,7 @@ export class FlashingController extends Controller {
     // Typed by `interface FlashData` (middleware/ShareAppProps.ts).
     if (ctx.params.user === 'me') return this.redirect('/').flash('toast', { kind: 'success', message: 'Saved.' });
     // Argument of type '"tost"' is not assignable to parameter of type '"'tost' is not a flash key — the app declares toast
-    // (interface FlashData of @bespokecore/http/page)"'.
+    // (interface FlashData of @marmeon/http/page)"'.
     // @ts-expect-error
     if (ctx.params.user === 'a') return this.back().flash('tost', { kind: 'success', message: 'Saved.' });
     // Type '"ok"' is not assignable to type '"error" | "info" | "success"'.

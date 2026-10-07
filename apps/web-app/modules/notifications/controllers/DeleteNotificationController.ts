@@ -1,7 +1,7 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { abort, Controller, type HttpContext } from '@bespokecore/http';
-import { Broadcaster, notificationsChannel } from '@bespokecore/live';
-import { Inbox } from '@bespokecore/notifications';
+import type { Authenticated } from '@marmeon/auth';
+import { abort, Controller, type HttpContext } from '@marmeon/http';
+import { Broadcaster, notificationsChannel } from '@marmeon/live';
+import { Inbox } from '@marmeon/notifications';
 
 /** Deletes one of the user's notifications — an action (`useAction('notifications.destroy')`), optimistic in the list. */
 export class DeleteNotificationController extends Controller {

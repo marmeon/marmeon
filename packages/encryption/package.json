@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/encryption",
+  "name": "@marmeon/encryption",
   "version": "0.1.0",
-  "description": "Authenticated encryption with the application key (AES-256-GCM) and key rotation for BespokeCore apps.",
+  "description": "Authenticated encryption with the application key (AES-256-GCM) and key rotation for Marmeon apps.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "encryption",
     "aes-gcm",
     "app-key"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/encryption#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/encryption#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/encryption"
   },
   "engines": {
@@ -25,7 +25,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -54,13 +54,13 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "EncryptionServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "valibot": "^1.5.0"
   }
 }

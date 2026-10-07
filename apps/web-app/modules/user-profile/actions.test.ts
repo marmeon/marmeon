@@ -1,5 +1,5 @@
 import { UserFactory } from '#modules/auth';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
@@ -21,7 +21,7 @@ describe('profile links as actions (E59) — what useAction sends and gets back'
       .post(`/users/${ada.id}/links`, { json: { label: 'Blog', url: 'https://blog.example' } })
       .assertActionRedirect(`/users/${ada.id}`)
       .assertHeader('cache-control', 'no-store')
-      // With the answer (`x-bespoke-flash`): `useAction` fires it once — no reload of a `flash` prop needed (W5b.6 finding).
+      // With the answer (`x-marmeon-flash`): `useAction` fires it once — no reload of a `flash` prop needed (W5b.6 finding).
       .assertFlash('toast', { kind: 'success', message: 'Link added.' });
     await app.assertDatabaseHas('profile_links', { user_id: ada.id, label: 'Blog' });
     // The action's `reload: router.reloading({ only: ['profile'] })` — the new link, nothing else computed.

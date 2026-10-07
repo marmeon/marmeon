@@ -1,8 +1,8 @@
-import { createApplication, defineModule, Logger, runWithRequest, type Application, type LogContext } from '@bespokecore/core';
-import { channels, messageBase, publishEnded, type ExceptionMessage, type HttpRequestMessage, type SsrRenderMessage } from '@bespokecore/core/diagnostics';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, Controller, HttpServiceProvider, view } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { createApplication, defineModule, Logger, runWithRequest, type Application, type LogContext } from '@marmeon/core';
+import { channels, messageBase, publishEnded, type ExceptionMessage, type HttpRequestMessage, type SsrRenderMessage } from '@marmeon/core/diagnostics';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, Controller, HttpServiceProvider, view } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { DevDocument, withDevBody } from './dev-document.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -32,7 +32,7 @@ const routes = defineRoutes((Route) => {
   Route.get('/forbidden', () => abort(403, 'Only admins.'));
   Route.get('/home', () => view('Home', { greeting: 'hi' }));
   Route.get('/away', () => Response.redirect('http://localhost/users/7?token=secret-value', 302));
-  Route.get('/reload', () => new Response(null, { status: 409, headers: { 'x-bespoke-location': '/users/me', 'x-bespoke-reload': 'history' } }));
+  Route.get('/reload', () => new Response(null, { status: 409, headers: { 'x-marmeon-location': '/users/me', 'x-marmeon-reload': 'history' } }));
 });
 
 const lines: { message: string; context: LogContext }[] = [];
@@ -92,7 +92,7 @@ describe('the http.request channel (E118)', () => {
     const off = channels.subscribe(application, 'http.request', { end: (message) => void ended.push(message) });
     try {
       await kernel.request('/away');
-      await kernel.request('/reload', { headers: { 'x-bespoke': 'true' } });
+      await kernel.request('/reload', { headers: { 'x-marmeon': 'true' } });
       await kernel.request('/ping');
     } finally {
       off();
@@ -154,7 +154,7 @@ describe('the render.ssr channel (E118)', () => {
       fail = true;
       expect((await kernel.request('/home')).status).toBe(200);
       // A page object (a client-side visit) is not rendered on the server.
-      await kernel.request('/home', { headers: { 'x-bespoke': 'true' } });
+      await kernel.request('/home', { headers: { 'x-marmeon': 'true' } });
     } finally {
       off();
     }

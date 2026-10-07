@@ -1,5 +1,5 @@
-import { Controller, type HttpContext } from '@bespokecore/http';
-import type { Authenticated } from '@bespokecore/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import type { Authenticated } from '@marmeon/auth';
 
 /** Where verified() sends people whose address is not confirmed yet. */
 export class ShowVerifyEmailNoticeController extends Controller {

@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, token, type Clock } from '@bespokecore/core';
+import { SystemClock, token, type Clock } from '@marmeon/core';
 
 /**
  * A key-value store with expiry (Laravel's `Cache` repository). Values must survive `JSON.stringify`. `add`, `increment`
@@ -27,7 +27,7 @@ export interface Cache {
   /** Empties the cache. Locks stay — they belong to whoever holds them. */
   flush(): Promise<void>;
   /**
-   * Removes expired entries and expired locks (`bespoke cache:prune`, for the scheduler) — how many; undefined when the
+   * Removes expired entries and expired locks (`marmeon cache:prune`, for the scheduler) — how many; undefined when the
    * store expires them by itself (Redis).
    */
   prune(): Promise<number | undefined>;
@@ -82,7 +82,7 @@ export interface CacheStore {
   lockOwner(name: string): Promise<string | undefined>;
   /**
    * Removes expired entries and locks — which stay until read or overwritten otherwise — and returns how many. Stores
-   * whose entries expire on their own (Redis) have none (`bespoke cache:prune` says so).
+   * whose entries expire on their own (Redis) have none (`marmeon cache:prune` says so).
    */
   prune?(): Promise<number>;
 }

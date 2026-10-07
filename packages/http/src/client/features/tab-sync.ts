@@ -2,13 +2,13 @@
  * Tab sync (W8 step 8, E148, E149, E165 — closes E66) as a feature: the tabs of one browser tell each other when the session's
  * epoch changes (someone signed in or out, the session was regenerated, the language changed), and a tab that hears it lets go
  * of everything it keeps — the pages in memory, islands, pages fetched ahead, once props, remembered input — and loads again.
- * `createBespokeApp` attaches it by default (E149; `tabSync: false` leaves it out: the risk E66 is back).
+ * `createMarmeonApp` attaches it by default (E149; `tabSync: false` leaves it out: the risk E66 is back).
  *
  * - **The channel carries a hint, never data:** `{ v: 1, epoch }` on a `BroadcastChannel` — the epoch is opaque (an HMAC on the
  *   server); no props, no ids, no tokens. A message of any other shape is ignored. A tab posts its epoch when it starts and when
  *   an answer brings a new one (its own sign-in by the remember-me cookie, say); the sender never hears its own message.
  * - **The server decides:** a tab that hears another epoch — or becomes visible again (`visibilitychange`: a hidden or frozen tab
- *   missed the message), or comes back from the back/forward cache (`pageshow`) — asks `GET /_bespoke/session`. Only an epoch
+ *   missed the message), or comes back from the back/forward cache (`pageshow`) — asks `GET /_marmeon/session`. Only an epoch
  *   that differs from its own there changes anything: a stale tab's message makes no tab reload.
  * - **Then:** the document is left (every slot of every feature emptied, requests aborted — the core's `leave`, as for a 409) and
  *   loaded again: the server says what it shows now (the login page, the new language). With unsaved changes on screen (a
@@ -16,7 +16,7 @@
  *   whether to load it again — no, and the next answer of the server takes it over (then the entries of the old epoch go).
  * - **Back/Forward:** every history entry holds the epoch it was written under (its state's `epoch`, a field the history writer
  *   writes into every entry — a position, never data, E36); Back or Forward to an entry of another epoch loads it again.
- * - **Flash messages stay with their tab** (E165): every request names its document (`x-bespoke-document`), and the server
+ * - **Flash messages stay with their tab** (E165): every request names its document (`x-marmeon-document`), and the server
  *   binds a message to the document whose request flashed it — another tab's poll or visit never takes it.
  *
  * Its state is in a slot of the document (the channel, the epochs, the entries' keys): leaving the document empties it.

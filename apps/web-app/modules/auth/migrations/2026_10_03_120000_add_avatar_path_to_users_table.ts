@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 /** Where a user's avatar is on the public disk (`avatars/<random>.webp`) — set from the profile's edit layer, null without one. */
 export default defineMigration({

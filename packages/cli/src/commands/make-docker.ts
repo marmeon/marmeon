@@ -5,8 +5,8 @@ import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, 
 import { style } from '../output.ts';
 
 /**
- * `bespoke make:docker [--caddy|--nginx] [--systemd] [--force]` (E140, E141): the files to run the app in production — a
- * Dockerfile (multi-stage, `node:26-slim`, the app's package manager pinned, non-root, health check, `bespoke` as the process),
+ * `marmeon make:docker [--caddy|--nginx] [--systemd] [--force]` (E140, E141): the files to run the app in production — a
+ * Dockerfile (multi-stage, `node:26-slim`, the app's package manager pinned, non-root, health check, `marmeon` as the process),
  * `.dockerignore` (no `.env*`), `compose.production.yaml` (web, worker, scheduler — one role per container; tini is the image's PID 1), with
  * `--caddy`/`--nginx` a reverse proxy in front of it, with `--systemd` units for running without Docker. Yours to change.
  */
@@ -54,7 +54,7 @@ export class MakeDockerCommand {
     output.line(style('dim', `  docker compose -f compose.production.yaml up -d --build   # with .env.production on the server`));
     output.line();
     output.line(`Production configuration goes into ${style('bold', '.env.production')} (APP_KEY, APP_URL=https://…, DB_*, MAIL_MAILER=smtp) —`);
-    output.line('never into the image; storage/ is a volume. Proxies, Kubernetes, SHUTDOWN_DELAY: https://github.com/bespokecore/bespokecore/blob/main/docs/deployment.md');
+    output.line('never into the image; storage/ is a volume. Proxies, Kubernetes, SHUTDOWN_DELAY: https://github.com/marmeon/marmeon/blob/main/docs/deployment.md');
     return 0;
   }
 }
@@ -62,7 +62,7 @@ export class MakeDockerCommand {
 /** What the files depend on: name, package manager (by its lockfile), the pinned pnpm, local packages the install needs. */
 export function inspectApp(root: string): { docker: DockerApp; notes: string[] } | string {
   const file = join(root, 'package.json');
-  if (!existsSync(file)) return `No package.json in ${root} — run bespoke make:docker in the app's directory.`;
+  if (!existsSync(file)) return `No package.json in ${root} — run marmeon make:docker in the app's directory.`;
   const manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, any>;
   const notes: string[] = [];
   const declared = typeof manifest.packageManager === 'string' ? /^(pnpm|npm)@(\d+\.\d+\.\d+[^+]*)/.exec(manifest.packageManager) : null;
@@ -77,7 +77,7 @@ export function inspectApp(root: string): { docker: DockerApp; notes: string[] }
   let pnpmVersion = TESTED_PNPM;
   if (packageManager === 'pnpm') {
     if (declared?.[1] === 'pnpm') pnpmVersion = declared[2]!;
-    else notes.push(`package.json names no "packageManager": the Dockerfile pins pnpm@${TESTED_PNPM}, the version BespokeCore is tested with — set "packageManager": "pnpm@<version>" to choose (then run make:docker --force).`);
+    else notes.push(`package.json names no "packageManager": the Dockerfile pins pnpm@${TESTED_PNPM}, the version Marmeon is tested with — set "packageManager": "pnpm@<version>" to choose (then run make:docker --force).`);
   }
   const installFiles = (packageManager === 'pnpm' ? ['pnpm-workspace.yaml', '.npmrc'] : ['.npmrc']).filter((name) => existsSync(join(root, name)));
   const { dirs, outside } = localPackages(root, manifest, installFiles.includes('pnpm-workspace.yaml') ? readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8') : '');

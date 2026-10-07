@@ -73,7 +73,7 @@ describe('live validation in the core (E62)', () => {
     const { win, live } = setup();
     win.handler = () => invalid('email', { email: ['Taken.'], name: ['Not asked.'] });
     expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'invalid', fields: ['email'], errors: { email: ['Taken.'] } });
-    // A 422 that is not a live validation's (no x-bespoke-validated — a proxy, an old server): no errors shown.
+    // A 422 that is not a live validation's (no x-marmeon-validated — a proxy, an old server): no errors shown.
     win.handler = () => new Response(JSON.stringify({ errors: { email: ['?'] } }), { status: 422, headers: { 'content-type': 'application/json' } });
     expect((await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).kind).toBe('exception');
     win.handler = () => new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/me' } });

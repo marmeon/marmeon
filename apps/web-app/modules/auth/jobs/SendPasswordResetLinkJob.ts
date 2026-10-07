@@ -1,8 +1,8 @@
-import { AuthConfig, PasswordBroker } from '@bespokecore/auth';
-import { Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
-import type { JobPayload } from '@bespokecore/queue';
-import { Router } from '@bespokecore/router';
+import { AuthConfig, PasswordBroker } from '@marmeon/auth';
+import { Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
+import type { JobPayload } from '@marmeon/queue';
+import { Router } from '@marmeon/router';
 import * as v from 'valibot';
 import { AppConfig } from '../../../config/app.ts';
 import { ResetPasswordMail } from '../mail/ResetPasswordMail.ts';
@@ -10,7 +10,7 @@ import { ResetPasswordMail } from '../mail/ResetPasswordMail.ts';
 /**
  * The "forgot password" link, made outside the request: the request only queues this job — known address or not, the
  * answer is the same in content and in time. Here the token is created (for an account that exists) and the mail
- * composed in the account's language, with a link from APP_URL; the mail itself is queued once more (`bespoke.mail`) —
+ * composed in the account's language, with a link from APP_URL; the mail itself is queued once more (`marmeon.mail`) —
  * so an SMTP failure retries the mail with *this* token, and never asks the broker for a second one (it would refuse
  * within AUTH_RESET_THROTTLE, and the mail would be lost). The address is a personal datum: the payload is encrypted;
  * the token never is in plain text anywhere in the queue (E105).

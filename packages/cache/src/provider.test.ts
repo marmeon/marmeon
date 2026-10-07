@@ -1,11 +1,11 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { defineRoutes, HttpServiceProvider } from '@bespokecore/http';
-import { RedisServiceProvider } from '@bespokecore/redis';
-import { createHttpKernel } from '@bespokecore/server';
+import { createApplication, defineModule, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
+import { RedisServiceProvider } from '@marmeon/redis';
+import { createHttpKernel } from '@marmeon/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Cache, StoreCache } from './cache.ts';
 import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
@@ -46,14 +46,14 @@ describe('CACHE_DRIVER', () => {
     const cache = app.container.make(Cache);
     expect(cache).toBeInstanceOf(StoreCache);
     expect((await statuses(app, 10)).sort()).toEqual([200, 200, 200, 429, 429, 429, 429, 429, 429, 429]);
-    const { rows } = await import('@bespokecore/database').then(({ sql }) => sql<{ key: string; value: string }>`select key, value from cache`.execute(app.container.make(Connections).get()));
+    const { rows } = await import('@marmeon/database').then(({ sql }) => sql<{ key: string; value: string }>`select key, value from cache`.execute(app.container.make(Connections).get()));
     expect(rows).toEqual([{ key: 'limiter:login:60:everyone', value: '10' }]);
     await app.shutdown();
   });
 
   it('database: names what is missing at startup', async () => {
     await expect(boot({ CACHE_DRIVER: 'database' }, [])).rejects.toThrow(
-      'CACHE_DRIVER=database needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).',
+      'CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',
     );
     await expect(boot({ CACHE_DRIVER: 'database', CACHE_CONNECTION: 'reporting', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
       /Database connection "reporting" is not configured/,
@@ -62,15 +62,15 @@ describe('CACHE_DRIVER', () => {
 
   it('redis: names what is missing at startup', async () => {
     await expect(boot({ CACHE_DRIVER: 'redis' }, [])).rejects.toThrow(
-      'CACHE_DRIVER=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).',
+      'CACHE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
     );
   });
 
   it.runIf(REDIS_URL)('redis: the cache and the throttle run on Redis', async () => {
-    const prefix = `bespoke-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
     const app = await boot({ CACHE_DRIVER: 'redis', REDIS_URL: REDIS_URL!, REDIS_PREFIX: prefix }, [RedisServiceProvider]);
     expect((await statuses(app, 10)).sort()).toEqual([200, 200, 200, 429, 429, 429, 429, 429, 429, 429]);
-    const { RedisConnections } = await import('@bespokecore/redis');
+    const { RedisConnections } = await import('@marmeon/redis');
     const redis = app.container.make(RedisConnections).get();
     expect(await redis.command(['GET', `${prefix}cache:limiter:login:60:everyone`])).toBe('10');
     await redis.command(['DEL', `${prefix}cache:limiter:login:60:everyone`]);
@@ -109,7 +109,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', ()
           'The cache (CACHE_DRIVER=database — also rate limits and locks) cannot work inside the open transaction on the database connection "default" (E108): it is a SQLite file',
         );
         await expect(limiter.hit('login', 60)).rejects.toThrow(
-          "Give the cache its own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, CACHE_CONNECTION=system, and `bespoke migrate` (the migration of `bespoke make:cache-table` follows CACHE_CONNECTION) — or use Redis (CACHE_DRIVER=redis).",
+          "Give the cache its own SQLite file — a connection like defineConnection('system', …) for storage/system.sqlite, CACHE_CONNECTION=system, and `marmeon migrate` (the migration of `marmeon make:cache-table` follows CACHE_CONNECTION) — or use Redis (CACHE_DRIVER=redis).",
         );
         await expect(cache.lock('stats:7', 60).get()).rejects.toThrow(InfrastructureTransactionError);
         throw new Rollback();
@@ -121,7 +121,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', ()
   });
 
   it('SQLite with a file of its own (CACHE_CONNECTION): works inside a transaction, and a hit survives its rollback', async () => {
-    const directory = tempDir('bespoke-cache-system-');
+    const directory = tempDir('marmeon-cache-system-');
     const app = await boot(
       { CACHE_DRIVER: 'database', CACHE_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
       [DatabaseServiceProvider],
@@ -197,11 +197,11 @@ describe('CACHE_DRIVER=database never joins the app’s transactions (E108)', ()
 
 describe('make:cache-table', () => {
   function app(): string {
-    const root = tempDir('bespoke-cache-table-');
+    const root = tempDir('marmeon-cache-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(
       join(root, 'bootstrap/app.ts'),
-      "import { defineApplication } from '@bespokecore/core';\nimport auth from '#modules/auth';\n\nexport default defineApplication({ root: '', modules: [auth] });\n",
+      "import { defineApplication } from '@marmeon/core';\nimport auth from '#modules/auth';\n\nexport default defineApplication({ root: '', modules: [auth] });\n",
     );
     return root;
   }
@@ -227,7 +227,7 @@ describe('make:cache-table', () => {
       '✓ Created modules/system/index.ts',
       `✓ Created modules/system/migrations/${migration}`,
       '✓ Registered the module in bootstrap/app.ts',
-      'Then: bespoke migrate',
+      'Then: marmeon migrate',
     ]);
 
     const { input: again, lines: refused } = input(root, { module: 'billing' });

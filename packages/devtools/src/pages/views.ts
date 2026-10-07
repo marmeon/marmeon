@@ -1,4 +1,4 @@
-import { html, raw, type Html } from '@bespokecore/core';
+import { html, raw, type Html } from '@marmeon/core';
 import type { AnyEntry, Entry, EntryType } from '../entry.ts';
 import type { EntryQuery } from '../store.ts';
 import type { FailedJobView, QueueSnapshot, ScheduleSnapshot } from './infra.ts';
@@ -92,7 +92,7 @@ function entryTable(type: EntryType | undefined, entries: readonly AnyEntry[], o
   return html`<table>${tableHead(type)}<tbody${options.tail ? html` data-tail="${options.tail}"` : ''}>${rows}</tbody></table>`;
 }
 
-/** `/_bespoke/devtools/<type>`: the newest entries of a type, filtered, searchable, paged, live. */
+/** `/_marmeon/devtools/<type>`: the newest entries of a type, filtered, searchable, paged, live. */
 export function listPage(frame: Frame, type: EntryType, entries: readonly AnyEntry[], filters: ListFilters, limit: number, extra?: Html): string {
   const next = entries.length === limit ? entries.at(-1)?.id : undefined;
   const live = filters.before === undefined;
@@ -126,7 +126,7 @@ export interface OverviewData {
   readonly maxBytes?: number;
 }
 
-/** `/_bespoke/devtools`: what happened lately, and what needs a look. */
+/** `/_marmeon/devtools`: what happened lately, and what needs a look. */
 export function overviewPage(frame: Frame, data: OverviewData): string {
   const queueSummary = queueStats(data.queue);
   return layout(
@@ -150,7 +150,7 @@ function queueStats(queue: QueueSnapshot): Html {
   return html`<span class="stat"><b>${waiting}</b><a href="${BASE}/queue">jobs queued</a></span><span class="stat"><b>${queue.failedTotal}</b><a href="${BASE}/queue#failed">failed jobs</a></span>`;
 }
 
-/** `/_bespoke/devtools/queue`: the queues now, the failed jobs, and the latest attempts (E113). */
+/** `/_marmeon/devtools/queue`: the queues now, the failed jobs, and the latest attempts (E113). */
 export function queuePage(frame: Frame, queue: QueueSnapshot, attempts: readonly AnyEntry[]): string {
   let body: Html;
   if (!queue.available) {
@@ -166,12 +166,12 @@ ${
         (q) => html`<tr><td class="mono">${q.name}</td><td class="num">${q.size}</td><td class="num">${q.ready ?? ''}</td><td class="num">${q.delayed ?? ''}</td><td class="num">${q.reserved ?? ''}</td></tr>`,
       )}</tbody></table>`
 }
-${command(`bespoke queue:size --connection=${connection.connection}`)}
+${command(`marmeon queue:size --connection=${connection.connection}`)}
 </section>`,
 )}
 <section id="failed"><h2>Failed jobs (${queue.failedTotal})</h2>
 ${queue.failedError ? html`<p class="muted">Could not read them: ${queue.failedError}</p>` : queue.failed.length === 0 ? html`<p class="empty">No failed jobs.</p>` : queue.failed.map(failedJob)}
-${queue.failedTotal > 0 ? html`<h3>All of them</h3>${command('bespoke queue:retry all')}${command('bespoke queue:flush')}` : ''}
+${queue.failedTotal > 0 ? html`<h3>All of them</h3>${command('marmeon queue:retry all')}${command('marmeon queue:flush')}` : ''}
 </section>`;
   }
   return layout(
@@ -195,7 +195,7 @@ ${keyValues([
 </details>`;
 }
 
-/** `/_bespoke/devtools/schedule`: the tasks with their next run, the lock warning (E123), and the latest runs. */
+/** `/_marmeon/devtools/schedule`: the tasks with their next run, the lock warning (E123), and the latest runs. */
 export function schedulePage(frame: Frame, schedule: ScheduleSnapshot, entries: readonly AnyEntry[], filters: ListFilters, limit: number): string {
   const tasks = !schedule.available
     ? html`<div class="callout info"><p>${schedule.reason}</p></div>`
@@ -206,7 +206,7 @@ export function schedulePage(frame: Frame, schedule: ScheduleSnapshot, entries: 
           : html`<table><thead><tr><th>Task</th><th>Schedule</th><th>Next run</th><th class="hide-sm">Does</th><th>Options</th><th>Run it now</th></tr></thead><tbody>${schedule.tasks.map(
               (task) =>
                 html`<tr><td class="mono"><a href="${href('/schedule', { tag: `task:${task.name}` })}">${task.name}</a></td><td class="mono">${task.expression} <span class="muted">(${task.timeZone})</span></td><td>${task.next === undefined ? '—' : minute(task.next)}</td><td class="mono hide-sm">${task.summary}</td><td>${task.options.map((option) => badge(option))}</td><td>${command(task.test)}</td></tr>`,
-            )}</tbody></table>${command('bespoke schedule:list')}`
+            )}</tbody></table>${command('marmeon schedule:list')}`
       }</section>`;
   return listPage(frame, 'schedule', entries, filters, limit, tasks);
 }
@@ -234,7 +234,7 @@ ${section('Recorded', json(entry.content))}`,
   );
 }
 
-/** `/_bespoke/devtools/batches/:batch`: everything one request, job attempt, run or command recorded, in order. */
+/** `/_marmeon/devtools/batches/:batch`: everything one request, job attempt, run or command recorded, in order. */
 export function batchPage(frame: Frame, batch: string, entries: readonly AnyEntry[]): string {
   return layout(
     { ...frame, title: `Batch ${batch}` },
@@ -385,7 +385,7 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
           ['All its entries', entry.jobId ? html`<a href="${href('/jobs', { jobId: entry.jobId })}">dispatch and attempts</a>` : undefined],
         ]),
       )}${entry.content.error ? section('Error', html`<p><b>${entry.content.error.class}</b>: ${entry.content.error.message}</p>${entry.content.error.stack ? html`<pre class="block">${entry.content.error.stack}</pre>` : ''}`) : ''}${section('Payload', json(entry.content.payload))}${
-        entry.content.status === 'failed' && entry.jobId ? section('Retry it', html`<p class="muted">After its last attempt it is in the failed jobs:</p>${command(`bespoke queue:retry ${entry.jobId}`)}`) : ''
+        entry.content.status === 'failed' && entry.jobId ? section('Retry it', html`<p class="muted">After its last attempt it is in the failed jobs:</p>${command(`marmeon queue:retry ${entry.jobId}`)}`) : ''
       }`;
     case 'mail':
       return html`${section(
@@ -432,14 +432,14 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
           ['Skipped', entry.content.skipped],
           ['Duration', duration(entry.content.durationMs)],
           ['Error', entry.content.error ? `${entry.content.error.class}: ${entry.content.error.message}` : undefined],
-          ['Run it now', command(`bespoke schedule:test ${entry.content.task}`)],
+          ['Run it now', command(`marmeon schedule:test ${entry.content.task}`)],
         ]),
       );
     case 'command':
       return section(
         'Command',
         keyValues([
-          ['Command line', html`<code>bespoke ${entry.content.command} ${entry.content.args.join(' ')}</code>`],
+          ['Command line', html`<code>marmeon ${entry.content.command} ${entry.content.args.join(' ')}</code>`],
           ['Exit code', entry.content.exitCode],
           ['Duration', duration(entry.content.durationMs)],
           ['Error', entry.content.error ? `${entry.content.error.class}: ${entry.content.error.message}` : undefined],

@@ -1,6 +1,6 @@
 /**
- * The framework's own texts (namespace `bespoke`) — status pages, framework errors, the rules of
- * @bespokecore/auth. Each package keeps the English text inline as well, for apps without this package.
+ * The framework's own texts (namespace `marmeon`) — status pages, framework errors, the rules of
+ * @marmeon/auth. Each package keeps the English text inline as well, for apps without this package.
  */
 const en = {
   status: {
@@ -46,8 +46,8 @@ const en = {
 
 export default en;
 
-declare module '@bespokecore/i18n/messages' {
+declare module '@marmeon/i18n/messages' {
   interface Translations {
-    bespoke: typeof en;
+    marmeon: typeof en;
   }
 }

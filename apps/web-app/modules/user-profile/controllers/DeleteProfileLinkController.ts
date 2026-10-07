@@ -1,8 +1,8 @@
-import { can } from '@bespokecore/auth';
-import type { Row } from '@bespokecore/database';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { Broadcaster } from '@bespokecore/live';
-import { Translator } from '@bespokecore/i18n';
+import { can } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Broadcaster } from '@marmeon/live';
+import { Translator } from '@marmeon/i18n';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 import { profileChannel } from '../live.ts';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
@@ -28,7 +28,7 @@ export class DeleteProfileLinkController extends Controller {
 
   async handle(ctx: ContextOf<typeof DeleteProfileLinkRequest> & { params: { user: { id: number }; link: Row<'profile_links'> } }) {
     await this.#links.delete(ctx.params.link.id);
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     // Confirmed in its layer: it closes, and what is beneath (the profile, or the edit layer) loses the link.
     return this.closeLayer({ reload: ['profile'] })

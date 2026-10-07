@@ -7,7 +7,7 @@ import { FileStore } from './file-store.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function directory(): string {
-  const root = tempDir('bespoke-devtools-store-');
+  const root = tempDir('marmeon-devtools-store-');
   return join(root, 'storage', 'framework', 'devtools');
 }
 

@@ -1,23 +1,23 @@
 {
-  "name": "@bespokecore/http",
+  "name": "@marmeon/http",
   "version": "0.1.0",
-  "description": "HTTP for BespokeCore apps: controllers, views and page props, redirects, signed URLs, encrypted cookies and the UI-free client core.",
+  "description": "HTTP for Marmeon apps: controllers, views and page props, redirects, signed URLs, encrypted cookies and the UI-free client core.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "http",
     "controllers",
     "spa",
     "ssr",
     "client"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/http#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/http#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/http"
   },
   "engines": {
@@ -27,17 +27,17 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./page": {
-      "@bespokecore/source": "./src/page.ts",
+      "@marmeon/source": "./src/page.ts",
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"
     },
     "./client": {
-      "@bespokecore/source": "./src/client/index.ts",
+      "@marmeon/source": "./src/client/index.ts",
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     }
@@ -76,15 +76,15 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/router": "workspace:*"
+    "@marmeon/core": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/router": "workspace:*"
   },
   "devDependencies": {
     "happy-dom": "^20.14.5",
     "vite": "^8.3.1"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "HttpServiceProvider"
     ],

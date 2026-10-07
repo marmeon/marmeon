@@ -1,8 +1,8 @@
 import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
-import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, type Container, type QueuedListenerClass } from '@bespokecore/core';
-import { channels, messageBase, trace, type QueueDispatchMessage } from '@bespokecore/core/diagnostics';
-import type { Kysely } from '@bespokecore/database';
+import { afterCommit, afterRollback, Application, Clock, inTransaction, Logger, type Container, type QueuedListenerClass } from '@marmeon/core';
+import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
+import type { Kysely } from '@marmeon/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
@@ -43,7 +43,7 @@ const FAKE_CONNECTION = 'fake';
 const dispatches = channels.tracing('queue.dispatch');
 
 /**
- * Records jobs instead of queuing them — `@bespokecore/testing` puts it in place of the `Queue` (`app.queue`, E101), like
+ * Records jobs instead of queuing them — `@marmeon/testing` puts it in place of the `Queue` (`app.queue`, E101), like
  * `MailFake`. Payloads are still checked against the job's schema (a bad dispatch fails the test), and the jobs wait in
  * memory: `app.queue.work()` runs them for real in the test — through the container (injection, a scope per attempt),
  * with retries, backoff (move the time with `app.travel`), failed jobs, chains, middleware and job events.

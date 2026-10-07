@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/cli",
+  "name": "marmeon",
   "version": "0.1.0",
-  "description": "The bespoke command: dev, build, start, generators, tinker and the commands of the app and its packages.",
+  "description": "The marmeon command: dev, build, start, generators, tinker and the commands of the app and its packages.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "cli",
     "generators",
     "scaffolding"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/cli#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/cli"
   },
   "engines": {
@@ -23,16 +23,16 @@
   },
   "type": "module",
   "bin": {
-    "bespoke": "./bin/bespoke.js"
+    "marmeon": "./bin/marmeon.js"
   },
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./main": {
-      "@bespokecore/source": "./src/main.ts",
+      "@marmeon/source": "./src/main.ts",
       "types": "./dist/main.d.ts",
       "default": "./dist/main.js"
     }
@@ -66,16 +66,16 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "CliServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "@marmeon/core": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/server": "workspace:*"
   }
 }

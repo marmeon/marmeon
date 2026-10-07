@@ -1,15 +1,15 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { PAGE_HEADER, type PageObject } from '@bespokecore/http/page';
+import { PAGE_HEADER, type PageObject } from '@marmeon/http/page';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, progressIndicator, useRouter } from './app.tsx';
+import { MarmeonApp, progressIndicator, useRouter } from './app.tsx';
 import { progressBar, type ProgressIndicator } from './index.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,10 +45,10 @@ afterEach(async () => {
 async function mount(progress?: ProgressIndicator) {
   root = createRoot(container);
   const Component = await resolve('app/A');
-  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={page('A', '/a')} initialComponent={Component} resolve={resolve} {...(progress ? { progress } : {})} />));
+  await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={page('A', '/a')} initialComponent={Component} resolve={resolve} {...(progress ? { progress } : {})} />));
 }
 const wait = (ms: number) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
-const bar = () => document.querySelector('[data-bespoke-progress]');
+const bar = () => document.querySelector('[data-marmeon-progress]');
 
 describe('the progress bar is opt-in (E82)', () => {
   it('progressBar() shows the core’s bar while a slow visit is under way', async () => {
@@ -88,11 +88,11 @@ describe('the progress bar is opt-in (E82)', () => {
 
   it('what progress took before E82 says what to import instead', () => {
     // @ts-expect-error — progress takes an indicator: progressBar({ delay: 250 })
-    const before: Parameters<typeof BespokeApp>[0]['progress'] = { delay: 250 };
-    expect(() => progressIndicator(before)).toThrow("[bespoke:R16] progress takes an indicator since E82: createBespokeApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@bespokecore/react'.");
+    const before: Parameters<typeof MarmeonApp>[0]['progress'] = { delay: 250 };
+    expect(() => progressIndicator(before)).toThrow("[marmeon:R16] progress takes an indicator since E82: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'.");
     // @ts-expect-error — `false` is gone too: leave progress out for none
-    const off: Parameters<typeof BespokeApp>[0]['progress'] = false;
-    expect(() => progressIndicator(off)).toThrow('[bespoke:R16]');
+    const off: Parameters<typeof MarmeonApp>[0]['progress'] = false;
+    expect(() => progressIndicator(off)).toThrow('[marmeon:R16]');
     expect(progressIndicator(undefined)).toBeUndefined();
   });
 });

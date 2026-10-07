@@ -12,7 +12,7 @@ export interface ServerModule {
 /**
  * The app's server modules by convention — what client code must never import as a value (E121). A module's
  * views, layouts and language files are client code; what runs a request, a job or the boot is server code. Patterns are
- * globs relative to the app root. `bespoke({ serverModules })` adds patterns and, with a leading `!`, takes some out.
+ * globs relative to the app root. `marmeon({ serverModules })` adds patterns and, with a leading `!`, takes some out.
  */
 export const SERVER_MODULES: readonly ServerModule[] = [
   { pattern: 'modules/*/controllers/**', what: 'a controller' },
@@ -45,7 +45,7 @@ const CLIENT_LAYOUTS = ['layouts/**', 'modules/*/layouts/**'];
 const TEST_FILE = /\.(?:type-)?test\.[cm]?[jt]sx?$/;
 
 export interface ServerImportsOptions {
-  /** The page globs (`bespoke({ pages })`) — client code. */
+  /** The page globs (`marmeon({ pages })`) — client code. */
   readonly pages: readonly string[];
   /** The client entry, relative to the app root — client code. */
   readonly client: string;
@@ -80,14 +80,14 @@ interface State {
 }
 
 /**
- * `bespokecore:server-imports` — client code never imports a server module as a value (E121): a value import bundles the
+ * `marmeon:server-imports` — client code never imports a server module as a value (E121): a value import bundles the
  * module, and everything it imports, into the browser. A controller class is a value even where only its type is used,
  * so `import { ShowLoginController }` in a view ships the controller; `import type` does not (it is erased).
  *
  * - **client environment** (the dev server's browser modules, the client build): every module of the app is client code.
  *   A value import of a server module ({@link SERVER_MODULES}) is a transform error — Vite's overlay in dev, a failed
  *   build — with file, line and column, and the chain from the page when the import is indirect (view → helper → controller).
- * - **server environments** (SSR in dev and in tests, Vitest with `bespoke({ test: true })`): pages, layouts and the client
+ * - **server environments** (SSR in dev and in tests, Vitest with `marmeon({ test: true })`): pages, layouts and the client
  *   entry are client code, and so is what they import as values; server code itself may import anything.
  * - **SSR build:** nothing to do — it may bundle server modules, and the client build has checked the client code.
  *
@@ -125,7 +125,7 @@ export function serverImports(options: ServerImportsOptions): Plugin {
     /^[./#]/.test(specifier) || aliases.some(({ find }) => (typeof find === 'string' ? specifier === find || specifier.startsWith(`${find}/`) : find.test(specifier)));
 
   return {
-    name: 'bespokecore:server-imports',
+    name: 'marmeon:server-imports',
     enforce: 'pre',
     configResolved(config) {
       command = config.command;
@@ -205,7 +205,7 @@ export function serverImports(options: ServerImportsOptions): Plugin {
         const at = own(file)!;
         const chain = isClientRoot(at) ? [] : chainOf(file, state.parents, own);
         const via = chain.length > 1 ? ` (${at} is client code: ${chain.join(' → ')})` : '';
-        return `[bespoke] ${at}:${edge.line}:${edge.column} — imports ${own(edge.target)} as a value${via}: ${what} is server code, and a value import bundles it — with everything it imports — into the browser. ${edge.hint}`;
+        return `[marmeon] ${at}:${edge.line}:${edge.column} — imports ${own(edge.target)} as a value${via}: ${what} is server code, and a value import bundles it — with everything it imports — into the browser. ${edge.hint}`;
       });
       this.error(lines.join('\n'));
     },

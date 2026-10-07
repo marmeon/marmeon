@@ -161,7 +161,7 @@ describe('events', () => {
     const start = createApplication({ root: tmpdir(), discover: false, env: {}, listeners: [listen(OrderShipped, SendShippingMail)] });
     await expect(start).rejects.toThrow(ConfigError);
     await expect(createApplication({ root: tmpdir(), discover: false, env: {}, listeners: [listen(OrderShipped, SendShippingMail)] })).rejects.toThrow(
-      'SendShippingMail is a queued listener (static queue), but this app has no queue — install and register @bespokecore/queue',
+      'SendShippingMail is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue',
     );
   });
 

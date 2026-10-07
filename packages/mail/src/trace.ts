@@ -1,5 +1,5 @@
-import type { Application } from '@bespokecore/core';
-import { channels, messageBase, trace, type MailSendMessage } from '@bespokecore/core/diagnostics';
+import type { Application } from '@marmeon/core';
+import { channels, messageBase, trace, type MailSendMessage } from '@marmeon/core/diagnostics';
 import type { MailMessage } from './message.ts';
 
 const sends = channels.tracing('mail.send');

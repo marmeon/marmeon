@@ -1,7 +1,7 @@
-import type { ConfirmAnswer, ConfirmRequest } from '@bespokecore/http/client';
+import type { ConfirmAnswer, ConfirmRequest } from '@marmeon/http/client';
 import { useId, useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 
-export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from '@bespokecore/http/client';
+export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from '@marmeon/http/client';
 
 /** What the app's confirmation dialog gets (E64): the question, and how to answer it. */
 export interface ConfirmProps {
@@ -14,7 +14,7 @@ export interface ConfirmProps {
 }
 
 /**
- * The dialog that asks the user — `createBespokeApp({ confirm: ConfirmDialog })`, or one of the app's own. Without one, the
+ * The dialog that asks the user — `createMarmeonApp({ confirm: ConfirmDialog })`, or one of the app's own. Without one, the
  * browser's `confirm()`/`prompt()` asks.
  */
 export type ConfirmComponent = ComponentType<ConfirmProps>;
@@ -41,7 +41,7 @@ const LOOK: CSSProperties = { padding: '1.25rem 1.5rem', border: 'none', borderR
  * The default confirmation dialog (E64): a native `<dialog>` opened modally, `role="alertdialog"`, named by its title and
  * described by its message. Focus starts on the safe choice — no (`Cancel`, `Stay`) — or in the field of a type-to-confirm
  * question, whose yes stays disabled until the text matches; Escape is no; focus returns to what had it. Unstyled but for a
- * few inline properties (`data-bespoke-confirm`, `data-kind`, `data-destructive` to style it). Wrap it for the app's labels:
+ * few inline properties (`data-marmeon-confirm`, `data-kind`, `data-destructive` to style it). Wrap it for the app's labels:
  * `confirm: (props) => <ConfirmDialog {...props} cancelLabel={t('cancel')} />`.
  */
 export function ConfirmDialog({
@@ -86,7 +86,7 @@ export function ConfirmDialog({
       role="alertdialog"
       aria-labelledby={`${id}-title`}
       aria-describedby={request.title !== undefined ? `${id}-message` : undefined}
-      data-bespoke-confirm=""
+      data-marmeon-confirm=""
       data-kind={request.kind}
       data-destructive={request.destructive ? '' : undefined}
       className={className}

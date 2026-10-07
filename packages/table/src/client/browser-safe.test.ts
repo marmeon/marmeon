@@ -12,20 +12,20 @@ const packages = fileURLToPath(new URL('../../../', import.meta.url));
 const ALLOWED = ['http/src/page.ts', 'http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
 const CLIENT_CORE = 'http/src/client/';
 
-describe('@bespokecore/table/client is browser-safe', () => {
+describe('@marmeon/table/client is browser-safe', () => {
   it('bundles nothing but itself, the page contract and the client core — no server code, no Node built-ins, no dependency', async () => {
     const externals = new Set<string>();
     const output = (await build({
       configFile: false,
       logLevel: 'silent',
-      resolve: { conditions: ['@bespokecore/source', 'browser', 'module', 'import', 'default'] },
+      resolve: { conditions: ['@marmeon/source', 'browser', 'module', 'import', 'default'] },
       build: {
         write: false,
         minify: false,
         lib: { entry: fileURLToPath(new URL('./index.ts', import.meta.url)), formats: ['es'], fileName: 'entry' },
         rolldownOptions: {
           external: (id, importer) => {
-            const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@bespokecore/');
+            const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@marmeon/');
             if (bare || id.startsWith('node:')) {
               externals.add(id);
               return true;

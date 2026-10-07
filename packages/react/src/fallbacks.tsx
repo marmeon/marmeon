@@ -1,11 +1,11 @@
-import { isDevelopment, type VisitException } from '@bespokecore/http/client';
-import { ERROR_PAGE, type ErrorPageProps } from '@bespokecore/http/page';
+import { isDevelopment, type VisitException } from '@marmeon/http/client';
+import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/page';
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ErrorPage } from './error-page.tsx';
 import type { PageComponent, ResolvePage } from './pages.ts';
 
 /** The digest of errors in a Suspense boundary on the server — how the browser tells them from a hydration mismatch. */
-export const SSR_ERROR_DIGEST = 'bespoke:ssr';
+export const SSR_ERROR_DIGEST = 'marmeon:ssr';
 
 /** What the error page shows for an error thrown while rendering — the details only in development. */
 export function renderErrorProps(error: unknown): ErrorPageProps {
@@ -102,7 +102,7 @@ export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitEx
   if (!failure) return null;
   if (failure.type === 'network') {
     return (
-      <div role="alert" data-bespoke-failure="network" style={noticeStyle}>
+      <div role="alert" data-marmeon-failure="network" style={noticeStyle}>
         The server could not be reached. Check your connection and try again.{' '}
         <button type="button" onClick={onDismiss} style={buttonStyle}>
           Dismiss
@@ -112,7 +112,7 @@ export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitEx
   }
   const { page, html, status } = failure;
   return (
-    <dialog ref={dialog} data-bespoke-failure="server" aria-label={`Server error ${status}`} onClose={onDismiss} style={dialogStyle}>
+    <dialog ref={dialog} data-marmeon-failure="server" aria-label={`Server error ${status}`} onClose={onDismiss} style={dialogStyle}>
       <form method="dialog" style={{ textAlign: 'right', margin: 0 }}>
         <button type="submit" aria-label="Close" style={buttonStyle}>
           Close
@@ -138,8 +138,8 @@ const noticeStyle = {
   padding: '12px 16px',
   borderRadius: 8,
   font: '14px/1.4 system-ui, sans-serif',
-  background: 'var(--bespoke-failure-background, #1f2937)',
-  color: 'var(--bespoke-failure-color, #f9fafb)',
+  background: 'var(--marmeon-failure-background, #1f2937)',
+  color: 'var(--marmeon-failure-color, #f9fafb)',
   boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
 } as const;
 
@@ -149,8 +149,8 @@ const dialogStyle = {
   padding: 16,
   border: 0,
   borderRadius: 8,
-  background: 'var(--bespoke-failure-dialog-background, Canvas)',
-  color: 'var(--bespoke-failure-dialog-color, CanvasText)',
+  background: 'var(--marmeon-failure-dialog-background, Canvas)',
+  color: 'var(--marmeon-failure-dialog-color, CanvasText)',
 } as const;
 
 const buttonStyle = { font: 'inherit', cursor: 'pointer' } as const;

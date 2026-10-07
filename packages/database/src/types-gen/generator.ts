@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { Application, Logger } from '@bespokecore/core';
+import { Application, Logger } from '@marmeon/core';
 import { sql } from 'kysely';
 import { Connections } from '../connections.ts';
 import { Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from '../migrations/migrator.ts';
 import { renderTypes, type Rendered, type SchemaSnapshot } from './render.ts';
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
     /**
      * Own tables other modules may read and join (never write) — E20:
@@ -92,7 +92,7 @@ export class TypeGenerator {
       }
     }
     const url = new URL(options.url);
-    const name = `${url.pathname.slice(1) || 'bespoke'}_types_${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
+    const name = `${url.pathname.slice(1) || 'marmeon'}_types_${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
     const admin = this.#connections.get();
     await sql`create database ${sql.id(name)}`.execute(admin);
     url.pathname = `/${name}`;

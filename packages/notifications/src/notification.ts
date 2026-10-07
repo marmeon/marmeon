@@ -1,10 +1,10 @@
-import type { Duration, IsJson, StandardSchemaV1, Translator } from '@bespokecore/core';
+import type { Duration, IsJson, StandardSchemaV1, Translator } from '@marmeon/core';
 
 /**
  * Who notifications go to (E92) — kinds of recipients, by declaration merging: a name per kind and its record.
  *
  * ```ts
- * declare module '@bespokecore/notifications' {
+ * declare module '@marmeon/notifications' {
  *   interface NotificationRecipients { user: User }
  * }
  * ```
@@ -30,7 +30,7 @@ export interface AnyRecipient {
 }
 
 /**
- * A mail as the `mail` channel needs it — a `Mailable` of @bespokecore/mail (its envelope says who gets it, its content
+ * A mail as the `mail` channel needs it — a `Mailable` of @marmeon/mail (its envelope says who gets it, its content
  * is composed in the recipient's language).
  */
 export interface NotificationMail {
@@ -40,10 +40,10 @@ export interface NotificationMail {
 
 /**
  * The channels a notification can go through, and what a notification needs for each — open to other packages by
- * declaration merging (E92/E93: `live` comes with @bespokecore/live, Web Push with @bespokecore/pwa):
+ * declaration merging (E92/E93: `live` comes with @marmeon/live, Web Push with @marmeon/pwa):
  *
  * ```ts
- * declare module '@bespokecore/notifications' {
+ * declare module '@marmeon/notifications' {
  *   interface NotificationChannelMap { live: {} }   // a channel that needs no method of the notification
  * }
  * ```

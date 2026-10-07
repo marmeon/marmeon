@@ -1,11 +1,11 @@
 import { join } from 'node:path';
-import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@bespokecore/cache';
-import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from '@bespokecore/cli';
-import { Clock, createApplication, currentLogContext, defineModule, EventFake, EventRegistry, inTransaction, listen, Logger, TestClock, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@bespokecore/core';
-import { channels, type ScheduleTaskMessage } from '@bespokecore/core/diagnostics';
-import { Connections, DatabaseServiceProvider, Schema } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { QUEUE_MIGRATION, Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@bespokecore/queue';
+import { Cache, CACHE_MIGRATION, CacheServiceProvider, MemoryStore, StoreCache } from '@marmeon/cache';
+import { CliServiceProvider, CommandRegistry, DevProcesses, type CommandInput } from 'marmeon';
+import { Clock, createApplication, currentLogContext, defineModule, EventFake, EventRegistry, inTransaction, listen, Logger, TestClock, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
+import { Connections, DatabaseServiceProvider, Schema } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { QUEUE_MIGRATION, Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, ScheduleTester, ScheduleWorker, type TaskResult } from './index.ts';
@@ -357,7 +357,7 @@ describe('onOneServer', () => {
     await expect(scheduler.checkProcess()).resolves.toBeUndefined();
     expect(scheduler.lockWarning()).toBe(
       'onOneServer() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. ' +
-        'Use CACHE_DRIVER=file for one machine, database (bespoke make:cache-table) or redis for more. Tasks: fixture:prune',
+        'Use CACHE_DRIVER=file for one machine, database (marmeon make:cache-table) or redis for more. Tasks: fixture:prune',
     );
     await app.shutdown();
     const file = await boot(
@@ -366,12 +366,12 @@ describe('onOneServer', () => {
         s.call(SlowTask).everyMinute().name('slow').withoutOverlapping();
         s.call(CountRun).everyMinute().name('count');
       }),
-      { env: { CACHE_DRIVER: 'file', CACHE_PATH: tempDir('bespoke-schedule-') } },
+      { env: { CACHE_DRIVER: 'file', CACHE_PATH: tempDir('marmeon-schedule-') } },
     );
     await expect(file.scheduler.checkProcess()).resolves.toBeUndefined();
     expect(file.scheduler.lockWarning()).toBe(
       'onOneServer()/withoutOverlapping() lock in CACHE_DRIVER=file: locks only hold on this machine. With more than one scheduler instance (more servers), ' +
-        'use CACHE_DRIVER=database (bespoke make:cache-table) or redis. Tasks: fixture:prune, slow',
+        'use CACHE_DRIVER=database (marmeon make:cache-table) or redis. Tasks: fixture:prune, slow',
     );
     await file.app.shutdown();
     // Nothing to warn about: no task locks, or a cache all servers share.
@@ -392,7 +392,7 @@ describe('onOneServer', () => {
     const output = { line: (text = '') => lines.push(text), info: (text: string) => lines.push(text), success: (text: string) => lines.push(text), warn: (text: string) => lines.push(`WARN ${text}`), error: (text: string) => lines.push(`ERROR ${text}`), table: () => {} };
     const List = app.container.make(CommandRegistry).get('schedule:list')!;
     expect(await (app.container.make(List) as { handle(input: unknown): number }).handle({ args: [], options: {}, output, root: app.root })).toBe(0);
-    expect(lines).toEqual(['WARN withoutOverlapping() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (bespoke make:cache-table) or redis for more. Tasks: count']);
+    expect(lines).toEqual(['WARN withoutOverlapping() locks in CACHE_DRIVER=memory: locks only hold in this process — a second schedule:work, even on this machine, runs the tasks again. Use CACHE_DRIVER=file for one machine, database (marmeon make:cache-table) or redis for more. Tasks: count']);
     await app.shutdown();
   });
 });
@@ -502,7 +502,7 @@ describe('the schedule.task channel (E118)', () => {
 
 describe('s.job()', () => {
   async function withQueue(schedule: ModuleDefinition['schedule']) {
-    const dir = tempDir('bespoke-schedule-queue-');
+    const dir = tempDir('marmeon-schedule-queue-');
     const booted = await boot(schedule, {
       providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
       env: { APP_KEY: generateKey(), DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database' },
@@ -541,7 +541,7 @@ describe('s.job()', () => {
 });
 
 describe('the provider', () => {
-  it('adds the schedule:* commands — and bespoke dev runs schedule:work only when the app schedules something (E101)', async () => {
+  it('adds the schedule:* commands — and marmeon dev runs schedule:work only when the app schedules something (E101)', async () => {
     const some = await boot(defineSchedule((s) => void s.call(CountRun).hourly()));
     expect(some.app.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['schedule:work', 'schedule:run', 'schedule:list', 'schedule:test']));
     expect(some.app.container.make(DevProcesses).all()).toEqual([{ name: 'schedule', args: ['schedule:work', '--stop-timeout=5'] }]);

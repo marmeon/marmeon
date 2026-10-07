@@ -4,16 +4,16 @@ import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
-import { Application, CLUSTER_WORKER, environment, Logger } from '@bespokecore/core';
-import { heldOnLoopback, ServerConfig, startServer, ViteSetupError } from '@bespokecore/server';
+import { Application, CLUSTER_WORKER, environment, Logger } from '@marmeon/core';
+import { heldOnLoopback, ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
-import { startBespoke } from '../spawn.ts';
+import { startMarmeon } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
 import { writeRouteTypes } from './route-types.ts';
 
 /**
- * Runs the HTTP server. `bespoke dev` (with restarts) and `bespoke start` (production) both end up here.
+ * Runs the HTTP server. `marmeon dev` (with restarts) and `marmeon start` (production) both end up here.
  * It returns on SIGINT/SIGTERM (Ctrl+C, `node --watch` restarting, a deployment): the server stops
  * accepting requests, open keep-alive connections close, and then the CLI shuts the app down.
  *
@@ -22,12 +22,12 @@ import { writeRouteTypes } from './route-types.ts';
  * before the server stops listening; SIGINT (Ctrl+C) skips that. The handlers are in place before the server listens: a
  * supervisor's SIGTERM right after the start line still drains.
  *
- * `bespoke start --workers=N` (E140) runs N servers in worker processes of `node:cluster` that share the port: this process
+ * `marmeon start --workers=N` (E140) runs N servers in worker processes of `node:cluster` that share the port: this process
  * (the primary) passes SIGTERM/SIGINT on to each of them — each drains as one server would — and ends with 0 once all ended
  * with 0 (else with the first worker's code). A worker that ends while the cluster runs is started again; one that ends
  * before it listened stops the cluster (a broken start would only repeat).
  *
- * `bespoke dev` also runs what packages add to {@link DevProcesses} (a queue worker, E101) — started with the server,
+ * `marmeon dev` also runs what packages add to {@link DevProcesses} (a queue worker, E101) — started with the server,
  * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own.
  */
 export class ServeCommand {
@@ -51,7 +51,7 @@ export class ServeCommand {
 
   async handle({ options, output, root }: CommandInput): Promise<number> {
     // Development tools — Vite's dev server, the route-types watcher, the worker and scheduler next to the server — run with
-    // NODE_ENV=development only (E115; `bespoke dev` sets it), never with "anything but production" (staging, test, unset).
+    // NODE_ENV=development only (E115; `marmeon dev` sets it), never with "anything but production" (staging, test, unset).
     const development = environment.isDevelopment();
     const workers = workerCount(options.workers);
     if (typeof workers === 'string') {
@@ -59,18 +59,18 @@ export class ServeCommand {
       return 1;
     }
     if (workers !== undefined && development) {
-      output.error('--workers is for bespoke start (the build): bespoke dev runs one server, with Vite in front of it.');
+      output.error('--workers is for marmeon start (the build): marmeon dev runs one server, with Vite in front of it.');
       return 1;
     }
-    // `bespoke start` as development because a .env says so (E170): allowed (Max, 04.10.), but never quietly — a developer's
-    // .env on a server. (`bespoke dev` clears the mark: it is development by itself.) Said once, by the primary of a cluster.
+    // `marmeon start` as development because a .env says so (E170): allowed (Max, 04.10.), but never quietly — a developer's
+    // .env on a server. (`marmeon dev` clears the mark: it is development by itself.) Said once, by the primary of a cluster.
     const fromDotEnv = cluster.isPrimary ? environment.dotEnvDevelopmentWarning('start') : undefined;
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     if (workers !== undefined && cluster.isPrimary) return this.#primary(workers);
     // From here on a signal is ours (E102): one that comes while the server starts is answered once it listens — Node's
     // default would end the process without a drain (and PID 1 in a container would not end at all).
     const signals = listenForSignals();
-    // `bespoke dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
+    // `marmeon dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
     // and when a view is added or removed (Node never loads views, so that restarts nothing).
     const views = development ? await this.#watchRouteTypes(output, root) : undefined;
     let server;
@@ -80,13 +80,13 @@ export class ServeCommand {
       signals.remove();
       // The route-types watcher would keep the process alive after the failed start (it hung until killed).
       views?.close();
-      // A setup problem (no Vite, no bespoke() plugin) is a message, not a stack trace.
+      // A setup problem (no Vite, no marmeon() plugin) is a message, not a stack trace.
       if (!(error instanceof ViteSetupError)) throw error;
       output.error(error.message);
       return 1;
     }
     const companions = development ? this.#devProcesses.all().map((definition) => this.#companion(definition, root)) : [];
-    // Everything the server needs is loaded now: write the compile cache (`bespoke start`, E138) instead of waiting for the
+    // Everything the server needs is loaded now: write the compile cache (`marmeon start`, E138) instead of waiting for the
     // process to exit — a container that is killed never gets there. Does nothing without a cache.
     flushCompileCache();
     const signal = await signals.received;
@@ -113,7 +113,7 @@ export class ServeCommand {
   }
 
   /**
-   * The primary of `bespoke start --workers=N` (E140): forks the workers — this command again, in processes of `node:cluster`
+   * The primary of `marmeon start --workers=N` (E140): forks the workers — this command again, in processes of `node:cluster`
    * that share the port — passes SIGTERM/SIGINT on to each, and ends when they ended: 0 when all ended with 0.
    */
   async #primary(count: number): Promise<number> {
@@ -184,19 +184,19 @@ export class ServeCommand {
     return code;
   }
 
-  /** Runs `bespoke <args>` next to the server until `stop()`; one that ends on its own is started again (unless it fails right away). */
+  /** Runs `marmeon <args>` next to the server until `stop()`; one that ends on its own is started again (unless it fails right away). */
   #companion(definition: DevProcess, root: string): { stop(): Promise<void> } {
     let child: ChildProcess | undefined;
     let stopping = false;
     const start = () => {
       const started = Date.now();
-      const current = startBespoke(root, definition.args);
+      const current = startMarmeon(root, definition.args);
       child = current;
       current.once('exit', (code, signal) => {
         if (stopping || child !== current) return;
         const reason = signal ? `signal ${signal}` : `code ${code}`;
         if (Date.now() - started < 3000) {
-          this.#logger.error(`The ${definition.name} process (bespoke ${definition.args.join(' ')}) ended right after it started (${reason}); fix the problem and save a file to restart.`);
+          this.#logger.error(`The ${definition.name} process (marmeon ${definition.args.join(' ')}) ended right after it started (${reason}); fix the problem and save a file to restart.`);
           return;
         }
         this.#logger.warn(`The ${definition.name} process ended (${reason}); starting it again`);
@@ -221,7 +221,7 @@ export class ServeCommand {
     // A failure here is reported, never fatal: the server runs on with the committed file.
     const regenerate = () =>
       writeRouteTypes(this.#routeTypes, output, root, { quiet: true }).catch((error: unknown) => {
-        output.warn(`bespoke route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${error instanceof Error ? error.message : String(error)}`);
+        output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${error instanceof Error ? error.message : String(error)}`);
         return false;
       });
     await regenerate();

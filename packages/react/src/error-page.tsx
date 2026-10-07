@@ -1,4 +1,4 @@
-import type { ErrorPageProps } from '@bespokecore/http/page';
+import type { ErrorPageProps } from '@marmeon/http/page';
 
 /**
  * Built-in error page, used until the app provides `modules/errors/views/Error.tsx`.

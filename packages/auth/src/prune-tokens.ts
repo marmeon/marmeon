@@ -1,11 +1,11 @@
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 import { AuthConfig } from './config.ts';
 import { PasswordResetTokenStore } from './password-reset.ts';
 import { RememberTokenStore } from './remember.ts';
 import { AccessTokenStore } from './tokens.ts';
 
 /**
- * `bespoke auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than
+ * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than
  * `AUTH_RESET_EXPIRE`, expired remember-me tokens, and API tokens expired more than `--hours` ago (a lookup drops only
  * the one it finds; expired API tokens were never deleted before). Valid tokens stay. For the scheduler:
  * `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`.

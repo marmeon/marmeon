@@ -1,5 +1,5 @@
-import { can } from '@bespokecore/auth';
-import { Controller, defineRequest } from '@bespokecore/http';
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest } from '@marmeon/http';
 import { MemberStats } from '#modules/user-profile';
 import { DashboardConfig } from '../config.ts';
 import { DashboardPolicy } from '../policies/DashboardPolicy.ts';

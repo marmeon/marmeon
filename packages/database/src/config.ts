@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@bespokecore/core';
+import { defineConfig, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@marmeon/core';
 import * as v from 'valibot';
 
 /**
@@ -47,7 +47,7 @@ export const DatabaseConfig = defineConfig('database', {
     if (!env.DB_URL) {
       url.username = env.DB_USERNAME;
       url.password = env.DB_PASSWORD;
-      url.pathname = `/${env.DB_DATABASE ?? 'bespoke'}`;
+      url.pathname = `/${env.DB_DATABASE ?? 'marmeon'}`;
     }
     return { default: { driver: 'pgsql', url: url.href, poolMax: env.DB_POOL_MAX, infrastructurePoolMax: env.DB_INFRA_POOL_MAX } };
   },

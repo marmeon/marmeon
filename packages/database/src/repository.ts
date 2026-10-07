@@ -1,4 +1,4 @@
-import { HttpError, type RouteBinder, type RouteBindingContext } from '@bespokecore/router';
+import { HttpError, type RouteBinder, type RouteBindingContext } from '@marmeon/router';
 import { sql, type Insertable, type Kysely, type SelectQueryBuilder, type Selectable, type Transaction, type Updateable } from 'kysely';
 import { Connections } from './connections.ts';
 import { isUniqueViolation } from './errors.ts';

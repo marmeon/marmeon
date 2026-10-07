@@ -1,7 +1,7 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
-import { Clock } from '@bespokecore/core';
-import { EncryptionConfig } from '@bespokecore/encryption';
-import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@bespokecore/router';
+import { Clock } from '@marmeon/core';
+import { EncryptionConfig } from '@marmeon/encryption';
+import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@marmeon/router';
 
 /** The route's path parameters, plus any others — those are signed into the query. */
 export type SignedParams<N extends string> = ParamsOf<N> & Readonly<Record<string, Param>>;
@@ -37,7 +37,7 @@ function seconds(duration: Duration): number {
 
 /** A key for one purpose, derived from `APP_KEY` (HKDF): a signature is never also a cookie or session key. */
 function derive(key: Uint8Array, purpose: string): Buffer {
-  return Buffer.from(hkdfSync('sha256', key, new Uint8Array(0), `bespokecore:${purpose}`, 32));
+  return Buffer.from(hkdfSync('sha256', key, new Uint8Array(0), `marmeon:${purpose}`, 32));
 }
 
 /**
@@ -84,7 +84,7 @@ export class UrlSigner {
 
   /**
    * A signed link to a path the app serves without a route name — e.g. a file of a disk
-   * (`/_bespoke/storage/local/exports/7.json`). `path` is used as given: percent-encode its segments.
+   * (`/_marmeon/storage/local/exports/7.json`). `path` is used as given: percent-encode its segments.
    */
   signedPath(path: string, options: SignedPathOptions = {}): string {
     if (!path.startsWith('/') || path.includes('?') || path.includes('#')) throw new Error(`signedPath() takes a path without query or fragment, not "${path}".`);
@@ -149,7 +149,7 @@ export class ValidateSignature {
   }
 
   handle(ctx: HttpContext, next: Next<{}>) {
-    if (!this.#signer.hasValidSignature(ctx.request.url)) throw new HttpError(403, 'Invalid signature.', {}, { key: 'bespoke.errors.signature' });
+    if (!this.#signer.hasValidSignature(ctx.request.url)) throw new HttpError(403, 'Invalid signature.', {}, { key: 'marmeon.errors.signature' });
     return next();
   }
 }

@@ -1,4 +1,4 @@
-import { defineModule } from '@bespokecore/core';
+import { defineModule } from '@marmeon/core';
 import { DashboardConfig } from './config.ts';
 import routes from './routes.ts';
 

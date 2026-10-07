@@ -1,4 +1,4 @@
-import { Form, Link, useNewVersion, usePage, useRouter, useTranslation, type LayoutProps } from '@bespokecore/react';
+import { Form, Link, useNewVersion, usePage, useRouter, useTranslation, type LayoutProps } from '@marmeon/react';
 import { useEffect, ViewTransition } from 'react';
 import { Toasts } from './Toasts.tsx';
 

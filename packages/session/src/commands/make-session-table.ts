@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 
 /** The migration the command copies — a real file, so the store tests run exactly what apps get. */
 export const SESSIONS_MIGRATION = new URL('../../stubs/migrations/create_sessions_table.ts', import.meta.url);
@@ -7,9 +7,9 @@ export const SESSIONS_MIGRATION = new URL('../../stubs/migrations/create_session
 export const SESSIONS_UPGRADE_MIGRATION = new URL('../../stubs/migrations/upgrade_sessions_table.ts', import.meta.url);
 
 /**
- * `bespoke make:session-table [--module=system] [--upgrade]`: writes the migration of the `database` session driver's table into
+ * `marmeon make:session-table [--module=system] [--upgrade]`: writes the migration of the `database` session driver's table into
  * an app module (E96 — the table is the app's, `db:types` sees it like any other). `--upgrade` writes the one an existing table
- * needs for hashed session ids and versions (W8). Then `bespoke migrate`.
+ * needs for hashed session ids and versions (W8). Then `marmeon migrate`.
  */
 export class MakeSessionTableCommand {
   static command = 'make:session-table';
@@ -18,7 +18,7 @@ export class MakeSessionTableCommand {
   static options = { module: { type: 'string', short: 'm' }, upgrade: { type: 'boolean' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@bespokecore/database');
+    const { publishMigration } = await import('@marmeon/database');
     const upgrade = input.options.upgrade === true;
     return publishMigration(input, {
       name: upgrade ? 'upgrade_sessions_table' : 'create_sessions_table',

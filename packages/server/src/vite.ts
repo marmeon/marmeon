@@ -4,32 +4,32 @@ import type { Server } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { SsrRender } from '@bespokecore/http';
+import type { SsrRender } from '@marmeon/http';
 import type { ResolvedConfig, ViteDevServer } from 'vite';
 import { withDevBody } from './dev-document.ts';
 import { createDocumentRenderer, type PageRenderer } from './render.ts';
 
-/** The app's Vite setup is incomplete: no `vite`, no `@bespokecore/vite`, or no `bespoke()` plugin. The message says what to do. */
+/** The app's Vite setup is incomplete: no `vite`, no `@marmeon/vite`, or no `marmeon()` plugin. The message says what to do. */
 export class ViteSetupError extends Error {
   override name = 'ViteSetupError';
 }
 
-/** What `bespoke()` from `@bespokecore/vite` exposes on its plugin (duck-typed: the server does not depend on that package). */
-interface BespokePluginApi {
+/** What `marmeon()` from `@marmeon/vite` exposes on its plugin (duck-typed: the server does not depend on that package). */
+interface MarmeonPluginApi {
   entries: { client: string; ssr: string };
 }
 
-const INSTALL = 'pnpm add -D vite @bespokecore/vite';
+const INSTALL = 'pnpm add -D vite @marmeon/vite';
 
 /**
  * Imports the app's own Vite (resolved from `root`, not from the framework), which is an optional
- * peer: production servers never load it, `bespoke dev` and `bespoke build` need it.
+ * peer: production servers never load it, `marmeon dev` and `marmeon build` need it.
  */
 export async function importVite(root: string): Promise<typeof import('vite')> {
   // Only the app's node_modules chain counts, as for an ESM import: `require.resolve` would also search
   // NODE_PATH, which pnpm's bin shims point at the store's hoisted packages — finding a Vite the app lacks.
   if (!hasPackage(root, 'vite')) {
-    throw new ViteSetupError(`Vite is not installed in this app. \`bespoke dev\` and \`bespoke build\` need it: ${INSTALL}`);
+    throw new ViteSetupError(`Vite is not installed in this app. \`marmeon dev\` and \`marmeon build\` need it: ${INSTALL}`);
   }
   const path = createRequire(join(root, 'package.json')).resolve('vite');
   return (await import(pathToFileURL(path).href)) as typeof import('vite');
@@ -44,27 +44,27 @@ function hasPackage(root: string, name: string): boolean {
 
 /**
  * Turns the error of loading `vite.config.ts` into a readable one when the config imports a framework
- * package that is not installed (`Cannot find package '@bespokecore/vite'` otherwise). Other errors pass through.
+ * package that is not installed (`Cannot find package '@marmeon/vite'` otherwise). Other errors pass through.
  */
 export function explainConfigError(error: unknown): unknown {
   const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
-  const missing = typeof message === 'string' ? /Cannot find (?:package|module) '(@bespokecore\/vite)[^']*'/.exec(message) : null;
+  const missing = typeof message === 'string' ? /Cannot find (?:package|module) '(@marmeon\/vite)[^']*'/.exec(message) : null;
   if (code === 'ERR_MODULE_NOT_FOUND' && missing) {
     return new ViteSetupError(`vite.config.ts imports ${missing[1]}, which is not installed in this app: ${INSTALL}`);
   }
   return error;
 }
 
-/** The entries of the app's `bespoke()` plugin, or a readable error if `vite.config.ts` does not use it. */
-export function bespokeEntries(config: Pick<ResolvedConfig, 'plugins'>): BespokePluginApi['entries'] {
-  const plugin = config.plugins.find((candidate) => candidate.name === 'bespokecore');
-  const api = plugin?.api as BespokePluginApi | undefined;
+/** The entries of the app's `marmeon()` plugin, or a readable error if `vite.config.ts` does not use it. */
+export function marmeonEntries(config: Pick<ResolvedConfig, 'plugins'>): MarmeonPluginApi['entries'] {
+  const plugin = config.plugins.find((candidate) => candidate.name === 'marmeon');
+  const api = plugin?.api as MarmeonPluginApi | undefined;
   if (!api?.entries) {
     throw new ViteSetupError(
       [
-        'vite.config.ts does not use the bespoke() plugin, which tells the server where the app\'s entries are:',
-        "  import { bespoke } from '@bespokecore/vite';",
-        '  export default defineConfig({ plugins: [bespoke(), react()] });',
+        'vite.config.ts does not use the marmeon() plugin, which tells the server where the app\'s entries are:',
+        "  import { marmeon } from '@marmeon/vite';",
+        '  export default defineConfig({ plugins: [marmeon(), react()] });',
       ].join('\n'),
     );
   }
@@ -74,7 +74,7 @@ export function bespokeEntries(config: Pick<ResolvedConfig, 'plugins'>): Bespoke
 export interface ViteDevOptions {
   /** App root containing `index.html` and `vite.config.ts`. */
   root: string;
-  /** SSR entry relative to `root`, exporting `render: SsrRender`. Defaults to the `bespoke()` plugin's entry. */
+  /** SSR entry relative to `root`, exporting `render: SsrRender`. Defaults to the `marmeon()` plugin's entry. */
   ssrEntry?: string;
   /** Share the HTTP server so HMR runs on the app's port instead of a second one. Without one, no HMR (tests). */
   httpServer?: Server;
@@ -113,7 +113,7 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
 
   let entry: string;
   try {
-    entry = ssrEntry ?? bespokeEntries(vite.config).ssr;
+    entry = ssrEntry ?? marmeonEntries(vite.config).ssr;
   } catch (error) {
     await vite.close();
     throw error;

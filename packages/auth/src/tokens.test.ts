@@ -1,6 +1,6 @@
-import { SystemClock } from '@bespokecore/core';
-import type { Connections } from '@bespokecore/database';
-import { defineRoutes, type HttpContext } from '@bespokecore/http';
+import { SystemClock } from '@marmeon/core';
+import type { Connections } from '@marmeon/database';
+import { defineRoutes, type HttpContext } from '@marmeon/http';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { abilities, authenticate } from './middleware.ts';

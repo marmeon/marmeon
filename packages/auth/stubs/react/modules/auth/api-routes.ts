@@ -1,5 +1,5 @@
-import { authenticate } from '@bespokecore/auth';
-import { defineRoutes } from '@bespokecore/http';
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
 
 // The stateless `api` group under /api: API tokens instead of the session.
 export default defineRoutes((Route) => {

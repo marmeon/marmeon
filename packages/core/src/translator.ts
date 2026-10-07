@@ -2,10 +2,10 @@ import { token } from './token.ts';
 
 /**
  * The translation contract — like {@link Logger}: framework packages depend on this, never on the translation
- * package. `@bespokecore/i18n` binds it **per request** (the request's locale, no global state); without it, nothing
+ * package. `@marmeon/i18n` binds it **per request** (the request's locale, no global state); without it, nothing
  * is bound and framework texts stay in English (their `fallback`).
  *
- * Apps use the typed `Translator` of `@bespokecore/i18n` (the same token, with checked keys and placeholders).
+ * Apps use the typed `Translator` of `@marmeon/i18n` (the same token, with checked keys and placeholders).
  */
 export interface Translator {
   /** The locale this translator speaks, e.g. `de` — always one of the app's supported locales. */
@@ -24,7 +24,7 @@ export const Translator = token<Translator>('Translator');
 
 /**
  * `{name}` placeholders filled from `params` — for framework texts while no translator is bound (no plural or
- * select: those need `@bespokecore/i18n`). Unknown placeholders stay as they are.
+ * select: those need `@marmeon/i18n`). Unknown placeholders stay as they are.
  */
 export function fillPlaceholders(text: string, params: Readonly<Record<string, unknown>> = {}): string {
   return text.replace(/\{([\w-]+)\}/g, (match, name: string) => (Object.hasOwn(params, name) ? String(params[name]) : match));

@@ -9,7 +9,7 @@ export interface Solution {
   readonly title: string;
   /** Why, and what else to know — plain text. */
   readonly text: string;
-  /** A command to copy (`bespoke migrate`) — shown, never run. */
+  /** A command to copy (`marmeon migrate`) — shown, never run. */
   readonly command?: string;
   /** Where it is documented: a README with its anchor (`packages/database/README.md#migrations`). */
   readonly docs?: string;

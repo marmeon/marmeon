@@ -1,5 +1,5 @@
-import { defineConfig, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
-import { MiddlewarePriority, Router } from '@bespokecore/router';
+import { defineConfig, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { MiddlewarePriority, Router } from '@marmeon/router';
 import * as v from 'valibot';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
@@ -79,7 +79,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
 
 /**
  * Registers the `Hasher` (`HASH_DRIVER`), `Auth` (per request) and the remember-me store, and adds
- * `NoStoreWhenSignedIn` to the `web` group. Found by `bespoke discover`.
+ * `NoStoreWhenSignedIn` to the `web` group. Found by `marmeon discover`.
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
@@ -94,12 +94,12 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
-    // Until the app binds its own (its auth module does — `bespoke make:auth` writes one), the first use explains.
+    // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new Error(
         'Authentication needs to know where users come from: bind a UserProvider in a provider of your auth module — ' +
           'container.bind(UserProvider, UserRepository) — and declare the user type: ' +
-          "declare module '@bespokecore/auth' { interface AuthTypes { user: User } }. `bespoke make:auth` sets this up.",
+          "declare module '@marmeon/auth' { interface AuthTypes { user: User } }. `marmeon make:auth` sets this up.",
       );
     });
   }
@@ -111,7 +111,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // Private registration turned off where it counts (E193): said once, at boot — like the log mailer and the cookie driver.
     const config = app.container.make(AuthConfig);
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand]);
   }
 }

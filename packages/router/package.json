@@ -1,22 +1,22 @@
 {
-  "name": "@bespokecore/router",
+  "name": "@marmeon/router",
   "version": "0.1.0",
-  "description": "The typed router of BespokeCore: invokable controllers with request definitions, route model binding, middleware, URLs and cookies.",
+  "description": "The typed router of Marmeon: invokable controllers with request definitions, route model binding, middleware, URLs and cookies.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "router",
     "routing",
     "middleware",
     "typescript"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/router#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/router#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/router"
   },
   "engines": {
@@ -26,12 +26,12 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./url": {
-      "@bespokecore/source": "./src/url.ts",
+      "@marmeon/source": "./src/url.ts",
       "types": "./dist/url.d.ts",
       "default": "./dist/url.js"
     }

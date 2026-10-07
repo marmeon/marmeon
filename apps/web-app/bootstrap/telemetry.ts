@@ -1,10 +1,10 @@
 /**
- * OpenTelemetry for this app (E120) — the SDK and its exporter are the app's; @bespokecore/otel only talks to
+ * OpenTelemetry for this app (E120) — the SDK and its exporter are the app's; @marmeon/otel only talks to
  * `@opentelemetry/api` and records spans from the framework's channels once an SDK is registered. Started BEFORE the app
  * boots, through Node's `--import` (no module hooks, no auto-instrumentation — Node 26 deprecates `module.register()`, DEP0205):
  *
  * ```sh
- * OTEL_SERVICE_NAME=web-app OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 NODE_OPTIONS='--import ./bootstrap/telemetry.ts' bespoke start
+ * OTEL_SERVICE_NAME=web-app OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 NODE_OPTIONS='--import ./bootstrap/telemetry.ts' marmeon start
  * ```
  *
  * Workers and the scheduler inherit `NODE_OPTIONS`: a job's span joins the trace of the request that dispatched it.
@@ -19,7 +19,7 @@
  * new NodeSDK({ traceExporter: new OTLPTraceExporter() }).start();
  * ```
  *
- * No `SIGTERM` handler here: `bespoke` stops the server gracefully itself, and @bespokecore/otel flushes the spans when the
+ * No `SIGTERM` handler here: `marmeon` stops the server gracefully itself, and @marmeon/otel flushes the spans when the
  * app shuts down.
  */
 import { context, propagation, trace } from '@opentelemetry/api';
@@ -31,7 +31,7 @@ import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 
 if (process.env.OTEL_SDK_DISABLED?.toLowerCase() !== 'true') {
   const resource = defaultResource()
-    .merge(resourceFromAttributes({ 'service.name': 'bespokecore-web-app' }))
+    .merge(resourceFromAttributes({ 'service.name': 'marmeon-web-app' }))
     // OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES
     .merge(detectResources({ detectors: [envDetector] }));
   // OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318), OTEL_EXPORTER_OTLP_HEADERS, …

@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 // What make:auth writes — here without the foreign key: the package tests keep users in memory.
 export default defineMigration({

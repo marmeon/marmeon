@@ -1,7 +1,7 @@
-import { can } from '@bespokecore/auth';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { Broadcaster } from '@bespokecore/live';
-import { trans, Translator } from '@bespokecore/i18n';
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Broadcaster } from '@marmeon/live';
+import { trans, Translator } from '@marmeon/i18n';
 import * as v from 'valibot';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { profileChannel } from '../live.ts';
@@ -32,7 +32,7 @@ export class AddProfileLinkController extends Controller {
 
   async handle(ctx: ContextOf<typeof AddProfileLinkRequest>) {
     await this.#links.insert({ user_id: ctx.params.user.id, ...ctx.body });
-    // Live (W6.10): the profile's other tabs reload it — not this one (x-bespoke-connection), it shows its own answer.
+    // Live (W6.10): the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(ctx.params.user.id), { only: ['profile'] });
     return this.redirect().route('user-profile.show', { user: ctx.params.user.id }).flash('toast', { kind: 'success', message: this.#translator.get('user-profile.status.link_added') });
   }

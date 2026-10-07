@@ -1,5 +1,5 @@
-import { AuthConfig } from '@bespokecore/auth';
-import { abort, Controller } from '@bespokecore/http';
+import { AuthConfig } from '@marmeon/auth';
+import { abort, Controller } from '@marmeon/http';
 
 /**
  * After a sign-up (E146): the same page for a new and a known address — the mail tells the rest. With

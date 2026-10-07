@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createServer, isRunnableDevEnvironment, type ViteDevServer } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
-import { bespoke, type BespokeOptions } from './index.ts';
+import { marmeon, type MarmeonOptions } from './index.ts';
 import { valueImports } from './server-imports.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -17,11 +17,11 @@ const CONTROLLER = "export class ShowHomeController {\n  handle() {\n    return 
 
 /** A tiny app: a controller (server code) and a page; `files` overrides or adds. */
 function app(files: Record<string, string>): string {
-  const root = realpathSync(tempDir('bespoke-server-imports-'));
+  const root = realpathSync(tempDir('marmeon-server-imports-'));
   temporary.push(root);
   const all: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'fixture', private: true, type: 'module' }),
-    'bootstrap/client.ts': "import pages from 'virtual:bespoke/pages';\nfor (const load of Object.values(pages)) void load();\n",
+    'bootstrap/client.ts': "import pages from 'virtual:marmeon/pages';\nfor (const load of Object.values(pages)) void load();\n",
     'bootstrap/ssr.ts': "import { ShowHomeController } from '../modules/demo/controllers/ShowHomeController.ts';\nexport const render = () => new ShowHomeController().handle();\n",
     'modules/demo/controllers/ShowHomeController.ts': CONTROLLER,
     'modules/demo/views/Home.ts': "import type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (props: ReturnType<ShowHomeController['handle']>) => props;\n",
@@ -34,20 +34,20 @@ function app(files: Record<string, string>): string {
   return root;
 }
 
-async function serve(root: string, options: BespokeOptions = {}): Promise<ViteDevServer> {
+async function serve(root: string, options: MarmeonOptions = {}): Promise<ViteDevServer> {
   const server = await createServer({
     root,
     configFile: false,
     logLevel: 'silent',
     appType: 'custom',
     server: { middlewareMode: true, hmr: false, ws: false },
-    plugins: bespoke({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts', ...options }),
+    plugins: marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts', ...options }),
   });
   servers.push(server);
   return server;
 }
 
-/** Loads a module as SSR does (and Vitest with `bespoke({ test: true })`): through the server environment's runner. */
+/** Loads a module as SSR does (and Vitest with `marmeon({ test: true })`): through the server environment's runner. */
 function ssrImport(server: ViteDevServer, path: string): Promise<unknown> {
   const ssr = server.environments.ssr!;
   if (!isRunnableDevEnvironment(ssr)) throw new Error('not runnable');
@@ -56,7 +56,7 @@ function ssrImport(server: ViteDevServer, path: string): Promise<unknown> {
 
 const message = (error: unknown) => (error as Error).message;
 const DIRECT =
-  "[bespoke] modules/demo/views/Home.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'. If the browser needs a value from it, move that value into a module both sides import.";
+  "[marmeon] modules/demo/views/Home.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'. If the browser needs a value from it, move that value into a module both sides import.";
 
 describe('valueImports()', () => {
   it('finds what loads a module at runtime — not import type, export type or a typeof import()', () => {
@@ -97,7 +97,7 @@ describe('server imports while serving', () => {
     const server = await serve(root);
     const error = await server.environments.client!.transformRequest('/modules/demo/views/Home.ts').catch((caught: unknown) => caught);
     expect(message(error)).toBe(DIRECT);
-    expect((error as { plugin?: string }).plugin).toBe('bespokecore:server-imports');
+    expect((error as { plugin?: string }).plugin).toBe('marmeon:server-imports');
   });
 
   it('lets import type and type re-exports through, and server code import anything', async () => {
@@ -118,18 +118,18 @@ describe('server imports while serving', () => {
     await server.environments.client!.transformRequest('/modules/demo/views/Home.ts');
     const error = await server.environments.client!.transformRequest('/modules/demo/helpers.ts').catch((caught: unknown) => caught);
     expect(message(error)).toContain(
-      '[bespoke] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.ts → modules/demo/helpers.ts): a controller is server code',
+      '[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.ts → modules/demo/helpers.ts): a controller is server code',
     );
   });
 
-  it('checks pages in server environments too (SSR, tests with bespoke({ test: true })) — also through modules loaded before as server code', async () => {
+  it('checks pages in server environments too (SSR, tests with marmeon({ test: true })) — also through modules loaded before as server code', async () => {
     const files = {
       'modules/demo/helpers.ts': "import { ShowHomeController } from './controllers/ShowHomeController.ts';\nexport const label = () => ShowHomeController.name;\n",
       'modules/demo/views/Home.ts': "import { label } from '../helpers.ts';\nexport default () => label();\n",
     };
     for (const test of [false, true]) {
       const server = await serve(app(files), { test });
-      await expect(ssrImport(server, '/modules/demo/views/Home.ts')).rejects.toThrow('[bespoke] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value');
+      await expect(ssrImport(server, '/modules/demo/views/Home.ts')).rejects.toThrow('[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value');
 
       // The helper is server code first (a controller's import): fine. A page that imports it later fails all the same.
       const later = await serve(app(files), { test });
@@ -138,7 +138,7 @@ describe('server imports while serving', () => {
     }
   });
 
-  it('takes more server modules from bespoke({ serverModules }) — and fewer with !glob', async () => {
+  it('takes more server modules from marmeon({ serverModules }) — and fewer with !glob', async () => {
     const root = app({
       'modules/demo/services/Billing.ts': "export const billing = 'server-only';\n",
       'modules/demo/jobs/labels.ts': "export const labels = ['shared'];\n",

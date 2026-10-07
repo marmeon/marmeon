@@ -96,7 +96,7 @@ export class FakeChannels {
   }
 
   /** A message as another page of the site would post it (any shape) — to every tab's channel `name`. */
-  inject(data: unknown, name = 'bespoke'): void {
+  inject(data: unknown, name = 'marmeon'): void {
     for (const other of this.#open) if (other.name === name && !other.win.frozen) other.target.dispatchEvent(new MessageEvent('message', { data }));
   }
 }
@@ -725,7 +725,7 @@ export function boot(win: FakeWindow, initial: PageObject, options: Pick<Constru
   const stacks: (readonly Layer[])[] = [];
   /** Every render in order — an instant visit's placeholder too (E64), which `shown` leaves out (it is no page). */
   const renders: { page: PageObject; placeholder: boolean; transition?: readonly string[] }[] = [];
-  // Without the Navigation API, the adapter attaches the History fallback from the start (createBespokeApp does, E184).
+  // Without the Navigation API, the adapter attaches the History fallback from the start (createMarmeonApp does, E184).
   const features = win.navigation || options.features?.some((feature) => feature.name === 'history') ? options.features : [historyFallback, ...(options.features ?? [])];
   const navigator = new Navigator({
     initialPage: initial,

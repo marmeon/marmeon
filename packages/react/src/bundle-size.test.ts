@@ -69,11 +69,11 @@ const FEATURES = {
   queryState: { markers: ['http/client/features/query-state', 'react/use-query-state'], use: inApp('useQueryState') },
   remember: { markers: ['http/client/remember', 'http/client/features/remember', 'react/remember'], use: inApp('useRemember') },
   poll: { markers: ['http/client/poll', 'react/use-poll', 'react/when-visible'], use: inApp('usePoll') },
-  // The progress bar (E82): opt-in, `createBespokeApp({ progress: progressBar() })` — `aria-busy` (`http/client/busy`) is every app's.
+  // The progress bar (E82): opt-in, `createMarmeonApp({ progress: progressBar() })` — `aria-busy` (`http/client/busy`) is every app's.
   progress: { markers: ['http/client/progress'], use: inApp('progressBar') },
   // <Link prefetch>, router.prefetch: on the first prefetch (E74), in a chunk of its own.
   prefetch: { markers: ['http/client/features/prefetch'], use: inApp('Link'), lazy: true },
-  // Any view of resolveModulePages may declare it (E58): the resolver brings it, <BespokeApp> attaches it.
+  // Any view of resolveModulePages may declare it (E58): the resolver brings it, <MarmeonApp> attaches it.
   revalidateOnBack: { markers: ['http/client/features/revalidate-on-back'], use: inApp('resolveModulePages') },
   // useBlocker, useForm({ guard }), <Form guard>: static (a guard loaded later could not stop what came first). Asking — a
   // visit's, an action's `confirm`, the guard's question — is the core's (`http/client/confirm`).
@@ -89,26 +89,26 @@ const FEATURES = {
   // asks for the waiting updates (`useLiveUpdates`) loads it too. The stream, sequences and hints: its document slot only.
   live: { markers: ['http/client/features/live'], use: inApp('useLiveUpdates'), lazy: true },
   // The client hook API (E132, W7 step 9): a feature, not the core — an app that listens (`navigator.use(hooks)`) carries it.
-  hooks: { markers: ['http/client/features/hooks'], use: { base: 'emptyApp' as const, entry: `${appEntry()}import { hooks } from '@bespokecore/http/client';\nglobalThis.__hooks = hooks;\n` } },
-  // Tab sync (W8 step 8, E149): a default feature of `createBespokeApp` — loaded with the first page, before hydrating, in a chunk of
-  // its own; `createBespokeApp({ tabSync: false })` never loads it. The core alone carries none of it.
+  hooks: { markers: ['http/client/features/hooks'], use: { base: 'emptyApp' as const, entry: `${appEntry()}import { hooks } from '@marmeon/http/client';\nglobalThis.__hooks = hooks;\n` } },
+  // Tab sync (W8 step 8, E149): a default feature of `createMarmeonApp` — loaded with the first page, before hydrating, in a chunk of
+  // its own; `createMarmeonApp({ tabSync: false })` never loads it. The core alone carries none of it.
   tabSync: { markers: ['http/client/features/tab-sync', 'http/tab-sync-protocol'], use: inApp(), lazy: true },
-  // The History fallback (W9 step 7, E184): `createBespokeApp` loads it beside the first page only where the browser has no Navigation
+  // The History fallback (W9 step 7, E184): `createMarmeonApp` loads it beside the first page only where the browser has no Navigation
   // API — a chunk of its own, never in a first download. The core alone carries none of it (an adapter loads it).
   history: { markers: ['http/client/features/history-fallback'], use: inApp(), lazy: true },
   // View transitions (W9 step 8, E185): the core loads them before the first page change that asks for one (a visit's, a link's, the
   // app's `viewTransition`) — a chunk of its own, never in a first download; only the loader is.
   viewTransitions: { markers: ['http/client/features/view-transitions'], use: inApp(), lazy: true },
-  // The headless table (W9 step 6, E183): `@bespokecore/react/table` and what it builds on — the core's row selection (a slot of the
+  // The headless table (W9 step 6, E183): `@marmeon/react/table` and what it builds on — the core's row selection (a slot of the
   // entry) and the table's UI-free controller. Only with its own import: never in an app without tables (its subpath, an optional peer).
   table: { markers: ['http/client/features/selection', 'table/client/table', 'react/table'], use: { base: 'emptyApp' as const, entry: tableEntry() }, brings: ['queryState'] },
-  // The TanStack Table bridge (`@bespokecore/react/table-tanstack`, TanStack v9 an optional peer): TanStack only where the app imports it.
+  // The TanStack Table bridge (`@marmeon/react/table-tanstack`, TanStack v9 an optional peer): TanStack only where the app imports it.
   tanstack: {
     markers: ['react/table-tanstack', 'node_modules/@tanstack/'],
     use: {
       base: 'emptyApp' as const,
       entry: tableEntry(
-        "import { toTanStack } from '@bespokecore/react/table-tanstack';\n",
+        "import { toTanStack } from '@marmeon/react/table-tanstack';\n",
         "import { useTable as useTanStackTable, tableFeatures } from '@tanstack/react-table';\n",
         'globalThis.__tanstack = { toTanStack, useTanStackTable, tableFeatures };\n',
       ),
@@ -138,12 +138,12 @@ function featuresIn({ modules, lazyModules, code }: AppBundle, lazy = false): st
 }
 
 /**
- * The leak test's `devtools` marker (W7 steps 8 and 9, E115): a module of @bespokecore/devtools or the bar's data feature of the
- * client core (`http/client/features/devtools`), or the devtools' paths, markup and dev hook in the code (`/_bespoke/devtools`,
- * `@bespokecore/devtools`, `data-bespoke-devtools`, `__BESPOKE_DEVTOOLS_HOOK__` — the core calls it only under
+ * The leak test's `devtools` marker (W7 steps 8 and 9, E115): a module of @marmeon/devtools or the bar's data feature of the
+ * client core (`http/client/features/devtools`), or the devtools' paths, markup and dev hook in the code (`/_marmeon/devtools`,
+ * `@marmeon/devtools`, `data-marmeon-devtools`, `__MARMEON_DEVTOOLS_HOOK__` — the core calls it only under
  * `process.env.NODE_ENV !== 'production'`). Not the bare word — react-dom's production build names `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
  */
-const DEVTOOLS_MARKERS = /_bespoke\/devtools|@bespokecore\/devtools|data-bespoke-devtools|__BESPOKE_DEVTOOLS_HOOK__/;
+const DEVTOOLS_MARKERS = /_marmeon\/devtools|@marmeon\/devtools|data-marmeon-devtools|__MARMEON_DEVTOOLS_HOOK__/;
 
 function devtoolsIn({ modules, lazyModules, code, lazyCode }: AppBundle): string[] {
   const found = [...modules, ...lazyModules].filter((id) => id.startsWith('devtools/') || moduleKey(id) === 'http/client/features/devtools');
@@ -153,7 +153,7 @@ function devtoolsIn({ modules, lazyModules, code, lazyCode }: AppBundle): string
 
 const bundles = new Map<string, AppBundle>();
 const lowered: Partial<Record<Scenario, number>> = {};
-const update = process.env.BESPOKE_SIZE_BUDGET === 'update';
+const update = process.env.MARMEON_SIZE_BUDGET === 'update';
 
 beforeAll(async () => {
   const entries: [string, string][] = [
@@ -234,15 +234,15 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     expect(featuresIn(built, true)).toContain('live');
   });
 
-  // W8 step 8 (E149): every app of createBespokeApp loads tab sync — in a chunk of its own, never in a first download; the core alone
+  // W8 step 8 (E149): every app of createMarmeonApp loads tab sync — in a chunk of its own, never in a first download; the core alone
   // carries none of it, not even lazily (the core's limit stays where it was).
-  it.each(['emptyApp', 'minimalApp', 'everything'] as const)('tab sync is a chunk of its own in %s — loaded by createBespokeApp', (name) => {
+  it.each(['emptyApp', 'minimalApp', 'everything'] as const)('tab sync is a chunk of its own in %s — loaded by createMarmeonApp', (name) => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('tabSync');
     expect(featuresIn(built, true)).toContain('tabSync');
   });
 
-  // W9 step 7 (E184): the History fallback only where the browser has no Navigation API — a chunk createBespokeApp loads then.
+  // W9 step 7 (E184): the History fallback only where the browser has no Navigation API — a chunk createMarmeonApp loads then.
   it.each(['emptyApp', 'minimalApp', 'everything', 'table'] as const)('the History fallback is a chunk of its own in %s — never in the first download', (name) => {
     const built = bundle(name);
     expect(featuresIn(built)).not.toContain('history');
@@ -315,7 +315,7 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
     }
   }, 60_000);
 
-  it('the docs app carries no devtools either — it has them as a dev dependency and uses them under bespoke dev (W7 step 10)', async () => {
+  it('the docs app carries no devtools either — it has them as a dev dependency and uses them under marmeon dev (W7 step 10)', async () => {
     const node = process.env.NODE_ENV;
     try {
       expect(devtoolsIn(await appClientBuild(join(PACKAGES, '../apps/docs'))), 'docs').toEqual([]);
@@ -340,36 +340,36 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
 describe('no injection metadata in the browser (E76)', () => {
   it('no bundle carries an injection list or reason', () => {
     for (const [name, { code }] of bundles) {
-      expect(code.match(/bespokecore\.injection[^"'`]*|static inject\b|Cannot inject[^"'`]{0,60}/)?.[0], name).toBeUndefined();
+      expect(code.match(/marmeon\.injection[^"'`]*|static inject\b|Cannot inject[^"'`]{0,60}/)?.[0], name).toBeUndefined();
     }
   });
 
   it('the browser lists in package.json cover every module a browser entry bundles', async () => {
     const entries = [
-      `import * as client from '@bespokecore/http/client';\nimport * as page from '@bespokecore/http/page';\nglobalThis.__keep = { client, page };\n`,
-      `import * as react from '@bespokecore/react';\nimport * as messages from '@bespokecore/i18n/messages';\nglobalThis.__keep = { react, messages };\n`,
+      `import * as client from '@marmeon/http/client';\nimport * as page from '@marmeon/http/page';\nglobalThis.__keep = { client, page };\n`,
+      `import * as react from '@marmeon/react';\nimport * as messages from '@marmeon/i18n/messages';\nglobalThis.__keep = { react, messages };\n`,
     ];
     const modules = (await Promise.all(entries.map((entry) => appBundle(entry, { external: /^react(-dom)?(\/|$)/ })))).flatMap((built) => built.modules);
     const uncovered = modules.filter((id) => {
       const [name, ...rest] = id.split('/');
-      if (id === '(entry)' || name === 'router') return false; // @bespokecore/router/url: no classes, no injection
+      if (id === '(entry)' || name === 'router') return false; // @marmeon/router/url: no classes, no injection
       // dist/x.js → src/x.ts(x): what package.json's globs name
       const source = ['.ts', '.tsx'].map((ext) => rest.join('/').replace(/^dist\//, 'src/').replace(/\.js$/, ext)).find((file) => existsSync(join(PACKAGES, name!, file)));
-      const globs: string[] = JSON.parse(readFileSync(join(PACKAGES, name!, 'package.json'), 'utf8')).bespoke?.browser ?? [];
+      const globs: string[] = JSON.parse(readFileSync(join(PACKAGES, name!, 'package.json'), 'utf8')).marmeon?.browser ?? [];
       return !source || !globs.some((glob) => matchesGlob(source, glob));
     });
-    expect(uncovered, 'Browser modules outside their package\'s "bespoke": { "browser": [...] } — add them there (E76)').toEqual([]);
+    expect(uncovered, 'Browser modules outside their package\'s "marmeon": { "browser": [...] } — add them there (E76)').toEqual([]);
   }, 60_000);
 });
 
 describe('a production bundle says codes, not explanations (E80)', () => {
   // A few of the explanations the development build throws or warns: none may ship. A production error is its code
-  // and a name (`[bespoke:R2] users/Show`); packages/http/README.md ("Error codes") says what each code means.
+  // and a name (`[marmeon:R2] users/Show`); packages/http/README.md ("Error codes") says what each code means.
   const EXPLANATIONS = [
     'the browser has no route manifest',
     'is not defined in the browser',
     'has an invalid layout',
-    'must be used inside <BespokeApp>',
+    'must be used inside <MarmeonApp>',
     'needs the app\'s messages',
     'Hydration mismatch',
     'has no heading (h1–h3)',
@@ -388,8 +388,8 @@ describe('a production bundle says codes, not explanations (E80)', () => {
   });
 
   it('the full bundle throws the codes instead', () => {
-    const codes = new Set(bundle('everything').code.match(/\[bespoke:[CR]\d+\]/g));
-    for (const code of ['C1', 'C2', 'R1', 'R2', 'R9', 'R10', 'R12']) expect(codes, code).toContain(`[bespoke:${code}]`);
+    const codes = new Set(bundle('everything').code.match(/\[marmeon:[CR]\d+\]/g));
+    for (const code of ['C1', 'C2', 'R1', 'R2', 'R9', 'R10', 'R12']) expect(codes, code).toContain(`[marmeon:${code}]`);
   });
 
   it('every code is in the README once, and every code there is thrown', () => {
@@ -397,7 +397,7 @@ describe('a production bundle says codes, not explanations (E80)', () => {
       readdirSync(join(PACKAGES, dir), { recursive: true, encoding: 'utf8' })
         .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$|__fixtures__|test-window/.test(file))
         .map((file) => readFileSync(join(PACKAGES, dir, file), 'utf8'));
-    const used = sorted([...sources('http/src/client'), ...sources('react/src'), ...sources('table/src/client')].flatMap((text) => [...text.matchAll(/\[bespoke:([CR]\d+)\]/g)].map((match) => match[1]!)));
+    const used = sorted([...sources('http/src/client'), ...sources('react/src'), ...sources('table/src/client')].flatMap((text) => [...text.matchAll(/\[marmeon:([CR]\d+)\]/g)].map((match) => match[1]!)));
     const rows = [...readFileSync(join(PACKAGES, 'http/README.md'), 'utf8').matchAll(/^\| ([CR]\d+) \|/gm)].map((match) => match[1]!);
     expect(rows.length, 'a code listed twice in packages/http/README.md').toBe(new Set(rows).size);
     expect(sorted(rows)).toEqual(used);

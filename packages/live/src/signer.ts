@@ -1,9 +1,9 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
-import type { LiveSigner } from '@bespokecore/http';
+import type { LiveSigner } from '@marmeon/http';
 
 /** The keys of live tokens (E90): from `APP_KEY` (and the previous keys, still accepted) by HKDF, context `live`. */
 export function liveKeys(key: Uint8Array, previousKeys: readonly Uint8Array[] = []): readonly Uint8Array[] {
-  return [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'bespokecore:live', 32)));
+  return [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:live', 32)));
 }
 
 const digest = (key: Uint8Array, scope: string, channel: string) => createHmac('sha256', key).update(`${scope}\n${channel}`).digest('base64url');

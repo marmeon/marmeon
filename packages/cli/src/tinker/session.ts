@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { glob } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { EventDispatcher, EventRegistry, Translator, type Application, type Container, type Key } from '@bespokecore/core';
-import { Router } from '@bespokecore/router';
+import { EventDispatcher, EventRegistry, Translator, type Application, type Container, type Key } from '@marmeon/core';
+import { Router } from '@marmeon/router';
 
 /** A helper of the session — what `.ls` lists. */
 export interface Helper {
@@ -18,7 +18,7 @@ export interface Helper {
   readonly value: () => unknown;
 }
 
-/** What `--sandbox` needs of `Connections` (@bespokecore/database) — found by name, so the CLI does not depend on the package. */
+/** What `--sandbox` needs of `Connections` (@marmeon/database) — found by name, so the CLI does not depend on the package. */
 interface SandboxConnections {
   transaction<R>(callback: () => Promise<R>): Promise<R>;
   options(name?: string): { readonly driver: 'sqlite'; readonly database: string } | { readonly driver: 'pgsql'; readonly url: string };
@@ -27,13 +27,13 @@ interface SandboxConnections {
 type RepositoryClass = (new (...args: any[]) => object) & { readonly table: string };
 
 /** Directories never searched for repositories. */
-const NOT_APP_CODE = /(^|[\\/])(node_modules|dist|storage|\.bespoke|\.git|public)([\\/]|$)/;
+const NOT_APP_CODE = /(^|[\\/])(node_modules|dist|storage|\.marmeon|\.git|public)([\\/]|$)/;
 
 /** The rollback at the end of a sandbox session — thrown out of the transaction's callback, caught by the session. */
 const ROLLBACK = Symbol('tinker sandbox rollback');
 
 /**
- * One `bespoke tinker` session (E122): the booted app, ONE container scope for all of it (like a command's — scoped
+ * One `marmeon tinker` session (E122): the booted app, ONE container scope for all of it (like a command's — scoped
  * services such as the Translator in `APP_LOCALE` live as long as the session), the helpers, and — with `--sandbox` —
  * a transaction around everything that rolls back at the end.
  *
@@ -77,7 +77,7 @@ export class TinkerSession {
       return {
         available: key !== undefined,
         value: () => {
-          if (!key) throw new Error(`${label} needs ${pkg} (pnpm add ${pkg}; bespoke discover).`);
+          if (!key) throw new Error(`${label} needs ${pkg} (pnpm add ${pkg}; marmeon discover).`);
           return this.scope.make(key as Key<unknown>);
         },
       };
@@ -92,20 +92,20 @@ export class TinkerSession {
         available: true,
         value: () => (key: Key | string) => this.make(key),
       },
-      { name: 'db', usage: 'db', description: 'Kysely on the default connection', ...byName('Database', 'db', '@bespokecore/database') },
+      { name: 'db', usage: 'db', description: 'Kysely on the default connection', ...byName('Database', 'db', '@marmeon/database') },
       {
         name: 'repos',
         usage: 'repos.<table>',
         description: 'the repositories (*Repository.ts), by table: repos.users',
         available: this.#names.has('Connections'),
         value: () => {
-          if (!this.#names.has('Connections')) throw new Error('repos needs @bespokecore/database (pnpm add @bespokecore/database; bespoke discover).');
+          if (!this.#names.has('Connections')) throw new Error('repos needs @marmeon/database (pnpm add @marmeon/database; marmeon discover).');
           return this.#repositoryObject();
         },
       },
-      { name: 'jobs', usage: 'jobs.dispatch(Job, payload)', description: 'the Queue', ...byName('Queue', 'jobs', '@bespokecore/queue') },
+      { name: 'jobs', usage: 'jobs.dispatch(Job, payload)', description: 'the Queue', ...byName('Queue', 'jobs', '@marmeon/queue') },
       { name: 'events', usage: 'events.dispatch(new Event(…))', description: 'the EventDispatcher', available: true, value: () => this.scope.make(EventDispatcher) },
-      { name: 'mail', usage: 'mail.send(new Mail(…))', description: 'the Mailer', ...byName('Mailer', 'mail', '@bespokecore/mail') },
+      { name: 'mail', usage: 'mail.send(new Mail(…))', description: 'the Mailer', ...byName('Mailer', 'mail', '@marmeon/mail') },
       {
         name: 'url',
         usage: "url('route.name', params?, query?)",
@@ -122,7 +122,7 @@ export class TinkerSession {
         description: 'a text in APP_LOCALE',
         available: translator,
         value: () => {
-          if (!translator) throw new Error('t needs @bespokecore/i18n (pnpm add @bespokecore/i18n; bespoke discover).');
+          if (!translator) throw new Error('t needs @marmeon/i18n (pnpm add @marmeon/i18n; marmeon discover).');
           const translations = this.scope.make(Translator);
           return (key: string, params?: Record<string, unknown>) => translations.text(key, params);
         },
@@ -233,7 +233,7 @@ export class TinkerSession {
   async open(): Promise<void> {
     if (!this.sandbox || this.#done) return;
     const connections = this.#connections();
-    if (!connections) throw new Error('--sandbox needs @bespokecore/database (pnpm add @bespokecore/database; bespoke discover).');
+    if (!connections) throw new Error('--sandbox needs @marmeon/database (pnpm add @marmeon/database; marmeon discover).');
     const inside = Promise.withResolvers<<R>(fn: () => R) => R>();
     const end = Promise.withResolvers<void>();
     this.#end = end.resolve;
@@ -373,7 +373,7 @@ export class TinkerSession {
   }
 }
 
-/** A repository class (@bespokecore/database): `static table` and the repository methods — told apart without importing the package. */
+/** A repository class (@marmeon/database): `static table` and the repository methods — told apart without importing the package. */
 function isRepositoryClass(value: unknown): value is RepositoryClass {
   if (typeof value !== 'function' || typeof (value as { table?: unknown }).table !== 'string') return false;
   const prototype = (value as { prototype?: Record<string, unknown> }).prototype;

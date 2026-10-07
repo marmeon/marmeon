@@ -1,5 +1,5 @@
 import { UserRepository, type User } from '#modules/auth';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ConfirmRemoveLinkController } from './controllers/ConfirmRemoveLinkController.ts';
@@ -59,10 +59,10 @@ describe('editing a profile is a layer (E53)', () => {
     const failed = await session
       .put(profile(ada), { json: { name: 'A', bio: '' }, headers: { referer: `http://localhost${profile(ada)}/edit` } })
       .assertRedirect(`${profile(ada)}/edit`);
-    const cookie = failed.cookie('bespoke_session');
+    const cookie = failed.cookie('marmeon_session');
     await app
       .actingAs(ada)
-      .withCookie('bespoke_session', cookie!)
+      .withCookie('marmeon_session', cookie!)
       .layering()
       .get(`${profile(ada)}/edit`)
       .assertLayer('user-profile/Edit', { errors: { name: ['The name needs at least 2 characters.'] } });
@@ -79,7 +79,7 @@ describe('editing a profile is a layer (E53)', () => {
 describe('creating an API token is a layer shown once (E53)', () => {
   it('a deep link of the form: the list under it — and reloading after creating shows the list, never the plain text', async () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } });
-    const session = app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
     const form = await session.get('/settings/tokens/create', { headers: { accept: 'text/html' } }).assertOk();
     form.assertPage('auth/AccessTokens');
     expect(form.layers().map((layer) => layer.component)).toEqual(['auth/CreateAccessToken']);

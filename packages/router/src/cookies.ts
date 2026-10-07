@@ -8,7 +8,7 @@ export interface CookieOptions {
   path?: string;
   domain?: string;
   /**
-   * HTTPS only. Defaults to the request's {@link CookieDefaults} — with `@bespokecore/session`, `SESSION_SECURE_COOKIE`,
+   * HTTPS only. Defaults to the request's {@link CookieDefaults} — with `@marmeon/session`, `SESSION_SECURE_COOKIE`,
    * which follows `APP_URL` (`https:` → `true`, E162) — else `false`. `false` here turns it off for this cookie.
    */
   secure?: boolean;
@@ -20,7 +20,7 @@ export interface CookieOptions {
 
 /**
  * What every cookie of a request gets unless its `set` says otherwise (Laravel's `CookieJar` defaults): the kernel takes them
- * from the container (`CookieDefaults`, bound by `@bespokecore/session` from its config, E162).
+ * from the container (`CookieDefaults`, bound by `@marmeon/session` from its config, E162).
  */
 export interface CookieDefaults {
   /** `Secure` on every cookie that does not set `secure` itself. */

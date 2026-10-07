@@ -1,7 +1,7 @@
-import { HealthChecks } from '@bespokecore/core';
-import { Connections } from '@bespokecore/database';
-import { ServerClosing } from '@bespokecore/http';
-import { createTestApp } from '@bespokecore/testing';
+import { HealthChecks } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { ServerClosing } from '@marmeon/http';
+import { createTestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { StorageWritable } from './health/StorageWritable.ts';

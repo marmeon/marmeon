@@ -1,5 +1,5 @@
-import { token } from '@bespokecore/core';
-import type { Encrypter } from '@bespokecore/encryption';
+import { token } from '@marmeon/core';
+import type { Encrypter } from '@marmeon/encryption';
 
 /**
  * Turns a session's JSON into what its store keeps, and back: as it is (the default), or encrypted (`SESSION_ENCRYPT=true`,

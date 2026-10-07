@@ -1,5 +1,5 @@
 {
-  "name": "@bespokecore/blank-app",
+  "name": "@marmeon/blank-app",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,38 +10,38 @@
     "#modules/*": "./modules/*/index.ts"
   },
   "scripts": {
-    "dev": "bespoke dev",
-    "build": "bespoke build",
-    "start": "bespoke start",
+    "dev": "marmeon dev",
+    "build": "marmeon build",
+    "start": "marmeon start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint"
   },
   "dependencies": {
-    "@bespokecore/auth": "workspace:*",
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/i18n": "workspace:*",
-    "@bespokecore/log": "workspace:*",
-    "@bespokecore/mail": "workspace:*",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/react": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/scheduler": "workspace:*",
-    "@bespokecore/server": "workspace:*",
-    "@bespokecore/session": "workspace:*",
+    "@marmeon/auth": "workspace:*",
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
+    "@marmeon/log": "workspace:*",
+    "@marmeon/mail": "workspace:*",
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/react": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/scheduler": "workspace:*",
+    "@marmeon/server": "workspace:*",
+    "@marmeon/session": "workspace:*",
     "mjml": "^5.4.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@bespokecore/devtools": "workspace:*",
-    "@bespokecore/testing": "workspace:*",
-    "@bespokecore/vite": "workspace:*",
+    "@marmeon/devtools": "workspace:*",
+    "@marmeon/testing": "workspace:*",
+    "@marmeon/vite": "workspace:*",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -51,5 +51,5 @@
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   },
-  "description": "An app without modules — what create-bespoke-app --minimal writes (pnpm template:sync), and the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
+  "description": "An app without modules — what create-marmeon --minimal writes (pnpm template:sync), and the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
 }

@@ -1,6 +1,6 @@
-import { openTransactionOf, TransactionError } from '@bespokecore/core';
+import { openTransactionOf, TransactionError } from '@marmeon/core';
 import type { DatabaseConnection, Driver, TransactionSettings } from 'kysely';
-import type { BespokeDriver } from './driver.ts';
+import type { MarmeonDriver } from './driver.ts';
 
 /** Who uses an infrastructure connection — for the message when it cannot work (see {@link InfrastructureTransactionError}). */
 export interface InfrastructureUsage {
@@ -51,19 +51,19 @@ export class InfrastructureTransactionError extends TransactionError {
  * It runs single statements only: no transactions of its own.
  */
 export class InfrastructureDriver implements Driver {
-  readonly #main: BespokeDriver;
+  readonly #main: MarmeonDriver;
   /** Every driver of the same physical database (the SQLite file) — a transaction of any of them holds it. */
-  readonly #peers: () => readonly BespokeDriver[];
+  readonly #peers: () => readonly MarmeonDriver[];
   /** Postgres: the pool of its own, created on first use. */
-  readonly #pool: (() => BespokeDriver) | undefined;
+  readonly #pool: (() => MarmeonDriver) | undefined;
   readonly #usage: InfrastructureUsage;
   /** Connections handed out from the pool of its own (the others go back to the main driver). */
   readonly #own = new WeakSet<DatabaseConnection>();
 
   constructor(options: {
-    main: BespokeDriver;
-    peers: () => readonly BespokeDriver[];
-    pool?: () => BespokeDriver;
+    main: MarmeonDriver;
+    peers: () => readonly MarmeonDriver[];
+    pool?: () => MarmeonDriver;
     usage?: InfrastructureUsage;
   }) {
     this.#main = options.main;

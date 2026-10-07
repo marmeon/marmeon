@@ -1,4 +1,4 @@
-import { token, type Application, type Duration } from '@bespokecore/core';
+import { token, type Application, type Duration } from '@marmeon/core';
 import { fromHtml, Html } from './html.ts';
 import type { Address, Mailable, MailContent, MailMessage } from './message.ts';
 import { fromMjml, Mjml } from './mjml.ts';
@@ -32,13 +32,13 @@ export interface Mailer {
    * request does not wait for the mail server, and an SMTP failure retries in the worker instead of failing the request.
    * The queued message is **encrypted** (`jobs`/`failed_jobs` keep no reset link in plain text). Inside
    * `connections.transaction()` it is queued only if the transaction commits. Resolves with the composed message.
-   * Needs @bespokecore/queue (and APP_KEY).
+   * Needs @marmeon/queue (and APP_KEY).
    */
   queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
 }
 export const Mailer = token<Mailer>('Mailer');
 
-/** Puts a composed mail on the queue — the `bespoke.mail` job (`MailServiceProvider` wires it to @bespokecore/queue). */
+/** Puts a composed mail on the queue — the `marmeon.mail` job (`MailServiceProvider` wires it to @marmeon/queue). */
 export type MailQueue = (payload: QueuedMailPayload, options: QueueMailOptions) => Promise<unknown>;
 
 export class MailError extends Error {
@@ -99,7 +99,7 @@ export class TransportMailer implements Mailer {
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
-    if (!this.#queue) throw new MailError('mailer.queue() needs @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover) — or send the mail now: mailer.send().');
+    if (!this.#queue) throw new MailError('mailer.queue() needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or send the mail now: mailer.send().');
     const queue = this.#queue;
     return traceMail(this.#app, mailable.constructor.name, 'queue', async () => {
       const message = await compose(mailable, this.#from);

@@ -1,12 +1,12 @@
-import { SystemClock, type Clock } from '@bespokecore/core';
-import type { Kysely } from '@bespokecore/database';
+import { SystemClock, type Clock } from '@marmeon/core';
+import type { Kysely } from '@marmeon/database';
 import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReservedJob } from '../driver.ts';
 
-/** The tables `bespoke make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
+/** The tables `marmeon make:queue-table` creates (E96: the app owns the migration; the queue types them itself). */
 export const JOBS_TABLE = 'jobs';
 export const FAILED_JOBS_TABLE = 'failed_jobs';
 
-/** A connection of @bespokecore/database — or a transaction of one (`queue.using(trx)`). */
+/** A connection of @marmeon/database — or a transaction of one (`queue.using(trx)`). */
 export interface DatabaseQueueConnection {
   readonly db: Kysely<any>;
   readonly driver: 'sqlite' | 'pgsql';
@@ -20,11 +20,11 @@ export interface DatabaseQueueConnection {
   readonly transaction?: <R>(work: () => Promise<R>) => Promise<R>;
 }
 
-type Sql = (typeof import('@bespokecore/database'))['sql'];
+type Sql = (typeof import('@marmeon/database'))['sql'];
 
 async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { sql?: Promise<Sql> }): Promise<DatabaseQueueConnection & { sql: Sql }> {
-  // Imported here, not at the top: @bespokecore/database is an optional peer of the queue.
-  cache.sql ??= import('@bespokecore/database').then((module) => module.sql);
+  // Imported here, not at the top: @marmeon/database is an optional peer of the queue.
+  cache.sql ??= import('@marmeon/database').then((module) => module.sql);
   const [resolved, sql] = await Promise.all([connection(), cache.sql]);
   return { ...resolved, sql };
 }
@@ -161,7 +161,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   }
 }
 
-/** Failed jobs in `failed_jobs` (from `bespoke make:queue-table`). */
+/** Failed jobs in `failed_jobs` (from `marmeon make:queue-table`). */
 export class DatabaseFailedJobStore implements FailedJobStore {
   readonly #connection: () => Promise<DatabaseQueueConnection>;
   readonly #cache: { sql?: Promise<Sql> } = {};

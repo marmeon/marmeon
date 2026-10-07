@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { Duration } from '@bespokecore/core';
+import type { Duration } from '@marmeon/core';
 
 /** Who may read a disk's files: `public` — anyone with the URL (`disk.url()`); `private` — only through `temporaryUrl()`. */
 export type Visibility = 'public' | 'private';

@@ -1,9 +1,9 @@
-import type { PageObject, RouteManifest, SsrRender } from '@bespokecore/http/page';
-import type { MessageLoader } from '@bespokecore/i18n/messages';
+import type { PageObject, RouteManifest, SsrRender } from '@marmeon/http/page';
+import type { MessageLoader } from '@marmeon/i18n/messages';
 import { cloneElement, type ReactElement } from 'react';
 import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';
-import { defaultTitle, isDevelopment, loadPageMessages, type TitleTemplate } from '@bespokecore/http/client';
-import { BespokeApp, loadLayerStack } from './app.tsx';
+import { defaultTitle, isDevelopment, loadPageMessages, type TitleTemplate } from '@marmeon/http/client';
+import { MarmeonApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
 import type { LayerFrame } from './layer.tsx';
@@ -12,23 +12,23 @@ import { loadView } from './views.ts';
 import { ssrResolvers } from './streamed.tsx';
 
 export interface SsrOptions {
-  /** The same title template as the client's (`createBespokeApp({ title })`). */
+  /** The same title template as the client's (`createMarmeonApp({ title })`). */
   title?: TitleTemplate;
-  /** The same route manifest as the client's (`createBespokeApp({ routes })`), so links render alike. */
+  /** The same route manifest as the client's (`createMarmeonApp({ routes })`), so links render alike. */
   routes?: RouteManifest;
-  /** The same default layout as the client's (`createBespokeApp({ layout })`), so the markup matches. */
+  /** The same default layout as the client's (`createMarmeonApp({ layout })`), so the markup matches. */
   layout?: DefaultLayout;
   /**
-   * The same language files as the client's (`createBespokeApp({ messages })`). Each page renders with its own
+   * The same language files as the client's (`createMarmeonApp({ messages })`). Each page renders with its own
    * `locale`'s messages, loaded before rendering starts — per request, whatever other requests render meanwhile.
    */
   messages?: MessageLoader;
-  /** The same layer frame as the client's (`createBespokeApp({ layer })`), so a deep link's layers render alike. */
+  /** The same layer frame as the client's (`createMarmeonApp({ layer })`), so a deep link's layers render alike. */
   layer?: LayerFrame;
 }
 
 /**
- * Builds the app's SSR entry. Lives in `@bespokecore/react/server` so `react-dom/server` never ends up in the client
+ * Builds the app's SSR entry. Lives in `@marmeon/react/server` so `react-dom/server` never ends up in the client
  * bundle. Pages are streamed (`renderToReadableStream`, E37): the promise resolves with the shell — everything outside
  * Suspense boundaries — and its `<Head>` content for the document head; the boundaries follow in the stream as they
  * finish. With `complete` (bots) or `Page.ssr = 'complete'` it resolves once the whole page has rendered;
@@ -65,7 +65,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
     let shellReady = false;
     const recovered: unknown[] = [];
     const stream = await renderToReadableStream(
-      <BespokeApp
+      <MarmeonApp
         initialPage={rendered}
         initialComponent={Component}
         resolve={resolve}

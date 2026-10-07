@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
-import { createApplication, defineModule, TestClock } from '@bespokecore/core';
-import { EncryptionConfig, EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { defineRoutes, Router } from '@bespokecore/router';
+import { createApplication, defineModule, TestClock } from '@marmeon/core';
+import { EncryptionConfig, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { defineRoutes, Router } from '@marmeon/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpServiceProvider } from './provider.ts';
 import { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
@@ -62,8 +62,8 @@ describe('UrlSigner', () => {
 
   it('signs a path without a route name: query and expiry signed, path as given', () => {
     clock.freeze();
-    const url = signer(KEY).signedPath('/_bespoke/storage/local/exports/7%20a.json', { query: { filename: 'export.json' }, expiresIn: 300 });
-    expect(url).toMatch(/^\/_bespoke\/storage\/local\/exports\/7%20a\.json\?filename=export\.json&expires=\d+&signature=[0-9a-f]{64}$/);
+    const url = signer(KEY).signedPath('/_marmeon/storage/local/exports/7%20a.json', { query: { filename: 'export.json' }, expiresIn: 300 });
+    expect(url).toMatch(/^\/_marmeon\/storage\/local\/exports\/7%20a\.json\?filename=export\.json&expires=\d+&signature=[0-9a-f]{64}$/);
     expect(signer(KEY).hasValidSignature(url)).toBe(true);
     expect(signer(KEY).hasValidSignature(url.replace('/local/', '/public/'))).toBe(false);
     expect(signer(KEY).hasValidSignature(url.replace('filename=export.json', 'filename=export.html'))).toBe(false);

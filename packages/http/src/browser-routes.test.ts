@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { defineRoutes, Router } from '@bespokecore/router';
+import { defineRoutes, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { BROWSER_ROUTES_FILE, browserRoutes, writeBrowserRoutes } from './browser-routes.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -46,8 +46,8 @@ describe('browserRoutes', () => {
     expect(without.hidden['api.users.index']).toBe('except');
   });
 
-  it('is written to .bespoke/routes.json only when it changed', () => {
-    const root = tempDir('bespoke-browser-routes-');
+  it('is written to .marmeon/routes.json only when it changed', () => {
+    const root = tempDir('marmeon-browser-routes-');
     const routes = browserRoutes(router.routes);
     expect(writeBrowserRoutes(root, routes)).toBe(true);
     expect(writeBrowserRoutes(root, routes)).toBe(false);

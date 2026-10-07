@@ -1,10 +1,10 @@
-# @bespokecore/i18n
+# @marmeon/i18n
 
-Translations for BespokeCore apps (E38): typed messages per module in plain TypeScript files, an ICU subset for placeholders,
+Translations for Marmeon apps (E38): typed messages per module in plain TypeScript files, an ICU subset for placeholders,
 plurals and selects, a `Translator` per request and the `SetLocale` middleware that picks the request's language. Keys and
 placeholders are checked by the compiler against the English source files — no code generation. It is UI-agnostic:
-`@bespokecore/i18n/messages` is the browser-safe core the UI adapters build on (`useTranslation` in
-[@bespokecore/react](../react/README.md)).
+`@marmeon/i18n/messages` is the browser-safe core the UI adapters build on (`useTranslation` in
+[@marmeon/react](../react/README.md)).
 
 ```ts
 // modules/dashboard/lang/en.ts — the source language
@@ -13,7 +13,7 @@ const en = {
   members: { text: '{members, plural, one {# member} other {# members}}, {verified} with a confirmed address' },
 } as const;
 export default en;
-declare module '@bespokecore/i18n/messages' {
+declare module '@marmeon/i18n/messages' {
   interface Translations { dashboard: typeof en }
 }
 ```
@@ -29,27 +29,27 @@ const t = useTranslation('dashboard');
 <p>{t('members.text', { members: stats.members, verified: stats.verified })}</p>
 ```
 
-`bespoke discover` registers its `I18nServiceProvider` through the `"bespoke"` field of its package.json; the field's `browser`
+`marmeon discover` registers its `I18nServiceProvider` through the `"marmeon"` field of its package.json; the field's `browser`
 list marks the browser-side sources (`catalog`, `format`, `locale`, `loader`, `messages`), which the injection transform leaves
-alone (E76). It depends on `@bespokecore/core`, [@bespokecore/router](../router/README.md) (the `web` group, validation messages) and
-**`@bespokecore/session`**: the locale a visitor chose with a language switcher lives in the session (`session.put('locale', …)`
+alone (E76). It depends on `@marmeon/core`, [@marmeon/router](../router/README.md) (the `web` group, validation messages) and
+**`@marmeon/session`**: the locale a visitor chose with a language switcher lives in the session (`session.put('locale', …)`
 — the package adds `locale` to `SessionData`), and `SetLocale` reads it first.
 
 ## Language files
 
 - **Where:** `modules/<module>/lang/<locale>.ts` — the namespace is the module's name — and `lang/<locale>.ts` for app-wide texts
-  (namespace `app`). Keys are `<namespace>.<path>`: `auth.login.title`, `app.sign_out`. The namespace `bespoke` belongs to the
+  (namespace `app`). Keys are `<namespace>.<path>`: `auth.login.title`, `app.sign_out`. The namespace `marmeon` belongs to the
   framework (a module of that name fails the start).
 - **What:** a default export of strings, nested in objects. A key may not contain a dot. Every file is parsed at the start; a
   malformed message fails it with its key and file, a namespace defined twice in one locale too:
   `Message auth.login.throttled in … is malformed: Unclosed placeholder {seconds at position …`.
-- **Types:** the English file is the source. Declare it in `Translations` (declaration merging on `@bespokecore/i18n/messages`)
+- **Types:** the English file is the source. Declare it in `Translations` (declaration merging on `@marmeon/i18n/messages`)
   and keep `as const` — the texts as types are what types the placeholders (`{count, plural, …}` → `count: number`). A
   translation is checked against it:
 
   ```ts
   // modules/dashboard/lang/de.ts
-  import type { Messages } from '@bespokecore/i18n/messages';
+  import type { Messages } from '@marmeon/i18n/messages';
   import type en from './en.ts';
 
   export default {
@@ -60,10 +60,10 @@ alone (E76). It depends on `@bespokecore/core`, [@bespokecore/router](../router/
 
 - **Which are loaded:** every locale of `APP_LOCALES` — without it, every locale the app has files for. Files of other locales
   are skipped (a debug log line names them). Paths come from the app's folders, never from a request.
-- **The framework's texts** (namespace `bespoke`, English and German): status pages (`bespoke.status.404`), framework errors
-  (CSRF — `bespoke.errors.csrf` for the 419, `bespoke.errors.cross_site` for the 403 of a cross-site request, E143 —, throttling,
-  signatures), the password and upload rules of [@bespokecore/auth](../auth/README.md) and
-  [@bespokecore/storage](../storage/README.md#uploads), and `bespoke.validation.more` ("(and 2 more errors)"). Each package
+- **The framework's texts** (namespace `marmeon`, English and German): status pages (`marmeon.status.404`), framework errors
+  (CSRF — `marmeon.errors.csrf` for the 419, `marmeon.errors.cross_site` for the 403 of a cross-site request, E143 —, throttling,
+  signatures), the password and upload rules of [@marmeon/auth](../auth/README.md) and
+  [@marmeon/storage](../storage/README.md#uploads), and `marmeon.validation.more` ("(and 2 more errors)"). Each package
   keeps its English text inline as well, for apps without i18n.
 
 ## Messages: the ICU subset
@@ -184,16 +184,16 @@ Pages render from the same language files in the browser and in the SSR entry, l
 
 ```ts
 // bootstrap/i18n.ts
-import { createMessageLoader } from '@bespokecore/i18n/messages';
-import lang from 'virtual:bespoke/lang';
+import { createMessageLoader } from '@marmeon/i18n/messages';
+import lang from 'virtual:marmeon/lang';
 
 export const messages = createMessageLoader(lang);
-// bootstrap/client.tsx: createBespokeApp({ …, messages }); bootstrap/ssr.tsx: createSsrRenderer(resolvePage, { …, messages })
+// bootstrap/client.tsx: createMarmeonApp({ …, messages }); bootstrap/ssr.tsx: createSsrRenderer(resolvePage, { …, messages })
 ```
 
-- **`virtual:bespoke/lang`** (the `bespoke()` Vite plugin of [@bespokecore/vite](../vite/README.md), option `lang`) is every
+- **`virtual:marmeon/lang`** (the `marmeon()` Vite plugin of [@marmeon/vite](../vite/README.md), option `lang`) is every
   language file as a lazy import — one chunk per file. Default: `modules/*/lang/*.ts` and `lang/*.ts`.
-- **Only the app's namespaces:** the browser's catalog holds the modules' namespaces and `app` — never the framework's `bespoke`
+- **Only the app's namespaces:** the browser's catalog holds the modules' namespaces and `app` — never the framework's `marmeon`
   namespace, which stays on the server (status pages, server errors, validation messages arrive translated). Framework UI in the
   browser takes its words from the app: the kit's dialog from `lang/<locale>.ts`, `<Pagination labels>` and the like as props.
 - **`load(locale, { fallback })`** loads, for every namespace, its file in the page's locale, else in the locale's language, else
@@ -203,7 +203,7 @@ export const messages = createMessageLoader(lang);
   but the app's own files.
 - **`Translate`** — what `useTranslation(namespace)` returns: `t(key, params)` with keys of that namespace, typed like the
   server's, plus `t.locale`, `t.namespace`, `t.format` and `t.has(key)`. The hooks (`useTranslation`, `useLocale`) are part of
-  [@bespokecore/react](../react/README.md); a Vue adapter would build on the same `Catalog.translate(locale, namespace)`.
+  [@marmeon/react](../react/README.md); a Vue adapter would build on the same `Catalog.translate(locale, namespace)`.
 
 ## Formatting
 
@@ -232,7 +232,7 @@ server: it travels with every page.
 
 ## Testing
 
-No helpers of its own — a test speaks to the app like a browser. With [@bespokecore/testing](../testing/README.md):
+No helpers of its own — a test speaks to the app like a browser. With [@marmeon/testing](../testing/README.md):
 
 ```ts
 const login = await app.withHeaders({ 'accept-language': 'de-DE,de;q=0.9' }).navigating().get('/login');

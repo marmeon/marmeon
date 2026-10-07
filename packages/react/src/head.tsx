@@ -1,8 +1,8 @@
-import { defaultTitle, type TitleRegistry, type TitleTemplate } from '@bespokecore/http/client';
+import { defaultTitle, type TitleRegistry, type TitleTemplate } from '@marmeon/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 
-export { defaultTitle } from '@bespokecore/http/client';
-export type { TitleTemplate } from '@bespokecore/http/client';
+export { defaultTitle } from '@marmeon/http/client';
+export type { TitleTemplate } from '@marmeon/http/client';
 
 /** Server rendering: where `<Head>`s record themselves for the document head. */
 export interface HeadCollector {
@@ -31,7 +31,7 @@ export interface HeadProps {
   children?: ReactNode;
 }
 
-const MARKER = 'data-bespoke-head';
+const MARKER = 'data-marmeon-head';
 
 /**
  * The page's title and meta tags. Rendered on the server into the document head,
@@ -49,7 +49,7 @@ export function Head(props: HeadProps) {
   // An island renders after the document head went out (streamed, E49) — and beside a page that has its own.
   // Development only: a bundler replaces `process.env.NODE_ENV`, and a production bundle drops the message.
   if (process.env.NODE_ENV !== 'production') {
-    throw new Error(`[bespoke:R13] <Head> in island [${island}] — islands cannot change the document head; set it on the page.`);
+    throw new Error(`[marmeon:R13] <Head> in island [${island}] — islands cannot change the document head; set it on the page.`);
   }
   return null;
 }
@@ -108,7 +108,7 @@ export function createHeadCollector(onLate?: (title: string | undefined) => void
   return { entries: [], sealed: false, onLate };
 }
 
-/** `data-bespoke-head="ssr"` on server-rendered tags, so the client can take them over. */
+/** `data-marmeon-head="ssr"` on server-rendered tags, so the client can take them over. */
 export function markServerTag(tag: ReactElement): ReactElement {
   return cloneElement(tag, { [MARKER]: 'ssr' } as Record<string, string>);
 }

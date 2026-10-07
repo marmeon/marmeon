@@ -1,8 +1,8 @@
-import { Hasher } from '@bespokecore/auth';
-import type { SeedContext } from '@bespokecore/database';
+import { Hasher } from '@marmeon/auth';
+import type { SeedContext } from '@marmeon/database';
 import { UserFactory } from '../factories/UserFactory.ts';
 
-/** The three demo people — each signs in with the password `password`. `bespoke migrate:fresh --seed` */
+/** The three demo people — each signs in with the password `password`. `marmeon migrate:fresh --seed` */
 export class DemoUsersSeeder {
   readonly #hasher: Hasher;
 

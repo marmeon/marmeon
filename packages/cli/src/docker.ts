@@ -1,5 +1,5 @@
 /**
- * The files `bespoke make:docker` writes (E140, E141, E163): a multi-stage Dockerfile on `node:26-slim`, its `.dockerignore`, a
+ * The files `marmeon make:docker` writes (E140, E141, E163): a multi-stage Dockerfile on `node:26-slim`, its `.dockerignore`, a
  * Compose file with one role per container, a reverse proxy (Caddy or nginx) and systemd units. Plain strings, so a test can
  * read every line the user gets — and run the health check.
  */
@@ -45,37 +45,37 @@ export function dockerfile(app: DockerApp): string {
   // leaves them in node_modules/.pnpm.
   const prune = pnpm ? 'rm -rf node_modules \\\n && pnpm install --prod --frozen-lockfile --prefer-offline --store-dir /pnpm/store' : 'npm prune --omit=dev --no-audit --no-fund';
   return `# syntax=docker/dockerfile:1
-# Written by \`bespoke make:docker\` (E141) — yours from now on. One image for every role: \`start\` (the web server, the default),
+# Written by \`marmeon make:docker\` (E141) — yours from now on. One image for every role: \`start\` (the web server, the default),
 # \`queue:work\` and \`schedule:work\` — compose.production.yaml runs each in a container of its own (E140).
 #
 #   docker build -t ${app.name} .
 #   docker run -p 3000:3000 --env-file .env.production -v ${app.name}-storage:/app/storage ${app.name}
 #
-# The app stays TypeScript (E138): Node runs its .ts files; \`bespoke build\` adds the bundles, the injection lists and the
+# The app stays TypeScript (E138): Node runs its .ts files; \`marmeon build\` adds the bundles, the injection lists and the
 # discovery manifest. Configuration and secrets (APP_KEY, APP_URL, DB_*, MAIL_*) come from the environment when the container
 # runs — never from a file in the image: .dockerignore keeps every .env* out of the build.
 
 ARG NODE_IMAGE=${NODE_IMAGE}
 
-# ── Build: every dependency, \`bespoke build\`, then only the production dependencies ─────────────────────────────────────
+# ── Build: every dependency, \`marmeon build\`, then only the production dependencies ─────────────────────────────────────
 FROM \${NODE_IMAGE} AS build
 ${pnpm ? `# pnpm as the app pins it ("packageManager" in package.json) — Node ships no Corepack since 25.\nRUN npm install --global --no-audit --no-fund pnpm@${app.pnpmVersion}\n` : ''}WORKDIR /app
 # The dependencies first: this layer is rebuilt only when they change, not with every change of the code.
 COPY ${manifests} ./
 ${app.localPackages.map((dir) => `COPY ${dir} ./${dir}\n`).join('')}RUN ${cache} ${install}
 COPY . .
-# \`bespoke build\` needs no .env and no secret (E187): it registers the app's providers without booting them (the route types) —
+# \`marmeon build\` needs no .env and no secret (E187): it registers the app's providers without booting them (the route types) —
 # no APP_KEY, no database, nothing that could end up in the image.
-RUN NODE_ENV=production node_modules/.bin/bespoke build
-# Production dependencies only — bespoke is one (E159); typescript, vite and vitest leave. Then the discovery manifest of exactly
+RUN NODE_ENV=production node_modules/.bin/marmeon build
+# Production dependencies only — marmeon is one (E159); typescript, vite and vitest leave. Then the discovery manifest of exactly
 # these packages (E160): the start rewrites nothing, and the app's files may be read-only.
 RUN ${cache} ${prune} \\
- && node_modules/.bin/bespoke discover
+ && node_modules/.bin/marmeon discover
 
 # ── Run: Node and the app, nothing to build with ───────────────────────────────────────────────────────────────────────
 FROM \${NODE_IMAGE}
 # tini as PID 1 (E187): Node as PID 1 reaps no orphaned process (they stay zombies), and the kernel drops a signal to PID 1 that
-# has no handler yet — tini passes SIGTERM on to bespoke and ends with its exit code (0 after the drain, 70 for a stuck job).
+# has no handler yet — tini passes SIGTERM on to marmeon and ends with its exit code (0 after the drain, 70 for a stuck job).
 RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 PATH=/app/node_modules/.bin:$PATH
 WORKDIR /app
@@ -91,21 +91,21 @@ EXPOSE 3000
 # it). The worker and scheduler containers turn it off (compose).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \\
   CMD ["node", "-e", ${JSON.stringify(HEALTHCHECK_SCRIPT)}]
-# bespoke is the process — one Node (E159) — under tini, which only passes signals on and reaps orphans.
-ENTRYPOINT ["/usr/bin/tini", "--", "bespoke"]
+# marmeon is the process — one Node (E159) — under tini, which only passes signals on and reaps orphans.
+ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]
 CMD ["start"]
 `;
 }
 
 export function dockerignore(): string {
-  return `# Written by \`bespoke make:docker\` — what never enters the build context, and so never the image.
+  return `# Written by \`marmeon make:docker\` — what never enters the build context, and so never the image.
 # Every .env file: the image gets its configuration from the environment when it runs (a developer's .env on a server would
-# switch on the development tools, E170) — and \`bespoke build\` needs none (E187).
+# switch on the development tools, E170) — and \`marmeon build\` needs none (E187).
 .env*
 # Installed and built inside the image.
 node_modules
 dist
-.bespoke
+.marmeon
 # What the app writes when it runs — a volume in production.
 storage
 # Not needed to run.
@@ -203,7 +203,7 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
     );
   }
   const volumes = ['  storage:', ...(proxied && proxy === 'caddy' ? ['  caddy_data:', '  caddy_config:'] : [])];
-  return `# Written by \`bespoke make:docker\` — one image, a role per container (E140): the web server, the queue worker, the scheduler.
+  return `# Written by \`marmeon make:docker\` — one image, a role per container (E140): the web server, the queue worker, the scheduler.
 #
 #   docker compose -f compose.production.yaml up -d --build
 #
@@ -232,12 +232,12 @@ ${volumes.join('\n')}
 
 export function caddyfile({ systemd = false }: DockerOptions): string {
   const upstream = systemd ? '127.0.0.1:3000' : 'web:3000';
-  return `# Written by \`bespoke make:docker --caddy\`. Caddy fetches the certificate for {$APP_DOMAIN} and speaks HTTP/1.1, HTTP/2 and
+  return `# Written by \`marmeon make:docker --caddy\`. Caddy fetches the certificate for {$APP_DOMAIN} and speaks HTTP/1.1, HTTP/2 and
 # HTTP/3: a browser opens at most 6 HTTP/1.1 connections per host, so live streams (SSE, E104) in more tabs need HTTP/2.
 # It sets X-Forwarded-For/-Proto/-Host itself (and drops a client's), which the app trusts from TRUSTED_PROXIES (E162).
 # Trying it locally: APP_DOMAIN=localhost and a \`tls internal\` line in the block.
 {$APP_DOMAIN} {
-	# No \`encode\`: the assets arrive compressed (bespoke build writes .br/.gz, E162), and documents stay uncompressed — a
+	# No \`encode\`: the assets arrive compressed (marmeon build writes .br/.gz, E162), and documents stay uncompressed — a
 	# compressed page that carries a secret (the CSRF token) is what BREACH reads.
 	reverse_proxy ${upstream} {
 		# Live streams: Caddy flushes text/event-stream by itself. On a config reload it ends them after this long (the tabs
@@ -250,9 +250,9 @@ export function caddyfile({ systemd = false }: DockerOptions): string {
 
 export function nginxConf({ systemd = false }: DockerOptions): string {
   const upstream = systemd ? '127.0.0.1:3000' : 'web:3000';
-  return `# Written by \`bespoke make:docker --nginx\`. Replace example.com; the certificates (fullchain.pem, privkey.pem) are yours to
+  return `# Written by \`marmeon make:docker --nginx\`. Replace example.com; the certificates (fullchain.pem, privkey.pem) are yours to
 # provide — ${systemd ? 'e.g. from certbot' : 'deploy/certs is mounted at /etc/nginx/certs'}.
-upstream bespoke {
+upstream marmeon {
 	server ${upstream};
 	keepalive 16;
 	# Idle connections to the app close here first: the app keeps them longer (KEEP_ALIVE_TIMEOUT, default 65 s) — the other
@@ -278,11 +278,11 @@ server {
 	# MAX_BODY_SIZE of the app (default 8m).
 	client_max_body_size 8m;
 	# No gzip for documents: a compressed page that carries a secret (the CSRF token) is what BREACH reads. The assets arrive
-	# compressed already (bespoke build writes .br/.gz, E162).
+	# compressed already (marmeon build writes .br/.gz, E162).
 	gzip off;
 
 	location / {
-		proxy_pass http://bespoke;
+		proxy_pass http://marmeon;
 		proxy_http_version 1.1;
 		proxy_set_header Connection "";
 		proxy_set_header Host $host;
@@ -301,9 +301,9 @@ server {
 
 /** The systemd units of the three roles — the app in /srv/<name>, run as the user <name>. */
 export function systemdUnits(app: DockerApp): Record<'web' | 'worker' | 'scheduler', string> {
-  const unit = (role: string, description: string, command: string, stop: number, extra: string[] = []) => `# Written by \`bespoke make:docker --systemd\`: the ${role} of ${app.name}. Copy to /etc/systemd/system/${app.name}-${role}.service, then
+  const unit = (role: string, description: string, command: string, stop: number, extra: string[] = []) => `# Written by \`marmeon make:docker --systemd\`: the ${role} of ${app.name}. Copy to /etc/systemd/system/${app.name}-${role}.service, then
 #   systemctl daemon-reload && systemctl enable --now ${app.name}-${role}
-# The app lives in /srv/${app.name} (bespoke build and a production install done there), runs as the user ${app.name}, and reads
+# The app lives in /srv/${app.name} (marmeon build and a production install done there), runs as the user ${app.name}, and reads
 # its configuration from /etc/${app.name}/env (APP_KEY, APP_URL, DB_*, MAIL_MAILER=smtp, … — chmod 600). Node must be on PATH.
 [Unit]
 Description=${app.name} ${description}
@@ -316,7 +316,7 @@ User=${app.name}
 WorkingDirectory=/srv/${app.name}
 EnvironmentFile=/etc/${app.name}/env
 Environment=NODE_ENV=production
-${extra.join('\n')}${extra.length ? '\n' : ''}ExecStart=/srv/${app.name}/node_modules/.bin/bespoke ${command}
+${extra.join('\n')}${extra.length ? '\n' : ''}ExecStart=/srv/${app.name}/node_modules/.bin/marmeon ${command}
 Restart=always
 RestartSec=1
 # SIGTERM to the one Node process (E159), then SIGKILL after:
@@ -332,15 +332,15 @@ ReadWritePaths=/srv/${app.name}/storage
 WantedBy=multi-user.target
 `;
   return {
-    web: unit('web server', 'web server (bespoke start)', 'start', 30, [
+    web: unit('web server', 'web server (marmeon start)', 'start', 30, [
       '# Only the proxy on this machine connects: listen on loopback, trust its X-Forwarded-* (E162).',
       'Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1',
       '# SIGTERM → SHUTDOWN_DELAY (E163) → drain (at most 10 s): TimeoutStopSec covers both.',
     ]),
-    worker: unit('queue worker', 'queue worker (bespoke queue:work)', 'queue:work --queue=mail,default', 30, [
+    worker: unit('queue worker', 'queue worker (marmeon queue:work)', 'queue:work --queue=mail,default', 30, [
       '# A job past its timeout ends the worker with exit code 70 (E83): Restart=always brings a fresh one. On SIGTERM the running',
       '# job gets --stop-timeout (10 s): TimeoutStopSec must be longer — raise both together for long jobs.',
     ]),
-    scheduler: unit('scheduler', 'scheduler (bespoke schedule:work)', 'schedule:work', 30),
+    scheduler: unit('scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 30),
   };
 }

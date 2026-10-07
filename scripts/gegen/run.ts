@@ -218,7 +218,7 @@ async function execute(repo: string, run: VitestRun | CommandRun): Promise<Outco
     const lines = output.split('\n').map((line) => line.trim()).filter(Boolean);
     return { kind: code === 0 ? 'green' : 'red', reason: output, headline: lines.at(-1) ?? `exit ${code}`, output };
   }
-  const dir = mkdtempSync(join(tmpdir(), 'bespoke-gegen-'));
+  const dir = mkdtempSync(join(tmpdir(), 'marmeon-gegen-'));
   try {
     const json = join(dir, 'report.json');
     const files = typeof run.vitest === 'string' ? [run.vitest] : [...run.vitest];

@@ -1,4 +1,4 @@
-import { html, type Html } from '@bespokecore/core';
+import { html, type Html } from '@marmeon/core';
 import type { AnyEntry, Entry, EntryType, RequestContent } from '../entry.ts';
 import { badge, duration, entryHref, firstLine, href, time } from './layout.ts';
 
@@ -85,7 +85,7 @@ function cells(entry: AnyEntry, link: string): Html {
     }
     case 'command': {
       const c = entry.content;
-      return html`<td class="mono"><a class="row" href="${link}">bespoke ${c.command} ${c.args.join(' ')}</a></td><td>${c.exitCode === undefined ? '' : badge(String(c.exitCode), c.exitCode === 0 ? 'ok' : 'bad')}</td><td class="num">${duration(c.durationMs)}</td>`;
+      return html`<td class="mono"><a class="row" href="${link}">marmeon ${c.command} ${c.args.join(' ')}</a></td><td>${c.exitCode === undefined ? '' : badge(String(c.exitCode), c.exitCode === 0 ? 'ok' : 'bad')}</td><td class="num">${duration(c.durationMs)}</td>`;
     }
   }
 }
@@ -114,7 +114,7 @@ export function summary(entry: AnyEntry): Html {
     case 'event':
       return html`<span class="mono">${entry.content.name}</span>`;
     case 'command':
-      return html`<span class="mono">bespoke ${entry.content.command}</span>`;
+      return html`<span class="mono">marmeon ${entry.content.command}</span>`;
   }
 }
 
@@ -154,10 +154,10 @@ export function requestBadges(content: RequestContent): Html {
   const badges: Html[] = [];
   if (content.region) badges.push(badge(content.region, 'info'));
   if (content.inProcess) badges.push(badge('in-process', '', 'Resolved in-process while its page rendered'));
-  if (headers['x-bespoke-validate']) badges.push(badge('live validation', '', 'Checks fields, changes nothing (E62)'));
-  else if (headers['x-bespoke-action']) badges.push(badge('action'));
-  else if (headers['x-bespoke-partial-data'] || headers['x-bespoke-partial-except']) badges.push(badge('partial'));
-  else if (headers['x-bespoke'] && !content.region) badges.push(badge('visit'));
+  if (headers['x-marmeon-validate']) badges.push(badge('live validation', '', 'Checks fields, changes nothing (E62)'));
+  else if (headers['x-marmeon-action']) badges.push(badge('action'));
+  else if (headers['x-marmeon-partial-data'] || headers['x-marmeon-partial-except']) badges.push(badge('partial'));
+  else if (headers['x-marmeon'] && !content.region) badges.push(badge('visit'));
   if (headers.purpose === 'prefetch' || headers['sec-purpose']?.includes('prefetch')) badges.push(badge('prefetch'));
   if (headers.accept?.includes('text/event-stream')) badges.push(badge('stream'));
   return badges.length > 0 ? html` ${badges}` : html``;

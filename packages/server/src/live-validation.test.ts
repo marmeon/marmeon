@@ -1,5 +1,5 @@
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
   ACTION_REDIRECT_HEADER,
   AfterResponse,
@@ -10,8 +10,8 @@ import {
   VALIDATED_HEADER,
   type ContextOf,
   type HttpContext,
-} from '@bespokecore/http';
-import { defineRoutes, type Next } from '@bespokecore/router';
+} from '@marmeon/http';
+import { defineRoutes, type Next } from '@marmeon/router';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';

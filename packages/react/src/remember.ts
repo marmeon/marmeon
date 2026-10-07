@@ -1,4 +1,4 @@
-import { isSensitiveRememberField, remember, type Remembered } from '@bespokecore/http/client';
+import { isSensitiveRememberField, remember, type Remembered } from '@marmeon/http/client';
 import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 import { useIslandScope } from './island-scope.ts';

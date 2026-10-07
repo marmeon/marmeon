@@ -1,4 +1,4 @@
-import type { CheckFlashKey, FlashKey, FlashMessage } from '@bespokecore/http/page';
+import type { CheckFlashKey, FlashKey, FlashMessage } from '@marmeon/http/page';
 import { useEffect, useRef } from 'react';
 import { useRouterContext } from './app.tsx';
 

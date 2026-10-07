@@ -11,13 +11,13 @@ export interface InjectionPlugin {
 }
 
 /**
- * Vite plugin with the same transform as `@bespokecore/core/register`, for code that
+ * Vite plugin with the same transform as `@marmeon/core/register`, for code that
  * Vite loads (Vitest, SSR). Runs before Vite strips the types (`enforce: 'pre'`). Like
- * `bespoke package:build`, it leaves a package's browser-only sources alone (E76).
+ * `marmeon package:build`, it leaves a package's browser-only sources alone (E76).
  */
-export function bespokeInjection(): InjectionPlugin {
+export function marmeonInjection(): InjectionPlugin {
   return {
-    name: 'bespokecore:injection',
+    name: 'marmeon:injection',
     enforce: 'pre',
     transform(code, id) {
       const file = id.split('?')[0]!;

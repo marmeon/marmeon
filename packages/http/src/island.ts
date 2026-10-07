@@ -3,7 +3,7 @@ import type { ResolvedProps } from './props.ts';
 import type { Serialize, ViewProps } from './view.ts';
 import { withLiveMethod, type LiveMethod } from './live.ts';
 
-const ISLAND_RESULT = Symbol.for('bespokecore.island-result');
+const ISLAND_RESULT = Symbol.for('marmeon.island-result');
 
 /**
  * What an island's controller returns (E48): a view of the app and its props, sent as a region object to the
@@ -19,7 +19,7 @@ export interface IslandResult<TProps extends ViewProps = ViewProps, TComponent e
   /**
    * Follows a live channel (W6.10, E89, E90): when the server hints that it changed (`broadcast.refresh('dashboard.sign-ins')`),
    * the browser reloads `only` of this island (default: all of it) — `this.island('dashboard/RecentSignIns', { entries })
-   * .live('dashboard.sign-ins')`. Signed for the session. Needs @bespokecore/live.
+   * .live('dashboard.sign-ins')`. Signed for the session. Needs @marmeon/live.
    */
   readonly live: LiveMethod<IslandResult<TProps, TComponent>, keyof TProps & string, 'this island'>;
 }

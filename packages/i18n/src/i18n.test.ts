@@ -1,11 +1,11 @@
 import { join } from 'node:path';
-import { ConfigError, createApplication, defineModule, type Container } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import type { StandardOptions } from '@bespokecore/router';
-import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, PAGE_HEADER, view, type ContextOf, type HttpContext } from '@bespokecore/http';
-import { createHttpKernel } from '@bespokecore/server';
-import { password } from '@bespokecore/auth';
-import { Session, SessionServiceProvider } from '@bespokecore/session';
+import { ConfigError, createApplication, defineModule, type Container } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import type { StandardOptions } from '@marmeon/router';
+import { abort, Controller, defineRequest, defineRoutes, HttpServiceProvider, PAGE_HEADER, view, type ContextOf, type HttpContext } from '@marmeon/http';
+import { createHttpKernel } from '@marmeon/server';
+import { password } from '@marmeon/auth';
+import { Session, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it, vi } from 'vitest';
 import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
@@ -19,7 +19,7 @@ vi.mock('./translator.ts', async (original) => {
 
 const root = join(import.meta.dirname, '__fixtures__', 'shop');
 
-declare module '@bespokecore/i18n/messages' {
+declare module '@marmeon/i18n/messages' {
   interface Translations {
     shop: (typeof import('./__fixtures__/shop/modules/shop/lang/en.ts'))['default'];
     app: (typeof import('./__fixtures__/shop/lang/en.ts'))['default'];
@@ -237,7 +237,7 @@ describe('the request locale (SetLocale)', () => {
 });
 
 describe('framework texts and validation in the request language', () => {
-  it('German validation errors on the field — keys of the app, the rules of @bespokecore/auth, what the rule required', async () => {
+  it('German validation errors on the field — keys of the app, the rules of @marmeon/auth, what the rule required', async () => {
     const { send } = await boot();
     const response = await send('/signup', {
       method: 'POST',
@@ -338,7 +338,7 @@ describe('Translators — any locale, outside a request too', () => {
   });
 
   it('a command resolves the Translator — it runs in a scope of its own (finding 3: never "scoped outside a scope")', async () => {
-    const { run } = await import('@bespokecore/cli/main');
+    const { run } = await import('marmeon/main');
     const out: string[] = [];
     const err: string[] = [];
     const stdout = process.stdout.write.bind(process.stdout);

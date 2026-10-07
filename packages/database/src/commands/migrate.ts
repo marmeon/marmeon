@@ -1,5 +1,5 @@
-import type { CommandInput } from '@bespokecore/cli';
-import { environment } from '@bespokecore/core';
+import type { CommandInput } from 'marmeon';
+import { environment } from '@marmeon/core';
 import { confirmed } from './confirm.ts';
 import { Migrator, type MigrationRun } from '../migrations/migrator.ts';
 import { TypeGenerator } from '../types-gen/generator.ts';

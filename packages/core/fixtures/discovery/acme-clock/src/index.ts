@@ -1,4 +1,4 @@
-// Framework-neutral: no dependency on BespokeCore. A token is only { key, name }.
+// Framework-neutral: no dependency on Marmeon. A token is only { key, name }.
 export interface Clock {
   now(): string;
 }

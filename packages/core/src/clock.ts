@@ -38,7 +38,7 @@ export function durationToMilliseconds(duration: Duration): number {
 }
 
 /**
- * A clock tests move: it runs with the real time plus an offset, until {@link freeze} stops it. `@bespokecore/testing`
+ * A clock tests move: it runs with the real time plus an offset, until {@link freeze} stops it. `@marmeon/testing`
  * binds one in every test app (`app.travel`, `app.freeze`).
  */
 export class TestClock implements Clock {

@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
-import { Limit, RateLimiter } from '@bespokecore/cache';
-import { Application, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
-import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions } from '@bespokecore/http';
-import { GLOBAL, MiddlewarePriority, Router } from '@bespokecore/router';
+import { Limit, RateLimiter } from '@marmeon/cache';
+import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
+import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions } from '@marmeon/http';
+import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
 import { DocsConfig } from '../../config/docs.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
@@ -30,13 +30,13 @@ export const DOCS_DEV_CSP: ContentSecurityPolicyOptions = { frameAncestors: ["'n
 
 /**
  * Loads the routes into a group of their own (while registering) and reads the READMEs while the app boots (a missing or
- * unlisted one stops the start). A group of their own: `web` would encrypt cookies and — with @bespokecore/session — start a session and set its cookie and the CSRF
+ * unlisted one stops the start). A group of their own: `web` would encrypt cookies and — with @marmeon/session — start a session and set its cookie and the CSRF
  * cookie on every page. Public pages need none of it: the `docs` group checks the asset version (a client of an old build
  * reloads, E36-safe), shares the navigation and marks the answers cacheable.
  */
 export class DocsServiceProvider implements ServiceProvider {
   register(container: Container): void {
-    // The routes while registering, not in boot(): `bespoke build` writes the route types from an app that boots nothing (E187).
+    // The routes while registering, not in boot(): `marmeon build` writes the route types from an app that boots nothing (E187).
     container.make(Router).load({ group: DOCS_GROUP }, routes);
     container.singleton(DocsRepository, (c) => {
       const config = c.make(DocsConfig);

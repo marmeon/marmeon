@@ -1,4 +1,4 @@
-import type { HealthCheck } from '@bespokecore/core';
+import type { HealthCheck } from '@marmeon/core';
 import { sql } from 'kysely';
 import { Connections } from './connections.ts';
 

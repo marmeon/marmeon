@@ -1,21 +1,21 @@
 {
-  "name": "@bespokecore/notifications",
+  "name": "@marmeon/notifications",
   "version": "0.1.0",
-  "description": "Notifications for BespokeCore apps: classes with channels (mail, database), recipients as data, delivered by the queue.",
+  "description": "Notifications for Marmeon apps: classes with channels (mail, database), recipients as data, delivered by the queue.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "notifications",
     "mail",
     "queue"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/notifications#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/notifications#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/notifications"
   },
   "engines": {
@@ -25,7 +25,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -55,43 +55,43 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "NotificationServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/i18n": "workspace:*",
-    "@bespokecore/mail": "workspace:*",
-    "@bespokecore/queue": "workspace:*"
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
+    "@marmeon/mail": "workspace:*",
+    "@marmeon/queue": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     },
-    "@bespokecore/i18n": {
+    "@marmeon/i18n": {
       "optional": true
     },
-    "@bespokecore/mail": {
+    "@marmeon/mail": {
       "optional": true
     },
-    "@bespokecore/queue": {
+    "@marmeon/queue": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/i18n": "workspace:*",
-    "@bespokecore/mail": "workspace:*",
-    "@bespokecore/queue": "workspace:*"
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/i18n": "workspace:*",
+    "@marmeon/mail": "workspace:*",
+    "@marmeon/queue": "workspace:*"
   }
 }

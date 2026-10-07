@@ -1,11 +1,11 @@
 /**
  * Live props (W6.10, E89, E90), the server's side of a response: what a page, an island or a layer declares to follow
  * (`.live(channel, { only })`) and what every page shares (`shared.live(…)`). The response factory signs each channel for the
- * request's session (`LiveSigner`, bound by @bespokecore/live) into `PageObject.live` — the answer that may show the page is
+ * request's session (`LiveSigner`, bound by @marmeon/live) into `PageObject.live` — the answer that may show the page is
  * the one that says who may hear its hints (E90: no second policy).
  */
-import { token } from '@bespokecore/core';
-import type { JoinNames } from '@bespokecore/router';
+import { token } from '@marmeon/core';
+import type { JoinNames } from '@marmeon/router';
 import type { LiveSubscription, SharedProps } from './page.ts';
 
 /** What a channel's name may hold: letters, digits, `_`, `-`, `.` and `:` — `users.7`, `dashboard.sign-ins`, `team:4.tasks`. */
@@ -90,8 +90,8 @@ export type LiveMethod<R, Names extends string, What extends string = 'this page
 export type PagePropNames<TProps> = (keyof TProps & string) | (keyof SharedProps & string);
 
 /**
- * Signs a channel for the request's session (E90) — bound per request by @bespokecore/live: an HMAC over the channel and a hash
- * of the session's id, keyed from `APP_KEY`. The stream (`/_bespoke/live`) accepts a channel only with it, for that session.
+ * Signs a channel for the request's session (E90) — bound per request by @marmeon/live: an HMAC over the channel and a hash
+ * of the session's id, keyed from `APP_KEY`. The stream (`/_marmeon/live`) accepts a channel only with it, for that session.
  */
 export interface LiveSigner {
   /**

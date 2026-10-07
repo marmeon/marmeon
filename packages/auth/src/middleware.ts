@@ -1,6 +1,6 @@
-import { INTENDED_KEY, isPrefetch } from '@bespokecore/http';
-import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@bespokecore/router';
-import { Session } from '@bespokecore/session';
+import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
+import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
+import { Session } from '@marmeon/session';
 import { Auth } from './auth.ts';
 import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
 import { UserProvider, type Authenticated } from './user.ts';

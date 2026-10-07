@@ -45,8 +45,8 @@ describe('tab sync — navigator.use(tabSync)', () => {
     tab('/users/2');
     await quiet();
     expect(channels.posted).toEqual([
-      { name: 'bespoke', data: { v: 1, epoch: 'e1' } },
-      { name: 'bespoke', data: { v: 1, epoch: 'e1' } },
+      { name: 'marmeon', data: { v: 1, epoch: 'e1' } },
+      { name: 'marmeon', data: { v: 1, epoch: 'e1' } },
     ]);
     expect(JSON.stringify(channels.posted)).not.toContain(SECRET);
   });
@@ -218,7 +218,7 @@ describe('tab sync — navigator.use(tabSync)', () => {
     expect(b.win.loads).toEqual([]);
     expect(b.navigator.cachedPages).toBe(1);
     expect(JSON.parse(b.win.current.state).epoch).toBe('e2');
-    expect(channels.posted.at(-1)).toEqual({ name: 'bespoke', data: { v: 1, epoch: 'e2' } });
+    expect(channels.posted.at(-1)).toEqual({ name: 'marmeon', data: { v: 1, epoch: 'e2' } });
     // The other tab asks and loads again.
     expect([sessionQuestions(c.win).length, c.win.loads]).toEqual([1, ['reload']]);
   });
@@ -254,7 +254,7 @@ describe('tab sync — navigator.use(tabSync)', () => {
     const { channels, server, tab } = browser();
     const b = tab('/users/1');
     expect(channels.open).toBe(1);
-    b.win.handler = () => new Response(null, { status: 409, headers: { 'x-bespoke-location': '/login' } });
+    b.win.handler = () => new Response(null, { status: 409, headers: { 'x-marmeon-location': '/login' } });
     await b.navigator.visit('/users/2');
     expect(channels.open).toBe(0);
     server.epoch = 'e2';

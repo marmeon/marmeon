@@ -1,6 +1,6 @@
-import { AccessTokenStore, type Authenticated } from '@bespokecore/auth';
-import { Controller, type HttpContext } from '@bespokecore/http';
-import { Translator } from '@bespokecore/i18n';
+import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
 import { abilityDescriptions } from '../abilities.ts';
 
 /** The user's API tokens — behind confirmedPassword(): a token is as good as a session. */

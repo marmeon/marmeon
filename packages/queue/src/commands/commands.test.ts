@@ -1,9 +1,9 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CliServiceProvider, CommandRegistry, DevProcesses } from '@bespokecore/cli';
-import { Clock, createApplication, Logger, TestClock, type Application } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
+import { CliServiceProvider, CommandRegistry, DevProcesses } from 'marmeon';
+import { Clock, createApplication, Logger, TestClock, type Application } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from '../__fixtures__/targets.ts';
@@ -56,7 +56,7 @@ function input(root: string, args: string[] = [], options: Record<string, unknow
 }
 
 describe('the queue provider', () => {
-  it('adds the queue commands and a worker for `bespoke dev` (E101) — none with the sync connection', async () => {
+  it('adds the queue commands and a worker for `marmeon dev` (E101) — none with the sync connection', async () => {
     await using application = await app();
     const commands = application.container.make(CommandRegistry).all().map((command) => command.command);
     expect(commands).toEqual(
@@ -70,14 +70,14 @@ describe('the queue provider', () => {
 
   it('fails the start with what is missing: the database package for QUEUE_CONNECTION=database, the Encrypter for encrypted jobs', async () => {
     await expect(app({ providers: 'no-database' })).rejects.toThrow(
-      'The database queue needs the DatabaseServiceProvider of @bespokecore/database (installed packages register it: bespoke discover).',
+      'The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',
     );
     await using sync = await app({ providers: 'no-database', env: { QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null' } });
     expect(sync.container.make(Queue)).toBeDefined();
     await expect(app({ providers: 'no-encryption', jobs: [SecretJob] })).rejects.toThrow('An encrypted job (static encrypted) needs the EncryptionServiceProvider');
     await expect(app({ env: { DB_QUEUE_CONNECTION: 'reporting' } })).rejects.toThrow(/Database connection "reporting" is not configured/);
     await expect(app({ env: { QUEUE_CONNECTION: 'redis' } })).rejects.toThrow(
-      'QUEUE_CONNECTION=redis needs the RedisServiceProvider of @bespokecore/redis (installed packages register it: bespoke discover).',
+      'QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
     );
   });
 });
@@ -106,7 +106,7 @@ describe('the queue commands', () => {
       '    Error: new',
       '2026-09-24T04:00:00.000Z  old  test.ping  (database/default)',
       '    Error: old',
-      '2 failed jobs — bespoke queue:retry <id|all>, queue:forget <id>',
+      '2 failed jobs — marmeon queue:retry <id|all>, queue:forget <id>',
     ]);
 
     const pruned = input('/tmp', [], { hours: '168' });
@@ -140,9 +140,9 @@ describe('the queue commands', () => {
   });
 
   it('make:queue-table writes the migration of jobs and failed_jobs into the system module (E96)', async () => {
-    const root = tempDir('bespoke-queue-table-');
+    const root = tempDir('marmeon-queue-table-');
     mkdirSync(join(root, 'bootstrap'));
-    writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@bespokecore/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
+    writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
     const { input: run, lines } = input(root);
     expect(await new MakeQueueTableCommand().handle(run)).toBe(0);
     const [migration] = readdirSync(join(root, 'modules/system/migrations'));
@@ -151,6 +151,6 @@ describe('the queue commands', () => {
     expect(contents).toContain("schema.create('jobs'");
     expect(contents).toContain("schema.create('failed_jobs'");
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [system]');
-    expect(lines.at(-1)).toBe('Then: bespoke migrate');
+    expect(lines.at(-1)).toBe('Then: marmeon migrate');
   });
 });

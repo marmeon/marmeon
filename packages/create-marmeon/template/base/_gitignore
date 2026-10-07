@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.marmeon/
+.env
+# storage/: its .gitignore files keep the directories and ignore what the app writes there.

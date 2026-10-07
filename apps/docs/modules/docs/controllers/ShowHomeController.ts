@@ -1,7 +1,7 @@
-import { Controller } from '@bespokecore/http';
+import { Controller } from '@marmeon/http';
 import { DocsRepository } from '../DocsRepository.ts';
 
-/** `/`: the repository's README — what BespokeCore is, the principles, the quick start, the packages. */
+/** `/`: the repository's README — what Marmeon is, the principles, the quick start, the packages. */
 export class ShowHomeController extends Controller {
   readonly #docs: DocsRepository;
 

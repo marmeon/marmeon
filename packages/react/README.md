@@ -1,9 +1,9 @@
-# @bespokecore/react
+# @marmeon/react
 
 The React adapter: components, hooks, layouts, error boundaries and `<Head>` — a **rendering layer** on the UI-free client
-core `@bespokecore/http/client` (E39). Visits, the history, caching, prefetching, polling, islands, layers, actions and the
+core `@marmeon/http/client` (E39). Visits, the history, caching, prefetching, polling, islands, layers, actions and the
 progress bar are the core's; this package renders them in React's idiom. What the core does and what an adapter owes it is
-in [@bespokecore/http: the client core and the adapter contract](../http/README.md#the-client-core-and-the-adapter-contract),
+in [@marmeon/http: the client core and the adapter contract](../http/README.md#the-client-core-and-the-adapter-contract),
 what goes over the wire in [the protocol](../http/README.md#the-protocol) — this README is the React side.
 
 ```tsx
@@ -28,28 +28,28 @@ export default function People({ people }: PageProps<ListPeopleController>) {
 
 | Import | Runs in | What |
 | --- | --- | --- |
-| `@bespokecore/react` | browser and the SSR entry | `createBespokeApp`, components and hooks, `progressBar` |
-| `@bespokecore/react/server` | server (the SSR entry) | `createSsrRenderer` — so `react-dom/server` never ends up in the client bundle |
-| `@bespokecore/react/table` | browser and the SSR entry | `useTable` — the headless table of [@bespokecore/table](../table/README.md#in-the-browser) (an optional peer) |
-| `@bespokecore/react/table-tanstack` | browser | `toTanStack` — `useTable` for TanStack Table v9 (`@tanstack/react-table`, an optional peer; types only) |
+| `@marmeon/react` | browser and the SSR entry | `createMarmeonApp`, components and hooks, `progressBar` |
+| `@marmeon/react/server` | server (the SSR entry) | `createSsrRenderer` — so `react-dom/server` never ends up in the client bundle |
+| `@marmeon/react/table` | browser and the SSR entry | `useTable` — the headless table of [@marmeon/table](../table/README.md#in-the-browser) (an optional peer) |
+| `@marmeon/react/table-tanstack` | browser | `toTanStack` — `useTable` for TanStack Table v9 (`@tanstack/react-table`, an optional peer; types only) |
 
 ## Installation
 
 ```sh
-pnpm add @bespokecore/react react react-dom
+pnpm add @marmeon/react react react-dom
 ```
 
-- **Peers:** `react` and `react-dom` 19 come from the app. `@bespokecore/i18n` is an optional peer — needed only for
+- **Peers:** `react` and `react-dom` 19 come from the app. `@marmeon/i18n` is an optional peer — needed only for
   `useTranslation`/`useLocale` (an app that does not translate gets neither it nor its session through discovery).
-  `@bespokecore/table` and `@tanstack/react-table` are optional peers too — for the `table` and `table-tanstack` subpaths only: the
+  `@marmeon/table` and `@tanstack/react-table` are optional peers too — for the `table` and `table-tanstack` subpaths only: the
   main entry never imports them, so discovery adds no table to a React app without tables.
-- **No provider:** `"bespoke": { "browser": ["src/**"] }` marks every source as browser code — discovery registers nothing
-  for it, and `bespoke package:build` embeds no injection lists into it (E76). A test bundles the package for the browser and
-  fails on any module outside its own sources, the client core, `@bespokecore/http/page` and `@bespokecore/router/url`, and on
+- **No provider:** `"marmeon": { "browser": ["src/**"] }` marks every source as browser code — discovery registers nothing
+  for it, and `marmeon package:build` embeds no injection lists into it (E76). A test bundles the package for the browser and
+  fails on any module outside its own sources, the client core, `@marmeon/http/page` and `@marmeon/router/url`, and on
   any npm package but React.
-- **Vite:** the adapter brings React's plugin next to [@bespokecore/vite](../vite/README.md#virtual-modules)'s:
-  `plugins: [bespoke(), react()]`. `bespoke()` serves the pages (`virtual:bespoke/pages`), the language files
-  (`virtual:bespoke/lang`) and the browser's route manifest (`virtual:bespoke/routes`), adds `bootstrap/client.tsx` to
+- **Vite:** the adapter brings React's plugin next to [@marmeon/vite](../vite/README.md#virtual-modules)'s:
+  `plugins: [marmeon(), react()]`. `marmeon()` serves the pages (`virtual:marmeon/pages`), the language files
+  (`virtual:marmeon/lang`) and the browser's route manifest (`virtual:marmeon/routes`), adds `bootstrap/client.tsx` to
   `index.html` and builds `bootstrap/ssr.tsx`.
 
 ## Configuration
@@ -59,19 +59,19 @@ same values — keep them in one place, as the web app does in `bootstrap/` — 
 
 ```ts
 // bootstrap/pages.ts — every modules/<module>/views/** component, code-split per page
-export const resolvePage = resolveModulePages(pages);                 // pages from 'virtual:bespoke/pages'
+export const resolvePage = resolveModulePages(pages);                 // pages from 'virtual:marmeon/pages'
 // bootstrap/layouts.ts
 export const layout: DefaultLayout = () => AppLayout;                // pages without their own `layout`
 export { LayerFrame as layer } from '../layouts/LayerFrame.tsx';     // the frame around every layer
 // bootstrap/head.ts
-export const title: TitleTemplate = (page) => (page ? `${page} — BespokeCore` : 'BespokeCore');
+export const title: TitleTemplate = (page) => (page ? `${page} — Marmeon` : 'Marmeon');
 // bootstrap/i18n.ts
-export const messages = createMessageLoader(lang);                   // lang from 'virtual:bespoke/lang'
+export const messages = createMessageLoader(lang);                   // lang from 'virtual:marmeon/lang'
 ```
 
 ```tsx
 // bootstrap/client.tsx
-void createBespokeApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm });
+void createMarmeonApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm });
 
 // bootstrap/ssr.tsx
 export const render = createSsrRenderer(resolvePage, { title, routes, layout, layer, messages });
@@ -80,7 +80,7 @@ export const render = createSsrRenderer(resolvePage, { title, routes, layout, la
 | Option | Client | SSR | What |
 | --- | --- | --- | --- |
 | `resolve` | ✓ | ✓ (first argument) | page name → component — `resolveModulePages(pages)` |
-| `routes` | ✓ | ✓ | `routes` of `virtual:bespoke/routes`: what `<Link route>`, `useRoute()` and `useForm(name, …)` resolve |
+| `routes` | ✓ | ✓ | `routes` of `virtual:marmeon/routes`: what `<Link route>`, `useRoute()` and `useForm(name, …)` resolve |
 | `layout` | ✓ | ✓ | the default layout per page name (E35) |
 | `title` | ✓ | ✓ | the title template: a page's `<Head title>` → the document title; default `defaultTitle` |
 | `messages` | ✓ | ✓ | the language files; only the page's locale is loaded, before it renders |
@@ -92,12 +92,12 @@ export const render = createSsrRenderer(resolvePage, { title, routes, layout, la
 | `rootId` | ✓ | | the element the server rendered into; default `app` |
 | `onRecoverableError` | ✓ | | errors React recovered from while hydrating; default: the console, and in development the page's name and a notice on the page |
 
-Whether the server renders at all is the server's: `SSR_ENABLED=false` of [@bespokecore/server](../server/README.md#configuration) sends
+Whether the server renders at all is the server's: `SSR_ENABLED=false` of [@marmeon/server](../server/README.md#configuration) sends
 every page without markup.
 
 ## The entries
 
-- **`createBespokeApp(options)`** reads the page object from the document and resolves, **before** hydrating, the page's
+- **`createMarmeonApp(options)`** reads the page object from the document and resolves, **before** hydrating, the page's
   component, the messages of its locale and — for a deep link with layers — the layer stack and the layers' views, so the
   first render matches the server's HTML — and, beside them, **tab sync** (E149): a chunk of its own, attached to the navigator
   from the start, so no other tab's sign-out is missed ([Tab sync](../http/README.md#tab-sync-w8-step-8); `tabSync: false` leaves
@@ -120,7 +120,7 @@ every page without markup.
 
 `resolveModulePages(pages)` maps `modules/user-profile/views/Show.tsx` to the page `user-profile/Show` — the name a controller
 passes to `this.view()`. A page is the module's default export; its props are its controller's (`PageProps<Controller>` of
-[@bespokecore/http](../http/README.md)). What a view declares, as statics:
+[@marmeon/http](../http/README.md)). What a view declares, as statics:
 
 ```tsx
 Show.layout = [AppLayout, SettingsLayout] satisfies PageLayout;       // outermost first; `null`: none, not even the default
@@ -137,7 +137,7 @@ Edit.layer = 'slideover';                                           // as a laye
   what the `web` group shares as optional and let the layout render without it (the web app and the `make:auth` templates do):
 
   ```tsx
-  declare module '@bespokecore/http/page' {
+  declare module '@marmeon/http/page' {
     interface SharedProps {
       auth?: { user: { id: number; name: string } | null };   // optional: absent on the 404 of a path without a route
       locales?: readonly string[];
@@ -149,7 +149,7 @@ Edit.layer = 'slideover';                                           // as a laye
   {locales && <LanguageSwitcher locales={locales} />}
   ```
 - **`revalidateOnBack`** — `true`, prop names, or none (default): what reloads in the background when Back/Forward shows the
-  view from memory. `resolveModulePages` brings the feature (`ResolvePage.features`); `<BespokeApp>` attaches it.
+  view from memory. `resolveModulePages` brings the feature (`ResolvePage.features`); `<MarmeonApp>` attaches it.
 - **`placeholder`** — what an instant visit shows at once, inside the target's layouts, with what the link hands it — typed
   by the controller's `declare readonly instant: { name: string }` (`{}` for nothing); never the page's props.
 - **Built in until the app brings its own:** `errors/Error` (`ErrorPage`; the app's is `modules/errors/views/Error.tsx`) and
@@ -167,7 +167,7 @@ Edit.layer = 'slideover';                                           // as a laye
 <Link href="/lab/streaming" preserveScroll>Lab</Link>                                              {/* any URL, unchecked */}
 ```
 
-- **Typed** against `bootstrap/routes.ts` (`bespoke route:types`): the name (an island route, an API route or an `.internal()`
+- **Typed** against `bootstrap/routes.ts` (`marmeon route:types`): the name (an island route, an API route or an `.internal()`
   one is a compile error), the parameters (required when the path has required ones), `query` by the route's query schema
   (E55 — for the page on screen, fields at their default are left out), `only`/`except`/`reset` by the props of the route's
   page, `layer` only for routes whose controller answers `.layer({ base })`, `instant` by the target controller's `instant`.
@@ -185,7 +185,7 @@ Edit.layer = 'slideover';                                           // as a laye
 - **`usePage()`** — the page object (`component`, `props` with the shared ones typed by `interface SharedProps`, `url`,
   `locale`, `flash` …); inside a layer, the layer's. **`useRoute()`** — `route('user-profile.show', { user: 7 })` → a URL.
 - **View transitions** (E185): `<Link viewTransition>` (or `viewTransition={{ types: ['slide'] }}`), `router.visit(url, {
-  viewTransition: true })`, or every page change with `createBespokeApp({ viewTransition })` — [View transitions](#view-transitions).
+  viewTransition: true })`, or every page change with `createMarmeonApp({ viewTransition })` — [View transitions](#view-transitions).
 - **`usePending(name, { delay: 'short' })`** — a visit or action of that route under way. **`useBlocker({ when, message })`**
   — the navigation guard (E64). **`useNewVersion()`** — a new build whose full load was postponed: `{ location, reload() }`.
 
@@ -196,8 +196,8 @@ A page change animates in a view transition (E185) — the page loaded first, on
 Two ways, one at a time — never two transitions for one page change:
 
 ```tsx
-createBespokeApp({ /* … */, viewTransition: true });       // the core's: document.startViewTransition around the swap — the browser crossfades the page
-createBespokeApp({ /* … */, viewTransition: 'react' });    // React 19.3's: the page change in startTransition, the views' <ViewTransition> animate
+createMarmeonApp({ /* … */, viewTransition: true });       // the core's: document.startViewTransition around the swap — the browser crossfades the page
+createMarmeonApp({ /* … */, viewTransition: 'react' });    // React 19.3's: the page change in startTransition, the views' <ViewTransition> animate
 
 <ViewTransition name={`avatar-${person.id}`} share="avatar">   {/* the list's avatar … */}
   <img src={person.avatar} alt="" className="avatar" />
@@ -262,7 +262,7 @@ const form = useForm('user-profile.update', { user: profile.id }, { name: profil
   file at once; the field holds the `Upload` (`uploading`, `progress`, `preview`, `error`, `cancel()`) and the form sends its
   token. `useUpload(field)` for a drop zone of your own.
 - **Asking:** `ConfirmDialog` (a native modal `<dialog>`, type-to-confirm) with the app's labels — `confirmLabel`,
-  `cancelLabel`, `leaveLabel`, `stayLabel`, `promptLabel` — passed as `createBespokeApp({ confirm })`.
+  `cancelLabel`, `leaveLabel`, `stayLabel`, `promptLabel` — passed as `createMarmeonApp({ confirm })`.
 
 ## Actions
 
@@ -291,8 +291,8 @@ deleted is gone, the list starts over at its first page. `reloading({ only: ['pe
 
 ## Tables
 
-`useTable(props.members)` (`@bespokecore/react/table`) is the headless side of a server-driven table
-([@bespokecore/table](../table/README.md)): typed by the props, it renders nothing and hands out what accessible markup needs —
+`useTable(props.members)` (`@marmeon/react/table`) is the headless side of a server-driven table
+([@marmeon/table](../table/README.md)): typed by the props, it renders nothing and hands out what accessible markup needs —
 in the app's words (`labels`, English by default):
 
 ```tsx
@@ -323,8 +323,8 @@ const table = useTable(members, {
   `toggle`, `selectAll`, `selectMatching`, `clearSelection` keep the selection with the history entry; `run(action, row)` and
   `runBulk(name)` are action requests, after which the table reloads (replacing what it showed); `can(action, row)`, `actionLabel`,
   `pending`, `exportUrl(name)`.
-- On the server it renders from the props alone (nothing selected); changing something there throws `[bespoke:R18]`.
-- `toTanStack(table, { features })` (`@bespokecore/react/table-tanstack`) turns it into the options of TanStack Table v9's
+- On the server it renders from the props alone (nothing selected); changing something there throws `[marmeon:R18]`.
+- `toTanStack(table, { features })` (`@marmeon/react/table-tanstack`) turns it into the options of TanStack Table v9's
   `useTable` in manual mode — see [In the browser](../table/README.md#in-the-browser).
 
 ## Props that arrive later
@@ -343,7 +343,7 @@ usePoll<ShowUserProfileController>(15_000, { only: ['activity'] });     // in th
   it, and a setter that changes it at once and visits after `debounce` ms. Only on that route's page; a route without a query
   schema is a compile error. A `set()` before the hook's effect ran (a child's effect on mount) is made once it has.
 - **`<Pagination meta={…} window={2} param="page" labels={…} />`** — links to the pages of `paginate()`'s `meta`, built from the
-  page's parsed query (E55: the route's schema with `pageQuery()` of `@bespokecore/database` — the search, the sort and the page
+  page's parsed query (E55: the route's schema with `pageQuery()` of `@marmeon/database` — the search, the sort and the page
   size stay, the defaults stay out; never by parsing the address). Its texts are English; the page's language comes from the
   app's messages through `labels` (`{ navigation, previous, next, page: (n) => … }` from `useTranslation`, E38) — best in a small
   wrapper of the app, as the web app's `layouts/Pagination.tsx`. A query schema without the page's field warns in development (R17).
@@ -382,7 +382,7 @@ const layer = useLayer<EditUserProfileController>();     // isLayer, depth, isTo
 The frame is `LayerDialog` by default — a native modal `<dialog>`: focus kept inside and returned to the opener, Escape and the
 backdrop close it, the page beneath inert. Wrap it for the app's label (`<LayerDialog {...props} closeLabel={t('close')} />`) and
 pass it as `layer`; a view's own `layer` static wins. Its default look is a few inline properties — server-rendered (a deep link
-to a layer) a `style` attribute, which a strict `style-src` would block: with one, style the frame by `[data-bespoke-layer]` and
+to a layer) a `style` attribute, which a strict `style-src` would block: with one, style the frame by `[data-marmeon-layer]` and
 `[data-variant]` in the app's stylesheet. The layer stack is a chunk of its own, loaded where a layer link renders or
 when the server answers with a layer (E71).
 
@@ -394,19 +394,19 @@ when the server answers with a layer (E71).
   the title goes through the app's `title` template (`(page) => …`, `page` undefined when no `<Head>` sets one).
 - **`useTranslation('user-profile')`** — the messages of a namespace (a module, or `app` for `lang/`) in the page's locale,
   keys and placeholders checked: `t('people.last_seen', { when })`, `t.format.relative(iso, now)`, `t.format.date(…)`.
-  **`useLocale()`** — `{ locale, format }`. Both need `createBespokeApp({ messages })` and [@bespokecore/i18n](../i18n/README.md#in-the-browser).
+  **`useLocale()`** — `{ locale, format }`. Both need `createMarmeonApp({ messages })` and [@marmeon/i18n](../i18n/README.md#in-the-browser).
 
 ## Progress, errors and failures
 
-- **The progress bar is opt-in (E82):** `createBespokeApp({ progress: progressBar({ delay: 250 }) })` — only visits slower
+- **The progress bar is opt-in (E82):** `createMarmeonApp({ progress: progressBar({ delay: 250 }) })` — only visits slower
   than `delay`. Without it nothing of its code ships; `aria-busy` on `<html>`, `data-pending` and `usePending()` are there
   either way, and an indicator of your own is a function of the navigator (see [features](../http/README.md#features)).
 - **An error while rendering** a page shows the app's `errors/Error` page inside its layouts (details only in development);
   a layout that throws shows it without layouts. The next visit tries again. A placeholder that throws shows nothing.
 - **A failed visit** keeps the page and what was typed: offline is a notice, a 5xx the server's error page in a dialog over it.
   An island fails on its own (its `error`).
-- **Codes, not explanations:** a production build throws `[bespoke:R2] users/Show`; development the whole explanation. The
-  table of codes is [in @bespokecore/http](../http/README.md#error-codes).
+- **Codes, not explanations:** a production build throws `[marmeon:R2] users/Show`; development the whole explanation. The
+  table of codes is [in @marmeon/http](../http/README.md#error-codes).
 
 ## Client features
 
@@ -414,11 +414,11 @@ when the server answers with a layer (E71).
 component that renders in the browser (there is no navigator on the server):
 
 ```tsx
-const api = useFeature(hooks);                                   // import { hooks } from '@bespokecore/http/client'
+const api = useFeature(hooks);                                   // import { hooks } from '@marmeon/http/client'
 useEffect(() => api.on('before', (event) => { if (new URL(event.url).pathname === '/admin') event.cancel(); }), [api]);
 ```
 
-Tab sync is attached by `createBespokeApp` already; `useFeature(tabSync)` returns its API — `on('epoch', ({ previous, next, origin
+Tab sync is attached by `createMarmeonApp` already; `useFeature(tabSync)` returns its API — `on('epoch', ({ previous, next, origin
 }) => …)` before a tab lets go of what it keeps (E132's hook API), `epoch`, `check()`. Its unsaved-changes question comes to the
 app's confirm dialog as a `leave` request with `reason: 'session'` — the web app's `layouts/Confirm.tsx` words it in the page's
 language.
@@ -433,7 +433,7 @@ hook, and which load lazily: [features](../http/README.md#features).
 `appsGzipKB`), with the history of every change in its `$comment`.
 
 - `bundle-size.test.ts` (part of `pnpm test`) builds the scenarios and fails when one grows over its limit — and when one is
-  more than 0.6 KB under it, until the limit follows: `BESPOKE_SIZE_BUDGET=update` lowers a limit to the measured size + 0.5 KB
+  more than 0.6 KB under it, until the limit follows: `MARMEON_SIZE_BUDGET=update` lowers a limit to the measured size + 0.5 KB
   and never raises one (E186: since Wave 9 every limit keeps that 0.5 KB reserve — a saving lowers the limit, extra cost eats the
   reserve, and it is never refilled). **Limits only go down;** raising one is a decision on record, not a fix.
 - The same test is the **leak test**: a feature is in a bundle only with its own import, a lazy one only in a lazy chunk
@@ -446,7 +446,7 @@ What each scenario holds and how they are measured: [features](../http/README.md
 
 ## Testing
 
-Pages are tested through the whole app with `createTestApp` of [@bespokecore/testing](../testing/README.md#server-rendering) — props typed by the controller:
+Pages are tested through the whole app with `createTestApp` of [@marmeon/testing](../testing/README.md#server-rendering) — props typed by the controller:
 
 ```ts
 await app.actingAs(ada).navigating().get('/people?q=TUR').assertPage<ListPeopleController>('user-profile/People', (props) => {

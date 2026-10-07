@@ -1,5 +1,5 @@
-import { guard as guardFeature, type NavigationGuard } from '@bespokecore/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName } from '@bespokecore/http/page';
+import { guard as guardFeature, type NavigationGuard } from '@marmeon/http/client';
+import type { BrowserRouteNameInput, CheckBrowserRouteName } from '@marmeon/http/page';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 
@@ -81,7 +81,7 @@ export interface UseBlockerOptions {
 
 /**
  * The navigation guard (E64): while `when` holds, leaving asks first — a visit (a link, a form elsewhere), Back/Forward, closing
- * the layer it is in — through the app's dialog (`createBespokeApp({ confirm })`), and closing the tab or reloading gets the
+ * the layer it is in — through the app's dialog (`createMarmeonApp({ confirm })`), and closing the tab or reloading gets the
  * browser's own question. A full page load the server asks for (signed out, a new build) is never stopped.
  *
  * ```tsx

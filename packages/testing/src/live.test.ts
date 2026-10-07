@@ -1,13 +1,13 @@
 import { tmpdir } from 'node:os';
-import { defineModule, type ApplicationOptions } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { Controller, defineRoutes, HttpServiceProvider, LIVE_PATH, ServerClosing, SharedData, type HttpContext, type Next } from '@bespokecore/http';
-import { Broadcaster, LiveServiceProvider } from '@bespokecore/live';
-import { Session, SessionServiceProvider } from '@bespokecore/session';
+import { defineModule, type ApplicationOptions } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { Controller, defineRoutes, HttpServiceProvider, LIVE_PATH, ServerClosing, SharedData, type HttpContext, type Next } from '@marmeon/http';
+import { Broadcaster, LiveServiceProvider } from '@marmeon/live';
+import { Session, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './index.ts';
 
-declare module '@bespokecore/http/page' {
+declare module '@marmeon/http/page' {
   interface SharedProps {
     /** The live test app's counter in every layout. */
     counter?: number;
@@ -112,7 +112,7 @@ describe('live props through the app — the page declares, the stream hints (W6
     const tabB = await ada.live('/boards/7', { connection: 'tab-b-0001' });
     expect(await tabB.hello()).toEqual({ seq: { 'counters.everyone': 0, 'board.7': 0 } });
     await tabA.hello();
-    await ada.withHeaders({ 'x-bespoke-connection': 'tab-a-0001' }).post('/boards/7/cards').assertRedirect('/boards/7');
+    await ada.withHeaders({ 'x-marmeon-connection': 'tab-a-0001' }).post('/boards/7/cards').assertRedirect('/boards/7');
     await Promise.all([tabA.waitFor(1), tabB.waitFor(1)]);
     expect(tabB.hints).toEqual([{ channel: 'board.7', only: ['cards'], seq: 1 }]);
     expect(tabA.hints).toEqual([{ channel: 'board.7', only: [], seq: 1 }]);
@@ -155,7 +155,7 @@ describe('live props through the app — the page declares, the stream hints (W6
     expect(tabB.hints).toEqual([]);
     // The tab's cookie still names the old session — gone from the store: no session, no stream (E143: none is made for it).
     expect((await ada.withHeaders({}).live(page.live!)).status).toBe(200); // `withSession` writes the session afresh (a test view)
-    const stale = await app.withUnencryptedCookie('bespoke_session', 'gone').live(page.live!);
+    const stale = await app.withUnencryptedCookie('marmeon_session', 'gone').live(page.live!);
     expect(stale.status).toBe(401);
   });
 
@@ -168,11 +168,11 @@ describe('live props through the app — the page declares, the stream hints (W6
     expect(stream.events.map((each) => each.event)).toEqual(['hello']);
   });
 
-  it('a page that follows a channel in an app without @bespokecore/live says what to install', async () => {
+  it('a page that follows a channel in an app without @marmeon/live says what to install', async () => {
     const app = await createTestApp({ ...definition, providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider], middleware: {} });
     const answer = await app.withSession({ who: 'ada' }).navigating().get('/boards/7');
     expect(answer.status).toBe(500);
-    expect(() => app.broadcast).toThrow('app.broadcast needs @bespokecore/live in the app.');
-    expect(LIVE_PATH).toBe('/_bespoke/live');
+    expect(() => app.broadcast).toThrow('app.broadcast needs @marmeon/live in the app.');
+    expect(LIVE_PATH).toBe('/_marmeon/live');
   });
 });

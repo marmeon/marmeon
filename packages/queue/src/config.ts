@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 import type { QueueConnectionOptions } from './queue.ts';
 
@@ -6,8 +6,8 @@ const seconds = (name: string) => v.pipe(v.string(), v.transform(Number), v.numb
 
 /**
  * The queue connections (E83): `sync` runs a job at once, in the dispatching process (scripts, tests); `database` keeps
- * jobs in the `jobs` table for `bespoke queue:work` (`bespoke make:queue-table`); `redis` keeps them in Redis lists
- * (needs @bespokecore/redis and redis).
+ * jobs in the `jobs` table for `marmeon queue:work` (`marmeon make:queue-table`); `redis` keeps them in Redis lists
+ * (needs @marmeon/redis and redis).
  *
  * ```sh
  * QUEUE_CONNECTION=database       # the default connection: database (default) | redis | sync

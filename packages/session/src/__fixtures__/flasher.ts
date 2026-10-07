@@ -1,9 +1,9 @@
 // One of several processes flashing into ONE session at the same moment (`processes.test.ts`, E145). Opens the store named by
 // argv[2] (a JSON StoreTarget), says "ready", waits for "go" on stdin, then runs argv[4] requests of the session argv[3] at
 // once — each queues the flash message `<argv[5]>-<n>` and saves — and prints how many saves landed. Run with
-// `node --conditions=@bespokecore/source`.
+// `node --conditions=@marmeon/source`.
 import { createInterface } from 'node:readline';
-import { SystemClock } from '@bespokecore/core';
+import { SystemClock } from '@marmeon/core';
 import { plainSessionCodec } from '../codec.ts';
 import type { SessionConfig } from '../config.ts';
 import { Session } from '../session.ts';

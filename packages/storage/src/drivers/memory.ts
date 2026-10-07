@@ -1,5 +1,5 @@
 import { AssertionError } from 'node:assert';
-import type { Clock } from '@bespokecore/core';
+import type { Clock } from '@marmeon/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import { bytesStream, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError } from '../errors.ts';

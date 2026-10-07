@@ -14,7 +14,7 @@ export type RouteSink =
   | { readonly module: string; readonly export: string; readonly kind: 'call'; readonly argument: number; readonly minArguments?: number }
   | { readonly module: string; readonly export: string; readonly kind: 'route-function' };
 
-const REACT = '@bespokecore/react';
+const REACT = '@marmeon/react';
 
 /**
  * The sinks of the React adapter. Rows for APIs that do not exist yet (`<Form route>`, `usePending`) are here already, so they

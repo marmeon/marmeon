@@ -1,4 +1,4 @@
-import { defineMigration } from '@bespokecore/database';
+import { defineMigration } from '@marmeon/database';
 
 /** The language a user chose (the switcher) — mails reach them in it, and a new device starts in it. */
 export default defineMigration({

@@ -1,4 +1,4 @@
-import { Clock, Logger } from '@bespokecore/core';
+import { Clock, Logger } from '@marmeon/core';
 import { UserRepository } from '../UserRepository.ts';
 
 /**

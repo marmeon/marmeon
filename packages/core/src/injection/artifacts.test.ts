@@ -25,8 +25,8 @@ describe('injection artifacts (E138)', () => {
   };
 
   beforeEach(() => {
-    root = realpathSync(tempDir('bespoke-injections-'));
-    write('package.json', JSON.stringify({ type: 'module', bespoke: { browser: ['client/**'] } }));
+    root = realpathSync(tempDir('marmeon-injections-'));
+    write('package.json', JSON.stringify({ type: 'module', marmeon: { browser: ['client/**'] } }));
   });
 
   it('covers the modules of the app that mention a constructor — no tests, browser sources, node_modules, dist or storage', () => {
@@ -83,7 +83,7 @@ describe('injection artifacts (E138)', () => {
     expect(precomputed.transform(module, Buffer.from(changed), decode)).toBe(injectConstructorDependencies(changed, 'modules/users/ShowUserController.ts'));
     expect(precomputed.stale).toEqual(['modules/users/ShowUserController.ts']);
     expect(precomputed.warning()).toBe(
-      'Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since bespoke build, so their injection lists were derived at start, with oxc-parser — run bespoke build again.',
+      'Build artifacts are stale (1 file: modules/users/ShowUserController.ts): they changed since marmeon build, so their injection lists were derived at start, with oxc-parser — run marmeon build again.',
     );
   });
 
@@ -104,7 +104,7 @@ describe('injection artifacts (E138)', () => {
     const missing = PrecomputedInjections.load(root);
     expect(missing.transform(join(root, 'modules/users/ShowUserController.ts'), controller, decode)).toContain('static inject = [UserRepository];');
     expect(missing.warning()).toBe(
-      'Build artifacts are missing (.bespoke/injections.json): the injection lists of 1 file (modules/users/ShowUserController.ts) were derived at start, with oxc-parser — run bespoke build before starting.',
+      'Build artifacts are missing (.marmeon/injections.json): the injection lists of 1 file (modules/users/ShowUserController.ts) were derived at start, with oxc-parser — run marmeon build before starting.',
     );
   });
 

@@ -1,10 +1,10 @@
-import { AuthConfig, type Authenticated } from '@bespokecore/auth';
-import { Clock } from '@bespokecore/core';
-import { Connections } from '@bespokecore/database';
-import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@bespokecore/http';
-import { trans, Translator, Translators } from '@bespokecore/i18n';
-import { Mailer } from '@bespokecore/mail';
-import { Queue } from '@bespokecore/queue';
+import { AuthConfig, type Authenticated } from '@marmeon/auth';
+import { Clock } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
+import { trans, Translator, Translators } from '@marmeon/i18n';
+import { Mailer } from '@marmeon/mail';
+import { Queue } from '@marmeon/queue';
 import * as v from 'valibot';
 import { EMAIL_CHANGE_MINUTES, newEmailChangeToken } from '../email-change.ts';
 import { SendEmailChangeMailJob } from '../jobs/SendEmailChangeMailJob.ts';

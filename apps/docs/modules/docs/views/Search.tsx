@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useQueryState } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useQueryState } from '@marmeon/react';
 import type { ReactNode } from 'react';
 import type { SearchController } from '../controllers/SearchController.ts';
 

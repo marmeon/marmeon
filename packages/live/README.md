@@ -1,14 +1,14 @@
-# @bespokecore/live
+# @marmeon/live
 
 Live props (W6.10, E89, E90, E104): a page, an island or a layer **follows a channel**; when something changes, the server
 **hints** that channel — never data — and every tab that follows it reloads what changed through the page's own route, as
 a partial reload. One Server-Sent-Events stream per tab carries the hints of every channel on screen. This package is the
 server side; the browser side is the `live` feature of the client core ([features](../http/README.md#features)).
 
-`bespoke discover` registers its `LiveServiceProvider` like any installed package. It signs with the app's `APP_KEY`
-([@bespokecore/encryption](../encryption/README.md)) and registers its stream in the `web` group;
-[@bespokecore/redis](../redis/README.md) (for `LIVE_DRIVER=redis`), [@bespokecore/session](../session/README.md) (streams end
-with their session) and [@bespokecore/notifications](../notifications/README.md) (the [`live` channel](#notifications-the-live-channel))
+`marmeon discover` registers its `LiveServiceProvider` like any installed package. It signs with the app's `APP_KEY`
+([@marmeon/encryption](../encryption/README.md)) and registers its stream in the `web` group;
+[@marmeon/redis](../redis/README.md) (for `LIVE_DRIVER=redis`), [@marmeon/session](../session/README.md) (streams end
+with their session) and [@marmeon/notifications](../notifications/README.md) (the [`live` channel](#notifications-the-live-channel))
 are optional peers.
 
 ```ts
@@ -39,8 +39,8 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
   schema). What a tab shows next comes from its own request — the route's middleware, policies and props decide, as for any
   partial reload. A hint for something the user may no longer see reloads into a 403 or the login page, never into data.
 - **Signed by the answer that declares it (E90).** `.live()` puts the channel into the page object with a token: an HMAC over
-  the channel and a hash of the session's id, keyed from `APP_KEY` (HKDF, context `bespokecore:live`; `APP_PREVIOUS_KEYS` still verify; compared in constant time).
-  Whoever may see the page may hear its hints — the same policy, in one place. The stream (`GET /_bespoke/live`) refuses any
+  the channel and a hash of the session's id, keyed from `APP_KEY` (HKDF, context `marmeon:live`; `APP_PREVIOUS_KEYS` still verify; compared in constant time).
+  Whoever may see the page may hear its hints — the same policy, in one place. The stream (`GET /_marmeon/live`) refuses any
   token that does not fit — a channel rewritten (`users.1` → `users.2`), a token of another session or of one that ended — with
   a 403 and no stream at all. The tokens travel in the stream's query (`EventSource` sends no headers of its own): without the
   session's cookie they open nothing. A page that signs a channel keeps its session — also a guest's, who otherwise gets none
@@ -51,11 +51,11 @@ const updates = useLiveUpdates();   // { pending, apply() } — while a form on 
 - **After the commit (E107).** `refresh()` inside `connections.transaction(…)` ([transactions](../database/README.md#transactions))
   goes out once it committed (`afterCommit`); a rollback sends nothing. The other tab never reloads what is not there yet.
 - **Not to the tab that caused it.** Every request of a tab that follows live hints names its document
-  (`x-bespoke-connection`); the hint of a write it caused reaches it with `only: []` — nothing to reload (it shows its own
+  (`x-marmeon-connection`); the hint of a write it caused reaches it with `only: []` — nothing to reload (it shows its own
   answer), only the sequence moves on. Outside a request (a job, a command) every tab hears it.
 - **Signing in or out ends the streams of the old session** — in every process (pub/sub): they get `end` and close; the browser
   does not reconnect. The next page the tab asks for is the server's answer to that (`/login`).
-- **Read-only.** The stream's path (`GET /_bespoke/live`) is read-only by itself — with `Accept: text/event-stream` or without
+- **Read-only.** The stream's path (`GET /_marmeon/live`) is read-only by itself — with `Accept: text/event-stream` or without
   (a script, a proxy that drops the header): the kernel never saves its session, sets no cookie, takes no flash message — like an
   island.
 
@@ -137,11 +137,11 @@ LIVE_MAX_CHANNELS=20          # channels per stream (one page, its islands and l
 ```
 
 `LiveConfig` is the package's config class; it checks the ranges at the start (`LIVE_HEARTBEAT` 1–300, `LIVE_RETRY` 100–600000,
-`LIVE_MAX_CHANNELS` at most 200). `LIVE_DRIVER=redis` without `@bespokecore/redis` and its provider, or with an unknown
+`LIVE_MAX_CHANNELS` at most 200). `LIVE_DRIVER=redis` without `@marmeon/redis` and its provider, or with an unknown
 `LIVE_REDIS_CONNECTION`, fails the start; a missing `APP_KEY` does too.
 
 **`memory` reaches the streams of its own process only.** A hint sent by a queue worker — the notifications' `live` channel,
-a queued listener, a job — needs `redis`: the worker publishes, the web processes deliver. **`bespoke start --workers=N` needs
+a queued listener, a job — needs `redis`: the worker publishes, the web processes deliver. **`marmeon start --workers=N` needs
 `redis` too**: with `memory` a worker does not start (`LiveSetupError`: "memory pub/sub never reaches the other workers — use
 LIVE_DRIVER=redis"), and the cluster stops — a hint would reach one worker's tabs only, and a tab that reconnects to another
 worker would compare its sequences with another counter. The memory backend forgets a channel's sequence a day after its last
@@ -155,11 +155,11 @@ sequence (only the hints that came while `hello` was prepared and that it counte
 
 **Observation (E118):** each hint going out (after its commit) is a message on the `live.refresh` channel
 ([the channels](../core/README.md#the-channels)) — the [devtools](../devtools/README.md) record it as a `live` entry,
-[@bespokecore/otel](../otel/README.md#what-it-records) as a `live refresh` span.
+[@marmeon/otel](../otel/README.md#what-it-records) as a `live refresh` span.
 
 ## Notifications: the `live` channel
 
-With [@bespokecore/notifications](../notifications/README.md#channels) installed, `via()` may return `'live'`: once the delivery's
+With [@marmeon/notifications](../notifications/README.md#channels) installed, `via()` may return `'live'`: once the delivery's
 transaction committed (its `database` row first), the recipient's channel `notificationsChannel(recipient)`
 (`notifications.<type>.<id>`) is refreshed — without `only`: each follower reloads what it follows the channel for (the bell
 `['bell']`, the list `['notifications']`).
@@ -170,14 +170,14 @@ via(user: User) { return ['database', 'live', 'mail'] as const; }
 
 ## Testing
 
-With [@bespokecore/testing](../testing/README.md), hints are sent as in production — the streams of `app.live()` get them — and recorded in
+With [@marmeon/testing](../testing/README.md), hints are sent as in production — the streams of `app.live()` get them — and recorded in
 `app.broadcast`:
 
 ```ts
 const ada$ = app.actingAs(ada);                              // one browser, one session
 const stream = await ada$.live(`/users/${ada.id}`);          // the page's channels, signed for this session
 await stream.hello();                                        // { seq: { 'users.7': 0, … } }
-await app.actingAs(ada).withHeaders({ 'x-bespoke-connection': 'tab-a' }).post(`/users/${ada.id}/links`, { json });
+await app.actingAs(ada).withHeaders({ 'x-marmeon-connection': 'tab-a' }).post(`/users/${ada.id}/links`, { json });
 await stream.waitFor(1);
 expect(stream.hints).toEqual([{ channel: `users.${ada.id}`, only: ['profile'], seq: 1 }]);
 app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // also assertNotRefreshed, assertNothingRefreshed
@@ -189,7 +189,7 @@ app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });   // al
 ## Not yet
 
 **Broadcasting over WebSockets** — data events, presence channels, client events, a Pusher-compatible protocol — is not part of
-BespokeCore: it is in the backlog until its design is settled (E191). Live props are hints over Server-Sent Events, and stay so.
+Marmeon: it is in the backlog until its design is settled (E191). Live props are hints over Server-Sent Events, and stay so.
 A Postgres `LISTEN/NOTIFY` backend is noted for later ([real time](../../docs/realtime.md#what-there-is-not), the guide). A hint sent while Redis is unreachable is not retried. Channel tokens do
 not expire: a token is valid as long as its session (a hint carries no data, and the reload goes through the route's policy;
 signing in or out ends the streams). A user who loses access to a channel while their session lives keeps hearing *that* it

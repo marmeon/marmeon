@@ -1,15 +1,15 @@
-import { ConsoleLogger, createApplication, defineModule, Logger, type Container } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, CloseLayerResult, HttpServiceProvider, isPageObject, MAX_LAYER_DEPTH, view, type HttpContext, type PageObject } from '@bespokecore/http';
-import { defineRoutes, type Next } from '@bespokecore/router';
+import { ConsoleLogger, createApplication, defineModule, Logger, type Container } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, CloseLayerResult, HttpServiceProvider, isPageObject, MAX_LAYER_DEPTH, view, type HttpContext, type PageObject } from '@marmeon/http';
+import { defineRoutes, type Next } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
-const LAYER = { 'x-bespoke': 'true', 'x-bespoke-region': 'layer' };
+const LAYER = { 'x-marmeon': 'true', 'x-marmeon-region': 'layer' };
 
-/** The page object a document carries (`#bespoke-page`). */
+/** The page object a document carries (`#marmeon-page`). */
 function documentPage(html: string): PageObject {
-  const match = /<script type="application\/json" id="bespoke-page">([\s\S]*?)<\/script>/.exec(html);
+  const match = /<script type="application\/json" id="marmeon-page">([\s\S]*?)<\/script>/.exec(html);
   const page: unknown = match ? JSON.parse(match[1]!.replaceAll('\\u003c', '<')) : undefined;
   if (!isPageObject(page)) throw new Error(`No page in:\n${html.slice(0, 400)}`);
   return page;
@@ -87,12 +87,12 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
 
   it('answers a layer’s request with its page object — `layer: { key, base }`, the region header', async () => {
     const response = await app.request('/users/7/edit', { headers: LAYER });
-    expect(response.headers.get('x-bespoke-region')).toBe('layer');
+    expect(response.headers.get('x-marmeon-region')).toBe('layer');
     const page = (await response.json()) as PageObject;
     expect(page).toMatchObject({ component: 'users/Edit', url: '/users/7/edit', layer: { key: 'users/Edit', base: '/users/7' } });
     expect(page.layer).not.toHaveProperty('once');
     // A plain visit (no region header) gets the same: the client opens it over what is on screen.
-    expect(((await (await app.request('/users/7/edit', { headers: { 'x-bespoke': 'true' } })).json()) as PageObject).layer?.base).toBe('/users/7');
+    expect(((await (await app.request('/users/7/edit', { headers: { 'x-marmeon': 'true' } })).json()) as PageObject).layer?.base).toBe('/users/7');
   });
 
   it('a layer answered by an action (not a GET) is shown once', async () => {
@@ -158,7 +158,7 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
 
   it('closeLayer(): “close” to a layer’s request — a redirect to anything else (no JavaScript)', async () => {
     const closed = await app.request('/users/1', { method: 'PUT', headers: { ...LAYER, 'content-type': 'application/json' }, body: '{}' });
-    expect(closed.headers.get('x-bespoke-layer-close')).toBe('true');
+    expect(closed.headers.get('x-marmeon-layer-close')).toBe('true');
     expect(await closed.json()).toEqual({ close: { layers: 1, reload: ['name'] } });
     const redirected = await app.request('/users/1', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(redirected.status).toBe(303);

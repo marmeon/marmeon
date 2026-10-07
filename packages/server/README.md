@@ -1,12 +1,12 @@
-# @bespokecore/server
+# @marmeon/server
 
-The HTTP server of a BespokeCore app: the kernel (Hono for matching, the BespokeCore router for the typed pipeline), server
+The HTTP server of a Marmeon app: the kernel (Hono for matching, the Marmeon router for the typed pipeline), server
 rendering through Vite in development and through the build in production, islands and layers resolved in-process, the health
-endpoints and `startServer()` with a graceful drain. `bespoke dev` and `bespoke start` run it
-([@bespokecore/cli](../cli/README.md#commands)); an app rarely calls it itself. Its `ServerServiceProvider` is found by
-`bespoke discover`. Vite is an optional peer: `bespoke dev` and `bespoke build` need it (`pnpm add -D vite @bespokecore/vite`),
-a production server never loads it. Routes, controllers and responses are [@bespokecore/router](../router/README.md) and
-[@bespokecore/http](../http/README.md); what goes over the wire is [the protocol](../http/README.md#the-protocol).
+endpoints and `startServer()` with a graceful drain. `marmeon dev` and `marmeon start` run it
+([marmeon](../cli/README.md#commands)); an app rarely calls it itself. Its `ServerServiceProvider` is found by
+`marmeon discover`. Vite is an optional peer: `marmeon dev` and `marmeon build` need it (`pnpm add -D vite @marmeon/vite`),
+a production server never loads it. Routes, controllers and responses are [@marmeon/router](../router/README.md) and
+[@marmeon/http](../http/README.md); what goes over the wire is [the protocol](../http/README.md#the-protocol).
 
 ## Configuration
 
@@ -28,19 +28,19 @@ a production server never loads it. Routes, controllers and responses are [@besp
 ## The kernel
 
 `createHttpKernel(app, options?)` turns the app's routes into a Hono app — what `startServer()` serves and what tests call
-in-process (`createTestApp`, [@bespokecore/testing](../testing/README.md)). Per request:
+in-process (`createTestApp`, [@marmeon/testing](../testing/README.md)). Per request:
 
 - **a container scope of its own** — controllers and middleware are built from it, so scoped services live as long as the
   request; the request id (`x-request-id`: the client's when it is a sane one, else generated) is set as the request context
   and answered in the response header. The scope holds the request's `CookieJar` (with the app's `CookieDefaults` — `Secure`
-  from `APP_URL` with `@bespokecore/session`, E162), its `RequestNonce` (the CSP nonce, made only when a document needs it,
+  from `APP_URL` with `@marmeon/session`, E162), its `RequestNonce` (the CSP nonce, made only when a document needs it,
   E147), `IncomingRequest` and `RequestInfo` (`{ ip, userAgent }`, E169 — [who sent it](../http/README.md#registration-and-configuration));
 - **method spoofing** (E64): a form's POST with `_method=PUT|PATCH|DELETE` in its body is routed as that method — never from the
   query, never to GET;
 - **the body** is read once, by its route, up to `MAX_BODY_SIZE`;
-- **errors** — thrown, `abort()`ed or an unknown path — go through the app's `ExceptionHandler` (`@bespokecore/http`); an
+- **errors** — thrown, `abort()`ed or an unknown path — go through the app's `ExceptionHandler` (`@marmeon/http`); an
   unknown path still passes the global middleware first;
-- **read-only requests:** an island's, a live validation, an upload's target, an event stream, the tabs' `GET /_bespoke/session`
+- **read-only requests:** an island's, a live validation, an upload's target, an event stream, the tabs' `GET /_marmeon/session`
   ([tab sync](../http/README.md#tab-sync-w8-step-8)) and a layer's base resolved for its deep link change no session, cookie or
   work after the response; nor does any request once its headers are out (a streamed page's deferred props). A write there
   throws with `NODE_ENV=development` and `test` (the mistake shows where it is made) and is dropped and logged everywhere else —
@@ -53,7 +53,7 @@ in-process (`createTestApp`, [@bespokecore/testing](../testing/README.md)). Per 
   middleware and authorization, with the page request's cookies (10 s limit, then the island's error); a layer's base the same
   way for a deep link ([The protocol](../http/README.md#the-protocol));
 - **in production**, `/assets/*` is served from `dist/client` — kept a year (`Cache-Control: public, max-age=31536000,
-  immutable`: Vite names every file by its hash), as the `.br` (else `.gz`) `bespoke build` wrote next to it when
+  immutable`: Vite names every file by its hash), as the `.br` (else `.gz`) `marmeon build` wrote next to it when
   `Accept-Encoding` names it, with the original `Content-Type` and `Vary: Accept-Encoding` (E162). **Nothing is compressed per
   request** — documents never: compressing a page that carries a secret (the CSRF token) next to reflected input leaks the
   secret byte by byte (BREACH). Compressing responses is the proxy's business, if anybody's.
@@ -71,13 +71,13 @@ without markup and the browser renders the page — what an adapter's SSR entry 
 ```ts
 const server = await startServer({ app });   // port, host: ServerConfig (PORT, HOST); mode: development only when NODE_ENV=development
 // …
-await server.close();                         // on SIGTERM — bespoke dev and start do this themselves
-await server.close({ immediately: true });    // without SHUTDOWN_DELAY (bespoke does this on SIGINT, Ctrl+C)
+await server.close();                         // on SIGTERM — marmeon dev and start do this themselves
+await server.close({ immediately: true });    // without SHUTDOWN_DELAY (marmeon does this on SIGINT, Ctrl+C)
 await app.shutdown();
 ```
 
 `startServer(options)` takes `app` and, all optional: `port` and `host` (`ServerConfig`: `PORT`, `HOST`), `mode`
-(`'development'` | `'production'`), `ssrEntry` (development: the SSR entry relative to the root, default the `bespoke()`
+(`'development'` | `'production'`), `ssrEntry` (development: the SSR entry relative to the root, default the `marmeon()`
 plugin's), `drainTimeoutMs` (8000), `shutdownDelayMs` (`SHUTDOWN_DELAY`) and `keepAliveTimeoutMs` (`KEEP_ALIVE_TIMEOUT`; the
 server's `headersTimeout` is a second longer, between 60 s and 300 s). It resolves with a `RunningServer` — `{ server, port,
 close(options?) }`, `server` being Node's `http.Server`; it rejects with Node's error when it cannot listen (`EADDRINUSE`). On every
@@ -86,18 +86,18 @@ both listen, and requests to 127.0.0.1 would reach that program — and logs a w
 primary asks once for its workers).
 
 - **development** (`mode: 'development'`; the default only with `NODE_ENV=development`, E115 — never "anything but production"):
-  the app's Vite in middleware mode — HMR, source modules, `/__open-in-editor`, the SSR entry of the `bespoke()` plugin
-  (`bootstrap/ssr.tsx`). Without Vite or without the plugin it fails with a `ViteSetupError` that says what to install. `bespoke
+  the app's Vite in middleware mode — HMR, source modules, `/__open-in-editor`, the SSR entry of the `marmeon()` plugin
+  (`bootstrap/ssr.tsx`). Without Vite or without the plugin it fails with a `ViteSetupError` that says what to install. `marmeon
   dev` sets `NODE_ENV=development` when it is unset; with another `NODE_ENV` (`staging`, `test`) it serves the build and says so;
 - **production** (the default with any other `NODE_ENV`, also none): the built `dist/client/index.html` and
-  `dist/server/ssr.js`, loaded once; without them the start fails with "No production build in dist/client — run bespoke
+  `dist/server/ssr.js`, loaded once; without them the start fails with "No production build in dist/client — run marmeon
   build first."
 
-The start line names the environment and what is served (E139): `BespokeCore in staging (protected) on http://localhost:3000
-(the build; 54 routes, 7 modules, packages: …)` — `in development … (Vite's dev server; …)` with `bespoke dev`, `in unset NODE_ENV
+The start line names the environment and what is served (E139): `Marmeon in staging (protected) on http://localhost:3000
+(the build; 54 routes, 7 modules, packages: …)` — `in development … (Vite's dev server; …)` with `marmeon dev`, `in unset NODE_ENV
 (protected, like production)` without one, `(from .env)` when `.env` named it (E170). The host is the one listened on (`HOST`;
 `localhost` for every interface), the port the one it got (`PORT=0`: the system's choice; `RunningServer.port` says it too).
-`bespoke start` runs the server in the process it was started in — no launcher child, the signals reach it directly
+`marmeon start` runs the server in the process it was started in — no launcher child, the signals reach it directly
 ([One process](../cli/README.md#one-process-e159)).
 
 `close()` stops gracefully. First, **readiness falls** (E163): `/up/ready` answers `503 {"status":"draining"}` at once, and for
@@ -106,7 +106,7 @@ close`, so a client's next request opens a new connection, which the load balanc
 instance; `/up` stays 200. Then the drain (E102): live streams end first (a tab connects to the next server), no new
 connections, idle keep-alive connections close, requests in flight finish, then the work they deferred until after their
 response — at most `drainTimeoutMs` (8 s) — before the caller shuts the app down and its pools close. `/up` answers 503 from
-the moment the drain begins (after the delay), on connections still open. `bespoke` exits after 10 s (plus the delay) at the latest; it installs its signal handlers before the server
+the moment the drain begins (after the delay), on connections still open. `marmeon` exits after 10 s (plus the delay) at the latest; it installs its signal handlers before the server
 listens, so a SIGTERM during the start is answered once it listens (Node's default would end the process without a drain — and
 Node as PID 1 would ignore it).
 
@@ -114,18 +114,18 @@ Why a delay, when Kubernetes takes a terminating pod out of its endpoints by its
 SIGTERM, and kube-proxies, ingress controllers and external load balancers learn about it a moment later — requests keep coming
 for a few seconds. A load balancer that knows only its probes (kamal-proxy, Traefik, a cloud load balancer polling `/up/ready`)
 needs at least one probe interval. `SHUTDOWN_DELAY` covers both without a `preStop` hook; Kubernetes' `terminationGracePeriodSeconds`
-(30 s) must exceed the delay plus the drain (≈ 10 s). `bespoke start --workers=N` (E140, [@bespokecore/cli](../cli/README.md#several-processes---workers-e140))
+(30 s) must exceed the delay plus the drain (≈ 10 s). `marmeon start --workers=N` (E140, [marmeon](../cli/README.md#several-processes---workers-e140))
 runs one such server per worker process; each drains on its own.
 
 ## Start in production (E138, E161)
 
-`bespoke start` until the first `GET /up` answers 200 — the web app (54 routes, 7 modules, 20 packages), Node 26.10 on an Apple
+`marmeon start` until the first `GET /up` answers 200 — the web app (54 routes, 7 modules, 20 packages), Node 26.10 on an Apple
 laptop, measured with `pnpm bench boot --app apps/web-app` (median of 7, alternating with the build before Wave 8 step 3):
 
 | | Start → `/up` 200 | Modules loaded |
 | --- | --- | --- |
 | before (every app module parsed by oxc at start, pino-pretty and tinker always loaded, no compile cache) | 382 ms | 997 |
-| injection lists from `bespoke build`, lazy imports, no compile cache (`NODE_DISABLE_COMPILE_CACHE=1`) | ≈ 333 ms | 940 |
+| injection lists from `marmeon build`, lazy imports, no compile cache (`NODE_DISABLE_COMPILE_CACHE=1`) | ≈ 333 ms | 940 |
 | **with Node's compile cache (the default)** | **271 ms** | 940 |
 
 Where the time goes now (CPU samples of one profiled start, 324 ms with the profiler's overhead):
@@ -142,17 +142,17 @@ Where the time goes now (CPU samples of one profiled start, 324 ms with the prof
 
 **What is precomputed or cached:**
 
-- **The injection lists** (`.bespoke/injections.json`, written by `bespoke build`): the start applies them to every unchanged
+- **The injection lists** (`.marmeon/injections.json`, written by `marmeon build`): the start applies them to every unchanged
   module and never loads oxc-parser; a changed or unknown module is analysed and the app logs "Build artifacts are stale"
-  once ([@bespokecore/core](../core/README.md#precomputed-lists-in-production-e138)).
-- **The discovery manifest** (`.bespoke/manifest.json`, E160).
+  once ([@marmeon/core](../core/README.md#precomputed-lists-in-production-e138)).
+- **The discovery manifest** (`.marmeon/manifest.json`, E160).
 - **Node's compile cache** — `storage/framework/compile-cache` of the app (Node's `NODE_COMPILE_CACHE` instead, when set;
   `NODE_DISABLE_COMPILE_CACHE=1`: off). It holds the type-stripped source and V8's code cache of every module. With the injection
   hook in front, Node keys an entry by the module's URL and accepts it only when a checksum of the source it is about to compile
   matches — the source **after** the hook. A module that changed (its list with it) misses, is compiled afresh and its entry
   rewritten; an old list can never come back from the cache (a test changes a constructor without building and starts twice).
   The cache is written once the server listens (and again at exit). A directory that cannot be created or written is no error:
-  Node reports it and the start runs uncached. The first start fills it. In the Docker image of `bespoke make:docker` it lives in
+  Node reports it and the start runs uncached. The first start fills it. In the Docker image of `marmeon make:docker` it lives in
   the `storage/` volume: the first container on a fresh volume starts ≈ 90 ms slower (measured: ≈ 490 vs ≈ 400 ms from the
   container's start to the start line), every later one is warm — also after a deployment, for every module that did not change.
   A cache baked into the image would not help: Node uses a cache directory only when it can write it (a read-only one ran
@@ -190,7 +190,7 @@ middleware) and ≈ 3 µs per document (the nonce, the header), the tab-sync epo
 
 Where the time went before step 9, and what took it back (CPU profiles, `pnpm bench login --profile --base f785159`): the cookie
 encryption through WebCrypto (≈ 18 µs per call, three calls per page: now `node:crypto`, see
-[@bespokecore/encryption](../encryption/README.md#the-encrypter)), four or five copies of every response (now at most one,
+[@marmeon/encryption](../encryption/README.md#the-encrypter)), four or five copies of every response (now at most one,
 [`editableResponse`](../router/README.md#adding-headers-to-the-response--editableresponse)), the middleware list sorted per
 request (now once per route), allocations in the container's lookups of what a scope already holds, the cookie headers
 serialized twice, the request translator's construction. Without the encryption change the rest alone is level with `f785159`
@@ -215,7 +215,7 @@ Configure the proxy to **set** these headers (Caddy does by itself; nginx: `prox
 unchanged makes them the client's word. `*` suits a proxy that is the only way in (a Compose network, a platform's router);
 two proxies in a row — a CDN in front of nginx — need their ranges, or the app takes the CDN's address. Prefer explicit
 addresses or ranges where you know them. Cookies get `Secure` from `APP_URL`, not from the request (`SESSION_SECURE_COOKIE`,
-[@bespokecore/session](../session/README.md#configuration)).
+[@marmeon/session](../session/README.md#configuration)).
 
 **Keep-alive (W9 step 4).** A proxy that reuses its connections to the app (nginx `upstream { keepalive 16; }`, every cloud load
 balancer) must close an idle one **before** the app does — the other way round it now and then sends a request on a connection the
@@ -227,7 +227,7 @@ balancer's idle timeout (60 s). Behind a proxy with a longer one (Google's load 
 
 Two endpoints for load balancers and orchestrators, answered by the kernel **before anything else** runs for a request: no
 middleware of any group (no session, no cookie, no CSRF), no request id, no log line, no `http.request` message — so neither a
-span (`@bespokecore/otel`) nor a devtools entry. Responses are `Cache-Control: no-store`; `HEAD` works too.
+span (`@marmeon/otel`) nor a devtools entry. Responses are `Cache-Control: no-store`; `HEAD` works too.
 
 | | Answers | Checks |
 |---|---|---|
@@ -262,22 +262,22 @@ env: [{ name: SHUTDOWN_DELAY, value: '5' }]     # instead of a preStop sleep; te
 Every request writes one entry on the `http` channel — `GET /users/7 200` with `{ requestId, route: 'users.show', ms }`
 (`route` only for a named route). It is built only when it goes somewhere: the kernel asks `logger.enabled?.('info')` first
 (E187) — with `LOG_LEVEL=silent` or `warn` neither the line nor its redacted path is made. The kernel answers with the request's id (`x-request-id`, taken from the request when it
-is a sane one, else generated); every log entry of the request carries it — and, with `@bespokecore/otel`, the request span's
+is a sane one, else generated); every log entry of the request carries it — and, with `@marmeon/otel`, the request span's
 `trace_id` and `span_id` (the line is written inside the span). Its path is redacted (E125): a sensitive route parameter
 (`/reset-password/:token`) and a token-like segment of a path without a route become `[redacted]`.
 
 ## Observation (E118)
 
-The kernel traces each request on the `http.request` channel of `@bespokecore/core/diagnostics` — method, path, URL and
+The kernel traces each request on the `http.request` channel of `@marmeon/core/diagnostics` — method, path, URL and
 headers (raw), route name and pattern, controller, status, duration, where the response sends the browser (`location`: a
 redirect's target or the protocol's 409 reload, with its `reload` reason) — and sends the error a request ends in to `exception`;
 server rendering goes to `render.ssr`. Without a subscriber none of it is built. The channels and their messages:
-[Diagnostics](../core/README.md#diagnostics-bespokecorecorediagnostics-e118); the spans made of them:
-[@bespokecore/otel](../otel/README.md). The health endpoints are not traced.
+[Diagnostics](../core/README.md#diagnostics-marmeoncorediagnostics-e118); the spans made of them:
+[@marmeon/otel](../otel/README.md). The health endpoints are not traced.
 
 ## `Server-Timing` (E129) — development only
 
-With `NODE_ENV=development` (`bespoke dev` sets it when it is unset) every response says what its request spent:
+With `NODE_ENV=development` (`marmeon dev` sets it when it is unset) every response says what its request spent:
 
 ```text
 Server-Timing: app;dur=18.4;desc="App", db;dur=3.1;desc="4 queries", ssr;dur=9.7;desc="SSR"
@@ -309,7 +309,7 @@ request (its id may be the client's own `x-request-id`) is escaped.
 
 ## Error page (E119) — development only
 
-With `NODE_ENV=development` (`bespoke dev`), a page request that fails with a 5xx gets the **development error page** instead
+With `NODE_ENV=development` (`marmeon dev`), a page request that fails with a 5xx gets the **development error page** instead
 of the app's `errors/Error` view:
 
 - **head:** status, error class, message (and causes), the request and its route — and the **solutions** (E130): what to do,
@@ -319,7 +319,7 @@ of the app's `errors/Error` view:
   line is the line that threw;
 - **request** (method, URL, headers, query, body), **route** (name, pattern, controller, middleware, parameters), the
   request's **queries** (up to 100, with their duration) and **log** entries, **injection warnings** (E128), the
-  **environment** (Node, `NODE_ENV`, the BespokeCore packages);
+  **environment** (Node, `NODE_ENV`, the Marmeon packages);
 - **Copy as Markdown:** the same report as Markdown, for an issue or a chat (no source code, only where the frames are).
 
 Everything on it — page and Markdown — passes the app's `Redactor` first (E125): cookies, `Authorization`, passwords,
@@ -328,7 +328,7 @@ tokens, hashes and the parameters of statements on secret columns never show.
 It is one self-contained HTML document — its own CSS (light and dark), no React, no Vite, no app code — so it renders when
 the views or server rendering are what broke. It goes out with `Cache-Control: no-store`, `X-Robots-Tag: noindex` and a
 `Content-Security-Policy` of its own (`default-src 'none'`, its inline style and script by hash, `frame-ancestors 'self'`),
-which an app's `contentSecurityPolicy()` leaves alone. A client-side visit (`x-bespoke`) gets it as HTML too; the visit dialog
+which an app's `contentSecurityPolicy()` leaves alone. A client-side visit (`x-marmeon`) gets it as HTML too; the visit dialog
 (`VisitFailure`) shows it in its sandboxed frame. The frame runs no scripts (`sandbox=""`, unchanged): there the Markdown is a
 text field to select, and the editor links work through a named frame inside the page. A JSON request keeps `{ message,
 exception }` and gets the first `solution` beside them. 4xx errors, actions, islands and uploads keep their answers; an app's
@@ -341,4 +341,4 @@ the code frame of the view (mapped to the source by `ssrFixStacktrace`) and thei
 **Only in development** (E115): the gate is `ServerConfig.debug` — `NODE_ENV === 'development'`, never "not production". In
 production, staging or tests nothing of it is loaded (the kernel `import()`s the page's code only in debug mode), the
 request recorder is not bound and subscribes to nothing, and the error page shows neither stack nor queries, headers or code.
-Tests ask for it with `createTestApp(app, { debug: true })` ([@bespokecore/testing](../testing/README.md#createtestappapp-options)).
+Tests ask for it with `createTestApp(app, { debug: true })` ([@marmeon/testing](../testing/README.md#createtestappapp-options)).

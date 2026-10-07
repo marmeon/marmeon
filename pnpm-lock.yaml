@@ -169,21 +169,21 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.18.5
         version: 0.18.5
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:packages/cli
-      '@bespokecore/core':
-        specifier: workspace:*
-        version: link:packages/core
-      '@bespokecore/vite':
-        specifier: workspace:*
-        version: link:packages/vite
       '@changesets/cli':
         specifier: ^3.0.3
         version: 3.0.3
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@marmeon/vite':
+        specifier: workspace:*
+        version: link:packages/vite
       '@types/node':
         specifier: ^26.6.3
         version: 26.6.3
+      marmeon:
+        specifier: workspace:*
+        version: link:packages/cli
       oxlint:
         specifier: ^1.86.0
         version: 1.86.0
@@ -202,51 +202,51 @@ importers:
 
   apps/blank-app:
     dependencies:
-      '@bespokecore/auth':
+      '@marmeon/auth':
         specifier: workspace:*
         version: link:../../packages/auth
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../../packages/cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../../packages/database
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@bespokecore/i18n':
+      '@marmeon/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
-      '@bespokecore/log':
+      '@marmeon/log':
         specifier: workspace:*
         version: link:../../packages/log
-      '@bespokecore/mail':
+      '@marmeon/mail':
         specifier: workspace:*
         version: link:../../packages/mail
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../../packages/queue
-      '@bespokecore/react':
+      '@marmeon/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../../packages/router
-      '@bespokecore/scheduler':
+      '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../../packages/server
-      '@bespokecore/session':
+      '@marmeon/session':
         specifier: workspace:*
         version: link:../../packages/session
+      marmeon:
+        specifier: workspace:*
+        version: link:../../packages/cli
       mjml:
         specifier: ^5.4.1
         version: 5.4.1(svgo@4.1.0)(typescript@7.0.2)
@@ -260,13 +260,13 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/devtools':
+      '@marmeon/devtools':
         specifier: workspace:*
         version: link:../../packages/devtools
-      '@bespokecore/testing':
+      '@marmeon/testing':
         specifier: workspace:*
         version: link:../../packages/testing
-      '@bespokecore/vite':
+      '@marmeon/vite':
         specifier: workspace:*
         version: link:../../packages/vite
       '@types/node':
@@ -296,28 +296,25 @@ importers:
 
   apps/docs:
     dependencies:
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../../packages/cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@bespokecore/log':
+      '@marmeon/log':
         specifier: workspace:*
         version: link:../../packages/log
-      '@bespokecore/react':
+      '@marmeon/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../../packages/router
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../../packages/server
       github-slugger:
@@ -326,6 +323,9 @@ importers:
       markdown-it:
         specifier: 15.0.2
         version: 15.0.2
+      marmeon:
+        specifier: workspace:*
+        version: link:../../packages/cli
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -339,13 +339,13 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/devtools':
+      '@marmeon/devtools':
         specifier: workspace:*
         version: link:../../packages/devtools
-      '@bespokecore/testing':
+      '@marmeon/testing':
         specifier: workspace:*
         version: link:../../packages/testing
-      '@bespokecore/vite':
+      '@marmeon/vite':
         specifier: workspace:*
         version: link:../../packages/vite
       '@types/react':
@@ -372,70 +372,67 @@ importers:
 
   apps/web-app:
     dependencies:
-      '@bespokecore/auth':
+      '@marmeon/auth':
         specifier: workspace:*
         version: link:../../packages/auth
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../../packages/cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../../packages/database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../../packages/encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@bespokecore/i18n':
+      '@marmeon/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
-      '@bespokecore/live':
+      '@marmeon/live':
         specifier: workspace:*
         version: link:../../packages/live
-      '@bespokecore/log':
+      '@marmeon/log':
         specifier: workspace:*
         version: link:../../packages/log
-      '@bespokecore/mail':
+      '@marmeon/mail':
         specifier: workspace:*
         version: link:../../packages/mail
-      '@bespokecore/notifications':
+      '@marmeon/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
-      '@bespokecore/otel':
+      '@marmeon/otel':
         specifier: workspace:*
         version: link:../../packages/otel
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../../packages/queue
-      '@bespokecore/react':
+      '@marmeon/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@bespokecore/redis':
+      '@marmeon/redis':
         specifier: workspace:*
         version: link:../../packages/redis
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../../packages/router
-      '@bespokecore/scheduler':
+      '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../../packages/server
-      '@bespokecore/session':
+      '@marmeon/session':
         specifier: workspace:*
         version: link:../../packages/session
-      '@bespokecore/storage':
+      '@marmeon/storage':
         specifier: workspace:*
         version: link:../../packages/storage
-      '@bespokecore/table':
+      '@marmeon/table':
         specifier: workspace:*
         version: link:../../packages/table
       '@opentelemetry/api':
@@ -456,6 +453,9 @@ importers:
       '@opentelemetry/sdk-trace':
         specifier: 2.11.0
         version: 2.11.0(@opentelemetry/api@1.9.1)
+      marmeon:
+        specifier: workspace:*
+        version: link:../../packages/cli
       mjml:
         specifier: ^5.4.1
         version: 5.4.1(svgo@4.1.0)(typescript@7.0.2)
@@ -472,13 +472,13 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/devtools':
+      '@marmeon/devtools':
         specifier: workspace:*
         version: link:../../packages/devtools
-      '@bespokecore/testing':
+      '@marmeon/testing':
         specifier: workspace:*
         version: link:../../packages/testing
-      '@bespokecore/vite':
+      '@marmeon/vite':
         specifier: workspace:*
         version: link:../../packages/vite
       '@types/react':
@@ -499,126 +499,81 @@ importers:
 
   packages/auth:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      '@bespokecore/session':
+      '@marmeon/session':
         specifier: workspace:*
         version: link:../session
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
-
-  packages/bespokecore:
-    dependencies:
-      '@bespokecore/auth':
-        specifier: workspace:*
-        version: link:../auth
-      '@bespokecore/cache':
-        specifier: workspace:*
-        version: link:../cache
-      '@bespokecore/cli':
+      marmeon:
         specifier: workspace:*
         version: link:../cli
-      '@bespokecore/core':
-        specifier: workspace:*
-        version: link:../core
-      '@bespokecore/database':
-        specifier: workspace:*
-        version: link:../database
-      '@bespokecore/http':
-        specifier: workspace:*
-        version: link:../http
-      '@bespokecore/i18n':
-        specifier: workspace:*
-        version: link:../i18n
-      '@bespokecore/log':
-        specifier: workspace:*
-        version: link:../log
-      '@bespokecore/mail':
-        specifier: workspace:*
-        version: link:../mail
-      '@bespokecore/queue':
-        specifier: workspace:*
-        version: link:../queue
-      '@bespokecore/router':
-        specifier: workspace:*
-        version: link:../router
-      '@bespokecore/scheduler':
-        specifier: workspace:*
-        version: link:../scheduler
-      '@bespokecore/server':
-        specifier: workspace:*
-        version: link:../server
-      '@bespokecore/session':
-        specifier: workspace:*
-        version: link:../session
 
   packages/cache:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/redis':
+      '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/cli:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
 
@@ -632,14 +587,14 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
 
-  packages/create-bespoke-app: {}
+  packages/create-marmeon: {}
 
   packages/database:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
       kysely:
@@ -649,65 +604,65 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
       pg:
         specifier: ^8.23.0
         version: 8.23.0
 
   packages/devtools:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/log':
+      '@marmeon/log':
         specifier: workspace:*
         version: link:../log
-      '@bespokecore/mail':
+      '@marmeon/mail':
         specifier: workspace:*
         version: link:../mail
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      '@bespokecore/scheduler':
+      '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../scheduler
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
       happy-dom:
         specifier: ^20.14.5
         version: 20.14.5
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)(yaml@2.9.1)
 
   packages/encryption:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
@@ -716,13 +671,13 @@ importers:
 
   packages/http:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
     devDependencies:
@@ -735,66 +690,66 @@ importers:
 
   packages/i18n:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      '@bespokecore/session':
+      '@marmeon/session':
         specifier: workspace:*
         version: link:../session
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/auth':
+      '@marmeon/auth':
         specifier: workspace:*
         version: link:../auth
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/live:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/notifications':
+      '@marmeon/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@bespokecore/redis':
+      '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
-      '@bespokecore/session':
+      '@marmeon/session':
         specifier: workspace:*
         version: link:../session
       redis:
@@ -803,7 +758,7 @@ importers:
 
   packages/log:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       pino:
@@ -818,20 +773,20 @@ importers:
 
   packages/mail:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
       mjml:
@@ -843,63 +798,63 @@ importers:
 
   packages/notifications:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/i18n':
+      '@marmeon/i18n':
         specifier: workspace:*
         version: link:../i18n
-      '@bespokecore/mail':
+      '@marmeon/mail':
         specifier: workspace:*
         version: link:../mail
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/otel:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/log':
+      '@marmeon/log':
         specifier: workspace:*
         version: link:../log
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
       '@opentelemetry/api':
@@ -917,39 +872,39 @@ importers:
 
   packages/queue:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/redis':
+      '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/react:
     dependencies:
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
     devDependencies:
-      '@bespokecore/i18n':
+      '@marmeon/i18n':
         specifier: workspace:*
         version: link:../i18n
-      '@bespokecore/table':
+      '@marmeon/table':
         specifier: workspace:*
         version: link:../table
       '@tanstack/react-table':
@@ -976,7 +931,7 @@ importers:
 
   packages/redis:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
@@ -995,46 +950,46 @@ importers:
 
   packages/scheduler:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
-      '@bespokecore/redis':
+      '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/server:
     dependencies:
-      '@bespokecore/core':
-        specifier: workspace:*
-        version: link:../core
-      '@bespokecore/http':
-        specifier: workspace:*
-        version: link:../http
-      '@bespokecore/router':
-        specifier: workspace:*
-        version: link:../router
       '@hono/node-server':
         specifier: ^2.1.3
         version: 2.1.3(hono@4.13.11)
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+      '@marmeon/http':
+        specifier: workspace:*
+        version: link:../http
+      '@marmeon/router':
+        specifier: workspace:*
+        version: link:../router
       hono:
         specifier: ^4.13.11
         version: 4.13.11
@@ -1042,7 +997,7 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
       vite:
@@ -1051,47 +1006,47 @@ importers:
 
   packages/session:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/cache':
+      '@marmeon/cache':
         specifier: workspace:*
         version: link:../cache
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/redis':
+      '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis
-      '@bespokecore/scheduler':
+      '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../scheduler
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/storage:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
       valibot:
@@ -1107,40 +1062,40 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1143.0
         version: 3.1143.0
-      '@bespokecore/cli':
-        specifier: workspace:*
-        version: link:../cli
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/table:
     dependencies:
-      '@bespokecore/auth':
+      '@marmeon/auth':
         specifier: workspace:*
         version: link:../auth
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/router':
+      '@marmeon/router':
         specifier: workspace:*
         version: link:../router
       kysely:
@@ -1150,7 +1105,7 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
       happy-dom:
@@ -1159,56 +1114,56 @@ importers:
 
   packages/testing:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
-      '@bespokecore/encryption':
+      '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
-      '@bespokecore/http':
+      '@marmeon/http':
         specifier: workspace:*
         version: link:../http
-      '@bespokecore/server':
+      '@marmeon/server':
         specifier: workspace:*
         version: link:../server
       vitest:
         specifier: ^5.0.0
         version: 5.0.2(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.3)(yaml@2.9.1))
     devDependencies:
-      '@bespokecore/auth':
+      '@marmeon/auth':
         specifier: workspace:*
         version: link:../auth
-      '@bespokecore/database':
+      '@marmeon/database':
         specifier: workspace:*
         version: link:../database
-      '@bespokecore/devtools':
+      '@marmeon/devtools':
         specifier: workspace:*
         version: link:../devtools
-      '@bespokecore/live':
+      '@marmeon/live':
         specifier: workspace:*
         version: link:../live
-      '@bespokecore/mail':
+      '@marmeon/mail':
         specifier: workspace:*
         version: link:../mail
-      '@bespokecore/notifications':
+      '@marmeon/notifications':
         specifier: workspace:*
         version: link:../notifications
-      '@bespokecore/queue':
+      '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
-      '@bespokecore/scheduler':
+      '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../scheduler
-      '@bespokecore/session':
+      '@marmeon/session':
         specifier: workspace:*
         version: link:../session
-      '@bespokecore/storage':
+      '@marmeon/storage':
         specifier: workspace:*
         version: link:../storage
 
   packages/vite:
     dependencies:
-      '@bespokecore/core':
+      '@marmeon/core':
         specifier: workspace:*
         version: link:../core
       oxc-parser:

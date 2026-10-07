@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Logger } from '@bespokecore/core';
+import type { Logger } from '@marmeon/core';
 
 /** Where a connection points: `redis://[[user]:password@]host[:port][/db]` (`rediss://` for TLS), and the prefix of its keys. */
 export interface RedisConnectionOptions {
@@ -9,8 +9,8 @@ export interface RedisConnectionOptions {
 }
 
 /**
- * The Redis client is not installed (an optional peer of @bespokecore/redis), or the app uses a Redis driver without
- * @bespokecore/redis. The message says what to install — the CLI prints it without a stack trace.
+ * The Redis client is not installed (an optional peer of @marmeon/redis), or the app uses a Redis driver without
+ * @marmeon/redis. The message says what to install — the CLI prints it without a stack trace.
  */
 export class RedisSetupError extends Error {
   override name = 'RedisSetupError';

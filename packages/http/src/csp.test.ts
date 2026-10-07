@@ -1,5 +1,5 @@
-import { ConsoleLogger } from '@bespokecore/core';
-import { RequestNonce, type HttpContext } from '@bespokecore/router';
+import { ConsoleLogger } from '@marmeon/core';
+import { RequestNonce, type HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { compilePolicy, contentSecurityPolicy, DEFAULT_CSP, NONCE } from './csp.ts';
 

@@ -1,5 +1,5 @@
-import type { Cache } from '@bespokecore/cache';
-import { Clock, EventDispatcher, Logger, type Container } from '@bespokecore/core';
+import type { Cache } from '@marmeon/cache';
+import { Clock, EventDispatcher, Logger, type Container } from '@marmeon/core';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, QueueDriver } from './driver.ts';
 import { DatabaseFailedJobStore, DatabaseQueueDriver, type DatabaseQueueConnection } from './drivers/database.ts';
@@ -25,12 +25,12 @@ async function importOptional<T>(load: () => Promise<T>, name: string, what: str
 }
 
 export const importDatabase = (what = 'QUEUE_CONNECTION=database') =>
-  importOptional(() => import('@bespokecore/database'), '@bespokecore/database', what, 'pnpm add @bespokecore/database');
+  importOptional(() => import('@marmeon/database'), '@marmeon/database', what, 'pnpm add @marmeon/database');
 export const importEncryption = () =>
-  importOptional(() => import('@bespokecore/encryption'), '@bespokecore/encryption', 'An encrypted job (static encrypted)', 'pnpm add @bespokecore/encryption');
-export const importRedis = () => importOptional(() => import('@bespokecore/redis'), '@bespokecore/redis', 'QUEUE_CONNECTION=redis', 'pnpm add @bespokecore/redis redis');
+  importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', 'An encrypted job (static encrypted)', 'pnpm add @marmeon/encryption');
+export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_CONNECTION=redis', 'pnpm add @marmeon/redis redis');
 export const importCache = () =>
-  importOptional(() => import('@bespokecore/cache'), '@bespokecore/cache', 'Unique jobs, withoutOverlapping and job.once', 'pnpm add @bespokecore/cache');
+  importOptional(() => import('@marmeon/cache'), '@marmeon/cache', 'Unique jobs, withoutOverlapping and job.once', 'pnpm add @marmeon/cache');
 
 /**
  * The queue's connections, built on first use: a driver per connection, the failed-job store, and workers for
@@ -92,11 +92,11 @@ export class QueueConnections {
     return this.#runner;
   }
 
-  /** The app's cache (@bespokecore/cache) — for unique jobs, `withoutOverlapping` and `job.once`. */
+  /** The app's cache (@marmeon/cache) — for unique jobs, `withoutOverlapping` and `job.once`. */
   async cache(): Promise<Cache> {
     const { Cache } = await importCache();
     if (!this.#container.has(Cache)) {
-      throw new QueueSetupError('Unique jobs, withoutOverlapping and job.once keep their locks in the app\'s cache — register the CacheServiceProvider of @bespokecore/cache (installed packages register it: bespoke discover).');
+      throw new QueueSetupError('Unique jobs, withoutOverlapping and job.once keep their locks in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).');
     }
     return this.#container.make(Cache);
   }
@@ -107,7 +107,7 @@ export class QueueConnections {
   /** The app's `Encrypter`, for `static encrypted` jobs (E105). */
   async cipher(): Promise<PayloadCipher> {
     const { Encrypter } = await importEncryption();
-    if (!this.#container.has(Encrypter)) throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @bespokecore/encryption and an APP_KEY.');
+    if (!this.#container.has(Encrypter)) throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY.');
     return this.#container.make(Encrypter);
   }
 

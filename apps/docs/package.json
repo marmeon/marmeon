@@ -1,9 +1,9 @@
 {
-  "name": "@bespokecore/docs",
+  "name": "@marmeon/docs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The documentation of BespokeCore — the READMEs and guides as a normal BespokeCore app (E114, E133: no static export). Not published; deployed as an image (apps/docs/Dockerfile, E142).",
+  "description": "The documentation of Marmeon — the READMEs and guides as a normal Marmeon app (E114, E133: no static export). Not published; deployed as an image (apps/docs/Dockerfile, E142).",
   "imports": {
     "#modules/*": "./modules/*/index.ts"
   },
@@ -19,21 +19,21 @@
     "!**/*.type-test.ts"
   ],
   "scripts": {
-    "dev": "bespoke dev",
-    "build": "bespoke build",
-    "start": "bespoke start",
+    "dev": "marmeon dev",
+    "build": "marmeon build",
+    "start": "marmeon start",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint"
   },
   "dependencies": {
-    "@bespokecore/cache": "workspace:*",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/log": "workspace:*",
-    "@bespokecore/react": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/server": "workspace:*",
+    "@marmeon/cache": "workspace:*",
+    "marmeon": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/log": "workspace:*",
+    "@marmeon/react": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/server": "workspace:*",
     "github-slugger": "2.0.0",
     "markdown-it": "15.0.2",
     "react": "^19.3.0",
@@ -42,9 +42,9 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@bespokecore/devtools": "workspace:*",
-    "@bespokecore/testing": "workspace:*",
-    "@bespokecore/vite": "workspace:*",
+    "@marmeon/devtools": "workspace:*",
+    "@marmeon/testing": "workspace:*",
+    "@marmeon/vite": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

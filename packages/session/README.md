@@ -1,18 +1,18 @@
-# @bespokecore/session
+# @marmeon/session
 
-Sessions for BespokeCore apps: a scoped, injectable `Session` (no `ctx.session`), loaded by the `StartSession`
+Sessions for Marmeon apps: a scoped, injectable `Session` (no `ctx.session`), loaded by the `StartSession`
 middleware before the route and saved after it, flash data, CSRF protection (`VerifyCsrfToken`) and the shared
 `errors` prop. Keys are typed through `interface SessionData` (declaration merging).
 
 ```ts
 // modules/locale/controllers/UpdateLocaleController.ts — constructor(…, session: Session, …)
-this.#session.put('locale', locale);                  // typed: SessionData declares `locale: string` (@bespokecore/i18n)
+this.#session.put('locale', locale);                  // typed: SessionData declares `locale: string` (@marmeon/i18n)
 const locale = this.#session.get('locale');           // string | undefined
 ```
 
-`bespoke discover` registers its `SessionServiceProvider` through the `"bespoke"` field of its package.json: the scoped
+`marmeon discover` registers its `SessionServiceProvider` through the `"marmeon"` field of its package.json: the scoped
 `Session`, the store of `SESSION_DRIVER`, and three middleware of the `web` group — `StartSession`, `VerifyCsrfToken` and
-`ShareErrorsFromSession` — plus `make:session-table` and `session:prune` (when `@bespokecore/cli` is installed). The `database`
+`ShareErrorsFromSession` — plus `make:session-table` and `session:prune` (when `marmeon` is installed). The `database`
 and `redis` drivers need their packages — optional peers; a missing one fails the start with what to install
 (`SessionSetupError`). The session cookie's value is redacted wherever requests are recorded (E125).
 
@@ -22,7 +22,7 @@ and `redis` drivers need their packages — optional peers; a missing one fails 
 SESSION_DRIVER=file                     # file (default) | database | redis | memory | cookie
 SESSION_CONNECTION=default              # database/redis: which database or Redis connection (default: default)
 SESSION_LIFETIME=120                    # minutes of inactivity until the session expires (default 120)
-SESSION_COOKIE=bespoke_session          # the cookie's name (default)
+SESSION_COOKIE=marmeon_session          # the cookie's name (default)
 SESSION_FILES=storage/framework/sessions   # file: where sessions live, relative to the app root (default)
 SESSION_SECURE_COOKIE=                  # unset: follows APP_URL — https:// → Secure, http:// → not (E162); true/false decide
 SESSION_SAME_SITE=lax                   # lax (default) | strict | none
@@ -41,7 +41,7 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
 `set` says `secure: false` itself (Laravel's cookie jar defaults). In a protected environment (E139: staging, production, no
 `NODE_ENV`) cookies without `Secure` are warned about once at boot: "Cookies are sent without Secure: APP_URL is not https:// —
 …" (or "SESSION_SECURE_COOKIE=false — …"). Behind a TLS-terminating proxy nothing else is needed: the decision comes from
-`APP_URL`, not from the request's protocol (`TRUSTED_PROXIES`: [@bespokecore/server](../server/README.md#behind-a-proxy-e162)).
+`APP_URL`, not from the request's protocol (`TRUSTED_PROXIES`: [@marmeon/server](../server/README.md#behind-a-proxy-e162)).
 
 ## The session
 
@@ -49,7 +49,7 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
   keys), `flush()`. Values must survive `JSON.stringify` — a `Date` comes back as a string. Declared keys are checked:
 
   ```ts
-  declare module '@bespokecore/session' {
+  declare module '@marmeon/session' {
     interface SessionData { cart: number[] }
   }
   ```
@@ -58,7 +58,7 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
   `old(key?)` refill a form after a failed submit (`redirect().withInput()`). A redirect's `.with(…)` and `.flash(key, data)`
   (flash messages, E60 — kept until a response the user is shown takes them, not aged by prefetches or islands) write into
   the request's session. A flash message is bound to the document (the browser tab) whose request flashed it — the tabSync
-  feature names it, `x-bespoke-document` — and another tab's request leaves it waiting; a full page load takes it (E165,
+  feature names it, `x-marmeon-document` — and another tab's request leaves it waiting; a full page load takes it (E165,
   [tab sync](../http/README.md#tab-sync-w8-step-8)).
 - **The tab-sync epoch:** `PageSession.generation()` — a signed-in session's scope and its user's id, `undefined` for a guest — is
   the session's part of `PageObject.epoch` (with the locale; an HMAC keyed from `APP_KEY`): new with every `regenerate()` and
@@ -66,7 +66,7 @@ session's: the provider binds `CookieDefaults` from it, and the kernel gives eac
 - **The `errors` prop:** `ShareErrorsFromSession` shares the flashed validation errors with every page of the `web` group —
   `{}` when there are none, also on partial reloads — what `useForm` shows next to the fields.
 - **Sign-in and sign-out:** `regenerate()` gives the session a new id and CSRF token (against session fixation),
-  `invalidate()` also drops all data — `@bespokecore/auth` calls them. The old id is destroyed when the request saves it.
+  `invalidate()` also drops all data — `@marmeon/auth` calls them. The old id is destroyed when the request saves it.
 - **Requests that must not overlap:** `Route.post(…).block()` runs a route's requests one at a time per session
   ([below](#blocking-routes-block)).
 - **Read-only requests:** an island (E52) or a live stream reads the session but never writes it — no save, no cookie, flash
@@ -89,7 +89,7 @@ the `web` group. The first stage that decides wins:
    response refreshes; compared in constant time). Without it — or without a session — **419** ("Page Expired").
 
 **The app's own origin** is the one a request reaches it at — scheme and host of the request URL, which a trusted proxy's
-`X-Forwarded-Proto`/`-Host` set (`TRUSTED_PROXIES`, [@bespokecore/server](../server/README.md)) — and `APP_URL`'s (so a proxy
+`X-Forwarded-Proto`/`-Host` set (`TRUSTED_PROXIES`, [@marmeon/server](../server/README.md)) — and `APP_URL`'s (so a proxy
 the app does not trust yet still lets the configured address through). `CSRF_TRUSTED_ORIGINS` lists whole origins — scheme,
 host, port, no path (`https://admin.example.com`); a value with a path stops the boot.
 
@@ -111,7 +111,7 @@ cannot carry a token — webhooks — are listed by their module (`*` matches an
 defineModule({ name: 'billing', routes, csrfExcept: ['/webhooks/*'] });
 ```
 
-`container.make(CsrfProtection).except('/webhooks/*')` does the same from a provider. `@bespokecore/testing` turns the check off
+`container.make(CsrfProtection).except('/webhooks/*')` does the same from a provider. `@marmeon/testing` turns the check off
 unless a test asks for it (`createTestApp(App, { csrf: true })`), like Laravel.
 
 ## Session drivers
@@ -121,8 +121,8 @@ Chosen with `SESSION_DRIVER` (see `SessionConfig`):
 | Driver     | Where the data lives                                                     | Expiry                                   | Use it for                                          |
 | ---------- | ------------------------------------------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
 | `file`     | one file per session (`SESSION_FILES`) — the default                     | lottery / `session:prune` (by mtime)     | apps with login on one server                       |
-| `database` | a row in `sessions` (`bespoke make:session-table`, `SESSION_CONNECTION`) | lottery / `session:prune` (`last_activity`) | apps with login, several processes or servers    |
-| `redis`    | `<REDIS_PREFIX>session:<key>` ([@bespokecore/redis](../redis/README.md) + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
+| `database` | a row in `sessions` (`marmeon make:session-table`, `SESSION_CONNECTION`) | lottery / `session:prune` (`last_activity`) | apps with login, several processes or servers    |
+| `redis`    | `<REDIS_PREFIX>session:<key>` ([@marmeon/redis](../redis/README.md) + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
 | `memory`   | the process                                                              | on read                                  | tests (gone with the process)                       |
 | `cookie`   | an encrypted cookie next to the session id                               | the cookie's `Max-Age`                   | apps **without** login (≈ 2.8 KB of JSON at most)   |
 
@@ -132,20 +132,20 @@ Every server-side store keeps a session under its **key** — the SHA-256 of the
 ### `database`
 
 ```sh
-bespoke make:session-table   # writes modules/system/migrations/…_create_sessions_table.ts (E96: the table is the app's; --module=<name> for another)
-bespoke migrate
-bespoke make:session-table --upgrade   # a table made before W8: …_upgrade_sessions_table.ts (below)
+marmeon make:session-table   # writes modules/system/migrations/…_create_sessions_table.ts (E96: the table is the app's; --module=<name> for another)
+marmeon migrate
+marmeon make:session-table --upgrade   # a table made before W8: …_upgrade_sessions_table.ts (below)
 ```
 
 The table: `id` (primary key — the session's key, the SHA-256 of its id), `user_id` (nullable, indexed — the signed-in user's
 id, copied from the session's `_auth_id`; `null` for guests), `payload` (the session as JSON, or encrypted with
 `SESSION_ENCRYPT` — a `.secret()` column, so `selectAll()` never returns it), `last_activity` (epoch milliseconds of the last
 write, indexed) and `version` (raised by every write, compared by the next — [compare-and-set](#hashed-keys-versions-and-encryption-e144-e145)).
-A table made before W8 has no `version` and raw ids: `bespoke make:session-table --upgrade` writes the migration that makes it
+A table made before W8 has no `version` and raw ids: `marmeon make:session-table --upgrade` writes the migration that makes it
 anew — every user is signed out once ([UPGRADING](../../UPGRADING.md)); until then the store says so. A session expires `SESSION_LIFETIME` minutes after
 its last activity. Expired rows are deleted by the lottery (`SESSION_LOTTERY`, default 2 in 100 requests, after the
-response) or by `bespoke session:prune` — from cron (then set `SESSION_LOTTERY=0/1`) or from the app's scheduler
-(`s.command('session:prune').everyFifteenMinutes()`, [@bespokecore/scheduler](../scheduler/README.md)): then requests draw no
+response) or by `marmeon session:prune` — from cron (then set `SESSION_LOTTERY=0/1`) or from the app's scheduler
+(`s.command('session:prune').everyFifteenMinutes()`, [@marmeon/scheduler](../scheduler/README.md)): then requests draw no
 lottery at all.
 
 **Its own connection, never the app's transactions (E108).** The store writes through `connections.infrastructure()`
@@ -159,7 +159,7 @@ is open — an in-process request inside `connections.transaction()`, a test —
 | SQLite, the app's own file (`SESSION_CONNECTION=default`) | the file's one connection, shared | throws `InfrastructureTransactionError` (configure a file of its own, or use Redis) — never a silent join. Outside transactions (the normal case: a request saves its session after the controller) it works as before |
 
 The migration `make:session-table` writes follows the connection: `connection: sessionTableConnection` puts the table on
-`SESSION_CONNECTION` (with the database driver; otherwise on `default`), and `bespoke migrate` creates it there.
+`SESSION_CONNECTION` (with the database driver; otherwise on `default`), and `marmeon migrate` creates it there.
 
 ### Hashed keys, versions and encryption (E144, E145)
 
@@ -176,7 +176,7 @@ flash messages — with hashed keys none of it signs anybody in, but turn it on 
 data should not be read. The database's `user_id` column stays readable (it is what lists a user's sessions). Turning it on or
 off signs everybody out once (the other format does not open — a new session starts). The `cookie` driver's data is encrypted
 anyway (it is a cookie); `SESSION_ENCRYPT` changes nothing there. It costs ≈ 9 µs per request with a session (one decryption, one
-encryption — [@bespokecore/server](../server/README.md#the-request-path-e136-e154)). The provider binds the `SessionCodec` —
+encryption — [@marmeon/server](../server/README.md#the-request-path-e136-e154)). The provider binds the `SessionCodec` —
 `plainSessionCodec`, or `EncryptedSessionCodec` with `SESSION_ENCRYPT=true` (the `Encrypter`, context `session:<key>`).
 
 **Compare-and-set.** Every write is one atomic step of the store that compares the version the request read:
@@ -213,7 +213,7 @@ Route.post('/wizard/step', WizardStepController).block(5, 2);   // hold the lock
 ```
 
 `block(lockSeconds = 10, waitSeconds = lockSeconds)` (Laravel's) makes `StartSession` take an atomic lock on the session before it
-reads it and free it after saving it — through the app's cache ([@bespokecore/cache](../cache/README.md), locks since E103; without
+reads it and free it after saving it — through the app's cache ([@marmeon/cache](../cache/README.md), locks since E103; without
 it the route answers 500 saying so). A second request of the same browser waits; longer than `waitSeconds` → **423 Locked** with
 `Retry-After`. A request without a session cookie locks nothing (a new session is nobody else's). The web app and `make:auth`
 block the password change and "sign out other devices".
@@ -261,21 +261,21 @@ the sign-out, with the session as it was when it started: still signed in.
   `regenerate()`) is `gone` and stays destroyed — a conflict's re-read finds nothing either — and `StartSession` then sends
   no session cookie: the browser keeps the one the sign-out sent.
 - **`cookie` driver:** cannot be protected. The whole session travels in the cookie, so the slower response brings
-  the signed-in cookie back and the sign-out is undone. With `@bespokecore/auth` registered, the app logs a warning
+  the signed-in cookie back and the sign-out is undone. With `@marmeon/auth` registered, the app logs a warning
   at boot (E46). **Use `file`, `database` or `redis` for apps with login.**
 
 ### When a session ends
 
 Signing in (`regenerate()`) or out (`invalidate()`) gives the session a new id and destroys the old one when the request saves
 it. Whoever must know — the live package closes every stream of the old session, in every process (W6.10,
-[@bespokecore/live](../live/README.md)) — listens through `SessionEndings` (one per app):
+[@marmeon/live](../live/README.md)) — listens through `SessionEndings` (one per app):
 `container.make(SessionEndings).listen((scope) => …)` hears the old session's **scope** (`sessionScope(id)`, a hash of its id —
 never the id, which is a secret; the same value `PageSession.scope()` hands out for once props and live tokens). A listener
 that fails does not stop the others.
 
 ## Testing
 
-With `@bespokecore/testing` (and a server-side driver — `SESSION_DRIVER=memory` in `.env.test`; the cookie driver has no
+With `@marmeon/testing` (and a server-side driver — `SESSION_DRIVER=memory` in `.env.test`; the cookie driver has no
 session helpers):
 
 ```ts

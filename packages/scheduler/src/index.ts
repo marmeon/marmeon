@@ -1,4 +1,4 @@
-import { Application, Clock, Logger, type Container, type ServiceProvider } from '@bespokecore/core';
+import { Application, Clock, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand } from './commands/schedule.ts';
 import { ScheduleConfig } from './config.ts';
 import { Scheduler } from './scheduler.ts';
@@ -23,8 +23,8 @@ export type { ScheduleTime } from './testing.ts';
 export { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand } from './commands/schedule.ts';
 
 /**
- * Registers the `Scheduler` and the `schedule:*` commands; `bespoke dev` runs `schedule:work` next to the server when
- * the app schedules anything (E101). Found by `bespoke discover`.
+ * Registers the `Scheduler` and the `schedule:*` commands; `marmeon dev` runs `schedule:work` next to the server when
+ * the app schedules anything (E101). Found by `marmeon discover`.
  */
 export class SchedulerServiceProvider implements ServiceProvider {
   static config = [ScheduleConfig];
@@ -37,7 +37,7 @@ export class SchedulerServiceProvider implements ServiceProvider {
     // A task without a frequency, an invalid cron expression or time zone, two tasks with one name: the start fails.
     const tasks = app.container.make(Scheduler).tasks;
 
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) {
       app.container.make(cli.CommandRegistry).add([ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand]);
     }

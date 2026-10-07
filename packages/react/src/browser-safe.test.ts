@@ -12,14 +12,14 @@ async function bundled(entry: string): Promise<{ modules: string[]; externals: s
   const output = (await build({
     configFile: false,
     logLevel: 'silent',
-    resolve: { conditions: ['@bespokecore/source', 'browser', 'module', 'import', 'default'] },
+    resolve: { conditions: ['@marmeon/source', 'browser', 'module', 'import', 'default'] },
     build: {
       write: false,
       minify: false,
       lib: { entry, formats: ['es'], fileName: 'entry' },
       rolldownOptions: {
         external: (id, importer) => {
-          const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@bespokecore/');
+          const bare = importer !== undefined && !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !id.startsWith('@marmeon/');
           if (bare || id.startsWith('node:')) externals.add(id);
           return bare || id.startsWith('node:');
         },
@@ -34,7 +34,7 @@ async function bundled(entry: string): Promise<{ modules: string[]; externals: s
   return { modules: [...modules].sort(), externals: [...externals].sort() };
 }
 
-describe('@bespokecore/react in the browser', () => {
+describe('@marmeon/react in the browser', () => {
   it('is a rendering layer on the client core: no server code, no i18n at runtime — React itself from the app', async () => {
     const { modules, externals } = await bundled(fileURLToPath(new URL('./index.ts', import.meta.url)));
     expect(externals.filter((id) => !/^react(-dom)?(\/|$)/.test(id))).toEqual([]);
@@ -58,19 +58,19 @@ describe('@bespokecore/react in the browser', () => {
     expect(main.modules.filter((id) => id.startsWith('table/') || id.includes('table'))).toEqual([]);
   }, 30_000);
 
-  it('needs @bespokecore/table and TanStack Table only for their subpaths: optional peers, so discovery does not add the table package to every React app', () => {
+  it('needs @marmeon/table and TanStack Table only for their subpaths: optional peers, so discovery does not add the table package to every React app', () => {
     const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as Record<string, Record<string, unknown> | undefined>;
-    for (const peer of ['@bespokecore/table', '@tanstack/react-table']) {
+    for (const peer of ['@marmeon/table', '@tanstack/react-table']) {
       expect(manifest.dependencies).not.toHaveProperty(peer);
       expect(manifest.peerDependencies).toHaveProperty(peer);
       expect(manifest.peerDependenciesMeta).toEqual(expect.objectContaining({ [peer]: { optional: true } }));
     }
   });
 
-  it('needs @bespokecore/i18n only when the app translates: an optional peer, so discovery does not add it (nor its session) to every React app', () => {
+  it('needs @marmeon/i18n only when the app translates: an optional peer, so discovery does not add it (nor its session) to every React app', () => {
     const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as Record<string, Record<string, unknown> | undefined>;
-    expect(manifest.dependencies).not.toHaveProperty('@bespokecore/i18n');
-    expect(manifest.peerDependencies).toHaveProperty('@bespokecore/i18n');
-    expect(manifest.peerDependenciesMeta).toEqual(expect.objectContaining({ '@bespokecore/i18n': { optional: true } }));
+    expect(manifest.dependencies).not.toHaveProperty('@marmeon/i18n');
+    expect(manifest.peerDependencies).toHaveProperty('@marmeon/i18n');
+    expect(manifest.peerDependenciesMeta).toEqual(expect.objectContaining({ '@marmeon/i18n': { optional: true } }));
   });
 });

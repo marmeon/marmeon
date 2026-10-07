@@ -1,5 +1,5 @@
 import type { DatabaseData, NotificationStatics, RecipientRef } from './notification.ts';
-import type { CursorEncrypter, CursorPaginated } from '@bespokecore/database';
+import type { CursorEncrypter, CursorPaginated } from '@marmeon/database';
 import type { NotificationStore, StoredNotification } from './store.ts';
 
 /**

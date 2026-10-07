@@ -1,9 +1,9 @@
-import { Auth, AuthConfig, confirmed, Hasher, password, Registered } from '@bespokecore/auth';
-import { EventDispatcher } from '@bespokecore/core';
-import { Connections } from '@bespokecore/database';
-import { Controller, defineRequest, ValidationError, type ContextOf } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
-import { Queue } from '@bespokecore/queue';
+import { Auth, AuthConfig, confirmed, Hasher, password, Registered } from '@marmeon/auth';
+import { EventDispatcher } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { trans, Translator } from '@marmeon/i18n';
+import { Queue } from '@marmeon/queue';
 import * as v from 'valibot';
 import { SendAccountExistsMailJob } from '../jobs/SendAccountExistsMailJob.ts';
 import { UserRepository } from '../UserRepository.ts';

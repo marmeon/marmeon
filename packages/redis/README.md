@@ -1,4 +1,4 @@
-# @bespokecore/redis
+# @marmeon/redis
 
 Redis connections (E87) — like database connections: lazy per name, closed on shutdown, injected where needed. The cache,
 locks and rate limits (`CACHE_DRIVER=redis`), sessions (`SESSION_DRIVER=redis`), the queue (`QUEUE_CONNECTION=redis`) and live
@@ -6,10 +6,10 @@ props (`LIVE_DRIVER=redis`) build on it. **Redis is optional:** the defaults of 
 `pnpm test` need no Redis); Valkey works the same.
 
 ```sh
-pnpm add @bespokecore/redis redis   # the official client (node-redis 5 or 6) is an optional peer
+pnpm add @marmeon/redis redis   # the official client (node-redis 5 or 6) is an optional peer
 ```
 
-`bespoke discover` registers its `RedisServiceProvider` through the `"bespoke"` field of its package.json: `RedisConnections`
+`marmeon discover` registers its `RedisServiceProvider` through the `"marmeon"` field of its package.json: `RedisConnections`
 (a singleton), a readiness check, and closing every connection — duplicates included — on shutdown.
 
 ```ts
@@ -87,6 +87,6 @@ the queue (the worker polls).
 
 ## Testing
 
-`docker compose up -d` starts `bespokecore-redis` on port 56379; `pnpm test:redis` runs the whole suite with
-`BESPOKE_TEST_REDIS_URL` — the Redis drivers of cache, locks, sessions, queue and live run against it (and are skipped
+`docker compose up -d` starts `marmeon-redis` on port 56379; `pnpm test:redis` runs the whole suite with
+`MARMEON_TEST_REDIS_URL` — the Redis drivers of cache, locks, sessions, queue and live run against it (and are skipped
 without it).

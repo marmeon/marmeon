@@ -1,4 +1,4 @@
-import { Head } from '@bespokecore/react';
+import { Head } from '@marmeon/react';
 
 /** Needs the browser to render, so it opts out of server rendering: the server sends the page object, the browser renders. */
 export default function BrowserOnly() {

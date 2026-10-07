@@ -1,14 +1,14 @@
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
-import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@bespokecore/core';
-import { channels } from '@bespokecore/core/diagnostics';
-import { Connections, Database, DatabaseServiceProvider, Schema, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, HttpServiceProvider } from '@bespokecore/http';
-import { createPinoLogger } from '@bespokecore/log';
-import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@bespokecore/queue';
-import { defineRoutes, type HttpContext } from '@bespokecore/router';
-import { createHttpKernel, ServerServiceProvider } from '@bespokecore/server';
+import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@marmeon/core';
+import { channels } from '@marmeon/core/diagnostics';
+import { Connections, Database, DatabaseServiceProvider, Schema, sql } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, HttpServiceProvider } from '@marmeon/http';
+import { createPinoLogger } from '@marmeon/log';
+import { Queue, QUEUE_MIGRATION, QueueConnections, QueueServiceProvider } from '@marmeon/queue';
+import { defineRoutes, type HttpContext } from '@marmeon/router';
+import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { context, propagation, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
@@ -16,7 +16,7 @@ import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider, type Readabl
 import * as v from 'valibot';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadOtelApi, OtelServiceProvider, redactedPath } from './index.ts';
-import { ErrorSolutions, Redactor } from '@bespokecore/core';
+import { ErrorSolutions, Redactor } from '@marmeon/core';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 // The SDK, as an app's bootstrap/telemetry.ts would register it — with an in-memory exporter (SDK 3 names: `TracerProvider`).
@@ -33,7 +33,7 @@ afterAll(() => {
   propagation.disable();
 });
 
-const root = tempDir('bespoke-otel-');
+const root = tempDir('marmeon-otel-');
 
 class ReportJob {
   static readonly job = 'test.report';
@@ -120,7 +120,7 @@ const dump = (span: ReadableSpan | undefined) => JSON.stringify(span && { name: 
 const byName = (list: readonly ReadableSpan[], name: string) => list.find((span) => span.name === name);
 const parentOf = (span: ReadableSpan | undefined) => span?.parentSpanContext?.spanId;
 
-describe('@bespokecore/otel (E120)', () => {
+describe('@marmeon/otel (E120)', () => {
   it('a request: a server span `GET /people/:person`, its query (without parameters), the dispatch — and the job, run by the worker, in the same trace', async () => {
     const { app: booting, lines } = boot();
     await using app = await booting;
@@ -128,7 +128,7 @@ describe('@bespokecore/otel (E120)', () => {
     const kernel = createHttpKernel(app);
     const response = await kernel.request('http://shop.test/people/7?page=2&token=secret-in-the-url', { headers: { 'user-agent': 'probe/1.0' } });
     expect(response.status).toBe(200);
-    // The worker, as `bespoke queue:work` runs it: the job comes out of the jobs table, its trace context with it (E131).
+    // The worker, as `marmeon queue:work` runs it: the job comes out of the jobs table, its trace context with it (E131).
     await app.container.make(QueueConnections).worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true });
 
     const all = await spans();
@@ -143,11 +143,11 @@ describe('@bespokecore/otel (E120)', () => {
       'url.scheme': 'http',
       'server.address': 'shop.test',
       'user_agent.original': 'probe/1.0',
-      'bespoke.route.name': 'people.show',
-      'bespoke.controller': 'ShowPersonController',
+      'marmeon.route.name': 'people.show',
+      'marmeon.controller': 'ShowPersonController',
     });
     expect(request.attributes['url.query']).toBe('page=2&token=[redacted]');
-    expect(request.attributes['bespoke.request.id']).toBe(response.headers.get('x-request-id'));
+    expect(request.attributes['marmeon.request.id']).toBe(response.headers.get('x-request-id'));
     expect(request.status.code).toBe(SpanStatusCode.UNSET);
     const traceId = request.spanContext().traceId;
     expect(seen.activeTraceId).toBe(traceId);
@@ -157,7 +157,7 @@ describe('@bespokecore/otel (E120)', () => {
     expect(query).toBeDefined();
     expect(query!.name).toBe('SELECT people');
     expect(query!.kind).toBe(SpanKind.CLIENT);
-    expect(query!.attributes).toMatchObject({ 'db.system.name': 'sqlite', 'db.operation.name': 'SELECT', 'db.collection.name': 'people', 'bespoke.db.connection': 'default' });
+    expect(query!.attributes).toMatchObject({ 'db.system.name': 'sqlite', 'db.operation.name': 'SELECT', 'db.collection.name': 'people', 'marmeon.db.connection': 'default' });
     expect(query!.attributes['db.query.text']).toBe('select * from "people" where "email" = ?');
     expect(all.map(dump).join('\n')).not.toContain('ada-secret@example.com');
 
@@ -165,12 +165,12 @@ describe('@bespokecore/otel (E120)', () => {
     const send = byName(all, 'send test.report')!;
     expect(send).toMatchObject({ kind: SpanKind.PRODUCER });
     expect(parentOf(send)).toBe(request.spanContext().spanId);
-    expect(send.attributes).toMatchObject({ 'messaging.system': 'bespokecore', 'messaging.operation.type': 'send', 'messaging.destination.name': 'default' });
+    expect(send.attributes).toMatchObject({ 'messaging.system': 'marmeon', 'messaging.operation.type': 'send', 'messaging.destination.name': 'default' });
     const job = byName(all, 'process test.report')!;
     expect(job.kind).toBe(SpanKind.CONSUMER);
     expect(job.spanContext().traceId).toBe(traceId);
     expect(parentOf(job)).toBe(send.spanContext().spanId);
-    expect(job.attributes).toMatchObject({ 'bespoke.job': 'test.report', 'bespoke.job.attempt': 1, 'bespoke.job.outcome': 'done', 'bespoke.request.origin_id': response.headers.get('x-request-id') });
+    expect(job.attributes).toMatchObject({ 'marmeon.job': 'test.report', 'marmeon.job.attempt': 1, 'marmeon.job.outcome': 'done', 'marmeon.request.origin_id': response.headers.get('x-request-id') });
     // The job's own query is the job's child.
     const jobQuery = all.find((span) => parentOf(span) === job.spanContext().spanId && span.attributes['db.system.name'] === 'sqlite');
     expect(jobQuery?.attributes['db.query.text']).toBe('select count(*) as n from people where id = ?');
@@ -211,7 +211,7 @@ describe('@bespokecore/otel (E120)', () => {
     const kernel = createHttpKernel(app);
     const caller = '0af7651916cd43dd8448eb211c80319c';
     await kernel.request('/reset/a-reset-token-value', {
-      headers: { traceparent: `00-${caller}-b7ad6b7169203331-01`, authorization: 'Bearer secret-api-token', 'x-tenant': 'acme', cookie: 'bespoke_session=abc' },
+      headers: { traceparent: `00-${caller}-b7ad6b7169203331-01`, authorization: 'Bearer secret-api-token', 'x-tenant': 'acme', cookie: 'marmeon_session=abc' },
     });
     const [span] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
     expect(span!.spanContext().traceId).toBe(caller);
@@ -245,8 +245,8 @@ describe('@bespokecore/otel (E120)', () => {
   it('without @opentelemetry/api: the start fails with what to install', async () => {
     const missing = Object.assign(new Error("Cannot find package '@opentelemetry/api' imported from …"), { code: 'ERR_MODULE_NOT_FOUND' });
     const error = await loadOtelApi(() => Promise.reject(missing)).catch((failure: unknown) => failure);
-    expect((error as Error).message).toMatch(/^@bespokecore\/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry\/api/);
-    // `bespoke` prints the way out when the app cannot start (E130).
+    expect((error as Error).message).toMatch(/^@marmeon\/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry\/api/);
+    // `marmeon` prints the way out when the app cannot start (E130).
     const [solution] = await new ErrorSolutions(OtelServiceProvider.solutions).find(error);
     expect(solution).toMatchObject({ title: 'Install the OpenTelemetry API', command: 'pnpm add @opentelemetry/api' });
   });

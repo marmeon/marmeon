@@ -1,7 +1,7 @@
-import type { Messages } from '@bespokecore/i18n/messages';
+import type { Messages } from '@marmeon/i18n/messages';
 import type en from './en.ts';
 
-/** Die Texte des Frameworks auf Deutsch (Namensraum `bespoke`). */
+/** Die Texte des Frameworks auf Deutsch (Namensraum `marmeon`). */
 export default {
   status: {
     '400': 'Ungültige Anfrage',

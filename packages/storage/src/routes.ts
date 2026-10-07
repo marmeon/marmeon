@@ -1,11 +1,11 @@
-import type { Container } from '@bespokecore/core';
+import type { Container } from '@marmeon/core';
 import type { StorageOptions } from './config.ts';
 import { keyFromPath } from './keys.ts';
 import { notFound, serveFile } from './serve.ts';
 import { Storage, StorageManager, visibilityOf } from './storage.ts';
 import { TEMPORARY_PREFIX } from './temporary.ts';
 
-type Http = typeof import('@bespokecore/http');
+type Http = typeof import('@marmeon/http');
 
 /** `/storage` → the public disks the app serves under a path: not S3, public, with a `url` that is a path. */
 export function servedPublicDisks(options: StorageOptions): { name: string; path: string }[] {
@@ -19,7 +19,7 @@ export function servedPublicDisks(options: StorageOptions): { name: string; path
  * still runs):
  *
  * - `GET {url}/<key>` for each public local (or memory) disk whose `url` is a path — e.g. `/storage/avatars/7.webp`;
- * - `GET /_bespoke/storage/<disk>/<key>?expires=…&signature=…` — `temporaryUrl()` of local and memory disks, public or
+ * - `GET /_marmeon/storage/<disk>/<key>?expires=…&signature=…` — `temporaryUrl()` of local and memory disks, public or
  *   private, behind `signed()` (a wrong or expired signature: 403).
  *
  * A private disk has no other route: its files are never public. Keys come from the raw path, each segment decoded and

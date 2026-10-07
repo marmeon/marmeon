@@ -1,5 +1,5 @@
-import { Controller } from '@bespokecore/http';
-import { Session } from '@bespokecore/session';
+import { Controller } from '@marmeon/http';
+import { Session } from '@marmeon/session';
 
 export class ShowRegisterController extends Controller {
   readonly #session: Session;

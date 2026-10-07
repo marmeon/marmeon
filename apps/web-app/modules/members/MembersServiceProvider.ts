@@ -1,5 +1,5 @@
-import { Limit, RateLimiter } from '@bespokecore/cache';
-import type { Application, ServiceProvider } from '@bespokecore/core';
+import { Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
 
 export class MembersServiceProvider implements ServiceProvider {
   boot(app: Application): void {

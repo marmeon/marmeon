@@ -2,7 +2,7 @@
 export interface IndexedSection {
   /** The page: `/`, `/guides/<slug>` or `/packages/<name>`. */
   readonly path: string;
-  /** The page's title — `@bespokecore/scheduler`. */
+  /** The page's title — `@marmeon/scheduler`. */
   readonly page: string;
   readonly heading: string;
   readonly anchor: string;

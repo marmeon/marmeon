@@ -1,6 +1,6 @@
-import type { Login } from '@bespokecore/auth';
-import type { EventPayload } from '@bespokecore/core';
-import { Notifications } from '@bespokecore/notifications';
+import type { Login } from '@marmeon/auth';
+import type { EventPayload } from '@marmeon/core';
+import { Notifications } from '@marmeon/notifications';
 import { NewSignInNotification } from '../notifications/NewSignInNotification.ts';
 
 /**

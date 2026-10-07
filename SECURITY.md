@@ -4,7 +4,7 @@
 
 Please do not report a vulnerability in a public issue, a pull request or a discussion. Use GitHub's **private vulnerability
 reporting**: the repository's *Security* tab → *Report a vulnerability*
-(<https://github.com/bespokecore/bespokecore/security/advisories/new>). Only the maintainers see the report.
+(<https://github.com/marmeon/marmeon/security/advisories/new>). Only the maintainers see the report.
 
 Please include what you can of:
 
@@ -22,7 +22,7 @@ What happens then:
 
 ## Supported versions
 
-BespokeCore is in 0.x ([versions and deprecations](README.md#versions-and-deprecations)): security fixes are released for the
+Marmeon is in 0.x ([versions and deprecations](README.md#versions-and-deprecations)): security fixes are released for the
 **latest minor version** only — upgrade along [UPGRADING.md](UPGRADING.md). How long a major version receives security fixes is
 set with 1.0 ([versions and deprecations](docs/versioning.md)).
 
@@ -33,11 +33,11 @@ set with 1.0 ([versions and deprecations](docs/versioning.md)).
 
 ## What is in scope
 
-The packages of this repository (`@bespokecore/*`, `bespokecore`, `create-bespoke-app`) and what they generate (`bespoke make:*`,
+The packages of this repository (`@marmeon/*`, `marmeon`, `create-marmeon`) and what they generate (`marmeon make:*`,
 the starter kit). The demo apps under `apps/` are examples, not products — a flaw there is welcome as a normal issue unless it
 lies in framework code they show.
 
 What an app protects by itself and what it leaves to you is summed up in [docs/security.md](docs/security.md); the details are
 documented with the packages — sessions, CSRF and cookies in
-[@bespokecore/session](packages/session/README.md), the Content-Security-Policy in [@bespokecore/http](packages/http/README.md),
-authentication in [@bespokecore/auth](packages/auth/README.md), the production setup in [docs/deployment.md](docs/deployment.md).
+[@marmeon/session](packages/session/README.md), the Content-Security-Policy in [@marmeon/http](packages/http/README.md),
+authentication in [@marmeon/auth](packages/auth/README.md), the production setup in [docs/deployment.md](docs/deployment.md).

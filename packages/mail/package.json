@@ -1,22 +1,22 @@
 {
-  "name": "@bespokecore/mail",
+  "name": "@marmeon/mail",
   "version": "0.1.0",
-  "description": "Mails as classes for BespokeCore apps: envelopes, MJML or HTML content, transports behind a neutral message, queued sending.",
+  "description": "Mails as classes for Marmeon apps: envelopes, MJML or HTML content, transports behind a neutral message, queued sending.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "mail",
     "email",
     "mjml",
     "smtp"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/mail#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/mail#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/mail"
   },
   "engines": {
@@ -26,7 +26,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -55,20 +55,20 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "MailServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
+    "@marmeon/core": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
     "mjml": ">=5",
     "nodemailer": ">=10",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/router": "workspace:*"
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/router": "workspace:*"
   },
   "peerDependenciesMeta": {
     "nodemailer": {
@@ -77,18 +77,18 @@
     "mjml": {
       "optional": true
     },
-    "@bespokecore/queue": {
+    "@marmeon/queue": {
       "optional": true
     },
-    "@bespokecore/router": {
+    "@marmeon/router": {
       "optional": true
     }
   },
   "devDependencies": {
     "mjml": "^5.4.1",
     "nodemailer": "^10.0.13",
-    "@bespokecore/queue": "workspace:*",
-    "@bespokecore/router": "workspace:*",
-    "@bespokecore/encryption": "workspace:*"
+    "@marmeon/queue": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "@marmeon/encryption": "workspace:*"
   }
 }

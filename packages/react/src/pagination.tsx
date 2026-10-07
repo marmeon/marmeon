@@ -1,5 +1,5 @@
-import { pageQuery, queryUrl } from '@bespokecore/http/client';
-import type { PageObject, PaginationMeta } from '@bespokecore/http/page';
+import { pageQuery, queryUrl } from '@marmeon/http/client';
+import type { PageObject, PaginationMeta } from '@marmeon/http/page';
 import type { ReactNode } from 'react';
 import { usePage } from './app.tsx';
 import { Link } from './link.tsx';
@@ -81,13 +81,13 @@ function pageHref(page: Pick<PageObject, 'url' | 'component' | 'query' | 'queryD
   if (page.queryDefaults) {
     if (process.env.NODE_ENV !== 'production' && !Object.hasOwn(page.queryDefaults, param) && !(warned ??= new Set()).has(`${page.component} ${param}`)) {
       warned.add(`${page.component} ${param}`);
-      console.warn(`[bespoke:R17] <Pagination param="${param}"> on ${page.component}, whose query schema has no "${param}" — its links would lead to the first page: spread pageQuery() into the route's query schema.`);
+      console.warn(`[marmeon:R17] <Pagination param="${param}"> on ${page.component}, whose query schema has no "${param}" — its links would lead to the first page: spread pageQuery() into the route's query schema.`);
     }
     const query = pageQuery(page);
     return (number) => queryUrl(page, { ...query, [param]: number });
   }
   return (number) => {
-    const target = new URL(page.url, 'http://bespoke.invalid');
+    const target = new URL(page.url, 'http://marmeon.invalid');
     if (number === 1) target.searchParams.delete(param);
     else target.searchParams.set(param, String(number));
     return target.pathname + target.search;

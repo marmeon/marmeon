@@ -1,4 +1,4 @@
-import { defineConfig, environment, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, environment, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 /**

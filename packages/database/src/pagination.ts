@@ -1,8 +1,8 @@
-import { HttpError } from '@bespokecore/router';
+import { HttpError } from '@marmeon/router';
 import { sql, type Expression, type ExpressionBuilder, type Kysely, type SelectQueryBuilder, type SqlBool } from 'kysely';
 import * as v from 'valibot';
 
-/** Where a page stands — the same shape `@bespokecore/http/page` knows as `PaginationMeta` (for `<Pagination>`). */
+/** Where a page stands — the same shape `@marmeon/http/page` knows as `PaginationMeta` (for `<Pagination>`). */
 export interface PageMeta {
   readonly page: number;
   readonly perPage: number;
@@ -126,7 +126,7 @@ function pageOf(request: PageRequest | undefined): { page?: number | undefined; 
   return { page: request.page, perPage: request.per_page ?? request.perPage };
 }
 
-/** What encrypts a cursor — the app's `Encrypter` (`@bespokecore/encryption`), injected where the list is read. */
+/** What encrypts a cursor — the app's `Encrypter` (`@marmeon/encryption`), injected where the list is read. */
 export interface CursorEncrypter {
   encrypt(plaintext: string, context?: string): Promise<string>;
   decrypt(payload: string, context?: string): Promise<string>;
@@ -165,7 +165,7 @@ export interface CursorOptions<C extends string> {
  * Each order's own context: a cursor of other columns or the other direction does not decrypt here. Per order, not per list — one
  * of another list with the same order is a position among this list's rows (its filters still apply).
  */
-const CURSOR_CONTEXT = 'bespoke:cursor';
+const CURSOR_CONTEXT = 'marmeon:cursor';
 
 /**
  * Keyset pagination for large tables and "load more": rows after the cursor, ordered by `column` and then the unique `key` —

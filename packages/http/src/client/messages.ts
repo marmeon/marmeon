@@ -1,7 +1,7 @@
 import type { PageObject } from '../page.ts';
 
 /**
- * The app's language files as the client core sees them — `createMessageLoader(lang)` of `@bespokecore/i18n/messages`
+ * The app's language files as the client core sees them — `createMessageLoader(lang)` of `@marmeon/i18n/messages`
  * is one. Kept structural, so this core knows no i18n package: `C` is whatever the loader loads (a `Catalog`).
  */
 export interface PageMessages<C = unknown> {

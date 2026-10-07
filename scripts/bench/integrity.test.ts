@@ -9,7 +9,7 @@ import { ensureImportable, importProblem, removeNodeModules } from './integrity.
  * died with ERR_MODULE_NOT_FOUND). A fixture checkout with one installed package stands in for a worktree.
  */
 function checkout(): string {
-  const dir = tempDir('bespoke-bench-fixture-');
+  const dir = tempDir('marmeon-bench-fixture-');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', private: true, type: 'module' }));
   installDependency(dir);
   mkdirSync(join(dir, 'packages/a/node_modules/x'), { recursive: true });

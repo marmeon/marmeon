@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Island, Link, useTranslation, type Placeholder } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Island, Link, useTranslation, type Placeholder } from '@marmeon/react';
 import type { ShowDashboardController } from '../controllers/ShowDashboardController.ts';
 
 type Props = PageProps<ShowDashboardController>;

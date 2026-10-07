@@ -2,13 +2,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
-import { browserSources, embedPackageInjections } from '@bespokecore/core';
+import { browserSources, embedPackageInjections } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 
 /**
  * Builds packages with `tsc -b`, then embeds the injection lists into dist/ — so a
  * published package carries them and consumers need nothing (roadmap E1). Browser-only
- * sources (`"bespoke": { "browser": [...] }` in package.json) get none (E76).
+ * sources (`"marmeon": { "browser": [...] }` in package.json) get none (E76).
  *
  * `--clean` empties every given package's output directory and removes its `*.tsbuildinfo` first: `tsc -b` never
  * deletes what a renamed or removed source left behind, and a tarball would carry it (E156). `pnpm pack:check`

@@ -17,7 +17,7 @@ import type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 
 /**
  * What an app boots for (E187). `run` — serving, working a queue, a command: every configuration validated, every provider
- * registered and booted. `build` — what `bespoke build` needs of the app (the route types): every provider registered, **none
+ * registered and booted. `build` — what `marmeon build` needs of the app (the route types): every provider registered, **none
  * booted** (no connection, no check of a driver), and configuration that does not validate — the runtime secrets: `APP_KEY`,
  * database passwords, mail credentials — left out instead of failing: reading it then throws. So the build needs no `.env`
  * and no secret, and none can end up in what it writes.
@@ -29,7 +29,7 @@ export type ApplicationPhase = 'run' | 'build';
  * declaration merging, like `ModuleDefinition` (http adds `middleware`).
  */
 export interface ApplicationOptions {
-  /** App root: package.json, `.bespoke/`, `index.html`. */
+  /** App root: package.json, `.marmeon/`, `index.html`. */
   root: string;
   /** Feature modules, in the order they should register and boot. */
   modules?: readonly ModuleDefinition[];
@@ -47,11 +47,11 @@ export interface ApplicationOptions {
    */
   env?: Readonly<Record<string, string | undefined>>;
   /**
-   * `build`: registered, not booted, without the configuration that does not validate (E187) — what `bespoke build` boots the
+   * `build`: registered, not booted, without the configuration that does not validate (E187) — what `marmeon build` boots the
    * app with (`static boots = 'build'` on a built-in command). Default: `run`.
    */
   phase?: ApplicationPhase;
-  /** Register providers of installed packages (`bespoke discover`). Default: true. */
+  /** Register providers of installed packages (`marmeon discover`). Default: true. */
   discover?: boolean;
   container?: Container;
   /**
@@ -76,7 +76,7 @@ export function defineApplication(options: ApplicationOptions): ApplicationOptio
  * variables fails before anything else runs, listing every problem at once.
  *
  * Boot order — every provider registers before any provider boots:
- * 1. providers of installed packages (dependencies first, from `bespoke discover`)
+ * 1. providers of installed packages (dependencies first, from `marmeon discover`)
  * 2. app-level providers
  * 3. module providers, in module order
  */
@@ -157,8 +157,8 @@ export class Application {
   }
 }
 
-/** Set by the primary of `bespoke start --workers=N` for its workers (E140): the boot's warnings were said once, by the primary. */
-export const CLUSTER_WORKER = 'BESPOKE_CLUSTER_WORKER';
+/** Set by the primary of `marmeon start --workers=N` for its workers (E140): the boot's warnings were said once, by the primary. */
+export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 
 /**
  * The app's logger, without `warn` until `end()` — every child too, and every service that took it while booting logs its
@@ -201,7 +201,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     ...modules.flatMap((module) => module.config ?? []),
     ...providers.flatMap((Provider) => Provider.config ?? []),
   ]);
-  // NODE_ENV resolved once for the process (E170): the environment's, else the app's .env — `bespoke` did it already; a script
+  // NODE_ENV resolved once for the process (E170): the environment's, else the app's .env — `marmeon` did it already; a script
   // that boots the app itself gets the same answer here. An app given its own `env` (a test fixture) decides for itself.
   const resolved = options.env ? undefined : resolveEnvironment(options.root);
   const env = options.env ?? loadEnv(options.root);
@@ -219,9 +219,9 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   const app = new Application({ root: options.root, container, modules, packages: discovered?.packages ?? [], options });
   container.instance(Application, app);
   container.instance(Container, container);
-  // Fields every log entry carries besides the request's or job's (@bespokecore/otel: the active span's ids).
+  // Fields every log entry carries besides the request's or job's (@marmeon/otel: the active span's ids).
   container.instance(LogContextSources, new LogContextSources());
-  // Fallback until a logging package (e.g. @bespokecore/log) binds its own.
+  // Fallback until a logging package (e.g. @marmeon/log) binds its own.
   container.singleton(Logger, () => new ConsoleLogger({}, app));
   // The time (E97); tests bind a `TestClock` they can move.
   container.singleton(Clock, () => new SystemClock());
@@ -245,7 +245,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     .add(options.listeners ?? [])
     .add(modules.flatMap((module) => module.listeners ?? []));
   container.instance(EventRegistry, events);
-  // Queued listeners (E86) go to the app's ListenerQueue (@bespokecore/queue); a test's EventFake sees every event first.
+  // Queued listeners (E86) go to the app's ListenerQueue (@marmeon/queue); a test's EventFake sees every event first.
   container.bind(
     EventDispatcher,
     (resolver) =>
@@ -260,17 +260,17 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
   options.override?.(container);
   // The build phase ends here (E187): registered, not booted — no connection, no driver check, no secret needed.
   if (phase === 'build') return app;
-  // A worker of `bespoke start --workers=N` (E140): its primary booted the same app with the same configuration and said the
+  // A worker of `marmeon start --workers=N` (E140): its primary booted the same app with the same configuration and said the
   // boot's warnings (log mailer, cookies without Secure, stale build artifacts) — the workers keep them to themselves instead of
   // repeating them N times. Warnings after the boot are theirs as always.
   // Only in a worker of node:cluster: the variable left in an operator's environment must not silence a single process.
   const quiet = process.env[CLUSTER_WORKER] === '1' && cluster.isWorker ? quietWhileBooting(container) : undefined;
   try {
     await app.boot();
-    // An out-of-date manifest in a read-only .bespoke/ (E160): discovered in memory — said once per process, in the app's log.
+    // An out-of-date manifest in a read-only .marmeon/ (E160): discovered in memory — said once per process, in the app's log.
     if (discovered?.warning) container.make(Logger).warn(discovered.warning);
     for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);
-    // Modules that changed since `bespoke build` (E138): their injection lists were derived at start — said once per process.
+    // Modules that changed since `marmeon build` (E138): their injection lists were derived at start — said once per process.
     const staleInjections = takeInjectionWarning();
     if (staleInjections) container.make(Logger).warn(staleInjections);
   } finally {

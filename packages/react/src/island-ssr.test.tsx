@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/dashboard" }
-import { PAGE_SCRIPT_ID, scriptJson, type DeferredResult, type PageObject, type RegionResult, type RouteManifest } from '@bespokecore/http/page';
+import { PAGE_SCRIPT_ID, scriptJson, type DeferredResult, type PageObject, type RegionResult, type RouteManifest } from '@marmeon/http/page';
 import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePage } from './app.tsx';
-import { createBespokeApp } from './client.tsx';
+import { createMarmeonApp } from './client.tsx';
 import { Deferred } from './deferred.tsx';
 import { Head } from './head.tsx';
 import { Island, useIsland } from './island.tsx';
@@ -129,10 +129,10 @@ beforeEach(() => {
     requests.push(String(input));
     if (String(input).startsWith('/islands/stale')) {
       return new Response(JSON.stringify({ component: 'app/Members', props: { count: 3 }, url: '/islands/stale', version: null }), {
-        headers: { 'x-bespoke': 'true', 'x-bespoke-region': 'island' },
+        headers: { 'x-marmeon': 'true', 'x-marmeon-region': 'island' },
       });
     }
-    return new Response(JSON.stringify({ component: 'app/Profile', props: { activity: ['fetched'] }, url: '/users/1', version: null }), { headers: { 'x-bespoke': 'true' } });
+    return new Response(JSON.stringify({ component: 'app/Profile', props: { activity: ['fetched'] }, url: '/users/1', version: null }), { headers: { 'x-marmeon': 'true' } });
   });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -142,7 +142,7 @@ const $ = (selector: string) => document.querySelector(selector);
 
 async function start() {
   await act(async () => {
-    await createBespokeApp({ resolve, routes });
+    await createMarmeonApp({ resolve, routes });
     await new Promise((done) => setTimeout(done, 30));
   });
 }
@@ -161,7 +161,7 @@ describe('islands in the SSR stream (E49)', () => {
     expect($('[data-testid="broken"]')).not.toBeNull();
     // Left to the browser: its fallback, and no data block.
     expect($('[data-testid="stale-loading"]')).not.toBeNull();
-    const blocks = [...document.querySelectorAll('script[type="application/json"][id^="bespoke-island-"]')].map((script) => JSON.parse(script.textContent!));
+    const blocks = [...document.querySelectorAll('script[type="application/json"][id^="marmeon-island-"]')].map((script) => JSON.parse(script.textContent!));
     expect(blocks).toContainEqual({ status: 'forbidden' });
     expect(blocks.map((block) => block.status).sort()).toEqual(['exception', 'forbidden', 'ready']);
     expect(html).not.toContain('"count"');
@@ -172,7 +172,7 @@ describe('islands in the SSR stream (E49)', () => {
     await serve({ component: 'app/Dashboard', props: {}, url: '/dashboard', version: null });
     await start();
     expect(reported(errors)).toEqual([]);
-    expect($('[data-bespoke-hydration]')).toBeNull();
+    expect($('[data-marmeon-hydration]')).toBeNull();
     expect($('[data-testid="entries"]')!.textContent).toBe('ada,alan');
     expect($('[data-testid="hidden"]')).not.toBeNull();
     expect(requests).toEqual(['/islands/stale']);
@@ -182,7 +182,7 @@ describe('islands in the SSR stream (E49)', () => {
   it('counter-check: without the data blocks every island is a request of its own after hydrating', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await serve({ component: 'app/Dashboard', props: {}, url: '/dashboard', version: null });
-    for (const script of [...document.querySelectorAll('script[id^="bespoke-island-"]')]) script.remove();
+    for (const script of [...document.querySelectorAll('script[id^="marmeon-island-"]')]) script.remove();
     await start();
     expect(requests.map((url) => url.split('?')[0]).sort()).toEqual(['/islands/broken', '/islands/members', '/islands/sign-ins', '/islands/stale']);
   });

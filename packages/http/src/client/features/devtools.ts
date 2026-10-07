@@ -5,8 +5,8 @@
  * (`x-request-id` — the key to what the server recorded for it, E131), the live hints that came, the optimistic patches shown
  * (each with the props it changed) and the hydration errors React recovered from.
  *
- * **Development only (E115).** Nothing in the framework imports it: the devtools' client (`@bespokecore/devtools/client`, served by
- * the Vite dev server only) attaches it through the dev hook (`__BESPOKE_DEVTOOLS_HOOK__`), which the core and the React adapter
+ * **Development only (E115).** Nothing in the framework imports it: the devtools' client (`@marmeon/devtools/client`, served by
+ * the Vite dev server only) attaches it through the dev hook (`__MARMEON_DEVTOOLS_HOOK__`), which the core and the React adapter
  * call only under `process.env.NODE_ENV !== 'production'` — a production build drops those calls (and so the hook's name).
  *
  * **What it holds is the server's data** (validation messages, patched props, a hydration error's text): **only in slots of the
@@ -87,7 +87,7 @@ export interface TimelineEntry {
   /** When it ended — undefined while under way. */
   end?: number;
   status?: number;
-  /** The server's request id (`x-request-id`, E131) — what `/_bespoke/devtools/api/requests/:id` knows of it. */
+  /** The server's request id (`x-request-id`, E131) — what `/_marmeon/devtools/api/requests/:id` knows of it. */
   requestId?: string;
   /** Where the answer came from after redirects (path and query) — the page it answered with. */
   answered?: string;
@@ -137,7 +137,7 @@ export interface HydrationIssue {
 }
 
 /**
- * The dev hook — `globalThis.__BESPOKE_DEVTOOLS_HOOK__`, set by the devtools' client before the app starts. The core and the
+ * The dev hook — `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set by the devtools' client before the app starts. The core and the
  * React adapter call it only under `process.env.NODE_ENV !== 'production'` (gone from a production build), each method optional.
  */
 export interface DevtoolsHook {
@@ -157,7 +157,7 @@ export interface DevtoolsHook {
 
 /** Where the dev hook is (`globalThis`) — the shape the core reads it with. */
 export interface DevtoolsGlobal {
-  __BESPOKE_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
+  __MARMEON_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
 }
 
 /** What the bar uses of the feature. Its lists are the slots' — empty again once the document is left. */
@@ -249,7 +249,7 @@ function visitKind(visit: PendingVisit): TimelineKind {
 function requestKind(headers: Headers, url: string): TimelineKind | undefined {
   if (headers.has(VALIDATE_HEADER)) return 'validation';
   if (headers.has(ACTION_HEADER)) return 'action';
-  if (headers.has(UPLOAD_HEADER) || url.startsWith('/_bespoke/uploads')) return 'upload';
+  if (headers.has(UPLOAD_HEADER) || url.startsWith('/_marmeon/uploads')) return 'upload';
   if (headers.get(PURPOSE_HEADER) === 'prefetch') return 'prefetch';
   const region = headers.get(REGION_HEADER);
   if (region !== null) return region === 'layer' ? 'layer' : 'island';
@@ -385,7 +385,7 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
       entry.outcome = 'reload';
       entry.location = location;
       entry.reload = response.headers.get(RELOAD_HEADER) ?? 'history';
-    } else if (response.headers.has('x-bespoke-redirect')) {
+    } else if (response.headers.has('x-marmeon-redirect')) {
       entry.outcome = 'redirect';
     } else {
       entry.outcome = response.status === 422 ? 'invalid' : response.status >= 400 || response.status === 0 ? 'failed' : 'ok';
@@ -525,7 +525,7 @@ export const devtools = defineFeature('devtools', (host: FeatureHost): DevtoolsF
 
 /**
  * The dev hook's reports, handed to the feature `api()` returns (the navigator's the bar attached to) — what the devtools' client
- * sets as `__BESPOKE_DEVTOOLS_HOOK__`, with its own `navigator`. Reports before a navigator (a hydration error while the first
+ * sets as `__MARMEON_DEVTOOLS_HOOK__`, with its own `navigator`. Reports before a navigator (a hydration error while the first
  * page hydrates) wait for it — at most a few.
  */
 export function devtoolsReports(api: () => DevtoolsFeature | undefined): Omit<DevtoolsHook, 'navigator'> & { flush(): void } {

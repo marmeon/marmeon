@@ -1,21 +1,21 @@
-# @bespokecore/testing
+# @marmeon/testing
 
-Feature tests for BespokeCore apps, in Laravel's manner: `createTestApp()` boots the real application from its definition and
+Feature tests for Marmeon apps, in Laravel's manner: `createTestApp()` boots the real application from its definition and
 sends requests through the real HTTP kernel — middleware, sessions, controllers, views — without a server or a port. A
 refreshed database per test, fakes for mail, the queue, notifications and storage, a movable clock, and chainable assertions
 for pages, islands, layers, actions, flash messages and validation. It runs under Vitest.
 
 ```sh
-pnpm add -D @bespokecore/testing vitest
+pnpm add -D @marmeon/testing vitest
 ```
 
 A dev dependency with no provider: nothing to discover, tests import it. The other framework packages are optional peers —
-`createTestApp` wires what the app has installed. Vitest runs with the app's Vite plugin (`bespoke({ test: true })` in
-`vitest.config.ts`, [@bespokecore/vite](../vite/README.md)) and sets `NODE_ENV=test`.
+`createTestApp` wires what the app has installed. Vitest runs with the app's Vite plugin (`marmeon({ test: true })` in
+`vitest.config.ts`, [@marmeon/vite](../vite/README.md)) and sets `NODE_ENV=test`.
 
 ```ts
 // modules/auth/auth.test.ts
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -44,7 +44,7 @@ elsewhere `await app.close()` or `await using app = await createTestApp(…)`. C
 |---|---|---|
 | `env` | — | variables on top of the app's environment (`undefined` removes one: `{ APP_URL: undefined }`) |
 | `override` | — | `(container) => …` — replace bindings before the boot; even singletons see them |
-| `csrf` | `false` | verify CSRF ([@bespokecore/session](../session/README.md#csrf-protection)) — then send what a browser sends (`headers: { 'sec-fetch-site': 'same-origin' }`, or an `Origin`) or the session's `_token`/`X-XSRF-TOKEN` yourself; a test request sends neither by itself |
+| `csrf` | `false` | verify CSRF ([@marmeon/session](../session/README.md#csrf-protection)) — then send what a browser sends (`headers: { 'sec-fetch-site': 'same-origin' }`, or an `Origin`) or the session's `_token`/`X-XSRF-TOKEN` yourself; a test request sends neither by itself |
 | `database` | — | `'refresh'`: a migrated database per test worker, each test in one transaction — [below](#the-database) |
 | `seed` | `false` | with `database: 'refresh'`: run the modules' seeders for every test |
 | `mail` | `'fake'` | `MailFake` as the `Mailer` (`app.mail`); `'real'` keeps the configured transport |
@@ -65,7 +65,7 @@ stay off in every test that does not pass `devtools: true` (`DEVTOOLS_ENABLED=fa
 (`env: { NODE_ENV: 'development' }`).
 
 **Always in place:** a `TestClock` as the app's `Clock`, an `EventFake` that records every dispatch, and — with
-`@bespokecore/live` — a `BroadcastRecorder` (`app.broadcast`). The app itself is `app.application`, its container
+`@marmeon/live` — a `BroadcastRecorder` (`app.broadcast`). The app itself is `app.application`, its container
 `app.container`; `app.make(UserRepository)` resolves a service.
 
 ### `.env.test`
@@ -103,7 +103,7 @@ Each of these returns a new view of the same app with defaults for its requests:
 | `withHeaders(headers)`, `expectingJson()` | headers; `Accept: application/json` |
 | `withCookie(name, value)`, `withUnencryptedCookie(name, value)` | a cookie encrypted as the app encrypts its own — or exactly as given |
 | `withSession(data)` | a session holding `data` before the request |
-| `actingAs(user)`, `actingAs(user, { guard: 'api', abilities? })` | signed in, as a login leaves the session — or with a real API token ([@bespokecore/auth](../auth/README.md#testing)) |
+| `actingAs(user)`, `actingAs(user, { guard: 'api', abilities? })` | signed in, as a login leaves the session — or with a real API token ([@marmeon/auth](../auth/README.md#testing)) |
 | `navigating()` | a client-side visit: answered with the page object as JSON |
 | `prefetching()` | a prefetch (`<Link prefetch>`, `Purpose: prefetch`) |
 | `reloading<C>(component, { only?, except? })` | a partial reload of the page on screen — `only` typed by controller `C` |
@@ -113,8 +113,8 @@ Each of these returns a new view of the same app with defaults for its requests:
 | `validating(...fields)` | a live validation of those fields (E62) — the controller never runs |
 
 A view made by `withSession` or `actingAs` keeps one session id across its requests, like one browser; the session is stored as
-the app stores its own — under the id's hash, through the app's codec (`SESSION_ENCRYPT`, [@bespokecore/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145)). To carry on with the
-session a response started, send its cookie: `app.withCookie('bespoke_session', login.cookie('bespoke_session')!)`.
+the app stores its own — under the id's hash, through the app's codec (`SESSION_ENCRYPT`, [@marmeon/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145)). To carry on with the
+session a response started, send its cookie: `app.withCookie('marmeon_session', login.cookie('marmeon_session')!)`.
 
 ```ts
 await app.actingAs(ada).reloading<ShowUserProfileController>('user-profile/Show', { only: ['stats'] }).get(`/users/${ada.id}`).assertOk();
@@ -129,7 +129,7 @@ await app.actingAs(ada).layer('auth.tokens.create').assertOk().assertLayer('auth
 - **`await app.upload(routeName, field, file, params?)`** sends a file as the browser does — the route's upload target, then the
   bytes — and returns the token the form sends in the field (the view's session owns it). Uploads land on the storage fake.
 - **`await app.live(path)`** opens the live stream of the page at `path` as a tab does
-  ([@bespokecore/live](../live/README.md#testing)); **`await app.stream(path)`** returns the raw `Response` with its body unread.
+  ([@marmeon/live](../live/README.md#testing)); **`await app.stream(path)`** returns the raw `Response` with its body unread.
 
 ## Assertions
 
@@ -139,7 +139,7 @@ await app.actingAs(ada).layer('auth.tokens.create').assertOk().assertLayer('auth
 | Pages | `assertPage<C>(component, props?)` — props a deep subset or a callback, typed by controller `C`; `page()` |
 | Islands | `assertIsland<C>(component, props?)`, `assertIslandStatus('unauthorized' \| 'forbidden' \| 'exception')`; `island()` |
 | Layers | `assertLayer<C>(component, props?)`, `assertLayerClosed({ layers?, reload? })`; `layers()` |
-| Actions | `assertActionRedirect(url?)` — `204` with `x-bespoke-redirect` |
+| Actions | `assertActionRedirect(url?)` — `204` with `x-marmeon-redirect` |
 | Validation | `assertInvalid<C>(['name'])` or `assertInvalid<C>({ email: /taken/ })` — from a 422 or the errors flashed to the session; `assertValid()`, `assertLiveValid(...fields)` |
 | Flash messages (E60) | `assertFlash(key, data?)` — this answer delivers it; `assertFlashed(key, data?)` — waiting in the session (a redirect); `assertNoFlash(key?)`; `flash()`, `flashed()` — keys and data typed by the app's `FlashData` |
 | Session and sign-in | `assertSessionHas(key, value?)`, `assertSessionMissing(key)`, `assertAuthenticated(user?)`, `assertGuest()` |
@@ -169,7 +169,7 @@ requests a test sends at the same time share it, like Laravel's single test conn
 (cache, locks, rate limits, sessions, uploads) works outside the app's transactions and is rolled back with the test; inside one
 it throws `InfrastructureTransactionError` ([E108](../database/README.md#infrastructure-connections-e108)). Only one refreshed
 app may be open at a time (the second one throws). The database assertions
-are typed by the table and, when they fail, show what the table holds. Needs `@bespokecore/database`.
+are typed by the table and, when they fail, show what the table holds. Needs `@marmeon/database`.
 
 ## Fakes
 
@@ -178,14 +178,14 @@ choose `'real'`), and the getter says what is missing otherwise.
 
 | | Replaces | Assertions |
 |---|---|---|
-| `app.mail` | `Mailer` → `MailFake` | [@bespokecore/mail](../mail/README.md#testing) |
-| `app.queue` | `Queue` → `QueueFake`; `await app.queue.work()` runs the jobs | [@bespokecore/queue](../queue/README.md#testing) |
-| `app.notifications` | `Notifications` → `NotificationFake` | [@bespokecore/notifications](../notifications/README.md#testing) |
-| `app.storage` | `Storage` → `StorageFake`, every disk in memory | [@bespokecore/storage](../storage/README.md#testing) |
-| `app.broadcast`, `app.live()` | records what the `Broadcaster` sent | [@bespokecore/live](../live/README.md#testing) |
-| `app.schedule` | runs the schedule with the test clock | [@bespokecore/scheduler](../scheduler/README.md#testing) |
-| `app.devtools` | with `devtools: true` | [@bespokecore/devtools](../devtools/README.md#tests) |
-| `app.events` | records every dispatch (`EventFake` of `@bespokecore/core`) | below |
+| `app.mail` | `Mailer` → `MailFake` | [@marmeon/mail](../mail/README.md#testing) |
+| `app.queue` | `Queue` → `QueueFake`; `await app.queue.work()` runs the jobs | [@marmeon/queue](../queue/README.md#testing) |
+| `app.notifications` | `Notifications` → `NotificationFake` | [@marmeon/notifications](../notifications/README.md#testing) |
+| `app.storage` | `Storage` → `StorageFake`, every disk in memory | [@marmeon/storage](../storage/README.md#testing) |
+| `app.broadcast`, `app.live()` | records what the `Broadcaster` sent | [@marmeon/live](../live/README.md#testing) |
+| `app.schedule` | runs the schedule with the test clock | [@marmeon/scheduler](../scheduler/README.md#testing) |
+| `app.devtools` | with `devtools: true` | [@marmeon/devtools](../devtools/README.md#tests) |
+| `app.events` | records every dispatch (`EventFake` of `@marmeon/core`) | below |
 
 ```ts
 app.events.assertDispatched(Registered, (event) => event.user.id === ada.id);
@@ -215,7 +215,7 @@ Redis keeps its own time: a key's `PX` expiry does not follow.
 
 ## Server rendering
 
-With `ssr: true` pages render on the server through the app's `vite.config.ts`, as `bespoke dev` renders them — completely,
+With `ssr: true` pages render on the server through the app's `vite.config.ts`, as `marmeon dev` renders them — completely,
 islands included, as for a bot (E49) — so markup and `<Head>` are testable:
 
 ```ts
@@ -232,15 +232,15 @@ arrives with `app.stream(path)`. Without `ssr` a response carries the page objec
 ## The framework's own suites: Postgres, Redis, S3
 
 In this repository `pnpm test` runs every package's tests and the web app's on SQLite and in memory. Each run gets a temporary
-directory of its own (`TMPDIR` points into it) and fails when a test leaves a `bespoke-*` entry behind; the framework's tests make
+directory of its own (`TMPDIR` points into it) and fails when a test leaves a `marmeon-*` entry behind; the framework's tests make
 theirs with `tempDir()` of `scripts/test/temp-dir.js` — the repository's own, not part of this package. The cases for other
 backends run when their variable is set — the services come from `compose.yaml` (`docker compose up -d`, own ports):
 
 ```sh
-pnpm test:pgsql   # BESPOKE_TEST_PGSQL_URL, DB_CONNECTION=pgsql and DB_URL → postgres://bespoke:secret@localhost:55432/bespoke
-pnpm test:redis   # BESPOKE_TEST_REDIS_URL=redis://127.0.0.1:56379
-pnpm test:s3      # BESPOKE_TEST_S3_ENDPOINT=http://127.0.0.1:56333 — packages/storage only
-                  # (BESPOKE_TEST_S3_KEY / BESPOKE_TEST_S3_SECRET default to the compose identity)
+pnpm test:pgsql   # MARMEON_TEST_PGSQL_URL, DB_CONNECTION=pgsql and DB_URL → postgres://marmeon:secret@localhost:55432/marmeon
+pnpm test:redis   # MARMEON_TEST_REDIS_URL=redis://127.0.0.1:56379
+pnpm test:s3      # MARMEON_TEST_S3_ENDPOINT=http://127.0.0.1:56333 — packages/storage only
+                  # (MARMEON_TEST_S3_KEY / MARMEON_TEST_S3_SECRET default to the compose identity)
 ```
 
 With `DB_CONNECTION=pgsql` and `DB_URL` in the environment, refreshed test apps of any app use Postgres: the role needs the

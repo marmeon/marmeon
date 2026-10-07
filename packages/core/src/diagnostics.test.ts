@@ -77,7 +77,7 @@ describe('channels.subscribe (E118)', () => {
       off();
       process.off('warning', onWarning);
     }
-    expect(warnings.some((warning) => warning.startsWith('A subscriber of bespoke:render.ssr failed: Error: the recorder is full'))).toBe(true);
+    expect(warnings.some((warning) => warning.startsWith('A subscriber of marmeon:render.ssr failed: Error: the recorder is full'))).toBe(true);
   });
 
   it('plain channels take one handler; unknown names and the wrong handler shape are errors', async () => {
@@ -138,12 +138,12 @@ describe('messages', () => {
     const two = await boot();
     const seen: Application[] = [];
     const raw = (message: unknown) => void seen.push((message as { app: Application }).app);
-    subscribeRaw('tracing:bespoke:db.query:asyncEnd', raw);
+    subscribeRaw('tracing:marmeon:db.query:asyncEnd', raw);
     try {
       publishEnded(channels.tracing('db.query'), query(one));
       publishEnded(channels.tracing('db.query'), query(two));
     } finally {
-      unsubscribeRaw('tracing:bespoke:db.query:asyncEnd', raw);
+      unsubscribeRaw('tracing:marmeon:db.query:asyncEnd', raw);
     }
     expect(seen).toEqual([one, two]);
   });
@@ -218,8 +218,8 @@ describe('channels.around: an operation\'s work in a context of the subscriber\'
       process.off('warning', onWarning);
     }
     expect(runs).toBe(3);
-    expect(warnings.filter((warning) => warning.startsWith('A wrapper of bespoke:mail.send failed: Error: the tracer is broken'))).toHaveLength(1);
-    expect(warnings.filter((warning) => warning === 'A wrapper of bespoke:mail.send did not run the operation; it ran without it.')).toHaveLength(2);
+    expect(warnings.filter((warning) => warning.startsWith('A wrapper of marmeon:mail.send failed: Error: the tracer is broken'))).toHaveLength(1);
+    expect(warnings.filter((warning) => warning === 'A wrapper of marmeon:mail.send did not run the operation; it ran without it.')).toHaveLength(2);
   });
 
   it('is typed per channel; db.query has none (it is published after the statement ran)', () => {
@@ -234,7 +234,7 @@ describe('channels.around: an operation\'s work in a context of the subscriber\'
   });
 });
 
-describe('bespoke:event — app events for observers (W7.7)', () => {
+describe('marmeon:event — app events for observers (W7.7)', () => {
   class Registered {
     static readonly event = 'auth.registered';
     readonly #event = true;

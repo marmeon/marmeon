@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { HttpContext, Next } from '@bespokecore/http';
+import type { HttpContext, Next } from '@marmeon/http';
 import {
   ONCE_HEADER,
   ONCE_SCOPE_HEADER,
@@ -10,13 +10,13 @@ import {
   PURPOSE_HEADER,
   REGION_HEADER,
   VERSION_HEADER,
-} from '@bespokecore/http/page';
+} from '@marmeon/http/page';
 import { DocsConfig } from '../../../config/docs.ts';
 
 /**
  * The request headers a page answer depends on besides its URL — a cache must keep one copy per combination: the
- * document or its JSON (`x-bespoke`), all props or some (the partial headers), a prefetch (`purpose`), the once props
- * the tab holds, and the build the client runs (`x-bespoke-version`: an old client gets its 409, never a page of the new
+ * document or its JSON (`x-marmeon`), all props or some (the partial headers), a prefetch (`purpose`), the once props
+ * the tab holds, and the build the client runs (`x-marmeon-version`: an old client gets its 409, never a page of the new
  * build from a cache). The kernel's page answers already name all but the last; this list makes sure of them.
  */
 export const PAGE_VARY = [

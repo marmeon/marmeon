@@ -128,8 +128,8 @@ export interface ListenerBinding {
  * defineModule({ name: 'user-profile', listeners: [listen(UserLoggedIn, RecordLastLogin)] });
  * ```
  *
- * A listener class with `static queue` is **queued** (E86): the dispatch queues it as a job (`bespoke.listener`, needs
- * @bespokecore/queue) and a worker runs it — with the event's payload (`EventPayload<typeof E>`, its `static schema`),
+ * A listener class with `static queue` is **queued** (E86): the dispatch queues it as a job (`marmeon.listener`, needs
+ * @marmeon/queue) and a worker runs it — with the event's payload (`EventPayload<typeof E>`, its `static schema`),
  * not the event object. Such an event needs `static event` and `static schema`.
  */
 export function listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): ListenerBinding {
@@ -173,7 +173,7 @@ export class EventRegistry {
 }
 
 /**
- * Queues a queued listener (E86) — bound by @bespokecore/queue. The dispatcher hands it the event, the class the
+ * Queues a queued listener (E86) — bound by @marmeon/queue. The dispatcher hands it the event, the class the
  * listener was registered for and the listener.
  */
 export interface ListenerQueue {
@@ -188,7 +188,7 @@ export function isQueuedListener(listener: unknown): listener is QueuedListenerC
 
 /** The message when a queued listener exists but nothing can queue it. */
 export function missingListenerQueue(listener: { readonly name: string }): string {
-  return `${listener.name} is a queued listener (static queue), but this app has no queue — install and register @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover), or remove static queue to run it at the dispatch.`;
+  return `${listener.name} is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue (pnpm add @marmeon/queue; marmeon discover), or remove static queue to run it at the dispatch.`;
 }
 
 /** Sees every dispatched event first — and decides whether its listeners run (an `EventFake` in tests). */
@@ -201,7 +201,7 @@ export interface EventDispatcherOptions {
   /** Queues queued listeners — the app's {@link ListenerQueue}, if it has one. */
   readonly queue?: () => ListenerQueue | undefined;
   readonly observer?: EventObserver;
-  /** The app its dispatches are reported for on the `bespoke:event` channel (E118) — the devtools record them there. */
+  /** The app its dispatches are reported for on the `marmeon:event` channel (E118) — the devtools record them there. */
   readonly app?: Application;
 }
 

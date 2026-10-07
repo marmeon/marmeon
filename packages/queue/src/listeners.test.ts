@@ -1,6 +1,6 @@
-import { Clock, createApplication, EventDispatcher, inTransaction, listen, Logger, TestClock, type Application, type EventPayload, type ModuleDefinition } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
+import { Clock, createApplication, EventDispatcher, inTransaction, listen, Logger, TestClock, type Application, type EventPayload, type ModuleDefinition } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
@@ -10,7 +10,7 @@ import { QueueFake } from './fake.ts';
 import { Queue, QueueServiceProvider, RECORD_OPTIONS } from './index.ts';
 import { QueueSetupError } from './registry.ts';
 
-// Queued listeners (E86): `static queue` on a listener class — the dispatcher queues a `bespoke.listener` job with the
+// Queued listeners (E86): `static queue` on a listener class — the dispatcher queues a `marmeon.listener` job with the
 // event's payload (its `static schema`), a worker runs the listener with it.
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
@@ -84,14 +84,14 @@ const jobRows = async (application: Application) =>
   (await sql<{ queue: string; payload: string }>`select queue, payload from jobs order by id`.execute(application.container.make(Connections).get())).rows;
 
 describe('queued listeners (E86)', () => {
-  it('are queued as an encrypted bespoke.listener job with the event payload — and a worker runs them in a scope of their own', async () => {
+  it('are queued as an encrypted marmeon.listener job with the event payload — and a worker runs them in a scope of their own', async () => {
     await using application = await app();
     await application.container.createScope().make(EventDispatcher).dispatch(new OrderShipped('order-77'));
 
     const rows = await jobRows(application);
     expect(rows.map((row) => row.queue)).toEqual(['mail', 'default']);
     const record = JSON.parse(rows[0]!.payload) as { job: string; encrypted: boolean; data: unknown; tries: number; backoff: number[] };
-    expect(record).toMatchObject({ job: 'bespoke.listener', encrypted: true, tries: 3, backoff: [10, 60] }); // the listener's settings
+    expect(record).toMatchObject({ job: 'marmeon.listener', encrypted: true, tries: 3, backoff: [10, 60] }); // the listener's settings
     expect(rows.map((row) => row.payload).join()).not.toContain('order-77'); // E105: no plaintext payload
     expect(application.seen.entries).toEqual([]);
 

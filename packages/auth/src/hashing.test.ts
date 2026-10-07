@@ -1,4 +1,4 @@
-import { createApplication } from '@bespokecore/core';
+import { createApplication } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { AuthServiceProvider, DEFAULT_HASHER_OPTIONS, HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher, type HasherOptions, type PasswordHash } from './index.ts';
 

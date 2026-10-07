@@ -1,5 +1,5 @@
-import type { Resolver } from '@bespokecore/core';
-import type { JobContext } from '@bespokecore/queue';
+import type { Resolver } from '@marmeon/core';
+import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import { NotificationChannelError, type NotificationDeliverer } from './notifications.ts';
 import { NotificationError, type NotificationRegistry } from './registry.ts';
@@ -18,7 +18,7 @@ export type QueuedNotificationPayload = v.InferOutput<typeof SendQueuedNotificat
  * (`static queue.tries` of the notification); a retry after a committed delivery finds its row and stops.
  */
 export class SendQueuedNotification {
-  static readonly job = 'bespoke.notification';
+  static readonly job = 'marmeon.notification';
   static readonly schema = v.object({
     id: v.string(),
     notification: v.string(),

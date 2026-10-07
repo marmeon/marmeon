@@ -1,4 +1,4 @@
-import { defineConfig, environment, type ConfigOf } from '@bespokecore/core';
+import { defineConfig, environment, type ConfigOf } from '@marmeon/core';
 import * as v from 'valibot';
 
 const whole = (fallback: number, min: number) => v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(min)), String(fallback));
@@ -21,7 +21,7 @@ export const AuthConfig = defineConfig('auth', {
      * Private registration (E146, the default since E193): registration and the change of address never tell whether an address
      * has an account — the same answer in the same time, a note to the owner instead. `false` (and only `false`: anything but
      * `true`/`false` stops the boot) makes them say "taken", like Laravel's starter kits; outside development and tests the boot
-     * then warns ({@link PRIVATE_REGISTRATION_OFF_WARNING}). The auth module `bespoke make:auth` writes reads it.
+     * then warns ({@link PRIVATE_REGISTRATION_OFF_WARNING}). The auth module `marmeon make:auth` writes reads it.
      */
     AUTH_PRIVATE_REGISTRATION: v.optional(v.pipe(v.picklist(['true', 'false']), v.transform((value) => value === 'true')), 'true'),
     NODE_ENV: v.optional(v.string()),

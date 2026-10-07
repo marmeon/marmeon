@@ -1,30 +1,30 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it (E158, E150): the tarballs of every package, and a new app made
- * from them OUTSIDE the monorepo by the `create-bespoke-app` tarball — twice. A part of `pnpm run ci`.
+ * from them OUTSIDE the monorepo by the `create-marmeon` tarball — twice. A part of `pnpm run ci`.
  *
- *   create-bespoke-app without a directory and without a terminal → exit 2 at once (never a prompt that waits)
- *   create-bespoke-app app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
+ *   create-marmeon without a directory and without a terminal → exit 2 at once (never a prompt that waits)
+ *   create-marmeon app --yes (the starter kit, pnpm, git) → package.json at exact versions, .env with APP_KEY, one clean commit
  *     → migrate (development from .env) → vitest run → lint → build without .env (E187: no key; nothing shaped like an APP_KEY and
- *     not the app's own in dist/ or .bespoke/) → start → GET /login 200
+ *     not the app's own in dist/ or .marmeon/) → start → GET /login 200
  *     (its CSP nonce on header and entry script, no cookie for a guest, a cross-site post refused, the entry as precompressed
  *     .br, immutable), GET / 200, a sign-up with a known address answered like a new one (private registration, E146) → start
- *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns (E193) → pnpm install --prod → node_modules/.bin/bespoke → start → GET /login 200
- *   create-bespoke-app app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
+ *     with AUTH_PRIVATE_REGISTRATION=false: the known address is "already registered", and the boot warns (E193) → pnpm install --prod → node_modules/.bin/marmeon → start → GET /login 200
+ *   create-marmeon app-npm --minimal --npm --no-git → build without .env → start → GET /up 200 → vitest run → discovery in npm's flat
  *     node_modules finds every package the pnpm app's does (E151)
  *
- * Every `bespoke start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
+ * Every `marmeon start` must be exactly one Node process (E159: no launcher in front of the server — signals, exit codes and
  * `NODE_OPTIONS` reach the server itself), checked with `ps` over its process group — and must load neither oxc-parser (the
- * injection lists come from `bespoke build`, E138) nor pino-pretty (JSON logs), with no "build artifacts" warning: a preloaded
+ * injection lists come from `marmeon build`, E138) nor pino-pretty (JSON logs), with no "build artifacts" warning: a preloaded
  * hook records every module the start loads.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
  *   pnpm pack:smoke --offline [--store-dir <dir>]   # never the network: only what pnpm's store (or that one) and npm's cache have
  *
- * The apps live in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@bespokecore or a
+ * The apps live in a fresh directory under $TMPDIR: no parent directory may hold node_modules/@marmeon or a
  * pnpm-workspace.yaml (checked by path — nothing of the repository can leak in). The scaffolder takes the framework from
- * `BESPOKE_CREATE_TARBALLS` (its maintainers' switch, packages/create-bespoke-app/README.md): the tarballs go into the app's
- * `vendor/bespokecore/`, every `@bespokecore/*` dependency and override points there (the exact versions of this checkout are on no
+ * `MARMEON_CREATE_TARBALLS` (its maintainers' switch, packages/create-marmeon/README.md): the tarballs go into the app's
+ * `vendor/marmeon/`, every `@marmeon/*` dependency and override points there (the exact versions of this checkout are on no
  * registry), and for pnpm nothing is hoisted — a package that imports what it does not declare (a devDependency, say) fails
  * here as it would for a user.
  *
@@ -44,8 +44,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
 export const SKIPPED = 75;
 export const OFFLINE = /ERR_PNPM_(NO_OFFLINE_TARBALL|NO_OFFLINE_META|META_FETCH_FAIL|TARBALL_FETCH)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|in offline mode|ENOTCACHED/;
-/** What create-bespoke-app says without a directory and without a terminal (E167). */
-const NO_DIRECTORY = 'create-bespoke-app needs a directory: create-bespoke-app <dir> [--yes]';
+/** What create-marmeon says without a directory and without a terminal (E167). */
+const NO_DIRECTORY = 'create-marmeon needs a directory: create-marmeon <dir> [--yes]';
 
 export class SmokeError extends Error {}
 export class Offline extends Error {}
@@ -54,7 +54,7 @@ export class Offline extends Error {}
 export function cleanEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (/^(npm_|pnpm_|PNPM_|BESPOKE_|DB_|REDIS_|S3_|VITEST|GIT_|INIT_CWD$|NODE_OPTIONS$|NODE_ENV$|NODE_PATH$)/.test(key)) continue;
+    if (/^(npm_|pnpm_|PNPM_|MARMEON_|DB_|REDIS_|S3_|VITEST|GIT_|INIT_CWD$|NODE_OPTIONS$|NODE_ENV$|NODE_PATH$)/.test(key)) continue;
     env[key] = value;
   }
   return { ...env, NO_COLOR: '1', FORCE_COLOR: '0' };
@@ -64,21 +64,21 @@ export function cleanEnvironment(): NodeJS.ProcessEnv {
 export function assertIsolated(dir: string): void {
   if (!relative(root, dir).startsWith('..')) throw new SmokeError(`${dir} is inside the repository.`);
   for (let parent = dirname(dir); ; parent = dirname(parent)) {
-    for (const leak of ['node_modules/@bespokecore', 'pnpm-workspace.yaml']) {
+    for (const leak of ['node_modules/@marmeon', 'pnpm-workspace.yaml']) {
       if (existsSync(join(parent, leak))) throw new SmokeError(`${join(parent, leak)} exists above the smoke app — it would not be isolated.`);
     }
     if (dirname(parent) === parent) break;
   }
 }
 
-/** The packed `create-bespoke-app`, unpacked into `dir` — it has no dependencies, so its bin runs as it is. Returns the bin. */
+/** The packed `create-marmeon`, unpacked into `dir` — it has no dependencies, so its bin runs as it is. Returns the bin. */
 export function unpackScaffolder(tarballs: ReadonlyMap<string, PackedPackage>, dir: string): string {
-  const scaffolder = tarballs.get('create-bespoke-app');
-  if (!scaffolder) throw new SmokeError('pnpm pack made no create-bespoke-app tarball.');
+  const scaffolder = tarballs.get('create-marmeon');
+  if (!scaffolder) throw new SmokeError('pnpm pack made no create-marmeon tarball.');
   mkdirSync(dir, { recursive: true });
   const tar = spawnSync('tar', ['-xzf', scaffolder.tarball, '-C', dir], { encoding: 'utf8' });
   if (tar.status !== 0) throw new SmokeError(`could not unpack ${scaffolder.tarball}: ${tar.stderr}`);
-  return join(dir, 'package', 'bin', 'create-bespoke-app.js');
+  return join(dir, 'package', 'bin', 'create-marmeon.js');
 }
 
 /**
@@ -98,13 +98,13 @@ export const THROWAWAY_GIT: NodeJS.ProcessEnv = {
 };
 
 /**
- * Runs the unpacked create-bespoke-app in `cwd` without a terminal (stdin closed) — the framework from `tarballs`. Throws
+ * Runs the unpacked create-marmeon in `cwd` without a terminal (stdin closed) — the framework from `tarballs`. Throws
  * `Offline` when the install could not reach the registry, a `SmokeError` with its output on any other failure.
  */
 export function scaffold(bin: string, cwd: string, args: string[], { tarballs, env = {} }: { tarballs: string; env?: NodeJS.ProcessEnv }): string {
   const result = spawnSync(process.execPath, [bin, ...args], {
     cwd,
-    env: { ...cleanEnvironment(), BESPOKE_CREATE_TARBALLS: tarballs, ...env },
+    env: { ...cleanEnvironment(), MARMEON_CREATE_TARBALLS: tarballs, ...env },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 64 * 1024 * 1024,
@@ -112,18 +112,18 @@ export function scaffold(bin: string, cwd: string, args: string[], { tarballs, e
   });
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   if (result.status !== 0) {
-    throw OFFLINE.test(output) ? new Offline(output) : new SmokeError(`create-bespoke-app ${args.join(' ')} failed (exit ${result.status ?? result.signal}):\n${output}`);
+    throw OFFLINE.test(output) ? new Offline(output) : new SmokeError(`create-marmeon ${args.join(' ')} failed (exit ${result.status ?? result.signal}):\n${output}`);
   }
   return output;
 }
 
-/** The generated package.json: every `@bespokecore/*` from its vendored tarball — never `workspace:`, never a floating range. */
+/** The generated package.json: every `@marmeon/*` and the CLI `marmeon` from its vendored tarball — never `workspace:`, never a floating range. */
 export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Record<string, any> {
   const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as Record<string, any>;
   for (const field of ['dependencies', 'devDependencies', 'overrides'] as const) {
     for (const [name, range] of Object.entries((manifest[field] ?? {}) as Record<string, string>)) {
       if (/workspace:|^latest$|^\*$/.test(range)) throw new SmokeError(`package.json ${field}.${name} is "${range}" — a new app pins every package.`);
-      if (name.startsWith('@bespokecore/') && !/^file:(?:\.|\/.+)\/vendor\/bespokecore\/bespokecore-[\w-]+-\d+\.\d+\.\d+[\w.-]*\.tgz$/.test(range)) {
+      if ((name.startsWith('@marmeon/') || name === 'marmeon') && !/^file:(?:\.|\/.+)\/vendor\/marmeon\/marmeon(?:-[\w-]+)?-\d+\.\d+\.\d+[\w.-]*\.tgz$/.test(range)) {
         throw new SmokeError(`package.json ${field}.${name} is "${range}", not its vendored tarball.`);
       }
     }
@@ -136,17 +136,17 @@ export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Reco
   if (!/^APP_KEY=base64:[A-Za-z0-9+/]{43}=$/m.test(env)) throw new SmokeError('.env has no APP_KEY.');
   if (!/^APP_KEY=$/m.test(readFileSync(join(app, '.env.example'), 'utf8'))) throw new SmokeError('.env.example carries an APP_KEY.');
   // The framework came from the tarballs: installed inside the app, its manifest without the source condition.
-  const core = realpathSync(join(app, 'node_modules/@bespokecore/core'));
-  if (!core.startsWith(app + sep)) throw new SmokeError(`@bespokecore/core resolves to ${core}, not into the app.`);
-  if (readFileSync(join(core, 'package.json'), 'utf8').includes('@bespokecore/source')) throw new SmokeError('the installed @bespokecore/core still has the source condition.');
+  const core = realpathSync(join(app, 'node_modules/@marmeon/core'));
+  if (!core.startsWith(app + sep)) throw new SmokeError(`@marmeon/core resolves to ${core}, not into the app.`);
+  if (readFileSync(join(core, 'package.json'), 'utf8').includes('@marmeon/source')) throw new SmokeError('the installed @marmeon/core still has the source condition.');
   return manifest;
 }
 
-/** An `APP_KEY` as `bespoke key:generate` writes it — the shape a key (a real one or a placeholder) has in any file. */
+/** An `APP_KEY` as `marmeon key:generate` writes it — the shape a key (a real one or a placeholder) has in any file. */
 const KEY_SHAPE = /base64:[A-Za-z0-9+/]{43}=/;
 
 /**
- * Every place in what `bespoke build` wrote (`dist/`, `.bespoke/`) that holds something shaped like an `APP_KEY` or one of
+ * Every place in what `marmeon build` wrote (`dist/`, `.marmeon/`) that holds something shaped like an `APP_KEY` or one of
  * `values` — the app's own secrets (E187: the build has none, so none may end up there). Compressed copies are skipped: their
  * originals are read.
  */
@@ -164,7 +164,7 @@ export function secretsIn(app: string, values: readonly string[]): string[] {
       }
     }
   };
-  for (const dir of ['dist', '.bespoke']) walk(join(app, dir));
+  for (const dir of ['dist', '.marmeon']) walk(join(app, dir));
   return found;
 }
 
@@ -220,12 +220,12 @@ class Smoke {
     return output;
   }
 
-  bespoke(...args: string[]): string {
-    return this.run(join(this.app, 'node_modules/.bin/bespoke'), args);
+  marmeon(...args: string[]): string {
+    return this.run(join(this.app, 'node_modules/.bin/marmeon'), args);
   }
 
   /**
-   * `bespoke build` as an image builds it (E187): without the app's `.env` — no key, no name, no database — then what it wrote must
+   * `marmeon build` as an image builds it (E187): without the app's `.env` — no key, no name, no database — then what it wrote must
    * hold no secret: neither the app's `APP_KEY` nor anything shaped like one (a placeholder a build phase might have used).
    */
   buildWithoutEnv(): string {
@@ -234,18 +234,18 @@ class Smoke {
     renameSync(env, aside);
     let output: string;
     try {
-      output = this.bespoke('build');
+      output = this.marmeon('build');
     } finally {
       renameSync(aside, env);
     }
     const key = /^APP_KEY=(.*)$/m.exec(readFileSync(env, 'utf8'))?.[1] ?? '';
     const leaked = secretsIn(this.app, [key]);
-    if (leaked.length > 0) throw new SmokeError(`bespoke build wrote a secret (or a placeholder key) into its output: ${leaked.join('; ')}`);
+    if (leaked.length > 0) throw new SmokeError(`marmeon build wrote a secret (or a placeholder key) into its output: ${leaked.join('; ')}`);
     return output;
   }
 
   /**
-   * `bespoke start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
+   * `marmeon start` on a free port until `path` answers 200 — then SIGTERM to its process group (ours, nobody else's). While it
    * answers, its process group must be exactly one process, and that one Node (E159).
    */
   async serve(path: string, check?: (base: string, output: () => string) => Promise<void>, env: NodeJS.ProcessEnv = {}): Promise<void> {
@@ -259,7 +259,7 @@ class Smoke {
         `process.on('exit', () => writeFileSync(${JSON.stringify(loaded)}, JSON.stringify(urls)));\n`,
     );
     rmSync(loaded, { force: true });
-    const child = spawn(join(this.app, 'node_modules/.bin/bespoke'), ['start'], {
+    const child = spawn(join(this.app, 'node_modules/.bin/marmeon'), ['start'], {
       cwd: this.app,
       // As a server runs it: NODE_ENV in the real environment — it wins over the development .env from .env.example (E170).
       env: { ...this.env, NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port), NODE_OPTIONS: `--import=${pathToFileURL(loads).href}`, ...env },
@@ -275,7 +275,7 @@ class Smoke {
       const deadline = Date.now() + 30_000;
       let last = '';
       while (Date.now() < deadline) {
-        if (child.exitCode !== null) throw new SmokeError(`bespoke start exited with ${child.exitCode}:\n${output}`);
+        if (child.exitCode !== null) throw new SmokeError(`marmeon start exited with ${child.exitCode}:\n${output}`);
         try {
           const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual', signal: AbortSignal.timeout(2_000) });
           await response.body?.cancel();
@@ -285,7 +285,7 @@ class Smoke {
               .map((line) => line.trim().split(/\s+/))
               .filter(([, pgid]) => pgid === String(child.pid));
             if (group.length !== 1 || group[0]![0] !== String(child.pid) || !/(^|\/)node$/.test(group[0]![2] ?? '')) {
-              throw new SmokeError(`bespoke start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
+              throw new SmokeError(`marmeon start should be one Node process, its process group has: ${group.map((entry) => entry.join(' ')).join('; ') || 'none'}`);
             }
             await check?.(`http://127.0.0.1:${port}`, () => output);
             await this.#checkLoads(child, exited, loaded, () => output);
@@ -311,11 +311,11 @@ class Smoke {
   async #checkLoads(child: ChildProcess, exited: Promise<void>, loaded: string, output: () => string): Promise<void> {
     this.#stop(child);
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
-    if (!existsSync(loaded)) throw new SmokeError(`bespoke start wrote no module list (did it exit cleanly?):\n${output()}`);
+    if (!existsSync(loaded)) throw new SmokeError(`marmeon start wrote no module list (did it exit cleanly?):\n${output()}`);
     const urls = JSON.parse(readFileSync(loaded, 'utf8')) as string[];
     const unwanted = ['oxc-parser', 'pino-pretty'].filter((name) => urls.some((url) => url.includes(`/node_modules/${name}/`)));
-    if (unwanted.length > 0) throw new SmokeError(`bespoke start loaded ${unwanted.join(' and ')} (${urls.length} modules) — the injection lists of bespoke build and JSON logs should keep them out.`);
-    if (output().includes('Build artifacts are')) throw new SmokeError(`bespoke start found the build artifacts stale or missing:\n${output()}`);
+    if (unwanted.length > 0) throw new SmokeError(`marmeon start loaded ${unwanted.join(' and ')} (${urls.length} modules) — the injection lists of marmeon build and JSON logs should keep them out.`);
+    if (output().includes('Build artifacts are')) throw new SmokeError(`marmeon start found the build artifacts stale or missing:\n${output()}`);
   }
 
   #stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
@@ -334,7 +334,7 @@ class Smoke {
 /**
  * The production HTTP defaults of the starter kit (E147, E162): `/login` under its CSP — one nonce in the header and on the
  * entry script — and never compressed, for a guest without a cookie (E143), a cross-site post refused; the entry script as the
- * `.br` `bespoke build` wrote, kept a year (`immutable`); the home page.
+ * `.br` `marmeon build` wrote, kept a year (`immutable`); the home page.
  */
 async function checkProductionHttp(base: string): Promise<void> {
   const home = await fetch(`${base}/`, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(5_000) });
@@ -355,7 +355,7 @@ async function checkProductionHttp(base: string): Promise<void> {
   if (!entry || !entry[0].includes(`nonce="${nonce}"`)) throw new SmokeError(`The entry script of /login does not carry the response's nonce: ${entry?.[0] ?? '(no entry script)'}`);
   const asset = await fetch(`${base}${entry[1]}`, { headers: { 'accept-encoding': 'br' }, signal: AbortSignal.timeout(5_000) });
   await asset.arrayBuffer();
-  if (asset.headers.get('content-encoding') !== 'br') throw new SmokeError(`${entry[1]} came without Brotli (${asset.headers.get('content-encoding') ?? 'identity'}) — bespoke build writes the .br.`);
+  if (asset.headers.get('content-encoding') !== 'br') throw new SmokeError(`${entry[1]} came without Brotli (${asset.headers.get('content-encoding') ?? 'identity'}) — marmeon build writes the .br.`);
   if (!asset.headers.get('cache-control')?.includes('immutable')) throw new SmokeError(`${entry[1]} is not cached as immutable: ${asset.headers.get('cache-control')}`);
 }
 
@@ -400,7 +400,7 @@ function checkRegistration(privately: boolean) {
 async function main(): Promise<number> {
   const { values } = parseArgs({ options: { keep: { type: 'boolean' }, offline: { type: 'boolean' }, 'store-dir': { type: 'string' } } });
   const started = performance.now();
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'bespoke-pack-smoke-')));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-pack-smoke-')));
   const pnpmApp = new Smoke(join(work, 'app'), 'pnpm');
   const npmApp = new Smoke(join(work, 'app-npm'), 'npm');
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -422,20 +422,20 @@ async function main(): Promise<number> {
     assertIsolated(pnpmApp.app);
     const tarballDir = join(work, 'tarballs');
     const tarballs = await pnpmApp.step('pnpm pack (all packages)', () => new Map(packAll(root, tarballDir).map((tarball) => [tarball.name, tarball])));
-    const bin = unpackScaffolder(tarballs, join(work, 'create-bespoke-app'));
+    const bin = unpackScaffolder(tarballs, join(work, 'create-marmeon'));
 
     // Without a directory and without a terminal: exit 2 and the reason — at once, never a prompt that waits for an answer (E167).
-    await pnpmApp.step('create-bespoke-app without a directory, no terminal → exit 2', () => {
+    await pnpmApp.step('create-marmeon without a directory, no terminal → exit 2', () => {
       const result = spawnSync(process.execPath, [bin], { cwd: work, env: cleanEnvironment(), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 15_000 });
-      if (result.error) throw new SmokeError(`create-bespoke-app without a directory did not end within 15 s (waiting for an answer?): ${result.error.message}`);
-      if (result.status !== 2 || !result.stderr.includes(NO_DIRECTORY)) throw new SmokeError(`create-bespoke-app without a directory ended with ${result.status}, expected 2 and "${NO_DIRECTORY}":\n${result.stdout}${result.stderr}`);
+      if (result.error) throw new SmokeError(`create-marmeon without a directory did not end within 15 s (waiting for an answer?): ${result.error.message}`);
+      if (result.status !== 2 || !result.stderr.includes(NO_DIRECTORY)) throw new SmokeError(`create-marmeon without a directory ended with ${result.status}, expected 2 and "${NO_DIRECTORY}":\n${result.stdout}${result.stderr}`);
     });
 
     // ── The starter kit with pnpm (the defaults — its registration private, E146/E193) ──
     const app = pnpmApp.app;
-    await pnpmApp.step('create-bespoke-app app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
+    await pnpmApp.step('create-marmeon app --yes (starter kit, pnpm, install, make:auth, migrate, git)', () => {
       const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
-      if (!output.includes('bespoke make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-bespoke-app skipped a step:\n${output}`);
+      if (!output.includes('marmeon make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-marmeon skipped a step:\n${output}`);
       checkManifest(app, 'pnpm');
       for (const file of ['modules/auth/routes.ts', 'modules/auth/controllers/ConfirmEmailChangeController.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite']) {
         if (!existsSync(join(app, file))) throw new SmokeError(`the starter kit has no ${file}.`);
@@ -445,13 +445,13 @@ async function main(): Promise<number> {
       if (git('rev-list', '--count', 'HEAD') !== '1') throw new SmokeError('the new repository should have exactly one commit.');
       if (git('status', '--porcelain') !== '') throw new SmokeError(`the first commit left files behind:\n${git('status', '--porcelain')}`);
       const tracked = git('ls-files').split('\n');
-      const leaked = tracked.filter((file) => /^(\.env$|node_modules\/|dist\/|\.bespoke\/)|\.sqlite$|^storage\/(?!.*\.gitignore$)/.test(file));
+      const leaked = tracked.filter((file) => /^(\.env$|node_modules\/|dist\/|\.marmeon\/)|\.sqlite$|^storage\/(?!.*\.gitignore$)/.test(file));
       if (leaked.length > 0) throw new SmokeError(`the first commit carries ${leaked.join(', ')}.`);
     });
     // As a developer migrates: NODE_ENV=development from the .env (E170) — no --force there.
-    await pnpmApp.step('bespoke migrate (development from .env)', () => {
-      const output = pnpmApp.bespoke('migrate');
-      if (!output.includes('Environment: development (from .env)')) throw new SmokeError(`bespoke migrate did not take NODE_ENV=development from .env:\n${output}`);
+    await pnpmApp.step('marmeon migrate (development from .env)', () => {
+      const output = pnpmApp.marmeon('migrate');
+      if (!output.includes('Environment: development (from .env)')) throw new SmokeError(`marmeon migrate did not take NODE_ENV=development from .env:\n${output}`);
     });
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
@@ -461,46 +461,46 @@ async function main(): Promise<number> {
       return /Tests\s+(\d+) passed/.exec(output)?.[1] ?? '?';
     });
     await pnpmApp.step('lint (oxlint with the app\'s preset, no warnings)', () => pnpmApp.run('pnpm', ['run', 'lint', '--deny-warnings']));
-    await pnpmApp.step('bespoke build without .env (no key, E187) → no secret in dist/ or .bespoke/', () => {
+    await pnpmApp.step('marmeon build without .env (no key, E187) → no secret in dist/ or .marmeon/', () => {
       pnpmApp.buildWithoutEnv();
       // The injection lists of the app (E138): the auth module's controllers take their services through the constructor.
-      const injections = JSON.parse(readFileSync(join(app, '.bespoke/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
+      const injections = JSON.parse(readFileSync(join(app, '.marmeon/injections.json'), 'utf8')) as { files: Record<string, { insert: unknown[] }> };
       const listed = Object.entries(injections.files).filter(([name, entry]) => name.startsWith('modules/auth/') && entry.insert.length > 0);
-      if (listed.length < 5) throw new SmokeError(`bespoke build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
+      if (listed.length < 5) throw new SmokeError(`marmeon build precomputed the injection lists of ${listed.length} auth modules — expected the controllers.`);
     });
-    await pnpmApp.step('bespoke start → GET /login 200 (CSP nonce, precompressed assets), GET / 200, private registration', () =>
+    await pnpmApp.step('marmeon start → GET /login 200 (CSP nonce, precompressed assets), GET / 200, private registration', () =>
       pnpmApp.serve('/login', async (base, output) => {
         await checkProductionHttp(base);
         await checkRegistration(true)(base, output);
       }),
     );
-    await pnpmApp.step('bespoke start with AUTH_PRIVATE_REGISTRATION=false → "already registered", a boot warning (E193)', () =>
+    await pnpmApp.step('marmeon start with AUTH_PRIVATE_REGISTRATION=false → "already registered", a boot warning (E193)', () =>
       pnpmApp.serve('/login', checkRegistration(false), { AUTH_PRIVATE_REGISTRATION: 'false' }),
     );
-    const discovered = await pnpmApp.step('bespoke discover (pnpm, nothing hoisted)', () => discoveredPackages(pnpmApp.bespoke('discover')));
-    // Production installs without the dev dependencies (E159): `bespoke` is a dependency, and the app starts without the rest.
-    await pnpmApp.step('pnpm install --prod → node_modules/.bin/bespoke', () => {
+    const discovered = await pnpmApp.step('marmeon discover (pnpm, nothing hoisted)', () => discoveredPackages(pnpmApp.marmeon('discover')));
+    // Production installs without the dev dependencies (E159): `marmeon` is a dependency, and the app starts without the rest.
+    await pnpmApp.step('pnpm install --prod → node_modules/.bin/marmeon', () => {
       pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);
       if (existsSync(join(app, 'node_modules/vitest'))) throw new SmokeError('pnpm install --prod left the dev dependency vitest in node_modules.');
-      if (!existsSync(join(app, 'node_modules/.bin/bespoke'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/bespoke — @bespokecore/cli must be a dependency of the app.');
+      if (!existsSync(join(app, 'node_modules/.bin/marmeon'))) throw new SmokeError('pnpm install --prod has no node_modules/.bin/marmeon — marmeon must be a dependency of the app.');
     });
-    await pnpmApp.step('bespoke start (production install) → GET /login 200', () => pnpmApp.serve('/login'));
+    await pnpmApp.step('marmeon start (production install) → GET /login 200', () => pnpmApp.serve('/login'));
 
     // ── A blank app with npm (E151: npm's flat node_modules) ──
-    await npmApp.step('create-bespoke-app app-npm --minimal --npm --no-git (install, migrate)', () => {
+    await npmApp.step('create-marmeon app-npm --minimal --npm --no-git (install, migrate)', () => {
       scaffold(bin, work, ['app-npm', '--minimal', '--npm', '--no-git'], { tarballs: tarballDir, env: installEnv });
       checkManifest(npmApp.app, 'npm');
       if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
     });
-    await npmApp.step('bespoke build without .env (E187)', () => npmApp.buildWithoutEnv());
-    await npmApp.step('bespoke start → GET /up 200', () => npmApp.serve('/up'));
+    await npmApp.step('marmeon build without .env (E187)', () => npmApp.buildWithoutEnv());
+    await npmApp.step('marmeon start → GET /up 200', () => npmApp.serve('/up'));
     const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');
     // Discovery walks node_modules as Node resolves (E151): in npm's flat layout it finds every package pnpm's finds.
-    await npmApp.step('bespoke discover (npm) finds what pnpm\'s finds', () => {
+    await npmApp.step('marmeon discover (npm) finds what pnpm\'s finds', () => {
       // The same packages, and in them the same providers and injectable classes (a constructor's types resolve from the package's
       // own dependencies — another place where a lookup could assume pnpm's layout).
-      const flat = discoveredPackages(npmApp.bespoke('discover'));
+      const flat = discoveredPackages(npmApp.marmeon('discover'));
       const missing = discovered.names.filter((name) => !flat.names.includes(name));
       if (missing.length > 0 || flat.names.length !== discovered.names.length || flat.summary !== discovered.summary) {
         throw new SmokeError(
@@ -511,7 +511,7 @@ async function main(): Promise<number> {
 
     const total = ((performance.now() - started) / 1000).toFixed(1);
     console.log(
-      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-bespoke-app: the starter kit with pnpm (${tests} tests, lint, build, start, production install) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
+      `pack:smoke: ${tarballs.size} tarballs outside the monorepo — create-marmeon: the starter kit with pnpm (${tests} tests, lint, build, start, production install) and a blank app with npm (${npmTests} test, build, start, discovery as with pnpm: ${discovered.summary}): green (${total}s).`,
     );
     return 0;
   } catch (error) {
@@ -530,7 +530,7 @@ async function main(): Promise<number> {
   }
 }
 
-/** What `bespoke discover` found: the package names (one per line, indented), sorted, and its summary (packages, providers, classes). */
+/** What `marmeon discover` found: the package names (one per line, indented), sorted, and its summary (packages, providers, classes). */
 function discoveredPackages(output: string): { names: string[]; summary: string } {
   const names = output
     .split('\n')
@@ -538,7 +538,7 @@ function discoveredPackages(output: string): { names: string[]; summary: string 
     .map((line) => line.trim())
     .sort();
   const summary = /(\d+ packages, \d+ providers, \d+ injectable classes[^→]*)/.exec(output)?.[1]?.trim();
-  if (!summary) throw new SmokeError(`bespoke discover printed no summary:\n${output}`);
+  if (!summary) throw new SmokeError(`marmeon discover printed no summary:\n${output}`);
   return { names, summary };
 }
 

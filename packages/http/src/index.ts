@@ -96,7 +96,7 @@ export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { defineMiddleware, defineRequest, defineRoutes, editableResponse, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@bespokecore/router';
+export { defineMiddleware, defineRequest, defineRoutes, editableResponse, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
 export type {
   ContextOf,
   CookieJar,
@@ -119,10 +119,10 @@ export type {
   TextKey,
   Validated,
   ValidationErrors,
-} from '@bespokecore/router';
+} from '@marmeon/router';
 export { HttpServiceProvider } from './provider.ts';
 export { httpSolutions } from './solutions.ts';
 export { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 export { abort, DefaultExceptionHandler, ExceptionHandler, HttpError } from './errors.ts';
 export type { ExceptionRenderOptions } from './errors.ts';
-export type { MiddlewareClass, Next } from '@bespokecore/router';
+export type { MiddlewareClass, Next } from '@marmeon/router';

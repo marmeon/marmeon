@@ -23,14 +23,14 @@ import type { Navigator } from './navigation.ts';
 export const loadLayers = (): Promise<Feature<LayerStack>> => import('./features/layers.ts').then((module) => module.layers);
 
 /**
- * Tab sync (W8 step 8, E149) — a default feature of `createBespokeApp`, in a chunk of its own: the adapter loads it with the first
+ * Tab sync (W8 step 8, E149) — a default feature of `createMarmeonApp`, in a chunk of its own: the adapter loads it with the first
  * page's component and messages, before it hydrates, and attaches it from the start (`NavigatorOptions.features`).
  */
 export const loadTabSync = (): Promise<Feature<TabSync>> => import('./features/tab-sync.ts').then((module) => module.tabSync);
 
 /**
  * The History fallback (E184) — where the browser has no Navigation API: the adapter loads it before the navigator writes its first
- * entry and attaches it from the start (`NavigatorOptions.features`; createBespokeApp loads it beside the first page's component,
+ * entry and attaches it from the start (`NavigatorOptions.features`; createMarmeonApp loads it beside the first page's component,
  * only when `window.navigation` is missing).
  */
 export const loadHistoryFallback = (): Promise<Feature> => import('./features/history-fallback.ts').then((module) => module.historyFallback);

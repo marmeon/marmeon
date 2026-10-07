@@ -1,4 +1,4 @@
-import type { Kysely } from '@bespokecore/database';
+import type { Kysely } from '@marmeon/database';
 
 /**
  * A queued job as the queue stores it — the same for every driver (E83). `payload` is the JSON of a {@link JobRecord}.
@@ -97,7 +97,7 @@ export interface JobRecord {
   readonly chain?: readonly JobRecord[];
   /** The request it was dispatched in (its `x-request-id`, E131) — what the devtools and logs link the job to. */
   readonly requestId?: string;
-  /** The trace context it was dispatched in (W3C `traceparent`, E131) — when a tracer (`@bespokecore/otel`) gave one. */
+  /** The trace context it was dispatched in (W3C `traceparent`, E131) — when a tracer (`@marmeon/otel`) gave one. */
   readonly traceparent?: string;
 }
 

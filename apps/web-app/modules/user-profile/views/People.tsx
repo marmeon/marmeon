@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Island, Link, useQueryState, useTranslation, type Placeholder } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Island, Link, useQueryState, useTranslation, type Placeholder } from '@marmeon/react';
 import { ViewTransition } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListPeopleController } from '../controllers/ListPeopleController.ts';

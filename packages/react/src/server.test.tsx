@@ -5,7 +5,7 @@ import { Head } from './head.tsx';
 import { resolveModulePages } from './pages.ts';
 import { Pagination, pagesAround } from './pagination.tsx';
 import { createSsrRenderer } from './server.tsx';
-import type { SsrRender, SsrRenderOptions } from '@bespokecore/http/page';
+import type { SsrRender, SsrRenderOptions } from '@marmeon/http/page';
 
 /** The markup as a string — streamed SSR reads to the end. */
 async function text(html: string | ReadableStream<Uint8Array>): Promise<string> {
@@ -89,7 +89,7 @@ describe('<Head> on the server', () => {
     const { html, head } = await renderAll(render, { component: 'greeting/Titled', props: { name: 'Ada' }, url: '/ada' });
     expect(html).toBe('<p>Ada</p>');
     expect(head).toBe(
-      '<title data-bespoke-head="ssr">Ada &#60;admin&#62; — Shop</title><meta name="description" content="Profile of Ada" data-bespoke-head="ssr"/>',
+      '<title data-marmeon-head="ssr">Ada &#60;admin&#62; — Shop</title><meta name="description" content="Profile of Ada" data-marmeon-head="ssr"/>',
     );
   });
 
@@ -100,7 +100,7 @@ describe('<Head> on the server', () => {
 
   it('gives pages without <Head title> the default title — the same the browser falls back to', async () => {
     const { head } = await createSsrRenderer(resolve, { title: (title) => (title ? `${title} — Shop` : 'Shop') })({ component: 'greeting/Hello', props: { name: 'Ada' }, url: '/' });
-    expect(head).toBe('<title data-bespoke-head="ssr">Shop</title>');
+    expect(head).toBe('<title data-marmeon-head="ssr">Shop</title>');
   });
 });
 
@@ -277,7 +277,7 @@ describe('streaming SSR (E37)', () => {
   it('renders no markup for a page with ssr = false — the browser renders it', async () => {
     const { html, head } = await renderAll(createSsrRenderer(pages(Promise.resolve('')), { title: (title) => title || 'Shop' }), page('app/BrowserOnly'));
     expect(html).toBe('');
-    expect(head).toBe('<title data-bespoke-head="ssr">Shop</title>');
+    expect(head).toBe('<title data-marmeon-head="ssr">Shop</title>');
   });
 
   it('rejects when the shell fails — the server then sends the page without markup', async () => {
@@ -296,7 +296,7 @@ describe('streaming SSR (E37)', () => {
     expect(onError).toHaveBeenCalledWith(new Error('the database went away'));
     expect(html).toContain('<p>shell</p>');
     // The boundary is marked for the browser to render, with our digest (no message in production).
-    expect(html).toContain('$RX("B:0","bespoke:ssr"');
+    expect(html).toContain('$RX("B:0","marmeon:ssr"');
   });
 
   it('warns in development about a <Head> that renders after the head was sent', async () => {
@@ -316,7 +316,7 @@ describe('streaming SSR (E37)', () => {
     const rendering = createSsrRenderer(pages(slow.promise))(page('app/HeadBeside'), { complete: true, onWarning });
     setTimeout(() => slow.settle('done'), 10);
     const { head } = await rendering;
-    expect(head).toBe('<title data-bespoke-head="ssr">Beside</title><meta name="beside" content="yes" data-bespoke-head="ssr"/>');
+    expect(head).toBe('<title data-marmeon-head="ssr">Beside</title><meta name="beside" content="yes" data-marmeon-head="ssr"/>');
     expect(onWarning).not.toHaveBeenCalled();
   });
 
@@ -324,6 +324,6 @@ describe('streaming SSR (E37)', () => {
     const slow = later<string>();
     const rendering = createSsrRenderer(pages(slow.promise))(page('app/LateHead'), { complete: true });
     setTimeout(() => slow.settle('done'), 10);
-    expect((await rendering).head).toBe('<title data-bespoke-head="ssr">Late</title>');
+    expect((await rendering).head).toBe('<title data-marmeon-head="ssr">Late</title>');
   });
 });

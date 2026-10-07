@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createApplication, defineModule, Logger, token, type Application } from '@bespokecore/core';
-import { channels, messageBase, publishEnded } from '@bespokecore/core/diagnostics';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { abort, Controller, HttpServiceProvider, view, type PageObject } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { createApplication, defineModule, Logger, token, type Application } from '@marmeon/core';
+import { channels, messageBase, publishEnded } from '@marmeon/core/diagnostics';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, Controller, HttpServiceProvider, view, type PageObject } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -97,7 +97,7 @@ async function boot({ env = { NODE_ENV: 'development' } as Record<string, string
 }
 
 const page = { headers: { accept: 'text/html' } };
-const visit = { headers: { 'x-bespoke': 'true', accept: 'text/html, application/json' } };
+const visit = { headers: { 'x-marmeon': 'true', accept: 'text/html, application/json' } };
 
 /** One `<section id>` of the page. */
 function sectionOf(html: string, id: string): string {
@@ -106,7 +106,7 @@ function sectionOf(html: string, id: string): string {
 
 /** The Markdown of the page (the text field), unescaped. */
 function markdownOf(html: string): string {
-  const raw = /<textarea id="bespoke-markdown"[^>]*>([\s\S]*?)<\/textarea>/.exec(html)?.[1] ?? '';
+  const raw = /<textarea id="marmeon-markdown"[^>]*>([\s\S]*?)<\/textarea>/.exec(html)?.[1] ?? '';
   return raw.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 }
 
@@ -135,7 +135,7 @@ describe('the development error page (E119)', () => {
       expect(Number(current?.[1])).toBe(throwing);
       expect(current?.[2]).toContain('throw new Error(&#39;The controller failed on purpose&#39;)');
       expect(html).toContain(`/__open-in-editor?file=${encodeURIComponent(`${fileURLToPath(import.meta.url)}:${throwing}:`)}`);
-      expect(html).toContain('target="bespoke-editor"');
+      expect(html).toContain('target="marmeon-editor"');
 
       // Route, queries (the secret statement without its parameters), the log line (its token redacted).
       expect(html).toContain('<code>lab.explode</code>');
@@ -162,12 +162,12 @@ describe('the development error page (E119)', () => {
       const html = await (await kernel.request('/unbound', page)).text();
       expect(html).toContain('<article class="solution">');
       expect(html).toContain('Bind Mailer in a service provider');
-      expect(html).toContain('bespoke discover');
+      expect(html).toContain('marmeon discover');
 
       const json = (await (await kernel.request('/unbound', { headers: { accept: 'application/json' } })).json()) as Record<string, any>;
       expect(json.message).toMatch(/No binding for \[Mailer\]/);
       expect(json.exception.name).toBe('ContainerError');
-      expect(json.solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'bespoke discover' });
+      expect(json.solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'marmeon discover' });
     } finally {
       await application.shutdown();
     }
@@ -178,7 +178,7 @@ describe('the development error page (E119)', () => {
     try {
       const response = await kernel.request('/explode/7', visit);
       expect(response.status).toBe(500);
-      expect(response.headers.get('x-bespoke')).toBeNull();
+      expect(response.headers.get('x-marmeon')).toBeNull();
       expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
       expect(await response.text()).toContain('The controller failed on purpose');
     } finally {
@@ -200,7 +200,7 @@ describe('the development error page (E119)', () => {
   it('redacts the Cookie header — on the page and in the Markdown', async () => {
     const { application, kernel } = await boot();
     try {
-      const html = await (await kernel.request('/explode/7', { headers: { accept: 'text/html', cookie: 'bespoke_session=s3ss10n-c00kie; theme=dark' } })).text();
+      const html = await (await kernel.request('/explode/7', { headers: { accept: 'text/html', cookie: 'marmeon_session=s3ss10n-c00kie; theme=dark' } })).text();
       expect(html).not.toContain('s3ss10n-c00kie');
       expect(markdownOf(html)).not.toContain('s3ss10n-c00kie');
       expect(markdownOf(html)).toContain('"cookie": "[redacted]"');
@@ -275,7 +275,7 @@ describe('the development error page — only in development (E115)', () => {
       try {
         expect(application.container.make(ServerConfig).debug).toBe(false);
         expect(application.container.has(DevRequestRecorder)).toBe(false);
-        const response = await kernel.request('/explode/7', { headers: { 'x-bespoke': 'true', accept: 'text/html', authorization: 'Bearer s3cr3t-b34r3r' } });
+        const response = await kernel.request('/explode/7', { headers: { 'x-marmeon': 'true', accept: 'text/html', authorization: 'Bearer s3cr3t-b34r3r' } });
         expect(response.status).toBe(500);
         const body = await response.text();
         const page = JSON.parse(body) as PageObject;
@@ -293,7 +293,7 @@ describe('server-rendering errors in development (E119)', () => {
   it('go to the renderer’s overlay hook with their solutions — the page still renders in the browser', async () => {
     const reported: { error: unknown; component: string; titles: string[] }[] = [];
     const renderer: PageRenderer = {
-      render: () => Promise.reject(new Error('[bespoke:R2] Page [Home] not found. Expected a default export in modules/Home/views/.tsx')),
+      render: () => Promise.reject(new Error('[marmeon:R2] Page [Home] not found. Expected a default export in modules/Home/views/.tsx')),
       shell: async () => '<html><body><div id="app"></div></body></html>',
       failed: async (error, { component, solutions }) => {
         reported.push({ error, component, titles: solutions.map((solution) => solution.title) });

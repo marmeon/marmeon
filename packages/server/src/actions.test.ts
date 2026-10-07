@@ -1,5 +1,5 @@
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,
@@ -13,8 +13,8 @@ import {
   view,
   type ContextOf,
   type HttpContext,
-} from '@bespokecore/http';
-import { defineRoutes, type Next } from '@bespokecore/router';
+} from '@marmeon/http';
+import { defineRoutes, type Next } from '@marmeon/router';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
@@ -64,7 +64,7 @@ describe('createHttpKernel — actions (E59)', async () => {
     expect((await app.request('/cached', { method: 'POST' })).headers.get('cache-control')).toBe('public, max-age=3600');
   });
 
-  it('reports a redirect instead of answering it: 204 with x-bespoke-redirect — nothing for fetch to follow', async () => {
+  it('reports a redirect instead of answering it: 204 with x-marmeon-redirect — nothing for fetch to follow', async () => {
     const response = await app.request('/links', { method: 'POST', headers: ACTION, body: JSON.stringify({ label: 'Blog' }) });
     expect(response.status).toBe(204);
     expect(response.headers.get(ACTION_REDIRECT_HEADER)).toBe('/links?added=Blog');

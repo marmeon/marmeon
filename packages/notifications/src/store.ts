@@ -1,8 +1,8 @@
-import type { Clock } from '@bespokecore/core';
-import { cursorPaginate, sql, type Connections, type CursorEncrypter, type CursorPaginated } from '@bespokecore/database';
+import type { Clock } from '@marmeon/core';
+import { cursorPaginate, sql, type Connections, type CursorEncrypter, type CursorPaginated } from '@marmeon/database';
 import type { AnyRecipient } from './notification.ts';
 
-/** The table `bespoke make:notifications-table` creates (E96: the app owns the migration; this package types it itself). */
+/** The table `marmeon make:notifications-table` creates (E96: the app owns the migration; this package types it itself). */
 export const NOTIFICATIONS_TABLE = 'notifications';
 
 interface NotificationTable {

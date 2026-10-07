@@ -3,13 +3,13 @@ import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
 import { collectRouteReferences, ROUTE_SINKS, type RouteReferenceProblem, type RouteSink } from './route-references.ts';
 
-/** Written by `bespoke route:types` (`BROWSER_ROUTES_FILE` of @bespokecore/http — this package does not depend on it). */
-export const BROWSER_ROUTES_FILE = '.bespoke/routes.json';
+/** Written by `marmeon route:types` (`BROWSER_ROUTES_FILE` of @marmeon/http — this package does not depend on it). */
+export const BROWSER_ROUTES_FILE = '.marmeon/routes.json';
 
-const ID = 'virtual:bespoke/routes';
+const ID = 'virtual:marmeon/routes';
 const RESOLVED = `\0${ID}`;
 /** Stands in for the client build's manifest until every module is collected (`renderChunk`). */
-const PLACEHOLDER = '__BESPOKE_ROUTE_MANIFEST__';
+const PLACEHOLDER = '__MARMEON_ROUTE_MANIFEST__';
 const PLACEHOLDER_PATTERN = new RegExp(`(["'\`])${PLACEHOLDER}\\1`, 'g');
 
 type Manifest = Record<string, { readonly method: string; readonly path: string }>;
@@ -27,7 +27,7 @@ export interface RoutesModuleOptions {
 }
 
 /**
- * `virtual:bespoke/routes` — the browser's route manifest (E57), from `.bespoke/routes.json`:
+ * `virtual:marmeon/routes` — the browser's route manifest (E57), from `.marmeon/routes.json`:
  *
  * - **client build:** only the names client code writes out (`<Link route>`, `route()` of `useRoute()`,
  *   `useForm(name, …)` …), collected in `transform` over exactly the modules the build loads and put in at
@@ -59,14 +59,14 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
     return cache.routes;
   };
   const missing = () =>
-    `${ID}: ${BROWSER_ROUTES_FILE} is missing — run \`bespoke route:types\` (bespoke dev and bespoke build run it themselves).`;
+    `${ID}: ${BROWSER_ROUTES_FILE} is missing — run \`marmeon route:types\` (marmeon dev and marmeon build run it themselves).`;
   const isServer = (context: unknown, ssr: boolean | undefined) => {
     const environment = (context as { environment?: { config: { consumer: string } } }).environment;
     return environment ? environment.config.consumer === 'server' : ssr === true;
   };
 
   return {
-    name: 'bespokecore:routes',
+    name: 'marmeon:routes',
     enforce: 'pre',
     configResolved(config) {
       root = config.root;
@@ -112,7 +112,7 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
       }
       if (all.length > 0) {
         const where = relative(roots.find((dir) => path.startsWith(dir)) ?? root, path).split(sep).join('/');
-        this.error(all.sort((a, b) => a.start - b.start).map(({ message, start }) => `[bespoke] ${where}:${position(code, start)} — ${message}`).join('\n'));
+        this.error(all.sort((a, b) => a.start - b.start).map(({ message, start }) => `[marmeon] ${where}:${position(code, start)} — ${message}`).join('\n'));
       }
 
       const names = [...new Set(references.map((reference) => reference.name))].sort();
@@ -122,7 +122,7 @@ export function routesModule(options: RoutesModuleOptions = {}): Plugin {
       }
       // Dev: the module tells the manifest which names it uses — before any of its components runs.
       return {
-        code: `${code}\nimport { __referenceRoutes as __bespokeReferenceRoutes } from '${ID}';\n__bespokeReferenceRoutes(${JSON.stringify(names)});\n`,
+        code: `${code}\nimport { __referenceRoutes as __marmeonReferenceRoutes } from '${ID}';\n__marmeonReferenceRoutes(${JSON.stringify(names)});\n`,
         map: null,
       };
     },
@@ -142,14 +142,14 @@ function devModule(routes: Manifest): string {
   return `const all = ${JSON.stringify(routes)};
 const referenced = new Set();
 const warned = new Set();
-/** Called by every module that names routes (injected by the bespoke() plugin in dev). */
+/** Called by every module that names routes (injected by the marmeon() plugin in dev). */
 export function __referenceRoutes(names) {
   for (const name of names) referenced.add(name);
 }
 function check(name) {
   if (typeof name !== 'string' || !Object.hasOwn(all, name) || referenced.has(name) || warned.has(name)) return;
   warned.add(name);
-  console.warn(\`[bespoke] Route [\${name}] is resolved, but no module writes it out (<Link route="\${name}">, route('\${name}'), useForm('\${name}', …)) — the production build will lack it. Name the route where it is used instead of passing the name or the route() function along.\`);
+  console.warn(\`[marmeon] Route [\${name}] is resolved, but no module writes it out (<Link route="\${name}">, route('\${name}'), useForm('\${name}', …)) — the production build will lack it. Name the route where it is used instead of passing the name or the route() function along.\`);
 }
 // Reading a route warns (resolveRoute reads it); listing the keys does not.
 export const routes = new Proxy(all, {
@@ -170,7 +170,7 @@ function unknownMessage(name: string, allowed: readonly string[]): string {
   const parent = name.includes('.') ? name.slice(0, name.lastIndexOf('.') + 1) : '';
   const near = parent ? allowed.filter((candidate) => candidate.startsWith(parent) && !candidate.slice(parent.length).includes('.')).sort() : [];
   const listed = near.length > 5 ? `${near.slice(0, 5).join(', ')}, …` : near.join(', ');
-  return `'${name}' is not a route name${near.length > 0 ? ` — did you mean ${listed}?` : ''} (run bespoke route:types after adding a route).`;
+  return `'${name}' is not a route name${near.length > 0 ? ` — did you mean ${listed}?` : ''} (run marmeon route:types after adding a route).`;
 }
 
 /** `line:column`, both 1-based like an editor's. */

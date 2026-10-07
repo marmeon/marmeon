@@ -1,5 +1,5 @@
-import { outsideTransaction, type Logger } from '@bespokecore/core';
-import type { LiveHint } from '@bespokecore/http';
+import { outsideTransaction, type Logger } from '@marmeon/core';
+import type { LiveHint } from '@marmeon/http';
 import type { LiveBackend, LiveMessage } from './backend.ts';
 
 /** What `hello` says when a stream opens: the current sequence of each channel — and, after a reconnect, those it missed. */

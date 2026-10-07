@@ -98,7 +98,7 @@ export class PatchQueue {
   remove(ids: Iterable<number>): boolean {
     const gone = new Set(ids);
     // Development only (W7 step 9): the devtools' bar marks them settled — gone from a production build.
-    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.removed?.(gone);
+    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.removed?.(gone);
     const before = this.#patches.length;
     this.#patches = this.#patches.filter((entry) => !gone.has(entry.id));
     if (this.#patches.length === before) return false;
@@ -123,7 +123,7 @@ export class PatchQueue {
   /** `base` with only these patches over it (in their order) — what committing them makes the state. */
   fold<T extends Props>(base: T, ids: Iterable<number>): T {
     const chosen = new Set(ids);
-    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.committed?.(chosen);
+    if (process.env.NODE_ENV !== 'production') (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.committed?.(chosen);
     return run(base, this.#patches.filter((entry) => chosen.has(entry.id)));
   }
 }
@@ -146,7 +146,7 @@ function run<T extends Props>(base: T, patches: readonly { readonly id: number; 
 function observed(patches: readonly { readonly id: number; readonly patch: PropsPatch }[], patch: PropsPatch, props: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   const changed = patch(props);
   const id = patches.find((entry) => entry.patch === patch)?.id;
-  if (id !== undefined) (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__?.patched?.(id, props, changed);
+  if (id !== undefined) (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__?.patched?.(id, props, changed);
   return changed;
 }
 

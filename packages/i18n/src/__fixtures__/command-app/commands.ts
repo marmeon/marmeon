@@ -1,4 +1,4 @@
-import type { CommandInput } from '@bespokecore/cli';
+import type { CommandInput } from 'marmeon';
 import { Translator } from '../../index.ts';
 
 /** Needs the scoped Translator — resolvable because a command runs in a scope of its own (in APP_LOCALE). */
@@ -13,7 +13,7 @@ export class GreetCommand {
   }
 
   handle({ output }: CommandInput): number {
-    output.line(`${this.#translator.locale}: ${this.#translator.text('bespoke.errors.throttled', {}, 'Too many attempts.')}`);
+    output.line(`${this.#translator.locale}: ${this.#translator.text('marmeon.errors.throttled', {}, 'Too many attempts.')}`);
     return this.#translator.locale === 'de' ? 0 : 3;
   }
 }

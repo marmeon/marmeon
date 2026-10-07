@@ -1,6 +1,6 @@
-import { hooks } from '@bespokecore/http/client';
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useFeature, useRouter } from '@bespokecore/react';
+import { hooks } from '@marmeon/http/client';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useFeature, useRouter } from '@marmeon/react';
 import { useEffect, useState } from 'react';
 import type { ShowDevtoolsLabController } from '../controllers/ShowDevtoolsLabController.ts';
 

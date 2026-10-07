@@ -1,4 +1,4 @@
-import type { Messages } from '@bespokecore/i18n/messages';
+import type { Messages } from '@marmeon/i18n/messages';
 import type en from './en.ts';
 
 /** Die Texte des Auth-Moduls auf Deutsch — ein fehlender Schlüssel oder Platzhalter ist ein Compilerfehler. */

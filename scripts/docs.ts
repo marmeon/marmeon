@@ -1,8 +1,8 @@
 /**
- * The docs app (`apps/docs`, E114/E133 — a normal BespokeCore app, no static export):
+ * The docs app (`apps/docs`, E114/E133 — a normal Marmeon app, no static export):
  *
- *   pnpm docs:dev       # bespoke dev on http://localhost:3970 (PORT wins); writes apps/docs/.env with a fresh APP_KEY first
- *   pnpm docs:check     # bespoke build, the production server on a free port, a smoke test, the server stopped — a part of
+ *   pnpm docs:dev       # marmeon dev on http://localhost:3970 (PORT wins); writes apps/docs/.env with a fresh APP_KEY first
+ *   pnpm docs:check     # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
  * The smoke test asks the running production build what the acceptance asks: the start page, every guide (`docs/*.md`,
@@ -21,7 +21,7 @@ import docsConfig, { PACKAGES } from '../apps/docs/docs.config.ts';
 
 const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
-const bespoke = fileURLToPath(new URL('../packages/cli/bin/bespoke.js', import.meta.url));
+const marmeon = fileURLToPath(new URL('../packages/cli/bin/marmeon.js', import.meta.url));
 const mode = process.argv[2];
 const guides = docsConfig.guides ?? [];
 /** The docs' policy in production (apps/docs DocsServiceProvider, DOCS_CSP). */
@@ -35,8 +35,8 @@ else {
 }
 
 async function dev(): Promise<void> {
-  if (!existsSync(`${app}.env`)) spawnSync(process.execPath, [bespoke, 'key:generate'], { cwd: app, stdio: 'inherit' });
-  const child = spawn(process.execPath, [bespoke, 'dev'], { cwd: app, stdio: 'inherit', env: { ...process.env, PORT: process.env.PORT ?? '3970' } });
+  if (!existsSync(`${app}.env`)) spawnSync(process.execPath, [marmeon, 'key:generate'], { cwd: app, stdio: 'inherit' });
+  const child = spawn(process.execPath, [marmeon, 'dev'], { cwd: app, stdio: 'inherit', env: { ...process.env, PORT: process.env.PORT ?? '3970' } });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
   await new Promise<void>((resolve) => child.on('exit', (code) => resolve(void (process.exitCode = code ?? 1))));
 }
@@ -50,16 +50,16 @@ async function check(): Promise<number> {
     CACHE_DRIVER: 'memory',
     LOG_LEVEL: 'warn',
   };
-  delete env.NODE_ENV; // `bespoke build` and `bespoke start` set production themselves
+  delete env.NODE_ENV; // `marmeon build` and `marmeon start` set production themselves
 
-  console.log('docs:check: bespoke build');
-  const build = spawnSync(process.execPath, [bespoke, 'build'], { cwd: app, stdio: 'inherit', env });
-  if (build.status !== 0) return fail(`bespoke build exited with ${build.status}`);
+  console.log('docs:check: marmeon build');
+  const build = spawnSync(process.execPath, [marmeon, 'build'], { cwd: app, stdio: 'inherit', env });
+  if (build.status !== 0) return fail(`marmeon build exited with ${build.status}`);
 
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
-  console.log(`docs:check: bespoke start on ${base}`);
-  const server = spawn(process.execPath, [bespoke, 'start'], { cwd: app, stdio: ['ignore', 'inherit', 'inherit'], env: { ...env, HOST: '127.0.0.1', PORT: String(port), APP_URL: base } });
+  console.log(`docs:check: marmeon start on ${base}`);
+  const server = spawn(process.execPath, [marmeon, 'start'], { cwd: app, stdio: ['ignore', 'inherit', 'inherit'], env: { ...env, HOST: '127.0.0.1', PORT: String(port), APP_URL: base } });
   const failures: string[] = [];
   let checks = 0;
   try {
@@ -103,10 +103,10 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     return response;
   };
 
-  const home = await publicPage('/', '<h1>BespokeCore</h1>');
+  const home = await publicPage('/', '<h1>Marmeon</h1>');
   expect(/^public, max-age=\d+$/.test(home.headers.get('cache-control') ?? ''), `/: Cache-Control is "${home.headers.get('cache-control')}"`);
   const vary = (home.headers.get('vary') ?? '').toLowerCase();
-  for (const header of ['x-bespoke', 'x-bespoke-partial-data', 'purpose', 'x-bespoke-version']) expect(vary.includes(header), `/: Vary lacks ${header} ("${vary}")`);
+  for (const header of ['x-marmeon', 'x-marmeon-partial-data', 'purpose', 'x-marmeon-version']) expect(vary.includes(header), `/: Vary lacks ${header} ("${vary}")`);
   const etag = home.headers.get('etag');
   expect(etag !== null, '/: no ETag');
   if (etag) {
@@ -114,7 +114,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     expect(again.status === 304, `/ with If-None-Match: status ${again.status}, expected 304`);
   }
 
-  // Each page's heading is the package's npm name (`@bespokecore/core`; `create-bespoke-app` has no scope).
+  // Each page's heading is the package's npm name (`@marmeon/core`; `create-marmeon` has no scope).
   for (const name of PACKAGES) {
     const { name: npmName } = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8')) as { name: string };
     await publicPage(`/packages/${name}`, `${npmName}</h1>`);
@@ -128,7 +128,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   const search = async (q: string, page: string) => {
     const response = await publicPage(`/search?q=${encodeURIComponent(q)}`, `href="${page}`);
     // The same URL as a visit: the page object (JSON), not the document — Vary keeps them apart in a cache.
-    const visit = await get(`/search?q=${encodeURIComponent(q)}`, { 'x-bespoke': 'true', accept: 'text/html, application/json' });
+    const visit = await get(`/search?q=${encodeURIComponent(q)}`, { 'x-marmeon': 'true', accept: 'text/html, application/json' });
     expect(visit.response.headers.get('content-type')?.startsWith('application/json') === true, `/search as a visit: ${visit.response.headers.get('content-type')}`);
     expect(visit.body.includes(`"href":"${page}`), `/search?q=${q} as a visit: no result on ${page}`);
     return response;

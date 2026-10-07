@@ -1,7 +1,7 @@
-import { createApplication, defineModule } from '@bespokecore/core';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { defer, HttpServiceProvider, optional, view, type PageObject } from '@bespokecore/http';
-import { defineRoutes } from '@bespokecore/router';
+import { createApplication, defineModule } from '@marmeon/core';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { defer, HttpServiceProvider, optional, view, type PageObject } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -39,26 +39,26 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
   });
   const app = createHttpKernel(application);
 
-  const visit = (headers: Record<string, string> = {}) => app.request('/users/1', { headers: { 'x-bespoke': 'true', ...headers } });
+  const visit = (headers: Record<string, string> = {}) => app.request('/users/1', { headers: { 'x-marmeon': 'true', ...headers } });
   const json = async (response: Response) => (await response.json()) as PageObject;
 
   it('does not compute a prop the partial reload does not ask for', async () => {
     for (const key of Object.keys(computed)) delete computed[key];
-    const page = await json(await visit({ 'x-bespoke-partial-component': 'users/Show', 'x-bespoke-partial-data': 'stats' }));
+    const page = await json(await visit({ 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'stats' }));
     expect(page.props).toEqual({ stats: { links: 3 } });
     expect(computed).toEqual({ stats: 1 }); // not `expensive`, not `activity`
   });
 
   it('answers a partial reload for another component in full', async () => {
     for (const key of Object.keys(computed)) delete computed[key];
-    const page = await json(await visit({ 'x-bespoke-partial-component': 'users/Edit', 'x-bespoke-partial-data': 'stats' }));
+    const page = await json(await visit({ 'x-marmeon-partial-component': 'users/Edit', 'x-marmeon-partial-data': 'stats' }));
     expect(page.props).toEqual({ name: 'Ada', expensive: 42 });
     expect(page.deferredProps).toEqual({ default: ['activity'] });
     expect(computed).toEqual({ expensive: 1 });
   });
 
   it('ignores partial headers on a full page load (the document needs every prop)', async () => {
-    const response = await app.request('/users/1', { headers: { 'x-bespoke-partial-component': 'users/Show', 'x-bespoke-partial-data': 'stats' } });
+    const response = await app.request('/users/1', { headers: { 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'stats' } });
     const html = await response.text();
     expect(html).toContain('"expensive":42');
     expect(html).not.toContain('"stats"');
@@ -75,7 +75,7 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
     expect(firstTook).toBeLessThan(SLOW / 2);
 
     started = performance.now();
-    const deferred = await json(await visit({ 'x-bespoke-partial-component': 'users/Show', 'x-bespoke-partial-data': 'activity' }));
+    const deferred = await json(await visit({ 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'activity' }));
     expect(performance.now() - started).toBeGreaterThanOrEqual(SLOW - 5);
     expect(deferred.props).toEqual({ activity: ['signed in'] });
     expect(deferred.deferredProps).toBeUndefined();
@@ -83,6 +83,6 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
 
   it('varies page responses by the partial headers, so no cache answers one with the other', async () => {
     const vary = (await visit()).headers.get('vary')?.split(',').map((name) => name.trim());
-    expect(vary).toEqual(['x-bespoke', 'x-bespoke-region', 'x-bespoke-partial-component', 'x-bespoke-partial-data', 'x-bespoke-partial-except', 'purpose', 'x-bespoke-once', 'x-bespoke-once-scope']);
+    expect(vary).toEqual(['x-marmeon', 'x-marmeon-region', 'x-marmeon-partial-component', 'x-marmeon-partial-data', 'x-marmeon-partial-except', 'purpose', 'x-marmeon-once', 'x-marmeon-once-scope']);
   });
 });

@@ -1,5 +1,5 @@
-import type { Application } from '@bespokecore/core';
-import type { JobContext } from '@bespokecore/queue';
+import type { Application } from '@marmeon/core';
+import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import type { Attachment, MailMessage } from './message.ts';
 import { traceMail } from './trace.ts';
@@ -31,11 +31,11 @@ export type QueuedMailPayload = v.InferOutput<typeof SendQueuedMail.schema>;
  * keep only ciphertext of it (APP_KEY).
  *
  * Five attempts — 10 s, 1 min, 5 min apart (an SMTP server that is down for a while); then it waits in the failed jobs
- * for `bespoke queue:retry`. Delivery is at-least-once (E85): a worker that dies after the transport took the mail and
+ * for `marmeon queue:retry`. Delivery is at-least-once (E85): a worker that dies after the transport took the mail and
  * before the acknowledgement sends it again.
  */
 export class SendQueuedMail {
-  static readonly job = 'bespoke.mail';
+  static readonly job = 'marmeon.mail';
   static readonly schema = v.object({ mailable: v.string(), message });
   static readonly encrypted = true;
   static readonly tries = 5;

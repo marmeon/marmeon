@@ -1,11 +1,11 @@
-import { token, type Token } from '@bespokecore/core';
+import { token, type Token } from '@marmeon/core';
 import type { PasswordHash } from './hashing.ts';
 
 /**
  * The app's user type, declared once (E24) — like `SessionData` or `SharedProps`:
  *
  * ```ts
- * declare module '@bespokecore/auth' {
+ * declare module '@marmeon/auth' {
  *   interface AuthTypes { user: User }
  * }
  * ```
@@ -18,7 +18,7 @@ declare const missing: unique symbol;
 
 /** What `ctx.user` is until `AuthTypes` names the user type — every use of it says what to do. */
 export interface AuthTypesNotDeclared {
-  readonly [missing]: 'Declare the user type: declare module "@bespokecore/auth" { interface AuthTypes { user: User } }';
+  readonly [missing]: 'Declare the user type: declare module "@marmeon/auth" { interface AuthTypes { user: User } }';
 }
 
 /** The user type of `Types` — or {@link AuthTypesNotDeclared}. Users need an `id`. */

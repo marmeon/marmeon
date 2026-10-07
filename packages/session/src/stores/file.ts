@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { link, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, withFileGuard, type Clock } from '@bespokecore/core';
+import { SystemClock, withFileGuard, type Clock } from '@marmeon/core';
 import { SESSION_KEY, type SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Stored {

@@ -1,19 +1,19 @@
-import { DOCUMENT_HEADER, SESSION_PATH } from '@bespokecore/http';
-import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
-import { loadHistoryFallback, Navigator, tabSync, type NavigatorWindow } from '@bespokecore/http/client';
-import { createHttpKernel } from '@bespokecore/server';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { DOCUMENT_HEADER, SESSION_PATH } from '@marmeon/http';
+import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/page';
+import { loadHistoryFallback, Navigator, tabSync, type NavigatorWindow } from '@marmeon/http/client';
+import { createHttpKernel } from '@marmeon/server';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 
-// The tabs below are browsers without the Navigation API (History, popstate): the History fallback, as createBespokeApp attaches it (E184).
+// The tabs below are browsers without the Navigation API (History, popstate): the History fallback, as createMarmeonApp attaches it (E184).
 const HISTORY = await loadHistoryFallback();
 
 /**
- * Tab sync (W8 step 8, E148, E165) against the real app: the session's epoch on every page and at `/_bespoke/session`, flash
+ * Tab sync (W8 step 8, E148, E165) against the real app: the session's epoch on every page and at `/_marmeon/session`, flash
  * messages bound to the document that flashed them — and two tabs of one browser (one cookie jar, one set of channels), each
- * document running the real client navigator with the `tabSync` feature, as `createBespokeApp` attaches it.
+ * document running the real client navigator with the `tabSync` feature, as `createMarmeonApp` attaches it.
  */
 
 const ORIGIN = 'http://localhost';
@@ -27,13 +27,13 @@ beforeEach(async () => {
 const german = { 'accept-language': 'de-DE,de;q=0.9' };
 const referer = (path: string) => ({ referer: `${ORIGIN}${path}` });
 
-/** What `/_bespoke/session` says for a client (its cookie). */
+/** What `/_marmeon/session` says for a client (its cookie). */
 const epochFor = async (client: TestApp) => ((await client.get(SESSION_PATH).assertOk()).json() as { epoch: string }).epoch;
 
 /** Signs in with the form — a client with the session's cookie. */
 async function signIn(email = 'ada@example.com'): Promise<TestApp> {
   const login = await app.post('/login', { form: { email, password: 'password' }, headers: referer('/login') }).assertRedirect();
-  return app.withCookie('bespoke_session', login.cookie('bespoke_session')!);
+  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
 }
 
 describe('the session’s epoch (E165)', () => {
@@ -56,7 +56,7 @@ describe('the session’s epoch (E165)', () => {
     expect((await app.navigating().get('/login').assertOk()).page()!.epoch).toBe(guest);
     // A failed sign-in leaves a guest session behind (its errors): still a guest's epoch — the other tabs need not reload.
     const failed = await app.post('/login', { form: { email: 'ada@example.com', password: 'wrong' }, headers: referer('/login') }).assertRedirect('/login');
-    expect(await epochFor(app.withCookie('bespoke_session', failed.cookie('bespoke_session')!))).toBe(guest);
+    expect(await epochFor(app.withCookie('marmeon_session', failed.cookie('marmeon_session')!))).toBe(guest);
 
     const once = await signIn();
     const signedIn = await epochFor(once);
@@ -70,13 +70,13 @@ describe('the session’s epoch (E165)', () => {
     expect(await epochFor(twice)).not.toBe(again);
 
     const out = await once.post('/logout', { headers: referer('/dashboard') }).assertRedirect('/login');
-    expect(await epochFor(app.withCookie('bespoke_session', out.cookie('bespoke_session')!))).not.toBe(signedIn);
+    expect(await epochFor(app.withCookie('marmeon_session', out.cookie('marmeon_session')!))).not.toBe(signedIn);
 
     // A German guest has another epoch than an English one.
     expect(await epochFor(app.withHeaders(german))).not.toBe(guest);
   });
 
-  it('/_bespoke/session: no-store, read-only — a guest gets no session, a signed-in one is not written, a waiting message stays', async () => {
+  it('/_marmeon/session: no-store, read-only — a guest gets no session, a signed-in one is not written, a waiting message stays', async () => {
     const guest = await app.get(SESSION_PATH).assertOk();
     expect(guest.headers.get('cache-control')).toBe('no-store');
     expect(guest.headers.getSetCookie()).toEqual([]);
@@ -90,7 +90,7 @@ describe('the session’s epoch (E165)', () => {
   });
 });
 
-describe('/_bespoke/session is read-only', () => {
+describe('/_marmeon/session is read-only', () => {
   it('a remember-me cookie alone signs nobody in there (it would rotate the token and start a session) — the next page does', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' }, headers: referer('/login') }).assertRedirect();
@@ -370,7 +370,7 @@ describe('two tabs of one browser (W8 step 8)', () => {
     // The tabs said epochs to each other, nothing else.
     expect(browser.channels.posted.every((message) => JSON.stringify(Object.keys(message as object)) === '["v","epoch"]')).toBe(true);
     // Ada's data as it would appear — not "ada" alone, which a random 22-character epoch contains now and then.
-    expect(JSON.stringify(browser.channels.posted)).not.toMatch(/ada@example\.com|Ada Lovelace|bespoke_session|XSRF/);
+    expect(JSON.stringify(browser.channels.posted)).not.toMatch(/ada@example\.com|Ada Lovelace|marmeon_session|XSRF/);
   });
 
   it('switching the language in A: B loads again, in the new language', async () => {

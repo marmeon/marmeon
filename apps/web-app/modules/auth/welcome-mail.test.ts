@@ -1,8 +1,8 @@
-import { Registered } from '@bespokecore/auth';
-import { EventRegistry } from '@bespokecore/core';
-import { Connections, sql } from '@bespokecore/database';
-import { Queue, QueueConnections } from '@bespokecore/queue';
-import { createTestApp } from '@bespokecore/testing';
+import { Registered } from '@marmeon/auth';
+import { EventRegistry } from '@marmeon/core';
+import { Connections, sql } from '@marmeon/database';
+import { Queue, QueueConnections } from '@marmeon/queue';
+import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
@@ -34,7 +34,7 @@ describe('the welcome mail', () => {
     // nobody signs in with a registration (private registration, E146): no Login listener.
     expect(await app.queue.work()).toMatchObject({ processed: 3, failed: 0 });
     const [sent] = app.mail.sent(WelcomeMail);
-    expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei BespokeCore' });
+    expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei Marmeon' });
     expect(sent!.message.html).toContain('href="http://localhost/users/me"');
   });
 
@@ -59,7 +59,7 @@ describe('the welcome mail', () => {
 
     const result = await app.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
     expect(result).toMatchObject({ processed: 3, failed: 0 }); // + the member numbers, the verification listener on the `mail` queue
-    app.mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'Welcome to BespokeCore');
+    app.mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'Welcome to Marmeon');
     await app.assertDatabaseCount('jobs', 0);
   });
 

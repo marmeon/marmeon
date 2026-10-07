@@ -1,4 +1,4 @@
-import { CSP_NONCE_PLACEHOLDER, defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@bespokecore/core';
+import { CSP_NONCE_PLACEHOLDER, defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@marmeon/core';
 import { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
 import { DevtoolsConfig, DevtoolsConfigError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
 import { FileStore } from './file-store.ts';
@@ -7,7 +7,7 @@ import { DevtoolsStore, MemoryStore } from './store.ts';
 import { DevtoolsTestOptIn } from './testing.ts';
 
 /** Where the Vite dev server serves the in-page bar's client (W7 step 9) — never part of a build (E115). */
-export const BAR_SCRIPT = '/@id/@bespokecore/devtools/client';
+export const BAR_SCRIPT = '/@id/@marmeon/devtools/client';
 
 /**
  * The in-page bar (W7 step 9, E117) in every development document's head: the document's request id (E131 — the bar asks the
@@ -16,7 +16,7 @@ export const BAR_SCRIPT = '/@id/@bespokecore/devtools/client';
  * nonce placeholder: under the app's `contentSecurityPolicy()` the renderer puts the response's nonce there (E147).
  */
 export function barMarkup({ requestId }: { readonly requestId: string | undefined }): string {
-  return `<meta name="bespoke-devtools" content="${escapeHtml(requestId ?? '')}" data-bespoke-devtools>\n<script type="module" src="${BAR_SCRIPT}" nonce="${CSP_NONCE_PLACEHOLDER}" data-bespoke-devtools></script>`;
+  return `<meta name="marmeon-devtools" content="${escapeHtml(requestId ?? '')}" data-marmeon-devtools>\n<script type="module" src="${BAR_SCRIPT}" nonce="${CSP_NONCE_PLACEHOLDER}" data-marmeon-devtools></script>`;
 }
 
 /** The settings the recorder runs with — bound only where it runs. */
@@ -24,22 +24,22 @@ export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings
 
 /**
  * The devtools (E115, fail closed): with `NODE_ENV=development` — and only then — it loads `config/devtools.ts`, opens the
- * store (`storage/framework/devtools/`, shared with the worker and the scheduler `bespoke dev` starts, E101) and starts the
+ * store (`storage/framework/devtools/`, shared with the worker and the scheduler `marmeon dev` starts, E101) and starts the
  * {@link Recorder}. Anywhere else nothing is subscribed, nothing written, `config/devtools.ts` never loaded;
  * `DEVTOOLS_ENABLED=true` with `NODE_ENV=production` fails the start. Tests opt in with `createTestApp(App, { devtools: true })`.
- * The commands `devtools:clear` and `devtools:prune` exist everywhere (they only remove files). Found by `bespoke discover` —
+ * The commands `devtools:clear` and `devtools:prune` exist everywhere (they only remove files). Found by `marmeon discover` —
  * install it as a dev dependency, so production installs do not even have it.
  */
 export class DevtoolsServiceProvider implements ServiceProvider {
   static config = [DevtoolsConfig];
-  /** On the error page and when `bespoke` cannot start the app (E130). */
+  /** On the error page and when `marmeon` cannot start the app (E130). */
   static solutions = defineSolutions([
     {
       for: DevtoolsConfigError,
       when: (e) => e.message.startsWith('DEVTOOLS_ENABLED=true with') || e.message.startsWith('The devtools were opted in'),
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
-        text: 'The devtools run with NODE_ENV=development only (E115) — nothing can turn them on in production, staging or without NODE_ENV (E139). Remove DEVTOOLS_ENABLED from the environment, and install @bespokecore/devtools as a dev dependency (pnpm add -D @bespokecore/devtools): a production install then does not even have it.',
+        text: 'The devtools run with NODE_ENV=development only (E115) — nothing can turn them on in production, staging or without NODE_ENV (E139). Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -D @marmeon/devtools): a production install then does not even have it.',
         docs: 'packages/devtools/README.md#only-in-development-e115-fail-closed',
       }),
     },
@@ -57,7 +57,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
   #recorder: Recorder | undefined;
 
   async boot(app: Application): Promise<void> {
-    const cli = await import('@bespokecore/cli').catch(() => undefined);
+    const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([DevtoolsClearCommand, DevtoolsPruneCommand]);
 
     const config = app.container.make(DevtoolsConfig);
@@ -91,7 +91,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     }).start();
     app.container.instance(Recorder, this.#recorder);
 
-    // The pages under /_bespoke/devtools (W7 step 8): registered only here — in production the routes do not exist (E115).
+    // The pages under /_marmeon/devtools (W7 step 8): registered only here — in production the routes do not exist (E115).
     const { registerDevtoolsPages } = await import('./pages/index.ts');
     await registerDevtoolsPages({
       app,
@@ -100,9 +100,9 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       hosts: config.hosts,
       ...(store instanceof FileStore ? { maxBytes: options.storage.maxBytes } : {}),
     });
-    // The in-page bar in every document `bespoke dev` renders (W7 step 9): HTML the dev renderer adds to the document's head —
-    // its client comes from the Vite dev server, never from a client chunk. Bound by @bespokecore/server only with NODE_ENV=development.
-    const server = await import('@bespokecore/server').catch(() => undefined);
+    // The in-page bar in every document `marmeon dev` renders (W7 step 9): HTML the dev renderer adds to the document's head —
+    // its client comes from the Vite dev server, never from a client chunk. Bound by @marmeon/server only with NODE_ENV=development.
+    const server = await import('@marmeon/server').catch(() => undefined);
     if (server && app.container.has(server.DevDocument)) app.container.make(server.DevDocument).add(barMarkup, { at: 'head' });
   }
 

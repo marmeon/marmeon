@@ -1,4 +1,4 @@
-import type { Database } from '@bespokecore/database';
+import type { Database } from '@marmeon/database';
 import { expectTypeOf, it } from 'vitest';
 
 // Checked by the compiler against the generated `bootstrap/database.d.ts` (the body only runs trivially).

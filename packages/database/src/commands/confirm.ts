@@ -1,5 +1,5 @@
-import type { CommandInput } from '@bespokecore/cli';
-import { environment } from '@bespokecore/core';
+import type { CommandInput } from 'marmeon';
+import { environment } from '@marmeon/core';
 
 /**
  * Destructive commands ask for `--force` wherever the app is protected (E139, E164): every `NODE_ENV` but `development` and

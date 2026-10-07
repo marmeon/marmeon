@@ -1,8 +1,8 @@
-import { SystemClock } from '@bespokecore/core';
-import type { EncryptionConfig } from '@bespokecore/encryption';
-import { generateKey } from '@bespokecore/encryption';
-import { defineRoutes, UrlSigner } from '@bespokecore/http';
-import { Router } from '@bespokecore/router';
+import { SystemClock } from '@marmeon/core';
+import type { EncryptionConfig } from '@marmeon/encryption';
+import { generateKey } from '@marmeon/encryption';
+import { defineRoutes, UrlSigner } from '@marmeon/http';
+import { Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { authenticate, EmailVerification, emailHash, verified } from './index.ts';
 

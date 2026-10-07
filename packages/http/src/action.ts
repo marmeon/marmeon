@@ -1,9 +1,9 @@
 /**
- * Types of actions (E59) — non-navigating requests by route name (`useAction` of @bespokecore/react): what an action sends
+ * Types of actions (E59) — non-navigating requests by route name (`useAction` of @marmeon/react): what an action sends
  * (its controller's request schema) and what it gets back (its controller's answer). Types only: erased, so the browser
  * bundle stays free of server code.
  */
-import type { BrowserRouteName, CheckBrowserRouteName, ControllerOf, FormOf, IslandRouteName, MethodOf, ParamsOf, QueryParams, Routes } from '@bespokecore/router';
+import type { BrowserRouteName, CheckBrowserRouteName, ControllerOf, FormOf, IslandRouteName, MethodOf, ParamsOf, QueryParams, Routes } from '@marmeon/router';
 import type { JsonResult } from './json.ts';
 import type { RedirectResult } from './redirect.ts';
 import type { Serialize, ViewResult } from './view.ts';

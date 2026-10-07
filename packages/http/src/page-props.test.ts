@@ -43,7 +43,7 @@ describe('partialReloadOf', () => {
     expect(partialReloadOf(partial('users/Show', undefined, 'links'), 'users/Show')).toEqual({ only: undefined, except: ['links'] });
   });
 
-  it('ignores partial headers for another component, without x-bespoke, and without only/except', () => {
+  it('ignores partial headers for another component, without x-marmeon, and without only/except', () => {
     expect(partialReloadOf(partial('users/Edit', 'stats'), 'users/Show')).toBeUndefined();
     expect(partialReloadOf(request({ [PARTIAL_COMPONENT_HEADER]: 'users/Show', [PARTIAL_DATA_HEADER]: 'stats' }), 'users/Show')).toBeUndefined();
     expect(partialReloadOf(partial('users/Show'), 'users/Show')).toBeUndefined();

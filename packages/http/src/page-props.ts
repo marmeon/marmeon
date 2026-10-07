@@ -9,7 +9,7 @@ export interface PartialReload {
 }
 
 /**
- * The partial reload a request asks for — only for a client-side visit (`x-bespoke`) whose partial component is
+ * The partial reload a request asks for — only for a client-side visit (`x-marmeon`) whose partial component is
  * the one being rendered. Anything else (a full page load, a visit that ends on another page) gets every prop.
  */
 export function partialReloadOf(request: Request, component: string): PartialReload | undefined {

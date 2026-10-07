@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Gate, PolicyClass } from '@bespokecore/auth';
-import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@bespokecore/database';
-import { isJsonResult, isRedirectResult, json, RedirectResult, type JsonResult } from '@bespokecore/http';
-import { expectsJson, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@bespokecore/router';
+import type { Gate, PolicyClass } from '@marmeon/auth';
+import { cursorPaginate, outsideTransaction, paginate, sql, type CursorEncrypter } from '@marmeon/database';
+import { isJsonResult, isRedirectResult, json, RedirectResult, type JsonResult } from '@marmeon/http';
+import { expectsJson, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
 import type { Kysely, SelectQueryBuilder } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
@@ -402,7 +402,7 @@ export class Tables {
 // --- helpers --------------------------------------------------------------------------------------------------------------
 
 function forbidden(): HttpError {
-  return new HttpError(403, 'This action is unauthorized.', {}, { key: 'bespoke.errors.unauthorized' });
+  return new HttpError(403, 'This action is unauthorized.', {}, { key: 'marmeon.errors.unauthorized' });
 }
 
 /** The name the key has in a row: `users.id` → `id`. */
@@ -516,14 +516,14 @@ async function parseBody<S extends v.GenericSchema>(schema: S, ctx: HttpContext)
 }
 
 /**
- * The handler's own answer (data, a redirect, a response) — or the counts: as JSON for an action (`x-bespoke-action`, what `useAction`
+ * The handler's own answer (data, a redirect, a response) — or the counts: as JSON for an action (`x-marmeon-action`, what `useAction`
  * and `useTable` send) and an API client; for a form posted without JavaScript or a page visit, back to the page (303) — it shows the
  * table as it is now.
  */
 function answer(ctx: HttpContext, result: unknown, counts: Omit<TableActionResult, 'data'>): unknown {
   if (result instanceof Response || isRedirectResult(result) || isJsonResult(result)) return result;
   const headers = ctx.request.headers;
-  const wantsJson = headers.get('x-bespoke-action') !== null || (expectsJson(ctx.request) && headers.get('x-bespoke') === null);
+  const wantsJson = headers.get('x-marmeon-action') !== null || (expectsJson(ctx.request) && headers.get('x-marmeon') === null);
   if (!wantsJson) return new RedirectResult().back('/');
   const payload: TableActionResult = result === undefined ? counts : { ...counts, data: result };
   // About this user's rows: never cached, also when it is no action request (an API client, a test).

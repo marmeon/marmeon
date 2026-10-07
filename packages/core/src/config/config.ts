@@ -42,7 +42,7 @@ export class ConfigError extends Error {
  * `.env.testing`); variables from the real environment win over both.
  * Parsed with `util.parseEnv`, so `process.env` itself is never modified.
  *
- * `NODE_ENV` follows the one resolution of `@bespokecore/core/environment` (E170): the real environment's, else the base
+ * `NODE_ENV` follows the one resolution of `@marmeon/core/environment` (E170): the real environment's, else the base
  * `.env`'s — which is also what picks `.env.{mode}` when `mode` is not given. `.env.{mode}` never sets `NODE_ENV`.
  */
 export function loadEnv(root: string, mode?: string, environment: Env = process.env): Env {

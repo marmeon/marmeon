@@ -7,17 +7,17 @@
  * `startTransition`, so nothing a transition changes (Suspense, the order of a placeholder and its page, the scroll, the guard, the
  * render's promise) changes. With it, the render's promise still resolves only once the page is committed.
  */
-import { loadHistoryFallback, loadInstant, type Navigator } from '@bespokecore/http/client';
-import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@bespokecore/http/page';
+import { loadHistoryFallback, loadInstant, type Navigator } from '@marmeon/http/client';
+import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/page';
 import { Suspense, use, ViewTransition, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, useRouterContext, type BespokeAppProps } from './app.tsx';
+import { MarmeonApp, useRouterContext, type MarmeonAppProps } from './app.tsx';
 import { Deferred } from './deferred.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useBlocker } from './state.ts';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 // Not in act(): React starts no view transition inside an act scope — these tests wait for real tasks instead.
@@ -139,10 +139,10 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function mount(initial: PageObject, props: Partial<BespokeAppProps> = {}) {
+async function mount(initial: PageObject, props: Partial<MarmeonAppProps> = {}) {
   const Component = await resolve(initial.component);
   root = createRoot(container);
-  root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} {...props} />);
+  root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} {...props} />);
   await settle();
 }
 

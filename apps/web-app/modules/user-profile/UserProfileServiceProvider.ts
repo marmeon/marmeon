@@ -1,4 +1,4 @@
-import type { Container, ServiceProvider } from '@bespokecore/core';
+import type { Container, ServiceProvider } from '@marmeon/core';
 import { LoginActivityRepository } from './LoginActivityRepository.ts';
 import { MemberStats } from './MemberStats.ts';
 import { ProfileLinkRepository } from './ProfileLinkRepository.ts';

@@ -1,6 +1,6 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
-import { LOCATION_HEADER } from '@bespokecore/http';
-import { createTestApp, type TestApp } from '@bespokecore/testing';
+import { LOCATION_HEADER } from '@marmeon/http';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { LoginController } from '../auth/controllers/LoginController.ts';
@@ -78,7 +78,7 @@ describe('the language switcher (POST /locale)', () => {
     const switched = await app.post('/locale', { form: { locale: 'de' }, headers: referer('/login') }).assertRedirect('/login').assertSessionHas('locale', 'de');
     // A full page load from here on, with the browser's HTTP cache cleared: no page in the old language comes back.
     expect(switched.headers.get('clear-site-data')).toBe('"cache"');
-    const session = app.withCookie('bespoke_session', switched.cookie('bespoke_session')!);
+    const session = app.withCookie('marmeon_session', switched.cookie('marmeon_session')!);
     const login = await session.navigating().get('/login', { headers: { 'accept-language': 'en' } });
     expect(login.page()!.locale).toBe('de');
     login.assertFlash('toast', { message: 'Sprache geändert.' });
@@ -105,9 +105,9 @@ describe('the language switcher (POST /locale)', () => {
     // Another device: no session choice, an English browser — the account's language.
     expect((await app.actingAs(ada).navigating().get(`/users/${ada.id}`, { headers: { 'accept-language': 'en' } })).page()!.locale).toBe('de');
 
-    const session = app.withCookie('bespoke_session', switched.cookie('bespoke_session')!);
+    const session = app.withCookie('marmeon_session', switched.cookie('marmeon_session')!);
     const out = await session.post('/logout').assertRedirect('/login').assertGuest().assertSessionHas('locale', 'de');
-    (await app.withCookie('bespoke_session', out.cookie('bespoke_session')!).navigating().get('/login')).assertFlash('toast', { message: 'Du wurdest abgemeldet.' });
+    (await app.withCookie('marmeon_session', out.cookie('marmeon_session')!).navigating().get('/login')).assertFlash('toast', { message: 'Du wurdest abgemeldet.' });
   });
 });
 

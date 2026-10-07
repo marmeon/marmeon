@@ -1,4 +1,4 @@
-import { Application, Container } from '@bespokecore/core';
+import { Application, Container } from '@marmeon/core';
 import type { Kysely } from 'kysely';
 import { Connections } from './connections.ts';
 import { Factories, type FactoryDefinition, type PendingFactory } from './factories.ts';
@@ -20,9 +20,9 @@ export interface Seeder {
 }
 export type SeederClass = new (...args: any[]) => Seeder;
 
-declare module '@bespokecore/core' {
+declare module '@marmeon/core' {
   interface ModuleDefinition {
-    /** Seeders of the module, run in this order by `bespoke db:seed`. */
+    /** Seeders of the module, run in this order by `marmeon db:seed`. */
     readonly seeders?: readonly SeederClass[];
   }
 }

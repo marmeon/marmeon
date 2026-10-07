@@ -12,13 +12,13 @@ import {
   type ViewTransitionOption,
   type VisitMethod,
   type VisitOptions,
-} from '@bespokecore/http/client';
-import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@bespokecore/http/page';
+} from '@marmeon/http/client';
+import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { loadLayers, usePage, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 
-export type { PrefetchTrigger } from '@bespokecore/http/client';
+export type { PrefetchTrigger } from '@marmeon/http/client';
 
 interface LinkOptions {
   replace?: boolean;

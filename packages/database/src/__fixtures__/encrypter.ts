@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { CursorEncrypter } from '../pagination.ts';
 
-/** AES-256-GCM with a key of its own and the context as additional data — the shape of `@bespokecore/encryption`'s `Encrypter`, for tests. */
+/** AES-256-GCM with a key of its own and the context as additional data — the shape of `@marmeon/encryption`'s `Encrypter`, for tests. */
 export function testEncrypter(key: Uint8Array = randomBytes(32)): CursorEncrypter {
   return {
     async encrypt(plaintext, context = '') {

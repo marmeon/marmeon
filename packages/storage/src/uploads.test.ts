@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TestClock } from '@bespokecore/core';
+import { TestClock } from '@marmeon/core';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ensureBucket, S3_ENDPOINT, s3Options } from './__fixtures__/disks.ts';

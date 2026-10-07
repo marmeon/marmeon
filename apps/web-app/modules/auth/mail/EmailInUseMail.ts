@@ -1,5 +1,5 @@
-import type { Translator } from '@bespokecore/i18n';
-import { mjml, type Mailable, type MailPreviewContext } from '@bespokecore/mail';
+import type { Translator } from '@marmeon/i18n';
+import { mjml, type Mailable, type MailPreviewContext } from '@marmeon/mail';
 import type { User } from '../users.ts';
 import { layout } from './layout.ts';
 import { previewData } from './preview-data.ts';
@@ -17,7 +17,7 @@ export class EmailInUseMail implements Mailable {
     this.#t = t;
   }
 
-  /** The preview (`/_bespoke/mail/auth/EmailInUseMail`, development only). */
+  /** The preview (`/_marmeon/mail/auth/EmailInUseMail`, development only). */
   static preview(context: MailPreviewContext): EmailInUseMail {
     const { user, t } = previewData(context);
     return new EmailInUseMail(user, t);

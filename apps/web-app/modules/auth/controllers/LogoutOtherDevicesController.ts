@@ -1,7 +1,7 @@
-import { Auth, type Authenticated } from '@bespokecore/auth';
-import { RateLimiter } from '@bespokecore/cache';
-import { Controller, defineRequest, type ContextOf, type HttpContext } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
+import { Auth, type Authenticated } from '@marmeon/auth';
+import { RateLimiter } from '@marmeon/cache';
+import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
+import { trans, Translator } from '@marmeon/i18n';
 import * as v from 'valibot';
 import { throttlePasswordChecks } from '../throttle.ts';
 

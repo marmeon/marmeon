@@ -3,8 +3,8 @@
  * `tsc` (`pnpm typecheck`), never run. Each `@ts-expect-error` is a mistake an app developer makes; the comment
  * above it is the message they get (read with the directive removed).
  */
-import { Controller, defer, optional, type PageProps } from '@bespokecore/http';
-import { Deferred, Link, useRouter } from '@bespokecore/react';
+import { Controller, defer, optional, type PageProps } from '@marmeon/http';
+import { Deferred, Link, useRouter } from '@marmeon/react';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 
 type Props = PageProps<ShowUserProfileController>;

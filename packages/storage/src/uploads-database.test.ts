@@ -1,13 +1,13 @@
-import { ConsoleLogger, createApplication, type Application } from '@bespokecore/core';
-import { Connections, DatabaseServiceProvider, sql } from '@bespokecore/database';
-import { EncryptionServiceProvider, generateKey } from '@bespokecore/encryption';
-import { HttpServiceProvider } from '@bespokecore/http';
+import { ConsoleLogger, createApplication, type Application } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
+import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { HttpServiceProvider } from '@marmeon/http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { StorageServiceProvider, TemporaryUploads, UPLOADS_TABLE } from './index.ts';
 
-/** Postgres runs when `BESPOKE_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
-const PGSQL_URL = process.env.BESPOKE_TEST_PGSQL_URL;
+/** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
+const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const silent = Object.assign(new ConsoleLogger(), { debug() {}, info() {}, warn() {}, error() {} });
 
 class Rollback extends Error {}
@@ -18,7 +18,7 @@ class Rollback extends Error {}
  * a second `store()` of the same upload possible. (Not isolated like a test app's database: a real pool, a real transaction.)
  */
 describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s transactions (E108)', () => {
-  const name = `bespoke_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   let app: Application;
 

@@ -1,4 +1,4 @@
-import { Controller } from '@bespokecore/http';
+import { Controller } from '@marmeon/http';
 
 export class ShowForgotPasswordController extends Controller {
   handle() {

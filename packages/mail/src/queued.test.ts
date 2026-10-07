@@ -1,8 +1,8 @@
 import { join } from 'node:path';
-import { Clock, createApplication, Logger, TestClock, type Application, type LogContext } from '@bespokecore/core';
-import { EncryptionServiceProvider } from '@bespokecore/encryption';
-import { Queue, QueueFake, QueueServiceProvider } from '@bespokecore/queue';
-import { Router } from '@bespokecore/router';
+import { Clock, createApplication, Logger, TestClock, type Application, type LogContext } from '@marmeon/core';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
+import { Queue, QueueFake, QueueServiceProvider } from '@marmeon/queue';
+import { Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import {
   ArrayTransport,
@@ -67,7 +67,7 @@ async function app(env: Record<string, string> = {}, transport: MailTransport = 
 }
 
 describe('mailer.queue() (E105)', () => {
-  it('composes now, queues an encrypted bespoke.mail job, and a worker hands the message to the transport', async () => {
+  it('composes now, queues an encrypted marmeon.mail job, and a worker hands the message to the transport', async () => {
     const transport = new FlakyTransport();
     transport.down = false;
     const application = await app({}, transport);
@@ -80,7 +80,7 @@ describe('mailer.queue() (E105)', () => {
     const [dispatched] = queue.dispatched(SendQueuedMail);
     expect(dispatched).toMatchObject({ queue: 'mail', delay: 30, payload: { mailable: 'ResetMail' } });
     const stored = queue.pending().map((entry) => entry.payload).join('\n');
-    expect(stored).toContain('"job":"bespoke.mail"');
+    expect(stored).toContain('"job":"marmeon.mail"');
     expect(stored).not.toContain('plain-reset-token-123'); // E105: no plaintext link in the queue
     expect(stored).not.toContain('ada@example.com');
 
@@ -112,15 +112,15 @@ describe('mailer.queue() (E105)', () => {
     expect(transport.sent).toEqual([]);
     expect(queue.pending()).toEqual([]);
     const [failed] = await queue.failed();
-    expect(failed).toMatchObject({ job: 'bespoke.mail', queue: 'default' });
+    expect(failed).toMatchObject({ job: 'marmeon.mail', queue: 'default' });
     expect(failed!.exception).toContain('ECONNREFUSED');
     expect(failed!.payload).not.toContain('ada@example.com'); // still encrypted in the failed jobs
   });
 
-  it('needs @bespokecore/queue — the error says what to do', async () => {
+  it('needs @marmeon/queue — the error says what to do', async () => {
     const mailer = new TransportMailer(new ArrayTransport(), 'team@app.test');
     await expect(mailer.queue(new ResetMail('https://app.test/x'))).rejects.toThrow(
-      'mailer.queue() needs @bespokecore/queue (pnpm add @bespokecore/queue; bespoke discover) — or send the mail now: mailer.send().',
+      'mailer.queue() needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or send the mail now: mailer.send().',
     );
   });
 
@@ -164,10 +164,10 @@ describe('MailServiceProvider', () => {
     expect(children).toEqual([{ channel: 'mail' }]);
   });
 
-  it('registers bespoke.mail as a framework job when the app has the queue', async () => {
+  it('registers marmeon.mail as a framework job when the app has the queue', async () => {
     const application = await app();
-    const { JobRegistry } = await import('@bespokecore/queue');
-    expect(application.container.make(JobRegistry).get('bespoke.mail')).toBe(SendQueuedMail);
+    const { JobRegistry } = await import('@marmeon/queue');
+    expect(application.container.make(JobRegistry).get('marmeon.mail')).toBe(SendQueuedMail);
   });
 });
 
@@ -212,16 +212,16 @@ describe('calendarEvent() (.ics)', () => {
 
 describe('mail previews (E106)', () => {
   const root = join(import.meta.dirname, '__fixtures__', 'preview-app');
-  const previewApp = (environment = 'development', override: (c: import('@bespokecore/core').Container) => void = () => {}) =>
+  const previewApp = (environment = 'development', override: (c: import('@marmeon/core').Container) => void = () => {}) =>
     createApplication({ root, discover: false, env: environment ? { NODE_ENV: environment } : {}, providers: [MailServiceProvider], override: (c) => (c.instance(Router, new Router()), override(c)) });
 
   it('lists the mails with static preview() and shows one — header, the HTML in a sandboxed frame, ?text, ?raw, ?locale', async () => {
     const application = await previewApp();
     const previews = application.container.make(MailPreviews);
     expect([...(await previews.all()).keys()]).toEqual(['shop/OrderShippedMail']);
-    expect(await (await previews.index()).text()).toContain('<a href="/_bespoke/mail/shop/OrderShippedMail">shop/OrderShippedMail</a>');
+    expect(await (await previews.index()).text()).toContain('<a href="/_marmeon/mail/shop/OrderShippedMail">shop/OrderShippedMail</a>');
 
-    const page = await previews.show('shop/OrderShippedMail', new URL('http://localhost/_bespoke/mail/shop/OrderShippedMail?locale=de'));
+    const page = await previews.show('shop/OrderShippedMail', new URL('http://localhost/_marmeon/mail/shop/OrderShippedMail?locale=de'));
     expect(page.headers.get('cache-control')).toBe('no-store');
     // Its own policy (E147): no script at all — an app's contentSecurityPolicy() leaves it alone; the srcdoc frame inherits it.
     expect(page.headers.get('content-security-policy')).toMatch(/^default-src 'none'; style-src 'unsafe-inline'; .*frame-ancestors 'self'$/);
@@ -239,13 +239,13 @@ describe('mail previews (E106)', () => {
     expect((await previews.show('shop/InternalMail', new URL('http://localhost/x'))).status).toBe(404);
 
     const paths = application.container.make(Router).routes.map((route) => route.path);
-    expect(paths).toEqual(expect.arrayContaining(['/_bespoke/mail', '/_bespoke/mail/:module/:mail']));
+    expect(paths).toEqual(expect.arrayContaining(['/_marmeon/mail', '/_marmeon/mail/:module/:mail']));
   });
 
   // E115 (W7 step 8): development only — not "anything but production" (a test, staging or a server without NODE_ENV).
   it.each([['production'], ['test'], ['staging'], ['']])('is not registered with NODE_ENV=%j (empty: unset)', async (environment) => {
     const application = await previewApp(environment);
-    expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_bespoke/mail');
+    expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_marmeon/mail');
     expect(application.container.has(MailPreviews)).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
-import { authenticate, verified } from '@bespokecore/auth';
-import { throttle } from '@bespokecore/cache';
-import { defineRoutes } from '@bespokecore/http';
-import { tableRoutes } from '@bespokecore/table';
+import { authenticate, verified } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { defineRoutes } from '@marmeon/http';
+import { tableRoutes } from '@marmeon/table';
 import { ListMembersController } from './controllers/ListMembersController.ts';
 import { MembersTable } from './tables/MembersTable.ts';
 

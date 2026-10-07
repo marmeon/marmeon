@@ -1,5 +1,5 @@
-import type { Authenticated } from '@bespokecore/auth';
-import { Controller, type HttpContext } from '@bespokecore/http';
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
 import { ProfileActivity } from '#modules/user-profile';
 
 /**

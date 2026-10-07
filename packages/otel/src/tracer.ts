@@ -1,5 +1,5 @@
-import type { Application, LogContextSources, Redactor } from '@bespokecore/core';
-import { channels, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type QueueDispatchMessage, type QueueJobMessage, type TracingName } from '@bespokecore/core/diagnostics';
+import type { Application, LogContextSources, Redactor } from '@marmeon/core';
+import { channels, type ChannelMessage, type DbQueryMessage, type HttpRequestMessage, type QueueDispatchMessage, type QueueJobMessage, type TracingName } from '@marmeon/core/diagnostics';
 import type { Attributes, Context, Span, SpanKind, SpanOptions } from '@opentelemetry/api';
 import type { OtelApi } from './api.ts';
 
@@ -11,7 +11,7 @@ export interface InstrumentOptions {
   readonly logContext?: LogContextSources;
   /** Request headers recorded as `http.request.header.<name>` (lower case), their values redacted. */
   readonly requestHeaders?: readonly string[];
-  /** The tracer's name (default `@bespokecore/otel`). */
+  /** The tracer's name (default `@marmeon/otel`). */
   readonly tracerName?: string;
 }
 
@@ -20,7 +20,7 @@ const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
 const OPERATION = /^\s*\(?\s*(select|insert|update|delete|with|create|drop|alter|truncate|begin|commit|rollback|savepoint|release|pragma|explain)\b/i;
 const TARGET = /\b(?:from|into|update|table(?: if (?:not )?exists)?)\s+(?:"([^"]+)"|`([^`]+)`|([\w.]+))/gi;
 const DB_SYSTEMS: Readonly<Record<string, string>> = { sqlite: 'sqlite', pgsql: 'postgresql' };
-const MESSAGING_SYSTEM = 'bespokecore';
+const MESSAGING_SYSTEM = 'marmeon';
 
 /** The W3C `traceparent` of a span's context (`00-<trace id>-<span id>-<flags>`). */
 export function traceparentOf(span: Span): string {
@@ -36,7 +36,7 @@ export function traceparentOf(span: Span): string {
  */
 export function instrument(app: Application, api: OtelApi, options: InstrumentOptions): () => void {
   const { redactor } = options;
-  const tracer = api.trace.getTracer(options.tracerName ?? '@bespokecore/otel');
+  const tracer = api.trace.getTracer(options.tracerName ?? '@marmeon/otel');
   const requestHeaders = (options.requestHeaders ?? []).map((name) => name.toLowerCase()).filter(Boolean);
   /** The span of each operation in flight — set in `start`, used by the operation's wrapper and its `end`. */
   const spans = new WeakMap<object, Span>();
@@ -91,8 +91,8 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
           'server.address': url?.hostname,
           'server.port': url?.port ? Number(url.port) : undefined,
           'user_agent.original': nonEmpty(request.headers.get('user-agent'), (value) => redactor.text(value)),
-          'bespoke.request.id': request.requestId,
-          'bespoke.region': request.region,
+          'marmeon.request.id': request.requestId,
+          'marmeon.region': request.region,
           ...capturedHeaders(request, requestHeaders, redactor),
         }, parent);
       },
@@ -107,8 +107,8 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             'http.response.status_code': status,
             'url.path': redactedPath(request.path, request.routePath, redactor),
             'url.query': url && url.search.length > 1 ? redactor.text(url.search.slice(1)) : undefined,
-            'bespoke.route.name': request.route,
-            'bespoke.controller': request.controller,
+            'marmeon.route.name': request.route,
+            'marmeon.controller': request.controller,
           }),
         );
         // A server's 4xx is the client's mistake: the span stays unset (semantic conventions). Only a 5xx is an error.
@@ -155,7 +155,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
               'db.query.text': redactor.text(query.sql),
               'db.operation.name': operation,
               'db.collection.name': table,
-              'bespoke.db.connection': query.connection,
+              'marmeon.db.connection': query.connection,
             }),
           },
           parent,
@@ -176,9 +176,9 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
           'messaging.operation.name': dispatch.kind,
           'messaging.destination.name': dispatch.queue,
           'messaging.batch.message_count': dispatch.jobs.length > 1 ? dispatch.jobs.length : undefined,
-          'bespoke.queue.connection': dispatch.connection,
-          'bespoke.queue.jobs': [...dispatch.jobs],
-          'bespoke.queue.delay': dispatch.delay > 0 ? dispatch.delay : undefined,
+          'marmeon.queue.connection': dispatch.connection,
+          'marmeon.queue.jobs': [...dispatch.jobs],
+          'marmeon.queue.delay': dispatch.delay > 0 ? dispatch.delay : undefined,
         });
         if (api.isSpanContextValid(span.spanContext())) dispatch.traceparent = traceparentOf(span);
       },
@@ -203,16 +203,16 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
             'messaging.operation.type': 'process',
             'messaging.destination.name': job.queue,
             'messaging.message.id': job.jobId,
-            'bespoke.job': job.job,
-            'bespoke.job.attempt': job.attempt,
-            'bespoke.queue.connection': job.connection,
-            'bespoke.request.origin_id': job.originRequestId,
+            'marmeon.job': job.job,
+            'marmeon.job.attempt': job.attempt,
+            'marmeon.queue.connection': job.connection,
+            'marmeon.request.origin_id': job.originRequestId,
           },
           dispatched ?? api.context.active(),
         );
       },
       end: ender<QueueJobMessage>((span, job) => {
-        if (job.outcome !== undefined) span.setAttribute('bespoke.job.outcome', job.outcome);
+        if (job.outcome !== undefined) span.setAttribute('marmeon.job.outcome', job.outcome);
         if (job.outcome === 'failed' && job.error === undefined) span.setStatus({ code: api.SpanStatusCode.ERROR });
       }),
     }),
@@ -241,9 +241,9 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
   simple(
     'schedule.task',
     api.SpanKind.INTERNAL,
-    (task) => ({ name: `schedule ${task.task}`, attributes: { 'bespoke.schedule.task': task.task, 'bespoke.schedule.reason': task.reason } }),
+    (task) => ({ name: `schedule ${task.task}`, attributes: { 'marmeon.schedule.task': task.task, 'marmeon.schedule.reason': task.reason } }),
     (span, task) => {
-      span.setAttributes(clean({ 'bespoke.schedule.outcome': task.outcome, 'bespoke.schedule.skipped': task.skipped }));
+      span.setAttributes(clean({ 'marmeon.schedule.outcome': task.outcome, 'marmeon.schedule.skipped': task.skipped }));
       if (task.outcome === 'failed' && task.error === undefined) span.setStatus({ code: api.SpanStatusCode.ERROR });
     },
   );
@@ -251,9 +251,9 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
   simple(
     'mail.send',
     api.SpanKind.CLIENT,
-    (mail) => ({ name: `mail ${mail.mailable}`, attributes: { 'bespoke.mail.mailable': mail.mailable, 'bespoke.mail.mode': mail.mode } }),
+    (mail) => ({ name: `mail ${mail.mailable}`, attributes: { 'marmeon.mail.mailable': mail.mailable, 'marmeon.mail.mode': mail.mode } }),
     (span, mail) => {
-      if (mail.to !== undefined) span.setAttribute('bespoke.mail.recipients', mail.to.length);
+      if (mail.to !== undefined) span.setAttribute('marmeon.mail.recipients', mail.to.length);
     },
   );
   simple(
@@ -261,22 +261,22 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
     api.SpanKind.INTERNAL,
     (notification) => ({
       name: `notify ${notification.notification}`,
-      attributes: { 'bespoke.notification': notification.notification, 'bespoke.notification.queued': notification.queued, 'bespoke.notification.recipient_type': notification.recipient.type },
+      attributes: { 'marmeon.notification': notification.notification, 'marmeon.notification.queued': notification.queued, 'marmeon.notification.recipient_type': notification.recipient.type },
     }),
     (span, notification) => {
-      span.setAttributes(clean({ 'bespoke.notification.channels': notification.channels ? [...notification.channels] : undefined, 'bespoke.notification.outcome': notification.outcome }));
+      span.setAttributes(clean({ 'marmeon.notification.channels': notification.channels ? [...notification.channels] : undefined, 'marmeon.notification.outcome': notification.outcome }));
     },
   );
   simple('live.refresh', api.SpanKind.PRODUCER, (refresh) => ({
     name: 'live refresh',
-    attributes: { 'bespoke.live.channel': refresh.channel, 'bespoke.live.only': refresh.only ? [...refresh.only] : undefined },
+    attributes: { 'marmeon.live.channel': refresh.channel, 'marmeon.live.only': refresh.only ? [...refresh.only] : undefined },
   }));
   simple(
     'render.ssr',
     api.SpanKind.INTERNAL,
-    (render) => ({ name: `render ${render.component}`, attributes: { 'bespoke.view': render.component, 'bespoke.ssr.complete': render.complete } }),
+    (render) => ({ name: `render ${render.component}`, attributes: { 'marmeon.view': render.component, 'marmeon.ssr.complete': render.complete } }),
     (span, render) => {
-      if (render.streamed !== undefined) span.setAttribute('bespoke.ssr.streamed', render.streamed);
+      if (render.streamed !== undefined) span.setAttribute('marmeon.ssr.streamed', render.streamed);
     },
   );
 

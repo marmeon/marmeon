@@ -11,7 +11,7 @@ function collect(code: string, filename = 'modules/demo/views/Page.tsx') {
 describe('collectRouteReferences', () => {
   it('collects the names written out at the sinks: <Link route>, route() of useRoute(), useForm(name, …)', () => {
     const { names, problems } = collect(`
-      import { Link, useForm, useRoute } from '@bespokecore/react';
+      import { Link, useForm, useRoute } from '@marmeon/react';
       export default function Page({ profile, isOwn }: Props) {
         const route = useRoute();
         const form = useForm('user-profile.update', { user: profile.id }, { name: '' });
@@ -30,7 +30,7 @@ describe('collectRouteReferences', () => {
 
   it('collects the route of useQueryState(name, …) — its page needs its pattern (W5b step 2)', () => {
     const { names, problems } = collect(`
-      import { useQueryState } from '@bespokecore/react';
+      import { useQueryState } from '@marmeon/react';
       export default function People() {
         const [query, setQuery] = useQueryState('user-profile.show', { only: ['people'], debounce: 300 });
         return null;
@@ -38,14 +38,14 @@ describe('collectRouteReferences', () => {
     `);
     expect(problems).toEqual([]);
     expect(names).toEqual(['user-profile.show']);
-    expect(collect(`import { useQueryState } from '@bespokecore/react'; export const X = ({ name }) => useQueryState(name);`).problems[0]).toContain(
+    expect(collect(`import { useQueryState } from '@marmeon/react'; export const X = ({ name }) => useQueryState(name);`).problems[0]).toContain(
       'useQueryState()',
     );
   });
 
   it('collects a layer link’s route — `layer` is a flag, never a name (W5b step 5)', () => {
     const { names, problems } = collect(`
-      import { Link } from '@bespokecore/react';
+      import { Link } from '@marmeon/react';
       export default function Page({ profile, asLayer }: Props) {
         return (
           <>
@@ -61,8 +61,8 @@ describe('collectRouteReferences', () => {
 
   it('follows import aliases, namespace imports, as const and const bindings in the module', () => {
     const { names, problems } = collect(`
-      import { Link as L, useRoute as useUrl } from '@bespokecore/react';
-      import * as B from '@bespokecore/react';
+      import { Link as L, useRoute as useUrl } from '@marmeon/react';
+      import * as B from '@marmeon/react';
       const LOGOUT = 'auth.logout' as const;
       const TABS = { edit: 'user-profile.edit', show: 'user-profile.show' } as const;
       export function Nav({ tab }: { tab: keyof typeof TABS }) {
@@ -79,8 +79,8 @@ describe('collectRouteReferences', () => {
   it('ignores look-alikes: other packages, shadowed names, useForm(initial), type-only imports', () => {
     const { names, problems } = collect(`
       import { Link } from 'react-router';
-      import { useForm as form, type Link as TypeOnly } from '@bespokecore/react';
-      import { useRoute } from '@bespokecore/react';
+      import { useForm as form, type Link as TypeOnly } from '@marmeon/react';
+      import { useRoute } from '@marmeon/react';
       export function A({ route }: { route: (name: string) => string }) {
         return <Link route={route(dynamicName)} />;     // the parameter shadows nothing of ours
       }
@@ -97,7 +97,7 @@ describe('collectRouteReferences', () => {
 
   it('refuses a name built at runtime — with the literal prefix matched against the routes ("did you mean")', () => {
     const { problems } = collect(`
-      import { useRoute } from '@bespokecore/react';
+      import { useRoute } from '@marmeon/react';
       export function Tabs({ tab, user }: Props) {
         const route = useRoute();
         return route(\`user-profile.\${tab}\`, { user });
@@ -112,7 +112,7 @@ describe('collectRouteReferences', () => {
 
   it('refuses names from props, concatenations, spreads into a sink and the route function called with a spread', () => {
     const { problems } = collect(`
-      import { Link, useForm, useRoute } from '@bespokecore/react';
+      import { Link, useForm, useRoute } from '@marmeon/react';
       export function Toast({ toast, rest, args }: Props) {
         const route = useRoute();
         useForm('user-profile.' + toast.kind, {}, {});
@@ -133,7 +133,7 @@ describe('collectRouteReferences', () => {
   });
 
   it('reports where: each reference and problem has its offset', () => {
-    const code = "import { Link } from '@bespokecore/react';\nexport const A = () => <Link route={name} />;\n";
+    const code = "import { Link } from '@marmeon/react';\nexport const A = () => <Link route={name} />;\n";
     const { problems } = collectRouteReferences(code, 'A.tsx');
     expect(code.slice(problems[0]!.start, problems[0]!.start + 4)).toBe('name');
   });

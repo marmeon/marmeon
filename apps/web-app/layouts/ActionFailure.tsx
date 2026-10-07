@@ -1,5 +1,5 @@
-import type { ActionException } from '@bespokecore/react';
-import { useTranslation } from '@bespokecore/react';
+import type { ActionException } from '@marmeon/react';
+import { useTranslation } from '@marmeon/react';
 
 /** Why an action failed, for the message — 401/419 mean the session is gone: reload, nothing is retried by itself (E59). */
 export function failureReason(exception: ActionException): 'signed_out' | 'expired' | 'offline' | 'forbidden' | 'other' {

@@ -1,4 +1,4 @@
-import { defineFactory } from '@bespokecore/database';
+import { defineFactory } from '@marmeon/database';
 import { UserFactory } from '#modules/auth';
 
 export const ProfileLinkFactory = defineFactory('profile_links', ({ sequence, factory }) => ({

@@ -38,7 +38,7 @@ export class SharedData {
    * ```
    *
    * The channel (or a function of the request that says which — evaluated only when a page renders) is signed into every
-   * page this request renders (never into an island or a layer, which show no layout). Needs @bespokecore/live.
+   * page this request renders (never into an island or a layer, which show no layout). Needs @marmeon/live.
    */
   live<const O extends readonly string[] = readonly []>(
     channel: string | (() => string | undefined | Promise<string | undefined>),

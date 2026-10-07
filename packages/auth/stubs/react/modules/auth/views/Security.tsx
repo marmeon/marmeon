@@ -1,5 +1,5 @@
-import type { PageProps } from '@bespokecore/http';
-import { Head, Link, useForm, useTranslation } from '@bespokecore/react';
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useForm, useTranslation } from '@marmeon/react';
 import type { ShowSecurityController } from '../controllers/ShowSecurityController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';

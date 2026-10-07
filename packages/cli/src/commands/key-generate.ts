@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { generateKey } from '@bespokecore/encryption';
+import { generateKey } from '@marmeon/encryption';
 import type { CommandInput } from '../command.ts';
 
 /**

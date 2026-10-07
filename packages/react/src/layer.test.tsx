@@ -1,20 +1,20 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
-import { LAYER_CLOSE_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject, type RouteManifest } from '@bespokecore/http/page';
+import { LAYER_CLOSE_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject, type RouteManifest } from '@marmeon/http/page';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BespokeApp, loadLayerStack, usePage, useRouter } from './app.tsx';
+import { MarmeonApp, loadLayerStack, usePage, useRouter } from './app.tsx';
 import { Head } from './head.tsx';
 import { Island } from './island.tsx';
 import { useLayer } from './layer.tsx';
 import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadView } from './views.ts';
-import { loadHistoryFallback } from '@bespokecore/http/client';
+import { loadHistoryFallback } from '@marmeon/http/client';
 
-// happy-dom has no Navigation API: the History fallback — as createBespokeApp loads it in such a browser (E184).
+// happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser (E184).
 const HISTORY = [await loadHistoryFallback()];
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -142,13 +142,13 @@ async function mount(initial: PageObject) {
   const Component = await resolve(initial.component);
   await Promise.all((initial.layers ?? []).map((layered) => loadView(resolve, layered.component)));
   root = createRoot(container);
-  await act(async () => root.render(<BespokeApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
+  await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} routes={routes} />));
 }
 
 const $ = (selector: string) => container.querySelector(selector);
 const wait = (ms = 10) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const click = (selector: string) => act(async () => ($(selector) as HTMLElement).click());
-const dialogs = () => [...container.querySelectorAll('dialog[data-bespoke-layer]')];
+const dialogs = () => [...container.querySelectorAll('dialog[data-marmeon-layer]')];
 
 describe('Layers in React (E53)', () => {
   it('<Link layer> opens the view in a modal dialog over the page — the page stays, its island is not loaded again', async () => {
@@ -261,7 +261,7 @@ describe('Layers in React (E53)', () => {
     await wait(40);
     expect(dialogs()).toEqual([]);
     expect($('[data-testid="name"]')!.textContent).toBe('Grace');
-    expect(requests.at(-1)).toMatchObject({ url: '/users/1', headers: { 'x-bespoke-partial-data': 'name' } });
+    expect(requests.at(-1)).toMatchObject({ url: '/users/1', headers: { 'x-marmeon-partial-data': 'name' } });
   });
 
   it('stacks to depth 2 — the view’s own look (a slide-over), useLayer().depth', async () => {
@@ -343,10 +343,10 @@ describe('Layers in React (E53)', () => {
   it('a deep link’s document renders its layers over the page — on the server as in the browser', async () => {
     const document = { ...page('Profile', '/users/1', { name: 'Ada' }), layers: [layer('Edit', '/users/1/edit', { name: 'Ada' })] };
     const Profile = await resolve('app/Profile');
-    // What createBespokeApp and the SSR entry load before rendering a deep link (E71): the layer stack, the layer's view.
+    // What createMarmeonApp and the SSR entry load before rendering a deep link (E71): the layer stack, the layer's view.
     await Promise.all([loadLayerStack(), loadView(resolve, 'app/Edit')]);
-    const html = renderToString(<BespokeApp initialPage={document} initialComponent={Profile} resolve={resolve} routes={routes} />);
-    expect(html).toContain('data-bespoke-layer="app/Edit"');
+    const html = renderToString(<MarmeonApp initialPage={document} initialComponent={Profile} resolve={resolve} routes={routes} />);
+    expect(html).toContain('data-marmeon-layer="app/Edit"');
     expect(html).toContain('<dialog open=""');
 
     history.replaceState(null, '', '/users/1/edit');

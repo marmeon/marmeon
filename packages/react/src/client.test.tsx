@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/" }
-import { Navigator, type DevtoolsGlobal } from '@bespokecore/http/client';
-import { PAGE_SCRIPT_ID, type PageObject } from '@bespokecore/http/page';
+import { Navigator, type DevtoolsGlobal } from '@marmeon/http/client';
+import { PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/page';
 import { act, Suspense } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createBespokeApp } from './client.tsx';
+import { createMarmeonApp } from './client.tsx';
 import { resolveModulePages } from './pages.ts';
 import { createSsrRenderer } from './server.tsx';
 
@@ -53,12 +53,12 @@ async function ssr(page: PageObject): Promise<string> {
 
 async function start() {
   await act(async () => {
-    await createBespokeApp({ resolve });
+    await createMarmeonApp({ resolve });
     await new Promise((done) => setTimeout(done, 20));
   });
 }
 
-const notice = () => document.querySelector('[data-bespoke-hydration]');
+const notice = () => document.querySelector('[data-marmeon-hydration]');
 
 /** Console errors — but not React's warning about two renderers in one process (the test renders server and browser side by side). */
 const reported = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.filter(([message]) => !String(message).includes('multiple renderers'));
@@ -71,7 +71,7 @@ afterEach(() => {
 const page = (props: Record<string, unknown>): PageObject => ({ component: 'users/Profile', props, url: '/', version: null });
 const at = new Date('2026-10-01T12:00:00.600Z');
 
-describe('createBespokeApp — hydration', () => {
+describe('createMarmeonApp — hydration', () => {
   it('hydrates markup rendered from the page object the browser gets — no mismatch, nothing reported', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const sent = page({ name: 'Ada', lastLoginAt: at.toISOString() });
@@ -87,7 +87,7 @@ describe('createBespokeApp — hydration', () => {
     // What the server did before W5.7 rendered from the page object: a Date, not the string the browser gets.
     serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), await ssr(page({ name: 'Ada', lastLoginAt: at as unknown as string })));
     await start();
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining('[bespoke] Hydration mismatch in [users/Profile]'), expect.anything());
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('[marmeon] Hydration mismatch in [users/Profile]'), expect.anything());
     expect(notice()?.textContent).toContain('Hydration mismatch in [users/Profile]');
     // React rendered it again in the browser — from the page object.
     expect(document.querySelector('time')?.textContent).toBe('2026-10-01T12:00:00.600Z');
@@ -96,7 +96,7 @@ describe('createBespokeApp — hydration', () => {
   it('hands the mismatch to the devtools\' dev hook (W7 step 9) — and the navigator when it is made — where the bar set one', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const hook = { navigator: vi.fn(), recoverable: vi.fn() };
-    (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__ = hook;
+    (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__ = hook;
     try {
       serve(page({ name: 'Ada', lastLoginAt: at.toISOString() }), await ssr(page({ name: 'Ada', lastLoginAt: at as unknown as string })));
       await start();
@@ -105,7 +105,7 @@ describe('createBespokeApp — hydration', () => {
       expect(hook.navigator.mock.calls.at(-1)![0]).toBeInstanceOf(Navigator);
       expect(hook.recoverable).toHaveBeenCalledWith(expect.any(Error), 'users/Profile', false);
     } finally {
-      delete (globalThis as DevtoolsGlobal).__BESPOKE_DEVTOOLS_HOOK__;
+      delete (globalThis as DevtoolsGlobal).__MARMEON_DEVTOOLS_HOOK__;
     }
   });
 
@@ -125,11 +125,11 @@ describe('createBespokeApp — hydration', () => {
     onServer = false;
     await start();
     expect(document.querySelector('b')?.textContent).toBe('in the browser');
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining('[bespoke] A part of [users/WithPart] failed on the server'), expect.anything());
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('[marmeon] A part of [users/WithPart] failed on the server'), expect.anything());
   });
 });
 
-describe('createBespokeApp — tab sync (W8 step 8, E149)', () => {
+describe('createMarmeonApp — tab sync (W8 step 8, E149)', () => {
   const attached = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([feature]) => (feature as { name: string }).name);
 
   it('attaches tab sync by default — loaded with the first page, before hydrating: the navigator has it from the start', async () => {
@@ -151,11 +151,11 @@ describe('createBespokeApp — tab sync (W8 step 8, E149)', () => {
   it('tabSync: false leaves it out — and its chunk is never loaded (the known risk E66, by choice)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const use = vi.spyOn(Navigator.prototype, 'use');
-    const lazy = await import('@bespokecore/http/client');
+    const lazy = await import('@marmeon/http/client');
     const sent = page({ name: 'Ada', lastLoginAt: at.toISOString() });
     serve(sent, await ssr(sent));
     await act(async () => {
-      await createBespokeApp({ resolve, tabSync: false });
+      await createMarmeonApp({ resolve, tabSync: false });
       await new Promise((done) => setTimeout(done, 20));
     });
     expect(attached(use)).not.toContain('tabSync');
@@ -163,7 +163,7 @@ describe('createBespokeApp — tab sync (W8 step 8, E149)', () => {
   });
 });
 
-describe('createBespokeApp — the History fallback (W9 step 7, E184)', () => {
+describe('createMarmeonApp — the History fallback (W9 step 7, E184)', () => {
   const attached = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.map(([feature]) => (feature as { name: string }).name);
 
   it('loads it beside the first page where the browser has no Navigation API — attached from the start', async () => {

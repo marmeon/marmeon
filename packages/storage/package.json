@@ -1,22 +1,22 @@
 {
-  "name": "@bespokecore/storage",
+  "name": "@marmeon/storage",
   "version": "0.1.0",
-  "description": "File storage for BespokeCore apps: local, S3 and memory disks behind one contract, public and private files, uploads.",
+  "description": "File storage for Marmeon apps: local, S3 and memory disks behind one contract, public and private files, uploads.",
   "keywords": [
-    "bespokecore",
+    "marmeon",
     "storage",
     "files",
     "s3",
     "uploads"
   ],
-  "homepage": "https://github.com/bespokecore/bespokecore/tree/main/packages/storage#readme",
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/storage#readme",
   "bugs": {
-    "url": "https://github.com/bespokecore/bespokecore/issues"
+    "url": "https://github.com/marmeon/marmeon/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bespokecore/bespokecore.git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
     "directory": "packages/storage"
   },
   "engines": {
@@ -26,7 +26,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@bespokecore/source": "./src/index.ts",
+      "@marmeon/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -56,24 +56,24 @@
   "scripts": {
     "build": "tsc -b"
   },
-  "bespoke": {
+  "marmeon": {
     "providers": [
       "StorageServiceProvider"
     ]
   },
   "dependencies": {
-    "@bespokecore/core": "workspace:*",
-    "@bespokecore/router": "workspace:*",
+    "@marmeon/core": "workspace:*",
+    "@marmeon/router": "workspace:*",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.1000.0",
     "@aws-sdk/s3-presigned-post": "^3.1000.0",
     "@aws-sdk/s3-request-presigner": "^3.1000.0",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*"
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-s3": {
@@ -85,16 +85,16 @@
     "@aws-sdk/s3-request-presigner": {
       "optional": true
     },
-    "@bespokecore/cli": {
+    "marmeon": {
       "optional": true
     },
-    "@bespokecore/database": {
+    "@marmeon/database": {
       "optional": true
     },
-    "@bespokecore/encryption": {
+    "@marmeon/encryption": {
       "optional": true
     },
-    "@bespokecore/http": {
+    "@marmeon/http": {
       "optional": true
     }
   },
@@ -102,10 +102,10 @@
     "@aws-sdk/client-s3": "3.1143.0",
     "@aws-sdk/s3-presigned-post": "3.1143.0",
     "@aws-sdk/s3-request-presigner": "3.1143.0",
-    "@bespokecore/cli": "workspace:*",
-    "@bespokecore/database": "workspace:*",
-    "@bespokecore/encryption": "workspace:*",
-    "@bespokecore/http": "workspace:*",
-    "@bespokecore/server": "workspace:*"
+    "marmeon": "workspace:*",
+    "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
+    "@marmeon/http": "workspace:*",
+    "@marmeon/server": "workspace:*"
   }
 }

@@ -8,5 +8,5 @@
     "./optional": { "types": "./dist/optional.d.ts", "import": "./dist/optional.js" }
   },
   "dependencies": { "@acme/clock": "1.0.0" },
-  "bespoke": { "providers": ["MailServiceProvider"] }
+  "marmeon": { "providers": ["MailServiceProvider"] }
 }

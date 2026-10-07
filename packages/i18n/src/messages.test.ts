@@ -108,7 +108,7 @@ describe('Catalog', () => {
   });
 });
 
-describe('createMessageLoader (virtual:bespoke/lang)', () => {
+describe('createMessageLoader (virtual:marmeon/lang)', () => {
   const files = () => {
     const load = (messages: object) => vi.fn(async () => ({ default: messages }));
     return {

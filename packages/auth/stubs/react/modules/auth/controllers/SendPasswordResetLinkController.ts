@@ -1,6 +1,6 @@
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
-import { trans, Translator } from '@bespokecore/i18n';
-import { Queue } from '@bespokecore/queue';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { trans, Translator } from '@marmeon/i18n';
+import { Queue } from '@marmeon/queue';
 import * as v from 'valibot';
 import { SendPasswordResetLinkJob } from '../jobs/SendPasswordResetLinkJob.ts';
 

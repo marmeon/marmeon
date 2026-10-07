@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createSecretKey, randomBytes, type KeyObject } from 'node:crypto';
-import { defineConfig, defineSolutions, token, type ConfigOf, type Container, type ServiceProvider } from '@bespokecore/core';
+import { defineConfig, defineSolutions, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import * as v from 'valibot';
 
 /**
@@ -23,11 +23,11 @@ export class DecryptError extends Error {
   }
 }
 
-/** `base64:` + 32 random bytes, as written by `bespoke key:generate`. */
+/** `base64:` + 32 random bytes, as written by `marmeon key:generate`. */
 const KEY = v.pipe(
   v.string(),
-  v.nonEmpty('Missing — run "bespoke key:generate"'),
-  v.check((value) => decodeKey(value) !== undefined, 'Expected "base64:" followed by 32 base64-encoded bytes — run "bespoke key:generate"'),
+  v.nonEmpty('Missing — run "marmeon key:generate"'),
+  v.check((value) => decodeKey(value) !== undefined, 'Expected "base64:" followed by 32 base64-encoded bytes — run "marmeon key:generate"'),
   v.transform((value) => decodeKey(value)!),
 );
 
@@ -137,14 +137,14 @@ export const encryptionSolutions = defineSolutions([
       text:
         'APP_KEY encrypts the cookies (the session cookie, which carries the session id, among them), the session data when ' +
         'SESSION_ENCRYPT=true, and signs URLs; without a valid one (base64: and 32 random bytes) the app cannot start. ' +
-        '"bespoke key:generate" writes a new one into .env. To replace the key of a running app use "bespoke key:generate --force": ' +
+        '"marmeon key:generate" writes a new one into .env. To replace the key of a running app use "marmeon key:generate --force": ' +
         'it moves the old key to APP_PREVIOUS_KEYS, so sessions, encrypted cookies and signed links stay valid.',
-      command: 'bespoke key:generate',
+      command: 'marmeon key:generate',
     }),
   },
 ]);
 
-/** Registers the `Encrypter`, keyed by `APP_KEY`. Found by `bespoke discover`. */
+/** Registers the `Encrypter`, keyed by `APP_KEY`. Found by `marmeon discover`. */
 export class EncryptionServiceProvider implements ServiceProvider {
   static config = [EncryptionConfig];
   static solutions = encryptionSolutions;

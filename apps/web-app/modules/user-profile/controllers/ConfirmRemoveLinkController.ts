@@ -1,6 +1,6 @@
-import { can } from '@bespokecore/auth';
-import type { Row } from '@bespokecore/database';
-import { Controller, defineRequest, type ContextOf } from '@bespokecore/http';
+import { can } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { ProfileLinkPolicy } from '../policies/ProfileLinkPolicy.ts';
 
 export const ConfirmRemoveLinkRequest = defineRequest({

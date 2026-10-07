@@ -1,11 +1,11 @@
 /**
  * The framework's observation points (E118): `node:diagnostics_channel` TracingChannels named
- * `tracing:bespoke:<operation>:{start,end,asyncStart,asyncEnd,error}` plus three plain channels, `bespoke:log`,
- * `bespoke:exception` and `bespoke:event`. The error page, the devtools recorder, the debug bar and `@bespokecore/otel` subscribe to them;
+ * `tracing:marmeon:<operation>:{start,end,asyncStart,asyncEnd,error}` plus three plain channels, `marmeon:log`,
+ * `marmeon:exception` and `marmeon:event`. The error page, the devtools recorder, the debug bar and `@marmeon/otel` subscribe to them;
  * apps keep using events (job events, scheduler events) for their own reactions.
  *
  * ```ts
- * import { channels } from '@bespokecore/core/diagnostics';
+ * import { channels } from '@marmeon/core/diagnostics';
  *
  * const off = channels.subscribe(app, 'db.query', {
  *   end: (query) => console.log(query.sql, query.durationMs, query.requestId ?? query.jobId),
@@ -47,7 +47,7 @@ export interface Ended {
   error?: unknown;
 }
 
-/** `tracing:bespoke:http.request` — one request through the kernel, from the request id to the response's headers. */
+/** `tracing:marmeon:http.request` — one request through the kernel, from the request id to the response's headers. */
 export interface HttpRequestMessage extends MessageBase, Ended {
   readonly requestId: string;
   readonly method: string;
@@ -57,7 +57,7 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   readonly url: string;
   /** The request's headers — raw (cookies, `authorization`): redact before recording or showing (E125). */
   readonly headers: Headers;
-  /** `island` or `layer`: a region's request (`x-bespoke-region`). */
+  /** `island` or `layer`: a region's request (`x-marmeon-region`). */
   readonly region?: string;
   /** Resolved in-process for another request — an island while its page renders, a layer's base for its deep link (E49, E53). */
   readonly inProcess: boolean;
@@ -70,11 +70,11 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   /** The response's status. */
   status?: number;
   /**
-   * Where the response sends the browser — a redirect's `Location`, or with a 409 the protocol's `x-bespoke-location` (a full
+   * Where the response sends the browser — a redirect's `Location`, or with a 409 the protocol's `x-marmeon-location` (a full
    * reload: a new build, or crossing the sign-in boundary) — raw: redact before recording (E125).
    */
   location?: string;
-  /** With a 409 and a location: why the browser reloads (`x-bespoke-reload`: `version`, `history`). */
+  /** With a 409 and a location: why the browser reloads (`x-marmeon-reload`: `version`, `history`). */
   reload?: string;
   /** The page or island it answered with — set only while something listens (the devtools, E118). */
   page?: PageSummary;
@@ -102,7 +102,7 @@ export interface PageSummary {
   readonly kind: 'page' | 'layer' | 'island';
 }
 
-/** `tracing:bespoke:db.query` — one statement, published once it finished (Kysely reports queries afterwards). */
+/** `tracing:marmeon:db.query` — one statement, published once it finished (Kysely reports queries afterwards). */
 export interface DbQueryMessage extends MessageBase, Ended {
   /** The connection's name (`default`). */
   readonly connection: string;
@@ -116,7 +116,7 @@ export interface DbQueryMessage extends MessageBase, Ended {
   durationMs: number;
 }
 
-/** `tracing:bespoke:queue.dispatch` — one `dispatch()`, `bulk()` or `chain()` of the `Queue`. */
+/** `tracing:marmeon:queue.dispatch` — one `dispatch()`, `bulk()` or `chain()` of the `Queue`. */
 export interface QueueDispatchMessage extends MessageBase, Ended {
   readonly kind: 'dispatch' | 'bulk' | 'chain';
   /** The jobs' names (`static job`), in order. */
@@ -135,12 +135,12 @@ export interface QueueDispatchMessage extends MessageBase, Ended {
   readonly encrypted?: readonly boolean[];
   /**
    * The trace context to carry to the worker (W3C `traceparent`) — set by a tracer in its `start` handler
-   * (`@bespokecore/otel`); stored with each job and passed on in its `queue.job` message (E131).
+   * (`@marmeon/otel`); stored with each job and passed on in its `queue.job` message (E131).
    */
   traceparent?: string;
 }
 
-/** `tracing:bespoke:queue.job` — one attempt of a job (in a worker, the `sync` connection, or a test's `app.queue.work()`). */
+/** `tracing:marmeon:queue.job` — one attempt of a job (in a worker, the `sync` connection, or a test's `app.queue.work()`). */
 export interface QueueJobMessage extends MessageBase, Ended {
   readonly job: string;
   /** This job's id. */
@@ -161,7 +161,7 @@ export interface QueueJobMessage extends MessageBase, Ended {
   outcome?: 'done' | 'discarded' | 'released' | 'failed';
 }
 
-/** `tracing:bespoke:schedule.task` — one run of a scheduled task. */
+/** `tracing:marmeon:schedule.task` — one run of a scheduled task. */
 export interface ScheduleTaskMessage extends MessageBase, Ended {
   readonly task: string;
   /** The minute it was due (epoch ms). */
@@ -172,7 +172,7 @@ export interface ScheduleTaskMessage extends MessageBase, Ended {
   skipped?: string;
 }
 
-/** `tracing:bespoke:mail.send` — a mail sent now, queued (composed now, sent by a worker), or sent by that worker. */
+/** `tracing:marmeon:mail.send` — a mail sent now, queued (composed now, sent by a worker), or sent by that worker. */
 export interface MailSendMessage extends MessageBase, Ended {
   /** The mailable's class name. */
   readonly mailable: string;
@@ -191,7 +191,7 @@ export interface MailSendMessage extends MessageBase, Ended {
   attachments?: { readonly filename: string; readonly bytes: number; readonly contentType?: string }[];
 }
 
-/** `tracing:bespoke:notification.send` — one notification for one recipient: queued (`send`) or delivered (`sendNow`, the worker). */
+/** `tracing:marmeon:notification.send` — one notification for one recipient: queued (`send`) or delivered (`sendNow`, the worker). */
 export interface NotificationSendMessage extends MessageBase, Ended {
   /** `static notification`. */
   readonly notification: string;
@@ -204,14 +204,14 @@ export interface NotificationSendMessage extends MessageBase, Ended {
   outcome?: 'delivered' | 'gone' | 'delivered-before';
 }
 
-/** `tracing:bespoke:live.refresh` — a live hint going out (after its commit). */
+/** `tracing:marmeon:live.refresh` — a live hint going out (after its commit). */
 export interface LiveRefreshMessage extends MessageBase, Ended {
   readonly channel: string;
   /** The props it names; `null`: every prop each follower follows. */
   readonly only: readonly string[] | null;
 }
 
-/** `tracing:bespoke:render.ssr` — server rendering of a page, until its shell (or, for a bot, the whole page) is ready. */
+/** `tracing:marmeon:render.ssr` — server rendering of a page, until its shell (or, for a bot, the whole page) is ready. */
 export interface SsrRenderMessage extends MessageBase, Ended {
   /** The page's view. */
   readonly component: string;
@@ -221,7 +221,7 @@ export interface SsrRenderMessage extends MessageBase, Ended {
   streamed?: boolean;
 }
 
-/** `tracing:bespoke:command.run` — one `bespoke <command>` run in its own process (not a scheduled one: that is a task). */
+/** `tracing:marmeon:command.run` — one `marmeon <command>` run in its own process (not a scheduled one: that is a task). */
 export interface CommandRunMessage extends MessageBase, Ended {
   /** Its name: `migrate`, `db:seed`. */
   readonly command: string;
@@ -231,7 +231,7 @@ export interface CommandRunMessage extends MessageBase, Ended {
   exitCode?: number;
 }
 
-/** `bespoke:event` — an app event dispatched through the `EventDispatcher` (also one a test's `EventFake` holds back). */
+/** `marmeon:event` — an app event dispatched through the `EventDispatcher` (also one a test's `EventFake` holds back). */
 export interface EventDispatchMessage extends MessageBase {
   /** The event object — raw: redact before recording (E125). */
   readonly event: object;
@@ -241,7 +241,7 @@ export interface EventDispatchMessage extends MessageBase {
   readonly listeners: readonly string[];
 }
 
-/** `bespoke:log` — a log entry as written, at any level (the logger's level does not filter it). */
+/** `marmeon:log` — a log entry as written, at any level (the logger's level does not filter it). */
 export interface LogMessage extends MessageBase {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
   readonly message: string;
@@ -249,7 +249,7 @@ export interface LogMessage extends MessageBase {
   readonly context: Readonly<Record<string, unknown>>;
 }
 
-/** `bespoke:exception` — an error a request ended in, on its way to the `ExceptionHandler`. */
+/** `marmeon:exception` — an error a request ended in, on its way to the `ExceptionHandler`. */
 export interface ExceptionMessage extends MessageBase {
   readonly error: unknown;
   /** What the client gets: an `HttpError`'s status, 422 for invalid input, else 500. */
@@ -322,11 +322,11 @@ const TRACING: readonly TracingName[] = [
 const EVENTS: readonly EventName[] = ['log', 'exception', 'event'];
 
 // Node's channels are process-wide by name; these are handles to them, created once (Node recommends top-level handles).
-const tracings = new Map<string, TracingChannel<object>>(TRACING.map((name) => [name, tracingChannel<object>(`bespoke:${name}`)]));
-const events = new Map<string, EventChannel<object>>(EVENTS.map((name) => [name, plainChannel(`bespoke:${name}`) as EventChannel<object>]));
+const tracings = new Map<string, TracingChannel<object>>(TRACING.map((name) => [name, tracingChannel<object>(`marmeon:${name}`)]));
+const events = new Map<string, EventChannel<object>>(EVENTS.map((name) => [name, plainChannel(`marmeon:${name}`) as EventChannel<object>]));
 
 /** Messages built for an app — tests prove that nothing is built without a subscriber. Kept on the app itself. */
-const BUILT: unique symbol = Symbol.for('bespokecore.diagnostics.built');
+const BUILT: unique symbol = Symbol.for('marmeon.diagnostics.built');
 
 /** The wrappers of each traced channel ({@link channels.around}), per app — consulted only while the channel has subscribers. */
 const arounds = new Map<object, Set<{ readonly app: Application; readonly around: Around<object> }>>();
@@ -339,7 +339,7 @@ function guarded<M>(name: string, handler: ((message: M) => void) | undefined, a
     try {
       handler(message);
     } catch (error) {
-      process.emitWarning(`A subscriber of bespoke:${name} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`, 'BespokeDiagnosticsWarning');
+      process.emitWarning(`A subscriber of marmeon:${name} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`, 'MarmeonDiagnosticsWarning');
     }
   };
 }
@@ -371,7 +371,7 @@ function subscribe(app: Application, name: ChannelName, handlers: TracingHandler
   if (!event) throw new TypeError(`There is no channel "${name}". Channels: ${[...TRACING, ...EVENTS].join(', ')}.`);
   if (typeof handlers !== 'function') throw new TypeError(`channels.subscribe(app, '${name}', handler): give a function — ${name} is a plain channel.`);
   const handler = guarded(name, handlers, app)!;
-  const named = plainChannel(`bespoke:${name}`);
+  const named = plainChannel(`marmeon:${name}`);
   named.subscribe(handler as (message: unknown) => void);
   let subscribed = true;
   return () => {
@@ -397,7 +397,7 @@ export const channels = {
   /**
    * Runs the work of each traced operation of `app` on channel `name` inside `around` — the one thing a `start` handler
    * cannot do: put the work into a context of its own, so what the operation does (its queries, the jobs it dispatches, its
-   * log lines) happens inside it. `@bespokecore/otel` runs it in the operation's span (`context.with(…)`). Node's
+   * log lines) happens inside it. `@marmeon/otel` runs it in the operation's span (`context.with(…)`). Node's
    * `bindStore` cannot carry OpenTelemetry's context: Node 26 enters a bound store with `store.withScope()`, which only an
    * `AsyncLocalStorage` has, and OpenTelemetry's context manager offers only `with(context, fn)`.
    *
@@ -508,10 +508,10 @@ function within<M extends MessageBase, T>(channel: TracingChannel<M>, message: M
         });
       } catch (error) {
         if (called && started === undefined) throw error; // the operation itself threw, synchronously
-        process.emitWarning(`A wrapper of bespoke:${String(nameOf(channel))} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`, 'BespokeDiagnosticsWarning');
+        process.emitWarning(`A wrapper of marmeon:${String(nameOf(channel))} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`, 'MarmeonDiagnosticsWarning');
       }
       if (!called) {
-        process.emitWarning(`A wrapper of bespoke:${String(nameOf(channel))} did not run the operation; it ran without it.`, 'BespokeDiagnosticsWarning');
+        process.emitWarning(`A wrapper of marmeon:${String(nameOf(channel))} did not run the operation; it ran without it.`, 'MarmeonDiagnosticsWarning');
         return inner();
       }
       return started!;

@@ -37,7 +37,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   // The measurement runs in a process of its own: the framework's sources (or a base's dist), a heap that is only this.
   if (!values.run) {
-    const child = spawn(process.execPath, ['--expose-gc', '--conditions=@bespokecore/source', import.meta.filename, '--run', ...argv], { stdio: ['ignore', 'inherit', 'inherit'] });
+    const child = spawn(process.execPath, ['--expose-gc', '--conditions=@marmeon/source', import.meta.filename, '--run', ...argv], { stdio: ['ignore', 'inherit', 'inherit'] });
     const [code] = (await once(child, 'exit')) as [number | null];
     return code ?? 1;
   }
