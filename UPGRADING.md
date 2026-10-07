@@ -378,6 +378,23 @@ the shared peers `@opentelemetry/api` and `vite` are named with the tested major
 the start (it failed the first use); an S3 disk the app only names still says it on first use. A broken install of `mjml` or `pg`
 shows its own error instead of "install it". There is no old behaviour to keep.
 
+#### Low: `@marmeon/validation` — Laravel's rules, typed; Standard Schema stays the contract
+
+*Likelihood of impact: low — nothing has to change; apps whose schemas build messages with `translatable()`/`trans()`.* A new package
+(E197): `import { rules as r } from '@marmeon/validation'` builds request, query and config schemas with Laravel's names —
+`r.string().trim().required().max(255)`, `r.query({ page: r.integer().min(1).default(1) })`, `r.env({ APP_PORT: r.port().default(3960) })` —
+with messages in the request's language (`marmeon.validation.*`, English and German in `@marmeon/i18n`), the first problem of a field
+only, and `unique`/`exists` that get their repository from the request and **never run in a live validation** unless the rule says
+`.live()`. Valibot is its internal engine — a dependency, never re-exported; the app installs nothing for it. `failOnDuplicate()` of
+`@marmeon/database` turns a conflict on a unique index into the same 422 at the field. Nothing is converted yet: Valibot, Zod or any
+other Standard Schema library keeps working everywhere (the next step moves the stubs and templates to `rules`).
+
+What changes for every app, quietly: `validateRequest` hands each schema `libraryOptions: { marmeon: { resolve, ctx, live } }` (other
+libraries ignore it); `defineRequest` takes `messages` and `attributes` (Laravel's `messages()`/`attributes()`); a message made with
+`translatable()`/`trans()` may name its field with `{attribute}` (the path with underscores as spaces, or the request's `attributes`);
+a live validation drops an issue a rule marked as not live. The Standard Schema interface lives in `@marmeon/core` only — the router
+re-exports the same types (`@marmeon/router` now depends on `@marmeon/core`, types only). There is no old behaviour to keep.
+
 ## Upgrading to 0.1.0 from the development snapshots
 
 0.1.0 is the first release. An app made from it (`pnpm create marmeon`) has nothing to upgrade. This section is for apps

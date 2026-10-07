@@ -29,6 +29,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
   'Wave 10': [
     'low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major', // W10.2, E198
+    'low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract', // W10.3, E197
   ],
   'Wave 9': [
     'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187

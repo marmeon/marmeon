@@ -1,0 +1,287 @@
+import { defineConfig, resolveConfig, type StandardSchemaV1 } from '@marmeon/core';
+import { issueOfFields, parseQuery } from '@marmeon/router';
+import { describe, expect, it } from 'vitest';
+import { rules as r, type Rule } from './index.ts';
+
+type Result = { value?: unknown; issues?: readonly { message: string; path?: readonly PropertyKey[] }[] };
+
+/** A rule's answer — awaited (async rules return a Promise). */
+async function check(rule: StandardSchemaV1, value: unknown): Promise<Result> {
+  return (await rule['~standard'].validate(value)) as Result;
+}
+
+/** The messages by field, as a form shows them. */
+async function errors(rule: StandardSchemaV1, value: unknown): Promise<Record<string, string[]>> {
+  const result = await check(rule, value);
+  const by: Record<string, string[]> = {};
+  for (const issue of result.issues ?? []) (by[(issue.path ?? []).map(String).join('.') || '_'] ??= []).push(issue.message);
+  return by;
+}
+
+describe('the types', () => {
+  it('a string: missing is "required", another type "must be a string" — and no NUL character (Postgres refuses it: a 500, not a 422)', async () => {
+    const form = r.object({ name: r.string() });
+    expect(await check(form, { name: '' })).toEqual({ value: { name: '' } });
+    expect(await errors(form, {})).toEqual({ name: ['The name field is required.'] });
+    expect(await errors(form, { name: null })).toEqual({ name: ['The name field is required.'] });
+    expect(await errors(form, { name: 42 })).toEqual({ name: ['The name field must be a string.'] });
+    const nul = await check(form, { name: 'a\0b' });
+    expect(nul.issues?.[0]?.message, 'a string with a NUL character').toBe('The name field must be a string.');
+  });
+
+  it('numbers take what a form or a URL spells — in decimal, finite', async () => {
+    const form = r.object({ age: r.number(), count: r.integer() });
+    expect(await check(form, { age: '36.5', count: '3' })).toEqual({ value: { age: 36.5, count: 3 } });
+    expect(await check(form, { age: -2, count: 1e3 })).toEqual({ value: { age: -2, count: 1000 } });
+    for (const wrong of ['', ' 1', '0x10', 'Infinity', 'NaN', '1,5', true, [], Number.POSITIVE_INFINITY]) {
+      expect(await errors(form, { age: wrong, count: 1 }), String(wrong)).toEqual({ age: [wrong === '' ? 'The age field is required.' : 'The age field must be a number.'] });
+    }
+    expect(await errors(form, { age: 1, count: '1.5' })).toEqual({ count: ['The count field must be an integer.'] });
+  });
+
+  it('booleans: true/false and what forms, URLs and .env say for them; accepted: a ticked box', async () => {
+    const form = r.object({ remember: r.boolean(), terms: r.accepted() });
+    expect(await check(form, { remember: 'on', terms: 'yes' })).toEqual({ value: { remember: true, terms: true } });
+    expect(await check(form, { remember: '0', terms: true })).toEqual({ value: { remember: false, terms: true } });
+    expect(await errors(form, { remember: 'maybe', terms: 'no' })).toEqual({ remember: ['The remember field must be true or false.'], terms: ['The terms field must be accepted.'] });
+    // An unticked checkbox sends nothing: "must be accepted", not "required".
+    expect(await errors(form, { remember: false })).toEqual({ terms: ['The terms field must be accepted.'] });
+  });
+
+  it('in, literal, union', async () => {
+    const form = r.object({ sort: r.in(['name', '-name']), size: r.in([10, 25]), all: r.literal('all'), limit: r.union([r.literal('all'), r.integer().min(1)]) });
+    expect(await check(form, { sort: '-name', size: '25', all: 'all', limit: '5' })).toEqual({ value: { sort: '-name', size: 25, all: 'all', limit: 5 } });
+    expect(await errors(form, { sort: 'DROP TABLE', size: '26', all: 'none', limit: 'x' })).toEqual({
+      sort: ['The selected sort is invalid.'],
+      size: ['The selected size is invalid.'],
+      all: ['The selected all is invalid.'],
+      limit: ['The limit field is invalid.'],
+    });
+    // One option took the type: its own message.
+    expect(await errors(form, { sort: 'name', size: 10, all: 'all', limit: 0 })).toEqual({ limit: ['The limit field must be at least 1.'] });
+    expect(() => r.in([] as never)).toThrow('r.in() needs at least one value.');
+  });
+
+  it('objects leave out what their shape does not name; lists check every item', async () => {
+    const form = r.object({ tags: r.array(r.string().max(3)), address: r.object({ city: r.string() }) });
+    expect(await check(form, { tags: ['a', 'bc'], address: { city: 'Bonn', zip: '53111' }, admin: true })).toEqual({ value: { tags: ['a', 'bc'], address: { city: 'Bonn' } } });
+    expect(await errors(form, { tags: 'a', address: 'Bonn' })).toEqual({ tags: ['The tags field must be a list.'], address: ['The address field must be an object.'] });
+    expect(await errors(r.string(), 1)).toEqual({ _: ['The value field must be a string.'] });
+  });
+});
+
+describe('the rules of a type', () => {
+  it('sizes: characters of a string (code points), the value of a number, items of a list', async () => {
+    const form = r.object({ name: r.string().min(2).max(4), age: r.integer().between(18, 99), tags: r.array(r.string()).max(2), pin: r.string().between(4, 4) });
+    expect(await check(form, { name: '😀😀😀😀', age: 18, tags: [], pin: '1234' })).toEqual({ value: { name: '😀😀😀😀', age: 18, tags: [], pin: '1234' } });
+    expect(await errors(form, { name: 'A', age: 100, tags: ['a', 'b', 'c'], pin: '12' })).toEqual({
+      name: ['The name field must be at least 2 characters.'],
+      age: ['The age field must be between 18 and 99.'],
+      tags: ['The tags field must not have more than 2 items.'],
+      pin: ['The pin field must be between 4 and 4 characters.'],
+    });
+    expect(await errors(r.object({ name: r.string().max(3) }), { name: 'Adam' })).toEqual({ name: ['The name field must not be longer than 3 characters.'] });
+    expect(() => r.string().max(Number.NaN)).toThrow('max() takes finite numbers');
+  });
+
+  it('trim and lowercase come first; required asks for some text', async () => {
+    const form = r.object({ email: r.string().trim().lowercase().required().email(), name: r.string().trim().required() });
+    expect(await check(form, { email: '  ADA@Example.COM ', name: ' Ada ' })).toEqual({ value: { email: 'ada@example.com', name: 'Ada' } });
+    expect(await errors(form, { email: 'ada', name: '   ' })).toEqual({ email: ['The email field must be a valid email address.'], name: ['The name field is required.'] });
+  });
+
+  it('bail: the first problem of a field only — what a form shows next to it', async () => {
+    const form = r.object({ name: r.string().trim().required().min(2).max(3).email() });
+    expect(await errors(form, { name: ' ' })).toEqual({ name: ['The name field is required.'] });
+    expect(await errors(form, { name: 'a' })).toEqual({ name: ['The name field must be at least 2 characters.'] });
+  });
+
+  it('url: absolute http(s) only, unless it names other protocols (a javascript: URL in an href runs in every browser)', async () => {
+    const link = r.object({ url: r.url() });
+    expect(await check(link, { url: 'https://example.com/a?b=c' })).toEqual({ value: { url: 'https://example.com/a?b=c' } });
+    for (const wrong of ['javascript:alert(1)', 'JAVASCRIPT:alert(1)', 'data:text/html,x', '/relative', 'https://', 'http://exa mple.com', 'mailto:ada@example.com']) {
+      expect(await errors(link, { url: wrong }), wrong).toEqual({ url: ['The url field must be a valid URL.'] });
+    }
+    expect(await check(r.object({ url: r.url({ protocols: ['https', 'mailto'] }) }), { url: 'mailto:ada@example.com' })).toEqual({ value: { url: 'mailto:ada@example.com' } });
+    expect(await errors(r.object({ url: r.url({ protocols: ['https'] }) }), { url: 'http://example.com' })).toEqual({ url: ['The url field must be a valid URL.'] });
+  });
+
+  it('uuid, date (a day that exists), isoTimestamp, regex (never stateful)', async () => {
+    const form = r.object({ id: r.uuid(), day: r.date(), at: r.isoTimestamp(), code: r.string().regex(/^[A-Z]{3}$/g) });
+    const valid = { id: '0199c3e2-7e1c-7a4b-9c1d-1b2c3d4e5f60', day: '2028-02-29', at: '2026-10-07T14:30:00Z', code: 'ABC' };
+    expect(await check(form, valid)).toEqual({ value: valid });
+    // A `g` pattern would remember where it stopped: every second test of the same value would fail.
+    const again = await check(form, valid);
+    expect(again.issues, `the second validation of the same value: ${JSON.stringify(again.issues)}`).toBeUndefined();
+    expect(await errors(form, { id: 'nope', day: '2026-02-29', at: '2026-10-07 14:30', code: 'abc' })).toEqual({
+      id: ['The id field must be a valid UUID.'],
+      day: ['The day field must be a valid date.'],
+      at: ['The at field must be a valid date and time.'],
+      code: ['The code field format is invalid.'],
+    });
+    expect(await errors(r.object({ code: r.string().regex(/^\d+$/, 'Digits only.') }), { code: 'x' })).toEqual({ code: ['Digits only.'] });
+  });
+});
+
+describe('what a missing value is', () => {
+  it('optional, nullable and default — an empty string counts as missing (a form\'s empty field)', async () => {
+    const form = r.object({
+      bio: r.string().max(5).optional(),
+      website: r.url().nullable(),
+      tags: r.array(r.string()).default([]),
+      page: r.integer().min(1).default(1),
+      note: r.string().nullable().default(null),
+    });
+    expect(await check(form, { website: '' })).toEqual({ value: { website: null, tags: [], page: 1, note: null } });
+    expect(await check(form, { bio: '', website: null, page: '', note: '' })).toEqual({ value: { bio: undefined, website: null, tags: [], page: 1, note: null } });
+    expect(await check(form, { bio: 'Hi', website: 'https://ada.dev', tags: ['x'], page: '2', note: 'n' })).toEqual({
+      value: { bio: 'Hi', website: 'https://ada.dev', tags: ['x'], page: 2, note: 'n' },
+    });
+    // nullable is not optional: the field must be there (null or a value).
+    expect(await errors(form, {})).toEqual({ website: ['The website field is required.'] });
+    expect(await errors(form, { website: null, bio: 'far too long' })).toEqual({ bio: ['The bio field must not be longer than 5 characters.'] });
+  });
+
+  it('a default list or object is a copy each time — nobody shares it', async () => {
+    const form = r.object({ tags: r.array(r.string()).default([]) });
+    const first = (await check(form, {})).value as { tags: string[] };
+    first.tags.push('changed by a handler');
+    const second = (await check(form, {})).value as { tags: string[] };
+    expect(second.tags, `the next validation's default: ${JSON.stringify(second.tags)}`).toEqual([]);
+  });
+
+  it('transform: what a valid value becomes — after the rules, an async one too', async () => {
+    const words = r.object({ tags: r.string().trim().transform((text) => text.split(/\s+/)) });
+    expect(await check(words, { tags: ' a  b ' })).toEqual({ value: { tags: ['a', 'b'] } });
+    const counted = r.object({ name: r.string().transform(async (text) => text.length) });
+    expect(counted['~standard'].validate({ name: 'Ada' })).toBeInstanceOf(Promise);
+    expect(await check(counted, { name: 'Ada' })).toEqual({ value: { name: 3 } });
+  });
+});
+
+describe('objects', () => {
+  it('nested paths (users.1.email) — the live validation finds them by field (issueOfFields)', async () => {
+    const form = r.object({ users: r.array(r.object({ email: r.email() })), address: r.object({ city: r.string().required() }) });
+    const result = await check(form, { users: [{ email: 'ada@example.com' }, { email: 'nope' }], address: { city: '' } });
+    expect(result.issues?.map((issue) => issue.path)).toEqual([['users', 1, 'email'], ['address', 'city']]);
+    expect(result.issues?.map((issue) => issue.message)).toEqual(['The users.1.email field must be a valid email address.', 'The address.city field is required.']);
+    const [email, city] = result.issues!;
+    expect(issueOfFields(email!, ['users.1.email'])).toBe(true);
+    expect(issueOfFields(email!, ['users'])).toBe(true);
+    expect(issueOfFields(email!, ['users.0.email'])).toBe(false);
+    expect(issueOfFields(city!, ['address.city'])).toBe(true);
+  });
+
+  it('when: fields checked only while their condition holds — else left out — alongside the other fields\' problems', async () => {
+    const form = r
+      .object({ kind: r.in(['person', 'company']), name: r.string().required() })
+      .when((data) => data.kind === 'company', { vat: r.string().trim().required(), size: r.integer().optional() });
+    expect(await check(form, { kind: 'person', name: 'Ada', vat: 'DE1' })).toEqual({ value: { kind: 'person', name: 'Ada' } });
+    expect(await check(form, { kind: 'company', name: 'Ada', vat: ' DE1 ', size: '3' })).toEqual({ value: { kind: 'company', name: 'Ada', vat: 'DE1', size: 3 } });
+    expect(await errors(form, { kind: 'company', name: '' })).toEqual({ name: ['The name field is required.'], vat: ['The vat field is required.'] });
+    // A condition over a field that is not valid does not hold.
+    expect(await errors(form, { kind: 'other', name: 'Ada' })).toEqual({ kind: ['The selected kind is invalid.'] });
+  });
+
+  it('confirmed: on the confirmation field, once the field itself is valid', async () => {
+    const form = r.object({ password: r.string().min(8), password_confirmation: r.string() }).confirmed('password');
+    expect(await check(form, { password: 'correct horse', password_confirmation: 'correct horse' })).toEqual({
+      value: { password: 'correct horse', password_confirmation: 'correct horse' },
+    });
+    expect(await errors(form, { password: 'correct horse', password_confirmation: 'correct hose' })).toEqual({ password_confirmation: ['The password confirmation does not match.'] });
+    expect(await errors(form, { password: 'short', password_confirmation: 'other' })).toEqual({ password: ['The password field must be at least 8 characters.'] });
+    expect(await errors(r.object({ email: r.email() }).confirmed('email', 'email_again'), { email: 'a@b.io' })).toEqual({ email_again: ['The email again does not match.'] });
+  });
+
+  it('r.object() takes rules only', () => {
+    expect(() => r.object({ name: { '~standard': {} } as never })).toThrow("Field 'name' is no rule of @marmeon/validation");
+  });
+});
+
+describe('custom rules', () => {
+  it('false is the rule\'s message, a string its own (a key or a text), anything else valid', async () => {
+    const form = r.object({
+      even: r.integer().custom((value) => value % 2 === 0),
+      code: r.string().custom((value) => (value === 'ok' ? undefined : 'codes.unknown')),
+      named: r.string().custom((value) => value !== 'x', 'No x.'),
+      object: r.string().custom({ validate: (value: string) => value.length < 3 }),
+    });
+    expect(await check(form, { even: 2, code: 'ok', named: 'y', object: 'ab' })).toEqual({ value: { even: 2, code: 'ok', named: 'y', object: 'ab' } });
+    expect(await errors(form, { even: 3, code: 'no', named: 'x', object: 'abc' })).toEqual({
+      even: ['The even field is invalid.'],
+      code: ['codes.unknown'],
+      named: ['No x.'],
+      object: ['The object field is invalid.'],
+    });
+  });
+
+  it('an async check makes the rule async — never skipped in silence; a sync function that returns a Promise is an error', async () => {
+    const form = r.object({ code: r.string().custom(async (value) => value === 'ok') });
+    const answer = form['~standard'].validate({ code: 'no' });
+    expect(answer).toBeInstanceOf(Promise);
+    expect(await errors(form, { code: 'no' })).toEqual({ code: ['The code field is invalid.'] });
+    const sneaky = r.object({ code: r.string().custom((value) => Promise.resolve(value === 'ok') as never) });
+    expect(() => sneaky['~standard'].validate({ code: 'no' })).toThrow('A .custom() check returned a Promise — write it as an async function');
+  });
+
+  it('a rule without an async part stays synchronous (jobs and stored notifications need that)', () => {
+    const job = r.object({ userId: r.integer(), at: r.isoTimestamp(), tags: r.array(r.string()).default([]) });
+    expect(job['~standard'].validate({ userId: 1, at: '2026-10-07T10:00:00Z' })).toEqual({ value: { userId: 1, at: '2026-10-07T10:00:00Z', tags: [] } });
+  });
+});
+
+describe('queries (E56)', () => {
+  const query = r.query({ q: r.string().trim().max(60).default(''), sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1), per_page: r.in([10, 25, 50]).default(10), mine: r.boolean().default(false), tag: r.array(r.string()).default([]) });
+
+  it('strings in, typed values out; an invalid field falls back to its default — never a 422', async () => {
+    const parsed = await parseQuery(query, new URLSearchParams('page=3&per_page=25&mine=on&tag=a&q=+Ada+'));
+    expect(parsed.value).toEqual({ q: 'Ada', sort: 'name', page: 3, per_page: 25, mine: true, tag: ['a'] });
+    const fallen = await parseQuery(query, new URLSearchParams('page=x&per_page=100000&sort=DROP+TABLE&page_size=9'));
+    expect(fallen.value).toEqual({ q: '', sort: 'name', page: 1, per_page: 10, mine: false, tag: [] });
+    expect([...fallen.dropped].sort()).toEqual(['page', 'page_size', 'per_page', 'sort']);
+    expect((await parseQuery(query, new URLSearchParams('page='))).value).toMatchObject({ page: 1 });
+  });
+
+  it('every field falls back on its own: default() makes the query total', async () => {
+    const fallback = await parseQuery(query, new URLSearchParams('page=0'));
+    expect(fallback.value.page).toBe(1);
+    expect(fallback.dropped).toEqual(['page']);
+    expect(await check(query, {})).toEqual({ value: { q: '', sort: 'name', page: 1, per_page: 10, mine: false, tag: [] } });
+  });
+});
+
+describe('environment variables (defineConfig)', () => {
+  const AppConfig = defineConfig('app', {
+    env: r.env({ APP_PORT: r.port().default(3960), INVITES: r.boolean().default(false), ADMINS: r.list(r.email()).default([]), APP_NAME: r.string().trim().required() }),
+    resolve: (env) => env,
+  });
+
+  it('strings read like a query; an empty variable is missing; other variables are left out', async () => {
+    const resolved = await resolveConfig([AppConfig], { APP_PORT: '', INVITES: 'yes', ADMINS: ' ada@example.com,, alan@example.com ', APP_NAME: 'Marmeon', HOME: '/root' });
+    expect(resolved.get(AppConfig)).toEqual({ APP_PORT: 3960, INVITES: true, ADMINS: ['ada@example.com', 'alan@example.com'], APP_NAME: 'Marmeon' });
+  });
+
+  it('messages name the variable as it is written', async () => {
+    const error = (await resolveConfig([AppConfig], { APP_PORT: '70000', ADMINS: 'ada@example.com, nope' }).catch((failure: unknown) => failure)) as Error;
+    expect(error.message.split('\n').filter((line) => line.startsWith('  •'))).toEqual([
+      '  • app: APP_PORT — The APP_PORT field must be a port number from 1 to 65535.',
+      '  • app: ADMINS.1 — The ADMINS.1 field must be a valid email address.',
+      '  • app: APP_NAME — The APP_NAME field is required.',
+    ]);
+  });
+});
+
+describe('Standard Schema', () => {
+  it('every rule is one: vendor marmeon, version 1', () => {
+    const rule: Rule<string> = r.string();
+    expect(rule['~standard']).toMatchObject({ version: 1, vendor: 'marmeon' });
+    expect(typeof rule['~standard'].validate).toBe('function');
+  });
+
+  it('a rule is immutable: every method returns a new one', async () => {
+    const name = r.string();
+    const short = name.max(2);
+    expect(await check(name, 'Ada')).toEqual({ value: 'Ada' });
+    expect(await errors(short, 'Ada')).toEqual({ _: ['The value field must not be longer than 2 characters.'] });
+  });
+});

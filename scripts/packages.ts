@@ -76,6 +76,8 @@ export type DriverKind = 'dependency' | 'optional peer' | 'peer';
  */
 export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, DriverKind>>>> = {
   redis: { redis: 'dependency' },
+  // The engine under `rules` (E197): internal, never re-exported — the app installs nothing for its validation.
+  validation: { valibot: 'dependency' },
   mail: { nodemailer: 'dependency', mjml: 'optional peer' },
   storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
   database: { pg: 'optional peer' },

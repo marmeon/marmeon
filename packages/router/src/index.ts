@@ -18,7 +18,7 @@ export { createNonce, RequestNonce } from './nonce.ts';
 export { editableResponse, ownResponse } from './response.ts';
 export { clientIp, createRequestState, DEFAULT_MAX_BODY_SIZE, expectsJson } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
-export { authorizeRequest, defineRequest, nothingToValidate, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
+export { attributeName, authorizeRequest, defineRequest, messageOf, NOT_LIVE, nothingToValidate, parseQuery, queryInput, translatable, validateRequest, ValidationError } from './request-definition.ts';
 export { isLiveValidation, issueOfFields, liveValidationFields, VALIDATE_HEADER, VALIDATED_HEADER } from './live-validation.ts';
 export { GET_HAS_NO_BODY, ISLAND_IS_GET_ONLY } from './route.ts';
 export type {
@@ -28,6 +28,7 @@ export type {
   FormOf,
   InferInput,
   InferOutput,
+  MessageOptions,
   MessageTranslator,
   ParsedQuery,
   QueryOf,
@@ -42,10 +43,12 @@ export type {
   StandardResult,
   StandardSchemaV1,
   ValidateOptions,
+  ValidationContext,
   ValidationHook,
   ValidationHookContext,
   Validated,
   ValidatedRequest,
   ValidationErrors,
+  ValidationLabels,
   WithQuery,
 } from './request-definition.ts';

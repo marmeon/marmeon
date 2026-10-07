@@ -68,6 +68,9 @@
       "path": "packages/i18n"
     },
     {
+      "path": "packages/validation"
+    },
+    {
       "path": "packages/devtools"
     },
     {

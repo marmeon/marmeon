@@ -144,7 +144,16 @@ A request runs in this order, and the controller is built only when everything b
   that needs `ctx.user` on a route without the authentication middleware is a compile error.
 - **Messages** may be translation keys: `translatable(key, params, fallback)` (apps use the typed `trans()` of
   [@marmeon/i18n](../i18n/README.md)) leaves the key on the issue, and the exception handler shows it in the request's language
-  (`ValidationError.translate`).
+  (`ValidationError.translate`). Such a message may name its field — `{attribute}`: the path with underscores as spaces
+  (`password_confirmation` → "password confirmation"), Laravel's rule.
+- **`messages` and `attributes`** — Laravel's `messages()` and `attributes()` of a form request, for the framework's rules
+  ([@marmeon/validation](../validation/README.md#messages)): `messages: { 'email.unique': 'profile.validation.email_taken', required:
+  'Fill this in.' }` (`<field>.<rule>` or `<rule>`), `attributes: { email: 'profile.fields.email', 'links.*.url': 'link' }` (`*` is one
+  segment). Values are translation keys or texts.
+- **Any Standard Schema library** — `rules` of [@marmeon/validation](../validation/README.md) (what docs and generators use, E197),
+  Valibot, Zod, ArkType. The interface is `@marmeon/core`'s (the router re-exports its types). `validateRequest` hands every schema
+  `libraryOptions: { marmeon: { resolve, ctx, live } }` (`ValidationContext`) — how `unique()` gets its repository without a
+  `schema: (resolve) => …` factory; other libraries ignore it.
 - The base class `Controller` (`this.view()`, `this.json()`, `this.redirect()`, `this.island()`, `this.closeLayer()`) and what a
   result becomes are [@marmeon/http](../http/README.md)'s.
 
@@ -277,7 +286,10 @@ The rest are in `web`. `GLOBAL` (`'global'`) names the global stack. Rate limits
 A form's own request — same method, URL and body — with `x-marmeon-validate: name,email` runs the route as far as its
 validation: middleware (CSRF, authentication, throttling), bindings, `authorize` and the request schema. Its controller is
 never built. The answer is `204`, or `422` with the named fields' errors only — both with `x-marmeon-validated: name,email`
-and `no-store`. Issues of fields not named are dropped (they are not filled in yet), and so are issues of the whole body.
+and `no-store`. Issues of fields not named are dropped (they are not filled in yet), and so are issues of the whole body — and
+those of rules that are not live (`NOT_LIVE` on the issue: `unique`, `exists` and async rules of
+[@marmeon/validation](../validation/README.md#database-rules-and-live-validation) unless they say `.live()`, E197). Those rules do
+not even run in a live validation; the filter catches one that ran anyway (inside another library's schema).
 
 - Field names are paths (`email`, `address.city`, `links.0.url`), at most 64 per request; unusable ones are left out. A
   request with the header is a live validation even with none left — never a submit.
@@ -333,8 +345,9 @@ Every context has the raw `request`, its `route`, `params` and:
 - **`abort(404)`**, `abort(403, 'Not yours.')` — throws an `HttpError(status, message?, headers?, translation?)`. Its message
   is meant for the client; without one, the status text and the key `marmeon.status.<status>` (translated when a translator
   is bound). Controllers and middleware alike may throw it.
-- **`ValidationError`** (422): `errors` (`{ field: [messages] }`), `input` (for the old input), `issues`;
-  `ValidationError.fromIssues(issues, input)`; the message is the first error plus a count.
+- **`ValidationError`** (422): `errors` (`{ field: [messages] }`), `input` (for the old input), `issues`, `labels` (the request's
+  `messages`/`attributes`); `ValidationError.fromIssues(issues, input, labels?)`; the message is the first error plus a count.
+  `messageOf(issue, { translator, labels })` is the text of one issue.
 - `statusText(404)` → `Not Found`. How errors are rendered (pages, JSON, the development error page) is the exception handler's,
   in [@marmeon/http](../http/README.md) and [@marmeon/server](../server/README.md#error-page-e119--development-only).
 

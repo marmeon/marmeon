@@ -64,7 +64,7 @@ export { DOTENV_MARKER, environment, readEnvFile, resolveEnvironment } from './e
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export type { NodeEnvironment, ResolvedEnvironment } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
-export type { InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
+export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
 export type { ModuleDefinition } from './module.ts';
 export type { ServiceProvider, ServiceProviderClass } from './provider.ts';
 export { generateManifest, loadDiscoveredPackages, manifestHash, manifestPath, writeManifest, DiscoveryError } from './discovery/discover.ts';

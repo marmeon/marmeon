@@ -64,6 +64,9 @@
   "scripts": {
     "build": "tsc -b"
   },
+  "dependencies": {
+    "@marmeon/core": "workspace:*"
+  },
   "devDependencies": {
     "valibot": "^1.5.0"
   }

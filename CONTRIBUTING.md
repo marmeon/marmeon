@@ -159,7 +159,8 @@ is 0 when every case is as expected, 1 when one is not, 2 for a usage error, 3 w
 Third-party driver libraries follow one rule (E198) — the package READMEs say which part of it applies to them:
 
 1. A package that wraps exactly **one** third-party driver and is useless without it lists it in **`dependencies`**, at a caret
-   range of the tested major: `@marmeon/redis` → `redis`. The app installs the package, nothing else.
+   range of the tested major: `@marmeon/redis` → `redis`, `@marmeon/validation` → `valibot` (its engine, never re-exported). The app
+   installs the package, nothing else.
 2. A package with **several** selectable drivers (usually with a built-in one) keeps the third-party drivers as **optional peers**,
    and its error names the **exact** install command with the major — `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`
    (storage), `pnpm add mjml@^5` (mail), `pnpm add pg@^8` (database). Where the driver is surely used (an S3 default disk, a

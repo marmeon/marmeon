@@ -87,6 +87,7 @@
     "@marmeon/encryption": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/server": "workspace:*",
+    "@marmeon/validation": "workspace:*",
     "marmeon": "workspace:*"
   }
 }

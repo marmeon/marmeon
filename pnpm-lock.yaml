@@ -435,6 +435,9 @@ importers:
       '@marmeon/table':
         specifier: workspace:*
         version: link:../../packages/table
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -601,6 +604,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
     devDependencies:
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../validation
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
@@ -712,6 +718,9 @@ importers:
       '@marmeon/server':
         specifier: workspace:*
         version: link:../server
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../validation
       marmeon:
         specifier: workspace:*
         version: link:../cli
@@ -936,6 +945,10 @@ importers:
         version: 1.5.0(typescript@7.0.2)
 
   packages/router:
+    dependencies:
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       valibot:
         specifier: ^1.5.0
@@ -1153,6 +1166,18 @@ importers:
       '@marmeon/storage':
         specifier: workspace:*
         version: link:../storage
+
+  packages/validation:
+    dependencies:
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+      '@marmeon/router':
+        specifier: workspace:*
+        version: link:../router
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
 
   packages/vite:
     dependencies:

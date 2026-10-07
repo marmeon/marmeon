@@ -1,7 +1,7 @@
 /**
- * The Standard Schema interface (https://standardschema.dev), copied as the spec
- * recommends so core depends on no validation library. Valibot, Zod, ArkType and
- * others implement it; Valibot is the default in docs and generators (E5).
+ * The Standard Schema interface (https://standardschema.dev), copied as the spec recommends so core depends on no
+ * validation library — the one copy of the framework (the router takes it from here). Every schema the framework
+ * accepts is one: `rules` of @marmeon/validation (what docs and generators use, E197), and Zod, Valibot, ArkType …
  */
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
   readonly '~standard': {
@@ -12,7 +12,11 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
   };
 }
 
-/** Spec 1.1: options of one validation — `libraryOptions` are the library's own (not all libraries read them). */
+/**
+ * Spec 1.1: options of one validation — `libraryOptions` are the library's own (not all libraries read them). The router
+ * passes `{ marmeon: … }` there: what `rules` of @marmeon/validation need of the request (its `resolve`, whether it is a
+ * live validation); any other library ignores it.
+ */
 export interface StandardOptions {
   readonly libraryOptions?: Record<string, unknown> | undefined;
 }
@@ -26,6 +30,9 @@ export interface StandardIssue {
   readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[] | undefined;
 }
 
+/** What a schema takes — what the browser sends for a form (`FormOf`). */
+export type InferInput<Schema extends StandardSchemaV1> = NonNullable<Schema['~standard']['types']>['input'];
+/** What a schema gives back once valid — `ctx.body`, `ctx.query`, a config's `env`. */
 export type InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema['~standard']['types']>['output'];
 
 /** `APP_URL` or `database.host` — the path of an issue, for messages. */

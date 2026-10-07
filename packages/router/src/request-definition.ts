@@ -1,41 +1,10 @@
+// The one Standard Schema interface of the framework lives in @marmeon/core (types only — the router loads no code of it).
+import type { InferInput, InferOutput, StandardIssue, StandardSchemaV1 } from '@marmeon/core';
 import { HttpError, type TextKey } from './errors.ts';
 import { issueOfFields } from './live-validation.ts';
 import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
 
-/**
- * The Standard Schema interface (https://standardschema.dev), copied as the spec
- * recommends — the router depends on no validation library. Valibot, Zod, ArkType
- * and others implement it; Valibot is the default in docs and generators (E5).
- */
-export interface StandardSchemaV1<Input = unknown, Output = Input> {
-  readonly '~standard': {
-    readonly version: 1;
-    readonly vendor: string;
-    readonly validate: (value: unknown, options?: StandardOptions | undefined) => StandardResult<Output> | Promise<StandardResult<Output>>;
-    readonly types?: { readonly input: Input; readonly output: Output } | undefined;
-  };
-}
-
-/**
- * Spec 1.1: options of one validation. `libraryOptions` are the library's own — Valibot 1.5 ignores them (its
- * `~standard.validate` reads only the global config), so the request's language does not travel this way:
- * messages are translated afterwards, per request ({@link ValidationError.translate}).
- */
-export interface StandardOptions {
-  readonly libraryOptions?: Record<string, unknown> | undefined;
-}
-
-export type StandardResult<Output> =
-  | { readonly value: Output; readonly issues?: undefined }
-  | { readonly issues: readonly StandardIssue[] };
-
-export interface StandardIssue {
-  readonly message: string;
-  readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[] | undefined;
-}
-
-export type InferInput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['input'];
-export type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
+export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from '@marmeon/core';
 
 /**
  * A body schema built per request, with the request's `resolve` — for rules that need the app, say the database:
@@ -48,6 +17,9 @@ export type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']
  *
  * Such a rule is part of the schema, so it runs wherever the schema does — on submit and in a live validation of its field
  * (E62), with the same message. (A live validation reveals what a submit reveals, never more.)
+ *
+ * `rules` of @marmeon/validation need no factory: `r.string().unique(UserRepository, 'email')` gets the request's `resolve`
+ * when it validates ({@link ValidationContext}) — and does not run in a live validation unless it says `.live()` (E197).
  */
 export type SchemaFactory<TSchema extends StandardSchemaV1> = (resolve: ClassResolver) => TSchema;
 
@@ -78,6 +50,41 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
    * scope — how `can(Policy, …)` of @marmeon/auth gets its policy without the router knowing a container (E28).
    */
   readonly authorize?: ((ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
+  /** Own messages for the framework's rules, Laravel's `messages()` — see {@link ValidationLabels}. */
+  readonly messages?: Readonly<Record<string, string>> | undefined;
+  /** Names of the fields in messages (`:attribute`), Laravel's `attributes()` — see {@link ValidationLabels}. */
+  readonly attributes?: Readonly<Record<string, string>> | undefined;
+}
+
+/**
+ * How a request's validation messages read — Laravel's `messages()` and `attributes()` of a form request. Values are
+ * translation keys (in the request's language — `trans()` keys) or plain texts:
+ *
+ * ```ts
+ * messages:   { 'email.unique': 'profile.validation.email_taken', required: 'Fill this in.' },   // '<field>.<rule>' or '<rule>'
+ * attributes: { email: 'profile.fields.email', 'links.*.url': 'link' },                          // '*' stands for one segment
+ * ```
+ *
+ * A message names a rule of the framework: `<rule>` is the part after `marmeon.validation.` of the rule's key (`max` for
+ * `marmeon.validation.max.string`). A message may use the rule's placeholders (`{attribute}`, `{max}` …). Messages of other
+ * libraries, and those a rule was given itself, are left as they are — they only get the field's name for `{attribute}`.
+ */
+export interface ValidationLabels {
+  readonly messages?: Readonly<Record<string, string>> | undefined;
+  readonly attributes?: Readonly<Record<string, string>> | undefined;
+}
+
+/**
+ * What `validateRequest` hands a schema as `libraryOptions.marmeon` (Standard Schema 1.1) — what `rules` of
+ * @marmeon/validation read; every other library ignores it.
+ */
+export interface ValidationContext {
+  /** Builds classes from the request's container scope — how `unique`/`exists` get their repository. */
+  readonly resolve: ClassResolver;
+  /** The request, for rules that depend on it (`unique(…, { ignore: (ctx) => ctx.user.id })`). */
+  readonly ctx: HttpContext;
+  /** A live validation (E62): rules that ask something outside the value (the database) do not run, unless they say `.live()`. */
+  readonly live: boolean;
 }
 
 /** What a query value may become: what the URL can carry back (`String()` of it — see `toSearchParams`). */
@@ -141,6 +148,10 @@ export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery e
   query?: CheckQuery<TQuery>;
   queryOptions?: QueryOptions;
   authorize?: (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
+  /** Own messages for the framework's rules: `{ 'email.unique': 'profile.validation.email_taken' }` ({@link ValidationLabels}). */
+  messages?: Readonly<Record<string, string>>;
+  /** Names of the fields in messages: `{ email: 'profile.fields.email' }` ({@link ValidationLabels}). */
+  attributes?: Readonly<Record<string, string>>;
 }): RequestDefinition<TSchema, TCtx, TQuery> {
   return definition as RequestDefinition<TSchema, TCtx, TQuery>;
 }
@@ -209,18 +220,33 @@ export interface MessageTranslator {
 /** Where {@link translatable} leaves its key on an issue (a symbol: never serialized, never shown). */
 const TRANSLATION = Symbol.for('marmeon.translation');
 
+/** What {@link translatable} leaves on an issue: its key, its parameters and the text without a translator. */
+interface Translation extends TextKey {
+  readonly fallback?: string | undefined;
+}
+
+/**
+ * On an issue of a rule that does not run in a live validation (E197: `unique`, `exists`, async rules without `.live()`): a live
+ * validation drops it even when the rule ran — the schema was called without the request's {@link ValidationContext}, say
+ * inside another library's schema. Set by @marmeon/validation; a symbol: never serialized, never shown.
+ */
+export const NOT_LIVE = Symbol.for('marmeon.validation.notLive');
+
 /**
  * A validation message by translation key, for schemas — a message function as Valibot (and Zod) accept them:
  * `v.minLength(2, translatable('auth.validation.name_min', { min: 2 }, 'At least 2 characters.'))`. It leaves the
  * key on the issue, and the request's translator turns it into the request's language
  * ({@link ValidationError.translate}); without a translator, the issue keeps `fallback` (or the key).
  *
+ * The message may name the field: `{attribute}` — its path (`password_confirmation` → "password confirmation", Laravel's
+ * rule), or the request's {@link ValidationLabels.attributes}.
+ *
  * Apps use the typed `trans()` of @marmeon/i18n. A plain string that is a known key works too, with any library.
  */
 export function translatable(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): (issue: object) => string {
   return (issue) => {
     try {
-      Object.defineProperty(issue, TRANSLATION, { value: { key, params } satisfies TextKey, configurable: true });
+      Object.defineProperty(issue, TRANSLATION, { value: { key, params, fallback } satisfies Translation, configurable: true });
     } catch {
       // A frozen issue keeps the fallback.
     }
@@ -241,10 +267,56 @@ function issueParams(issue: StandardIssue): Record<string, unknown> {
   return params;
 }
 
-function issueMessage(issue: StandardIssue, translator: MessageTranslator): string {
-  const translation = (issue as { [TRANSLATION]?: TextKey })[TRANSLATION];
-  if (translation) return translator.text(translation.key, { ...issueParams(issue), ...translation.params }, issue.message);
-  return translator.has(issue.message) ? translator.text(issue.message, issueParams(issue)) : issue.message;
+/**
+ * A field as messages name it (`{attribute}`), Laravel's rule: its path with underscores as spaces — `password_confirmation` →
+ * "password confirmation", `links.0.url` → "links.0.url". (An issue without a path — a schema of one value — names it "value".)
+ */
+export function attributeName(field: string): string {
+  return field.replaceAll('_', ' ');
+}
+
+/** The value of `field` in labels keyed by field (`links.*.url`: `*` stands for one segment). */
+function labelOf(labels: Readonly<Record<string, string>> | undefined, field: string): string | undefined {
+  if (!labels) return undefined;
+  if (Object.hasOwn(labels, field)) return labels[field];
+  const segments = field.split('.');
+  for (const [pattern, label] of Object.entries(labels)) {
+    if (!pattern.includes('*')) continue;
+    const parts = pattern.split('.');
+    if (parts.length === segments.length && parts.every((part, index) => part === '*' || part === segments[index])) return label;
+  }
+  return undefined;
+}
+
+/** The framework rule a key belongs to: `max` for `marmeon.validation.max.string`. */
+function ruleOf(key: string): string | undefined {
+  return key.startsWith('marmeon.validation.') ? key.split('.')[2] : undefined;
+}
+
+export interface MessageOptions {
+  /** The request's translator: the message in its language. Without one, the English text. */
+  readonly translator?: MessageTranslator | undefined;
+  readonly labels?: ValidationLabels | undefined;
+}
+
+/**
+ * The text of an issue: a key {@link translatable} left in the translator's language (or its English fallback), with `{attribute}`
+ * — the field's name ({@link ValidationLabels.attributes}, else {@link attributeName}) — and what the issue required; the
+ * request's own message for the rule, when it has one; a message that is a known key, translated. Other messages stay.
+ */
+export function messageOf(issue: StandardIssue, { translator, labels }: MessageOptions = {}): string {
+  const translation = (issue as { [TRANSLATION]?: Translation })[TRANSLATION];
+  if (!translation) return translator?.has(issue.message) ? translator.text(issue.message, issueParams(issue)) : issue.message;
+  const field = fieldOf(issue);
+  const label = labelOf(labels?.attributes, field);
+  const attribute =
+    label !== undefined ? (translator?.has(label) ? translator.text(label) : label) : (translation.params?.attribute ?? (field === '_' ? 'value' : attributeName(field)));
+  const params = { ...issueParams(issue), ...translation.params, attribute };
+  const rule = ruleOf(translation.key);
+  const own = rule === undefined ? undefined : (labelOf(labels?.messages, `${field}.${rule}`) ?? (Object.hasOwn(labels?.messages ?? {}, rule) ? labels!.messages![rule] : undefined));
+  if (own !== undefined) return translator?.has(own) ? translator.text(own, params) : fill(own, params);
+  if (translator) return translator.text(translation.key, params, translation.fallback ?? issue.message);
+  return translation.fallback === undefined ? issue.message : fill(translation.fallback, params);
 }
 
 function fieldOf(issue: StandardIssue): string {
@@ -262,21 +334,25 @@ export class ValidationError extends HttpError {
   readonly input: Record<string, unknown>;
   /** The schema's issues, when the errors come from validation — what {@link translate} translates. */
   readonly issues: readonly StandardIssue[] | undefined;
+  /** The request's own messages and field names, for {@link translate}. */
+  readonly labels: ValidationLabels | undefined;
 
   /** Messages may be translation keys (`auth.login.failed`): {@link translate} turns known ones into text. */
-  constructor(errors: ValidationErrors, input: Record<string, unknown> = {}, issues?: readonly StandardIssue[]) {
+  constructor(errors: ValidationErrors, input: Record<string, unknown> = {}, issues?: readonly StandardIssue[], labels?: ValidationLabels) {
     const messages = Object.values(errors).flat();
     const more = messages.length - 1;
     super(422, more > 0 ? `${messages[0]} (and ${more} more error${more === 1 ? '' : 's'})` : (messages[0] ?? 'The given data was invalid.'));
     this.errors = errors;
     this.input = input;
     this.issues = issues;
+    this.labels = labels;
   }
 
-  static fromIssues(issues: readonly StandardIssue[], input: Record<string, unknown>): ValidationError {
+  /** The errors of a schema's issues, by field — in English ({@link translate} for the request's language). */
+  static fromIssues(issues: readonly StandardIssue[], input: Record<string, unknown>, labels?: ValidationLabels): ValidationError {
     const errors: ValidationErrors = {};
-    for (const issue of issues) (errors[fieldOf(issue)] ??= []).push(issue.message);
-    return new ValidationError(errors, input, issues);
+    for (const issue of issues) (errors[fieldOf(issue)] ??= []).push(messageOf(issue, { labels }));
+    return new ValidationError(errors, input, issues, labels);
   }
 
   /**
@@ -287,13 +363,13 @@ export class ValidationError extends HttpError {
   translate(translator: MessageTranslator): ValidationError {
     const errors: ValidationErrors = {};
     if (this.issues) {
-      for (const issue of this.issues) (errors[fieldOf(issue)] ??= []).push(issueMessage(issue, translator));
+      for (const issue of this.issues) (errors[fieldOf(issue)] ??= []).push(messageOf(issue, { translator, labels: this.labels }));
     } else {
       for (const [field, messages] of Object.entries(this.errors)) {
         errors[field] = messages.map((message) => (translator.has(message) ? translator.text(message) : message));
       }
     }
-    const translated = new ValidationError(errors, this.input, this.issues);
+    const translated = new ValidationError(errors, this.input, this.issues, this.labels);
     const messages = Object.values(errors).flat();
     if (messages.length > 1) {
       const count = messages.length - 1;
@@ -362,14 +438,17 @@ export async function validateRequest(
   const schema: StandardSchemaV1 = typeof definition.schema === 'function' ? definition.schema(resolve) : definition.schema;
   const input = await ctx.input();
   for (const hook of hooks) await hook(input, { ctx, schema, resolve });
-  const result = await schema['~standard'].validate(input);
+  const context: ValidationContext = { resolve, ctx, live: only !== undefined };
+  const result = await schema['~standard'].validate(input, { libraryOptions: { marmeon: context } });
+  const labels: ValidationLabels = { messages: definition.messages, attributes: definition.attributes };
   if (only) {
-    // The named fields' issues only — the others are not filled in yet (or never sent: passwords). No input goes back.
-    const issues = (result.issues ?? []).filter((issue) => issueOfFields(issue, only));
-    if (issues.length > 0) throw ValidationError.fromIssues(issues, {});
+    // The named fields' issues only — the others are not filled in yet (or never sent: passwords). No input goes back. And
+    // never what a rule that is not live found, should it have run (E197): free and taken values get the same answer.
+    const issues = (result.issues ?? []).filter((issue) => issueOfFields(issue, only) && !(issue as { [NOT_LIVE]?: boolean })[NOT_LIVE]);
+    if (issues.length > 0) throw ValidationError.fromIssues(issues, {}, labels);
     return query ? { query } : {};
   }
-  if (result.issues) throw ValidationError.fromIssues(result.issues, input);
+  if (result.issues) throw ValidationError.fromIssues(result.issues, input, labels);
   return query ? { body: result.value, query } : { body: result.value };
 }
 

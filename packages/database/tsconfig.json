@@ -17,6 +17,9 @@
     },
     {
       "path": "../cli"
+    },
+    {
+      "path": "../validation"
     }
   ]
 }

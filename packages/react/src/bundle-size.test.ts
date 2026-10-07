@@ -310,6 +310,9 @@ describe('an app holds only the features it uses (E75: leak test)', () => {
       expect(featuresIn(built)).not.toContain('table');
       expect(featuresIn(built, true)).toContain('table');
       expect([...featuresIn(built), ...featuresIn(built, true)]).not.toContain('tanstack');
+      // W10 step 3 (E197): validation is the server's — the lab's form imports types of its rules only; no rule, no Valibot in any chunk.
+      const leaked = [...built.modules, ...built.lazyModules].filter((id) => id.startsWith('validation/') || id.includes('valibot'));
+      expect(leaked, `web-app client chunks with validation code: ${leaked.join(', ')}`).toEqual([]);
     } finally {
       process.env.NODE_ENV = node;
     }

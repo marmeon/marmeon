@@ -121,6 +121,7 @@ declare module '@marmeon/http/page' {
     'lab/Errors': true;
     'lab/LateError': true;
     'lab/Streaming': true;
+    'lab/Validation': true;
     'members/Index': true;
     'notifications/Index': true;
     'user-profile/Edit': true;

@@ -29,7 +29,7 @@ export type { ConnectionDefinition, ConnectionOptions } from './config.ts';
 export { DatabaseConnectionError } from './driver.ts';
 export { InfrastructureTransactionError } from './infrastructure.ts';
 export type { InfrastructureUsage } from './infrastructure.ts';
-export { isUniqueViolation, missingTable } from './errors.ts';
+export { failOnDuplicate, isUniqueViolation, missingTable, uniqueViolationColumns } from './errors.ts';
 export { databaseSolutions } from './solutions.ts';
 export { DatabaseHealthCheck } from './health.ts';
 export { DatabaseServiceProvider } from './provider.ts';

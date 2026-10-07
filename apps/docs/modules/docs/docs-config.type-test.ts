@@ -5,19 +5,19 @@ defineDocs({
   groups: [
     {
       title: 'Core',
-      packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing', 'router', 'http', 'server', 'session', 'vite', 'i18n', 'database', 'cache', 'redis', 'auth', 'mail', 'notifications', 'queue', 'scheduler', 'storage', 'live', 'table', 'react', 'devtools', 'otel'],
+      packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing', 'router', 'validation', 'http', 'server', 'session', 'vite', 'i18n', 'database', 'cache', 'redis', 'auth', 'mail', 'notifications', 'queue', 'scheduler', 'storage', 'live', 'table', 'react', 'devtools', 'otel'],
     },
   ],
 });
 
 defineDocs({
   // @ts-expect-error — 'otel' is in no group
-  groups: [{ title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing', 'router', 'http', 'server', 'session', 'vite', 'i18n', 'database', 'cache', 'redis', 'auth', 'mail', 'notifications', 'queue', 'scheduler', 'storage', 'live', 'table', 'react', 'devtools'] }],
+  groups: [{ title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing', 'router', 'validation', 'http', 'server', 'session', 'vite', 'i18n', 'database', 'cache', 'redis', 'auth', 'mail', 'notifications', 'queue', 'scheduler', 'storage', 'live', 'table', 'react', 'devtools'] }],
 });
 
 defineDocs({
   groups: [
     // @ts-expect-error — 'sheduler' is no package
-    { title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing', 'router', 'http', 'server', 'session', 'vite', 'i18n', 'database', 'cache', 'redis', 'auth', 'mail', 'notifications', 'queue', 'sheduler', 'storage', 'live', 'table', 'react', 'devtools', 'otel'] },
+    { title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing', 'router', 'validation', 'http', 'server', 'session', 'vite', 'i18n', 'database', 'cache', 'redis', 'auth', 'mail', 'notifications', 'queue', 'sheduler', 'storage', 'live', 'table', 'react', 'devtools', 'otel'] },
   ],
 });

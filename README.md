@@ -128,6 +128,7 @@ Installed framework packages register themselves (discovery through the `"marmeo
 | | [session](packages/session/README.md) | sessions with drivers, CSRF protection |
 | | [vite](packages/vite/README.md) | the Vite plugin: entries, virtual modules, the route manifest, the server-import check |
 | | [i18n](packages/i18n/README.md) | translations, the request's locale, formatting |
+| | [validation](packages/validation/README.md) | `rules`: Laravel's validation rules, typed — messages in the request's language, database rules that never run live |
 | Data | [database](packages/database/README.md) | Kysely, migrations, generated table types, repositories, factories, transactions, pagination |
 | | [cache](packages/cache/README.md) | the cache, atomic locks, rate limits |
 | | [redis](packages/redis/README.md) | Redis connections for cache, session, queue and live |

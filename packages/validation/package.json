@@ -1,0 +1,63 @@
+{
+  "name": "@marmeon/validation",
+  "version": "0.1.0",
+  "description": "Validation rules for Marmeon apps, Laravel's names typed: Standard Schema objects with messages in the request's language, database rules that never run live, query and .env rules.",
+  "keywords": [
+    "marmeon",
+    "validation",
+    "rules",
+    "standard-schema",
+    "typescript"
+  ],
+  "homepage": "https://github.com/marmeon/marmeon/tree/main/packages/validation#readme",
+  "bugs": {
+    "url": "https://github.com/marmeon/marmeon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
+    "directory": "packages/validation"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@marmeon/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@marmeon/core": "workspace:*",
+    "@marmeon/router": "workspace:*",
+    "valibot": "^1.5.0"
+  }
+}

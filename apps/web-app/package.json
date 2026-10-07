@@ -36,6 +36,7 @@
     "@marmeon/session": "workspace:*",
     "@marmeon/storage": "workspace:*",
     "@marmeon/table": "workspace:*",
+    "@marmeon/validation": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "2.11.0",
     "@opentelemetry/core": "2.11.0",

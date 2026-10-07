@@ -29,6 +29,7 @@ export const PACKAGES = [
   'storage',
   'table',
   'testing',
+  'validation',
   'vite',
 ] as const;
 
@@ -90,7 +91,7 @@ export default defineDocs({
   ],
   groups: [
     { title: 'Core', packages: ['core', 'cli', 'create-marmeon', 'log', 'encryption', 'testing'] },
-    { title: 'HTTP', packages: ['router', 'http', 'server', 'session', 'vite', 'i18n'] },
+    { title: 'HTTP', packages: ['router', 'http', 'server', 'session', 'vite', 'i18n', 'validation'] },
     { title: 'Data', packages: ['database', 'cache', 'redis', 'table'] },
     { title: 'Auth & Mail', packages: ['auth', 'mail', 'notifications'] },
     { title: 'Background', packages: ['queue', 'scheduler', 'storage', 'live'] },

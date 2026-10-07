@@ -31,6 +31,7 @@ packages=(
   @marmeon/storage
   @marmeon/table
   @marmeon/testing
+  @marmeon/validation
   @marmeon/vite
 )
 
