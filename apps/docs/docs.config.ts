@@ -78,6 +78,7 @@ export const GUIDES_GROUP = 'Guides';
 export default defineDocs({
   guides: [
     { slug: 'getting-started', file: 'docs/getting-started.md', label: 'Getting started' },
+    { slug: 'validation', file: 'docs/validation.md', label: 'Validation' },
     { slug: 'lists', file: 'docs/lists.md', label: 'Lists and pagination' },
     { slug: 'tables', file: 'docs/tables.md', label: 'Tables' },
     { slug: 'navigation', file: 'docs/navigation.md', label: 'Navigation and view transitions' },

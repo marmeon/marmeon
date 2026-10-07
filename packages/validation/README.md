@@ -5,6 +5,8 @@ apps know — `required`, `max`, `email`, `in`, `unique`, `confirmed` … — an
 takes a schema in Marmeon takes one: `defineRequest`, `parseQuery`, `defineConfig`, a job's `static schema`. Messages come in the
 request's language (English and German ship in [@marmeon/i18n](../i18n/README.md)), the first problem of a field only, with the
 field's name in them. Database rules get their repository from the request — and never answer a live validation unless they say so.
+The guide [validation](../../docs/validation.md) puts it together — from a request to its handler, why database rules never run live,
+other libraries, and the way over from Valibot.
 
 ```ts
 import { rules as r } from '@marmeon/validation';

@@ -33,9 +33,14 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
   other drivers follow [More than one instance](#more-than-one-instance). Run **one scheduler** per deployment (or per server
   with `onOneServer()` tasks and a shared cache) and as many workers as the queue needs.
 - **The worker's queues:** without `--queue` a worker takes every queue, fairly (E199) — the database queue the oldest due job of
-  all, Redis the queues in turn — so a full `default` queue no longer holds the auth module's mails back. `--queue=mail,default`
-  narrows a worker down to these, in strict order; for a priority run a second worker with `--queue=mail`. A worker with a list
-  names a queue nobody takes in a warning (`Jobs are waiting on the "mail" queue …`) once it saw jobs ready there twice in a row.
+  all (one statement along the `jobs` table's index `(reserved_at, available_at, id)`), Redis the queues in turn — so a full
+  `default` queue no longer holds the auth module's mails back. `--queue=mail,default` narrows a worker down to these, in strict
+  order (Laravel's); `*` in a list stands for every queue it does not name, taken fairly at its place (`--queue=mail,*`: mail first,
+  then the rest); `--queue=*` alone is the same as no `--queue`. For a priority without starving the rest run two workers — one
+  without `--queue`, one with `--queue=mail`. A worker with a list without `*` names a queue nobody takes in a warning
+  (`Jobs are waiting on the "mail" queue …`) once it saw jobs ready there twice in a row. An app whose `jobs` table is older than
+  Wave 10 adds the index first ([the migration](#the-queue-index-of-an-older-app)) — without it the fair claim sorts every due job
+  on each idle round.
 - **Boot warnings once:** with `--workers=N` the primary says the boot's warnings (log mailer, cookies without `Secure`, stale
   build artifacts); the workers keep theirs to themselves.
 - **One process:** `marmeon start` *is* the server — no launcher in front — so the supervisor's SIGTERM, a worker's exit code and
@@ -45,6 +50,49 @@ container publishes port 3000; `--nginx` puts nginx in front instead; `--systemd
   SIGKILL). The image of `make:docker` runs `marmeon` under `tini` (`ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]`, the Debian
   package): it passes signals on and ends with marmeon's exit code — 0 after the drain, 70 for a stuck job — in Docker, Compose
   and Kubernetes alike; no `docker run --init` or `init: true` needed (with one, tini runs as its child and warns).
+
+### The queue index of an older app
+
+The `jobs` table of `make:queue-table` (and of every app made since Wave 10) has the index the fair claim walks. A table made before
+does not get it from an upgrade — migrations that ran never run again. Add it once, in the module that owns the table:
+
+```sh
+marmeon make:migration add_fair_claim_index_to_jobs_table --module=system
+```
+
+```ts
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => schema.alter('jobs', (table) => table.index(['reserved_at', 'available_at', 'id'])),
+  down: (schema) => schema.alter('jobs', (table) => table.dropIndex('jobs_reserved_at_available_at_id_index')),
+});
+```
+
+Deploy it like any migration (`marmeon migrate --force`) before or with the new workers; until then they work, only slower on a long
+queue (200 000 jobs: a sort of every due job — 8–17 ms on SQLite, 45–51 ms on Postgres — instead of 0.01/0.06 ms per claim). A Redis
+queue needs nothing.
+
+## Drivers: what an app installs (E198)
+
+Which library comes with which package follows one rule ([dependencies of drivers](../CONTRIBUTING.md#dependencies-of-drivers)):
+a package that wraps exactly one driver brings it; a package with several drivers names the one you choose — the exact command, with
+the major Marmeon is tested with — when it is missing; a library the app and the framework must share stays the app's.
+
+| For | Install | Comes with it |
+| --- | --- | --- |
+| Redis cache, sessions, queue, live (`CACHE_DRIVER`, `SESSION_DRIVER`, `QUEUE_CONNECTION`, `LIVE_DRIVER` = `redis`) | `pnpm add @marmeon/redis` | `redis` (node-redis) — nothing else to install |
+| SMTP (`MAIL_MAILER=smtp`) | nothing | `nodemailer`, a dependency of `@marmeon/mail` |
+| Postgres (`DB_CONNECTION=pgsql`) | `pnpm add pg@^8` | — |
+| An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` | — |
+| Direct uploads to S3 (`UPLOADS_DISK` on S3) | also `pnpm add @aws-sdk/s3-presigned-post@^3` | — |
+| MJML mail templates | `pnpm add mjml@^5` | — |
+| OpenTelemetry ([@marmeon/otel](../packages/otel/README.md)) | `pnpm add @opentelemetry/api@^1` and the SDK | — (one API instance, the app's) |
+| Validation | nothing | Valibot, the internal engine of `@marmeon/validation` |
+
+Where the driver is surely needed, the **start** fails with the command — a default disk or `UPLOADS_DISK` on S3 without the SDK,
+a Redis driver without `@marmeon/redis` — not the first request; `DB_CONNECTION=pgsql` without `pg` says it when the first connection
+opens (the deployment's `migrate --force` does, before any request), an S3 disk the app only names on its first use. Install drivers as `dependencies` (not `devDependencies`): the image's production install keeps only those.
 
 ## The image (E141)
 
@@ -99,6 +147,8 @@ into the image: Node uses a cache directory only when it can write to it.
 | `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` (the direct peer only, E172) when only your proxy can reach the app — see [Proxies](#proxies-and-http2) |
 | `SHUTDOWN_DELAY` | `5` behind a load balancer that learns from its probes — see [Stopping](#stopping-without-dropped-requests) |
 | `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; nodemailer comes with `@marmeon/mail`) |
+| `AUTH_UNVERIFIED_DAYS` | `7` (default) — accounts that never confirmed an address are deleted after so many days by `auth:prune-unverified` (03:20, the scheduler); `0` keeps them ([security](security.md#accounts)) |
+| `OTEL_TRUST_TRACEPARENT` | unset (`false`) — every request starts a trace of its own and an incoming `traceparent` is a span link (E205); `true` only behind an edge that sets or strips the header — see [traces](#traces-and-a-callers-traceparent) |
 
 **`HOST` — set it.** Without `HOST` the server listens on every interface (`::`, IPv6 and IPv4 together). In a container that is
 what `HOST=0.0.0.0` in the image says anyway; on a machine of its own, behind a proxy there, set `HOST=127.0.0.1` so nothing but the
@@ -128,12 +178,30 @@ process.env.NODE_ENV === 'test'`, checked positively: `staging`, a typo or none 
   bakes in **React's development build** (React itself asks `=== 'production'`) — bigger and slower.
 - **Server rendering** reads `NODE_ENV` at run time: Vite replaces it only in the client build — the SSR build leaves
   `process.env.NODE_ENV` in the framework's code (bundled or external), and React stays external. On a staging server (`NODE_ENV=staging`) Marmeon takes no development branch — but **React renders with its development
-  build** there (`react-dom/server` chooses by `NODE_ENV === 'production'`): slower, with React's own warnings in the log — and an
-  error thrown in a Suspense boundary after the shell reaches the browser **with its message and stack** inside the page
-  (`$RX("B:0","marmeon:ssr","…message…","…stack…")`; production sends the digest alone). Treat staging pages as showing server
-  errors to whoever opens them. Whether
-  staging should run `NODE_ENV=production` with an app-level environment of its own is an open question (it touches E139); until then,
+  build** there (`react-dom/server` chooses by `NODE_ENV === 'production'`): slower, with React's own warnings in the log — and
+  an error thrown in a Suspense boundary after the shell reaches the browser with its message and stack (below). Whether staging
+  should run `NODE_ENV=production` with an app-level environment of its own is an open question (it touches E139); until then,
   expect staging to be slower than production at server rendering.
+
+> **Warning — a staging server shows its server errors to whoever opens the page.** With `NODE_ENV=staging` React renders with its
+> development build, and an error thrown in a Suspense boundary *after the shell* (a late part of a streamed page) goes to the browser
+> **with its message and its stack trace** inside the page — `$RX("B:0","marmeon:ssr","…message…","…stack…")`; production sends
+> the digest alone. Marmeon's own code takes the production branches on staging (E201), React's does not. Until that question is
+> decided: keep staging behind a login or a private network, put no real customer data on it, and treat every message a server
+> error can carry (SQL, paths, values) as visible to its visitors. A client built with `NODE_ENV=staging` bakes React's development
+> build into the browser code too — build staging images with `NODE_ENV=production` (the image does) and set `staging` at run time.
+
+## Traces and a caller's `traceparent`
+
+With [@marmeon/otel](../packages/otel/README.md) every request from outside starts **a trace of its own** — your sampler decides
+whether it is recorded — and a valid incoming `traceparent` header becomes a **span link** of the server span (E205): the caller's
+context stays findable, nothing of it is taken, its baggage neither. Anyone can send the header; taken as the parent it would let a
+client choose the trace its requests land in and switch their recording on or off with the sampled flag (`-00`, `-01`).
+
+`OTEL_TRUST_TRACEPARENT=true` continues the caller's trace — set it only where the header is yours: behind an edge (an API gateway,
+an ingress, a service mesh) that sets or strips `traceparent` itself, or for an internal service only your own services call. A
+trusted proxy (`TRUSTED_PROXIES`) is no such edge by itself: Caddy and nginx pass the client's header on unchanged. Islands and a
+layer's base, resolved in-process, stay children of their page's request; a job continues the trace of its dispatch.
 
 ## Stopping without dropped requests
 
@@ -287,7 +355,12 @@ beyond the template:
   idle timeout to the app
 - [ ] `MAIL_MAILER=smtp`
 - [ ] web, worker and scheduler each under a supervisor that restarts them; grace periods longer than the drain
-- [ ] a worker takes every queue the app uses (one without `--queue` does; a `--queue` list names every queue)
+- [ ] a worker takes every queue the app uses (one without `--queue` does; a `--queue` list names every queue or ends with `*`); a
+  `jobs` table older than Wave 10 has [the index](#the-queue-index-of-an-older-app)
+- [ ] the drivers the configuration names are installed as `dependencies` ([drivers](#drivers-what-an-app-installs-e198)) — the
+  start says which one is missing
+- [ ] staging: not public, no real data — it shows server errors ([configuration](#configuration)); `OTEL_TRUST_TRACEPARENT` only
+  behind an edge that owns the header
 - [ ] HSTS once the site is HTTPS only (the app's `SecurityHeaders` switch or the proxy); the rest of the list: [security](security.md#your-checklist)
 - [ ] `SHUTDOWN_DELAY` (≈ 5) behind a probing load balancer or in Kubernetes
 - [ ] more than one instance — or `--workers`: shared drivers for sessions, cache, queue, live (`LIVE_DRIVER=redis`) and uploads;

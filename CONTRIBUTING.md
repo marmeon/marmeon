@@ -60,39 +60,62 @@ pnpm dev               # the web app (apps/web-app) on http://localhost:3000 —
 pnpm run ci            # every check CI runs: build, typecheck, lint, the test suites, sizes, types, docs, tarballs, image, release
 ```
 
-`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 14 parts (`pnpm run ci --list`; the
+`pnpm ci` without `run` is pnpm's own clean install — it checks nothing. The run has 15 parts (`pnpm run ci --list`; the
 [README](README.md#the-repository) names them); some of them: `pnpm run ci --only test,lint`. `pack:smoke` and `image` need the
 package store, the registry and Docker — without them they are reported as skipped, which is not green.
 
 - **Tests** come with the change — type guarantees as `@ts-expect-error` tests, behaviour in Vitest, a feature shown in
   `apps/web-app` (principle 9).
 - **The bundle-size limits only go down** (`packages/react/size-budget.json`) — raising one is the maintainers' decision (tab
-  sync raised them once, by exactly its cost, E149; Wave 9 reset every limit once to its measured size + 0.5 KB, E186). A saving
-  lowers a limit to the new size + 0.5 KB (`MARMEON_SIZE_BUDGET=update pnpm test packages/react`, `… pnpm size`); extra cost eats
-  that reserve, which is never refilled.
+  sync raised them once, by exactly its cost, E149; Wave 9 reset every limit once to its measured size + 0.5 KB, E186; Wave 10 had
+  no reset, E204 — new bytes were paid for by savings first). A saving lowers a limit to the new size + 0.5 KB
+  (`MARMEON_SIZE_BUDGET=update pnpm test packages/react`, `… pnpm size`); extra cost eats that reserve, which is never refilled.
 - **Tests leave nothing behind:** every run gets its own temporary directory (`TMPDIR`), and `pnpm test` fails with a list when a
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
   removes them when the test, or the file, is done.
-- **A measure comes with its Gegenproben** (next section).
+- **A measure comes with its Gegenproben** ([below](#gegenproben)).
+- **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
 - **A change an app can notice** gets an entry in [UPGRADING.md](UPGRADING.md) — impact, before → after, the way back — and a
   changeset ([Changesets and releases](#changesets-and-releases)).
 - Code, comments and commit messages are in English; a commit subject says what the change does, in the imperative.
+
+## Rules over the source: `pnpm check:source`
+
+A part of `pnpm run ci` (`scripts/check-source.ts`, its tests in `scripts/ci.test.ts`): rules a test of one package cannot see,
+checked over every file of the repository — tracked, or new and not ignored. Exit 1 lists every hit as `path:line: text`.
+
+1. **The old name is gone** (E195, E196): no file and no path says the framework's name from before 0.1.0, in any letter case.
+   Allowed are the company name (the `LICENSE` holder, E153 — every copy, the policies, the licence rule of `check-changesets`) and
+   the one rename hint in `README.md` and `UPGRADING.md`. Code that must spell the old name — a test, a Gegenprobe — builds it from
+   parts (`['Bes', 'poke'].join('')`); the rule knows no file exceptions.
+2. **No app installs a validation engine** (E197): apps, the starter's template, the `make:auth` stubs, scripts and what the `make:*`
+   generators write validate with `rules` of `@marmeon/validation` — no file outside a package's `src/` imports Valibot (in code or in
+   a generator's template text), and no `package.json` of an app or of the template lists it. Inside `packages/<name>/src/` Valibot
+   stays an internal engine. A test or Gegenprobe that must write the import builds the name from parts as well.
+3. **`NODE_ENV` is checked positively** (E201): no `!== 'production'` / `!= 'production'` (any quotes, either side) and no
+   `NODE_ENV === 'production'` in a package's code (`packages/<name>/src/` and the stubs; tests, type tests and fixtures aside) —
+   comments count too. Either sends `staging`, a typo or a missing `NODE_ENV` down the development branch. Development branches ask
+   `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` inline (a client build folds it away), server code
+   `environment.isDevelopment()` / `environment.isProtected()` of `@marmeon/core`.
+
+A new rule joins the same script, with its test and its Gegenprobe.
 
 ## Gegenproben
 
 A test that passes proves little until it fails without the thing it tests. A *Gegenprobe* (counter-check) takes a measure out —
 a patch — and shows the test turning red **for the measure's reason**. They live in the repository, one file per step of a wave
-(`scripts/gegen/w9/s04-live.ts`, E188), and run with `pnpm gegen` — never as part of `pnpm run ci` (they patch the working tree;
+(`scripts/gegen/w10/s05-queue.ts`, `scripts/gegen/w9/s04-live.ts`, E188), and run with `pnpm gegen` — never as part of `pnpm run ci` (they patch the working tree;
 `scripts/ci.test.ts` keeps them out):
 
 ```sh
 pnpm gegen --list                 # waves, steps, cases
-pnpm gegen w9/s04                 # one step: every case must be red, for its reason
-pnpm gegen w9/s04 G1 G2           # some cases
-pnpm gegen w9                     # the whole wave, in step order
-pnpm gegen w9 --control           # without the patches: every case must be green
-pnpm gegen w9 --repo <checkout>   # against another checkout (a fresh git worktree)
-pnpm gegen w9/s04 G1 --verbose    # print every run's output
+pnpm gegen w10/s05                # one step: every case must be red, for its reason
+pnpm gegen w10/s05 G1 G2          # some cases
+pnpm gegen w10                    # the whole wave, in step order
+pnpm gegen w10 --control          # without the patches: every case must be green
+pnpm gegen w9 --control           # an older wave's control stays green — its anchors move with the code
+pnpm gegen w10 --repo <checkout>  # against another checkout (a fresh git worktree)
+pnpm gegen w10/s05 G1 --verbose   # print every run's output
 ```
 
 ### The format
@@ -150,8 +173,14 @@ is 0 when every case is as expected, 1 when one is not, 2 for a usage error, 3 w
 - **The control** (`--control`) runs every case without its patch: all green, or the Gegenprobe proves nothing.
 - **`--repo <checkout>`** patches and runs another checkout — the acceptance of a wave runs the whole wave in a fresh `git worktree`
   (no `.env`, `storage/` or `.marmeon/`), with and without `--control`.
-- **Anchors age:** a later change can move a case's `find`; the anchor check says which, before anything is written. A case red for
-  another (correct) reason after a later step — read the message, then correct the reason, never just count "red".
+- **Anchors age:** a later change can move a case's `find`; the anchor check says which, before anything is written. A change that
+  moves an anchor of an older wave updates it in the same commit — `pnpm gegen w9 --control` and `pnpm gegen w10 --control` stay
+  green (the rename of Wave 10 moved all 208 anchors of Wave 9 with the code). A case red for another (correct) reason after a later
+  step — read the message, then correct the reason, never just count "red".
+- **Masked by the repository:** a dependency check inside the monorepo stays green (workspace links, devDependencies) — patch the
+  packed manifest or `dist/` and run `pack:smoke`, with a masking scenario where the app installs the library itself (W10 step 2).
+  The old name and the validation engine in a patch or a reason are built from parts or written `[v]alibot` (`check:source` reads
+  `scripts/` too).
 - Never edit the repository while `pnpm gegen` runs, and never run it beside `pnpm test:pgsql`/`test:redis` (shared databases).
 
 ## Dependencies of drivers

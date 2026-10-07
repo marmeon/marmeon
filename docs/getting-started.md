@@ -7,6 +7,7 @@ From nothing to a running app with sign-in, and the first feature of your own. Y
 
 ```sh
 pnpm create marmeon my-app
+npm create marmeon@latest my-app -- --npm     # with npm: the flags after --
 ```
 
 On a terminal it asks four things — the starter kit (yes), Docker files (no), the package manager (pnpm), a git repository
@@ -18,6 +19,8 @@ On a terminal it asks four things — the starter kit (yes), Docker files (no), 
 - `.env` with a fresh `APP_KEY` and `NODE_ENV=development` (never committed — this machine's environment for every `marmeon`
   command, E170), SQLite in `storage/`, the tables migrated;
 - a strict Content-Security-Policy with a nonce per response, security headers, no session for guests;
+- the framework's look as a stylesheet — `bootstrap/client.tsx` imports `@marmeon/react/styles.css` (layers, dialogs, the error
+  page) and the auth module's `modules/auth/auth.css`: no `style` attribute anywhere, so a strict `style-src` blocks nothing;
 - a git repository with one commit.
 
 `--minimal` makes a blank app (only the `system` module), `--docker` the files of [deployment](deployment.md), `--npm` an npm app.
@@ -50,20 +53,23 @@ pnpm lint        # oxlint: views import controllers only as types (a value impor
 
 ## Your first module
 
-A feature is a module: routes, controllers, views, migrations, tests in one folder.
+A feature is a module: routes, controllers, views, migrations, tests in one folder. The CLI is the app's own dependency `marmeon`
+— `pnpm marmeon <command>` (with npm: `npx marmeon <command>`), `pnpm marmeon --help` lists every command:
 
 ```sh
-pnpm exec marmeon make:module notes                                  # modules/notes/index.ts + routes.ts
-pnpm exec marmeon make:controller ShowNotes --module=notes --view    # an invokable controller and its page
+pnpm marmeon make:module notes                                  # modules/notes/index.ts + routes.ts
+pnpm marmeon make:controller ShowNotes --module=notes --view    # an invokable controller and its page
 ```
 
 Register it in `bootstrap/app.ts` (`modules: [auth, home, notes, system]`), add the route
 (`Route.get('/notes', ShowNotesController).name('notes.index')` in `modules/notes/routes.ts`), and the page is there — typed
 end to end: the controller's props are the page's, `<Link route="notes.index">` knows the route. `marmeon dev` keeps
-`bootstrap/routes.ts` (the route and page types) current. A table: `marmeon make:migration create_notes_table --module=notes`, then
-`marmeon migrate` — it writes the table types into `bootstrap/database.d.ts`.
+`bootstrap/routes.ts` (the route and page types) current. A table: `pnpm marmeon make:migration create_notes_table --module=notes`,
+then `pnpm marmeon migrate` — it writes the table types into `bootstrap/database.d.ts`. A form's request validates with `rules` of
+`@marmeon/validation` — `r.object({ title: r.string().trim().required().max(120) })`, messages in English and German — see
+[validation](validation.md).
 
-The packages' guides go further: [core](../packages/core/README.md) (modules, providers, injection, config),
+The packages' READMEs go further: [core](../packages/core/README.md) (modules, providers, injection, config),
 [router](../packages/router/README.md) (routes, controllers, validation), [react](../packages/react/README.md) (pages, forms,
 layouts), [database](../packages/database/README.md), [auth](../packages/auth/README.md).
 

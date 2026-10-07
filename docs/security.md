@@ -15,13 +15,42 @@ may (E170) — a new app's says `development`. Set `NODE_ENV` in the server's en
 never deploy a developer's `.env`: a `marmeon start`, `queue:work` or `schedule:work` that runs as development because of one
 warns loudly, and its start line says `development (from .env)`.
 
+**Checked positively, also in the browser (E201).** Code that runs in the browser and in server rendering — the client core, the
+React adapter, a table's client — keeps its explanations, warnings, devtools hooks and error details behind
+`process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`, never behind "not production": on staging, with a typo or
+with none an error says its short code (`[marmeon:R2] users/Show`), no development warning shows, and a React error page rendered
+on the server carries no exception message. `pnpm check:source` refuses `!== 'production'` (and `NODE_ENV === 'production'`) in the
+framework's packages; server code asks `environment.isDevelopment()` / `isProtected()` of core. What it cannot change: **React** picks
+its development build wherever `NODE_ENV` is not `production` — and on a staging server that build sends the message and stack of a
+server error after the shell into the page. Keep staging private ([deployment](deployment.md#configuration)).
+
+## Development routes
+
+The routes for the developer's browser — the devtools (`/_marmeon/devtools`) and the mail previews (`/_marmeon/mail`) — exist only
+with `NODE_ENV=development`, and they sit behind **one host guard** (E200, `devOnly()` of
+[`@marmeon/core/dev`](../packages/core/README.md#development-routes-marmeoncoredev-e200)): they answer `localhost`, `127.0.0.1`,
+`[::1]` and the host of `APP_URL`, and any other `Host` a **403** before the handler runs; every answer is `no-store`, `nosniff`,
+same-origin for resources and openers, without a CORS header. The attack is **DNS rebinding**: a page on `evil.example` whose name
+the attacker then points at `127.0.0.1` reaches the developer's server with `Host: evil.example` and reads the answers as
+same-origin — recorded requests, mails with reset links, source paths.
+
+- `marmeon dev` puts Vite in front, and Vite refuses unknown hosts itself (`server.allowedHosts`) — but **not under HTTPS**
+  (`server.https` in `vite.config.ts`) **and not with `allowedHosts: true`**. Then the guard is what stands for the devtools and the
+  mail previews; Vite's own paths (source modules, `/@fs/`, `/__open-in-editor`) and the development error page have no host check
+  of their own. Run `marmeon dev` over HTTPS only on a trusted network, and keep `allowedHosts` a list.
+- A development route of your own takes the same guard: `Route.get('/_dev/report', devOnly(devHosts(env.APP_URL), () => report()))`.
+- `*.localhost` names pass Vite (they are loopback by definition) but not the guard, unless `APP_URL` names one.
+
 ## Requests from other sites (CSRF)
 
 Every request of the `web` group that changes something is checked in stages
 ([CSRF protection](../packages/session/README.md#csrf-protection)): the browser's `Sec-Fetch-Site: same-origin` passes, a request
 from another site is refused with 403; without Fetch Metadata the `Origin` decides; only a client that sends neither needs the
-session's token. Guests get no session just for a token — and a session draws its token only when something needs it (E203). List other origins you trust in `CSRF_TRUSTED_ORIGINS` (whole origins);
-webhooks that cannot carry a token go into a module's `csrfExcept`.
+session's token. Guests get no session just for a token — and a session draws its token only when something needs it (E203): the
+first `session.token()`, a page of a kept session (`page.csrf`) or its `XSRF-TOKEN` cookie makes it, signing in and out renews it
+at once; a guest's GET sets no cookie at all. The check itself is unchanged — a post that needs the token and has none is a 419.
+List other origins you trust in `CSRF_TRUSTED_ORIGINS` (whole origins); webhooks that cannot carry a token go into a module's
+`csrfExcept`.
 
 - Browsers send Fetch Metadata to secure origins only — over plain HTTP the check falls back to `Origin`, then to the token. Serve
   production over HTTPS.
@@ -55,6 +84,14 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   nonce (`'strict-dynamic'` for the chunks they load), no plugins, no foreign `<base>`. The starter kit and the web app turn it on
   ([Content-Security-Policy](../packages/http/README.md#content-security-policy-e147)). A nonce must never reach a shared cache: a
   page cached publicly gets a policy without one (the docs: `script-src 'self'` — they have no inline script).
+- **Styles without `'unsafe-inline'` (E202):** the framework renders no `style` attribute — a nonce does not cover attributes, and
+  React does not add one the policy blocked while it hydrates. The look of layers, dialogs, the failure notices and the error page
+  is `@marmeon/react/styles.css` (imported in `bootstrap/client.tsx`, linked by the built `index.html`), the auth module's is
+  `modules/auth/auth.css`; a `LayerDialog`'s `style` prop is written through the CSSOM after the mount, which `style-src` does not
+  govern. So `contentSecurityPolicy({ styleSrc: ["'self'"] })` blocks nothing of the framework's — the web app runs
+  `styleSrc: ["'self'", NONCE]`, the nonce for the `<style>` Vite adds under `marmeon dev`. Your own `style` props need classes
+  then. `pnpm csp:probe --app <dir> --build` (this repository) proves it: the built app in headless Chrome under an added
+  `style-src 'self'`, every violation counted — deep link and click on a layer, the failure dialogs, the signed-in pages: 0.
 - **Escaping:** React escapes what pages render; HTML written by hand goes through the `html` template of core
   ([escaping](../packages/core/README.md#html-the-escaping-html-template)). Page data travels as JSON in an inert
   `<script type="application/json">`.
@@ -82,6 +119,11 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   change of address say "taken", like Laravel's starter kits, a new account is signed in at once) — then only the throttle stands
   between the form and a list of addresses, and the boot warns outside development and tests
   ([private registration](../packages/auth/README.md#private-registration-e146-e193)).
+- **Validation never tells whether a record exists while a field is typed** (E187/E193/E197): `unique`, `exists` and async
+  `custom()` rules of `@marmeon/validation` do not run in a live validation — a free and a taken address get the same answer there,
+  and only a submit tells, behind its throttle; `.live()` opts a rule in, never for an account. The unique index stays the truth
+  (`failOnDuplicate()` → 422) ([validation](validation.md#database-rules-and-why-they-never-run-live)). A schema of another library
+  runs whole in a live validation — keep such checks out of it.
 - **Never-confirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes): whoever signed up with somebody else's address stops
   holding it, and nothing of an unfinished sign-up stays — deleted at night with its tokens, sessions and what other modules keep
   ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
@@ -130,11 +172,23 @@ devtools' recordings — by one `Redactor` with one list of names ([redaction](.
 names of your own secrets to it — a `URL` object in a log context is masked like text (`?token=…`, a token in its path). The devtools exist in development only and refuse other hosts
 ([only in development](../packages/devtools/README.md#only-in-development-e115-fail-closed)).
 
+## Traces
+
+With [@marmeon/otel](../packages/otel/README.md#a-callers-traceparent) a request from outside starts a trace of its own, and an
+incoming `traceparent` is only a span link (E205): a client cannot put its requests into a trace it chose, nor switch their recording
+on or off with the sampled flag, and its baggage is dropped. `OTEL_TRUST_TRACEPARENT=true` continues the caller's trace — only behind
+an edge that sets or strips the header (a gateway, an ingress, a mesh), never because of `TRUSTED_PROXIES`: a proxy usually passes
+the client's header on unchanged.
+
 ## Your checklist
 
 - `NODE_ENV=production` (or any protected value) in the server's environment, no development `.env` on the server.
 - `APP_URL=https://…`, a fresh `APP_KEY` per environment, kept in the server's secrets.
-- `contentSecurityPolicy()` in `bootstrap/app.ts` (the starter kit has it); new inline scripts take `ctx.nonce()`.
+- `contentSecurityPolicy()` in `bootstrap/app.ts` (the starter kit has it); new inline scripts take `ctx.nonce()`; with a `styleSrc`,
+  classes instead of `style` props and `@marmeon/react/styles.css` imported in the client entry.
+- `marmeon dev` over HTTPS or with `allowedHosts: true` only on a trusted network; staging private (it shows server errors).
+- `AUTH_UNVERIFIED_DAYS` as you want it (default 7; tell users of `AUTH_PRIVATE_REGISTRATION=false` that an unconfirmed account goes);
+  `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header.
 - HSTS once the site is HTTPS only — the `SecurityHeaders` switch or the proxy.
 - `TRUSTED_PROXIES` set to exactly your proxy (`*` — the direct peer only — when nothing else can reach the app); the proxy sets
   `X-Forwarded-*` itself and does not compress documents.

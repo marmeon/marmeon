@@ -97,6 +97,13 @@ describe('the guides (docs/*.md and the policies at the root, E168)', () => {
     expect(hits.some((hit) => hit.href.startsWith('/guides/deployment'))).toBe(true);
   });
 
+  it('validation is the guide after Getting started — and the search finds its sections (W10 step 9a)', async () => {
+    const validation = (await app.navigating().get('/guides/validation').assertOk().assertPage('docs/Page')).page()!;
+    expect(validation.props).toMatchObject({ group: 'Guides', previous: { path: '/guides/getting-started' }, next: { path: '/guides/lists' } });
+    const hits = results(await app.navigating().get('/search?q=failOnDuplicate').assertOk());
+    expect(hits.some((hit) => hit.href === '/guides/validation#database-rules-and-why-they-never-run-live'), JSON.stringify(hits.map((hit) => hit.href))).toBe(true);
+  });
+
   it('a link of a README to a guide is a visit to its page, with the anchor (no longer code text)', async () => {
     const docs = app.make(DocsRepository);
     const home = JSON.stringify(docs.home().body);

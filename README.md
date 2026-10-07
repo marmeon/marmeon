@@ -168,7 +168,7 @@ vulnerability reporting, as [SECURITY.md](SECURITY.md) describes (security fixes
 
 ## Guides
 
-[Getting started](docs/getting-started.md) · [Lists and pagination](docs/lists.md) · [Tables](docs/tables.md) ·
+[Getting started](docs/getting-started.md) · [Validation](docs/validation.md) · [Lists and pagination](docs/lists.md) · [Tables](docs/tables.md) ·
 [Navigation and view transitions](docs/navigation.md) · [Real time](docs/realtime.md) · [Deployment](docs/deployment.md) ·
 [Security](docs/security.md) · [Versions and deprecations](docs/versioning.md) · [Upgrading](UPGRADING.md) ·
 [Contributing](CONTRIBUTING.md) — in the docs app under `/guides/…`, beside the packages' READMEs.
@@ -187,8 +187,8 @@ packages/*        the framework packages (each with its README — these pages)
 apps/web-app      the app every feature is shown and tested in
 apps/blank-app    an app without modules: what create-marmeon --minimal writes (pnpm template:sync), and what make:auth is tested against
 apps/docs         these docs: the READMEs and docs/*.md as a Marmeon app (pnpm docs:dev; apps/docs/Dockerfile, deploy/docs)
-docs              the guides: getting started, lists, tables, navigation, real time, deployment, security, versions
-scripts/ci.ts     pnpm run ci — its 14 parts, from the build to the release rules (below)
+docs              the guides: getting started, validation, lists, tables, navigation, real time, deployment, security, versions
+scripts/ci.ts     pnpm run ci — its 15 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
 scripts/gegen     pnpm gegen — the Gegenproben of each step: a measure taken out, its test red for its reason (never a gate)
 scripts/test      the test suite's temporary directory per run and tempDir() — the repository's own, not exported by a package
@@ -208,12 +208,12 @@ pnpm pack:check        # the tarballs: clean build, pnpm pack, no tests or lefto
 pnpm pack:smoke        # create-marmeon from the tarballs, outside the repository: the starter kit (pnpm) and a blank app (npm) — install, tests, lint, build, start
 pnpm template:sync     # apps/blank-app → the template of create-marmeon (a test fails while they differ)
 pnpm changeset         # a changeset for your change (CONTRIBUTING.md); pnpm check-changesets checks the release rules
-pnpm gegen w9/s01      # the Gegenproben of a step (CONTRIBUTING.md): every case red for its reason; --control: all green without the patches
+pnpm gegen w10/s05     # the Gegenproben of a step (CONTRIBUTING.md): every case red for its reason; --control: all green without the patches
 pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome under style-src 'self': 0 CSP violations (E202; never a gate)
 ```
 
-`pnpm run ci` runs 14 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
-`typecheck`, `lint`, `test`, then `test:pgsql`, `test:redis` and `test:s3` against this repository's containers (`compose.yaml`,
+`pnpm run ci` runs 15 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
+`typecheck`, `lint`, `check:source` (rules over the repository's own files — [CONTRIBUTING](CONTRIBUTING.md#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis` and `test:s3` against this repository's containers (`compose.yaml`,
 started as needed), `size` (the bundle limits — they only go down, each keeps a 0.5 KB reserve, E186), `types:check` (the apps' generated route and table types are current), `docs:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-changesets`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
