@@ -460,7 +460,7 @@ function assertQuerySchema(definition: TableDefinition, ctx: HttpContext): void 
   if (query instanceof URLSearchParams || typeof query !== 'object' || query === null || !Object.hasOwn(query, key)) {
     throw new Error(
       `Table "${definition.name}": the page's route does not parse the table's query — give its request the table's schema: ` +
-        `defineRequest({ query: ${definition.name}Table.query }) or v.object({ ...${definition.name}Table.query.entries, … }) (the table's constant in place of ${definition.name}Table).`,
+        `defineRequest({ query: ${definition.name}Table.query }) or r.query({ ...${definition.name}Table.query.entries, … }) (the table's constant in place of ${definition.name}Table).`,
     );
   }
 }

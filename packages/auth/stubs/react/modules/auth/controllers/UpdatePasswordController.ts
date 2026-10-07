@@ -1,18 +1,17 @@
-import { Auth, confirmed, password, type Authenticated } from '@marmeon/auth';
+import { Auth, password, type Authenticated } from '@marmeon/auth';
 import { RateLimiter } from '@marmeon/cache';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
-import { trans, Translator } from '@marmeon/i18n';
-import * as v from 'valibot';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
 import { throttlePasswordChecks } from '../throttle.ts';
 
 export const UpdatePasswordRequest = defineRequest({
-  schema: confirmed(
-    v.object({
-      current_password: v.pipe(v.string(trans('auth.validation.current_password_required')), v.nonEmpty(trans('auth.validation.current_password_required')), v.maxLength(4096)),
-      password: password(),
-      password_confirmation: v.string(trans('auth.validation.new_password_repeat')),
-    }),
-  ),
+  schema: r.object({ current_password: r.string().required().max(4096), password: password(), password_confirmation: r.string() }).confirmed('password'),
+  messages: {
+    'current_password.required': 'auth.validation.current_password_required',
+    'password_confirmation.required': 'auth.validation.new_password_repeat',
+    'password_confirmation.confirmed': 'auth.validation.passwords_differ',
+  },
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 

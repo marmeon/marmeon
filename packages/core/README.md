@@ -182,7 +182,7 @@ Protections are **fail-closed**: a staging box, a typo and a server without `NOD
 
 ```ts
 export const LabConfig = defineConfig('lab', {
-  env: v.object({ NODE_ENV: v.optional(v.string()), LAB_PAGES: v.optional(v.picklist(['true', 'false'])) }),
+  env: r.env({ NODE_ENV: r.string().optional(), LAB_PAGES: r.in(['true', 'false']).optional() }),
   resolve: (env) => ({ enabled: env.LAB_PAGES === undefined ? environment.isDevelopment(env) : env.LAB_PAGES === 'true' }),
 });
 ```
@@ -211,7 +211,8 @@ development `.env`. `createTestApp` runs as `test` unless its `env` says otherwi
 ## Configuration
 
 Packages, modules and the app declare their environment as config definitions (`defineConfig(name, { env, resolve })`,
-validated with any Standard Schema). The app validates **all** of them before anything registers: a missing or invalid
+validated with any Standard Schema — `r.env()` of [@marmeon/validation](../validation/README.md#environment-variables) in the docs,
+the starter and the generators). The app validates **all** of them before anything registers: a missing or invalid
 variable stops the start with one `ConfigError` that lists every problem (`• encryption: APP_KEY — Missing — run "marmeon
 key:generate"`). Variables come from `.env`, then `.env.{NODE_ENV}` (`.env.test`) on top, then the real environment, which
 wins. `marmeon` prints how to fix it below the error (the solutions, E130).
@@ -219,12 +220,12 @@ wins. `marmeon` prints how to fix it below the error (the solutions, E130).
 ```ts
 // config/app.ts (apps/web-app)
 import { defineConfig, type ConfigOf } from '@marmeon/core';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 export const AppConfig = defineConfig('app', {
-  env: v.object({
-    APP_NAME: v.pipe(v.string(), v.nonEmpty()),
-    APP_URL: v.pipe(v.string(), v.url()),
+  env: r.env({
+    APP_NAME: r.string().required(),
+    APP_URL: r.url(),
   }),
   resolve: (env) => ({ name: env.APP_NAME, url: env.APP_URL }),
 });
@@ -238,7 +239,8 @@ class ShowLoginController {
 - **Where it is listed:** `defineApplication({ config })`, `defineModule({ config })` or a provider's `static config` — each
   definition once, however often it is listed.
 - **`resolve`** gets the schema's output and returns the typed value; `ConfigOf<typeof X>` is its type. Defaults belong in
-  the schema (`v.optional(…, '3000')`); every value is a string until the schema transforms it.
+  the schema (`r.port().default(3000)`); every value is a string until the schema reads it (`r.env()` reads numbers, booleans and
+  lists from their spelling, and an empty variable is missing).
 - **`process.env` is never modified** (except the resolved `NODE_ENV`, [The environment](#the-environment-node_env)): the files
   are parsed with `util.parseEnv`; tests pass `createTestApp(app, { env })`.
 - Each package's README lists its variables (`PORT` → [@marmeon/server](../server/README.md#configuration), `LOG_LEVEL` →

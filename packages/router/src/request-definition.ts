@@ -7,12 +7,11 @@ import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from '@marmeon/core';
 
 /**
- * A body schema built per request, with the request's `resolve` — for rules that need the app, say the database:
+ * A body schema built per request, with the request's `resolve` — for a schema of another library whose rules need the app (say
+ * the database), or one picked by the app's config:
  *
  * ```ts
- * schema: (resolve) => v.objectAsync({
- *   email: v.pipeAsync(v.string(), v.email(), v.checkAsync(async (email) => !(await resolve(UserRepository).emailTaken(email)), trans('…'))),
- * }),
+ * schema: (resolve) => (resolve(RegistrationMode).private ? privately : publicly),
  * ```
  *
  * Such a rule is part of the schema, so it runs wherever the schema does — on submit and in a live validation of its field
@@ -108,7 +107,7 @@ type First<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: i
 /**
  * `TQuery` when it describes a query; otherwise the message the compiler shows as the expected type:
  * - total (E56): an empty query must be valid, so each field can fall back — never a 422;
- * - string input: the URL has strings, so a number is parsed (`v.pipe(v.string(), v.toNumber())`);
+ * - string input: the URL has strings, so a number is parsed (`r.integer()` of @marmeon/validation takes its spelling);
  * - serializable output: what a link puts back into the URL (`String()`) must parse to the same value.
  */
 export type CheckQuery<TQuery extends StandardSchemaV1> =
@@ -119,15 +118,15 @@ export type CheckQuery<TQuery extends StandardSchemaV1> =
           ? [UnserializableFields<InferOutput<TQuery>>] extends [never]
             ? TQuery
             : `query field ${JoinKeys<First<UnserializableFields<InferOutput<TQuery>>>>} cannot go back into a URL — a query value is a string, number, boolean or an array of them`
-          : `query fields are read from the URL as strings: ${JoinKeys<First<NonStringFields<InferInput<TQuery>>>>} does not take one — parse the string, e.g. v.pipe(v.string(), v.toNumber())`
+          : `query fields are read from the URL as strings: ${JoinKeys<First<NonStringFields<InferInput<TQuery>>>>} does not take one — parse the string, e.g. r.integer() or r.in([…]) in r.query({ … })`
         : `query fields need a default or must be optional: ${JoinKeys<First<RequiredKeys<InferInput<TQuery>>>>} is required`
-      : 'a query schema describes an object of fields — v.object({ … })'
-    : 'a query schema describes an object of fields — v.object({ … })';
+      : 'a query schema describes an object of fields — r.query({ … })'
+    : 'a query schema describes an object of fields — r.query({ … })';
 
 /**
  * ```ts
  * export const UpdateUserProfileRequest = defineRequest({
- *   schema: v.object({ name: v.pipe(v.string(), v.minLength(2)) }),
+ *   schema: r.object({ name: r.string().trim().required().min(2) }),
  *   authorize: (ctx: HttpContext<AuthState, { id: string }>) => ctx.user.id === ctx.params.id,
  * });
  *
@@ -138,7 +137,7 @@ export type CheckQuery<TQuery extends StandardSchemaV1> =
  *
  * // A GET: the query, parsed — an invalid field falls back to its default (E56).
  * export const ListPeopleRequest = defineRequest({
- *   query: v.object({ sort: v.optional(v.picklist(['name', '-name']), 'name'), page: v.optional(v.pipe(v.string(), v.toNumber()), '1') }),
+ *   query: r.query({ sort: r.in(['name', '-name']).default('name'), page: r.integer().min(1).default(1) }),
  * });
  * handle(ctx: ContextOf<typeof ListPeopleRequest>) { ctx.query.sort; ctx.query.page; }   // 'name' | '-name', number
  * ```
@@ -233,8 +232,8 @@ interface Translation extends TextKey {
 export const NOT_LIVE = Symbol.for('marmeon.validation.notLive');
 
 /**
- * A validation message by translation key, for schemas — a message function as Valibot (and Zod) accept them:
- * `v.minLength(2, translatable('auth.validation.name_min', { min: 2 }, 'At least 2 characters.'))`. It leaves the
+ * A validation message by translation key, for schemas — a message function as `rules` of @marmeon/validation (and Valibot, Zod)
+ * accept them: `r.string().custom(isSlug, translatable('teams.validation.slug', {}, 'Letters and dashes only.'))`. It leaves the
  * key on the issue, and the request's translator turns it into the request's language
  * ({@link ValidationError.translate}); without a translator, the issue keeps `fallback` (or the key).
  *
@@ -490,7 +489,7 @@ export function queryInput(search: URLSearchParams): Record<string, string | str
  * Parses a query against its schema — and never fails for what the URL holds (E56): a field the schema rejects is
  * taken out, and the rest is validated again, so it falls back to its default (by the issues' paths, so it works with
  * any Standard Schema library — at most twice per field). One value where the schema wants a list is tried as a list
- * of one first (`?tag=a` for `v.array(…)`). Keys the schema does not know are left out of {@link ParsedQuery.canonical}.
+ * of one first (`?tag=a` for `r.array(…)`). Keys the schema does not know are left out of {@link ParsedQuery.canonical}.
  *
  * Throws only for a schema that is not total — one an empty query fails (the types refuse it: `CheckQuery`).
  */

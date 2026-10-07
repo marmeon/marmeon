@@ -1,9 +1,9 @@
-import type { Application, ModuleDefinition } from '@marmeon/core';
+import type { Application, InferOutput, ModuleDefinition } from '@marmeon/core';
 import type { Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
 import { cursorPaginate, hasMany, InvalidCursorError, Migrator, pageQuery, paginate, paginationFrom, type Connections, type CursorEncrypter, type QueryEvent } from './index.ts';
 
@@ -157,16 +157,16 @@ describe.each(drivers)('pagination on %s', (driver) => {
 
   it('pages by ctx.query: what pageQuery() parses', async () => {
     const { parseQuery } = await import('@marmeon/router');
-    const schema = v.object({ ...pageQuery({ perPage: [5, 10] }), q: v.optional(v.string(), '') });
+    const schema = r.query({ ...pageQuery({ perPage: [5, 10] }), q: r.string().default('') });
     const parsed = await parseQuery(schema, new URLSearchParams('page=2&per_page=5&q=x'));
     expect(parsed.value).toEqual({ page: 2, per_page: 5, q: 'x' });
-    const page = await paginate(db, people(), parsed.value as v.InferOutput<typeof schema>);
+    const page = await paginate(db, people(), parsed.value as InferOutput<typeof schema>);
     expect(page.meta).toMatchObject({ page: 2, perPage: 5 });
     // Invalid values fall back to their defaults (the first size); the defaults stay out of the canonical query.
     const fallback = await parseQuery(schema, new URLSearchParams('page=-1&per_page=100000'));
     expect(fallback.value).toEqual({ page: 1, per_page: 5, q: '' });
     expect(fallback.canonical).toEqual({});
-    expect((await paginate(db, people(), fallback.value as v.InferOutput<typeof schema>)).meta).toMatchObject({ page: 1, perPage: 5 });
+    expect((await paginate(db, people(), fallback.value as InferOutput<typeof schema>)).meta).toMatchObject({ page: 1, perPage: 5 });
   });
 });
 

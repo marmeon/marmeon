@@ -1,6 +1,6 @@
 import type { Translator } from '@marmeon/i18n';
 import type { DatabaseInput, Notification, NotificationData } from '@marmeon/notifications';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { AppConfig } from '../../../config/app.ts';
 import { NewSignInMail } from '../mail/NewSignInMail.ts';
 import type { User } from '../users.ts';
@@ -14,9 +14,9 @@ import { describeBrowser } from './browser.ts';
  */
 export class NewSignInNotification implements Notification<'user'> {
   static readonly notification = 'auth.new-sign-in';
-  static readonly schema = v.object({ at: v.pipe(v.string(), v.isoTimestamp()), ip: v.nullable(v.string()), agent: v.nullable(v.string()) });
+  static readonly schema = r.object({ at: r.isoTimestamp(), ip: r.string().nullable(), agent: r.string().nullable() });
   /** What the bell keeps: when, from where, which browser — never the raw user agent. */
-  static readonly database = v.object({ at: v.string(), ip: v.nullable(v.string()), browser: v.nullable(v.string()) });
+  static readonly database = r.object({ at: r.string(), ip: r.string().nullable(), browser: r.string().nullable() });
   static readonly queue = { queue: 'mail' };
 
   readonly #app: AppConfig;

@@ -33,10 +33,10 @@
     "@marmeon/scheduler": "workspace:*",
     "@marmeon/server": "workspace:*",
     "@marmeon/session": "workspace:*",
+    "@marmeon/validation": "workspace:*",
     "mjml": "^5.4.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "valibot": "^1.5.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@marmeon/devtools": "workspace:*",

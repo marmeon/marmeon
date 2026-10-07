@@ -19,7 +19,7 @@ the client: `pnpm add @marmeon/redis`).
 // modules/auth/jobs/SendWelcomeMailJob.ts — and `jobs: [SendWelcomeMailJob]` in defineModule({ … })
 export class SendWelcomeMailJob {
   static readonly job = 'auth.send-welcome-mail';                 // stable — what the queue stores, never the class name
-  static readonly schema = v.object({ userId: v.number() });       // JSON, checked at the dispatch and before handle()
+  static readonly schema = r.object({ userId: r.integer() });      // @marmeon/validation — JSON, checked at the dispatch and before handle()
   static readonly tries = 5;
   static readonly backoff = [10, 60, 300];                         // seconds before each retry, the last repeats
   static readonly timeout = 30;                                    // then job.signal aborts

@@ -360,6 +360,51 @@ prefixes (`root`) or buckets.
 
 ### Wave 10 — Marmeon: lean dependencies
 
+#### Medium: the app validates with `rules` — `password()`, `pageQuery()`, `upload()` and a table's query are rules, `confirmed()` of @marmeon/auth is gone
+
+*Likelihood of impact: medium — every app made from the starter or `make:auth`, and every app that uses one of these helpers.* The
+starter, `make:auth`'s module, `make:*` and the docs write their schemas with `rules` of `@marmeon/validation` (E197), and the
+framework's helpers are rules now — they go into `r.object()`/`r.query()`, no longer into a Valibot object:
+
+```ts
+// before                                                      // after — import { rules as r } from '@marmeon/validation'
+import * as v from 'valibot';
+schema: confirmed(v.object({ password: password(),             schema: r.object({ password: password(), password_confirmation: r.string() })
+  password_confirmation: v.string() })),                         .confirmed('password'),
+query: v.object({ ...pageQuery({ perPage: [25, 50] }), … })     query: r.query({ ...pageQuery({ perPage: [25, 50] }), … })
+schema: v.object({ avatar: v.nullish(upload({ maxBytes })) })  schema: r.object({ avatar: upload({ maxBytes }).nullable() })
+v.object({ ...MembersTable.query.entries, tab: … })            r.query({ ...MembersTable.query.entries, tab: … })
+env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })        env: r.env({ APP_URL: r.url() })
+```
+
+- **`password()`** (`@marmeon/auth`) is a rule; missing or not a string says "Enter a password." as before. **`confirmed()` of
+  `@marmeon/auth` is gone**: the object's `.confirmed('password')` reports on `password_confirmation` once the password is valid, with
+  `marmeon.validation.confirmed` — "The password confirmation does not match." (it compares the fields as typed; the old helper
+  compared them after Unicode normalization). The old text "The passwords do not match." is no framework text any more: the starter
+  has it as `auth.validation.passwords_differ` (`messages: { 'password_confirmation.confirmed': … }`). The framework key
+  `marmeon.validation.confirmation` (W10 step 3) is now `marmeon.validation.confirmed`.
+- **`pageQuery()`** (`@marmeon/database`) returns `page: r.integer().min(1).default(1)` and `per_page: r.in(sizes).default(first)` — the
+  same fields and fallbacks.
+- **`upload()`** (`@marmeon/storage`) is `r.value()` with its limits as a mark (`uploadRuleOf()` reads it): `upload(…).nullable()` for an
+  optional file; a missing field says "Choose a file.". It no longer fits into a Valibot object, and `UploadSchema` is the rule's type.
+- **A table's `query`** is an object rule; its `entries` are rules (spread them into `r.query()`). An empty value (`?sort=`) is still a 400.
+- **Messages:** a rule's own message (`custom()`, `regex()`, `unique({ message })`) may be `trans()`'s or `translatable()`'s function;
+  a key given in a request's `messages` gets the rule's parameters — `{min}`, `{max}` — where Valibot's `trans()` had `{requirement}`:
+  rename the placeholder in the app's language files.
+- **The registration of `make:auth` asks no database in its schema** (E197): with `AUTH_PRIVATE_REGISTRATION=false` a taken address is
+  still a field error on submit (the unique index decides), but **no longer when the field is checked live** — a live check of a taken
+  and of a free address gets the same answer. To keep the live answer, add the check yourself:
+  `email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).emailTaken(address)) || 'auth.validation.email_taken').live()`
+  — knowing that it tells anyone who types an address whether it has an account.
+- `r.integer()`/`r.number()` take a number's spelling too (`'7'`): a job's `JobInput` (what `dispatch()` and `assertDispatched()` take)
+  is ``number | `${number}` ``, `JobPayload` (what `handle()` gets) a number.
+- An app drops `valibot` from its `package.json` and adds `@marmeon/validation` (`pnpm add @marmeon/validation && pnpm remove valibot`);
+  `check:source` keeps it out of this repository's apps, stubs and templates.
+
+The way back: Valibot, Zod or any Standard Schema library still works wherever a rule does — install it yourself and pass its schemas;
+only the helpers above are rules now (`password()` inside a Valibot object: wrap the object in `r.object()` instead, or check the
+password with Valibot).
+
 #### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
 
 *Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,
@@ -386,8 +431,8 @@ shows its own error instead of "install it". There is no old behaviour to keep.
 with messages in the request's language (`marmeon.validation.*`, English and German in `@marmeon/i18n`), the first problem of a field
 only, and `unique`/`exists` that get their repository from the request and **never run in a live validation** unless the rule says
 `.live()`. Valibot is its internal engine — a dependency, never re-exported; the app installs nothing for it. `failOnDuplicate()` of
-`@marmeon/database` turns a conflict on a unique index into the same 422 at the field. Nothing is converted yet: Valibot, Zod or any
-other Standard Schema library keeps working everywhere (the next step moves the stubs and templates to `rules`).
+`@marmeon/database` turns a conflict on a unique index into the same 422 at the field. Valibot, Zod or any other Standard Schema library
+keeps working everywhere (the stubs, templates and helpers moved to `rules` — the Medium entry above).
 
 What changes for every app, quietly: `validateRequest` hands each schema `libraryOptions: { marmeon: { resolve, ctx, live } }` (other
 libraries ignore it); `defineRequest` takes `messages` and `attributes` (Laravel's `messages()`/`attributes()`); a message made with

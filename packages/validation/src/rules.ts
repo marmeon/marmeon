@@ -1,5 +1,6 @@
 import type { InferInput, InferOutput } from '@marmeon/core';
 import * as engine from './engine.ts';
+import type { RuleMessage } from './engine.ts';
 import { ArrayRule, definition, NumberRule, objectRule, Rule, StringRule, type ObjectRule, type Shape } from './rule.ts';
 
 /** A number option of `r.in()` as a form or a URL sends it: `25` → `'25'`. */
@@ -105,6 +106,19 @@ export const rules = {
       }),
     );
   },
+
+  /**
+   * A value of a type of your own — what a package brings (an upload of @marmeon/storage) or a value only a check can describe:
+   * `check` gets the value — a missing one too (`undefined`) — and answers what is wrong with it (a translation key, a text or
+   * `translatable()`'s message) or nothing; the value is taken as it is. Synchronous (an async check: `.custom()` after it).
+   * `meta` marks the rule and every rule made from it (`.nullable()`, `.custom()` …) — `metaOf(rule, key)` reads it.
+   *
+   * ```ts
+   * const slug = r.value<string>((value) => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? undefined : 'teams.validation.slug'));
+   * ```
+   */
+  value: <Output, Input = Output>(check: (value: unknown) => RuleMessage | undefined | void, options: { readonly meta?: Readonly<Record<symbol, unknown>> } = {}): Rule<Output, Input> =>
+    new Rule(definition(() => engine.valueEngine(check), { meta: options.meta ?? {} })),
 
   /** An object of fields — a form's body. Fields the shape does not name are left out. */
   object: <const S extends Shape>(shape: S): ObjectRule<S> => objectRule(shape),

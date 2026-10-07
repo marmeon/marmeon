@@ -1,5 +1,5 @@
 import { defineConfig, type ConfigDefinition, type ConfigOf, type StandardSchemaV1, type InferOutput } from '@marmeon/core';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 /**
  * Where a connection points. `sqlite`: a file (relative to the app root) or `:memory:`. `pgsql`: a URL, the size of its
@@ -13,9 +13,6 @@ export type ConnectionOptions =
 /** Connections of the infrastructure pool of a Postgres connection, unless it says otherwise. */
 export const DEFAULT_INFRASTRUCTURE_POOL_MAX = 4;
 
-const port = v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1), v.maxValue(65535));
-const postgresUrl = v.pipe(v.string(), v.regex(/^postgres(ql)?:\/\//, 'Expected a postgres:// URL'), v.url());
-
 /**
  * The default connection, from the environment — the same variables as Laravel:
  *
@@ -28,18 +25,18 @@ const postgresUrl = v.pipe(v.string(), v.regex(/^postgres(ql)?:\/\//, 'Expected 
  * ```
  */
 export const DatabaseConfig = defineConfig('database', {
-  env: v.object({
-    DB_CONNECTION: v.optional(v.picklist(['sqlite', 'pgsql']), 'sqlite'),
-    DB_DATABASE: v.optional(v.pipe(v.string(), v.nonEmpty('DB_DATABASE must not be empty'))),
-    DB_URL: v.optional(postgresUrl),
-    DB_HOST: v.optional(v.string(), '127.0.0.1'),
-    DB_PORT: v.optional(port, '5432'),
-    DB_USERNAME: v.optional(v.string(), 'postgres'),
-    DB_PASSWORD: v.optional(v.string(), ''),
+  env: r.env({
+    DB_CONNECTION: r.in(['sqlite', 'pgsql']).default('sqlite'),
+    DB_DATABASE: r.string().optional(),
+    DB_URL: r.string().regex(/^postgres(ql)?:\/\//, 'Expected a postgres:// URL').url({ protocols: ['postgres', 'postgresql'] }).optional(),
+    DB_HOST: r.string().default('127.0.0.1'),
+    DB_PORT: r.port().default(5432),
+    DB_USERNAME: r.string().default('postgres'),
+    DB_PASSWORD: r.string().default(''),
     /** Largest number of pooled Postgres connections. */
-    DB_POOL_MAX: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), '10'),
+    DB_POOL_MAX: r.integer().min(1).default(10),
     /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions — E108). */
-    DB_INFRA_POOL_MAX: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(1)), String(DEFAULT_INFRASTRUCTURE_POOL_MAX)),
+    DB_INFRA_POOL_MAX: r.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
   }),
   resolve: (env): { default: ConnectionOptions } => {
     if (env.DB_CONNECTION === 'sqlite') return { default: { driver: 'sqlite', database: env.DB_DATABASE ?? 'storage/database.sqlite' } };
@@ -65,7 +62,7 @@ export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions
  *
  * ```ts
  * export const Reporting = defineConnection('reporting', {
- *   env: v.object({ REPORTING_DB_URL: v.string() }),
+ *   env: r.env({ REPORTING_DB_URL: r.url({ protocols: ['postgres', 'postgresql'] }) }),
  *   resolve: (env) => ({ driver: 'pgsql', url: env.REPORTING_DB_URL }),
  * });
  * defineApplication({ config: [Reporting], … });

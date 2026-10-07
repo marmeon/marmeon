@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { TestClock } from '@marmeon/core';
-import * as v from 'valibot';
+import type { StandardResult, StandardSchemaV1 } from '@marmeon/core';
+import { rules as r } from '@marmeon/validation';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ensureBucket, S3_ENDPOINT, s3Options } from './__fixtures__/disks.ts';
 import { MemoryDisk } from './drivers/memory.ts';
@@ -35,17 +36,19 @@ describe('sniff — a file’s type by its first bytes (W6.9), never by its name
 });
 
 describe('upload() — the rule of an upload field', () => {
-  const schema = v.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg'] }) });
+  const schema = r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg'] }) });
+  const parse = (rule: StandardSchemaV1, value: unknown) => rule['~standard'].validate(value) as { value?: { avatar?: unknown }; issues?: StandardResult<unknown>['issues'] };
   const verified = (mime: string, size = 10) => new TemporaryUpload({ id: 'x', field: 'avatar', name: 'a', size, mime, extension: 'png' }, { disk: undefined!, key: 'x', consume: async () => true });
-  const issues = (avatar: unknown) => v.safeParse(schema, { avatar }).issues?.map((issue) => issue.message);
+  const issues = (avatar: unknown) => parse(schema, { avatar }).issues?.map((issue) => issue.message);
 
   it('passes a verified upload of an allowed type and size — the field is the TemporaryUpload', () => {
     const upload = verified('image/png');
-    expect(v.parse(schema, { avatar: upload }).avatar).toBe(upload);
+    expect(parse(schema, { avatar: upload }).value?.avatar).toBe(upload);
   });
 
   it('refuses what is not a verified upload: nothing, a token it never verified, a refused one, a file', () => {
     expect(issues(null)).toEqual(['Choose a file.']);
+    expect(parse(schema, {}).issues?.map((issue) => issue.message)).toEqual(['Choose a file.']);
     expect(issues('tu_x.y')).toEqual(['The file did not arrive — choose it again.']);
     expect(issues(new RejectedUpload('expired'))).toEqual(['The upload expired — choose the file again.']);
     expect(issues(new RejectedUpload('used'))).toEqual(['This file was saved already — choose it again.']);
@@ -55,9 +58,9 @@ describe('upload() — the rule of an upload field', () => {
   it('refuses a type the rule does not name — and markup always, even without `mime`', () => {
     expect(issues(verified('image/gif'))).toEqual(['This type of file is not accepted (allowed: PNG, JPG).']);
     expect(issues(verified('text/html'))).toEqual(['This type of file is not accepted (allowed: PNG, JPG).']);
-    const any = v.object({ file: upload({ maxBytes: 100 }) });
-    expect(v.safeParse(any, { file: verified('application/octet-stream') }).success).toBe(true);
-    for (const markup of ['text/html', 'image/svg+xml', 'application/xml']) expect(v.safeParse(any, { file: verified(markup) }).success).toBe(false);
+    const any = r.object({ file: upload({ maxBytes: 100 }) });
+    expect(parse(any, { file: verified('application/octet-stream') }).issues).toBeUndefined();
+    for (const markup of ['text/html', 'image/svg+xml', 'application/xml']) expect(parse(any, { file: verified(markup) }).issues).toHaveLength(1);
   });
 
   it('refuses a file over maxBytes (checked again on submit)', () => {
@@ -65,14 +68,14 @@ describe('upload() — the rule of an upload field', () => {
     expect([formatBytes(1536), formatBytes(999), formatBytes(2_500_000)]).toEqual(['1.5 KB', '999 bytes', '2.5 MB']);
   });
 
-  it('is found in a body schema by path — through optional/nullish and pipes, in nested objects', () => {
+  it('is found in a body schema by path — through nullable/optional and custom(), in nested objects', () => {
     const rule = { maxBytes: 5, mime: undefined };
     const found = uploadFields(
-      v.object({
-        name: v.string(),
-        avatar: v.nullish(upload({ maxBytes: 5 })),
-        cv: v.pipe(upload({ maxBytes: 5 }), v.check(() => true)),
-        profile: v.object({ photo: v.optional(upload({ maxBytes: 5 })) }),
+      r.object({
+        name: r.string(),
+        avatar: upload({ maxBytes: 5 }).nullable(),
+        cv: upload({ maxBytes: 5 }).custom(() => true),
+        profile: r.object({ photo: upload({ maxBytes: 5 }).optional() }),
       }),
     );
     expect(Object.fromEntries(found)).toEqual({ avatar: rule, cv: rule, 'profile.photo': rule });

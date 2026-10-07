@@ -1,10 +1,10 @@
 import { pageQuery } from '@marmeon/database';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { UserRepository } from '#modules/auth';
 
 /** The page of the API's directory: `?page=2&per_page=50` — 25, 50 or 100 a page; anything else is the default (no 422). */
-export const ListUsersRequest = defineRequest({ query: v.object(pageQuery({ perPage: [25, 50, 100] })) });
+export const ListUsersRequest = defineRequest({ query: r.query(pageQuery({ perPage: [25, 50, 100] })) });
 
 /** API: the directory of people — names only, a page at a time. Needs a token that may `users:read`. */
 export class ListUsersController extends Controller {

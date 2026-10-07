@@ -1,18 +1,16 @@
 import { can } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Broadcaster } from '@marmeon/live';
-import { trans, Translator } from '@marmeon/i18n';
-import * as v from 'valibot';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
 import { UserRepository } from '#modules/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { profileChannel } from '../live.ts';
 
 /** REPR: what the endpoint accepts and who may call it — next to the endpoint itself. */
 export const UpdateUserProfileRequest = defineRequest({
-  schema: v.object({
-    name: v.pipe(v.string(), v.trim(), v.minLength(2, trans('user-profile.validation.name_min')), v.maxLength(60)),
-    bio: v.pipe(v.string(), v.trim(), v.maxLength(200, trans('user-profile.validation.bio_max'))),
-  }),
+  schema: r.object({ name: r.string().trim().min(2).max(60), bio: r.string().trim().max(200) }),
+  messages: { 'name.min': 'user-profile.validation.name_min', 'bio.max': 'user-profile.validation.bio_max' },
   // Only your own profile (ProfilePolicy). Runs after binding, before validation — others get a 403, not field errors.
   authorize: can(ProfilePolicy, 'update', 'user'),
 });

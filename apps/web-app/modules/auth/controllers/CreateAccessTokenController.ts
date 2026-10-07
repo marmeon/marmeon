@@ -1,24 +1,24 @@
 import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
-import { trans, Translator } from '@marmeon/i18n';
-import * as v from 'valibot';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
 import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
 
 const abilityNames = [...TOKEN_ABILITIES] as [TokenAbility, ...TokenAbility[]];
 
 export const CreateAccessTokenRequest = defineRequest({
-  schema: v.object({
-    name: v.pipe(v.string(trans('auth.validation.token_name')), v.trim(), v.minLength(1, trans('auth.validation.token_name')), v.maxLength(60)),
+  schema: r.object({
+    name: r.string().trim().required().max(60),
     // One ability or several (an HTML form sends one value per checkbox) — and none at all when no box is ticked: a form
     // leaves unchecked boxes out (`<Form>`, or no JavaScript), so a missing key is "none", with the same message.
-    abilities: v.pipe(
-      v.optional(
-        v.union([v.picklist(abilityNames), v.pipe(v.array(v.picklist(abilityNames)), v.minLength(1, trans('auth.validation.token_abilities')))], trans('auth.validation.token_abilities')),
-        () => [],
-      ),
-      v.transform((value) => [value].flat()),
-    ),
+    abilities: r.union([r.in(abilityNames), r.array(r.in(abilityNames)).required()]).transform((value) => [value].flat()),
   }),
+  messages: {
+    'name.required': 'auth.validation.token_name',
+    'abilities.required': 'auth.validation.token_abilities',
+    'abilities.union': 'auth.validation.token_abilities',
+    'abilities.*.in': 'auth.validation.token_abilities',
+  },
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 

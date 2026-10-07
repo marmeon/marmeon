@@ -39,11 +39,12 @@ describe('a German browser', () => {
     await app
       .withHeaders(german)
       .post('/register', { form: { name: 'A', email: 'a@example.com', password: 'short', password_confirmation: 'other' }, headers: referer('/register') })
-      .assertInvalid<RegisterController>({
-        name: 'Der Name braucht mindestens 2 Zeichen.',
-        password: 'Das Passwort braucht mindestens 8 Zeichen.',
-        password_confirmation: 'Die Passwörter stimmen nicht überein.',
-      });
+      .assertInvalid<RegisterController>({ name: 'Der Name braucht mindestens 2 Zeichen.', password: 'Das Passwort braucht mindestens 8 Zeichen.' });
+    // The confirmation is compared once the password itself is valid (confirmed() of the rules).
+    await app
+      .withHeaders(german)
+      .post('/register', { form: { name: 'Ada', email: 'a@example.com', password: 'correct horse', password_confirmation: 'other' }, headers: referer('/register') })
+      .assertInvalid<RegisterController>({ password_confirmation: 'Die Passwörter stimmen nicht überein.' });
 
     // Messages a controller writes itself, with the translator: wrong credentials.
     const ada = await app.factory(UserFactory).create();

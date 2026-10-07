@@ -13,9 +13,9 @@ A GET has no body — its controller reads the URL, typed by the request's `quer
 ```ts
 // modules/user-profile/controllers/ListPeopleController.ts
 export const ListPeopleRequest = defineRequest({
-  query: v.object({
-    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
-    sort: v.optional(v.picklist(['name', '-name', 'joined', '-joined']), 'name'),
+  query: r.query({
+    q: r.string().trim().max(60).default(''),
+    sort: r.in(['name', '-name', 'joined', '-joined']).default('name'),
     ...pageQuery({ perPage: [10, 25, 50] }),          // ?page= and ?per_page= — @marmeon/database
   }),
 });

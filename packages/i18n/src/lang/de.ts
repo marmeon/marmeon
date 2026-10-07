@@ -31,7 +31,6 @@ export default {
       min: 'Das Passwort braucht mindestens {min} Zeichen.',
       max: 'Das Passwort ist zu lang.',
     },
-    confirmed: 'Die Passwörter stimmen nicht überein.',
     upload: {
       required: 'Bitte eine Datei wählen.',
       invalid: 'Die Datei ist nicht angekommen — bitte noch einmal wählen.',
@@ -74,7 +73,7 @@ export default {
     regex: 'Das Format von {attribute} ist ungültig.',
     date: 'Das Feld {attribute} muss ein gültiges Datum sein.',
     iso_timestamp: 'Das Feld {attribute} muss ein gültiger Zeitpunkt sein.',
-    confirmation: 'Das Feld {attribute} stimmt nicht überein.',
+    confirmed: 'Das Feld {attribute} stimmt nicht überein.',
     unique: 'Der Wert für {attribute} ist bereits vergeben.',
     exists: 'Der gewählte Wert für {attribute} ist ungültig.',
     port: 'Das Feld {attribute} muss eine Portnummer von 1 bis 65535 sein.',

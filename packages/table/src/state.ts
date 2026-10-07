@@ -1,5 +1,5 @@
 import { HttpError } from '@marmeon/router';
-import * as v from 'valibot';
+import { rules as r, type Rule } from '@marmeon/validation';
 import type { TableQueryKeys } from './client/index.ts';
 import type { TableDefinition, TableQuerySchema } from './define.ts';
 
@@ -165,27 +165,31 @@ export function stateQuery(definition: TableDefinition, state: TableState): Reco
   return out;
 }
 
-/** A field that is the table's: its value checked by {@link parseKey} — a wrong one throws the 400 out of the query's parsing. */
-function strict(definition: TableDefinition, key: string) {
-  return v.pipe(
-    v.unknown(),
-    v.transform((value: unknown) => parseKey(definition, key, value)),
-  );
+/** What a table's query field takes from the URL: one value — a list (a repeated key) is a 400 too. */
+type QueryValue = string | readonly string[] | undefined;
+
+/**
+ * A field that is the table's: its value checked by {@link parseKey} — a wrong one throws the 400 out of the query's parsing. A
+ * missing one is `fallback` (an empty one is checked: `?sort=` is a 400, not the default).
+ */
+function strict(definition: TableDefinition, key: string, fallback?: string | number): Rule<string | number | undefined, QueryValue> {
+  return r.value<unknown, QueryValue>(() => undefined).transform((value) => (value === undefined ? fallback : parseKey(definition, key, value)));
 }
 
 /**
- * The table's state as a query schema (Valibot) — what `MembersTable.query` is. Its fields parse what {@link parseState} parses and
+ * The table's state as a query schema (rules of @marmeon/validation) — what `MembersTable.query` is; its `entries` spread into
+ * another query (`r.query({ ...MembersTable.query.entries, tab: … })`). Its fields parse what {@link parseState} parses and
  * **throw** the 400 instead of reporting an issue: the router's query parsing falls back per field on issues (E56), a table must not.
  * Defaults are filled in (sort, page, per_page), so the browser leaves them out of URLs it builds.
  */
 export function querySchema(definition: TableDefinition): TableQuerySchema {
   const keys = queryKeys(definition);
-  const fields: Record<string, v.GenericSchema> = {};
-  if (definition.defaultSort !== undefined) fields[keys.sort] = v.optional(strict(definition, keys.sort), definition.defaultSort);
-  if (definition.cursor) fields[keys.cursor] = v.optional(strict(definition, keys.cursor));
-  else fields[keys.page] = v.optional(strict(definition, keys.page), '1');
-  fields[keys.perPage] = v.optional(strict(definition, keys.perPage), String(definition.perPage[0]));
-  if (searchable(definition)) fields[keys.search] = v.optional(strict(definition, keys.search), '');
-  for (const name of Object.keys(definition.filters)) fields[keys.filter(name)] = v.optional(strict(definition, keys.filter(name)));
-  return v.object(fields) as unknown as TableQuerySchema;
+  const fields: Record<string, Rule<string | number | undefined, QueryValue>> = {};
+  if (definition.defaultSort !== undefined) fields[keys.sort] = strict(definition, keys.sort, definition.defaultSort);
+  if (definition.cursor) fields[keys.cursor] = strict(definition, keys.cursor);
+  else fields[keys.page] = strict(definition, keys.page, 1);
+  fields[keys.perPage] = strict(definition, keys.perPage, definition.perPage[0]);
+  if (searchable(definition)) fields[keys.search] = strict(definition, keys.search, '');
+  for (const name of Object.keys(definition.filters)) fields[keys.filter(name)] = strict(definition, keys.filter(name));
+  return r.query(fields as never) as unknown as TableQuerySchema;
 }

@@ -77,11 +77,10 @@ export default {
     avatar_saved: 'Bild gespeichert.',
   },
   validation: {
-    name_min: 'Der Name braucht mindestens {requirement} Zeichen.',
-    bio_max: 'Der Text „Über mich“ darf höchstens {requirement} Zeichen haben.',
+    name_min: 'Der Name braucht mindestens {min} Zeichen.',
+    bio_max: 'Der Text „Über mich“ darf höchstens {max} Zeichen haben.',
     link_label: 'Gib dem Link eine Bezeichnung.',
     link_url: 'Bitte gib eine vollständige URL ein.',
-    link_scheme: 'Nur http- und https-Links.',
     own_profile: 'Du kannst nur dein eigenes Profil ändern.',
   },
 } satisfies Messages<typeof en>;

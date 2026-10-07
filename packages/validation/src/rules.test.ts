@@ -1,7 +1,7 @@
 import { defineConfig, resolveConfig, type StandardSchemaV1 } from '@marmeon/core';
-import { issueOfFields, parseQuery } from '@marmeon/router';
+import { issueOfFields, parseQuery, translatable } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
-import { rules as r, type Rule } from './index.ts';
+import { metaOf, rules as r, type Rule } from './index.ts';
 
 type Result = { value?: unknown; issues?: readonly { message: string; path?: readonly PropertyKey[] }[] };
 
@@ -193,6 +193,14 @@ describe('objects', () => {
     expect(await errors(r.object({ email: r.email() }).confirmed('email', 'email_again'), { email: 'a@b.io' })).toEqual({ email_again: ['The email again does not match.'] });
   });
 
+  it('entries: the fields, a rule each — spread into another object', async () => {
+    const page = r.query({ page: r.integer().min(1).default(1) });
+    const list = r.query({ ...page.entries, q: r.string().default('') });
+    expect(Object.keys(page.entries)).toEqual(['page']);
+    expect(await check(list, { page: '2' })).toEqual({ value: { page: 2, q: '' } });
+    expect(Object.keys(r.object({ a: r.string() }).confirmed('a').custom(() => true).entries)).toEqual(['a']);
+  });
+
   it('r.object() takes rules only', () => {
     expect(() => r.object({ name: { '~standard': {} } as never })).toThrow("Field 'name' is no rule of @marmeon/validation");
   });
@@ -222,6 +230,26 @@ describe('custom rules', () => {
     expect(await errors(form, { code: 'no' })).toEqual({ code: ['The code field is invalid.'] });
     const sneaky = r.object({ code: r.string().custom((value) => Promise.resolve(value === 'ok') as never) });
     expect(() => sneaky['~standard'].validate({ code: 'no' })).toThrow('A .custom() check returned a Promise — write it as an async function');
+  });
+
+  it('a message may be a function — what translatable() of the router makes: a key with the rule\'s parameters', async () => {
+    const form = r.object({ code: r.string().custom((value) => value.length >= 4, translatable('codes.short', { min: 4 }, 'At least {min}.')) });
+    expect(await errors(form, { code: 'ab' })).toEqual({ code: ['At least 4.'] });
+  });
+
+  it('r.value(): a type of your own — the check runs for a missing value too and names its message; meta rides along', async () => {
+    const MARK = Symbol('mark');
+    class Upload {}
+    const file = r.value<Upload, string | null>((value) => (value instanceof Upload ? undefined : value == null ? 'Choose a file.' : 'Not a file.'), { meta: { [MARK]: 'file' } });
+    const form = r.object({ file, other: file.nullable() });
+    const upload = new Upload();
+    expect(await check(form, { file: upload, other: null })).toEqual({ value: { file: upload, other: null } });
+    expect(await errors(form, { other: 'x' })).toEqual({ file: ['Choose a file.'], other: ['Not a file.'] });
+    // Every rule made from it keeps the mark: the modifiers, custom(), transform(), live().
+    for (const rule of [file, file.nullable(), file.optional(), file.custom(() => true), file.transform((value) => value), file.live()]) expect(metaOf(rule, MARK)).toBe('file');
+    expect(metaOf(r.string(), MARK)).toBeUndefined();
+    expect(metaOf({ '~standard': {} }, MARK)).toBeUndefined();
+    expect(() => r.value(() => Promise.resolve(undefined) as never)['~standard'].validate(1)).toThrow('An r.value() check returned a Promise');
   });
 
   it('a rule without an async part stays synchronous (jobs and stored notifications need that)', () => {

@@ -11,8 +11,8 @@ is planned with `@marmeon/pwa` (E93) — not part of Marmeon yet.
 // modules/auth/notifications/NewSignInNotification.ts — and `notifications: [NewSignInNotification]` in defineModule
 export class NewSignInNotification implements Notification<'user'> {
   static readonly notification = 'auth.new-sign-in';                    // what the queue and the table store — never the class name
-  static readonly schema = v.object({ at: v.pipe(v.string(), v.isoTimestamp()), ip: v.nullable(v.string()), agent: v.nullable(v.string()) });
-  static readonly database = v.object({ at: v.string(), ip: v.nullable(v.string()), browser: v.nullable(v.string()) });
+  static readonly schema = r.object({ at: r.isoTimestamp(), ip: r.string().nullable(), agent: r.string().nullable() });   // rules of @marmeon/validation
+  static readonly database = r.object({ at: r.string(), ip: r.string().nullable(), browser: r.string().nullable() });
   static readonly queue = { queue: 'mail' };                            // its job — and its mail — on the `mail` queue
 
   constructor(app: AppConfig) { … }                                     // built per delivery through the container

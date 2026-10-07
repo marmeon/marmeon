@@ -28,6 +28,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** The entries UPGRADING.md must keep, by wave — GitHub's heading anchors. A reworded heading changes its anchor: update it here. */
 export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
   'Wave 10': [
+    'medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone', // W10.4, E197
     'low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major', // W10.2, E198
     'low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract', // W10.3, E197
   ],

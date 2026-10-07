@@ -3,7 +3,7 @@ import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Broadcaster } from '@marmeon/live';
 import { Translator } from '@marmeon/i18n';
 import { Storage, upload } from '@marmeon/storage';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { UserRepository } from '#modules/auth';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { profileChannel } from '../live.ts';
@@ -15,7 +15,7 @@ import { profileChannel } from '../live.ts';
  * upload target was handed out by this route's `authorize` too.
  */
 export const UpdateAvatarRequest = defineRequest({
-  schema: v.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
+  schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
   authorize: can(ProfilePolicy, 'update', 'user'),
 });
 

@@ -36,7 +36,7 @@ export const VALIDATION_TEXTS = {
   regex: 'The {attribute} field format is invalid.',
   date: 'The {attribute} field must be a valid date.',
   iso_timestamp: 'The {attribute} field must be a valid date and time.',
-  confirmation: 'The {attribute} does not match.',
+  confirmed: 'The {attribute} does not match.',
   unique: 'The {attribute} has already been taken.',
   exists: 'The selected {attribute} is invalid.',
   port: 'The {attribute} field must be a port number from 1 to 65535.',

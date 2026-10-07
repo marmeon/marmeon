@@ -59,6 +59,7 @@ imports types of a request (`FormOf`), never a rule (a test of the web app's cli
 | `r.array(rule)` | a list, each item checked by `rule` | a list |
 | `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` | `r.string()` with that rule | `string` |
 | `r.query({...})`, `r.env({...})`, `r.port()`, `r.list(rule)` | see [Queries](#queries) and [Environment variables](#environment-variables) | |
+| `r.value<Output, Input>(check, { meta })` | what `check` passes — see [A type of your own](#a-type-of-your-own-rvalue) | the value |
 
 What a rule of a type adds — in order, each after the one before (`trim()` before `required()`):
 
@@ -67,7 +68,7 @@ What a rule of a type adds — in order, each after the one before (`trim()` bef
   `date()` (`2026-10-07`, a day that exists), `isoTimestamp()`;
 - **numbers:** `integer()` (a safe integer), `min(n)`, `max(n)`, `between(min, max)`;
 - **lists:** `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)` (items);
-- **objects:** `when(condition, fields)`, `confirmed(field, confirmation?)` — see [Objects](#objects);
+- **objects:** `when(condition, fields)`, `confirmed(field, confirmation?)`, `entries` (the fields) — see [Objects](#objects);
 - **every rule:** `transform(fn)`, `custom(check, message?)`, `unique(…)`, `exists(…)`, `live()`, and the modifiers below.
 
 `r.url()` takes **absolute http and https URLs only** unless `protocols` names others (`r.url({ protocols: ['https', 'mailto'] })`): a
@@ -119,7 +120,9 @@ English (`VALIDATION_TEXTS`, the same texts).
   `max.string`). A message may use the rule's placeholders: `'Keep {attribute} under {max}.'`.
 - **The first problem of a field only** (Laravel's `bail`, as a default): a form shows one message per field, so the rules after the
   first failing one do not run — `r.string().trim().required().email()` says "required" for `' '`, never also "must be a valid email".
-- `regex(pattern, message)`, `custom(check, message)` and `unique(…, { message })` take a message of their own (a key or a text).
+- `regex(pattern, message)`, `custom(check, message)` and `unique(…, { message })` take a message of their own: a key, a text, or a
+  message function — what `translatable(key, params, english)` of the router (and `trans()` of [@marmeon/i18n](../i18n/README.md))
+  makes, for a key with parameters: `.custom(isLongEnough, translatable('teams.validation.slug_min', { min: 3 }, 'At least {min}.'))`.
 
 A request's `messages`/`attributes` are `defineRequest` options of [@marmeon/router](../router/README.md#controllers-and-requests); they
 reach a live validation's errors too.
@@ -163,8 +166,11 @@ A rule that cannot read a string (`r.array()` — `r.list()` does) does not comp
   ```
 
 - **`confirmed(field, confirmation = '<field>_confirmation')`** — the confirmation repeats the field (as typed), reported on the
-  confirmation field once the field itself is valid: "The password confirmation does not match." (Passwords: `password()` and
-  `confirmed()` of [@marmeon/auth](../auth/README.md) compare after the hasher's normalization.)
+  confirmation field once the field itself is valid: "The password confirmation does not match." (key `marmeon.validation.confirmed`).
+  A new password is `password()` of [@marmeon/auth](../auth/README.md#validation-rules) — a rule too:
+  `r.object({ password: password(), password_confirmation: r.string() }).confirmed('password')`.
+- **`entries`** — the fields, a rule each (not those of `when()`): spread one object's fields into another,
+  `r.query({ ...MembersTable.query.entries, tab: r.in(['all', 'mine']).default('all') })`.
 - Issues of nested fields have their full path — `users.1.email`, `address.city` — which is what a form's errors and a live
   validation's fields use.
 
@@ -182,6 +188,22 @@ code: r.string().custom(async (code, { request }) => (await request!.resolve(Inv
 An **async** check (an `async` function) makes the rule async — and, like the database rules, it does not run in a live validation
 unless the rule says `.live()`. A check that returns a Promise without being an `async` function is an error, never skipped in silence.
 A rule without an async part stays **synchronous** (a stored notification's `static database` needs that).
+
+## A type of your own: `r.value()`
+
+`r.value<Output, Input>(check, { meta })` is a rule for a value no other rule describes — what a package brings (an upload of
+[@marmeon/storage](../storage/README.md#uploads)) or what only a check can say: `check` gets the value — a missing one too
+(`undefined`), so it says what missing means — and answers with a message (a key, a text, `translatable()`'s) or nothing; the value
+is taken as it is. It is synchronous (an async check: `.custom()` after it) and has every rule's methods (`.nullable()`,
+`.custom()`, `.transform()` …).
+
+```ts
+const slug = r.value<string>((value) => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test(value) ? undefined : 'teams.validation.slug'));
+```
+
+`meta` marks the rule — `{ [UPLOAD_RULE]: { maxBytes, mime } }` — and every rule made from it keeps the mark; `metaOf(rule, key)`
+reads it (undefined for anything else, another library's schema too). That is how the upload target and the submit find an upload
+field in a body schema, through `upload(…).nullable()` as well.
 
 ## Database rules and live validation
 

@@ -89,12 +89,12 @@ function addStuckJob(app: string): void {
   writeFileSync(
     join(app, 'modules/smoke/jobs/StuckJob.ts'),
     [
-      "import * as v from 'valibot';",
+      "import { rules as r } from '@marmeon/validation';",
       '',
       '/** Written by scripts/image-smoke.ts: a job that never ends — its worker must exit with 70 after the timeout. */',
       'export class StuckJob {',
       "  static readonly job = 'smoke.stuck';",
-      '  static readonly schema = v.object({});',
+      '  static readonly schema = r.object({});',
       '  static readonly timeout = 1;',
       '  static readonly tries = 1;',
       '',

@@ -2,7 +2,7 @@ import { Container, defineConfig, resolveConfig } from '@marmeon/core';
 import { Database } from '@marmeon/database';
 import { abort, Controller, SharedData, type HttpContext } from '@marmeon/http';
 import { Router } from '@marmeon/router';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { LabConfig } from '../config.ts';
 import { CheckoutService, LabReport, Money, Orders, ReminderSchedule } from '../errors.ts';
 
@@ -108,10 +108,10 @@ export class TriggerErrorLabController extends LabController {
         container.make(ReminderSchedule);
         throw new Error('ReminderSchedule was built with its own SystemClock — see the injection warning below.');
       case 'config':
-        return resolveConfig([defineConfig('payments', { env: v.object({ PAYMENTS_API_URL: v.pipe(v.string(), v.url()) }), resolve: (env) => env })], {});
+        return resolveConfig([defineConfig('payments', { env: r.env({ PAYMENTS_API_URL: r.url() }), resolve: (env) => env })], {});
       case 'app-key':
         // As the start checks it (@marmeon/encryption's configuration) — here with an empty key.
-        return resolveConfig([defineConfig('encryption', { env: v.object({ APP_KEY: v.pipe(v.string(), v.nonEmpty('Missing — run "marmeon key:generate"')) }), resolve: (env) => env })], { APP_KEY: '' });
+        return resolveConfig([defineConfig('encryption', { env: r.env({ APP_KEY: r.string().custom((key) => key !== '', 'Missing — run "marmeon key:generate"') }), resolve: (env) => env })], { APP_KEY: '' });
       case 'route':
         return (this.#router.url as (this: Router, name: string) => string).call(this.#router, 'user-profile.shwo');
       case 'table':

@@ -1,12 +1,13 @@
 import { Auth } from '@marmeon/auth';
 import { ClientHistory, Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
-import { Locales, trans, Translator } from '@marmeon/i18n';
+import { Locales, Translator } from '@marmeon/i18n';
 import { Session } from '@marmeon/session';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { UserRepository } from '#modules/auth';
 
 export const UpdateLocaleRequest = defineRequest({
-  schema: v.object({ locale: v.pipe(v.string(trans('app.locale.unsupported')), v.maxLength(35)) }),
+  schema: r.object({ locale: r.string().max(35) }),
+  messages: { 'locale.required': 'app.locale.unsupported', 'locale.string': 'app.locale.unsupported' },
 });
 
 /**

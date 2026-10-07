@@ -10,7 +10,7 @@ factories, seeders — and transactions that everything awaited inside joins (E1
 
 ```ts
 // modules/user-profile/controllers/ListUsersController.ts — constructor(users: UserRepository)
-export const ListUsersRequest = defineRequest({ query: v.object(pageQuery({ perPage: [25, 50, 100] })) });
+export const ListUsersRequest = defineRequest({ query: r.query(pageQuery({ perPage: [25, 50, 100] })) });   // rules of @marmeon/validation
 
 static request = ListUsersRequest;
 handle(ctx: ContextOf<typeof ListUsersRequest>) {   // ctx.query: { page: number; per_page: 25 | 50 | 100 }
@@ -46,7 +46,7 @@ validated at the start. The web app gives the cache and the sessions a SQLite fi
 ```ts
 // config/database.ts — and `config: [SystemDatabase]` in defineApplication({ … })
 export const SystemDatabase = defineConnection('system', {
-  env: v.object({ SYSTEM_DB_DATABASE: v.optional(v.pipe(v.string(), v.nonEmpty()), 'storage/system.sqlite') }),
+  env: r.env({ SYSTEM_DB_DATABASE: r.string().default('storage/system.sqlite') }),
   resolve: (env) => ({ driver: 'sqlite', database: env.SYSTEM_DB_DATABASE }),
 });
 // connections.get('system'); or a Postgres one: resolve: (env) => ({ driver: 'pgsql', url: env.REPORTING_DB_URL, poolMax: 5 })
@@ -221,8 +221,8 @@ In a transaction the 422 rolls it back.
 
 ## Pagination
 
-- **`pageQuery({ perPage })`** — the page as query fields, spread into a route's query schema (E55):
-  `v.object({ ...pageQuery({ perPage: [25, 50, 100] }), sort: … })` reads `?page=` (a whole number ≥ 1, default 1) and
+- **`pageQuery({ perPage })`** — the page as query fields, rules of [@marmeon/validation](../validation/README.md#queries) (E197),
+  spread into a route's query schema (E55): `r.query({ ...pageQuery({ perPage: [25, 50, 100] }), sort: … })` reads `?page=` (a whole number ≥ 1, default 1) and
   `?per_page=` (one of `perPage`, default its first; one number allows just that). Like every query field, an invalid value falls
   back to its default (`?page=-1`, `?per_page=100000`) — never a 422 — and the defaults stay out of URLs the browser builds.
   `ctx.query.per_page` is typed `25 | 50 | 100`; `<Pagination>` of `@marmeon/react` builds its links from the same parsed query.

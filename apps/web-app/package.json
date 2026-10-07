@@ -45,8 +45,7 @@
     "@opentelemetry/sdk-trace": "2.11.0",
     "mjml": "^5.4.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "valibot": "^1.5.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@marmeon/devtools": "workspace:*",

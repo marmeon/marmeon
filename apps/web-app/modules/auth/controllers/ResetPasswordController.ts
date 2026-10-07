@@ -1,12 +1,13 @@
-import { confirmed, password, PasswordBroker } from '@marmeon/auth';
+import { password, PasswordBroker } from '@marmeon/auth';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
-import { trans, Translator } from '@marmeon/i18n';
+import { Translator } from '@marmeon/i18n';
 import { Router } from '@marmeon/router';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { RESET_COOKIE, resetFromCookie } from '../reset-cookie.ts';
 
 export const ResetPasswordRequest = defineRequest({
-  schema: confirmed(v.object({ password: password(), password_confirmation: v.string(trans('auth.validation.new_password_repeat')) })),
+  schema: r.object({ password: password(), password_confirmation: r.string() }).confirmed('password'),
+  messages: { 'password_confirmation.required': 'auth.validation.new_password_repeat', 'password_confirmation.confirmed': 'auth.validation.passwords_differ' },
 });
 
 export class ResetPasswordController extends Controller {

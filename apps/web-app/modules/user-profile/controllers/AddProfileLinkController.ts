@@ -1,18 +1,19 @@
 import { can } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Broadcaster } from '@marmeon/live';
-import { trans, Translator } from '@marmeon/i18n';
-import * as v from 'valibot';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
 import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
 import { profileChannel } from '../live.ts';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
 export const AddProfileLinkRequest = defineRequest({
-  schema: v.object({
-    label: v.pipe(v.string(), v.trim(), v.minLength(1, trans('user-profile.validation.link_label')), v.maxLength(60)),
-    // http(s) only: a `javascript:` URL in an href would run in every visitor's browser.
-    url: v.pipe(v.string(), v.trim(), v.url(trans('user-profile.validation.link_url')), v.regex(/^https?:\/\//i, trans('user-profile.validation.link_scheme')), v.maxLength(2048)),
+  schema: r.object({
+    label: r.string().trim().required().max(60),
+    // http(s) only — url()'s default: a `javascript:` URL in an href would run in every visitor's browser.
+    url: r.string().trim().required().url().max(2048),
   }),
+  messages: { 'label.required': 'user-profile.validation.link_label', 'url.required': 'user-profile.validation.link_url', 'url.url': 'user-profile.validation.link_url' },
   authorize: can(ProfilePolicy, 'update', 'user'),
 });
 

@@ -286,14 +286,14 @@ const READING = /^(Show|List|Index|Search|Get|Find|Browse)[A-Z]/;
 
 /** REPR for a GET: the query schema (every field optional or with a default — an invalid one falls back to it, E56). */
 const QUERY_REQUEST_CONTROLLER = (name: string, subject: string, page: string | undefined) => `import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 export const ${subject}Request = defineRequest({
   // The URL's query, parsed: \`ctx.query\` is typed, and so are \`<Link query>\` and \`useQueryState\`. The URL has strings —
-  // parse numbers (v.pipe(v.string(), v.toNumber())); every field needs a default or must be optional.
-  query: v.object({
-    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(100)), ''),
-    page: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(1)), '1'),
+  // r.integer() takes their spelling; every field needs a default (an invalid one falls back to it) or must be optional.
+  query: r.query({
+    q: r.string().trim().max(100).default(''),
+    page: r.integer().min(1).default(1),
   }),
 });
 
@@ -309,11 +309,12 @@ ${page ? `    return this.view('${page}', { q: ctx.query.q, page: ctx.query.page
 
 /** REPR: the request (schema + authorize), the endpoint and its answer in one file. */
 const REQUEST_CONTROLLER = (name: string, subject: string) => `import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 export const ${subject}Request = defineRequest({
-  schema: v.object({
-    name: v.pipe(v.string(), v.trim(), v.nonEmpty()),
+  // Laravel's rules, typed (@marmeon/validation) — messages in the request's language.
+  schema: r.object({
+    name: r.string().trim().required().max(255),
   }),
   // Runs before validation; returning false answers 403. Its context type is what the route must provide.
   authorize: (_ctx: HttpContext) => true,
@@ -359,7 +360,7 @@ export class ${name} {
 `;
 
 const JOB = (name: string, job: string) => `import type { JobContext, JobPayload } from '@marmeon/queue';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 /**
  * A queued job: dependencies go into the constructor (injected per attempt), the data into the payload — JSON, checked
@@ -369,7 +370,7 @@ import * as v from 'valibot';
 export class ${name} {
   /** Stable — the queue stores this name, never the class name. */
   static readonly job = '${job}';
-  static readonly schema = v.object({ id: v.number() });
+  static readonly schema = r.object({ id: r.integer() });
   // static readonly tries = 3;            // attempts in all (default 1)
   // static readonly backoff = [10, 60];   // seconds before each retry
   // static readonly timeout = 60;         // seconds; then job.signal aborts
@@ -382,7 +383,7 @@ export class ${name} {
 `;
 
 const NOTIFICATION = (name: string, notification: string) => `import type { DatabaseInput, NotificationData } from '@marmeon/notifications';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 /**
  * A notification (E92): sent to recipients as data — \`notifications.send({ type: 'user', id }, ${name}, { id })\` —
@@ -393,9 +394,9 @@ import * as v from 'valibot';
 export class ${name} {
   /** Stable — the queue and the notifications table store this name, never the class name. */
   static readonly notification = '${notification}';
-  static readonly schema = v.object({ id: v.number() });
+  static readonly schema = r.object({ id: r.integer() });
   /** What the database channel keeps — the inbox reads it back typed (notificationData(row, ${name})). */
-  static readonly database = v.object({ id: v.number() });
+  static readonly database = r.object({ id: r.integer() });
   // static readonly queue = { queue: 'mail' };   // its job (and its mail) on the \`mail\` queue
 
   via(recipient: unknown) {

@@ -3,7 +3,7 @@ import { Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import type { JobPayload } from '@marmeon/queue';
 import { Router } from '@marmeon/router';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { AppConfig } from '../../../config/app.ts';
 import { ResetPasswordMail } from '../mail/ResetPasswordMail.ts';
 
@@ -18,7 +18,7 @@ import { ResetPasswordMail } from '../mail/ResetPasswordMail.ts';
 export class SendPasswordResetLinkJob {
   static readonly job = 'auth.send-password-reset-link';
   /** The address asked for, and the language it was asked in — for an account without a stored language. */
-  static readonly schema = v.object({ email: v.string(), locale: v.string() });
+  static readonly schema = r.object({ email: r.string(), locale: r.string() });
   static readonly encrypted = true;
 
   readonly #broker: PasswordBroker;

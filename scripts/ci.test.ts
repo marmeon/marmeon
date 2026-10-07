@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkSource, oldNameHits, OLD_NAME } from './check-source.ts';
+import { checkSource, ENGINE, engineHits, oldNameHits, OLD_NAME } from './check-source.ts';
 import { parts } from './ci.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
@@ -52,6 +52,44 @@ describe('check:source — the old name is gone (E196)', () => {
     // An allowed phrase does not cover another mention on its line.
     expect(oldNameHits([{ path: 'README.md', text: `${hint} Run ${lower} dev.` }])).toHaveLength(1);
     expect(oldNameHits([{ path: 'LICENSE', text: `${old}Code and ${old}Core` }])).toHaveLength(1);
+  });
+});
+
+describe('check:source — no app, stub or template installs the validation engine (E197)', () => {
+  const engine = ENGINE; // spelled in parts by the script: this file holds no import of it either
+  const manifest = (dependencies: Record<string, string>) => JSON.stringify({ name: 'app', dependencies }, null, 2);
+
+  it('finds an import outside a package\'s src/ — an app, a stub, the template, a script that writes app code, a generator', () => {
+    const hits = engineHits([
+      { path: 'apps/web-app/config/app.ts', text: `import { defineConfig } from '@marmeon/core';\nimport * as v from '${engine}';\n` },
+      { path: 'packages/auth/stubs/react/modules/auth/controllers/LoginController.ts', text: `import { object } from "${engine}";` },
+      { path: 'packages/create-marmeon/template/base/config/app.ts', text: `const v = await import('${engine}');` },
+      { path: 'scripts/image-smoke.ts', text: `writeFileSync(file, "import * as v from '${engine}';");` },
+      { path: 'packages/cli/src/commands/make.ts', text: `const JOB = \`import * as v from '${engine}/schemas';\`;` },
+      // A package's own sources keep it inside (env schemas, tests) — and prose naming it is no import.
+      { path: 'packages/queue/src/config.ts', text: `import * as v from '${engine}';` },
+      { path: 'packages/validation/README.md', text: `${engine} is the engine — never re-exported.` },
+      { path: 'apps/docs/modules/docs/notes.ts', text: `// ${engine} stays inside @marmeon/validation` },
+    ]);
+    expect(hits).toEqual([
+      `apps/web-app/config/app.ts:2: import * as v from '${engine}';`,
+      `packages/auth/stubs/react/modules/auth/controllers/LoginController.ts:1: import { object } from "${engine}";`,
+      `packages/create-marmeon/template/base/config/app.ts:1: const v = await import('${engine}');`,
+      `scripts/image-smoke.ts:1: writeFileSync(file, "import * as v from '${engine}';");`,
+      `packages/cli/src/commands/make.ts:1: const JOB = \`import * as v from '${engine}/schemas';\`;`,
+    ]);
+  });
+
+  it('finds it in the manifest of an app or of the template — not in a package\'s', () => {
+    expect(engineHits([
+      { path: 'apps/blank-app/package.json', text: manifest({ [engine]: '^1.5.0' }) },
+      { path: 'packages/create-marmeon/template/base/_package.json', text: manifest({ '@marmeon/validation': 'workspace:*', [engine]: '^1.5.0' }) },
+      { path: 'packages/validation/package.json', text: manifest({ [engine]: '^1.5.0' }) },
+      { path: 'apps/docs/package.json', text: manifest({ '@marmeon/validation': 'workspace:*' }) },
+    ])).toEqual([
+      `apps/blank-app/package.json: dependencies lists ${engine} — an app validates with @marmeon/validation`,
+      `packages/create-marmeon/template/base/_package.json: dependencies lists ${engine} — an app validates with @marmeon/validation`,
+    ]);
   });
 });
 

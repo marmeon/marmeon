@@ -7,6 +7,7 @@ import { createHttpKernel } from '@marmeon/server';
 import { password } from '@marmeon/auth';
 import { Session, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { describe, expect, it, vi } from 'vitest';
 import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
 import { createTranslator } from './translator.ts';
@@ -72,11 +73,10 @@ class ChooseLocaleController extends Controller {
 }
 
 const SignupRequest = defineRequest({
-  schema: v.object({
-    name: v.pipe(v.string(), v.minLength(3, trans('shop.validation.name_min'))),
-    email: v.pipe(v.string(), v.email('shop.validation.email')),
-    password: password(),
-  }),
+  // A key of the app for a rule — the request's messages (Laravel's messages()) or trans() in place; the password's are the
+  // framework's (@marmeon/auth).
+  schema: r.object({ name: r.string().min(3), email: r.string().regex(/^[^@\s]+@[^@\s]+$/, trans('shop.validation.email')), password: password() }),
+  messages: { 'name.min': 'shop.validation.name_min' },
 });
 
 class SignupController extends Controller {

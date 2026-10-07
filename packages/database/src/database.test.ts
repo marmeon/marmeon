@@ -3,7 +3,7 @@ import { createApplication } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { jsonArrayFrom as pgJsonArrayFrom } from 'kysely/helpers/postgres';
 import { jsonArrayFrom as sqliteJsonArrayFrom } from 'kysely/helpers/sqlite';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { Connections, Database, DatabaseConnectionError, DatabaseServiceProvider, defineConnection, type QueryEvent } from './index.ts';
@@ -197,7 +197,7 @@ describe('connection errors', () => {
 describe('DatabaseServiceProvider', () => {
   const root = tempDir('marmeon-db-');
   const Reporting = defineConnection('reporting', {
-    env: v.object({ REPORTING_DB: v.string() }),
+    env: r.env({ REPORTING_DB: r.string() }),
     resolve: (env) => ({ driver: 'sqlite', database: env.REPORTING_DB }),
   });
 

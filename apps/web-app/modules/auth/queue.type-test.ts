@@ -2,7 +2,7 @@
 import { defineModule } from '@marmeon/core';
 import { Queue, withoutOverlapping, type JobContext, type JobPayload } from '@marmeon/queue';
 import type { TestApp } from '@marmeon/testing';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 
@@ -17,7 +17,7 @@ export async function Dispatching(queue: Queue) {
   // @ts-expect-error — and it is required
   await queue.dispatch(SendWelcomeMailJob, {});
   // @ts-expect-error — in a bulk list as well
-  await queue.bulk([[SendWelcomeMailJob, { userId: '1' }]]);
+  await queue.bulk([[SendWelcomeMailJob, { userId: 'one' }]]);
   return id;
 }
 
@@ -28,16 +28,16 @@ export function Payload(payload: JobPayload<typeof SendWelcomeMailJob>) {
 }
 
 class NoName {
-  static readonly schema = v.object({});
+  static readonly schema = r.object({});
   handle() {}
 }
 class NoHandle {
   static readonly job = 'auth.no-handle';
-  static readonly schema = v.object({});
+  static readonly schema = r.object({});
 }
 class WithDate {
   static readonly job = 'auth.with-date';
-  static readonly schema = v.object({ at: v.date() });
+  static readonly schema = r.object({ at: r.value<Date>((value) => (value instanceof Date ? undefined : 'Not a date.')) });
   handle() {}
 }
 
@@ -54,9 +54,10 @@ export async function NotJobs(queue: Queue) {
 
 export function Assertions(app: TestApp) {
   app.queue.assertDispatched(SendWelcomeMailJob, { userId: 1 });
-  app.queue.assertDispatched(SendWelcomeMailJob, (payload) => payload.userId > 0);
+  // The payload as dispatched: r.integer() takes a number's spelling too (`'7'`) — the job gets the number.
+  app.queue.assertDispatched(SendWelcomeMailJob, (payload) => Number(payload.userId) > 0);
   // @ts-expect-error — the match is a part of the payload
-  app.queue.assertDispatched(SendWelcomeMailJob, { userId: '1' });
+  app.queue.assertDispatched(SendWelcomeMailJob, { userId: 'one' });
 }
 
 // W6 step 4: unique jobs, chains, middleware, job.once.
@@ -70,7 +71,7 @@ export async function Unique(queue: Queue) {
   // @ts-expect-error — bulk() queues no unique jobs
   await queue.bulk([[RebuildMemberStatsJob, {}]], { unique: 'members' });
   // @ts-expect-error — the payload is still checked with a unique key
-  await queue.dispatch(SendWelcomeMailJob, { userId: '1' }, { unique: 'welcome' });
+  await queue.dispatch(SendWelcomeMailJob, { userId: 'one' }, { unique: 'welcome' });
   return [maybe, id];
 }
 
@@ -86,7 +87,7 @@ export async function Chains(queue: Queue) {
   return ids;
 }
 
-const ByUser = v.object({ userId: v.number() });
+const ByUser = r.object({ userId: r.integer() });
 export class TypedMiddlewareJob {
   static readonly job = 'auth.typed-middleware';
   static readonly schema = ByUser;

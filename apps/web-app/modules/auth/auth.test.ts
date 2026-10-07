@@ -257,11 +257,12 @@ describe('registration', () => {
       await app.get('/register/sent').assertNotFound();
     });
 
-    it('says that an address is taken — on submit and when the field is checked live; no note to the owner', async () => {
+    it('says that an address is taken on submit — never when the field is checked live (E197); no note to the owner', async () => {
       await app.factory(UserFactory).create({ email: 'ada@example.com' });
       await register({ email: 'ADA@example.com' }).assertInvalid({ email: 'This e-mail address is already registered.' }).assertGuest();
-      const live = await app.validating('email').post('/register', { json: { email: 'ada@example.com' } }).assertUnprocessable();
-      expect(live.json<{ errors: unknown }>().errors).toEqual({ email: ['This e-mail address is already registered.'] });
+      // The schema asks no database: checked live, a taken and a free address get the same answer — the submit tells, behind the throttle.
+      await app.validating('email').post('/register', { json: { email: 'ada@example.com' } }).assertLiveValid('email');
+      await app.validating('email').post('/register', { json: { email: 'grace@example.com' } }).assertLiveValid('email');
       app.queue.assertNotDispatched(SendAccountExistsMailJob);
       await app.assertDatabaseCount('users', 1);
     });

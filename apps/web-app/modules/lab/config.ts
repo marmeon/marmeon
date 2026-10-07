@@ -1,5 +1,5 @@
 import { defineConfig, environment, type ConfigOf } from '@marmeon/core';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 /**
  * The SSR lab: pages that show how server rendering behaves when it is slow or fails (`/lab/…`). On with `NODE_ENV=development`
@@ -7,11 +7,11 @@ import * as v from 'valibot';
  * measure the production build).
  */
 export const LabConfig = defineConfig('lab', {
-  env: v.object({
-    NODE_ENV: v.optional(v.string()),
-    LAB_PAGES: v.optional(v.picklist(['true', 'false'])),
+  env: r.env({
+    NODE_ENV: r.string().optional(),
+    LAB_PAGES: r.in(['true', 'false']).optional(),
     /** How long the slow Suspense boundary of `/lab/streaming` takes on the server, in milliseconds. */
-    LAB_DELAY: v.optional(v.pipe(v.string(), v.transform(Number), v.integer(), v.minValue(0), v.maxValue(10_000)), '1000'),
+    LAB_DELAY: r.integer().between(0, 10_000).default(1000),
   }),
   resolve: (env) => ({
     enabled: env.LAB_PAGES === undefined ? environment.isDevelopment(env) : env.LAB_PAGES === 'true',

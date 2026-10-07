@@ -101,8 +101,8 @@ export type NotificationClass = NotificationStatics & (new (...args: any[]) => N
  * ```ts
  * export class NewSignInNotification implements Notification<'user'> {
  *   static readonly notification = 'auth.new-sign-in';
- *   static readonly schema = v.object({ at: v.string(), ip: v.nullable(v.string()) });
- *   static readonly database = v.object({ at: v.string(), ip: v.nullable(v.string()) });
+ *   static readonly schema = r.object({ at: r.string(), ip: r.string().nullable() });
+ *   static readonly database = r.object({ at: r.string(), ip: r.string().nullable() });
  *   via(user: User) { return user.email_verified_at ? (['database', 'mail'] as const) : (['database'] as const); }
  *   toDatabase(data: NotificationData<typeof NewSignInNotification>) { return { at: data.at, ip: data.ip }; }
  *   toMail(user: User, data: NotificationData<typeof NewSignInNotification>, t: Translator) { return new NewSignInMail(user, data, t); }

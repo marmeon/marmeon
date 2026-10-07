@@ -143,7 +143,7 @@ export default {
   },
   validation: {
     name_required: 'Bitte gib deinen Namen ein.',
-    name_min: 'Der Name braucht mindestens {requirement} Zeichen.',
+    name_min: 'Der Name braucht mindestens {min} Zeichen.',
     email_required: 'Bitte gib deine E-Mail-Adresse ein.',
     email_any: 'Bitte gib eine E-Mail-Adresse ein.',
     email_invalid: 'Bitte gib eine gültige E-Mail-Adresse ein.',
@@ -152,6 +152,7 @@ export default {
     current_password_required: 'Bitte gib dein aktuelles Passwort ein.',
     password_repeat: 'Bitte wiederhole das Passwort.',
     new_password_repeat: 'Bitte wiederhole das neue Passwort.',
+    passwords_differ: 'Die Passwörter stimmen nicht überein.',
     password_incorrect: 'Das Passwort ist falsch.',
     token_name: 'Gib dem Token einen Namen.',
     token_abilities: 'Wähle, was das Token darf.',

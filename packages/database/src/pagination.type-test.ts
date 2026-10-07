@@ -2,15 +2,15 @@
 // compiler shows them, are quoted in the comments.
 import { defineRequest, type ContextOf } from '@marmeon/router';
 import type { Kysely } from 'kysely';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { cursorPaginate, pageQuery, paginate, type CursorEncrypter, type Paginated } from './index.ts';
 
 declare const db: Kysely<FixtureTables>;
 declare const encrypter: CursorEncrypter;
 
-const ListUsersRequest = defineRequest({ query: v.object({ ...pageQuery({ perPage: [25, 50, 100] }), q: v.optional(v.string(), '') }) });
-const SearchRequest = defineRequest({ query: v.object({ q: v.optional(v.string(), '') }) });
+const ListUsersRequest = defineRequest({ query: r.query({ ...pageQuery({ perPage: [25, 50, 100] }), q: r.string().default('') }) });
+const SearchRequest = defineRequest({ query: r.query({ q: r.string().default('') }) });
 
 export async function paginationTypes(listed: ContextOf<typeof ListUsersRequest>, searched: ContextOf<typeof SearchRequest>) {
   const users = db.selectFrom('users').select(['id', 'name', 'born_on']);
@@ -22,7 +22,7 @@ export async function paginationTypes(listed: ContextOf<typeof ListUsersRequest>
   await paginate(db, users);
 
   // Argument of type '{ q: string; }' is not assignable to parameter of type '"this query has no page — spread pageQuery() into
-  // the route's query schema: v.object({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }"'.
+  // the route's query schema: r.query({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }"'.
   // (Without the check: "Type '{ q: string; }' has no properties in common with type 'PageRequest'.")
   // @ts-expect-error — the route's query has no page
   await paginate(db, users, searched.query);

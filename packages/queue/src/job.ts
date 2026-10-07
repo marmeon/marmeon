@@ -78,7 +78,7 @@ export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~stand
 export interface JobStatics {
   /** The job's stable name — what the queue stores, never the class name: `'auth.send-welcome-mail'`. */
   readonly job: string;
-  /** The payload's schema (Standard Schema, e.g. Valibot) — checked when the job is dispatched *and* before it runs. */
+  /** The payload's schema (Standard Schema — `r.object()` of @marmeon/validation) — checked when the job is dispatched *and* before it runs. */
   readonly schema: StandardSchemaV1;
   /** Attempts in all (default 1: no retry). */
   readonly tries?: number;

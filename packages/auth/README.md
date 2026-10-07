@@ -26,7 +26,7 @@ marmeon make:auth [--adapter=react] [--force]
 Copies `stubs/<adapter>/modules/auth` of this package to the app's `modules/auth/` (`react` is the only adapter with templates),
 adds `import auth from '#modules/auth'` and `modules: [auth, …]` to `bootstrap/app.ts` (or says how), names the packages the
 module imports that `package.json` lacks (`@marmeon/cache`, `cli`, `i18n`, `mail`, `queue`, `react`, `scheduler`,
-`session`, `mjml`, `valibot`, …; `@marmeon/testing` and `vitest` for its tests) and those it has only as dev dependencies
+`session`, `validation`, `mjml`, …; `@marmeon/testing` and `vitest` for its tests) and those it has only as dev dependencies
 (production runs the module through `marmeon` — `marmeon start`, the worker, the scheduler — so `pnpm install --prod`
 must keep them), and — when nothing is missing — runs `marmeon route:types`. It needs `config/app.ts` exporting `AppConfig`
 (`APP_NAME`, `APP_URL`) — the app skeleton has one. An existing `modules/auth` is never touched without `--force`. Then:
@@ -99,8 +99,8 @@ The module's registration and change of address never tell whether an address ha
 The price: someone who forgot they have an account learns it only from their inbox, and nobody can start before the mailer and a
 queue worker run.
 
-**Turning it off — `AUTH_PRIVATE_REGISTRATION=false`** makes the module Laravel Breeze's: a taken address is a field error — when
-the field is checked live (E62) and on submit — and a new account is signed in at once (the verification mail goes out as
+**Turning it off — `AUTH_PRIVATE_REGISTRATION=false`** makes the module Laravel Breeze's: a taken address is a field error on
+submit — never when the field is checked live (E62): the schema asks no database (E197), the unique index decides — and a new account is signed in at once (the verification mail goes out as
 before, but the app's pages no longer wait for it: `ConfirmedAddress` lets everyone signed in through — use `verified()` in its
 place to keep that); a new address on the security page takes effect at once (unconfirmed until its link is clicked; the old
 address gets `EmailChangedMail`), and a taken one is a field error there too. `/register/sent` and `/email/change/…` answer 404;
@@ -300,7 +300,7 @@ export class ProfilePolicy {
 
 ```ts
 export const UpdateUserProfileRequest = defineRequest({
-  schema: v.object({ … }),
+  schema: r.object({ … }),
   authorize: can(ProfilePolicy, 'update', 'user'),   // ctx.params.user — after route binding, before validation
 });
 
@@ -333,15 +333,19 @@ the policy) — project inside a prop to refresh both together. `withAbilities` 
 ## Validation rules
 
 ```ts
-schema: confirmed(v.object({ password: password(), password_confirmation: v.string() })),
-schema: (resolve) => confirmed(v.objectAsync({ email: v.pipeAsync(…, v.checkAsync(…)), password: password(), … })),
+import { rules as r } from '@marmeon/validation';
+
+schema: r.object({ password: password(), password_confirmation: r.string() }).confirmed('password'),
 ```
 
-- **`password({ min = 8, messages? })`** — long enough (code points after NFKC: an emoji is one), at most 4 KiB, well-formed;
-  no composition rules (NIST advises against them). Messages are translation keys `marmeon.validation.password.*` by default.
-- **`confirmed(schema, { field = 'password', confirmation = 'password_confirmation', message? })`** — the confirmation
-  repeats the field (after the same normalization), reported on the confirmation field; sync and async schemas. It runs once
-  the whole body is valid — a live validation (E62) never sees it.
+- **`password({ min = 8, messages? })`** — a rule of [@marmeon/validation](../validation/README.md) (E197): long enough (code
+  points after NFKC: an emoji is one), at most 4 KiB — the hasher's limit, why it lives here —, well-formed; no composition rules
+  (NIST advises against them). Missing or not a string: "Enter a password.". Messages are the keys `marmeon.validation.password.*`
+  (English and German in @marmeon/i18n) unless `messages` names others (a key, a text, `trans()`'s).
+- **The confirmation** is the object's `confirmed('password')` (Laravel's `confirmed`, `marmeon.validation.confirmed`), reported on
+  `password_confirmation` once the password itself is valid; a request's `messages` gives it the app's words
+  (`{ 'password_confirmation.confirmed': 'auth.validation.passwords_differ' }`). (Before Wave 10 `confirmed()` of this package
+  wrapped a Valibot schema — see UPGRADING.)
 
 ## Events
 

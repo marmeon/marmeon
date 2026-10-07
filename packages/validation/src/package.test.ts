@@ -27,6 +27,6 @@ describe('@marmeon/validation: Valibot stays inside (E197)', () => {
   });
 
   it('re-exports nothing of it: what the package exports is its own', () => {
-    expect(Object.keys(validation).sort()).toEqual(['ArrayRule', 'NumberRule', 'ObjectRule', 'Rule', 'StringRule', 'VALIDATION_TEXTS', 'rules']);
+    expect(Object.keys(validation).sort()).toEqual(['ArrayRule', 'NumberRule', 'ObjectRule', 'Rule', 'StringRule', 'VALIDATION_TEXTS', 'metaOf', 'rules']);
   });
 });

@@ -174,8 +174,8 @@ describe('marmeon make:* (generated code compiles)', () => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
-    for (const pkg of ['react', '@types/react', 'valibot']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
+    for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications', 'validation']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
     writeFileSync(
       join(app, 'tsconfig.json'),
@@ -232,9 +232,9 @@ describe('marmeon make:* (generated code compiles)', () => {
     expect(withRequest).toContain('export const UpdateInvoiceRequest = defineRequest({');
     expect(withRequest).toContain('static request = UpdateInvoiceRequest;');
     expect(withRequest).toContain('handle(ctx: ContextOf<typeof UpdateInvoiceRequest>) {');
-    expect(withRequest).toContain('  schema: v.object({');
+    expect(withRequest).toContain('  schema: r.object({');
     const withQuery = readFileSync(join(app, 'modules/billing/controllers/ListInvoicesController.ts'), 'utf8');
-    expect(withQuery).toContain('  query: v.object({');
+    expect(withQuery).toContain('  query: r.query({');
     expect(withQuery).not.toContain('schema:');
     expect(withQuery).toContain('return this.json({ q: ctx.query.q, page: ctx.query.page });');
 

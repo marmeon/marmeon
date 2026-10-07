@@ -1,12 +1,13 @@
 import { Auth, type Authenticated } from '@marmeon/auth';
 import { RateLimiter } from '@marmeon/cache';
 import { Controller, defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
-import { trans, Translator } from '@marmeon/i18n';
-import * as v from 'valibot';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
 import { throttlePasswordChecks } from '../throttle.ts';
 
 export const LogoutOtherDevicesRequest = defineRequest({
-  schema: v.object({ password: v.pipe(v.string(trans('auth.validation.password_required')), v.nonEmpty(trans('auth.validation.password_required')), v.maxLength(4096)) }),
+  schema: r.object({ password: r.string().required().max(4096) }),
+  messages: { 'password.required': 'auth.validation.password_required' },
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 

@@ -3,7 +3,7 @@ import { UrlSigner } from '@marmeon/http';
 import { Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import type { JobPayload } from '@marmeon/queue';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { AppConfig } from '../../../config/app.ts';
 import { emailChangeTokenHash } from '../email-change.ts';
 import { ConfirmNewEmailMail } from '../mail/ConfirmNewEmailMail.ts';
@@ -19,7 +19,7 @@ import { UserRepository } from '../UserRepository.ts';
 export class SendEmailChangeMailJob {
   static readonly job = 'auth.send-email-change-mail';
   /** The account, the new address, the link's token (the row keeps its hash) and the language of the request. */
-  static readonly schema = v.object({ user: v.number(), email: v.string(), token: v.string(), locale: v.string() });
+  static readonly schema = r.object({ user: r.integer(), email: r.string(), token: r.string(), locale: r.string() });
   static readonly encrypted = true;
 
   readonly #users: UserRepository;

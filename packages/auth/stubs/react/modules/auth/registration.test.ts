@@ -129,11 +129,12 @@ describe('registration with AUTH_PRIVATE_REGISTRATION=false (E193)', () => {
     await continuing(registered).get(link).assertRedirect('/dashboard').assertFlashed('toast', { message: 'Your e-mail address is verified.' });
   });
 
-  it('refuses an address that exists, in any case — on submit and when the field is checked live', async () => {
+  it('refuses an address that exists, in any case — on submit; a live check of the field never asks the database (E197)', async () => {
     await app.factory(UserFactory).create({ email: 'kj@example.com' });
     await register('KJ@example.com').assertInvalid({ email: 'This e-mail address is already registered.' }).assertGuest();
-    const live = await app.validating('email').post('/register', { json: { email: 'kj@example.com' } }).assertUnprocessable();
-    expect(live.json<{ errors: unknown }>().errors).toEqual({ email: ['This e-mail address is already registered.'] });
+    // Checked live, a taken address and a free one get the same answer: the submit tells, behind the throttle.
+    await app.validating('email').post('/register', { json: { email: 'kj@example.com' } }).assertLiveValid('email');
+    await app.validating('email').post('/register', { json: { email: 'free@example.com' } }).assertLiveValid('email');
     app.queue.assertNotDispatched(SendAccountExistsMailJob);
   });
 

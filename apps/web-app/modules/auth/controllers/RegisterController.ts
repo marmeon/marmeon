@@ -1,45 +1,33 @@
-import { Auth, AuthConfig, confirmed, Hasher, password, Registered } from '@marmeon/auth';
+import { Auth, AuthConfig, Hasher, password, Registered } from '@marmeon/auth';
 import { EventDispatcher } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
-import { trans, Translator } from '@marmeon/i18n';
+import { Translator } from '@marmeon/i18n';
 import { Queue } from '@marmeon/queue';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { SendAccountExistsMailJob } from '../jobs/SendAccountExistsMailJob.ts';
 import { UserRepository } from '../UserRepository.ts';
 
-const name = v.pipe(v.string(trans('auth.validation.name_required')), v.trim(), v.minLength(2, trans('auth.validation.name_min')), v.maxLength(255));
+const name = r.string().trim().required().min(2).max(255);
 // Normalized once, here: stored lower case, so the login (which normalizes the same way) finds it.
-const email = v.pipe(v.string(trans('auth.validation.email_required')), v.trim(), v.toLowerCase(), v.maxLength(255), v.email(trans('auth.validation.email_invalid')));
-const passwords = { password: password(), password_confirmation: v.string(trans('auth.validation.password_repeat')) };
+const email = r.string().trim().lowercase().required().max(255).email();
 
-// Private registration (E146, the default): nothing in the schema asks the database — whether an address has an account is never
-// told, not when the field is checked live (E62), not on submit. The unique index decides in handle(), out of sight.
-const privately = confirmed(v.object({ name, email, ...passwords }));
-
-/** The switch for a request schema: its `resolve` builds classes (AuthConfig is a config, injected into this one). */
-export class RegistrationMode {
-  readonly private: boolean;
-
-  constructor(config: AuthConfig) {
-    this.private = config.privateRegistration;
-  }
-}
-
+/**
+ * One schema for both behaviours (E193), and nothing in it asks the database (E197): whether an address has an account is never
+ * told when a field is checked live (E62) — a `unique` there would tell anyone who types an address. Private registration (E146,
+ * the default) never tells at all; with `AUTH_PRIVATE_REGISTRATION=false` the unique index decides in handle(), and a taken
+ * address is said on submit.
+ */
 export const RegisterRequest = defineRequest({
-  // Picked by the switch, never by the input. With AUTH_PRIVATE_REGISTRATION=false (E193) whether the e-mail is taken is part of
-  // the schema (built per request: it asks the database), so the form learns it when the field is checked live (E62) — with the
-  // same message as on submit, and never more than a submit tells.
-  schema: (resolve) =>
-    resolve(RegistrationMode).private
-      ? privately
-      : confirmed(
-          v.objectAsync({
-            name,
-            email: v.pipeAsync(email, v.checkAsync(async (address) => !(await resolve(UserRepository).emailTaken(address)), trans('auth.validation.email_taken'))),
-            ...passwords,
-          }),
-        ),
+  schema: r.object({ name, email, password: password(), password_confirmation: r.string() }).confirmed('password'),
+  messages: {
+    'name.required': 'auth.validation.name_required',
+    'name.min': 'auth.validation.name_min',
+    'email.required': 'auth.validation.email_required',
+    'email.email': 'auth.validation.email_invalid',
+    'password_confirmation.required': 'auth.validation.password_repeat',
+    'password_confirmation.confirmed': 'auth.validation.passwords_differ',
+  },
 });
 
 /**
@@ -48,7 +36,8 @@ export const RegisterRequest = defineRequest({
  * that someone tried to sign up with it. Nobody is signed in here: the new account signs in like any other, and the app's pages
  * ask for a confirmed address (`ConfirmedAddress` in routes.ts, `verified()` in the other modules' routes).
  *
- * With `AUTH_PRIVATE_REGISTRATION=false` (E193) it is Laravel Breeze's: signed in at once, a taken address said as a field error.
+ * With `AUTH_PRIVATE_REGISTRATION=false` (E193) it is Laravel Breeze's: signed in at once, a taken address said as a field error on
+ * submit (never live: the schema does not ask, E197).
  */
 export class RegisterController extends Controller {
   static request = RegisterRequest;
@@ -99,7 +88,7 @@ export class RegisterController extends Controller {
       if (user) await this.#events.dispatch(new Registered(user));
       return user;
     });
-    // Taken after all (two sign-ups at once — the unique index decides): the schema's message.
+    // Taken — the unique index decides (the schema never asks, E197; two sign-ups at once included): a field error.
     if (!user) throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { name, email });
     await this.#auth.login(user);
     return this.redirect().route('user-profile.me');

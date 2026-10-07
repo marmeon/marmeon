@@ -68,6 +68,7 @@
     "@marmeon/http": "workspace:*",
     "@marmeon/router": "workspace:*",
     "@marmeon/session": "workspace:*",
+    "@marmeon/validation": "workspace:*",
     "valibot": "^1.5.0"
   },
   "devDependencies": {

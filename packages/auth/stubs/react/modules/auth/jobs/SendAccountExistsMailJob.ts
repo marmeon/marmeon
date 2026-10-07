@@ -2,7 +2,7 @@ import { Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import type { JobPayload } from '@marmeon/queue';
 import { Router } from '@marmeon/router';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { AppConfig } from '../../../config/app.ts';
 import { AccountExistsMail } from '../mail/AccountExistsMail.ts';
 import { UserRepository } from '../UserRepository.ts';
@@ -15,7 +15,7 @@ import { UserRepository } from '../UserRepository.ts';
 export class SendAccountExistsMailJob {
   static readonly job = 'auth.send-account-exists-mail';
   /** The address signed up with, and the language of the sign-up — for an account without a stored language. */
-  static readonly schema = v.object({ email: v.string(), locale: v.string() });
+  static readonly schema = r.object({ email: r.string(), locale: r.string() });
   static readonly encrypted = true;
 
   readonly #users: UserRepository;

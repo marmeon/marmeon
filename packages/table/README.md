@@ -74,7 +74,7 @@ step by step and goes through the security model attack by attack.
   encrypted cursor (`{ cursor: true }`: keyset along the sort, `?cursor=`, no `count(*)` — the cursor of
   [`cursorPaginate`](../database/README.md#pagination), so a changed one is a 400).
 - **More than one table on a page:** `prefix: 'teams'` gives its keys a prefix (`teams_sort`, `teams_filter[role]`); spread both
-  schemas: `defineRequest({ query: v.object({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
+  schemas: `defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
 - **Who may see the table at all:** `authorize: can(MemberPolicy, 'viewAny')` (or any check) — asked on the page and in every
   endpoint. The endpoints run the page registrar's middleware, **not** the page controller's `authorize`: a table that needs one
   says so here.
@@ -107,7 +107,8 @@ parameters (a table under `/teams/:team` links to `/teams/7/_tables/…`).
 
 ## The URL — strict on purpose
 
-`MembersTable.query` is the table's state as a query schema: `sort`, `page` (or `cursor`), `per_page`, `search` (when a column is
+`MembersTable.query` is the table's state as a query schema — an object rule of [@marmeon/validation](../validation/README.md#queries)
+(its `entries` spread into another `r.query()`): `sort`, `page` (or `cursor`), `per_page`, `search` (when a column is
 searchable) and `filter[<name>]`, with the table's prefix. Typed — `ctx.query.sort` is `'name' | '-name' | 'joined' | …` — so
 `useQueryState` and `<Link query>` know it too.
 

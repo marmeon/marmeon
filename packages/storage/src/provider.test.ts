@@ -341,9 +341,9 @@ describe('configuration', () => {
   });
 
   it('env: the disks from validated variables', async () => {
-    const v = await import('valibot');
+    const { rules: r } = await import('@marmeon/validation');
     const config = defineStorage({
-      env: v.object({ FILES_ROOT: v.string() }),
+      env: r.env({ FILES_ROOT: r.string() }),
       default: 'files',
       disks: (env) => ({ files: { driver: 'local', root: env.FILES_ROOT } }),
     });

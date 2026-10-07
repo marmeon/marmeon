@@ -29,9 +29,9 @@ export const NEEDED = [
   '@marmeon/router',
   '@marmeon/scheduler',
   '@marmeon/session',
+  '@marmeon/validation',
   'mjml',
   'react',
-  'valibot',
 ];
 
 /** What only the module's tests import — reported as dev dependencies. */

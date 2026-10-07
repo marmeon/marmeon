@@ -2,7 +2,7 @@ import type { Authenticated } from '@marmeon/auth';
 import { pageQuery } from '@marmeon/database';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Storage } from '@marmeon/storage';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { PEOPLE_SORTS, ProfileDirectory } from '../ProfileDirectory.ts';
 
 /**
@@ -11,9 +11,9 @@ import { PEOPLE_SORTS, ProfileDirectory } from '../ProfileDirectory.ts';
  * by name, never a 422 — links outlive their pages.
  */
 export const ListPeopleRequest = defineRequest({
-  query: v.object({
-    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
-    sort: v.optional(v.picklist(PEOPLE_SORTS), 'name'),
+  query: r.query({
+    q: r.string().trim().max(60).default(''),
+    sort: r.in(PEOPLE_SORTS).default('name'),
     // `?page=` and `?per_page=` (10, 25 or 50) — the page as the schema parses it: `<Pagination>` builds its links from it.
     ...pageQuery({ perPage: [10, 25, 50] }),
   }),

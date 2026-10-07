@@ -16,7 +16,7 @@ a set of optional peers: `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-pre
 ```ts
 // config/storage.ts — listed in the app's `config` (defineApplication({ config: [AppConfig, AppStorage] }))
 export const AppStorage = defineStorage({
-  env: v.object({ S3_BUCKET: v.optional(v.string()), S3_REGION: v.optional(v.string()), S3_ENDPOINT: v.optional(v.string()) }),
+  env: r.env({ S3_BUCKET: r.string().optional(), S3_REGION: r.string().optional(), S3_ENDPOINT: r.url().optional() }),   // @marmeon/validation
   default: 'local',
   disks: (env) => ({
     local: { driver: 'local', root: 'storage/app/private' },                                       // private (default)
@@ -136,9 +136,11 @@ Livewire's three steps (W6.9), with what the route already knows deciding everyt
 
 ```ts
 export const UpdateAvatarRequest = defineRequest({
-  schema: v.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
+  schema: r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg', 'image/webp'] }) }),
   authorize: can(ProfilePolicy, 'update', 'user'),
 });
+// upload() is a rule of @marmeon/validation (r.value() with its limits as a mark — what the upload target and the submit find
+// it by, through .nullable() and .custom() too): an optional file is upload(…).nullable(). Nothing chosen is "Choose a file."
 // ctx.body.avatar is a TemporaryUpload — `store()` uses the token up (once) and moves the file:
 const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'); // 'avatars/<26 random chars>.png'
 ```
@@ -154,7 +156,7 @@ const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'
 - **Housekeeping:** `marmeon uploads:prune [--hours=24]` deletes uploads made more than a day ago — the rows first (one
   statement), then their files. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` —
   [@marmeon/scheduler](../scheduler/README.md); with a local uploads disk on several servers, on each, without `onOneServer()`).
-- **Not yet:** lists of files (`v.array(upload(…))`) and a `<Form>` without JavaScript (it would post the file itself — refused).
+- **Not yet:** lists of files (`r.array(upload(…))`), files in an optional object, and a `<Form>` without JavaScript (it would post the file itself — refused).
 
 The browser side is the `uploads` feature of `@marmeon/http/client` ([features](../http/README.md#features)) and `<FileInput
 field={form.field('avatar')} />` of [@marmeon/react](../react/README.md). Tests: `app.upload(route, field, file, params)`

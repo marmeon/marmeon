@@ -1,5 +1,5 @@
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { Gate } from '@marmeon/auth';
 import { ProfileDirectory, ProfilePolicy, SIGN_INS_CHANNEL } from '#modules/user-profile';
 
@@ -13,9 +13,9 @@ const DAY = 86_400_000;
  * in the view, `<Island route="dashboard.sign-ins" query={{ limit: 3 }}>` on the page. Invalid values fall back.
  */
 export const RecentSignInsRequest = defineRequest({
-  query: v.object({
-    range: v.optional(v.picklist(SIGN_IN_RANGES), '30d'),
-    limit: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(1), v.maxValue(20)), '5'),
+  query: r.query({
+    range: r.in(SIGN_IN_RANGES).default('30d'),
+    limit: r.integer().between(1, 20).default(5),
   }),
 });
 

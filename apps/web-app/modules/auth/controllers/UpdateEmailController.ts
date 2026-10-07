@@ -2,10 +2,10 @@ import { AuthConfig, type Authenticated } from '@marmeon/auth';
 import { Clock } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
-import { trans, Translator, Translators } from '@marmeon/i18n';
+import { Translator, Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import { Queue } from '@marmeon/queue';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { EMAIL_CHANGE_MINUTES, newEmailChangeToken } from '../email-change.ts';
 import { SendEmailChangeMailJob } from '../jobs/SendEmailChangeMailJob.ts';
 import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
@@ -14,9 +14,8 @@ import { VerificationMailer } from '../verification.ts';
 
 export const UpdateEmailRequest = defineRequest({
   // Nothing here asks the database — whether an address has an account is never told by the form (E146).
-  schema: v.object({
-    email: v.pipe(v.string(trans('auth.validation.email_any')), v.trim(), v.toLowerCase(), v.maxLength(255), v.email(trans('auth.validation.email_invalid'))),
-  }),
+  schema: r.object({ email: r.string().trim().lowercase().required().max(255).email() }),
+  messages: { 'email.required': 'auth.validation.email_any', 'email.email': 'auth.validation.email_invalid' },
   authorize: (_ctx: HttpContext<Authenticated>) => true,
 });
 

@@ -4,7 +4,7 @@ import { Controller, defineRequest, merge, type ContextOf } from '@marmeon/http'
 import { Translator } from '@marmeon/i18n';
 import { notificationsChannel } from '@marmeon/live';
 import { Inbox, notificationData, type StoredNotification } from '@marmeon/notifications';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { NewSignInNotification } from '#modules/auth';
 
 /** One notification as the list shows it — its text made here, in the reader's language. */
@@ -19,7 +19,7 @@ export interface NotificationItem {
 
 /** The list's query: where "load more" goes on — an encrypted cursor (a made-up or changed one is a 400). */
 export const ShowNotificationsRequest = defineRequest({
-  query: v.object({ cursor: v.optional(v.string()) }),
+  query: r.query({ cursor: r.string().optional() }),
 });
 
 /** How many notifications a page of the list shows. */

@@ -109,14 +109,14 @@ this.#translator.forLocale(user.locale).get('auth.mail.reset.subject');   // for
   Resolving it from the root container throws (it is scoped); use [`Translators`](#translators-any-locale-anywhere) there.
 
 **Validation messages** are translated in the request's language when validation fails (the exception handler calls
-`ValidationError.translate`): `trans(key, params)` leaves a checked key on the issue, with what the rule required as
-`{requirement}`; a message that is a key itself works too.
+`ValidationError.translate`). The rules of [@marmeon/validation](../validation/README.md#messages) bring English and German texts
+for every rule (`marmeon.validation.*`, in this package's language files); a request's `messages` replace them with the app's
+keys, which get the rule's parameters (`{min}`, `{max}`) and the field's name (`{attribute}`). Where a rule takes a message of its
+own, `trans(key, params)` gives it a checked key; a message that is a key itself works too.
 
 ```ts
-schema: v.object({
-  name: v.pipe(v.string(), v.minLength(2, trans('auth.validation.name_min'))),   // "The name needs at least {requirement} characters."
-  locale: v.pipe(v.string(trans('app.locale.unsupported')), v.maxLength(35)),
-}),
+schema: r.object({ name: r.string().trim().min(2), slug: r.string().regex(/^[a-z0-9-]+$/, trans('teams.validation.slug')) }),
+messages: { 'name.min': 'auth.validation.name_min' },   // "The name needs at least {min} characters."
 ```
 
 ## `Translators`: any locale, anywhere

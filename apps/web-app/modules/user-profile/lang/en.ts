@@ -76,11 +76,10 @@ const en = {
     avatar_saved: 'Picture saved.',
   },
   validation: {
-    name_min: 'The name needs at least {requirement} characters.',
-    bio_max: 'The bio may have at most {requirement} characters.',
+    name_min: 'The name needs at least {min} characters.',
+    bio_max: 'The bio may have at most {max} characters.',
     link_label: 'Give the link a label.',
     link_url: 'Enter a full URL.',
-    link_scheme: 'Only http and https links.',
     own_profile: 'You can only change your own profile.',
   },
 } as const;

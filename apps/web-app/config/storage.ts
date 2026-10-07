@@ -1,5 +1,5 @@
 import { defineStorage } from '@marmeon/storage';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 /**
  * The app's disks (E91). `local` is private — its files only ever leave through a signed, expiring URL (`temporaryUrl()`,
@@ -8,12 +8,12 @@ import * as v from 'valibot';
  * (.env.example) and `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3`; nothing uses it until then.
  */
 export const AppStorage = defineStorage({
-  env: v.object({
-    S3_BUCKET: v.optional(v.pipe(v.string(), v.nonEmpty())),
-    S3_REGION: v.optional(v.string()),
-    S3_ENDPOINT: v.optional(v.pipe(v.string(), v.url())),
-    S3_ACCESS_KEY_ID: v.optional(v.string()),
-    S3_SECRET_ACCESS_KEY: v.optional(v.string()),
+  env: r.env({
+    S3_BUCKET: r.string().optional(),
+    S3_REGION: r.string().optional(),
+    S3_ENDPOINT: r.url().optional(),
+    S3_ACCESS_KEY_ID: r.string().optional(),
+    S3_SECRET_ACCESS_KEY: r.string().optional(),
   }),
   default: 'local',
   disks: (env) => ({

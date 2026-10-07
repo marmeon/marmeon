@@ -1,5 +1,5 @@
 import { withoutOverlapping, type JobPayload } from '@marmeon/queue';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { MemberStats } from '../MemberStats.ts';
 
 /**
@@ -8,7 +8,7 @@ import { MemberStats } from '../MemberStats.ts';
  */
 export class RebuildMemberStatsJob {
   static readonly job = 'user-profile.rebuild-member-stats';
-  static readonly schema = v.object({});
+  static readonly schema = r.object({});
   /** Waiting for another rebuild counts as an attempt. */
   static readonly tries = 5;
   static readonly timeout = 30;

@@ -1,5 +1,5 @@
 import { defineConfig, type ConfigDefinition, type InferOutput, type StandardSchemaV1 } from '@marmeon/core';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import type { Disk, PrivateDisk, PublicDisk, Visibility } from './disk.ts';
 
 interface DiskBase {
@@ -57,7 +57,7 @@ export interface StorageDefinition<D extends Readonly<Record<string, DiskOptions
   readonly storage: true;
 }
 
-const NO_ENV = v.object({});
+const NO_ENV = r.env({});
 
 /**
  * The app's disks (E91). List the definition in the app's `config` and register its types once:
@@ -65,7 +65,7 @@ const NO_ENV = v.object({});
  * ```ts
  * // config/storage.ts
  * export const Storage = defineStorage({
- *   env: v.object({ S3_BUCKET: v.optional(v.string()), S3_REGION: v.optional(v.string()) }),
+ *   env: r.env({ S3_BUCKET: r.string().optional(), S3_REGION: r.string().optional() }),
  *   default: 'local',
  *   disks: (env) => ({
  *     local: { driver: 'local', root: 'storage/app/private' },

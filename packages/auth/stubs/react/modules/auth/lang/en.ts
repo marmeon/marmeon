@@ -158,7 +158,7 @@ const en = {
   },
   validation: {
     name_required: 'Enter your name.',
-    name_min: 'The name needs at least {requirement} characters.',
+    name_min: 'The name needs at least {min} characters.',
     email_required: 'Enter your e-mail address.',
     email_any: 'Enter an e-mail address.',
     email_invalid: 'Enter a valid e-mail address.',
@@ -167,6 +167,7 @@ const en = {
     current_password_required: 'Enter your current password.',
     password_repeat: 'Repeat the password.',
     new_password_repeat: 'Repeat the new password.',
+    passwords_differ: 'The passwords do not match.',
     password_incorrect: 'The password is incorrect.',
     token_name: 'Name the token.',
     token_abilities: 'Pick what the token may do.',

@@ -210,14 +210,16 @@ export class SetLocale {
 }
 
 /**
- * A validation message by key, for request schemas — in the request's language when validation fails:
+ * A validation message by key, for a rule that takes one — in the request's language when validation fails:
  *
  * ```ts
- * email: v.pipe(v.string(trans('auth.validation.email_required')), v.email(trans('auth.validation.email_invalid')))
+ * slug: r.string().regex(/^[a-z0-9-]+$/, trans('teams.validation.slug')),
  * ```
  *
- * The key is checked like `translator.get()`'s. Placeholders are filled from `params` and from what the issue
- * required (`{requirement}`: the 2 of `v.minLength(2, …)`).
+ * The key is checked like `translator.get()`'s. Placeholders are filled from `params`, the field's name (`{attribute}`) and
+ * the rule's parameters (`{min}`, `{max}`). A rule's own message is replaced per request with `defineRequest({ messages })`;
+ * a schema of another library (Valibot, Zod) takes `trans()` where it takes a message function (`{requirement}`: the 2 of
+ * Valibot's `v.minLength(2, …)`).
  */
 export function trans<K extends TranslationKey | (string & {})>(
   key: CheckTranslationKey<K>,

@@ -125,7 +125,10 @@ export function scaffold(bin: string, cwd: string, args: string[], { tarballs, e
   return output;
 }
 
-/** The generated package.json: every `@marmeon/*` and the CLI `marmeon` from its vendored tarball — never `workspace:`, never a floating range. */
+/**
+ * The generated package.json: every `@marmeon/*` and the CLI `marmeon` from its vendored tarball — never `workspace:`, never a floating
+ * range; `@marmeon/validation` and no `valibot` (E197).
+ */
 export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Record<string, any> {
   const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as Record<string, any>;
   for (const field of ['dependencies', 'devDependencies', 'overrides'] as const) {
@@ -136,6 +139,10 @@ export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Reco
       }
     }
   }
+  // Validation is @marmeon/validation's (E197): Valibot is its engine, never the app's to install.
+  const engines = ['dependencies', 'devDependencies'].filter((field) => 'valibot' in ((manifest[field] ?? {}) as Record<string, string>));
+  if (engines.length > 0) throw new SmokeError(`package.json ${engines.join(' and ')} list valibot — a new app validates with @marmeon/validation and installs no engine (E197).`);
+  if (!manifest.dependencies?.['@marmeon/validation']) throw new SmokeError('package.json has no @marmeon/validation — the rules of config/app.ts come from it.');
   if (packageManager === 'pnpm' && !/^pnpm@12\.\d+\.\d+$/.test(manifest.packageManager ?? '')) throw new SmokeError(`package.json pins no pnpm 12: ${manifest.packageManager}`);
   if (packageManager === 'npm' && (manifest.packageManager || existsSync(join(app, 'pnpm-workspace.yaml')) || existsSync(join(app, 'pnpm-lock.yaml')))) {
     throw new SmokeError('the npm app has pnpm files (packageManager, pnpm-workspace.yaml or pnpm-lock.yaml).');

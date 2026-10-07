@@ -1,7 +1,7 @@
 import type { InferInput, InferOutput, StandardSchemaV1 } from '@marmeon/core';
 import type { ValidationContext } from '@marmeon/router';
 import * as engine from './engine.ts';
-import type { BuildContext, CheckAnswer, ConditionalFields, Confirmation, Engine } from './engine.ts';
+import type { BuildContext, CheckAnswer, ConditionalFields, Confirmation, Engine, RuleMessage } from './engine.ts';
 import type { TextKey } from './texts.ts';
 
 /** One part of a rule's pipe — built per validation (it may depend on the request), or left out (`undefined`). */
@@ -23,6 +23,8 @@ export interface RuleDefinition {
   readonly live: boolean;
   /** How a message names a field: in words (`password confirmation`) or as written (`APP_PORT`, for `.env`). */
   readonly attributes: 'humanized' | 'raw';
+  /** What a package marks its rule with (`r.value(…, { meta })`) — kept by every rule made from it; {@link metaOf} reads it. */
+  readonly meta: Readonly<Record<symbol, unknown>>;
 }
 
 /** What a rule's `transform`, `custom` and database rules may be: a function, sync or async. */
@@ -114,7 +116,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
    * code: r.string().custom(async (code, { request }) => (await request!.resolve(Invites).valid(code)) || 'invites.validation.unknown')
    * ```
    */
-  custom(check: CustomCheck<Output> | { readonly validate: CustomCheck<Output> }, message?: string): this {
+  custom(check: CustomCheck<Output> | { readonly validate: CustomCheck<Output> }, message?: RuleMessage): this {
     const test = typeof check === 'function' ? check : check.validate.bind(check);
     const async = isAsyncFunction(test);
     const describe = message === undefined ? engine.message('custom') : engine.ownMessage(message);
@@ -169,6 +171,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
       contextual: definition.contextual,
       live: false,
       attributes: definition.attributes,
+      meta: definition.meta,
     });
   }
 }
@@ -180,7 +183,7 @@ function build(definition: RuleDefinition, context: BuildContext): Engine {
 
 /** A rule's base on its own. */
 export function definition(base: (context: BuildContext) => Engine, parts: Partial<RuleDefinition> = {}): RuleDefinition {
-  return { base, steps: [], async: false, contextual: false, live: false, attributes: 'humanized', ...parts };
+  return { base, steps: [], async: false, contextual: false, live: false, attributes: 'humanized', meta: {}, ...parts };
 }
 
 /** A step that never depends on the request. */
@@ -208,8 +211,8 @@ export type ColumnOf<R> = R extends { find(id: never): Promise<infer Row> } ? Ex
 export interface ExistsOptions<Ctx = any> {
   /** Narrows the rows that count — a tenant, say: `(query, ctx) => query.where('team_id', '=', ctx.user.team_id)`. */
   readonly where?: (query: any, ctx: Ctx) => any;
-  /** Own message — a translation key or a text (default: `marmeon.validation.exists`/`unique`). */
-  readonly message?: string;
+  /** Own message — a translation key, a text or `translatable()`'s (default: `marmeon.validation.exists`/`unique`). */
+  readonly message?: RuleMessage;
 }
 
 export interface UniqueOptions<Ctx = any> extends ExistsOptions<Ctx> {
@@ -319,7 +322,7 @@ export class StringRule extends Rule<string, string> {
   }
 
   /** Matches `pattern` (its `g`/`y` flags are dropped). `message`: a translation key or a text — default "The … field format is invalid." */
-  regex(pattern: RegExp, message?: string): this {
+  regex(pattern: RegExp, message?: RuleMessage): this {
     return this.with(step(() => engine.regex(pattern, message === undefined ? engine.message('regex') : engine.ownMessage(message))));
   }
 
@@ -422,6 +425,14 @@ interface ObjectParts {
  */
 export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<Simplify<ShapeOutput<S> & Partial<ShapeOutput<When>>>, Simplify<ShapeInput<S> & Partial<ShapeInput<When>>>> {
   /**
+   * The object's fields, a rule each (not those of `.when()`) — spread them into another object:
+   * `r.query({ ...MembersTable.query.entries, tab: r.in(['all', 'mine']).default('all') })`.
+   */
+  get entries(): S {
+    return objectParts(this).shape as S;
+  }
+
+  /**
    * Fields checked only when `condition` holds for the others (Laravel's `sometimes`/`required_if`), else left out:
    *
    * ```ts
@@ -444,6 +455,15 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
 }
 
 const PARTS = new WeakMap<RuleDefinition, ObjectParts>();
+
+/**
+ * What a rule is marked with under `key` (`r.value(…, { meta: { [key]: … } })`) — through every rule made from it: `.nullable()`,
+ * `.custom()`, `.transform()` … Undefined for anything else (another library's schema too).
+ */
+export function metaOf(rule: unknown, key: symbol): unknown {
+  const definition = (rule as { readonly '~rule'?: RuleDefinition } | null | undefined)?.['~rule'];
+  return definition?.meta?.[key];
+}
 
 function objectParts(rule: Rule<any, any>): ObjectParts {
   // The object's parts belong to its base; steps added later (`.custom()`) keep the base.
@@ -470,6 +490,7 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition, 
     contextual: rules.some((rule) => rule['~rule'].contextual) || steps.some((s) => s.contextual),
     live: previous?.live ?? false,
     attributes,
+    meta: previous?.meta ?? {},
   };
 }
 

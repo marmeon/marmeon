@@ -1,7 +1,7 @@
 import { Translators } from '@marmeon/i18n';
 import { Mailer } from '@marmeon/mail';
 import type { JobContext, JobPayload } from '@marmeon/queue';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { AppConfig } from '../../../config/app.ts';
 import { WelcomeMail } from '../mail/WelcomeMail.ts';
 import { UserRepository } from '../UserRepository.ts';
@@ -14,7 +14,7 @@ import { UserRepository } from '../UserRepository.ts';
 export class SendWelcomeMailJob {
   /** Stable — the queue stores this name, never the class name. */
   static readonly job = 'auth.send-welcome-mail';
-  static readonly schema = v.object({ userId: v.number() });
+  static readonly schema = r.object({ userId: r.integer() });
   static readonly tries = 5;
   /** Seconds before the 2nd, 3rd, … attempt (the last repeats) — an SMTP server that is down for a while. */
   static readonly backoff = [10, 60, 300];

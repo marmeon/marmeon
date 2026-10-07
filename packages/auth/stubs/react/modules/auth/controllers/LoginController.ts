@@ -2,25 +2,19 @@ import { Auth, Lockout } from '@marmeon/auth';
 import { RateLimiter } from '@marmeon/cache';
 import { EventDispatcher } from '@marmeon/core';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
-import { trans, Translator } from '@marmeon/i18n';
-import * as v from 'valibot';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
 
 export const LoginRequest = defineRequest({
-  schema: v.object({
+  schema: r.object({
     // The identifier is normalized here (W2 rule): the throttle key and the lookup see the same value.
-    email: v.pipe(
-      v.string(trans('auth.validation.email_required')),
-      v.trim(),
-      v.toLowerCase(),
-      v.nonEmpty(trans('auth.validation.email_required')),
-      v.maxLength(255),
-      v.email(trans('auth.validation.email_invalid')),
-    ),
+    email: r.string().trim().lowercase().required().max(255).email(),
     // Never trimmed: spaces belong to the password. The hasher normalizes Unicode itself.
-    password: v.pipe(v.string(trans('auth.validation.password_required')), v.nonEmpty(trans('auth.validation.password_required')), v.maxLength(4096)),
+    password: r.string().required().max(4096),
     // A checkbox: absent when unticked; `on` from an HTML form, `true` from JSON.
-    remember: v.optional(v.pipe(v.union([v.boolean(), v.literal('on')]), v.transform((value) => value !== false)), false),
+    remember: r.boolean().default(false),
   }),
+  messages: { 'email.required': 'auth.validation.email_required', 'email.email': 'auth.validation.email_invalid', 'password.required': 'auth.validation.password_required' },
 });
 
 /** Five failed attempts per minute for one e-mail from one address (Laravel Breeze's default). */

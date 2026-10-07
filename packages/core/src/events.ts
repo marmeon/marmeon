@@ -61,7 +61,7 @@ export interface QueuedListenerOptions {
  * ```ts
  * export class Registered {
  *   static readonly event = 'auth.registered';
- *   static readonly schema = v.object({ userId: v.number() });   // reads event.userId
+ *   static readonly schema = r.object({ userId: r.integer() });   // reads event.userId
  *   readonly #event = true;
  *   …
  *   get userId() { return this.user.id; }

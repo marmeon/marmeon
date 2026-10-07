@@ -46,7 +46,7 @@ configuration:
 
 ```ts
 export const QueueRedis = defineRedisConnection('queue', {
-  env: v.object({ QUEUE_REDIS_URL: v.string() }),
+  env: r.env({ QUEUE_REDIS_URL: r.string() }),   // rules of @marmeon/validation
   resolve: (env) => ({ url: env.QUEUE_REDIS_URL, prefix: 'myapp:' }),
 });
 defineApplication({ config: [QueueRedis], … });

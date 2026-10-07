@@ -34,12 +34,12 @@
     "@marmeon/react": "workspace:*",
     "@marmeon/router": "workspace:*",
     "@marmeon/server": "workspace:*",
+    "@marmeon/validation": "workspace:*",
     "github-slugger": "2.0.0",
     "markdown-it": "15.0.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "shiki": "4.5.0",
-    "valibot": "^1.5.0"
+    "shiki": "4.5.0"
   },
   "devDependencies": {
     "@marmeon/devtools": "workspace:*",

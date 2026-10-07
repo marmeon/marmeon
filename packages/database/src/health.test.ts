@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { createApplication, HealthChecks, Logger } from '@marmeon/core';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { describe, expect, it } from 'vitest';
 import { defineConnection } from './config.ts';
 import { DatabaseHealthCheck } from './health.ts';
@@ -22,7 +22,7 @@ const boot = (extra: ReturnType<typeof defineConnection>[] = []) =>
 
 describe('the database health check (E126)', () => {
   it('is registered by the provider and answers `select 1` on every connection', async () => {
-    await using app = await boot([defineConnection('system', { env: v.object({}), resolve: () => ({ driver: 'sqlite', database: join(root, 'system.sqlite') }) })]);
+    await using app = await boot([defineConnection('system', { env: r.env({}), resolve: () => ({ driver: 'sqlite', database: join(root, 'system.sqlite') }) })]);
     expect(app.container.make(HealthChecks).all()).toContain(DatabaseHealthCheck);
     const report = await app.container.make(HealthChecks).run(app.container);
     expect(report).toMatchObject({ ok: true, checks: [{ name: 'database', status: 'ok', note: 'default, system' }] });
@@ -30,7 +30,7 @@ describe('the database health check (E126)', () => {
 
   it('fails when one connection is unreachable — and says which', async () => {
     // A Postgres port nobody listens on: refused at once.
-    await using app = await boot([defineConnection('reporting', { env: v.object({}), resolve: () => ({ driver: 'pgsql', url: 'postgres://marmeon:secret@127.0.0.1:1/reporting' }) })]);
+    await using app = await boot([defineConnection('reporting', { env: r.env({}), resolve: () => ({ driver: 'pgsql', url: 'postgres://marmeon:secret@127.0.0.1:1/reporting' }) })]);
     const report = await app.container.make(HealthChecks).run(app.container);
     expect(report.ok).toBe(false);
     expect(report.checks[0]).toMatchObject({ name: 'database', status: 'failing' });

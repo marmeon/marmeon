@@ -244,6 +244,9 @@ importers:
       '@marmeon/session':
         specifier: workspace:*
         version: link:../../packages/session
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       marmeon:
         specifier: workspace:*
         version: link:../../packages/cli
@@ -256,9 +259,6 @@ importers:
       react-dom:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/devtools':
         specifier: workspace:*
@@ -317,6 +317,9 @@ importers:
       '@marmeon/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       github-slugger:
         specifier: 2.0.0
         version: 2.0.0
@@ -335,9 +338,6 @@ importers:
       shiki:
         specifier: 4.5.0
         version: 4.5.0
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/devtools':
         specifier: workspace:*
@@ -468,9 +468,6 @@ importers:
       react-dom:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
     devDependencies:
       '@marmeon/devtools':
         specifier: workspace:*
@@ -514,6 +511,9 @@ importers:
       '@marmeon/session':
         specifier: workspace:*
         version: link:../session
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../validation
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
@@ -597,16 +597,13 @@ importers:
       '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      kysely:
-        specifier: ^0.29.6
-        version: 0.29.6
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
-    devDependencies:
       '@marmeon/validation':
         specifier: workspace:*
         version: link:../validation
+      kysely:
+        specifier: ^0.29.6
+        version: 0.29.6
+    devDependencies:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
@@ -1055,9 +1052,9 @@ importers:
       '@marmeon/router':
         specifier: workspace:*
         version: link:../router
-      valibot:
-        specifier: ^1.5.0
-        version: 1.5.0(typescript@7.0.2)
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../validation
     devDependencies:
       '@aws-sdk/client-s3':
         specifier: 3.1143.0
@@ -1104,6 +1101,9 @@ importers:
       '@marmeon/router':
         specifier: workspace:*
         version: link:../router
+      '@marmeon/validation':
+        specifier: workspace:*
+        version: link:../validation
       kysely:
         specifier: ^0.29.6
         version: 0.29.6

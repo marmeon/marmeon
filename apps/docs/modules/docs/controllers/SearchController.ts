@@ -1,5 +1,5 @@
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { DocsRepository } from '../DocsRepository.ts';
 
 /**
@@ -7,9 +7,7 @@ import { DocsRepository } from '../DocsRepository.ts';
  * a URL never answers 422): `?q=<10 000 characters>` is the empty search, no work at all.
  */
 export const SearchRequest = defineRequest({
-  query: v.object({
-    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(100)), ''),
-  }),
+  query: r.query({ q: r.string().trim().max(100).default('') }),
 });
 
 /** `/search?q=…`: a page like any other — the index lives in the DocsRepository on the server (E133), not in the browser. */

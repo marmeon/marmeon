@@ -2,6 +2,7 @@ import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@m
 import type { Database, SecretReference } from '@marmeon/database';
 import type { ClassResolver, HttpContext, JoinNames, StandardSchemaV1 } from '@marmeon/router';
 import type { ExtractTypeFromReferenceExpression, SelectQueryBuilder, StringReference } from 'kysely';
+import type { Rule } from '@marmeon/validation';
 import type { TableData } from './client/index.ts';
 import { querySchema } from './state.ts';
 
@@ -361,9 +362,9 @@ export interface Table<
   readonly [TABLE_TYPES]?: { readonly row: Row; readonly ctx: Ctx; readonly columns: C; readonly sortable: S; readonly filters: F; readonly actions: A; readonly bulk: B; readonly exports: E };
   readonly definition: TableDefinition;
   /**
-   * The table's state in the URL as a query schema (Valibot): `?sort=`, `?page=` (or `?cursor=`), `?per_page=`, `?search=`,
-   * `?filter[name]=` — with the table's prefix. Give it to the page's request: `defineRequest({ query: MembersTable.query })`, or
-   * spread its fields next to the page's own: `v.object({ ...MembersTable.query.entries, tab: … })`. Stricter than other query
+   * The table's state in the URL as a query schema (rules of @marmeon/validation): `?sort=`, `?page=` (or `?cursor=`), `?per_page=`,
+   * `?search=`, `?filter[name]=` — with the table's prefix. Give it to the page's request: `defineRequest({ query: MembersTable.query })`,
+   * or spread its fields next to the page's own: `r.query({ ...MembersTable.query.entries, tab: … })`. Stricter than other query
    * fields (E55): an unknown sort, a filter that is none, a page size the table does not offer is a **400**, never a quiet default.
    */
   readonly query: TableQuerySchema<QV>;
@@ -372,9 +373,9 @@ export interface Table<
 /** What a table's query fields parse to — by key (`sort`, `page`, `filter[role]`, …, with the table's prefix). */
 export type TableQueryValues = { readonly [key: string]: string | number | undefined };
 
-/** The table's query schema — a Valibot object schema (spread its `entries` into another). */
-export interface TableQuerySchema<QV extends object = TableQueryValues> extends StandardSchemaV1<{ readonly [K in keyof QV]?: unknown }, QV> {
-  readonly entries: { readonly [K in keyof QV]: unknown };
+/** The table's query schema — an object rule of @marmeon/validation (spread its `entries` into another `r.query()`). */
+export interface TableQuerySchema<QV extends object = TableQueryValues> extends StandardSchemaV1<{ readonly [K in keyof QV]?: string | readonly string[] }, QV> {
+  readonly entries: { readonly [K in keyof QV]: Rule<QV[K], string | readonly string[] | undefined> };
 }
 
 type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;

@@ -1,6 +1,6 @@
 import { HttpError } from '@marmeon/router';
 import { sql, type Expression, type ExpressionBuilder, type Kysely, type SelectQueryBuilder, type SqlBool } from 'kysely';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 
 /** Where a page stands — the same shape `@marmeon/http/page` knows as `PaginationMeta` (for `<Pagination>`). */
 export interface PageMeta {
@@ -27,13 +27,13 @@ export interface CursorPaginated<T> {
 type PageSizes<P extends number> = P | readonly [P, ...P[]];
 
 /**
- * The page of a list as query fields — spread into a route's query schema (E55): `?page=` (a whole number ≥ 1, default 1) and
- * `?per_page=` (one of `perPage`, default its first). Like every query field, an invalid value falls back to its default
- * (`?page=-1`, `?per_page=100000`), never a 422; the default is left out of URLs the browser builds.
+ * The page of a list as query fields, rules of @marmeon/validation — spread into a route's query schema (E55): `?page=` (a whole
+ * number ≥ 1, default 1) and `?per_page=` (one of `perPage`, default its first). Like every query field, an invalid value falls
+ * back to its default (`?page=-1`, `?per_page=100000`), never a 422; the default is left out of URLs the browser builds.
  *
  * ```ts
  * static request = defineRequest({
- *   query: v.object({ ...pageQuery({ perPage: [25, 50, 100] }), sort: v.optional(v.picklist(['name', '-name']), 'name') }),
+ *   query: r.query({ ...pageQuery({ perPage: [25, 50, 100] }), sort: r.in(['name', '-name']).default('name') }),
  * });
  * handle(ctx: ContextOf<typeof ListUsersRequest>) {
  *   return this.#users.paginate(this.#users.query().select(['id', 'name']).orderBy('name').orderBy('id'), ctx.query);   // ctx.query.per_page: 25 | 50 | 100
@@ -46,8 +46,8 @@ export function pageQuery<const P extends number = 15>({ perPage }: { perPage?: 
     throw new RangeError(`pageQuery({ perPage }) takes whole numbers ≥ 1, got ${JSON.stringify(perPage)}.`);
   }
   return {
-    page: v.optional(v.pipe(v.string(), v.toNumber(), v.safeInteger(), v.minValue(1)), '1'),
-    per_page: v.optional(v.pipe(v.string(), v.toNumber(), v.picklist(sizes)), String(sizes[0])),
+    page: r.integer().min(1).default(1),
+    per_page: r.in(sizes).default(sizes[0]),
   };
 }
 
@@ -63,7 +63,7 @@ export interface PageRequest {
 
 /** `Q` when it says which page to load; otherwise the message the compiler shows as the expected type. */
 export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never]
-  ? 'this query has no page — spread pageQuery() into the route\'s query schema: v.object({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }'
+  ? 'this query has no page — spread pageQuery() into the route\'s query schema: r.query({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }'
   : Q extends PageRequest
     ? Q
     : PageRequest;

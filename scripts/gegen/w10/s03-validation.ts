@@ -1,5 +1,8 @@
 import { defineGegenproben } from '../define.ts';
 
+/** The engine's name in parts — `check:source` (W10 step 4) finds an import of it outside a package's src/, this file's patches too. */
+const ENGINE = ['vali', 'bot'].join('');
+
 /**
  * W10.3 — `@marmeon/validation` (E197): Laravel's rules as Standard Schema objects, Valibot inside only, messages in the request's
  * language (en/de for every rule), database and async rules never in a live validation (E187/E193), the unique index as the truth.
@@ -142,7 +145,7 @@ export default defineGegenproben({
     {
       id: 'G8',
       title: 'a declaration names valibot (dist/, what is published): an app emitting .d.ts would need it (TS2742)',
-      patch: [{ file: 'packages/validation/dist/index.d.ts', find: "export { VALIDATION_TEXTS } from './texts.ts';", replace: "export { VALIDATION_TEXTS } from './texts.ts';\nexport type { GenericSchema } from 'valibot';" }],
+      patch: [{ file: 'packages/validation/dist/index.d.ts', find: "export { VALIDATION_TEXTS } from './texts.ts';", replace: `export { VALIDATION_TEXTS } from './texts.ts';\nexport type { GenericSchema } from '${ENGINE}';` }],
       run: { vitest: 'packages/validation/src/package.test.ts', name: 'no declaration file names it' },
       expect: /declarations that name valibot: .*index\.d\.ts/,
     },

@@ -118,3 +118,32 @@ company.confirmed('nope');
 
 // A when-condition sees the other fields' output.
 r.object({ count: r.integer() }).when((data) => data.count > 2, { reason: r.string() });
+
+// ——— W10 step 4: entries, r.value(), message functions ———
+
+// An object's entries spread into another query keep their types.
+const paging = r.query({ page: r.integer().min(1).default(1) });
+const withTab = r.query({ ...paging.entries, tab: r.in(['all', 'mine']).default('all') });
+export const ListWithTabRequest = defineRequest({ query: withTab });
+same<NonNullable<(typeof withTab)['~standard']['types']>['output'], { page: number; tab: 'all' | 'mine' }>(true);
+
+// r.value(): its own output and input — a form sends the input.
+class Upload {
+  readonly size = 0;
+}
+const file = r.value<Upload, string | null>((value) => (value instanceof Upload ? undefined : 'Choose a file.'));
+const avatarForm = r.object({ avatar: file, cover: file.nullable() });
+same<NonNullable<(typeof avatarForm)['~standard']['types']>['output'], { avatar: Upload; cover: Upload | null }>(true);
+type AvatarInput = NonNullable<(typeof avatarForm)['~standard']['types']>['input'];
+export const sent: AvatarInput = { avatar: 'token', cover: null };
+export const back: { avatar: string | null; cover: string | null } = sent;
+
+// A message may be a function (translatable()/trans()) — a number is none.
+r.string().custom((value) => value !== '', (_issue: object) => 'Fill this in.');
+// Argument of type '42' is not assignable to parameter of type 'RuleMessage | undefined'.
+// @ts-expect-error — a message is a key, a text or a message function
+r.string().regex(/x/, 42);
+
+// Type 'number' is not assignable to type 'void | RuleMessage | undefined'. — r.value()'s check answers a message or nothing.
+// @ts-expect-error — a check answers a message, never a number
+r.value<string>(() => 1);

@@ -64,7 +64,7 @@
   "dependencies": {
     "@marmeon/core": "workspace:*",
     "@marmeon/router": "workspace:*",
-    "valibot": "^1.5.0"
+    "@marmeon/validation": "workspace:*"
   },
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.1000.0",

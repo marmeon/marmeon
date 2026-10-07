@@ -4,7 +4,7 @@ Routes, invokable controllers with their request definitions (REPR), route model
 pipeline, typed query strings, URL generation, request input and cookies — the router that
 [@marmeon/http](../http/README.md) registers and the server kernel dispatches to (Hono matches the URL, this package runs
 the route). It knows no container, no database and no validation library: classes are built through a resolver, records come
-from binders, schemas are [Standard Schema](https://standardschema.dev) (Valibot in the docs and generators, E5).
+from binders, schemas are [Standard Schema](https://standardschema.dev) (`rules` of @marmeon/validation in the docs and generators, E197).
 
 ```ts
 // modules/user-profile/routes.ts — `routes` in defineModule({ … })
@@ -104,10 +104,8 @@ and who may call it is declared next to it with `defineRequest` and attached as 
 ```ts
 // modules/user-profile/controllers/UpdateUserProfileController.ts
 export const UpdateUserProfileRequest = defineRequest({
-  schema: v.object({
-    name: v.pipe(v.string(), v.trim(), v.minLength(2, trans('user-profile.validation.name_min')), v.maxLength(60)),
-    bio: v.pipe(v.string(), v.trim(), v.maxLength(200, trans('user-profile.validation.bio_max'))),
-  }),
+  schema: r.object({ name: r.string().trim().min(2).max(60), bio: r.string().trim().max(200) }),   // rules of @marmeon/validation
+  messages: { 'name.min': 'user-profile.validation.name_min', 'bio.max': 'user-profile.validation.bio_max' },
   // Only your own profile. Runs after binding, before validation — others get a 403, not field errors.
   authorize: can(ProfilePolicy, 'update', 'user'),
 });
@@ -135,9 +133,10 @@ A request runs in this order, and the controller is built only when everything b
 5. the body, validated by `schema` — a 422 `ValidationError` with the errors per field (`address.city` for nested ones);
 6. `handle(ctx)` with `ctx.body` (the schema's output) and `ctx.query` (the parsed query).
 
-- **`schema`** sees the body only, never the query (E65). It may be a function of `resolve`, built per request, for rules
-  that need the app: `schema: (resolve) => v.objectAsync({ email: v.pipeAsync(…, v.checkAsync((email) => resolve(UserRepository)…)) })`
-  — such a rule runs on submit and in a live validation of its field alike.
+- **`schema`** sees the body only, never the query (E65). It may be a function of `resolve`, built per request — for a schema of
+  another library whose rules need the app (`schema: (resolve) => z.object({ slug: z.string().refine((slug) => resolve(Teams)…) })`);
+  such a rule runs on submit and in a live validation of its field alike. `rules` need no factory: `unique()`/`exists()` get the
+  request's `resolve` themselves and never run in a live validation unless they say `.live()` (E197).
 - **Types:** `ContextOf<typeof Request>` is what `authorize` needs plus `body` and the parsed `query`;
   `FormOf<typeof Controller>` the schema's *input* (what a form sends — `useForm(name)` types its fields with it),
   `QueryOf<typeof Controller>` the parsed query. `handle`'s context is checked against what the route provides: a controller
@@ -164,9 +163,9 @@ query **never answers 422** — an invalid field falls back to its default:
 
 ```ts
 export const ListPeopleRequest = defineRequest({
-  query: v.object({
-    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(60)), ''),
-    sort: v.optional(v.picklist(PEOPLE_SORTS), 'name'),
+  query: r.query({
+    q: r.string().trim().max(60).default(''),
+    sort: r.in(PEOPLE_SORTS).default('name'),
     ...pageQuery({ perPage: [10, 25, 50] }),   // @marmeon/database: ?page= and ?per_page=, for paginate(…, ctx.query) and <Pagination>
   }),
 });
@@ -175,7 +174,7 @@ export const ListPeopleRequest = defineRequest({
 
 - **The schema must be total** — an empty query must be valid — and the types say so in the expected type: every field
   optional or with a default (`query fields need a default or must be optional: 'page' is required`), string input (`parse
-  the string, e.g. v.pipe(v.string(), v.toNumber())`), and an output that can go back into a URL (a string, number, boolean
+  the string, e.g. r.integer() or r.in([…]) in r.query({ … })`), and an output that can go back into a URL (a string, number, boolean
   or a list of them).
 - **Parsing** (`parseQuery`): a field the schema rejects is taken out and the rest validated again, so it gets its default;
   one value where the schema wants a list is tried as a list of one (`?tag=a`), a repeated key is a list (`?tag=a&tag=b`) —

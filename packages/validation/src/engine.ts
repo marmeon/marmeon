@@ -42,9 +42,15 @@ export function typeMessage(key: TextKey): Message {
   };
 }
 
-/** A message of the app: a translation key the request's translator knows, or a text. */
-export function ownMessage(text: string): Message {
-  return translatable(text, undefined, text);
+/**
+ * A message a rule is given: a translation key the request's translator knows, a text — or a message function, what
+ * `translatable(key, params, english)` of @marmeon/router makes (a key with parameters: `{min}`).
+ */
+export type RuleMessage = string | Message;
+
+/** A message of the app: a translation key the request's translator knows, or a text — or a message function as it is. */
+export function ownMessage(text: RuleMessage): Message {
+  return typeof text === 'function' ? text : translatable(text, undefined, text);
 }
 
 /** `message`, and the issue says its rule is not live (E197) — a live validation drops it even if the rule ran. */
@@ -133,6 +139,25 @@ export function runsWhenMissing(engine: Engine): Engine {
   return { ...(engine as Schema), type: 'optional', default: () => undefined } as unknown as Engine;
 }
 
+/**
+ * A value of a type of the caller's own (`r.value()`): `check` answers what is wrong with it — a message — or nothing. It runs for a
+ * missing value too (`undefined`), so the check says what missing means. The value is the output as it is.
+ */
+export function valueEngine(test: (value: unknown) => RuleMessage | undefined | void): Engine {
+  return runsWhenMissing(
+    v.pipe(
+      v.unknown(),
+      v.rawCheck(({ dataset, addIssue }) => {
+        const answer = test(dataset.value);
+        if (typeof (answer as { then?: unknown } | undefined)?.then === 'function') {
+          throw new TypeError('An r.value() check returned a Promise — it is synchronous: check the value, or add an async .custom() after it.');
+        }
+        if (answer !== undefined) addIssue({ message: ownMessage(answer as RuleMessage) } as never);
+      }),
+    ) as unknown as Engine,
+  );
+}
+
 /** A string — never one with a NUL character (Postgres refuses it: a 500 instead of a 422). */
 export function stringEngine(): Engine {
   return typed('string', (value) => typeof value === 'string' && !value.includes('\0'));
@@ -215,7 +240,7 @@ function afterObject(dataset: Dataset, input: unknown, whens: readonly Condition
     }
     for (const { field, confirmation } of confirmations) {
       if (dataset.issues?.some((issue) => issue.path?.[0]?.key === field)) continue; // the field itself is not valid yet
-      if (fields[confirmation] !== fields[field]) addIssue(dataset, input, confirmation, message('confirmation'));
+      if (fields[confirmation] !== fields[field]) addIssue(dataset, input, confirmation, message('confirmed'));
     }
     return dataset;
   };

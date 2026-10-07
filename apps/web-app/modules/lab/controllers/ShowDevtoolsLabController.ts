@@ -1,5 +1,5 @@
 import { defineRequest, type ContextOf, type HttpContext } from '@marmeon/http';
-import * as v from 'valibot';
+import { rules as r } from '@marmeon/validation';
 import { LabController } from './ShowLabPageController.ts';
 
 /**
@@ -15,7 +15,8 @@ export class ShowDevtoolsLabController extends LabController {
 }
 
 export const SendDevtoolsLabRequest = defineRequest({
-  schema: v.object({ name: v.pipe(v.string(), v.trim(), v.minLength(2, 'At least two characters.')) }),
+  schema: r.object({ name: r.string().trim().min(2) }),
+  messages: { 'name.min': 'At least two characters.' },
 });
 
 /** Takes a name — or sends the form back with its errors (what `invalid` reports). */
