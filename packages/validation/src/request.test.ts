@@ -150,6 +150,28 @@ class WrappedController {
   }
 }
 
+/**
+ * A page builder's block (E208): a subtitle cleared on purpose is `''` — neither missing (the block keeps it empty) nor an error;
+ * an empty number, link or choice is a form's empty field — missing.
+ */
+const BlockRequest = defineRequest({
+  schema: r.object({
+    title: r.string().trim().required().max(80),
+    subtitle: r.string().trim().max(120).optional(),
+    caption: r.string().nullable(),
+    cta: r.string().default('Read more'),
+    width: r.integer().min(1).optional(),
+    link: r.url().nullable(),
+    align: r.in(['left', 'center']).default('left'),
+  }),
+});
+class BlockController {
+  static request = BlockRequest;
+  handle(ctx: ContextOf<typeof BlockRequest>) {
+    return { ...ctx.body, has: Object.fromEntries(Object.entries(ctx.body).map(([key, value]) => [key, value === undefined ? 'undefined' : value === null ? 'null' : typeof value])) };
+  }
+}
+
 function app() {
   const users = new UserRepository();
   const resolved: string[] = [];
@@ -166,11 +188,17 @@ function app() {
       Route.post('/wrapped', WrappedController);
       Route.post('/race', RaceController);
       Route.post('/race-unlabelled', UnlabelledRaceController);
+      Route.put('/block', BlockController);
     }),
   );
   const send = async (path: string, body: unknown, headers: Record<string, string> = {}) => {
     const route = router.routes.find((candidate) => candidate.path === path)!;
-    const request = new Request(`http://app.test${path}`, { method: route.methods[0], body: JSON.stringify(body), headers: { 'content-type': 'application/json', ...headers } });
+    const form = body instanceof URLSearchParams;
+    const request = new Request(`http://app.test${path}`, {
+      method: route.methods[0],
+      body: form ? body : JSON.stringify(body),
+      headers: { 'content-type': form ? 'application/x-www-form-urlencoded' : 'application/json', ...headers },
+    });
     try {
       const response = await router.dispatch(route, { request, params: {} });
       return { status: response.status, body: response.status === 204 ? null : await response.json() };
@@ -322,5 +350,37 @@ describe('messages and attributes (Laravel\'s messages() and attributes())', () 
     const { live } = app();
     const result = await live('/profile', { name: 'A name that is far too long', email: 'x' }, 'name');
     expect(result.errors).toEqual({ name: ['Keep name under 20.'] });
+  });
+});
+
+describe('an empty string in a request — by type (E208)', () => {
+  const { send } = app();
+  const cleared = { title: 'Pricing', subtitle: '', caption: '', cta: '', width: '', link: '', align: '' };
+  const expected = {
+    title: 'Pricing',
+    subtitle: '',
+    caption: '',
+    cta: '',
+    link: null,
+    align: 'left',
+    has: { title: 'string', subtitle: 'string', caption: 'string', cta: 'string', width: 'undefined', link: 'null', align: 'string' },
+  };
+
+  it("JSON (a page builder): the cleared subtitle reaches the handler as '' — the empty number, link and choice are missing", async () => {
+    const answer = await send('/block', cleared);
+    expect((answer.body as { has?: Record<string, string> } | undefined)?.has?.subtitle, 'the cleared subtitle did not reach the handler').toBe('string');
+    expect(answer).toEqual({ status: 200, body: expected });
+  });
+
+  it('a form sends the same strings — the same answer', async () => {
+    const answer = await send('/block', new URLSearchParams(cleared));
+    expect(answer.errors, `a form's empty fields were refused: ${JSON.stringify(answer.errors)}`).toBeUndefined();
+    expect(answer).toEqual({ status: 200, body: expected });
+  });
+
+  it('left out, the fields are missing as ever — and an empty title is "required"', async () => {
+    const left = await send('/block', { title: 'Pricing', caption: null, link: null });
+    expect(left).toEqual({ status: 200, body: { title: 'Pricing', caption: null, cta: 'Read more', link: null, align: 'left', has: { title: 'string', caption: 'null', cta: 'string', link: 'null', align: 'string' } } });
+    expect((await send('/block', { ...cleared, title: '  ' })).errors).toEqual({ title: ['The title field is required.'] });
   });
 });

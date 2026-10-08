@@ -71,15 +71,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // instead of seven replaces (W7.11: the log line's path cost /login 2.6 %).
 const MAYBE_SECRET = /[:=$\s]|[\w-]{32}/;
 
+/** From this length on, upper- and lower-case letters alone make a segment a token (see `looksLikeToken`). */
+const LONG_SEGMENT = 40;
+
 /**
- * Whether a long path segment is a secret rather than a name: a hex string (a hash) or a random-looking base64url string —
- * upper- and lower-case letters and digits, few separators. Slugs (`my-long-article-title-2026`) and UUIDs (ids) stay.
+ * Whether a long path segment is a secret rather than a name: a hex string (a hash) or a random-looking base64url string. Slugs
+ * (`my-long-article-title-2026`, lower case) and UUIDs (ids) stay. From {@link LONG_SEGMENT} characters on — a reset or e-mail
+ * change token is 43 (32 random bytes) — upper- and lower-case letters are enough: random base64url has no digit in about 1 of
+ * 1,500 tokens and more `-`/`_` than one in eight in about 1 of 480, and each of them was left in a log (W10 step 9c, finding R).
+ * Shorter segments also need a digit and few separators.
  */
 function looksLikeToken(segment: string): boolean {
   if (UUID.test(segment)) return false;
   if (/^[0-9a-f]+$/i.test(segment)) return true;
+  const mixedCase = /[a-z]/.test(segment) && /[A-Z]/.test(segment);
+  if (segment.length >= LONG_SEGMENT) return mixedCase;
   const separators = segment.length - segment.replaceAll(/[-_]/g, '').length;
-  return /\d/.test(segment) && /[a-z]/.test(segment) && /[A-Z]/.test(segment) && separators * 8 <= segment.length;
+  return mixedCase && /\d/.test(segment) && separators * 8 <= segment.length;
 }
 
 /**

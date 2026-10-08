@@ -3,7 +3,8 @@ import { defineGegenproben } from '../define.ts';
 /**
  * W10.8 — auth leftovers (E203) and small security items (E204; the traceparent decided by Max, 07.10.).
  *
- * Unconfirmed accounts: without the schedule entry they stay (G1 web app, G1b the stub through the make:auth fixture). What is
+ * Unconfirmed accounts: without the schedule entry they stay (G1 web app; G1b the stub's command through the make:auth fixture — the
+ * stub schedules nothing since E209). What is
  * deleted is decided by two conditions — the deadline and the missing confirmation — each with its own scenario (masking pair
  * G2 ↔ G3: a confirmed old account and an unconfirmed young one), never what was confirmed once — `first_verified_at` (Max, 07.10.;
  * G12 ↔ G3: each condition with its own account, G13/G13b: the link keeps the first confirmation — X13: changeEmail's coalesce
@@ -45,11 +46,19 @@ export default defineGegenproben({
       expect: /expected undefined to match object \{ outcome: 'ran' \}/,
     },
     {
+      // Since E209 (W10 step 9c follow-up) the stub schedules no deletion — the app turns the line on —, so its measure is the command:
+      // without its delete the generated app's test fails (before: the schedule line taken out).
       id: 'G1b',
-      title: "no schedule entry in the stub: the generated app's test fails — the make:auth fixture names it",
-      patch: [{ file: 'packages/auth/stubs/react/modules/auth/schedule.ts', find: "  s.command('auth:prune-unverified').daily().at('03:20').onOneServer();\n", replace: '' }],
+      title: "the stub's command deletes nothing: the generated app's test fails — the make:auth fixture names it",
+      patch: [
+        {
+          file: 'packages/auth/stubs/react/modules/auth/commands/PruneUnverifiedCommand.ts',
+          find: 'const deleted = ids.length === 0 ? 0 : (await this.#accounts.delete(ids, { unconfirmedSince: since })).length;',
+          replace: 'const deleted = ids.length === 0 ? 0 : (await this.#accounts.delete([], { unconfirmedSince: since })).length;',
+        },
+      ],
       run: { vitest: 'packages/auth/src/make-auth.test.ts', name: 'working auth area', timeout: 15 * 60_000 },
-      expect: /generated tests failed: modules\/auth\/prune-unverified\.test\.ts > pruning accounts whose address was never confirmed \(E203\) — the default > deletes one older than 7 days/,
+      expect: /generated tests failed: .*modules\/auth\/prune-unverified\.test\.ts > pruning accounts whose address was never confirmed \(E203\) — the default > deletes one older than 7 days/,
     },
     {
       id: 'G2',

@@ -29,9 +29,10 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' | 'Wave 7' | 'Wave 6', readonly string[]>> = {
   'Wave 10': [
     'medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone', // W10.4, E197
+    'medium-an-empty-string-by-type--rstring-keeps-it-an-empty-number-address-or-choice-is-missing', // W10.9c+, E208
     'medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order', // W10.5, E199
     'medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount', // W10.7, E202
-    'medium-accounts-without-a-confirmed-address-are-deleted-after-7-days--auth_unverified_days-authprune-unverified', // W10.8, E203
+    'medium-makeauth-brings-authprune-unverified--accounts-without-a-confirmed-address-go-after-auth_unverified_days-once-the-app-schedules-it', // W10.8, E203, E209
     'low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract', // W10.3, E197
     'low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it', // W10.9b, E206
     'low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field', // W10.9b, E197
@@ -47,6 +48,7 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev', // W10.6, E200
     'low-development-routes-answer-404-outside-development--whatever-their-host', // W10.9b, E115/E200
     'low-marmeon-build-builds-for-production-next-to-a-development-env', // W10.9b, E170/E201
+    'low-marmeon-dev-stops-its-queue-worker-and-scheduler--on-sigterm-on-every-restart-and-when-the-server-dies', // W10.9c+, finding D
     'low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace', // W10.8, E205
     'low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments', // W10.8, E204
     'low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token', // W10.9b, E125

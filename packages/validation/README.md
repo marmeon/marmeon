@@ -90,9 +90,14 @@ They come **last** — after them, the type's rules are gone from the API (`r.st
 - `default(value)` — what a missing field becomes: always there in the output (`page: number`), optional in the input; a list or object
   default is copied for every validation, so nobody shares it.
 
-**An empty string counts as missing** — a form's empty field, `?q=`, `APP_PORT=` (Laravel's ConvertEmptyStringsToNull): `null` for a
-nullable rule without a default, else missing (the default, or `undefined`). A required rule says "The … field is required." for it.
-`r.string()` on its own takes `''` (it is a string) — `required()` asks for some text.
+**An empty string — by type (E208).** Where `''` can be a value of the rule, the modifiers keep it: `r.string()` (with `trim()`,
+`max()` …) and an `r.in([…])` that lists `''` — a page builder's subtitle cleared on purpose arrives as `''`, neither missing nor an
+error; `required()`, `min(n)` or a pattern that wants a character still refuse it. Where `''` never is a value — numbers, booleans,
+`email()`/`url()`/`uuid()`/`date()`/`isoTimestamp()`, an `r.in()` without `''`, lists, objects, `r.value()` — it is a form's empty
+field and counts as missing: `null` for a nullable rule without a default, else the default or `undefined` (without a modifier:
+"required"). Queries follow the same rule; in `r.env()` every empty variable is missing. The table, the reasons and the way back
+(`.transform((text) => (text === '' ? undefined : text))`): the guide's
+[empty strings](../../docs/validation.md#empty-strings-a-value-or-missing--by-type).
 
 ### Types: input and output
 
@@ -147,7 +152,8 @@ A field that cannot come from a URL (`r.object()`) is refused the same way ("Que
 
 `r.env({ … })` is the `env` of a [`defineConfig`](../core/README.md): every variable is a string, read like a query — `r.integer()`,
 `r.boolean()`, `r.port()` (1–65535) and `r.list(rule)` (`ADMINS=ada@example.com, alan@example.com` → a list, each item checked) take
-them; an empty variable (`APP_PORT=`) is missing. Messages name the variable as it is written (`APP_PORT`, not "app port"):
+them; an empty variable (`APP_PORT=`, `S3_BUCKET=`) is missing — whatever its rule, `r.string()` too (a form keeps `''`, E208).
+Messages name the variable as it is written (`APP_PORT`, not "app port"):
 
 ```text
 Invalid configuration — the application cannot start:

@@ -158,3 +158,20 @@ r.object({ email: r.string().unique(UserRepository, 'email') }).live();
 // or a union: it would open every rule inside (E197)."'.
 // @ts-expect-error — on a list: put it on the item rule
 r.array(r.string().unique(UserRepository, 'email')).live();
+
+// ——— An empty string, by type (E208): the types stay — '' is a string, and what a rule keeps is in its output ———
+
+export const BlockRequest = defineRequest({ schema: r.object({ title: r.string().trim().required(), subtitle: r.string().max(120).optional(), style: r.in(['', 'bold']).optional() }) });
+class BlockController {
+  static request = BlockRequest;
+  handle(ctx: ContextOf<typeof BlockRequest>) {
+    // A subtitle cleared on purpose arrives as '' — a string; left out it is undefined.
+    same<typeof ctx.body, { title: string; subtitle?: string | undefined; style?: '' | 'bold' | undefined }>(true);
+    return ctx.body;
+  }
+}
+// What a page builder sends to clear it.
+export const cleared: FormOf<BlockController> = { title: 'Pricing', subtitle: '', style: '' };
+// r.in() without '' among its options never gives '' (an empty <select> is missing there).
+const align = r.in(['left', 'center']).optional();
+same<NonNullable<(typeof align)['~standard']['types']>['output'], 'left' | 'center' | undefined>(true);

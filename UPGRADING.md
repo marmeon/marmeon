@@ -20,26 +20,26 @@ The changes of Wave 10 (Marmeon: lean dependencies and the last security gaps) a
 wave first. Nothing is High: no app must act at once. Within a wave the entries come by impact, and within an impact by area; every
 entry says the way back, or why there is none.
 
-**Wave 10** — validation with `rules` instead of an engine the app installs, drivers that come with their package, a fair queue
-worker, a look without inline styles, unconfirmed accounts that go, and the security gaps of development routes, staging, CSRF
-tokens and traces:
+**Wave 10** — validation with `rules` instead of an engine the app installs (an empty string by type), drivers that come with their
+package, a fair queue worker, a look without inline styles, a command for unconfirmed accounts (scheduled by the app), and the security
+gaps of development routes, staging, CSRF tokens and traces:
 
 | Area | Medium | Low |
 | --- | --- | --- |
-| Validation | [the app validates with `rules`](#medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone) | [`@marmeon/validation`](#low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract) · [no foreign schema live](#low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it) · [`.live()` on the field](#low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field) · [the handler's 422 with the request's labels](#low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes) |
+| Validation | [the app validates with `rules`](#medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone) · [an empty string by type](#medium-an-empty-string-by-type--rstring-keeps-it-an-empty-number-address-or-choice-is-missing) | [`@marmeon/validation`](#low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract) · [no foreign schema live](#low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it) · [`.live()` on the field](#low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field) · [the handler's 422 with the request's labels](#low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes) |
 | Dependencies | — | [`redis` and `nodemailer` come with their packages](#low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major) |
 | Queue and uploads | [`queue:work` takes every queue, fairly](#medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order) | [`uploads:prune --force`](#low-uploadsprune---hours-below-uploads_lifetime-needs---force) |
 | Look and failures | [the stylesheet `@marmeon/react/styles.css`](#medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount) | [failures load when they happen](#low-what-a-failure-shows-loads-when-it-happens--the-dialog-of-a-5xx-and-the-error-pages-are-a-chunk-of-their-own) |
-| Accounts and sessions | [unconfirmed accounts are deleted](#medium-accounts-without-a-confirmed-address-are-deleted-after-7-days--auth_unverified_days-authprune-unverified) | [the CSRF token on demand](#low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none) · [a change of address keeps the confirmation](#low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone) |
+| Accounts and sessions | [deleting unconfirmed accounts, opt-in](#medium-makeauth-brings-authprune-unverified--accounts-without-a-confirmed-address-go-after-auth_unverified_days-once-the-app-schedules-it) | [the CSRF token on demand](#low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none) · [a change of address keeps the confirmation](#low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone) |
 | Lists | — | [cursors belong to their list](#low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions) · [the default sort is everyone's](#low-a-tables-default-sort-is-a-column-everyone-sees--defaultsort-refuses-one-with-visible) |
-| Development and staging | — | [staging takes the production branches](#low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings) · [the mail previews' host check](#low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev) · [404 outside development](#low-development-routes-answer-404-outside-development--whatever-their-host) · [`marmeon build` for production](#low-marmeon-build-builds-for-production-next-to-a-development-env) |
+| Development and staging | — | [staging takes the production branches](#low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings) · [the mail previews' host check](#low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev) · [404 outside development](#low-development-routes-answer-404-outside-development--whatever-their-host) · [`marmeon build` for production](#low-marmeon-build-builds-for-production-next-to-a-development-env) · [`marmeon dev` stops its companions](#low-marmeon-dev-stops-its-queue-worker-and-scheduler--on-sigterm-on-every-restart-and-when-the-server-dies) |
 | Logs and traces | — | [`traceparent` as a span link](#low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace) · [a `URL` in a log is masked](#low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments) · [errors logged as text are masked](#low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token) |
 
 *Estimated upgrade time for Wave 10:* minutes for an app without the auth module (import `@marmeon/react/styles.css`, add the queue
 index, drop `valibot` if nothing of yours uses it); **one to two hours** for an app made with `make:auth` before Wave 10 — its module
-is yours: the `auth.css` and its import, the migration `first_verified_at`, `AccountDeletion` and `auth:prune-unverified` with its
-schedule line, `.confirmed('password')` instead of `confirmed()` — and for an app whose own schemas were Valibot and should move to
-`rules` (they may stay as they are). The guide of the wave: [validation](docs/validation.md); what changed for deployment and
+is yours: the `auth.css` and its import, the migration `first_verified_at`, `AccountDeletion` and `auth:prune-unverified` (and
+whether to schedule it), `.confirmed('password')` instead of `confirmed()` — and for an app whose own schemas were Valibot and should move
+to `rules` (they may stay as they are; optional strings that took `''` for missing: look at them). The guide of the wave: [validation](docs/validation.md); what changed for deployment and
 security: [deployment](docs/deployment.md), [security](docs/security.md).
 
 **Wave 9** — lists, tables, the Navigation API, live updates and private registration:
@@ -104,6 +104,40 @@ env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })        env: r.env({ APP_
 The way back: Valibot, Zod or any Standard Schema library still works wherever a rule does — install it yourself and pass its schemas;
 only the helpers above are rules now (`password()` inside a Valibot object: wrap the object in `r.object()` instead, or check the
 password with Valibot).
+
+#### Medium: an empty string by type — `r.string()` keeps it, an empty number, address or choice is missing
+
+*Likelihood of impact: medium — every app whose forms or JSON clients send empty fields to schemas of `rules`.* What a `''` is
+depends on the rule (E208 — it replaces the rule of the earlier Wave 10 builds, "an empty string counts as missing" for every rule):
+where `''` can be a value, the modifiers keep it — `r.string()` (with `trim()`, `max()`, `custom()` …) and an `r.in()` that lists `''`;
+where it never is one — `r.number()`, `r.integer()`, `r.port()`, `r.boolean()`, `r.email()`, `r.url()`, `r.uuid()`, `r.date()`,
+`r.isoTimestamp()`, an `r.in()` without `''`, lists, objects, `r.value()` — it is a form's empty field and counts as missing, as
+before. Why not Laravel's `ConvertEmptyStringsToNull`: a page builder's optional "Subtitle" cleared on purpose is `''`, and turning it
+into "missing" keeps the old subtitle (an update skips undefined) — a JSON client could never clear a field. The guide:
+[empty strings](docs/validation.md#empty-strings-a-value-or-missing--by-type).
+
+```ts
+// subtitle: r.string().trim().max(120).optional()     before (earlier Wave 10)      after (E208)
+{ subtitle: '' }                                    // { subtitle: undefined }       { subtitle: '' }
+// caption: r.string().nullable() · cta: r.string().default('Read more')
+{ caption: '', cta: '' }                            // { caption: null, cta: 'Read more' }   { caption: '', cta: '' }
+// width: r.integer().optional() · link: r.url().nullable() · align: r.in(['left', 'center']).default('left')
+{ width: '', link: '', align: '' }                  // { width: undefined, link: null, align: 'left' } — unchanged
+```
+
+- **What to look at:** an optional or nullable `r.string()` whose handler took "missing" for "empty" — a column written `null` where it
+  now gets `''`, a `?? fallback` that no longer applies (`''` is no nullish value), an async `custom()` that now runs for `''` (let it
+  pass: `code === '' || …`). `r.string().required().optional()`, `.min(n).optional()` and a `regex()` that wants a character refuse `''`
+  now (before: missing). A `'   '` with `trim()` was `''` already — now `''` is the same.
+- **From Valibot** (0.1.0): `v.optional(v.string())` kept `''` as well — nothing changes for strings; `v.optional(v.number())` refused
+  `''`, `r.integer().optional()` takes it as missing.
+- **Queries follow the type** (`?q=` is `''` for `r.string().optional()`); **`r.env()` does not**: an empty variable is missing for
+  every rule, `r.string()` too (`S3_BUCKET=` in a `.env.example` is "not set") — unchanged.
+- The web app's profile takes the bio as `optional()`: a cleared bio saves `''`, a request without one keeps it.
+
+The way back: per field, after the checks — `r.string().max(120).transform((text) => (text === '' ? undefined : text)).optional()`
+(or `? null : text` with `.nullable()`); with a check `''` would fail (`min(2)`), let it through first:
+`r.union([r.literal(''), r.string().min(2)]).transform((text) => (text === '' ? undefined : text)).optional()`.
 
 #### Medium: `queue:work` takes every queue, fairly — a `--queue` list keeps its strict order
 
@@ -189,40 +223,43 @@ import '../modules/auth/auth.css';         // make:auth's module, if the app has
 The way back: none needed. An app that styled `[data-marmeon-layer]` itself can leave the import out and keep its rules — set what it
 took from the old inline defaults.
 
-#### Medium: accounts without a confirmed address are deleted after 7 days — `AUTH_UNVERIFIED_DAYS`, `auth:prune-unverified`
+#### Medium: `make:auth` brings `auth:prune-unverified` — accounts without a confirmed address go after `AUTH_UNVERIFIED_DAYS` once the app schedules it
 
 *Likelihood of impact: medium — every app with the module of `make:auth`, above all one with `AUTH_PRIVATE_REGISTRATION=false`.* An
-account whose address was never confirmed stayed forever: whoever signed up with somebody else's address kept holding it (a
-"pre-hijacked" account), and the data of sign-ups nobody finished stayed too. Now the module deletes them (E203): its command
-`auth:prune-unverified`, scheduled nightly at 03:20 (`onOneServer()`), deletes every account that **never** confirmed an address
-(`email_verified_at` and the new `first_verified_at` null) and was made more than `AUTH_UNVERIFIED_DAYS` ago (default **7**; only
-whole numbers boot) — through the module's new
-`AccountDeletion`: the row (remember-me and API tokens cascade), its reset token, what other modules keep (they listen to
-`AccountDeleted`, in the same transaction) and its sessions (`UserSessions` of `@marmeon/session`: removed from the `database` store,
-ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** An account that was
-confirmed once never goes — `users.first_verified_at` keeps the first confirmation for good (the verification link sets it), so a
-pending change (private registration) or an unconfirmed new address (`AUTH_PRIVATE_REGISTRATION=false`) leaves it alone.
+account whose address was never confirmed stays forever: whoever signed up with somebody else's address keeps holding it (a
+"pre-hijacked" account), and the data of sign-ups nobody finished stays too. The module has a command for it now (E203):
+`auth:prune-unverified` deletes every account that **never** confirmed an address (`email_verified_at` and the new
+`first_verified_at` null) and was made more than `AUTH_UNVERIFIED_DAYS` ago (default **7**; only whole numbers boot; `0`: it deletes
+none) — through the module's new `AccountDeletion`: the row (remember-me and API tokens cascade), its reset token, what other modules
+keep (they listen to `AccountDeleted`, in the same transaction) and its sessions (`UserSessions` of `@marmeon/session`: removed from
+the `database` store, ended at their next request with the others), in batches of 100, the number in the log. **Irreversible.** An
+account that was confirmed once never goes — `users.first_verified_at` keeps the first confirmation for good (the verification link
+sets it), so a pending change (private registration) or an unconfirmed new address (`AUTH_PRIVATE_REGISTRATION=false`) leaves it alone.
+
+**The module does not schedule it (E209):** deleting accounts is the app's decision — an app whose model has unconfirmed accounts on
+purpose (an invited team, an import) must not lose them to a framework default. `modules/auth/schedule.ts` has the line, commented out
+with what it does; the app turns it on (the web app of this repository does):
 
 ```ts
-// modules/auth/schedule.ts — new line            // modules/auth/index.ts — new
-s.command('auth:prune-unverified').daily().at('03:20').onOneServer();      commands: [PruneUnverifiedCommand],
+// modules/auth/schedule.ts — the line, off           // modules/auth/index.ts — new
+// s.command('auth:prune-unverified').daily().at('03:20').onOneServer();      commands: [PruneUnverifiedCommand],
 ```
 
 - **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have used the app for days before it goes,
-  if it never clicks its link. Tell your users in the verification mail, or raise the days.
+  if it never clicks its link — once the schedule runs it. Tell your users in the verification mail, or raise the days.
 - **A new column, `users.first_verified_at`** (migration `0001_01_01_000005_add_first_verified_at_to_users_table.ts`): it fills
   itself from `email_verified_at` for every account confirmed before; `markEmailVerified` (and the confirmed change of address) set
   it with `coalesce(first_verified_at, now)`. A factory or seeder of your own that makes confirmed users sets it too.
 - An app made with `make:auth` before: copy the migration, `AccountDeletion.ts`, `commands/PruneUnverifiedCommand.ts`, the methods
-  `unconfirmedSince`/`deleteAccounts` and the new `markEmailVerified` of `UserRepository.ts`, the factory, the schedule line and
-  `commands` from the stubs
-  (`packages/auth/stubs/react/modules/auth/`), or run `marmeon make:auth --force` on a clean tree and merge. Without them nothing is
-  deleted.
+  `unconfirmedSince`/`deleteAccounts` and the new `markEmailVerified` of `UserRepository.ts`, the factory, the (commented) schedule
+  line and `commands` from the stubs (`packages/auth/stubs/react/modules/auth/`), or run `marmeon make:auth --force` on a clean tree
+  and merge. Without them nothing is deleted; without the schedule line nothing is deleted by itself — `marmeon auth:prune-unverified`
+  runs it by hand.
 - New API: `UserSessions` (`end(userId)`) and the optional `SessionStore#destroyUser(userId)` (the `database` store has it), and
-  `Inbox#deleteAll(recipient)` of `@marmeon/notifications`.
+  `Inbox#deleteAll(recipient)` of `@marmeon/notifications`. The boot no longer warns about `AUTH_UNVERIFIED_DAYS=0`
+  (`UNVERIFIED_KEPT_NOTICE` of the earlier Wave 10 builds is gone): without a schedule there is nothing to warn about.
 
-The way back: `AUTH_UNVERIFIED_DAYS=0` keeps every account (outside development and tests the boot says so once), or a larger number
-of days.
+The way back: leave the schedule line off (the default) — or, where it runs, `AUTH_UNVERIFIED_DAYS=0` or a larger number of days.
 
 #### Low: `@marmeon/validation` — Laravel's rules, typed; Standard Schema stays the contract
 
@@ -418,6 +455,16 @@ guard of its own.
 set in the environment itself is respected, with a warning unless it is `production`; without any, the build sets `production`
 (as `marmeon start` does). Images, CI and `pack:smoke` built without a `.env` already. The way back: `NODE_ENV=development pnpm build` — with its warning.
 
+#### Low: `marmeon dev` stops its queue worker and scheduler — on SIGTERM, on every restart, and when the server dies
+
+*Likelihood of impact: low — development machines that ended `marmeon dev` other than with Ctrl+C, or changed server code while it ran.*
+Vite 8's dev server loads Rolldown, whose `signal-exit` re-raises a signal when it finds itself the only listener — and the server's own
+SIGTERM listener was a `once`, gone by then: the server ended without its shutdown, and the `queue:work` and `schedule:work` it had
+started kept running — after a SIGTERM to `marmeon dev` and after **every restart of `node --watch`** (a second worker per code change).
+The server keeps its listeners now (a drain on SIGTERM again), and each companion has an IPC channel to it: when the channel closes — the
+server killed or crashed — the companion stops as on SIGTERM (its running job finishes). The way back: none needed. Leftovers of before:
+`ps -o pid,ppid,command -ax | grep "queue:work\|schedule:work"` (parent `1`) and `kill <PID>` — never a pattern kill.
+
 #### Low: a caller's `traceparent` is a link of the request's span — `OTEL_TRUST_TRACEPARENT=true` continues its trace
 
 *Likelihood of impact: low — apps with `@marmeon/otel` whose traces span services.* A request's server span continued the trace of
@@ -439,7 +486,10 @@ passes `instrument(app, api, { redactor: app.container.make(Redactor), trustTrac
 *Likelihood of impact: low — log readers who searched for whole URLs logged as objects.* `logger.info('…', { link: new URL(…) })`
 wrote the URL as it was (its `toJSON`): a `?token=…` or `/reset-password/<token>` reached the log. Now `redact()` masks a `URL` and
 `URLSearchParams` like text (`token=[redacted]`, `/reset-password/[redacted]`), and the `Redactor` (devtools, error page, spans)
-shows a `URL` through `url()` instead of an empty object. The way back: none needed — log `url.pathname` or a field you choose.
+shows a `URL` through `url()` instead of an empty object. A path segment of 40 or more URL-safe characters counts as a token as soon as
+it has upper- and lower-case letters (W10 step 9c: the rule before — a digit too, few `-`/`_` — let about 1 in 370 reset tokens through
+into the log); shorter segments still need a digit, lower-case slugs and UUIDs stay. The way back: none needed — log `url.pathname` or a
+field you choose.
 
 #### Low: errors the framework logs as text are masked — a URL's password, a token
 

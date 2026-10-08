@@ -100,6 +100,21 @@ describe('user-profile module', () => {
       await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada King', bio: 'Countess.' });
     });
 
+    it("clears the bio on purpose — '' is a value, not a missing field (E208); a request without a bio keeps it", async () => {
+      await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: 'Countess.' } }).assertRedirect(profile(ada));
+      // JSON: the bio cleared, as a page builder or an API client sends it.
+      await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: '' } }).assertRedirect(profile(ada)).assertValid();
+      await app.assertDatabaseHas('users', { id: ada.id, bio: '' });
+      // A form: the textarea emptied.
+      await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: 'Countess.' } }).assertRedirect(profile(ada));
+      await app.actingAs(ada).put(profile(ada), { form: { name: 'Ada King', bio: '' } }).assertRedirect(profile(ada)).assertValid();
+      await app.assertDatabaseHas('users', { id: ada.id, bio: '' });
+      // Left out: the name changes, the bio stays.
+      await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada King', bio: 'Countess.' } }).assertRedirect(profile(ada));
+      await app.actingAs(ada).put(profile(ada), { json: { name: 'Ada Byron' } }).assertRedirect(profile(ada)).assertValid();
+      await app.assertDatabaseHas('users', { id: ada.id, name: 'Ada Byron', bio: 'Countess.' });
+    });
+
     it('answers API clients with 422 and the field errors', async () => {
       const response = await app
         .actingAs(ada)
@@ -352,7 +367,9 @@ export function TypedForm() {
   form.set('nmae', 'x');
   // @ts-expect-error — `bio` is a string.
   form.set('bio', 1);
-  // @ts-expect-error — `bio` is required by the schema.
+  // @ts-expect-error — `name` is required by the schema.
+  useForm<UpdateUserProfileController>({ bio: '' });
+  // `bio` is optional (E208: left out it keeps the saved bio, '' clears it).
   useForm<UpdateUserProfileController>({ name: 'Ada' });
   const nameError: string | undefined = form.errors.name;
   // @ts-expect-error — the schema has no `email`, so there is no such error either.

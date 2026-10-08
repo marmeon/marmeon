@@ -47,8 +47,9 @@ const fields = {
   // A date as `<input type="date">` sends it, a port as a form spells it.
   starts: r.date().optional(),
   port: r.port().optional(),
-  // Asked asynchronously (a table, a service): on submit only — an async check never runs live unless it says .live() (E197).
-  invite: r.string().trim().custom(async (code, { request }) => (await request!.resolve(LabInvites).valid(code)) || 'This invitation code is unknown.').optional(),
+  // Asked asynchronously (a table, a service): on submit only — an async check never runs live unless it says .live() (E197). An empty
+  // field reaches the check as '' (E208: a string's empty value is a value) — no code, nothing to ask.
+  invite: r.string().trim().custom(async (code, { request }) => code === '' || (await request!.resolve(LabInvites).valid(code)) || 'This invitation code is unknown.').optional(),
   // An account the form names: it must exist — on submit only, like every database rule (no enumeration while typing, E197).
   inviter: r.email().exists(UserRepository, 'email').optional(),
   kind: r.in(['person', 'company']).default('person'),

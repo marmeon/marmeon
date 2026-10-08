@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, Redactor, redactText } from './redact.ts';
 
@@ -90,6 +91,25 @@ describe('E125, completed for the devtools (W7.7)', () => {
     expect(redactText('/verify-email/7/2f9a6b1c0d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a')).toBe('/verify-email/7/[redacted]');
     for (const kept of ['/posts/my-very-long-article-title-about-redaction-2026', '/notifications/550e8400-e29b-41d4-a716-446655440000', '/users/7/profile', '/assets/index-BQx7aN2c.js']) {
       expect(redactText(kept)).toBe(kept);
+    }
+  });
+
+  it('masks every long random token — one without a digit, one with many - and _ (W10 step 9c, finding R) — never a lower-case slug', () => {
+    // Two reset tokens (32 random bytes, base64url) the rule before let through: about 1 in 370 was (a digit and few separators were asked).
+    const noDigit = 'xcTSGsRRdFsBwbUDGMbH_yNyUBMgdklqlolrXjzXiiI';
+    const separators = '-RHB_4z_ytbJPF7qzYPGUQq_an-dByze2Kb-EN8Rp_o';
+    for (const secret of [noDigit, separators]) {
+      expect(redactText(`Reset: http://localhost/reset-password/${secret}?email=ada%40example.com`), secret).toBe('Reset: http://localhost/reset-password/[redacted]?email=ada%40example.com');
+      expect(new Redactor().path(`/email/change/7/${secret}`), secret).toBe('/email/change/7/[redacted]');
+    }
+    // Every random token of a thousand: the length alone decides, not luck.
+    for (let i = 0; i < 1000; i++) {
+      const random = randomBytes(32).toString('base64url');
+      expect(redactText(`/reset-password/${random}`), random).toBe('/reset-password/[redacted]');
+    }
+    // What stays: slugs (lower case, also with many separators), words and shorter names in both cases.
+    for (const kept of ['/posts/a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q-r-s-t-u-v-w', '/posts/my_long_article_title_about_redaction_twenty', '/wiki/TheQuickBrownFoxJumpsOverTheLazyDog']) {
+      expect(redactText(kept), kept).toBe(kept);
     }
   });
 

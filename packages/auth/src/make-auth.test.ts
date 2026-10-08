@@ -63,6 +63,7 @@ describe('make:auth', () => {
     expect(lines.filter((line) => line.startsWith('Lint:') || line.startsWith('Devtools') || line.startsWith('Content-Security-Policy'))).toEqual([]);
     // The auth mails' queue, and the worker production needs for it.
     expect(lines).toContain('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
+    expect(lines).toContain('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out (E209).');
   });
 
   it('names the lint preset, the devtools and the CSP only while the app has none of them (they belong to the app, W7.6)', async () => {
@@ -238,8 +239,9 @@ describe('make:auth', () => {
       expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(4);
       expect(ran('email-change', 'changing the address (private registration, E146) — the default')).toBe(7); // W9 step 9
       expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(2);
-      // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS (E203) — scheduled at 03:20, in both behaviours.
-      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed (E203) — the default')).toBe(5);
+      // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS (E203) by the command, in both behaviours — the module schedules no
+      // deletion (E209: the app turns it on).
+      expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed (E203) — the default')).toBe(6);
       // … and never one that was confirmed — by its link or by `email_verified_at` alone — whatever its address became (W10 step 9b).
       expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed with AUTH_PRIVATE_REGISTRATION=false (E193)')).toBe(3);
       expect(tests.code).toBe(0);

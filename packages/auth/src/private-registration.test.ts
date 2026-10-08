@@ -4,7 +4,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AuthConfig, AuthServiceProvider, PRIVATE_REGISTRATION_OFF_WARNING, UNVERIFIED_KEPT_NOTICE } from './index.ts';
+import { AuthConfig, AuthServiceProvider, PRIVATE_REGISTRATION_OFF_WARNING } from './index.ts';
 
 /** Boots auth with `env` and returns the app and what was logged as a warning about private registration. */
 async function boot(env: Record<string, string>): Promise<{ app: Application; warnings: string[] }> {
@@ -52,7 +52,7 @@ describe('AUTH_PRIVATE_REGISTRATION (E146, E193)', () => {
 });
 
 describe('AUTH_UNVERIFIED_DAYS (E203)', () => {
-  it('is 7 unless set — only whole numbers of days boot, 0 keeps unconfirmed accounts', async () => {
+  it('is 7 unless set — only whole numbers of days boot, 0 (the command deletes none)', async () => {
     const days = async (value?: string) => (await boot({ NODE_ENV: 'test', ...(value === undefined ? {} : { AUTH_UNVERIFIED_DAYS: value }) })).app.container.make(AuthConfig).unverifiedDays;
     expect(await days(), 'unset, unconfirmed accounts must go after 7 days').toBe(7);
     expect(await days('30')).toBe(30);
@@ -63,11 +63,9 @@ describe('AUTH_UNVERIFIED_DAYS (E203)', () => {
     }
   });
 
-  it('0 outside development and tests: the boot says once that unconfirmed accounts are kept forever', async () => {
-    expect((await boot({ NODE_ENV: 'production', AUTH_UNVERIFIED_DAYS: '0' })).warnings).toEqual([UNVERIFIED_KEPT_NOTICE]);
-    expect((await boot({ NODE_ENV: 'staging', AUTH_UNVERIFIED_DAYS: '0' })).warnings, 'staging (protected, E139)').toEqual([UNVERIFIED_KEPT_NOTICE]);
-    expect((await boot({ NODE_ENV: 'production' })).warnings).toEqual([]);
-    expect((await boot({ NODE_ENV: 'development', AUTH_UNVERIFIED_DAYS: '0' })).warnings).toEqual([]);
-    expect((await boot({ NODE_ENV: 'test', AUTH_UNVERIFIED_DAYS: '0' })).warnings).toEqual([]);
+  it('0 is no boot warning (E209): whether unconfirmed accounts go is the schedule of the app, not a default to warn about', async () => {
+    for (const NODE_ENV of ['production', 'staging', 'development', 'test']) {
+      expect((await boot({ NODE_ENV, AUTH_UNVERIFIED_DAYS: '0' })).warnings, NODE_ENV).toEqual([]);
+    }
   });
 });

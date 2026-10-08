@@ -19,7 +19,8 @@ everything that exists only in development (E115): the error page and `Server-Ti
 `DevProcesses` — a queue worker on every queue (`queue:work`, unless the default connection is `sync`,
 [@marmeon/queue](../queue/README.md)) and the scheduler (`schedule:work`, when the app schedules tasks,
 [@marmeon/scheduler](../scheduler/README.md)) — stopped and restarted with it, and started again
-when one ends on its own. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed. All of
+when one ends on its own; a server that dies without stopping them (killed, crashed) closes their IPC channel, and they stop as on
+SIGTERM — never left running beside the next one. It keeps `bootstrap/routes.ts` current: on every start, and when a view is added or removed. All of
 this — Vite's dev server included — needs `NODE_ENV=development`: with another `NODE_ENV` set (`staging`, `test`), `marmeon dev`
 says so and serves the build, without workers or watchers (never "anything but production", E115).
 

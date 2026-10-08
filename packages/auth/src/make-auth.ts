@@ -107,6 +107,7 @@ export class MakeAuthCommand {
     input.output.line('Then: marmeon migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
     input.output.line('Expired tokens are pruned at night by the scheduler (marmeon dev starts it; in production: marmeon schedule:work or schedule:run from cron).');
+    input.output.line('Accounts whose address was never confirmed stay until your app decides: marmeon auth:prune-unverified deletes them after AUTH_UNVERIFIED_DAYS — its line in modules/auth/schedule.ts is commented out (E209).');
     input.output.line('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
     input.output.line(`Tests: ${relative(input.root, join(target, 'auth.test.ts'))}`);
     // The lint preset and the devtools belong to the app, not to the module (W7.6) — named when the app has neither yet.

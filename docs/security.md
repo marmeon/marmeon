@@ -126,11 +126,13 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   and only a submit tells, behind its throttle; `.live()` opts a rule in, never for an account. The unique index stays the truth
   (`failOnDuplicate()` → 422) ([validation](validation.md#database-rules-and-why-they-never-run-live)). A schema of another library
   does not run in a live validation at all (E206) unless its request says `live: true` — never for one that asks about accounts.
-- **Never-confirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes): whoever signed up with somebody else's address stops
-  holding it (a sign-up; with `AUTH_PRIVATE_REGISTRATION=false` an account confirmed once keeps an address it changed to unconfirmed),
-  and nothing of an unfinished sign-up stays — deleted at night with its tokens, what other modules keep and its sessions (removed with
-  `SESSION_DRIVER=database`, ended at their next request with the other drivers)
-  ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
+- **Never-confirmed accounts can go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes) — `auth:prune-unverified`
+  of `make:auth`, **scheduled only when the app turns its line in `modules/auth/schedule.ts` on** (E209: deleting accounts is the app's
+  decision, the module never does it by itself). Then whoever signed up with somebody else's address stops holding it (a sign-up; with
+  `AUTH_PRIVATE_REGISTRATION=false` an account confirmed once keeps an address it changed to unconfirmed), and nothing of an unfinished
+  sign-up stays — deleted at night with its tokens, what other modules keep and its sessions (removed with `SESSION_DRIVER=database`,
+  ended at their next request with the other drivers) ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
+  Without the line such accounts stay: decide it for your app.
 - **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS
   (`MAIL_REQUIRE_TLS`, default `true`, E192) — a server without it, or someone who strips the offer, never sees the credentials or a
   reset link ([mail](../packages/mail/README.md)).
@@ -191,7 +193,8 @@ the client's header on unchanged.
 - `contentSecurityPolicy()` in `bootstrap/app.ts` (the starter kit has it); new inline scripts take `ctx.nonce()`; with a `styleSrc`,
   classes instead of `style` props and `@marmeon/react/styles.css` imported in the client entry.
 - `marmeon dev` over HTTPS or with `allowedHosts: true` only on a trusted network; staging private (it shows server errors).
-- `AUTH_UNVERIFIED_DAYS` as you want it (default 7; tell users of `AUTH_PRIVATE_REGISTRATION=false` that an unconfirmed account goes);
+- Whether unconfirmed accounts go — the `auth:prune-unverified` line in `modules/auth/schedule.ts` — and `AUTH_UNVERIFIED_DAYS` as you want it
+  (default 7; tell users of `AUTH_PRIVATE_REGISTRATION=false` that an unconfirmed account goes);
   `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header.
 - HSTS once the site is HTTPS only — the `SecurityHeaders` switch or the proxy.
 - `TRUSTED_PROXIES` set to exactly your proxy (`*` — the direct peer only — when nothing else can reach the app); the proxy sets

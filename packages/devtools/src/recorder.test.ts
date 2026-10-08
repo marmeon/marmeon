@@ -322,7 +322,9 @@ describe('what the recorder keeps', () => {
   it('mails with the tokens and signatures in their links masked — and the token path of the request', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      const token = randomBytes(32).toString('base64url');
+      // Fixed, not random (W10 step 9c, finding R): 32 random bytes as the app makes them — this one without a digit, which the
+      // token rule before let through (about 1 run in 370 failed); redact.test.ts covers the random ones.
+      const token = 'xcTSGsRRdFsBwbUDGMbH_yNyUBMgdklqlolrXjzXiiI';
       await kernel.request(`/reset-password/${token}`);
       const mail = tester!.assertRecorded('mail', (content) => content.subject === 'Reset your password');
       expect(mail.content).toMatchObject({ mailable: 'ResetMail', mode: 'send', to: ['ada@example.com'] });

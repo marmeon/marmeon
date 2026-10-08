@@ -195,12 +195,20 @@ export interface Confirmation {
  * holds for the object's other fields, confirmations (`confirmed`) once their field is valid — both alongside the other fields'
  * problems, not after them.
  */
-export function objectEngine(entries: Readonly<Record<string, Engine>>, whens: readonly ConditionalFields[], confirmations: readonly Confirmation[], async: boolean): Engine {
+export function objectEngine(
+  entries: Readonly<Record<string, Engine>>,
+  whens: readonly ConditionalFields[],
+  confirmations: readonly Confirmation[],
+  async: boolean,
+  emptyIsMissing = false,
+): Engine {
   const base: Schema = async ? v.objectAsync(entries as Record<string, Schema>, typeMessage('object')) : v.object(entries as Record<string, Schema>, typeMessage('object'));
-  if (whens.length === 0 && confirmations.length === 0) return base as unknown as Engine;
+  if (whens.length === 0 && confirmations.length === 0 && !emptyIsMissing) return base as unknown as Engine;
   return {
     ...base,
-    '~run'(dataset: Dataset, config: unknown) {
+    '~run'(dataset: Dataset, given: unknown) {
+      // r.env(): its fields (and the fields of their fields) take an empty variable as a missing one.
+      const config = emptyIsMissing ? { ...(given as object), [EMPTY_IS_MISSING]: true } : given;
       const input = dataset.value;
       const result = base['~run'](dataset, config);
       if (!async) return afterObject(result, input, whens, confirmations, config, false);
@@ -273,13 +281,21 @@ export interface Modifier {
   readonly nullable: boolean;
   /** `.default(value)`: what a missing value becomes (a copy of it, for an object or a list). */
   readonly fallback?: { readonly value: unknown } | undefined;
+  /** `''` is a value of the rule (E208: a string's, an `r.in()` that lists it) — never "missing". */
+  readonly keepsEmpty: boolean;
 }
 
+/** Set on the config an `r.env()` object runs its fields with: an empty variable (`APP_PORT=`) is a missing one, whatever its rule. */
+const EMPTY_IS_MISSING = Symbol('marmeon.validation.emptyIsMissing');
+
 /**
- * `.optional()`, `.nullable()`, `.default()`: what a missing value is. An empty string — a form's empty field, `?q=`, `APP_PORT=` —
- * counts as missing (Laravel's ConvertEmptyStringsToNull): `null` where the rule is nullable and has no default, else undefined.
+ * `.optional()`, `.nullable()`, `.default()`: what a missing value is. An empty string (E208, "by type"): a value where the rule
+ * takes it — a string (a page builder's subtitle somebody cleared on purpose is `''`, not missing), an `r.in()` that lists `''` —;
+ * where it never can be one (a number, a boolean, an e-mail address, a date, a list …) it is a form's empty field and counts as
+ * missing: `null` where the rule is nullable and has no default, else undefined (the default). In `r.env()` every empty variable
+ * counts as missing.
  */
-export function modifiedEngine(inner: Engine, { optional, nullable, fallback }: Modifier, async: boolean): Engine {
+export function modifiedEngine(inner: Engine, { optional, nullable, fallback, keepsEmpty }: Modifier, async: boolean): Engine {
   const schema = inner as Schema;
   return {
     kind: 'schema',
@@ -291,7 +307,9 @@ export function modifiedEngine(inner: Engine, { optional, nullable, fallback }: 
     default: fallback !== undefined ? () => undefined : undefined,
     '~run'(dataset: Dataset, config: unknown) {
       let value = dataset.value;
-      if (value === '') value = nullable && fallback === undefined ? null : undefined;
+      if (value === '' && (!keepsEmpty || (config as Record<symbol, unknown> | undefined)?.[EMPTY_IS_MISSING] === true)) {
+        value = nullable && fallback === undefined ? null : undefined;
+      }
       if (value === undefined && optional) {
         dataset.typed = true;
         dataset.value = fallback === undefined ? undefined : copy(fallback.value);

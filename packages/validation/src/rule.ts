@@ -25,6 +25,11 @@ export interface RuleDefinition {
   readonly container: boolean;
   /** How a message names a field: in words (`password confirmation`) or as written (`APP_PORT`, for `.env`). */
   readonly attributes: 'humanized' | 'raw';
+  /**
+   * `''` is a value of the rule (E208): a string's, an `r.in()`'s that lists it — `optional()`/`nullable()`/`default()` keep it. Where
+   * it never can be one (numbers, booleans, e-mail addresses, URLs, dates, lists, objects …) a form's empty field counts as missing.
+   */
+  readonly keepsEmpty: boolean;
   /** What a package marks its rule with (`r.value(…, { meta })`) — kept by every rule made from it; {@link metaOf} reads it. */
   readonly meta: Readonly<Record<symbol, unknown>>;
 }
@@ -79,18 +84,22 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
     });
   }
 
-  /** The value may be missing (`undefined`; an empty string counts as missing): `{ bio?: string }`. */
+  /**
+   * The value may be missing (`undefined`): `{ bio?: string }`. An empty string stays one where the rule takes it — `r.string()`'s
+   * `''` is a value (E208: a subtitle cleared on purpose) — and is missing where it never is one (`r.integer()`, `r.email()` …).
+   */
   optional(): Rule<Output | undefined, Input | undefined> {
     return this.#modified({ optional: true, nullable: false });
   }
 
-  /** The value may be `null` (an empty string becomes `null`, Laravel's ConvertEmptyStringsToNull): `website: string | null`. */
+  /** The value may be `null`: `website: string | null` — an empty string becomes `null` where the rule never takes it (`r.url()`, E208). */
   nullable(): Rule<Output | null, Input | null> {
     return this.#modified({ optional: false, nullable: true });
   }
 
   /**
-   * What a missing value (or an empty string) becomes — the field is then always there: `page: r.integer().min(1).default(1)`. A
+   * What a missing value becomes — the field is then always there: `page: r.integer().min(1).default(1)` (an empty string too where the
+   * rule never takes it: `?page=`; `r.string()` keeps `''`, E208). A
    * list or an object is copied for every validation (nobody shares it). In `r.query()` it is what an invalid value falls back to (E56).
    */
   default(value: Exclude<Output, undefined>): Rule<Exclude<Output, undefined>, Input | undefined> {
@@ -166,16 +175,17 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
     return new Class({ ...this['~rule'], live: true });
   }
 
-  #modified(modifier: engine.Modifier): Rule<any, any> {
+  #modified(modifier: Omit<engine.Modifier, 'keepsEmpty'>): Rule<any, any> {
     const definition = this['~rule'];
     return new Rule({
-      base: (context) => engine.modifiedEngine(this['~engine'](context), modifier, definition.async),
+      base: (context) => engine.modifiedEngine(this['~engine'](context), { ...modifier, keepsEmpty: definition.keepsEmpty }, definition.async),
       steps: [],
       async: definition.async,
       contextual: definition.contextual,
       live: false,
       container: definition.container,
       attributes: definition.attributes,
+      keepsEmpty: definition.keepsEmpty,
       meta: definition.meta,
     });
   }
@@ -193,7 +203,7 @@ function build(definition: RuleDefinition, context: BuildContext): Engine {
 
 /** A rule's base on its own. */
 export function definition(base: (context: BuildContext) => Engine, parts: Partial<RuleDefinition> = {}): RuleDefinition {
-  return { base, steps: [], async: false, contextual: false, live: false, container: false, attributes: 'humanized', meta: {}, ...parts };
+  return { base, steps: [], async: false, contextual: false, live: false, container: false, attributes: 'humanized', keepsEmpty: false, meta: {}, ...parts };
 }
 
 /** A step that never depends on the request. */
@@ -280,7 +290,11 @@ function sizeStep(kind: Sized, rule: 'min' | 'max' | 'between', min: number | un
   );
 }
 
-/** A string — the type of form fields. `'' ` is a string: `.required()` asks for some text. Lengths count characters (code points). */
+/**
+ * A string — the type of form fields. `''` is a string (E208): `.optional()`, `.nullable()` and `.default()` keep it, `.required()`
+ * (or `.min(1)`) asks for some text. The formats `email()`, `url()`, `uuid()`, `date()` and `isoTimestamp()` never take `''`: there it
+ * is a form's empty field and counts as missing. Lengths count characters (code points).
+ */
 export class StringRule extends Rule<string, string> {
   /** Takes the whitespace off both ends first — before the checks after it. */
   trim(): this {
@@ -314,7 +328,7 @@ export class StringRule extends Rule<string, string> {
 
   /** An e-mail address (the practical pattern: `name@domain.tld`). */
   email(): this {
-    return this.with(step(engine.email));
+    return this.with(step(engine.email), FORMAT);
   }
 
   /**
@@ -323,12 +337,12 @@ export class StringRule extends Rule<string, string> {
    */
   url({ protocols = ['http', 'https'] }: { readonly protocols?: readonly string[] } = {}): this {
     const allowed = new Set(protocols.map((protocol) => `${protocol.replace(/:$/, '').toLowerCase()}:`));
-    return this.with(step(() => engine.check((value: string) => isUrl(value, allowed), engine.message('url'))));
+    return this.with(step(() => engine.check((value: string) => isUrl(value, allowed), engine.message('url'))), FORMAT);
   }
 
   /** A UUID (any version). */
   uuid(): this {
-    return this.with(step(engine.uuid));
+    return this.with(step(engine.uuid), FORMAT);
   }
 
   /** Matches `pattern` (its `g`/`y` flags are dropped). `message`: a translation key or a text — default "The … field format is invalid." */
@@ -338,14 +352,17 @@ export class StringRule extends Rule<string, string> {
 
   /** A calendar date as `<input type="date">` sends it: `2026-10-07` (a day that exists). Stays a string. */
   date(): this {
-    return this.with(step(() => engine.check(isDate, engine.message('date'))));
+    return this.with(step(() => engine.check(isDate, engine.message('date'))), FORMAT);
   }
 
   /** A date and time in ISO 8601 (`2026-10-07T14:30:00Z`, with an offset or `Z`). Stays a string. */
   isoTimestamp(): this {
-    return this.with(step(engine.isoTimestamp));
+    return this.with(step(engine.isoTimestamp), FORMAT);
   }
 }
+
+/** A format `''` never matches: an empty field is a missing one there (E208). */
+const FORMAT = { keepsEmpty: false } as const;
 
 function isUrl(value: string, protocols: ReadonlySet<string>): boolean {
   if (/\s/.test(value) || !URL.canParse(value)) return false;
@@ -432,6 +449,8 @@ interface ObjectParts {
   readonly shape: Shape;
   readonly whens: readonly { readonly condition: (data: any) => boolean; readonly shape: Shape }[];
   readonly confirmations: readonly Confirmation[];
+  /** `r.env()`: an empty variable counts as missing, whatever its rule (`S3_BUCKET=` in a `.env.example` is "not set"). */
+  readonly emptyIsMissing: boolean;
 }
 
 /**
@@ -499,7 +518,7 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition, 
   const base = (context: BuildContext): Engine => {
     const entries = (shape: Shape) => Object.fromEntries(Object.entries(shape).map(([key, rule]) => [key, rule['~engine'](context)]));
     const whens: ConditionalFields[] = parts.whens.map((when) => ({ condition: when.condition, entries: entries(when.shape) }));
-    return engine.objectEngine(entries(parts.shape), whens, parts.confirmations, async);
+    return engine.objectEngine(entries(parts.shape), whens, parts.confirmations, async, parts.emptyIsMissing);
   };
   PARTS.set(base as never, parts);
   const steps = previous?.steps ?? [];
@@ -511,13 +530,14 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition, 
     live: previous?.live ?? false,
     container: true,
     attributes,
+    keepsEmpty: false,
     meta: previous?.meta ?? {},
   };
 }
 
-export function objectRule<S extends Shape>(shape: S, attributes: 'humanized' | 'raw' = 'humanized'): ObjectRule<S> {
+export function objectRule<S extends Shape>(shape: S, attributes: 'humanized' | 'raw' = 'humanized', emptyIsMissing = false): ObjectRule<S> {
   for (const [key, rule] of Object.entries(shape)) {
     if (!(rule instanceof Rule)) throw new TypeError(`Field '${key}' is no rule of @marmeon/validation — r.object() takes rules (r.string(), r.integer() …).`);
   }
-  return new ObjectRule(objectDefinition({ shape, whens: [], confirmations: [] }, undefined, attributes));
+  return new ObjectRule(objectDefinition({ shape, whens: [], confirmations: [], emptyIsMissing }, undefined, attributes));
 }

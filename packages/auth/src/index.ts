@@ -3,7 +3,7 @@ import { MiddlewarePriority, Router } from '@marmeon/router';
 import * as v from 'valibot';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
-import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, UNVERIFIED_KEPT_NOTICE } from './config.ts';
+import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
 import { MakeAuthCommand } from './make-auth.ts';
@@ -17,7 +17,7 @@ import { UserProvider } from './user.ts';
 // Authentication (Wave 4): hashing, the session guard, middleware; policies and tokens follow.
 export { Auth, AUTH_SESSION_KEYS, passwordFingerprint } from './auth.ts';
 export type { LoginOptions } from './auth.ts';
-export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, UNVERIFIED_KEPT_NOTICE } from './config.ts';
+export { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, Registered } from './events.ts';
 export type { LoginVia } from './events.ts';
@@ -110,8 +110,6 @@ export class AuthServiceProvider implements ServiceProvider {
     // Private registration turned off where it counts (E193): said once, at boot — like the log mailer and the cookie driver.
     const config = app.container.make(AuthConfig);
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
-    // Unconfirmed accounts kept forever where it counts (E203): said once, at boot.
-    if (config.protected && config.unverifiedDays === 0) app.container.make(Logger).warn(UNVERIFIED_KEPT_NOTICE, { unverifiedDays: 0 });
     const cli = await import('marmeon').catch(() => undefined);
     if (cli && app.container.has(cli.CommandRegistry)) app.container.make(cli.CommandRegistry).add([MakeAuthCommand, PruneTokensCommand]);
   }

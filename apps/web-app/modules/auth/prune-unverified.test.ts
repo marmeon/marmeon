@@ -17,7 +17,8 @@ beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // The web app's prune of accounts whose address was never confirmed (E203, the same command as make:auth's): the row and what
 // the other modules keep for it (AccountDeleted) — its avatar file, its data export, its notifications, its profile links and sign-in activity
-// (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts).
+// (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — scheduled by this app on purpose
+// (opt-in, E209: the module make:auth writes has the line commented out).
 
 const DAY = 86_400_000;
 

@@ -75,6 +75,8 @@ describe('the validation lab', () => {
     const wrong = await app.post('/lab/validation', { json: { ...valid, invite: 'NOPE', inviter: 'nobody@example.com' }, headers: json }).assertUnprocessable();
     wrong.assertInvalid<StoreValidationLabController>({ invite: 'This invitation code is unknown.', inviter: 'The selected inviter is invalid.' });
     await app.post('/lab/validation', { json: { ...valid, invite: 'MARMEON-2026', inviter: 'grace@example.com' }, headers: json }).assertValid();
+    // The form's empty fields: the code arrives as '' (E208, a string) and its check lets it pass; the inviter (an address) is missing.
+    await app.post('/lab/validation', { json: { ...valid, invite: '', inviter: '' }, headers: json }).assertValid();
     // Live: an unknown code and an unknown inviter get the answer of a known one.
     const live = async (body: Record<string, string>, field: string) => {
       const response = await app.validating(field).post('/lab/validation', { json: body }).assertLiveValid(field);

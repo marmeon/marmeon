@@ -124,7 +124,7 @@ describe('the rules of a type', () => {
 });
 
 describe('what a missing value is', () => {
-  it('optional, nullable and default — an empty string counts as missing (a form\'s empty field)', async () => {
+  it('optional, nullable and default — a missing field, null', async () => {
     const form = r.object({
       bio: r.string().max(5).optional(),
       website: r.url().nullable(),
@@ -132,8 +132,7 @@ describe('what a missing value is', () => {
       page: r.integer().min(1).default(1),
       note: r.string().nullable().default(null),
     });
-    expect(await check(form, { website: '' })).toEqual({ value: { website: null, tags: [], page: 1, note: null } });
-    expect(await check(form, { bio: '', website: null, page: '', note: '' })).toEqual({ value: { bio: undefined, website: null, tags: [], page: 1, note: null } });
+    expect(await check(form, { website: null })).toEqual({ value: { website: null, tags: [], page: 1, note: null } });
     expect(await check(form, { bio: 'Hi', website: 'https://ada.dev', tags: ['x'], page: '2', note: 'n' })).toEqual({
       value: { bio: 'Hi', website: 'https://ada.dev', tags: ['x'], page: 2, note: 'n' },
     });
@@ -141,7 +140,107 @@ describe('what a missing value is', () => {
     expect(await errors(form, {})).toEqual({ website: ['The website field is required.'] });
     expect(await errors(form, { website: null, bio: 'far too long' })).toEqual({ bio: ['The bio field must not be longer than 5 characters.'] });
   });
+});
 
+describe('an empty string — by type (E208)', () => {
+  it("a string keeps '' — optional, nullable and default give it back: a subtitle cleared on purpose is no missing one", async () => {
+    const block = r.object({
+      subtitle: r.string().max(120).optional(),
+      caption: r.string().nullable(),
+      cta: r.string().default('Read more'),
+      trimmed: r.string().trim().optional(),
+      plain: r.string(),
+    });
+    const cleared = await check(block, { subtitle: '', caption: '', cta: '', trimmed: '   ', plain: '' });
+    expect(cleared, `'' was taken for missing: ${JSON.stringify(cleared)}`).toEqual({ value: { subtitle: '', caption: '', cta: '', trimmed: '', plain: '' } });
+    // Left out it is missing as ever: undefined, the default.
+    expect(await check(block, { caption: null, plain: 'x' })).toEqual({ value: { caption: null, cta: 'Read more', plain: 'x' } });
+  });
+
+  it("only what asks for text refuses it: required(), min(), a pattern that wants a character", async () => {
+    const block = r.object({
+      title: r.string().trim().required().optional(),
+      short: r.string().min(2).optional(),
+      code: r.string().regex(/^[a-z]+$/).optional(),
+      slug: r.string().regex(/^[a-z-]*$/).optional(),
+    });
+    expect(await errors(block, { title: ' ', short: '', code: '', slug: '' })).toEqual({
+      title: ['The title field is required.'],
+      short: ['The short field must be at least 2 characters.'],
+      code: ['The code field format is invalid.'],
+    });
+    expect(await check(block, { slug: '' })).toEqual({ value: { slug: '' } });
+  });
+
+  it("where '' never is a value it is a form's empty field — missing: numbers, booleans, formats, lists, objects, a value of your own", async () => {
+    const form = r.object({
+      age: r.integer().optional(),
+      price: r.number().nullable(),
+      newsletter: r.boolean().default(false),
+      port: r.port().optional(),
+      email: r.string().trim().email().optional(),
+      website: r.url().nullable(),
+      id: r.uuid().optional(),
+      day: r.date().optional(),
+      at: r.isoTimestamp().nullable(),
+      tags: r.array(r.string()).default([]),
+      admins: r.list(r.email()).default([]),
+      address: r.object({ city: r.string() }).optional(),
+      token: r.value<string>((value) => (typeof value === 'string' && value !== '' ? undefined : 'Choose a file.')).nullable(),
+    });
+    const empty = Object.fromEntries(['age', 'price', 'newsletter', 'port', 'email', 'website', 'id', 'day', 'at', 'tags', 'admins', 'address', 'token'].map((key) => [key, '']));
+    const result = await check(form, empty);
+    expect(result.issues?.map((issue) => issue.path?.join('.')), `'' refused where it is missing: ${JSON.stringify(result.issues?.map((issue) => issue.path?.join('.')))}`).toBeUndefined();
+    expect(result).toEqual({ value: { age: undefined, price: null, newsletter: false, port: undefined, email: undefined, website: null, id: undefined, day: undefined, at: null, tags: [], admins: [], address: undefined, token: null } });
+    // Without a modifier: a type says "required", as for a missing field; a format checks the string (required() first says "required").
+    expect(await errors(r.object({ age: r.integer(), email: r.email(), mail: r.string().required().email() }), { age: '', email: '', mail: '' })).toEqual({
+      age: ['The age field is required.'],
+      email: ['The email field must be a valid email address.'],
+      mail: ['The mail field is required.'],
+    });
+  });
+
+  it("r.in() and r.literal(): '' is a value when it is one of the options — else an empty <select> is missing", async () => {
+    const form = r.object({
+      align: r.in(['left', 'center']).optional(),
+      size: r.in([10, 25]).default(10),
+      style: r.in(['', 'bold']).optional(),
+      none: r.literal('').optional(),
+      plain: r.in(['left', 'center']),
+    });
+    const result = await check(form, { align: '', size: '', style: '', none: '', plain: 'left' });
+    expect(result.issues, `an empty <select> without '' among its options is missing, no error: ${JSON.stringify(result.issues?.map((issue) => issue.message))}`).toBeUndefined();
+    expect((result.value as { style?: string } | undefined)?.style, "r.in(['', 'bold']) lost its option ''").toBe('');
+    expect(result).toEqual({ value: { align: undefined, size: 10, style: '', none: '', plain: 'left' } });
+    expect(await errors(form, { plain: '' })).toEqual({ plain: ['The plain field is required.'] });
+  });
+
+  it("r.union(): '' is a value when one of its rules takes it", async () => {
+    const form = r.object({ limit: r.union([r.literal('all'), r.integer()]).optional(), label: r.union([r.integer(), r.string()]).optional() });
+    const result = await check(form, { limit: '', label: '' });
+    expect((result.value as { label?: string } | undefined)?.label, "a union with r.string() lost ''").toBe('');
+    expect(result).toEqual({ value: { limit: undefined, label: '' } });
+  });
+
+  it("r.env(): an empty variable is a missing one — for a string too (S3_BUCKET= says 'not set')", async () => {
+    const env = r.env({ S3_BUCKET: r.string().optional(), APP_NAME: r.string().default('Marmeon'), NOTE: r.string().nullable(), PLAIN: r.string(), PORT: r.port().default(3000) });
+    const result = await check(env, { S3_BUCKET: '', APP_NAME: '', NOTE: '', PLAIN: '', PORT: '' });
+    expect((result.value as { S3_BUCKET?: string } | undefined)?.S3_BUCKET, 'S3_BUCKET= is "not set"').toBeUndefined();
+    expect(result).toEqual({ value: { S3_BUCKET: undefined, APP_NAME: 'Marmeon', NOTE: null, PLAIN: '', PORT: 3000 } });
+    // The same rules in a form keep ''.
+    const form = r.object({ S3_BUCKET: r.string().optional(), APP_NAME: r.string().default('Marmeon') });
+    expect(await check(form, { S3_BUCKET: '', APP_NAME: '' })).toEqual({ value: { S3_BUCKET: '', APP_NAME: '' } });
+  });
+
+  it("r.query(): a URL's empty field follows the type, like a form's (?q= is '', ?page= the default)", async () => {
+    const query = r.query({ q: r.string().trim().optional(), page: r.integer().min(1).default(1), sort: r.in(['name', '-name']).default('name') });
+    const parsed = await parseQuery(query, new URLSearchParams('q=&page=&sort='));
+    expect(parsed.value).toEqual({ q: '', page: 1, sort: 'name' });
+    expect(parsed.dropped).toEqual([]);
+  });
+});
+
+describe('what a missing value is — the rest', () => {
   it('a default list or object is a copy each time — nobody shares it', async () => {
     const form = r.object({ tags: r.array(r.string()).default([]) });
     const first = (await check(form, {})).value as { tags: string[] };

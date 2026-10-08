@@ -608,8 +608,9 @@ spans. It is on by default, also locally:
   `set-cookie`, `x-xsrf-token`, `_token`) and the names packages add — the session's cookie name (`addKeys`);
 - **in text** (`redactText`): values of sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials,
   URL passwords, password hashes (`$argon2id$…`, `$scrypt$…`), API tokens (`marmeon_12|…`, any prefix) and token-like path
-  segments — 32 or more URL-safe characters, hex or mixed-case with digits (`/reset-password/<token>` in a mail's link, a log
-  line or a `Referer`; slugs and UUIDs stay) —, plus the added names' values (`marmeon_session=…`);
+  segments — 32 or more URL-safe characters, hex or mixed-case with digits; from 40 on mixed case is enough (a 43-character reset
+  token without a digit, W10 step 9c) (`/reset-password/<token>` in a mail's link, a log line or a `Referer`; lower-case slugs and
+  UUIDs stay) —, plus the added names' values (`marmeon_session=…`);
 - **statements** that touch a table with secret columns (`DbQueryMessage.secret`) show none of their parameters;
 - **encrypted payloads** (a job with `static encrypted`, a queued mail or listener) only as `[encrypted]` (`payload(value, encrypted)`);
 - **paths and URLs** by their route: the values of sensitive route parameters (`/reset/:token`) replaced (`path(path, pattern)`,

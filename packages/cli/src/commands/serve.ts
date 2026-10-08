@@ -28,7 +28,9 @@ import { writeRouteTypes } from './route-types.ts';
  * before it listened stops the cluster (a broken start would only repeat).
  *
  * `marmeon dev` also runs what packages add to {@link DevProcesses} (a queue worker, E101) — started with the server,
- * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own.
+ * stopped with it (so `node --watch` restarts them on a code change too), restarted if one ends on its own. Each has a channel
+ * to this process: when it closes — this process ended without its shutdown (killed, crashed) — the companion stops itself as
+ * on SIGTERM (`startMarmeon`, W10 step 9c).
  */
 export class ServeCommand {
   static command = 'serve';
@@ -91,9 +93,8 @@ export class ServeCommand {
     flushCompileCache();
     const signal = await signals.received;
     // Ctrl+C reaches this process twice (from the terminal and forwarded by the launcher or a cluster's primary): later
-    // signals must not cut the shutdown short. A shutdown that hangs still ends after 10 seconds (plus the shutdown delay).
-    const ignore = () => {};
-    process.on('SIGINT', ignore).on('SIGTERM', ignore);
+    // signals must not cut the shutdown short — the listeners of `signals` stay. A shutdown that hangs still ends after 10
+    // seconds (plus the shutdown delay).
     const delay = signal === 'SIGTERM' ? this.#shutdownDelayMs() : 0;
     setTimeout(() => process.exit(1), 10_000 + delay).unref();
     this.#logger.info(
@@ -246,13 +247,18 @@ function workerCount(value: unknown): number | undefined | string {
   return count;
 }
 
-/** SIGINT and SIGTERM from now on: which came first (later ones are the caller's to handle). */
+/**
+ * SIGINT and SIGTERM from now on: which came first (later ones are the caller's to handle). The listeners stay until `remove()`
+ * — never `once`: a library's signal-exit (Rolldown's, loaded with Vite 8's dev server) re-raises a signal when it finds itself the
+ * only listener, and a `once` listener is gone by then — the process ended by the signal without its shutdown, and `node --watch`
+ * left the queue worker and the scheduler running, on every restart and on SIGTERM (W10 step 9c, finding D).
+ */
 function listenForSignals(): { received: Promise<NodeJS.Signals>; remove(): void } {
   let resolve: (signal: NodeJS.Signals) => void = () => {};
   const received = new Promise<NodeJS.Signals>((settle) => (resolve = settle));
   const onInt = () => resolve('SIGINT');
   const onTerm = () => resolve('SIGTERM');
-  process.once('SIGINT', onInt).once('SIGTERM', onTerm);
+  process.on('SIGINT', onInt).on('SIGTERM', onTerm);
   return {
     received,
     remove: () => {

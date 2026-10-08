@@ -29,6 +29,17 @@ import { inWorkspace } from './workspace.js';
 const SOURCE_CONDITION = '@marmeon/source';
 const [command, ...rest] = process.argv.slice(2);
 
+// A companion of `marmeon dev` (the queue worker, the scheduler — `startMarmeon`): when the channel to its server closes, the server
+// ended without stopping it (killed, crashed) — it stops as on SIGTERM: the command finishes its running job, or this launcher passes
+// the signal on to its child. The channel never keeps the process alive. (W10 step 9c, finding D.)
+if (process.env.MARMEON_COMPANION === '1') {
+  delete process.env.MARMEON_COMPANION;
+  if (process.channel) {
+    process.channel.unref();
+    process.once('disconnect', () => process.kill(process.pid, 'SIGTERM'));
+  }
+}
+
 if (process.env.MARMEON_CHILD === '1') {
   await runHere(process.argv.slice(2), process.env.MARMEON_LAUNCH);
 } else {

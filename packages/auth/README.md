@@ -59,7 +59,7 @@ What the module holds:
 | `middleware/` | `ShareAuthProps.ts`: the shared `auth` prop (`{ user: { id, name, verified } \| null }`) and the `toast` flash type; `ConfirmedAddress.ts`: `verified()` while the registration is private |
 | `migrations/` | `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, the pending change of address and `first_verified_at` on `users` (prefixed `0001_01_01_…`: they run first) |
 | `factories/`, `seeders/` | `UserFactory` (password `password`, hashed once at the test costs), `UserSeeder` (`test@example.com`) |
-| `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`, `PruneEmailChanges` at the same hour, `auth:prune-unverified` at 03:20 |
+| `schedule.ts` | `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`, `PruneEmailChanges` at the same hour; `auth:prune-unverified` at 03:20 commented out — the app turns it on (E209) |
 | `lang/en.ts`, `abilities.ts`, `throttle.ts`, `reset-cookie.ts`, `verification.ts`, `email-change.ts` | texts, the API token abilities (`TOKEN_ABILITIES`), the password-check throttle, the reset cookie, the `VerificationMailer` |
 | `auth.test.ts`, `registration.test.ts`, `email-change.test.ts`, `prune-unverified.test.ts` | the module's own tests (SQLite and Postgres) — registration, change of address and the prune of unconfirmed accounts with both values of `AUTH_PRIVATE_REGISTRATION` |
 
@@ -391,10 +391,18 @@ schedules it nightly — [@marmeon/scheduler](../scheduler/README.md).
 ## Unconfirmed accounts (E203)
 
 ```text
-marmeon auth:prune-unverified        # the module's command — scheduled nightly at 03:20, onOneServer()
+marmeon auth:prune-unverified        # the module's command — scheduled only when the app turns its line on (E209)
 ```
 
-An account that never confirmed an address within `AUTH_UNVERIFIED_DAYS` of its sign-up (default **7**) is deleted: whoever
+```ts
+// modules/auth/schedule.ts — the line the module writes commented out; the app turns it on
+// s.command('auth:prune-unverified').daily().at('03:20').onOneServer();
+```
+
+**Opt-in (E209):** the module brings the command, never a schedule for it — deleting accounts is the app's decision, and an app whose
+model has unconfirmed accounts on purpose (an invited team, an import) must not lose them to a framework default. The comment above the
+line says what it deletes; this repository's web app turns it on. Once it runs, an account that never confirmed an address within
+`AUTH_UNVERIFIED_DAYS` of its sign-up (default **7**) is deleted: whoever
 signed up with somebody else's address stops holding it (a "pre-hijacked" account — a sign-up; an account confirmed once keeps
 an address it changed to without confirming it, with `AUTH_PRIVATE_REGISTRATION=false`), and the data of sign-ups nobody finished
 goes (data minimization). **Never deleted is what was confirmed once:** the module keeps the first confirmation in
@@ -409,10 +417,10 @@ commit) and its sessions (`UserSessions` of [@marmeon/session](../session/README
 `database` store, ended at their next request with the others) — in batches of 100, the number in the log. Irreversible.
 
 - **With `AUTH_PRIVATE_REGISTRATION=false`** a new account is signed in at once and may have **used the app** before it goes,
-  if it never clicks its link — tell your users, or raise the days. A change of address there is unconfirmed at once
+  if it never clicks its link (once the schedule runs it) — tell your users, or raise the days. A change of address there is unconfirmed at once
   (`email_verified_at` null), but an account confirmed before keeps `first_verified_at` and is never pruned.
-- **`AUTH_UNVERIFIED_DAYS=0`** keeps every account (outside development and tests the boot says so: `UNVERIFIED_KEPT_NOTICE`);
-  only whole numbers of days boot.
+- **`AUTH_UNVERIFIED_DAYS=0`**: the command deletes none (an environment where it is scheduled but should not run); only whole
+  numbers of days boot. No boot warning either way — without the schedule nothing is deleted, and that is the default.
 - A "delete my account" page uses the same `AccountDeletion` — `delete([user.id])`.
 
 ## Configuration

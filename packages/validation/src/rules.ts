@@ -41,7 +41,8 @@ function numberRule(): NumberRule {
 }
 
 function stringRule(): StringRule {
-  return new StringRule(definition(engine.stringEngine));
+  // `''` is a string (E208): a modifier keeps it — the formats (email(), url() …) say otherwise.
+  return new StringRule(definition(engine.stringEngine, { keepsEmpty: true }));
 }
 
 function choice<const T extends readonly (string | number)[]>(values: T, key: 'in'): Rule<T[number], T[number] | Spelled<T[number]>> {
@@ -51,7 +52,8 @@ function choice<const T extends readonly (string | number)[]>(values: T, key: 'i
     spelled.set(value, value);
     if (typeof value === 'number') spelled.set(String(value), value);
   }
-  return new Rule(definition(() => engine.typed(key, (value) => spelled.has(value), (value) => spelled.get(value))));
+  // E208: `''` is a value only where it is one of the options; else it is a form's empty field — missing (a `<select>`'s placeholder).
+  return new Rule(definition(() => engine.typed(key, (value) => spelled.has(value), (value) => spelled.get(value)), { keepsEmpty: spelled.has('') }));
 }
 
 /**
@@ -73,7 +75,7 @@ function choice<const T extends readonly (string | number)[]>(values: T, key: 'i
  * ```
  */
 export const rules = {
-  /** A string (`''` too — `.required()` asks for some text). */
+  /** A string (`''` too, also with `.optional()`/`.nullable()`/`.default()`, E208 — `.required()` asks for some text). */
   string: stringRule,
 
   /** A number — or a string that spells one (`'42'`, what a form or a URL sends): becomes a number. */
@@ -90,7 +92,10 @@ export const rules = {
     // Missing is "must be accepted" too (an unticked checkbox sends nothing), not "required".
     new Rule(definition(() => engine.runsWhenMissing(engine.typed('accepted', (value) => engine.toBoolean(value) === true, () => true, engine.message('accepted'))))),
 
-  /** One of `values` — Laravel's `in`. Numbers are taken as a form or a URL spells them too (`'25'` for `25`). */
+  /**
+   * One of `values` — Laravel's `in`. Numbers are taken as a form or a URL spells them too (`'25'` for `25`). `''` is a value only
+   * when it is one of them; else an empty field (a `<select>`'s placeholder) counts as missing for `.optional()`/`.default()` (E208).
+   */
   in: <const T extends readonly [string | number, ...(string | number)[]]>(values: T): Rule<T[number], T[number] | Spelled<T[number]>> => choice(values, 'in'),
 
   /** Exactly `value`. */
@@ -104,6 +109,8 @@ export const rules = {
         async,
         contextual: options.some((option) => option['~rule'].contextual),
         container: true,
+        // `''` is a value when one of the rules takes it (E208).
+        keepsEmpty: options.some((option) => option['~rule'].keepsEmpty),
       }),
     );
   },
@@ -162,13 +169,14 @@ export const rules = {
 
   /**
    * The environment variables of a config (`defineConfig`) — strings, read like a query: `r.integer()`, `r.boolean()`, `r.port()`
-   * and `r.list()` take them; an empty variable (`APP_PORT=`) counts as missing. Messages name the variable as it is written.
+   * and `r.list()` take them; an empty variable (`APP_PORT=`, `S3_BUCKET=`) counts as missing — for `r.string()` too, unlike a form
+   * (E208): a `.env` has no other way to say "not set". Messages name the variable as it is written.
    *
    * ```ts
    * env: r.env({ APP_PORT: r.port().default(3960), INVITES: r.boolean().default(false), ADMINS: r.list(r.email()).default([]) }),
    * ```
    */
-  env: <const S extends Shape>(fields: S & CheckEnvFields<S>): ObjectRule<S> => objectRule(fields as S, 'raw'),
+  env: <const S extends Shape>(fields: S & CheckEnvFields<S>): ObjectRule<S> => objectRule(fields as S, 'raw', true),
 
   /** A port number, 1–65535 (`PORT=3000`). */
   port: (): Rule<number, number | `${number}`> =>

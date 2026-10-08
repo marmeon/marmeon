@@ -82,8 +82,55 @@ problem of a field only** — Laravel's `bail`, as the default: a form shows one
 (a `javascript:` URL in an `href` runs in every visitor's browser; `r.url({ protocols: ['https', 'mailto'] })` names others), and a
 `regex()` loses its `g` and `y` flags. The whole catalogue, each rule with what it takes: [the rules](../packages/validation/README.md#the-rules).
 
-**An empty string counts as missing** — a form's empty field, `?q=`, `APP_PORT=` (Laravel's ConvertEmptyStringsToNull): `null` for a
-nullable rule without a default, else missing. A required rule says "The name field is required." for it.
+What an empty string is depends on the rule's type (E208) — [the next section](#empty-strings-a-value-or-missing--by-type).
+
+## Empty strings: a value or missing — by type
+
+A form sends every field as a string, an empty one as `''`; a JSON client sends `''` on purpose. Laravel turns every `''` into `null`
+(`ConvertEmptyStringsToNull`) — which breaks the JSON case: a page builder's optional "Subtitle" that someone clears on purpose is
+`''`, and it must arrive as `''` — neither as missing (the block would keep its old subtitle) nor as an error. So the rules decide
+**by type** (E208): where `''` can be a value of the rule, it is one; where it never can, it is a form's empty field and counts as
+missing.
+
+| Rule | `''` with `optional()` / `nullable()` / `default(v)` | `''` without a modifier |
+| --- | --- | --- |
+| `r.string()` with `trim()`, `lowercase()`, `max()`, `custom()`, `transform()` | `''` — a value, kept | `''` |
+| `r.string()` with `required()`, `min(n)`, a `regex()` that wants a character | `''` reaches the check: "required", "at least n characters", "format is invalid" | the same |
+| `r.in([…])`, `r.literal(v)` with `''` among the values | `''` | `''` |
+| `r.in([…])`, `r.literal(v)` without `''` (a `<select>`'s placeholder) | missing: `undefined` / `null` / `v` | "required" |
+| `r.union([…])` | `''` when one of its rules keeps it, else missing | what its rules say |
+| `r.number()`, `r.integer()`, `r.port()`, `r.boolean()`, `r.accepted()` | missing | "required" (`accepted`: "must be accepted") |
+| `r.email()`, `r.url()`, `r.uuid()`, `r.date()`, `r.isoTimestamp()` (also as `r.string().email()` …) | missing | the format's message |
+| `r.array()`, `r.list()`, `r.object()`, `r.value()` (an upload too) | missing | `r.array()`, `r.object()`: "required"; `r.list()`: an empty list; `r.value()`: its check |
+
+```ts
+schema: r.object({
+  title:    r.string().trim().required().max(80),
+  subtitle: r.string().trim().max(120).optional(),   // '' → '' (cleared on purpose); left out → undefined (unchanged)
+  width:    r.integer().min(1).optional(),            // '' → undefined: an empty number field
+  link:     r.url().nullable(),                       // '' → null
+  align:    r.in(['left', 'center']).default('left'), // '' → 'left': the select's placeholder
+}),
+```
+
+`trim()` runs inside the rule, after the modifier looked: `'   '` with `r.string().trim().optional()` becomes `''` — kept, like a
+`''` sent as it is; with `.required()` it is "required". A form and a JSON client get the same answer: the router hands both the
+strings they sent. The web app's profile shows it: a bio cleared on purpose saves `''`, a request without a bio keeps it
+(`UpdateUserProfileController`).
+
+**Queries follow the type too** — an empty field of a GET form (`?q=`) is `''` for `r.string()`, missing for `r.integer()` or an
+`r.in()` without `''` (its default). **Environment variables are the exception:** in `r.env()` every empty variable counts as
+missing, for `r.string()` too — `S3_BUCKET=` in a `.env.example` means "not set", and a `.env` has no other way to say it.
+
+The way back — a string field where `''` should be missing, as before (or as in Laravel): turn it into `undefined` (or `null`) after
+the checks.
+
+```ts
+subtitle: r.string().trim().max(120).transform((text) => (text === '' ? undefined : text)).optional(),  // '' → undefined
+caption:  r.string().max(200).transform((text) => (text === '' ? null : text)).nullable(),              // '' → null
+// With a check '' fails (min(2)): let '' through first — r.literal('') or the rule.
+nickname: r.union([r.literal(''), r.string().trim().min(2).max(30)]).transform((name) => (name === '' ? undefined : name)).optional(),
+```
 
 ## Types: what comes in, what goes out
 
@@ -165,7 +212,7 @@ list on it; a [table's](tables.md) query is stricter on purpose (400).
 
 `r.env({ … })` is the `env` of a `defineConfig`: every variable is a string, read like a query — `r.integer()`, `r.boolean()`,
 `r.port()` (1–65535) and `r.list(rule)` (`ADMINS=ada@example.com, alan@example.com`, each item checked) — and an empty variable is
-missing:
+missing, whatever its rule (`S3_BUCKET=` is "not set", for `r.string()` too — [unlike a form](#empty-strings-a-value-or-missing--by-type)):
 
 ```ts
 export const AppConfig = defineConfig('app', {

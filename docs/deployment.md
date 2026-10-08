@@ -147,7 +147,7 @@ into the image: Node uses a cache directory only when it can write to it.
 | `TRUSTED_PROXIES` | the proxy's addresses or ranges (`10.0.0.0/8`), or `*` (the direct peer only, E172) when only your proxy can reach the app — see [Proxies](#proxies-and-http2) |
 | `SHUTDOWN_DELAY` | `5` behind a load balancer that learns from its probes — see [Stopping](#stopping-without-dropped-requests) |
 | `MAIL_MAILER` | `smtp` (with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`; nodemailer comes with `@marmeon/mail`) |
-| `AUTH_UNVERIFIED_DAYS` | `7` (default) — accounts that never confirmed an address are deleted after so many days by `auth:prune-unverified` (03:20, the scheduler); `0` keeps them ([security](security.md#accounts)) |
+| `AUTH_UNVERIFIED_DAYS` | `7` (default) — accounts that never confirmed an address are deleted after so many days by `auth:prune-unverified`, once the app schedules it (its line in `modules/auth/schedule.ts`, off in what `make:auth` writes — E209); `0`: the command deletes none ([security](security.md#accounts)) |
 | `OTEL_TRUST_TRACEPARENT` | unset (`false`) — every request starts a trace of its own and an incoming `traceparent` is a span link (E205); `true` only behind an edge that sets or strips the header — see [traces](#traces-and-a-callers-traceparent) |
 
 **`HOST` — set it.** Without `HOST` the server listens on every interface (`::`, IPv6 and IPv4 together). In a container that is
