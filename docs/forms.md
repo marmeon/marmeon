@@ -91,8 +91,9 @@ A route whose controller has no request schema cannot type a form, and `useForm(
 
 ### Sending
 
-`submit()` sends the fields as JSON, or as `multipart/form-data` when they hold a file, and keeps the scroll position. When the answer is the same page with errors, the page keeps its
-state, so the form keeps what was typed. `submit()` takes callbacks and the [visit options](navigation.md#link-options):
+`submit()` sends the fields as JSON, or as `multipart/form-data` when they hold a file, and keeps the scroll position. When the
+answer is the same page with errors, the page keeps its state, so the form keeps what was typed. `submit()` takes callbacks and
+the [visit options](navigation.md#link-options):
 
 ```tsx
 void form.submit({
@@ -107,6 +108,10 @@ After a successful submit, what was sent becomes where the form starts, so it is
 
 A validation error on the server sends the browser back with the errors and the input, which the [validation](validation.md)
 page explains. The first message of each field lands in `form.errors`.
+
+A request that fails, because the server cannot be reached or answers with a server error, leaves the page and everything typed
+in place. The app shows the failure over the page, which the [error handling](errors.md#errors-in-the-browser) page describes, and
+`onException` in the submit options hears it.
 
 ### Forms by controller
 
@@ -159,7 +164,8 @@ any input, a component library's included. `form.error(name)` is the field's fir
 
 The state has `errors`, `hasErrors`, `processing`, `progress`, `wasSuccessful`, `recentlySuccessful`, `isDirty(name)`,
 `validating(name)`, `submit()`, `reset()` and `clearErrors()`. The form carries `data-pending` while it is sent and `data-dirty`
-while a field differs. `resetOnSuccess` empties the fields again after a success, as a create form wants.
+while a field differs. `resetOnSuccess` empties the fields again after a success, as a create form wants. A form with an upload
+field needs `useForm()` instead, as [uploads](#uploads) explains.
 
 The button that sends the form adds its own `name` and `value`, so a row of buttons can be one field:
 
@@ -199,7 +205,8 @@ const form = useForm('notes.update', { note: note.id }, { title: note.title, bod
 By default a field is checked when the user leaves it: call `form.validate('title')` in `onBlur`. A field that shows an error is
 checked again while it is typed into, so fixing it clears the message. `{ on: 'change', debounce: 300 }` checks while typing, after
 a pause, and `fields` limits the check to some fields. `form.validating(field)` says that a check is under way. `<Form validate>`
-does the same, and calls the check on blur by itself.
+does the same, and calls the check on blur by itself. A form for a `GET` route has nothing to validate live, so `validate` does
+nothing there.
 
 The check is the form's own request with a header that names the fields. The route's middleware, its bindings, `authorize` and the
 schema run, but never the controller. Password fields are never sent, and neither are files. Database rules such as `unique()` and
@@ -247,7 +254,8 @@ shows the dialog that asks and how to word it in your app's language. A `useForm
 
 ## Uploads
 
-A file field uploads the chosen file at once, before the form is sent. The form then sends a token in its place. The route's
+A file field uploads the chosen file at once, before the form is sent. Write a form with an upload field with `useForm()`:
+`<Form>` cannot bind `<FileInput>`, and a file it posts with its fields is refused. The form then sends a token in its place. The route's
 schema marks the field with `upload()`:
 
 ```ts title="modules/notes/controllers/UpdateCoverController.ts"
@@ -313,7 +321,7 @@ decide who may upload, and the `upload()` rule sets the limit. On submit, the se
 first bytes. The [requests](requests.md#files) page covers the server's side.
 
 `useUpload(form.field('cover'))` returns a function that uploads a `File` you have, for a drop zone or a cropped image. Uploads need
-JavaScript: a file posted with the form itself is refused. The upload code loads when the first `<FileInput>` renders.
+JavaScript, because the upload field accepts only the token of a file uploaded ahead. The upload code loads when the first `<FileInput>` renders.
 
 ## Testing
 

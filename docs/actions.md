@@ -116,7 +116,7 @@ Calls run side by side, each with its own patches. A body with a file goes as `m
 
 ## The result
 
-`submit()` resolves with how the call ended, and never rejects:
+`submit()` resolves with how the call ended, and never rejects because a request failed:
 
 ```tsx
 const pin = useAction('notes.pin');
@@ -186,7 +186,7 @@ them. Without options, every prop reloads. `islands: ['notes.recent']` reloads t
 `only` or `except` it reloads only them.
 
 What a reload brings replaces what the page has, also a list that was merged with "load more": a deleted row is gone, and the list
-starts over at its first page. `reset: []` merges instead. The [deferred props](deferred-props.md#merged-props) page explains
+starts over at its first page. `router.reloading({ only: ['notes'], reset: [] })` merges instead. The [deferred props](deferred-props.md#merged-props) page explains
 merged props.
 
 ## Ghost rows

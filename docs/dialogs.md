@@ -43,6 +43,12 @@ For such a deep link, the server runs the base's route in the same request, with
 the base with the layer over it. When the user may not see the base, because its route redirects, refuses or fails, the layer
 shows alone over an empty surface inside the app's layout. Nothing of the base is computed for the browser then.
 
+> [!WARNING]
+> A base resolved for a deep link only reads. Its middleware and controller cannot write the session, set a cookie or queue work
+> after the response, and it takes no flash message. In development and in tests such a write throws a `ReadOnlyViolation`. In
+> production it is dropped and logged, so a base route that records something works as a page and loses the write as a base. Keep
+> writes in the layer's own route or in an action.
+
 ### The link
 
 `<Link route layer>` takes only routes whose controller answers with a layer, and any other route is a compile error. The flag
@@ -184,7 +190,8 @@ export class ShareNoteController extends Controller {
 
 The layer with the form returns `.layer({ ...SHARE_LAYER, params: { note: note.id } })` as well, so both share the key
 `notes.share`. A layer that answers a `POST`, `PUT`, `PATCH` or `DELETE` is shown once. When it leaves the screen, it is gone from
-the tab's memory, Forward asks the server again, and what is beneath reloads, because the action changed it. That suits a secret
+the tab's memory, and what is beneath reloads, because the action changed it. Forward then sends a `GET` to the layer's URL and
+shows that answer, so give that URL a `GET` route: in the example, the share form's. That suits a secret
 shown once: it never sits in the session, and it does not come back from memory.
 
 ## Back, Forward and closing

@@ -46,8 +46,9 @@ controller's code on the server.
 
 ### What a page may import
 
-The browser runs your pages, their layouts and everything they import. Import values only from `@marmeon/react`,
-`@marmeon/http/page`, `@marmeon/http/client`, your own client modules and npm packages made for the browser. Types may come from
+The browser runs your pages, their layouts and everything they import. Import values only from the browser's
+entries of the framework, such as `@marmeon/react`, `@marmeon/react/table`, `@marmeon/http/page`, `@marmeon/http/client` and
+`@marmeon/i18n/messages`, from your own client modules and from npm packages made for the browser. Types may come from
 anywhere, as long as the import says `import type`, because the compiler erases it:
 
 ```tsx
@@ -176,8 +177,8 @@ import type { TitleTemplate } from '@marmeon/react';
 export const title: TitleTemplate = (page) => (page ? `${page} — Notes` : 'Notes');
 ```
 
-A page without a `<Head title>` gets `title('')`. An island cannot change the head: a `<Head>` inside one throws in development
-and renders nothing in production.
+A page without a `<Head title>` gets `title('')`. When that is empty, the `<title>` of `index.html` stays. An island cannot change
+the head: a `<Head>` inside one throws in development and renders nothing in production.
 
 ## Flash messages
 

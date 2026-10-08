@@ -43,9 +43,9 @@ A feature arrives in one of four ways:
 | When | Features |
 | --- | --- |
 | With the code that uses it | Query state, remembered state, actions and ghost rows, the navigation guard, islands, reloads on Back, the progress bar, the hook API, table selection. |
-| On first use, as a chunk of its own | Live validation, prefetching, instant visits, dialogs, uploads, optimistic patches, view transitions. |
+| On first use, as a chunk of its own | Live validation, prefetching, instant visits, uploads, optimistic patches, view transitions. Dialogs too: where the first `<Link layer>` renders, or when the server's answer is a dialog. |
 | With the first page, by default | Tab sync, and the History fallback where the browser has no Navigation API. |
-| When the server's answer needs it | Dialogs that the server opens, and live updates of a page that follows a channel. |
+| When the server's answer needs it | Live updates of a page that follows a channel. |
 
 A chunk that loads on first use is fetched when its hook or component first renders or is first called. Prefetching, for example,
 loads while the pointer rests on the first link with `prefetch`, before the click. Live validation loads with a form's first change,

@@ -142,8 +142,13 @@ A prefetched page shows at once when the user clicks:
 ```
 
 `prefetch` or `prefetch="hover"` fetches the page when the pointer rests on the link for 75 milliseconds, or presses it.
-`prefetch="mount"` fetches it as soon as the link renders, and `prefetch={['hover', 'mount']}` does both. The page is kept for `cacheFor`
-milliseconds, 30 seconds by default.
+`prefetch="mount"` fetches it as soon as the link renders, and `prefetch={['hover', 'mount']}` does both. The page is kept for
+`cacheFor` milliseconds, 30 seconds by default.
+
+A prefetch is an ordinary `GET` of the route: its middleware, its authorization and its controller run, before the user has
+clicked, and maybe without a click ever following. The request carries the header `Purpose: prefetch`, so the server can tell
+it apart. A `GET` route must therefore never change anything, such as counting a view, marking a message read or redeeming a link:
+do that in a `POST`.
 
 Only `GET` links to whole pages are prefetched. A link with `only` or `except`, a link that sends, an action and an island never
 are. Any request that writes, and leaving the document, drops every prefetched page. A prefetch never takes a flash message: the
@@ -204,6 +209,9 @@ The placeholder never gets the page's props, only what the link handed it. The h
 visit that fails or is cancelled shows the page on screen again, and Back during the visit cancels it. A page fetched ahead shows
 at once without a placeholder. The code loads when the first instant link renders.
 
+Only a plain `GET` visit of a page shows a placeholder. A link with `only` or `except`, a link with `layer` and a visit in the
+background go as usual, without one.
+
 ## Showing that a visit runs
 
 A new app shows a thin bar at the top of the window for visits slower than 250 milliseconds. It is the `progress` option in
@@ -246,16 +254,20 @@ Pass it as `progress: spinner`. CSS alone also works: `html[aria-busy='true'] ma
 
 ### What the history holds
 
-A history entry holds the page's URL, its component's name, its scroll positions and a key. It never holds the page's props.
+A history entry holds the page's URL, its component's name, its scroll positions and a key. A dialog's entry adds its depth and
+the keys of the entries beneath it, and every entry carries the session's epoch, an opaque value that
+[tab sync](client-features.md#tab-sync) compares. It never holds the page's props.
 The props of the last 20 pages live in the tab's memory, so Back shows them at once. Back to a page memory let go of, after a
 reload or a session restore for example, asks the server again, through the route, its middleware and its policies.
 
 So what a user saw never lands on disk: not in the history's state, not in the browser's storage. The pages of a signed-in user go
-out with `Cache-Control: no-store`, so the browser's cache does not keep them either. When the user signs out in another tab, every
+out with `Cache-Control: no-store`, so the browser's cache does not keep them either. A route that sets its own `Cache-Control`
+keeps that header, and then the browser may keep the page. When the user signs out in another tab, every
 tab lets go of what it kept. The [client features](client-features.md) page explains how.
 
 Where the browser has the Navigation API, `history.state` is `null`. Read the URL from `location` or from `usePage().url`, and
-keep state of your own with `useRemember()`.
+keep state of your own with `useRemember()`. When another script, such as an analytics snippet, calls `history.replaceState()`,
+it erases the entry's state. The app writes it again when the entry is left, so Back still finds it.
 
 ### Scroll positions
 
@@ -288,8 +300,9 @@ const [tab, setTab] = useRemember('note-tab', 'body');
 ```
 
 The value belongs to the history entry, in memory only. A reload, signing in or out, a new build and a language switch start
-over. A key named like a password is never remembered, and one named like a token, a secret or a card is a compile error unless
-you pass `{ sensitive: true }`. A form can remember its input the same way, which the [forms](forms.md) page shows.
+over. A key named like a password is a compile error, and so is one named like a token, a secret or a card, unless you pass
+`{ sensitive: true }`. Inside a remembered value, fields named like a password, a token, a secret or a card are left out at any
+depth, and so are files. A form can remember its input the same way, which the [forms](forms.md) page shows.
 
 ### The Navigation API and the fallback
 
@@ -421,7 +434,9 @@ export function AppLayout({ children }: LayoutProps) {
 
 Animate the `page` group with `::view-transition-old(page)` and `::view-transition-new(page)`. In this mode React keeps the old
 page until the new one is ready instead of showing a loading fallback, waits briefly for a new image inside a `<ViewTransition>`,
-and waits for an async action of React's that is under way.
+and waits for an async action of React's that is under way. React sets each name through the CSSOM during the transition, and its
+server markup carries no `style` attribute, so a strict policy blocks nothing of it. React animates only elements inside the
+viewport, so a list item scrolled out of view has nothing to share.
 
 React also animates streamed parts of a page that appear while a `<ViewTransition>` is on screen. Those animations do not ask the
 app, so the reduced-motion rule above is what stops them.
@@ -438,7 +453,8 @@ These page changes run without a transition:
 - A dialog opening or closing. Its frame can animate itself in CSS.
 
 The navigation guard asks before the visit starts, so a page change it stops starts no transition. A new visit ends an animation
-that is still running.
+that is still running. The transition code is a chunk of its own, loaded before the first page change that asks for one, so an app
+that never animates never downloads it.
 
 ### Instant visits and shared elements
 

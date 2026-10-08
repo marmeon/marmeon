@@ -51,7 +51,8 @@ Before you change `server` in `vite.config.ts`, know what the app relies on:
 
 - **Host names.** Vite answers only the host names it allows, and refuses others with a 403, which protects against DNS
   rebinding. `localhost` and IP addresses are allowed. When `APP_URL` uses another name, such as `http://notes.test`, add it:
-  `server: { allowedHosts: ['notes.test'] }`. `allowedHosts: true` turns the check off, and so does `server.https`. The framework's
+  `server: { allowedHosts: ['notes.test'] }`. `allowedHosts: true` turns the check off, and so does `server.https`. Use either only on a
+  network you trust, because then any page the browser visits can reach the dev server under a name of its own. The framework's
   own development routes keep their own check either way.
 - **Other origins.** The server answers no other origin, so a page on another site cannot read the app's development answers.
 - **Styles and the policy.** The `<style>` elements Vite adds in development carry the response's CSP nonce. A

@@ -81,8 +81,9 @@ export function Progress({ done }: { done: number }) {
 .progress { width: var(--done, 0%); height: 4px; background: currentColor; }
 ```
 
-The framework follows the same rule. Its components render no `style` attribute. `LayerDialog` and `ConfirmDialog` take a `style`
-prop and apply it through the CSSOM after they have mounted, and the progress bar sets its properties the same way.
+The framework follows the same rule. Its components render no `style` attribute. `LayerDialog` takes a `style`
+prop and applies it through the CSSOM after it has mounted. `ConfirmDialog` takes one too and renders in the browser only, where
+React sets it through the CSSOM. The progress bar sets its properties through the CSSOM as well.
 
 ### A strict policy for styles
 

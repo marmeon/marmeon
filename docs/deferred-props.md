@@ -71,7 +71,12 @@ out and streams it into the same response. After a visit inside the app, the bro
 
 The children are a function, so they render only once the props are there, and may use them without checks. Deferred props of one
 group come in one request, and groups load in parallel: `defer(fn, 'sidebar')` puts a prop in the group `sidebar`, and the default
-group is `default`. A reload of the whole page leaves them out again, and the fallback shows until they are back.
+group is `default`. A visit or `router.reload()` of the whole page leaves them out again, and the fallback shows until they are
+back. A revalidation of the whole page, such as the reload after an action, a live update or a reload on Back, keeps the old
+values on screen until the new ones land.
+
+On a first visit, the deferred props are computed after the page's headers went out, so they only read, as islands do. The
+[warning below](#how-islands-load) explains what that rules out.
 
 ### Props loaded when seen
 
@@ -292,8 +297,14 @@ authorization. The island arrives in the same response, behind a boundary the pa
 without a request. After a visit inside the app, the browser loads the page's islands in parallel. Two identical islands share one
 request. Islands with `load="visible"` always load in the browser.
 
-An island's request only reads. It writes no session, sets no cookie and takes no flash message. The island lives with the page's
-history entry: Back and Forward show it again from memory, and a static `revalidateOnBack` on its view reloads it in the
+> [!WARNING]
+> An island's request only reads, and so does a deferred prop streamed with the first page. Neither may write the session, set a
+> cookie or queue work after the response, and neither takes a flash message. In development and in tests such a write throws a
+> `ReadOnlyViolation`. In production it is dropped and logged. An island's request is read-only wherever it runs. A deferred group
+> that the browser loads later is an ordinary request of the page's route, so a deferred prop that writes works after a visit
+> inside the app and loses the write on a first visit. Keep writes in the page's controller or in an action.
+
+The island lives with the page's history entry: Back and Forward show it again from memory, and a static `revalidateOnBack` on its view reloads it in the
 background, as for a page.
 
 When an island's route redirects or answers 401 or 403, the island shows `unauthorized`, and the page never navigates. When it fails,
