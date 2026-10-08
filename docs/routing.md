@@ -327,6 +327,11 @@ export class ListNotesController extends Controller {
 Registered on a route without `authenticate()`, this controller is a compile error: it asks for `ctx.user`, and nothing on
 that route provides it. The [middleware](middleware.md) page shows how to write your own and how the groups are ordered.
 
+> [!NOTE]
+> `authenticate()` lets in every signed-in account, also one whose address is not confirmed yet. Add `verified()` of
+> `@marmeon/auth` after it where a page needs a confirmed address. With the starter kit's private registration that is every
+> page of your own: the [starter kit](starter-kit.md#your-own-pages) page explains why.
+
 ## Route model binding
 
 A route usually loads a record by the id in its path, and answers 404 when there is none. A binding does that before the

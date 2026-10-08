@@ -233,7 +233,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | --- | --- | --- |
 | `NODE_ENV` | the command's | `development` turns the development tools on. Every value but `development` and `test` is protected. |
 | `APP_NAME` | none, required | The app's name. The starter kit shows it on its pages and in its mails. |
-| `APP_URL` | none, required | The app's address. `https://` makes every cookie `Secure`. |
+| `APP_URL` | none, required | The app's address. `https://` makes the cookies `Secure`, unless `SESSION_SECURE_COOKIE` says otherwise. |
 | `APP_KEY` | none, required | The key that encrypts cookies and signs URLs: `base64:` and 32 random bytes. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys, comma-separated. What they encrypted or signed stays valid. |
 | `PORT` | `3000` | The port the server listens on. `0` takes a free one. |

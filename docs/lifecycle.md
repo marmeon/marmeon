@@ -10,7 +10,11 @@ starts to the moment the browser shows the page.
 In short: the app boots once per process. Then each request passes the global middleware, its route's middleware group and its
 own middleware, its bound parameters, its authorization and its validation, and only then reaches the controller. The
 controller's answer becomes a whole HTML document on a first visit, and the page's data as JSON when the browser is already
-running the app.
+running the app:
+
+```text
+request → global middleware → group middleware → route middleware → bindings → authorize → validate → controller → response
+```
 
 ## Starting the app
 
@@ -132,10 +136,11 @@ layer is a page that opens above another one, such as a dialog. Each of them is 
 
 ## Requests that only read
 
-Some requests may read the session but never change it: an island's request, a live check of a form field, the live stream of
-a page, and the work that still runs after a streamed page's headers went out. They write no session, set no cookie and defer no
-work. A write there throws in development and in tests, so the mistake shows where it is made. Everywhere else it is dropped and
-logged.
+Some requests may read the session but never change it: an island's request, a live check of a form field, a request for an
+upload's target or bytes, the live stream of a page, the tabs' question for the session's state, a layer's base page loaded for
+a deep link, and the work that still runs after a streamed page's headers went out. They write no session, set no cookie and
+defer no work. A write there throws in development and in tests, so the mistake shows where it is made. Everywhere else it is
+dropped and logged.
 
 ## Jobs, tasks and commands
 
@@ -145,6 +150,6 @@ each task, and the `marmeon` command each command. Each of these processes boots
 
 ## Stopping
 
-On `SIGTERM`, the server leaves readiness, answers for `SHUTDOWN_DELAY` seconds, finishes the requests in flight and the work after
-them, and then shuts the app down: every provider's `shutdown()` runs, in reverse order, and closes its pools and connections. The
-[deployment](deployment.md#stopping-without-dropped-requests) page explains the stages.
+On `SIGTERM`, the server leaves readiness, answers for `SHUTDOWN_DELAY` seconds, finishes the requests in flight and the work
+after them, and then shuts the app down: every provider's `shutdown()` runs, in reverse order, and closes its pools and
+connections. The [deployment](deployment.md#stopping-without-dropped-requests) page explains the stages.

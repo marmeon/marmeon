@@ -162,12 +162,14 @@ modules/auth/
 └── auth.test.ts            tests, next to the code
 ```
 
-Only `index.ts` is required, and only one folder name matters: the pages are found under `views/`. Routes, providers, jobs,
+Only `index.ts` is required, and two folder names matter: the pages are found under `views/`, and the module's texts under
+`lang/`. Routes, providers, jobs,
 listeners, commands, migrations and the schedule count once the module's definition lists them. Controllers and other classes
 need no list: the container builds them when a route or a constructor asks for them.
 
 `index.ts` is also the module's public face. Other modules import from `#modules/notes`, never from a file inside it, so
-whatever `index.ts` exports is what the rest of the app may use:
+whatever `index.ts` exports is what the rest of the app may use. In this example the module also has a repository, which the
+walk-through below does not create:
 
 ```ts title="modules/notes/index.ts"
 import { defineModule } from '@marmeon/core';
@@ -227,17 +229,22 @@ export default defineApplication({
 
 ### Add the route, the controller and the page
 
-The route points to the controller and gives it a name. `authenticate()` sends guests to the sign-in page:
+The route points to the controller and gives it a name. `authenticate()` sends guests to the sign-in page, and `verified()`
+sends an account whose address is not confirmed yet to the auth module's notice:
 
 ```ts title="modules/notes/routes.ts"
-import { authenticate } from '@marmeon/auth';
+import { authenticate, verified } from '@marmeon/auth';
 import { defineRoutes } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(authenticate()).get('/notes', ListNotesController).name('notes.index');
+  Route.middleware(authenticate()).middleware(verified()).get('/notes', ListNotesController).name('notes.index');
 });
 ```
+
+`authenticate()` alone would let in an account registered with somebody else's address. The auth module's own pages check the
+address themselves, and a route of yours needs `verified()` for that. The [starter kit](starter-kit.md#your-own-pages) page
+explains why.
 
 The controller answers with the page `notes/ListNotes`, which is `modules/notes/views/ListNotes.tsx`, and hands it its props:
 
@@ -276,8 +283,9 @@ preset and the build both refuse it.
 ### See it
 
 `pnpm dev` keeps `bootstrap/routes.ts` up to date, so `notes.index` is a known route name at once. Open
-http://localhost:3000/notes, sign in, and the page is there. `pnpm marmeon route:list` shows the route with every middleware it
-passes.
+http://localhost:3000/notes and sign in with a confirmed account, and the page is there. The
+[installation](installation.md#your-first-account) page shows how to register the first account. `pnpm marmeon route:list` shows
+the route with every middleware it passes.
 
 ### A table for the notes
 

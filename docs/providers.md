@@ -59,7 +59,7 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without the static lists below, stops the start:
+them, and without `static config` or `static health` from the list below, stops the start:
 
 ```text
 NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config or static health.
@@ -83,15 +83,18 @@ after a command, and a test when its app is disposed. Each provider gets its tur
 are thrown together at the end.
 
 ```ts title="modules/search/SearchServiceProvider.ts"
-import type { Application, ServiceProvider } from '@marmeon/core';
+import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { SearchIndex } from './SearchIndex.ts';
 
 export class SearchServiceProvider implements ServiceProvider {
   readonly #index = new SearchIndex();
 
+  register(container: Container): void {
+    container.instance(SearchIndex, this.#index);
+  }
+
   async boot(app: Application): Promise<void> {
     await this.#index.open(app.root);
-    app.container.instance(SearchIndex, this.#index);
   }
 
   async shutdown(): Promise<void> {

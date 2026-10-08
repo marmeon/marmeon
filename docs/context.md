@@ -30,7 +30,7 @@ of a job, the scheduler for each run of a task. Four functions of `@marmeon/core
 
 | Function | Returns |
 | --- | --- |
-| `currentRequest()` | `{ requestId }` inside a request, else `undefined`. The id is the request's `x-request-id`. |
+| `currentRequest()` | `{ requestId }` inside a request, else `undefined`. The id is the client's `x-request-id` when it is a sane one, else a generated one. |
 | `currentJob()` | `{ job, jobId, attempt, requestId? }` inside a job, else `undefined`. `jobId` stays the same across retries. |
 | `currentTask()` | `{ task }` inside a scheduled task, else `undefined`. |
 | `currentLogContext()` | What every log entry written now carries: `{ requestId }`, `{ job, jobId, attempt }` or `{ task }`. |

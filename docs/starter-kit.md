@@ -30,7 +30,7 @@ framework bring them.
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
 | `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens` and `personal_access_tokens`. |
-| `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. |
+| `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and three more | The module's own tests. |
 
@@ -66,9 +66,9 @@ This keeps a stranger from testing a list of addresses against your users.
 
 Three more rules follow from it:
 
-- **Nobody is signed in by registering.** The new account signs in like any other, and sees only a notice until its owner
-  clicks the link in the mail while signed in. Whoever registers with somebody else's address cannot confirm it, and the real
-  owner takes the account over with a password reset.
+- **Nobody is signed in by registering.** The new account signs in like any other. On the pages of the auth module it sees only
+  a notice until its owner clicks the link in the mail while signed in. Whoever registers with somebody else's address cannot
+  confirm it, and the real owner takes the account over with a password reset.
 - **A form field never asks the database.** The live check of the form only looks at the address's format.
 - **A change of address waits for its link.** A new address on the security page is kept aside until the link sent to it is
   clicked, and the answer is the same for a free and a taken address. The owner of a taken address gets a note instead, and
@@ -76,6 +76,29 @@ Three more rules follow from it:
 
 The price is that someone who forgot they have an account learns it only from their inbox, and nobody can start before the
 mailer and a queue worker run.
+
+### Your own pages
+
+The notice guards the pages of the auth module alone: its routes pass its `ConfirmedAddress` middleware. A route of another
+module behind `authenticate()` alone lets in every signed-in account, also one whose address is not confirmed, such as one
+registered with somebody else's address. Add `verified()` of `@marmeon/auth` after `authenticate()`:
+
+```ts title="modules/notes/routes.ts"
+import { authenticate, verified } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { ListNotesController } from './controllers/ListNotesController.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(authenticate()).middleware(verified()).get('/notes', ListNotesController).name('notes.index');
+});
+```
+
+`verified()` sends an account without a confirmed address to the notice, `/email/verify`, and answers `403` to a request that
+expects JSON. It asks for a confirmed address whatever `AUTH_PRIVATE_REGISTRATION` says.
+
+> [!WARNING]
+> Without `verified()`, an account registered with somebody else's address reads and writes on your pages before anyone confirmed
+> it. While the registration is private, put it on every route of your own that signed-in users reach.
 
 ### Turning it off
 
@@ -124,6 +147,8 @@ export const schedule = defineSchedule((s) => {
   s.command('auth:prune-unverified').daily().at('03:20').onOneServer();
 });
 ```
+
+`onOneServer()` runs a task on one server only, as long as the servers share a cache: `CACHE_DRIVER=database` or `redis`.
 
 > [!WARNING]
 > Deleting an account cannot be undone. With private registration off, such accounts were signed in and may have used the app.

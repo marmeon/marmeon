@@ -5,7 +5,13 @@
 A Marmeon app in production is one build and three roles: the web server, `marmeon start`; the queue worker,
 `marmeon queue:work`; and the scheduler, `marmeon schedule:work`. Each role runs as a single Node process under a supervisor
 that restarts it, each stops gracefully on `SIGTERM`, and each reads its settings from the real environment. The same image or
-directory serves all three, started with another command.
+directory serves all three, started with another command:
+
+```sh
+marmeon start           # the web server
+marmeon queue:work      # the queue worker
+marmeon schedule:work   # the scheduler
+```
 
 `marmeon make:docker` writes the files for this: a Dockerfile, a Compose file with the three roles and, on request, a proxy in
 front and systemd units for a server without Docker. This page explains those files, what each setting does in production, how
@@ -51,7 +57,7 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 2. writes the route types, `bootstrap/routes.ts`,
 3. type-checks the app against them, so a renamed route or a missing view fails the build,
 4. builds the browser's files into `dist/client/` and the server rendering into `dist/server/`,
-5. writes a `.br` and a `.gz` copy next to every asset,
+5. writes a `.br` and a `.gz` copy next to every script, stylesheet and other text asset that gets smaller by it,
 6. writes the list of installed packages, `.marmeon/manifest.json`.
 
 `--no-typecheck` skips the type check. The build needs no `.env` and no key: it loads the app without booting it, so no secret
@@ -59,7 +65,8 @@ can end up in `dist/`. The [configuration](configuration.md#configuration-and-th
 provider.
 
 `marmeon start` serves the build. It runs with `NODE_ENV=production` unless the environment or `.env` sets another value, and it
-never starts Vite, a worker or the scheduler. Its start line names the environment and what it serves:
+never starts Vite, a worker or the scheduler. Its start line names the environment and what it serves. In production it is the
+message of a JSON log entry:
 
 ```text
 Marmeon in production (protected) on http://localhost:3000 (the build; 54 routes, 7 modules, packages: …)
@@ -122,6 +129,8 @@ that index existed lacks it, because migrations that ran once never run again. A
 pnpm marmeon make:migration add_fair_claim_index_to_jobs_table --module=system
 ```
 
+The command names the file after the current time. Replace its body with this one, which is the migration a new app has:
+
 ```ts title="modules/system/migrations/2026_10_08_090000_add_fair_claim_index_to_jobs_table.ts"
 import { defineMigration } from '@marmeon/database';
 
@@ -142,14 +151,17 @@ needs nothing. A new app and `make:queue-table` have the index already.
 | --- | --- |
 | none | `Dockerfile`, `.dockerignore` and `compose.production.yaml` with the web, worker and scheduler services. |
 | `--caddy` | A Caddy service in front, with its `deploy/Caddyfile`. |
-| `--nginx` | An nginx configuration, `deploy/nginx.conf`, instead. |
+| `--nginx` | An nginx service and its `deploy/nginx.conf` instead. You provide the certificates, see [nginx](#nginx). |
 | `--systemd` | Units for the three roles in `deploy/systemd/`, for running without Docker. A proxy is then for the host. |
 | `--force` | Overwrites files that exist. Without it, the command stops. |
 
+`--caddy` and `--nginx` together stop the command: choose one proxy.
+
 The Dockerfile has two stages, both on `node:26-slim`:
 
-1. **build** installs the package manager at the version `package.json` pins, installs every dependency, runs `marmeon build`,
-   then replaces `node_modules` with the production dependencies alone and runs `marmeon discover` for exactly these.
+1. **build** installs every dependency, runs `marmeon build`, then keeps the production dependencies alone and runs
+   `marmeon discover` for exactly these. With a `pnpm-lock.yaml` it installs pnpm at the version `package.json` pins; with a
+   `package-lock.json` it uses `npm ci`.
 2. **run** copies the app, owned by root and readable for everyone, makes `storage/` the only folder the user `node` may write,
    and sets `NODE_ENV=production`, `HOST=0.0.0.0` and `PORT=3000`. A health check fetches `/up` with Node's own `fetch`.
 
@@ -202,7 +214,7 @@ The settings a server needs, beyond those of each feature:
 | `NODE_ENV` | `production` in the image | Set it in the real environment. `staging` is protected the same way, with one difference, below. |
 | `APP_KEY` | none | The key from `marmeon key:generate --show`. The same on every instance, and a secret. |
 | `APP_PREVIOUS_KEYS` | empty | Former keys while you rotate, comma-separated. |
-| `APP_URL` | none | `https://…`. Cookies get `Secure` from it, and a protected app on `http://` warns at every start. |
+| `APP_URL` | none | `https://…`. Cookies get `Secure` from it unless `SESSION_SECURE_COOKIE` says otherwise, and a protected app on `http://` warns at every start. Over plain HTTP, browsers also ignore the `Clear-Site-Data` of a sign-out, so a server without TLS leaves its pages in the browser's cache after a sign-out. |
 | `HOST` | every interface | `0.0.0.0` in a container, `127.0.0.1` behind a proxy on the same machine. |
 | `PORT` | `3000` | `0` takes a free port, and the start line names it. |
 | `TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |
@@ -218,8 +230,8 @@ machine of its own behind a proxy there, set `HOST=127.0.0.1`, so nothing but th
 
 There is a second reason to set it. macOS and some other systems let a server on every interface start beside another program
 that already holds the same port on `127.0.0.1` alone. Both run, and requests to `127.0.0.1` reach the other program. The start
-checks for this and warns, beginning with `Another program holds 127.0.0.1:3000`. With `HOST` set to the address you use, the
-start fails loudly instead.
+checks for this and warns, beginning with `Another program holds 127.0.0.1:3000`. The check runs only when the server listens
+on every interface: no `HOST`, `0.0.0.0` or `::`. With `HOST=127.0.0.1`, a port another program holds stops the start instead.
 
 ### Rotating `APP_KEY`
 
@@ -293,8 +305,10 @@ Use the delay or a `preStop` hook, not both.
 outage must not get healthy processes restarted. The image's `HEALTHCHECK` uses it. `GET /up/ready` is the readiness check: it
 runs every health check of the app and its packages, such as the database and Redis, and answers `200` or `503`.
 
-`HEALTH_PATH` moves both, and `HEALTH_PATH=off` turns them off. Worker and scheduler containers have no HTTP server, so the
-Compose file turns their health check off. The [health checks](health.md) page explains both endpoints and your own checks.
+`HEALTH_PATH` moves both, and `HEALTH_PATH=off` turns them off. The image's `HEALTHCHECK` follows `PORT` and `HEALTH_PATH`. With
+`HEALTH_PATH=off`, remove the `HEALTHCHECK` line from the Dockerfile, or Docker marks the web container unhealthy although the
+app runs. Worker and scheduler containers have no HTTP server, so the Compose file turns their health check off. The [health
+checks](health.md) page explains both endpoints and your own checks.
 
 ## Proxies and HTTP/2
 
@@ -310,13 +324,18 @@ Terminate TLS with HTTP/2 at the proxy. The app itself speaks HTTP/1.1 to the pr
 ### Caddy
 
 `--caddy` is the recommended proxy. Caddy fetches its certificates, speaks HTTP/1.1, HTTP/2 and HTTP/3, and passes event streams
-on without buffering them. It sets `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` itself and drops a client's own.
+on without buffering them. It sets `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` itself and drops a client's own,
+unless you configure `trusted_proxies` in Caddy.
 
 ### nginx
 
-The `--nginx` template turns `http2 on`, sets the forwarded headers itself instead of passing a client's on, and waits up to 75
-seconds between two reads of a response, longer than the live heartbeat of 20 seconds. The app turns nginx's buffering off for each live stream
-with `X-Accel-Buffering: no`.
+nginx needs your certificates. Put `fullchain.pem` and `privkey.pem` into `deploy/certs/`, which Compose mounts into the nginx
+container, and replace `example.com` in `deploy/nginx.conf` with your domain: it is the `server_name` of both server blocks. With
+`--systemd`, nginx runs on the host and the configuration points to the certificates of certbot instead.
+
+The template turns `http2 on`, sets the forwarded headers itself instead of passing a client's on, and waits up to 75 seconds
+between two reads of a response, longer than the live heartbeat of 20 seconds. The app turns nginx's buffering off for each live
+stream with `X-Accel-Buffering: no`.
 
 ### Keep-alive to the app
 
@@ -344,7 +363,7 @@ check compares a form's origin with that URL.
 | Caddy in the same Compose network, the web container publishes no port | `*`, as the template sets it |
 | On the same machine | `127.0.0.1` |
 | An ingress in a cluster | its range, such as `10.0.0.0/8` |
-| A CDN in front of nginx | both ranges |
+| A CDN in front of nginx | both ranges. With `*`, the app would take the CDN's address for the client's. |
 
 `*` trusts the direct peer only: whoever connects is the proxy, and the client's address is the last entry that proxy added.
 A value that is no address, range or `*` stops the start.
@@ -424,7 +443,8 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - `HOST` set. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
 - `MAIL_MAILER=smtp`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
-- A worker takes every queue the app uses. An older app's `jobs` table has [the index](#the-queue-index-of-an-older-app).
+- A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`. An
+  older app's `jobs` table has [the index](#the-queue-index-of-an-older-app).
 - The drivers the settings name are installed as `dependencies`.
 - Staging is not public and holds no real data, because it shows server errors.
 - HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`.

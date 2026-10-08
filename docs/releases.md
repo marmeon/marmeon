@@ -52,9 +52,9 @@ packages carry npm provenance from the release workflow, so you can check where 
 
 ## The first day after a release
 
-pnpm holds back any package version younger than its `minimumReleaseAge`, one day by default. This protects you from a package
-that is pulled again soon after it appears. For a day after a Marmeon release, an upgrade to the new exact versions therefore
-fails to install, and `pnpm create marmeon` falls back to an older release or stops.
+pnpm 11 and newer hold back any package version younger than their `minimumReleaseAge`, one day by default. This protects you
+from a package that is pulled again soon after it appears. For a day after a Marmeon release, an upgrade to the new exact
+versions therefore fails to install, and `pnpm create marmeon` falls back to an older release or stops.
 
 Wait a day, or let only the framework through for this one command:
 
