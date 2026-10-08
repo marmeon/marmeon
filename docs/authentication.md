@@ -1,5 +1,493 @@
 # Authentication
-<!-- docs:pending -->
+
+## Introduction
+
+Authentication answers one question for every request: who is this? `@marmeon/auth` holds the mechanics: the session guard
+`Auth`, "remember me", the middleware that protects routes and the events of signing in and out. The pages people see, such as the
+login form and the registration, belong to your app. The [starter kit](starter-kit.md) writes them for you as the `auth` module.
+
+A route that only signed-in users may reach puts `authenticate()` in front of its controller. The controller then finds the user
+in `ctx.user`:
+
+```ts title="modules/notes/routes.ts"
+import { authenticate, verified } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { ListNotesController } from './controllers/ListNotesController.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(authenticate()).middleware(verified()).get('/notes', ListNotesController).name('notes.index');
+});
+```
+
+```ts title="modules/notes/controllers/ListNotesController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import { NoteRepository } from '../NoteRepository.ts';
+
+export class ListNotesController extends Controller {
+  readonly #notes: NoteRepository;
+
+  constructor(notes: NoteRepository) {
+    super();
+    this.#notes = notes;
+  }
+
+  async handle(ctx: HttpContext<Authenticated>) {
+    return this.view('notes/Index', { notes: await this.#notes.forUser(ctx.user.id) });
+  }
+}
+```
+
+`verified()` lets in only accounts whose address is confirmed. Put it on every route of your own that signed-in users reach: the
+[email verification](verification.md#requiring-a-confirmed-address) page explains why.
+
+## The user type and where users come from
+
+The package does not know your users. Your app tells it twice: which type a user has, and where to find one.
+
+The type is declared once, and `ctx.user`, `auth.user()` and the test helpers take it from there:
+
+```ts title="modules/auth/users.ts"
+import type { Row } from '@marmeon/database';
+
+export type User = Row<'users'>;
+
+declare module '@marmeon/auth' {
+  interface AuthTypes {
+    user: User;
+  }
+}
+```
+
+`Row<'users'>` leaves out the password hash, because the migration marks the column as secret. A user needs an `id`, a string or
+a number. Without the declaration, `ctx.user` has the type `AuthTypesNotDeclared`, and every use of it names the declaration it
+is missing.
+
+Users come from a `UserProvider`. The starter kit's `UserRepository` is one, and its provider binds it with
+`container.bind(UserProvider, (c) => c.make(UserRepository))`:
+
+```ts title="modules/auth/UserRepository.ts"
+import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
+import { Repository, secret } from '@marmeon/database';
+import type { User } from './users.ts';
+
+export class UserRepository extends Repository<'users'> implements UserProvider<User> {
+  static table = 'users' as const;
+  static timestamps = true;
+
+  findById(id: number): Promise<Credentials<User> | undefined> {
+    return this.#credentials(this.query().where('id', '=', id));
+  }
+
+  findForLogin(email: string): Promise<Credentials<User> | undefined> {
+    return this.#credentials(this.query().where('email', '=', email));
+  }
+
+  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
+    await this.update(id, { password: hash });
+  }
+
+  async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
+    const row = await query.selectAll().select((eb) => secret(eb, 'password')).executeTakeFirst();
+    if (!row) return undefined;
+    const { password, ...user } = row;
+    return { user, passwordHash: password as PasswordHash };
+  }
+}
+```
+
+`Credentials` is `{ user, passwordHash }`: the hash travels next to the user, never inside it, so it cannot reach a page by
+accident. A user who cannot sign in with a password has `passwordHash: null`. `findForLogin()` gets what the person typed after
+the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Until a provider is
+bound, the first use of `UserProvider` throws an error that says how to bind one.
+
+## Protecting routes
+
+The package brings four middleware for the routes of the `web` group:
+
+| Middleware | Lets through | Everyone else |
+| --- | --- | --- |
+| `authenticate()` | A signed-in user, as `ctx.user`. | A browser goes to the login page, a JSON client gets 401. |
+| `guest(home)` | Guests. For the login and registration pages. | A redirect to `home`, `/` by default. |
+| `verified()` | A user whose `email_verified_at` is set. After `authenticate()`. | A browser goes to the notice, `auth.verification.notice`. A JSON client gets 403. |
+| `confirmedPassword()` | A user who typed the password within the last 15 minutes. After `authenticate()`. | A browser goes to `auth.password.confirm`, a JSON client gets 423. |
+
+`authenticate('api')` checks an API token instead of the session. The [API tokens](api-tokens.md) page covers it, and the
+[middleware](middleware.md#middleware-of-the-framework) page lists the middleware of every package.
+
+A guest whom `authenticate()` turns away goes to the route named `auth.login`, or the one `authenticate({ loginRoute })` names.
+For a `GET` visit, the page they wanted is kept in the session, and `this.redirect().intended()` after the sign-in brings them
+back there. A prefetch and a request that only reads are not remembered. A client that expects JSON gets
+`401 {"message":"Unauthenticated."}` instead of the redirect.
+
+Every route name these middleware take, `loginRoute`, `noticeRoute` and `confirmRoute`, is checked against your routes when you
+compile. The defaults are the names of the starter kit's routes.
+
+### The signed-in user
+
+Behind `authenticate()`, `ctx.user` is the user. Elsewhere, and in classes that get no context, inject `Auth`:
+
+| Method | Returns |
+| --- | --- |
+| `user()` | The signed-in user, or `undefined`. |
+| `check()` | Whether someone is signed in. |
+| `id()` | The user's id, or `undefined`. |
+| `viaRemember()` | Whether the session was signed in by the remember-me cookie rather than a password. |
+
+`Auth` belongs to the request, like the session. It looks the user up once per request: from the session, or else from the
+remember-me cookie. The lookup also checks that the user's password has not changed since the session signed in, as the section
+on [ending every session of a user](#ending-every-session-of-a-user) explains.
+
+## Signing in
+
+`attempt()` checks a password and signs the user in. The starter kit's `LoginController` counts the attempt first and checks
+afterwards:
+
+```ts title="modules/auth/controllers/LoginController.ts"
+import { Auth, Lockout } from '@marmeon/auth';
+import { RateLimiter } from '@marmeon/cache';
+import { EventDispatcher } from '@marmeon/core';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { Translator } from '@marmeon/i18n';
+import { rules as r } from '@marmeon/validation';
+
+export const LoginRequest = defineRequest({
+  schema: r.object({
+    email: r.string().trim().lowercase().required().max(255).email(),
+    password: r.string().required().max(4096),
+    remember: r.boolean().default(false),
+  }),
+});
+
+export class LoginController extends Controller {
+  static request = LoginRequest;
+
+  readonly #auth: Auth;
+  readonly #limiter: RateLimiter;
+  readonly #events: EventDispatcher;
+  readonly #translator: Translator;
+
+  constructor(auth: Auth, limiter: RateLimiter, events: EventDispatcher, translator: Translator) {
+    super();
+    this.#auth = auth;
+    this.#limiter = limiter;
+    this.#events = events;
+    this.#translator = translator;
+  }
+
+  async handle(ctx: ContextOf<typeof LoginRequest>) {
+    const { email, password, remember } = ctx.body;
+    const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
+    if (!(await this.#limiter.attempt(key, 5, 60))) {
+      await this.#events.dispatch(new Lockout(email, ctx.ip));
+      throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds: await this.#limiter.availableIn(key) })] }, { email });
+    }
+    if (!(await this.#auth.attempt(email, password, { remember }))) {
+      throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
+    }
+    await this.#limiter.clear(key);
+    return this.redirect().intended().route('dashboard');
+  }
+}
+```
+
+`attempt(identifier, password, { remember })` returns the user, or `undefined`. An unknown address and a wrong password give the
+same answer in the same time: for an unknown address, the hasher spends as long on a check that always fails. Neither the answer
+nor its duration tells a stranger which addresses have an account. When the stored hash was made with other costs than the
+configured ones, `attempt()` hashes the password again and stores the new hash. It also notes the time, so the password counts as
+just confirmed for [sudo mode](#sudo-mode).
+
+The limit is counted before the password is checked, in one atomic step: guesses sent at the same moment cannot all slip under
+it. Five failed attempts a minute for one address from one client lock it for the rest of the minute. The
+[rate limiting](rate-limiting.md) page covers limiters.
+
+`login(user)` signs a user in without a password, for example right after a registration. Both methods do the same to the
+session:
+
+- **A new session.** The session gets a new id and a new CSRF token, and keeps its data. An id handed out before the sign-in signs
+  nobody in: this stops session fixation.
+- **A fingerprint, not the hash.** The session keeps a SHA-256 of the user's password hash, never the hash itself.
+- **A fresh page.** The browser loads the next page in full, so no page kept in its memory from before the sign-in comes back. A
+  sign-in by the remember-me cookie continues the same person's session and skips this.
+
+## Signing out
+
+`logout()` signs the user out on this device. The session's data, its id and its CSRF token are all replaced, and the remember-me
+token of this device is deleted:
+
+```ts title="modules/auth/controllers/LogoutController.ts"
+import { Auth } from '@marmeon/auth';
+import { Controller } from '@marmeon/http';
+import { Session } from '@marmeon/session';
+
+export class LogoutController extends Controller {
+  readonly #auth: Auth;
+  readonly #session: Session;
+
+  constructor(auth: Auth, session: Session) {
+    super();
+    this.#auth = auth;
+    this.#session = session;
+  }
+
+  async handle() {
+    const locale = this.#session.get('locale');
+    await this.#auth.logout();
+    if (locale) this.#session.put('locale', locale);
+    return this.redirect().route('auth.login');
+  }
+}
+```
+
+The language the visitor chose outlives the session it was stored in, because the controller puts it into the new one.
+
+The response also tells the browser to forget the site's HTTP cache and storage with `Clear-Site-Data: "cache", "storage"`, and
+the next page loads in full. The other tabs of the same browser follow by themselves. The
+[client features](client-features.md#the-browsers-storage-on-sign-out) page explains both, and how to keep the storage.
+
+## Remember me
+
+`attempt(email, password, { remember: true })` keeps the user signed in on this device after the session has expired. The browser
+gets a cookie, `remember_web`, that is encrypted, `HttpOnly`, and `Secure` and `SameSite` like the session cookie. It is valid for
+`AUTH_REMEMBER_DAYS` days from the sign-in, 30 by default, and using it never extends it.
+
+The cookie is consulted only when the session has no user. It holds a selector and a secret validator. The `remember_tokens`
+table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in.
+
+- **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
+  value within 60 seconds of the rotation still passes.
+- **A copied cookie ends every token.** An old validator that comes back later means two browsers hold the same cookie. Every
+  remember-me token of that user is deleted, and the app logs a warning.
+- **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
+  one. The next page request signs in.
+
+To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`.
+
+## Sudo mode
+
+Some pages ask for the password again even though the user is signed in, such as the page with the API tokens.
+`confirmedPassword()` lets a user through who typed the password within the last `AUTH_PASSWORD_TIMEOUT` seconds, 15 minutes by
+default:
+
+```ts title="modules/auth/routes.ts"
+import { authenticate, confirmedPassword } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
+import { ShowAccessTokensController } from './controllers/ShowAccessTokensController.ts';
+import { ShowConfirmPasswordController } from './controllers/ShowConfirmPasswordController.ts';
+
+export default defineRoutes((Route) => {
+  const signedIn = Route.middleware(authenticate());
+  signedIn.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
+  signedIn.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
+  signedIn.middleware(confirmedPassword()).get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
+});
+```
+
+Everyone else goes to `auth.password.confirm`, and after the confirmation back to the page they asked for. A JSON client gets
+`423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another
+time.
+
+The confirmation page posts the password to `auth.confirmPassword(password)`, which checks it and notes the time. For a user
+without a password it takes as long and returns `false`. `attempt()` notes the time as well; `login()` does not, since nobody
+typed a password.
+
+The starter kit allows five wrong passwords a minute per user across the confirmation, the password change and "sign out other
+devices". A stolen session must not become a way to guess the password.
+
+## Changing the password
+
+`updatePassword(password)` stores a new hash for the signed-in user. This session stays signed in. Every other session ends at its
+next request, every remember-me token of the user is deleted, this device's included, and `PasswordChanged` is dispatched.
+
+`updatePassword()` does not check the current password. The controller does that first, as the starter kit's does:
+
+```ts title="modules/auth/controllers/UpdatePasswordController.ts"
+import { Auth, password, type Authenticated } from '@marmeon/auth';
+import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+
+export const UpdatePasswordRequest = defineRequest({
+  schema: r.object({ current_password: r.string().required().max(4096), password: password(), password_confirmation: r.string() }).confirmed('password'),
+  authorize: (_ctx: HttpContext<Authenticated>) => true,
+});
+
+export class UpdatePasswordController extends Controller {
+  static request = UpdatePasswordRequest;
+
+  readonly #auth: Auth;
+
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+
+  async handle(ctx: ContextOf<typeof UpdatePasswordRequest>) {
+    if (!(await this.#auth.confirmPassword(ctx.body.current_password))) {
+      throw new ValidationError({ current_password: ['The password is incorrect.'] });
+    }
+    await this.#auth.updatePassword(ctx.body.password);
+    return this.back('/settings/security');
+  }
+}
+```
+
+The `authorize` that returns `true` only types the context: `ctx.user` is there because the route sits behind `authenticate()`.
+The [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
+
+`logoutOtherDevices(password)` signs out every other device without changing the password. It checks the password, returns `false`
+when it is wrong, and otherwise hashes it again with a new salt. The other sessions end at their next request, and the
+remember-me tokens of the other devices are deleted.
+
+The starter kit runs both routes with `.block()`: one such request per session at a time. Two at once could leave the session
+with the fingerprint of the other request's hash, and sign it out. The [session](session.md#requests-that-must-not-overlap) page
+explains `block()`.
 
 > [!NOTE]
-> This page is being written.
+> Neither a new password nor "sign out other devices" revokes the user's API tokens. A token stays valid until it expires or is
+> revoked on the tokens page. The [API tokens](api-tokens.md#listing-and-revoking-tokens) page explains why a token is as good as a
+> session.
+
+## Ending every session of a user
+
+A session signs in with a fingerprint of the user's password hash, and every request compares it with the current hash. When the
+password changes anywhere, every other session stops matching and ends at its next request. When the user is deleted, the lookup
+finds nobody, and the session ends the same way. A request that only reads, such as an island, treats such a session as a guest
+and leaves the ending to the next page request.
+
+`UserSessions` of `@marmeon/session` ends a user's sessions at once. Deleting an account needs it, and the starter kit's
+`AccountDeletion` calls it after the account is gone:
+
+```ts title="modules/auth/AccountDeletion.ts"
+import { PasswordResetTokenStore } from '@marmeon/auth';
+import { Connections } from '@marmeon/database';
+import { UserSessions } from '@marmeon/session';
+import type { User } from './users.ts';
+import { UserRepository } from './UserRepository.ts';
+
+export class AccountDeletion {
+  readonly #connections: Connections;
+  readonly #users: UserRepository;
+  readonly #resets: PasswordResetTokenStore;
+  readonly #sessions: UserSessions;
+
+  constructor(connections: Connections, users: UserRepository, resets: PasswordResetTokenStore, sessions: UserSessions) {
+    this.#connections = connections;
+    this.#users = users;
+    this.#resets = resets;
+    this.#sessions = sessions;
+  }
+
+  async delete(ids: readonly number[]): Promise<User[]> {
+    const deleted = await this.#connections.transaction(async () => {
+      const users = await this.#users.deleteAccounts(ids);
+      for (const user of users) await this.#resets.forget(user.email);
+      return users;
+    });
+    for (const user of deleted) await this.#sessions.end(user.id);
+    return deleted;
+  }
+}
+```
+
+The starter kit's own version also dispatches `AccountDeleted` for other modules inside the transaction. Use it for every deletion
+of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
+
+`end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
+table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account
+that does no harm, since its sessions end at their next request. For a user who still exists, only a new password ends the other
+sessions with these drivers.
+
+## Signed-in pages are never cached
+
+While someone is signed in, every answer of the `web` group goes out with `Cache-Control: no-store, private`: pages, their JSON
+for client-side visits, redirects and error pages. Without it, the browser would keep them in its cache, and Back after signing out
+would show them again without asking the server. The middleware, `NoStoreWhenSignedIn`, asks the session and never loads the user.
+Every app with `@marmeon/auth` has it.
+
+A route that sets its own `Cache-Control` keeps it, such as one with `cacheControl('private, max-age=60')`. Then its answer may
+stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user.
+
+An app with sign-in needs a session driver that keeps the sessions on the server. With `SESSION_DRIVER=cookie`, a request still
+running during a sign-out brings the signed-in cookie back with its answer, and the app warns about it at start-up. The
+[session](session.md#the-cookie-driver) page explains why.
+
+## Events
+
+`@marmeon/auth` dispatches these events through the app's event dispatcher:
+
+| Event | When | Fields |
+| --- | --- | --- |
+| `Login` | `attempt()`, `login()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `login` or `remember`), `ip`, `userAgent` |
+| `Logout` | `logout()` | `user` |
+| `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
+| `Lockout` | The starter kit's login throttle turns an attempt away | `identifier`, `ip` |
+| `Registered` | Your registration, after it created the account | `user` |
+| `PasswordChanged` | `updatePassword()` | `user` |
+| `PasswordReset` | A reset with a link from the mail | `user` |
+
+`Failed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
+it tells whether the address has an account. The `ip` and `userAgent` of `Login` are the request's, the address resolved through
+`TRUSTED_PROXIES` like `ctx.ip`, unless the call to `attempt()` or `login()` passed others. Outside a request they are `null`.
+`Lockout` and `Registered` are dispatched by your app's code, the starter kit's controllers, not by the package.
+
+A listener reacts to a sign-in without the auth module knowing about it:
+
+```ts title="modules/user-profile/listeners/RecordLastLogin.ts"
+import type { Login } from '@marmeon/auth';
+import { LoginActivityRepository } from '../LoginActivityRepository.ts';
+
+export class RecordLastLogin {
+  readonly #activity: LoginActivityRepository;
+
+  constructor(activity: LoginActivityRepository) {
+    this.#activity = activity;
+  }
+
+  async handle(event: Login): Promise<void> {
+    await this.#activity.record(event.user.id, event.at);
+  }
+}
+```
+
+The module registers it with `listeners: [listen(Login, RecordLastLogin)]`. `Login` and `Registered` can also be queued. A queued
+listener of `Login` gets `{ userId, remember, via, at, ip, userAgent }`, with `at` as an ISO 8601 string, and one of `Registered`
+gets `{ userId }`. It reads the account as it is when it runs. The [events](events.md#queued-listeners) page explains queued
+listeners.
+
+## Configuration
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in. |
+| `AUTH_REMEMBER_COOKIE` | `remember_web` | The name of the remember-me cookie: letters, digits, `_` and `-`. |
+| `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password counts for `confirmedPassword()`. |
+| `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
+| `AUTH_RESET_THROTTLE` | `60` | Seconds before another reset link goes to the same address. |
+| `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |
+| `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
+| `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |
+
+The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its
+range stops the start. The `HASH_*` variables are on the [hashing](hashing.md#configuration) page.
+
+## Testing
+
+A test acts as a signed-in user with `actingAs()`, which leaves a session as a real sign-in does:
+
+```ts title="modules/notes/notes.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+
+it('shows the notes to signed-in users only', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const ada = await app.factory(UserFactory).create();
+  await app.actingAs(ada).get('/notes').assertOk();
+  await app.get('/notes').assertRedirect('/login');
+});
+```
+
+`UserFactory` makes users with a confirmed address. `actingAs()` needs a session driver on the server; a new app's `.env.test`
+sets `SESSION_DRIVER=memory`. The [HTTP tests](http-tests.md) page shows the assertions for sessions, sign-in and sign-out.

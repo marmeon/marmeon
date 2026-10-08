@@ -1,207 +1,231 @@
 # Security
-<!-- docs:pending -->
 
-What a Marmeon app protects by itself, what it leaves to you, and where each part is explained. The defaults are chosen to
-be safe when nobody changes them; where a protection costs something (a dependency, a migration, a cache), it is a switch, and
-this page says which way it points. Found a vulnerability? Report it privately — [SECURITY.md](../SECURITY.md).
+## Introduction
 
-## The environment decides — and fails closed
+This page lists what a Marmeon app protects by itself, what it leaves to you, and where each part is explained. The defaults are
+chosen to be safe when nobody changes them. Where a protection costs something, such as a dependency, a migration or a cache, it is
+a switch, and this page says which way it points. The [checklist](#your-checklist) at the end sums up what to do before a server
+goes live.
 
-Development tools — the error page with code and queries, the devtools, `Server-Timing`, mail previews, Vite's dev server — run
-**only** with `NODE_ENV=development`. Protections — JSON logs, `migrate` asking for `--force`, boot warnings, no lab pages — apply to
-**every other value but `test`** (the test runner's: neither tools nor protections) **and to none**: a staging box, a typo or a
-server where `NODE_ENV` was forgotten is protected like production (E139,
-[the environment](../packages/core/README.md#the-environment-node_env)). Where the process sets no `NODE_ENV`, the app's `.env`
-may (E170) — a new app's says `development`. Set `NODE_ENV` in the server's environment (the image does; it wins over `.env`) and
-never deploy a developer's `.env`: a `marmeon start`, `queue:work` or `schedule:work` that runs as development because of one
-warns loudly, and its start line says `development (from .env)`.
+Found a vulnerability in the framework? Report it privately, as [SECURITY.md](../SECURITY.md) describes, never in a public issue.
 
-**Checked positively, also in the browser (E201).** Code that runs in the browser and in server rendering — the client core, the
-React adapter, a table's client — keeps its explanations, warnings, devtools hooks and error details behind
-`process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`, never behind "not production": on staging, with a typo or
-with none an error says its short code (`[marmeon:R2] users/Show`), no development warning shows, and a React error page rendered
-on the server carries no exception message. `pnpm check:source` refuses `!== 'production'` (and `NODE_ENV === 'production'`) in the
-framework's packages; server code asks `environment.isDevelopment()` / `isProtected()` of core. What it cannot change: **React** picks
-its development build wherever `NODE_ENV` is not `production` — and on a staging server that build sends the message and stack of a
-server error after the shell into the page. Keep staging private ([deployment](deployment.md#configuration)).
+## The environment decides, and fails closed
+
+Two rules depend on `NODE_ENV`, and they are not mirror images of each other:
+
+- **Development tools run only with `NODE_ENV=development`.** The error page with the code that threw, the devtools, the
+  `Server-Timing` header, the mail previews and Vite's dev server stay off everywhere else, `test` included.
+- **Protections apply to every other value but `test`, and to none.** JSON logs, `migrate` asking for `--force`, the warnings at
+  start-up and the absence of lab pages hold for `production`, for `staging`, for a typo and for a server where nobody set
+  `NODE_ENV`.
+
+A forgotten variable therefore never shows your source code to a visitor. Set `NODE_ENV` in the server's real environment, and
+never deploy a developer's `.env`: `marmeon start`, `queue:work` and `schedule:work` warn loudly when `development` comes from a
+`.env`, and the start line says `development (from .env)`. The [configuration](configuration.md#the-environment-node_env) page
+explains where `NODE_ENV` comes from.
+
+Code that runs in the browser and in server rendering checks for development positively, as `development` or `test`, never as
+"not production". On staging, with a typo or without a value, an error in the browser shows only its short code, such as
+`[marmeon:R2] users/Show`, no development warning appears, and an error page rendered on the server carries no exception message.
+
+> [!WARNING]
+> React picks its own development build wherever `NODE_ENV` is not `production`. On a staging server, that build sends the message
+> and the stack of a server error into the page. Keep staging behind a login or in a private network, with no real data, as the
+> [deployment](deployment.md#staging) page explains.
 
 ## Development routes
 
-The routes for the developer's browser — the devtools (`/_marmeon/devtools`) and the mail previews (`/_marmeon/mail`) — exist only
-with `NODE_ENV=development`, and they sit behind **one host guard** (E200, `devOnly()` of
-[`@marmeon/core/dev`](../packages/core/README.md#development-routes-marmeoncoredev-e200)): they answer `localhost`, `127.0.0.1`,
-`[::1]` and the host of `APP_URL`, and any other `Host` a **403** before the handler runs; every answer is `no-store`, `nosniff`,
-same-origin for resources and openers, without a CORS header. The attack is **DNS rebinding**: a page on `evil.example` whose name
-the attacker then points at `127.0.0.1` reaches the developer's server with `Host: evil.example` and reads the answers as
-same-origin — recorded requests, mails with reset links, source paths.
+The devtools at `/_marmeon/devtools` and the mail previews at `/_marmeon/mail` exist only with `NODE_ENV=development`. They sit
+behind one host guard, `devOnly()` of `@marmeon/core/dev`: it answers `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL`,
+and gives every other `Host` a 403 before the handler runs. Every answer is `no-store` and `nosniff`, carries no CORS header, and
+is shared with no other origin, neither as a resource nor as a window.
 
-- `marmeon dev` puts Vite in front, and Vite refuses unknown hosts itself (`server.allowedHosts`) — but **not under HTTPS**
-  (`server.https` in `vite.config.ts`) **and not with `allowedHosts: true`**. Then the guard is what stands for the devtools and the
-  mail previews; Vite's own paths (source modules, `/@fs/`, `/__open-in-editor`) and the development error page have no host check
-  of their own. Run `marmeon dev` over HTTPS only on a trusted network, and keep `allowedHosts` a list.
-- A development route of your own takes the same guard: `Route.get('/_dev/report', devOnly(devHosts(env.APP_URL), () => report()))` —
-  outside development it answers 404 by itself (`NODE_ENV` asked on every request, fail-closed): forgetting to register the route
-  only in development never opens it on a server, where `APP_URL`'s host is the public one.
-- `*.localhost` names pass Vite (they are loopback by definition) but not the guard, unless `APP_URL` names one.
+The attack it stops is DNS rebinding. A page on `evil.example` points its own name at `127.0.0.1`, reaches the developer's server
+with `Host: evil.example`, and reads the answers as if they were its own: recorded requests, mails with reset links, source paths.
 
-## Requests from other sites (CSRF)
+- `marmeon dev` puts Vite in front, and Vite refuses unknown hosts itself. It does not under HTTPS, with `server.https` in
+  `vite.config.ts`, and not with `allowedHosts: true`. Then the guard alone protects the devtools and the mail previews, while
+  Vite's own paths, such as source modules, and the development error page have no host check. Use either setting only on a
+  network you trust, and keep `allowedHosts` a list. The [asset bundling](vite.md#the-dev-server) page covers Vite's settings.
+- A development route of your own takes the same guard. Outside `development` and `test` it answers 404 by itself, asked on every
+  request: a route registered on a server by mistake stays shut. The [routing](routing.md#development-only-routes) page shows how.
+- `*.localhost` names pass Vite, since they are loopback by definition, but not the guard, unless `APP_URL` names one.
 
-Every request of the `web` group that changes something is checked in stages
-([CSRF protection](../packages/session/README.md#csrf-protection)): the browser's `Sec-Fetch-Site: same-origin` passes, a request
-from another site is refused with 403; without Fetch Metadata the `Origin` decides; only a client that sends neither needs the
-session's token. Guests get no session just for a token — and a session draws its token only when something needs it (E203): the
-first `session.token()`, a page of a kept session (`page.csrf`) or its `XSRF-TOKEN` cookie makes it, signing in and out renews it
-at once; a guest's GET sets no cookie — unless its page keeps a session (an upload, a live stream). The check itself is unchanged — a post that needs the token and has none is a 419.
-List other origins you trust in `CSRF_TRUSTED_ORIGINS` (whole origins); webhooks that cannot carry a token go into a module's
-`csrfExcept`.
+## Requests from other sites
 
-- Browsers send Fetch Metadata to secure origins only — over plain HTTP the check falls back to `Origin`, then to the token. Serve
+Every request of the `web` group that may change something is checked for cross-site request forgery. The browser's
+`Sec-Fetch-Site: same-origin` passes, and a request from another site is refused with 403. Without Fetch Metadata, the `Origin`
+header decides. Only a client that sends neither needs the session's token, and without it gets 419.
+
+- Guests get no session just for a token. A session draws its token only when something needs it, and signing in or out renews it.
+  A guest who only reads leaves no cookie behind, unless the page keeps a session, such as one with an upload field.
+- Browsers send Fetch Metadata to secure origins only. Over plain HTTP the check falls back to `Origin`, then to the token. Serve
   production over HTTPS.
-- The `api` group has no session and no CSRF check: it authenticates every request by its token
-  ([API tokens](../packages/auth/README.md#api-tokens-e27)).
+- Trust other origins with `CSRF_TRUSTED_ORIGINS`, and exclude webhooks that cannot carry a token with a module's `csrfExcept`.
+- The `api` group has no session and no CSRF check, since every request proves itself with its [API token](api-tokens.md).
+
+The [CSRF protection](csrf.md) page explains every stage.
 
 ## Sessions and cookies
 
-- **Every cookie is `Secure` when `APP_URL` is `https://`** — `SESSION_SECURE_COOKIE` follows it, for the session's, the
-  `XSRF-TOKEN`, remember-me and your own cookies alike ([session configuration](../packages/session/README.md#configuration));
-  the `web` group encrypts cookies with `APP_KEY`. A protected app on an `http://` `APP_URL` warns at boot.
-- **Stores never see a session id:** a session is kept under the SHA-256 of the id in its cookie, so a leaked file, row or Redis
-  key is no cookie; `SESSION_ENCRYPT=true` encrypts the payload as well
-  ([hashed keys and encryption](../packages/session/README.md#hashed-keys-versions-and-encryption-e144-e145)).
-- **Signing in or out renews the session**, and signed-in answers are `Cache-Control: no-store, private` — Back after signing out
-  shows nothing from the HTTP cache ([never cached](../packages/auth/README.md#signed-in-answers-are-never-cached)). Signing out
-  also sends `Clear-Site-Data`, and the other tabs of the browser follow by themselves
-  ([tab sync](../packages/http/README.md#tab-sync-w8-step-8)).
-- Read-only requests (islands, live streams, the session epoch) never write a session or a cookie.
+- **Every cookie is `Secure` when `APP_URL` starts with `https://`:** the session cookie, `XSRF-TOKEN`, the remember-me cookie and
+  your own. `SESSION_SECURE_COOKIE` overrides it either way. A protected app whose cookies go without `Secure` warns at start-up.
+  The [session](session.md#secure-cookies) page has the details.
+- **Cookies are encrypted** with `APP_KEY` in the `web` group, all but `XSRF-TOKEN`, which the browser's JavaScript reads. The
+  session cookie is also `HttpOnly`.
+- **The store never sees a session id.** A session is kept under the SHA-256 hash of its id, so a leaked file, row or Redis key is
+  no cookie. `SESSION_ENCRYPT=true` encrypts the data as well. The [session](session.md#how-sessions-are-stored) page explains both.
+- **Signing in or out renews the session:** a new id and a new CSRF token, so an id handed out before signs nobody in.
+- **Signed-in answers are `Cache-Control: no-store, private`,** so Back after signing out shows nothing from the browser's cache.
+  Signing out also sends `Clear-Site-Data`, and the other tabs of the browser follow by themselves. The
+  [authentication](authentication.md#signed-in-pages-are-never-cached) and
+  [client features](client-features.md#the-browsers-storage-on-sign-out) pages explain them.
+- **Requests that only read never write.** Islands, live streams and the tabs' session checks write no session data and set no
+  cookie. The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.
+- **Use a session driver on the server for an app with sign-in:** `file`, `database` or `redis`. The `cookie` driver cannot
+  protect a sign-out against a request that was still running.
 
 ## Keys
 
-`APP_KEY` encrypts cookies and sealed sessions and signs URLs; anyone who has it can forge them. Generate it once per environment
-(`marmeon key:generate`), keep it out of the repository and the image (the generated `.dockerignore` keeps every `.env*` out), and
-rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable until they expire
-([key rotation](../packages/encryption/README.md#key-rotation)).
+`APP_KEY` encrypts cookies, encrypted jobs and sealed sessions, and the keys that sign URLs, live channels and uploads are derived
+from it. Anyone who has it can read and forge all of them. Generate it once per environment with `marmeon key:generate`, keep it
+out of the repository and out of the image, and rotate it with `APP_PREVIOUS_KEYS`, so that old cookies and signed links stay valid
+until they expire. The [encryption](encryption.md) page explains the key and its rotation.
 
 ## Pages and scripts
 
-- **Content-Security-Policy:** `contentSecurityPolicy()` gives every document a policy with a fresh nonce — scripts only with that
-  nonce (`'strict-dynamic'` for the chunks they load), no plugins, no foreign `<base>`. The starter kit and the web app turn it on
-  ([Content-Security-Policy](../packages/http/README.md#content-security-policy-e147)). A nonce must never reach a shared cache: a
-  page cached publicly gets a policy without one (the docs: `script-src 'self'` — they have no inline script).
-- **Styles without `'unsafe-inline'` (E202):** the framework renders no `style` attribute — a nonce does not cover attributes, and
-  React does not add one the policy blocked while it hydrates. The look of layers, dialogs, the failure notices and the error page
-  is `@marmeon/react/styles.css` (imported in `bootstrap/client.tsx`, linked by the built `index.html`), the auth module's is
-  `modules/auth/auth.css`; a `LayerDialog`'s `style` prop is written through the CSSOM after the mount, which `style-src` does not
-  govern. So `contentSecurityPolicy({ styleSrc: ["'self'"] })` blocks nothing of the framework's — the web app runs
-  `styleSrc: ["'self'", NONCE]`, the nonce for the `<style>` Vite adds under `marmeon dev`. Your own `style` props need classes
-  then. `pnpm csp:probe --app <dir> --build` (this repository) proves it: the built app in headless Chrome under an added
-  `style-src 'self'`, every violation counted — deep link and click on a layer, the failure dialogs, the signed-in pages: 0.
-- **Escaping:** React escapes what pages render; HTML written by hand goes through the `html` template of core
-  ([escaping](../packages/core/README.md#html-the-escaping-html-template)). Page data travels as JSON in an inert
+- **Content Security Policy.** `contentSecurityPolicy()` gives every document a policy with a fresh nonce: scripts only with that
+  nonce, and the chunks they load, no plugins, no foreign `<base>`. Every new app turns it on. A nonce must never reach a shared
+  cache: the app warns when a publicly cached page carries one. The [Content Security Policy](csp.md) page explains the policy.
+- **Styles without `'unsafe-inline'`.** The framework renders no `style` attribute, so `styleSrc: ["'self'"]` blocks nothing of
+  its own in a built app. Your own `style` props need classes then, and `@marmeon/react/styles.css` is imported in the client
+  entry. The [styling](styling.md#no-style-attributes) page shows how.
+- **Escaping.** React escapes what pages render. HTML you write by hand goes through the `html` template of `@marmeon/core`, as
+  the [responses](responses.md#html-you-write-yourself) page shows. Page data travels as JSON in an inert
   `<script type="application/json">`.
-- **Security headers:** the starter kit's `middleware/SecurityHeaders.ts` sends `X-Content-Type-Options: nosniff`,
-  `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: DENY` on every response; its HSTS switch is off until
-  you turn it on — once the site answers over HTTPS only (or let the proxy send `Strict-Transport-Security`).
-- **Behind a proxy**, `X-Forwarded-*` count only from `TRUSTED_PROXIES` — otherwise any client could choose its own IP address
-  (rate limits, logs) and its scheme ([behind a proxy](../packages/server/README.md#behind-a-proxy-e162)). `*` trusts the
-  direct peer only (E172): `ctx.ip` is the address that peer saw (the right-most `X-Forwarded-For` entry), never one a client
-  wrote before it — but only when nothing but your proxy can reach the app; prefer its address or network where you know it.
-- **No dynamic compression** of documents in the framework (BREACH): assets are compressed at build time; leave documents
-  uncompressed at the proxy too ([deployment](deployment.md#proxies-and-http2)).
+- **Security headers.** A new app's `middleware/SecurityHeaders.ts` sends `nosniff`, a strict `Referrer-Policy` and
+  `X-Frame-Options: DENY` on every response. Its switch for `Strict-Transport-Security` is off until you turn it on, once the site
+  answers over HTTPS alone. The [Content Security Policy](csp.md#the-other-security-headers) page lists them.
+- **Behind a proxy,** `X-Forwarded-*` headers count only from the addresses in `TRUSTED_PROXIES`. Otherwise any client could choose
+  its own address, for rate limits and logs, and its own scheme. `*` trusts the direct peer only, and is safe only when nothing
+  but your proxy can reach the app. The [deployment](deployment.md#trusted-proxies) page explains the values.
+- **No compression of documents.** A compressed page that holds a secret next to text an attacker controls leaks the secret byte
+  by byte. The framework compresses assets at build time and never pages; leave pages uncompressed at the proxy too, as the
+  [deployment](deployment.md#compression) page says.
 
 ## Accounts
 
-- Passwords are hashed with Argon2id ([password hashing](../packages/auth/README.md#password-hashing)); the generated auth module
-  rate-limits sign-in (per address and client together), registration (per client), reset mails (per client and per address)
-  and a signed-in user's password checks — confirmation, password change, "sign out other devices" (per user)
-  ([rate limits](../packages/cache/README.md#rate-limits)). The password change and "sign out other devices" run one at a time
-  per session (`block()`).
-- **Registration never tells whether an address has an account** (the default since E193): the module of `make:auth` answers
-  every registration the same way, in the same time, and mails the owner instead; the app's routes ask for a confirmed address,
-  and a change of address stays pending until the link sent to the new address is clicked — the same answer for a free and a
-  taken address, a note to the owner of a taken one. `AUTH_PRIVATE_REGISTRATION=false` turns it off (registration and the
-  change of address say "taken", like Laravel's starter kits, a new account is signed in at once) — then only the throttle stands
-  between the form and a list of addresses, and the boot warns outside development and tests
-  ([private registration](../packages/auth/README.md#private-registration-e146-e193)).
-- **Validation never tells whether a record exists while a field is typed** (E187/E193/E197): `unique`, `exists` and async
-  `custom()` rules of `@marmeon/validation` do not run in a live validation — a free and a taken address get the same answer there,
-  and only a submit tells, behind its throttle; `.live()` opts a rule in, never for an account. The unique index stays the truth
-  (`failOnDuplicate()` → 422) ([validation](validation.md#database-rules-and-why-they-never-run-live)). A schema of another library
-  does not run in a live validation at all (E206) unless its request says `live: true` — never for one that asks about accounts.
-- **Never-confirmed accounts can go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes) — `auth:prune-unverified`
-  of `make:auth`, **scheduled only when the app turns its line in `modules/auth/schedule.ts` on** (E209: deleting accounts is the app's
-  decision, the module never does it by itself). Then whoever signed up with somebody else's address stops holding it (a sign-up; with
-  `AUTH_PRIVATE_REGISTRATION=false` an account confirmed once keeps an address it changed to unconfirmed), and nothing of an unfinished
-  sign-up stays — deleted at night with its tokens, what other modules keep and its sessions (removed with `SESSION_DRIVER=database`,
-  ended at their next request with the other drivers) ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
-  Without the line such accounts stay: decide it for your app.
-- **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS
-  (`MAIL_REQUIRE_TLS`, default `true`, E192) — a server without it, or someone who strips the offer, never sees the credentials or a
-  reset link ([mail](../packages/mail/README.md)).
-- Policies and the `Gate` decide what a user may do
-  ([authorization](../packages/auth/README.md#authorization-policies-and-the-gate-e28)).
+- **Passwords** are hashed with Argon2id, within bounds that a planted hash cannot exceed. The [hashing](hashing.md) page explains
+  the drivers and costs.
+- **Rate limits.** The starter kit limits the sign-in per address and client together, the registration per client, reset mails
+  per client and per address, and a signed-in user's password checks per user: the confirmation, the password change and "sign
+  out other devices". The password change and "sign out other devices" run one at a time per session. The
+  [rate limiting](rate-limiting.md) page covers limiters.
+- **A sign-in tells nothing.** An unknown address and a wrong password get the same answer in the same time. The
+  [authentication](authentication.md#signing-in) page explains how.
+- **Validation never tells whether a record exists while a field is typed.** The `unique` and `exists` rules and an async
+  `custom()` never run in a live validation, so a free and a taken address get the same answer there. Only a submit tells, behind
+  its rate limit. A schema of another library runs live only when its request says `live: true`, which a form that asks about
+  accounts must never do. The [validation](validation.md#database-rules-and-why-they-never-run-live) page explains why.
+- **Mail goes out encrypted or not at all.** SMTP uses TLS from the first byte, or requires STARTTLS, so a server without it, or
+  someone who strips the offer, never sees the credentials or a reset link. `MAIL_REQUIRE_TLS=false` turns the requirement off, for
+  a local relay only. The [mail](mail.md#smtp-and-tls) page has the settings.
+- **Policies decide what a user may do,** on every request. The gate asks the session's user, so on routes of the `api` group a
+  policy refuses every request: authorize those with token abilities. The [authorization](authorization.md) page explains both.
+
+### Private registration
+
+The registration of the starter kit never tells whether an address has an account. This is the default:
+
+- Every registration gets the same answer in the same time. The owner of a known address gets a mail instead of a second account.
+- Registering signs nobody in. The auth module's pages ask for a confirmed address, so whoever registered with somebody else's
+  address sees only a notice, and the owner takes the account over with a password reset. Your own routes need `verified()` for
+  the same: the [email verification](verification.md#requiring-a-confirmed-address) page explains it.
+- A change of address waits until the link sent to the new address is opened, with the same answer for a free and a taken address.
+
+### Open registration
+
+`AUTH_PRIVATE_REGISTRATION=false` turns all of this off. The registration and the change of address then say "taken", a new account
+is signed in at once, and a new address takes effect at once. From then on only the registration's rate limit stands between the
+form and a list of who has an account. Outside development and tests the app logs a warning about it at every start. Turn it off
+only when the accounts of your app are public anyway. The [starter kit](starter-kit.md#turning-it-off) page shows the switch.
+
+### Accounts nobody confirmed
+
+`auth:prune-unverified` deletes accounts whose address was never confirmed, `AUTH_UNVERIFIED_DAYS` days after the sign-up, 7 by
+default. An account confirmed once is never deleted. The command runs only when your app turns its line on in
+`modules/auth/schedule.ts`, because deleting accounts is your app's decision. Once it runs, whoever registered with somebody else's
+address stops holding it, and nothing of an unfinished sign-up stays: the account, its tokens, what other modules keep and its
+sessions. With open registration, such an account was signed in and may have used the app before it goes. Without the line, these
+accounts stay: decide it for your app. The [email verification](verification.md#unconfirmed-accounts) page explains the rules.
 
 ## Tables and exports
 
-A table of [@marmeon/table](../packages/table/README.md) is one definition the server enforces on every request — the attacks of
-hand-written tables, and what stops each ([the whole model](tables.md#the-security-model)):
+A table of `@marmeon/table` is one definition the server enforces on every request. These are the attacks of hand-written tables,
+and what stops each:
 
-- **Hidden columns stay hidden.** A column the policy hides is not selected — not in the SQL, so not in the props, the devtools'
-  query log, a cursor or an export — and the props are picked by name besides (two measures, each tested on its own).
+- **Hidden columns stay hidden.** A column the policy hides is not selected: not in the SQL, so not in the props, the devtools'
+  query log, a cursor or an export. The props are picked by name besides.
 - **No sort oracle.** Sorting, filtering or searching by a column the user cannot see is a 400, as is any sort, filter or page size
-  the definition does not name (`?sort=password`, `?per_page=10000`): an order by a secret tells its values without showing them.
-  Nothing from the URL reaches `ORDER BY` or `WHERE` that the definition did not name.
-- **Bulk IDOR.** A bulk action acts on the keys sent **∩ the base query ∩ the policy per row** — another tenant's or a made-up key
-  is left out (`missing`), a row the policy refuses too (`skipped`). "All matching" sends the filter state, never keys; the server
-  parses it again and refuses more than the action's `max` (422). Put the tenant into the base query: it is the boundary every
-  endpoint starts from. The endpoints inherit the page registrar's middleware (`tableRoutes`), not the page controller's
-  `authorize` — a table that needs one declares it.
-- **CSV injection.** Exported text cells that start with `=`, `+`, `-`, `@`, a tab, CR or LF get a `'` in front (OWASP), every field
-  quoted. An export has its own `authorize`, a row limit (`max`, 10 000 — over it a 422 before the first byte) and should be
-  throttled: it reads the whole filtered table.
-- **Keys are parsed by their declared type** before any query — text never reaches an integer column.
+  the definition does not name, such as `?sort=password` or `?per_page=10000`. An order by a secret would tell its values without
+  showing them. Nothing from the URL reaches `ORDER BY` or `WHERE` that the definition did not name.
+- **No bulk IDOR.** A bulk action acts on the keys sent, within the base query, and only on rows the policy allows. Another
+  tenant's key or a made-up one is left out as missing, and a row the policy refuses is skipped. "All matching" sends the filter,
+  never keys, and the server refuses more rows than the action's `max` with 422. Put the tenant into the base query: every endpoint
+  starts from it. The endpoints take the middleware of the page's route registrar, not the page controller's `authorize`, so a
+  table that needs one declares it.
+- **No CSV injection.** Exported text cells that start with `=`, `+`, `-`, `@`, a tab or a line break get a `'` in front, and every
+  field is quoted. An export has its own `authorize` and a row limit, 10 000 by default, beyond which it answers 422 before the
+  first byte. Rate-limit it as well: it reads the whole filtered table.
+- **Keys are parsed by their declared type** before any query, so text never reaches an integer column.
 
-Cursors of `cursorPaginate` (and of cursor tables) are encrypted with the app key: a hidden sort column's value never shows in a
-URL, and a changed or made-up cursor is a 400 ([lists](pagination.md#cursors-and-load-more)).
+The cursors of `cursorPaginate()` and of cursor tables are encrypted with the app key: a hidden sort column's value never shows in a
+URL, and a changed or made-up cursor is a 400. The [tables](tables.md) and [pagination](pagination.md) pages explain both.
 
 ## Live updates
 
-Live props send **hints, never data** ([real time](realtime.md)): a tab reloads through the page's route, its middleware and its
-policies, so a hint can never show what the user may not see. Subscriptions are signed for the session (`APP_KEY`, E90); another
-channel or another session's token is a 403. **Limits** keep one user from exhausting a process: at most 16 streams per session
-(`LIVE_MAX_STREAMS_PER_SESSION`, beyond it 429 and a `warn` log line), 1000 per process (`LIVE_MAX_STREAMS`, 503), 20 channels per
-stream. The per-session limit is keyed by the session, not the IP address; a flood of fresh sessions meets the process limit — rate
-limit connections at the proxy as well.
+Live props send hints, never data. A tab that gets a hint reloads through the page's route, its middleware and its policies, so a
+hint can never show what the user may not see. A subscription is signed for its session, and another channel or another session's
+token answers 403. Limits keep one user from exhausting a process: at most 16 streams per session
+(`LIVE_MAX_STREAMS_PER_SESSION`, beyond it 429 and a warning in the log), 1000 per process (`LIVE_MAX_STREAMS`, beyond it 503) and
+20 channels per stream. The limit per session counts by session, not by address; a flood of fresh sessions meets the limit per
+process, so limit connections at the proxy as well. The [real-time updates](realtime.md) page explains them.
 
 ## Logs and recordings
 
-Passwords, tokens, cookies and keys are redacted wherever the framework writes something down — the log, the request log line, the
-devtools' recordings — by one `Redactor` with one list of names ([redaction](../packages/core/README.md#redaction-e125)). Add the
-names of your own secrets to it — a `URL` object in a log context is masked like text (`?token=…`, a token in its path). The devtools exist in development only and refuse other hosts
-([only in development](../packages/devtools/README.md#only-in-development-e115-fail-closed)).
+The log masks the values of keys that look like secrets, such as `password`, `token`, `cookie` or `authorization`, in nested
+objects too. A `URL` in the context, and the message and stack of an error under the key `err`, are masked as text. Every other
+string, the message included, is written as it is, so never put a secret into one. The
+[logging](logging.md#keeping-secrets-out-of-the-log) page lists the rules, and `redactText()` for text you must log.
+
+The devtools' recordings, the development error page and traces go further: they pass the app's `Redactor`, which also masks text
+and the names packages add, such as the session cookie's. The devtools exist in development only and refuse other hosts. The
+[logging](logging.md#what-the-framework-shows-elsewhere) page explains what each shows.
 
 ## Traces
 
-With [@marmeon/otel](../packages/otel/README.md#a-callers-traceparent) a request from outside starts a trace of its own, and an
-incoming `traceparent` is only a span link (E205): a client cannot put its requests into a trace it chose, nor switch their recording
-on or off with the sampled flag, and its baggage is dropped. `OTEL_TRUST_TRACEPARENT=true` continues the caller's trace — only behind
-an edge that sets or strips the header (a gateway, an ingress, a mesh), never because of `TRUSTED_PROXIES`: a proxy usually passes
-the client's header on unchanged.
+With `@marmeon/otel`, a request from outside starts a trace of its own, and an incoming `traceparent` header is only a link to the
+caller's span. A client cannot put its requests into a trace it chose, nor switch their recording on or off with the sampled flag,
+and its baggage is dropped. `OTEL_TRUST_TRACEPARENT=true` continues the caller's trace: set it only behind an edge that sets or
+strips the header, such as a gateway, an ingress or a mesh. `TRUSTED_PROXIES` is no reason, since a proxy usually passes the
+client's header on unchanged. The [observability](observability.md) page covers tracing.
 
 ## Your checklist
 
-- `NODE_ENV=production` (or any protected value) in the server's environment, no development `.env` on the server.
-- `APP_URL=https://…`, a fresh `APP_KEY` per environment, kept in the server's secrets.
-- `contentSecurityPolicy()` in `bootstrap/app.ts` (the starter kit has it); new inline scripts take `ctx.nonce()`; with a `styleSrc`,
-  classes instead of `style` props and `@marmeon/react/styles.css` imported in the client entry.
-- `marmeon dev` over HTTPS or with `allowedHosts: true` only on a trusted network; staging private (it shows server errors).
-- Whether unconfirmed accounts go — the `auth:prune-unverified` line in `modules/auth/schedule.ts` — and `AUTH_UNVERIFIED_DAYS` as you want it
-  (default 7; tell users of `AUTH_PRIVATE_REGISTRATION=false` that an unconfirmed account goes);
-  `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header.
-- HSTS once the site is HTTPS only — the `SecurityHeaders` switch or the proxy.
-- `TRUSTED_PROXIES` set to exactly your proxy (`*` — the direct peer only — when nothing else can reach the app); the proxy sets
-  `X-Forwarded-*` itself and does not compress documents.
-- Sessions in `file`, `database` or `redis` (not `cookie`) for apps with sign-in; `SESSION_ENCRYPT=true` if the store is shared.
-- Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the table's
-  routes.
-- Update in lockstep and read [UPGRADING.md](../UPGRADING.md); security fixes go to the latest minor version
-  ([versions](releases.md)).
+- `NODE_ENV=production`, or another protected value, in the server's environment, and no developer's `.env` on the server.
+- `APP_URL=https://…`, and a fresh `APP_KEY` per environment, kept in the server's secrets.
+- `contentSecurityPolicy()` in `bootstrap/app.ts`, which a new app has. New inline scripts take `ctx.nonce()`. With a `styleSrc`,
+  classes instead of `style` props, and `@marmeon/react/styles.css` imported in the client entry.
+- `verified()` after `authenticate()` on every route of your own that signed-in users reach.
+- `marmeon dev` over HTTPS or with `allowedHosts: true` only on a trusted network. Staging private, since it shows server errors.
+- Whether unconfirmed accounts go: the `auth:prune-unverified` line in `modules/auth/schedule.ts`, and `AUTH_UNVERIFIED_DAYS` as you
+  want it, 7 by default. With `AUTH_PRIVATE_REGISTRATION=false`, tell your users that an unconfirmed account goes.
+- `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header.
+- HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`, or the proxy.
+- `TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
+  `X-Forwarded-*` itself and does not compress pages.
+- Sessions in `file`, `database` or `redis`, not `cookie`, for an app with sign-in. `SESSION_ENCRYPT=true` when the store is shared.
+- Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the
+  table's routes.
+- Update the framework's packages together and read [UPGRADING.md](../UPGRADING.md). Security fixes go to the latest minor
+  version, as the [releases](releases.md) page explains.
