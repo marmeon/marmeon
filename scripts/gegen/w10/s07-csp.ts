@@ -33,7 +33,8 @@ const hydrationTest = { vitest: inlineStyles, name: 'after hydrating' } as const
 const leakTest = (what: string) => ({ vitest: 'packages/react/src/bundle-size.test.ts', name: `${what} in emptyApp` }) as const;
 const smoke = { command: ['pnpm', 'run', 'pack:smoke'], timeout: 15 * MINUTES } as const;
 const packCheck = { command: ['pnpm', 'run', 'pack:check'], timeout: 10 * MINUTES } as const;
-const probe = { command: ['node', 'scripts/csp-probe.ts', '--app', 'apps/web-app', '--build'], timeout: 10 * MINUTES } as const;
+// `--throwaway`: its own key and seeded database — the acceptance runs it in a fresh git worktree without .env or storage/ (W10 step 9c).
+const probe = { command: ['node', 'scripts/csp-probe.ts', '--app', 'apps/web-app', '--build', '--throwaway'], timeout: 10 * MINUTES } as const;
 const DIST_DIALOG = 'packages/react/dist/layer-dialog.js';
 const DIST_STYLE_AFTER_MOUNT = 'style: mounted ? style : undefined';
 

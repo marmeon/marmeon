@@ -7,6 +7,11 @@
  *   node scripts/csp-probe.ts --app apps/web-app [--build]               # builds (with --build), starts `marmeon start`, probes
  *   node scripts/csp-probe.ts --app <kit> --profile kit [--build]        # a starter kit (pack:smoke --keep, create-marmeon)
  *   node scripts/csp-probe.ts --url http://127.0.0.1:3961 --profile web-app   # a server that already runs
+ *   node scripts/csp-probe.ts --app apps/web-app --build --throwaway     # a fresh checkout (the acceptance's git worktree, W10 step 9c)
+ *
+ * `--app` starts the app as it is: its `.env` and its database (seeded — the profile signs in). `--throwaway` needs neither: a
+ * generated `APP_NAME`, `APP_URL` and `APP_KEY`, and SQLite files in a temporary directory (`DB_DATABASE`, `SYSTEM_DB_DATABASE`),
+ * migrated and seeded first (`marmeon migrate:fresh --seed --force --no-types`) and removed afterwards; `--env` still wins.
  *
  * What it does, per profile: the guest and the signed-in pages (sign-in over HTTP, the cookie set with `Network.setCookie` —
  * a form sign-in leaves headless Chrome deaf to CDP input), a layer by deep link and by a real click (focus inside, Escape closes
@@ -16,6 +21,7 @@
  * Needs Google Chrome (`--chrome <path>` or `CHROME`). Starts and stops its own processes by PID. Exit 0 green, 1 red, 2 setup.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -74,6 +80,32 @@ function stopAll(): void {
 }
 process.on('exit', stopAll);
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => process.exit(130));
+
+/**
+ * `--throwaway`: what a fresh checkout lacks — the variables the app cannot start without and a database with the profile's users —
+ * in a temporary directory, never the app's own `.env` or `storage/`.
+ */
+function throwaway(app: string, env: Record<string, string>): { env: Record<string, string>; dir: string } {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-csp-probe-db-')));
+  const prepared = {
+    APP_NAME: 'csp-probe',
+    APP_URL: 'http://127.0.0.1',
+    APP_KEY: `base64:${randomBytes(32).toString('base64')}`,
+    DB_DATABASE: join(dir, 'database.sqlite'),
+    SYSTEM_DB_DATABASE: join(dir, 'system.sqlite'),
+    ...env,
+  };
+  const seeded = spawnSync(join(app, 'node_modules/.bin/marmeon'), ['migrate:fresh', '--seed', '--force', '--no-types'], {
+    cwd: app,
+    env: { ...process.env, NODE_ENV: 'production', ...prepared },
+    encoding: 'utf8',
+  });
+  if (seeded.status !== 0) {
+    rmSync(dir, { recursive: true, force: true });
+    throw new ProbeError(`marmeon migrate:fresh --seed failed:\n${seeded.stdout}${seeded.stderr}`);
+  }
+  return { env: prepared, dir };
+}
 
 async function startServer(app: string, env: Record<string, string>): Promise<string> {
   const child = spawn(join(app, 'node_modules/.bin/marmeon'), ['start'], {
@@ -403,6 +435,7 @@ async function main(): Promise<number> {
       build: { type: 'boolean' },
       chrome: { type: 'string' },
       env: { type: 'string', multiple: true },
+      throwaway: { type: 'boolean' },
     },
   });
   const profile = PROFILES[values.profile!];
@@ -416,6 +449,7 @@ async function main(): Promise<number> {
     return 2;
   }
   let profileDir: string | undefined;
+  let databaseDir: string | undefined;
   try {
     let base = values.url;
     if (!base) {
@@ -425,7 +459,8 @@ async function main(): Promise<number> {
         const built = spawnSync(join(app, 'node_modules/.bin/marmeon'), ['build'], { cwd: app, env: { ...process.env, NODE_ENV: 'production' }, encoding: 'utf8' });
         if (built.status !== 0) throw new ProbeError(`marmeon build failed:\n${built.stdout}${built.stderr}`);
       }
-      const env = Object.fromEntries((values.env ?? []).map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)]));
+      let env = Object.fromEntries((values.env ?? []).map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)]));
+      if (values.throwaway) ({ env, dir: databaseDir } = throwaway(app, env));
       base = await startServer(app, env);
     }
     const started = await startChrome(chrome);
@@ -443,6 +478,7 @@ async function main(): Promise<number> {
     stopAll();
     await sleep(300);
     if (profileDir) rmSync(profileDir, { recursive: true, force: true });
+    if (databaseDir) rmSync(databaseDir, { recursive: true, force: true });
   }
 }
 

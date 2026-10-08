@@ -6,7 +6,8 @@ import { defineGegenproben } from '../define.ts';
  * Unconfirmed accounts: without the schedule entry they stay (G1 web app, G1b the stub through the make:auth fixture). What is
  * deleted is decided by two conditions — the deadline and the missing confirmation — each with its own scenario (masking pair
  * G2 ↔ G3: a confirmed old account and an unconfirmed young one), never what was confirmed once — `first_verified_at` (Max, 07.10.;
- * G12 ↔ G3: each condition with its own account, G13/G13b: the link keeps the first confirmation) —, by the delete itself again
+ * G12 ↔ G3: each condition with its own account, G13/G13b: the link keeps the first confirmation — X13: changeEmail's coalesce
+ * covers a link without it once the address changes, W10 step 9c) —, by the delete itself again
  * (G2b ↔ X2b: the look-up's condition hides a delete without its own — only a race shows it), counted from the sign-up (G2c). What goes with the account:
  * its sessions (G4), its reset token (G5), its avatar after the commit (G6, G6b).
  *
@@ -24,6 +25,7 @@ const pruneAll = webPrune('deletes the account with everything that is its');
 const DELETE_CONDITIONS = "query = query.where('email_verified_at', 'is', null).where('first_verified_at', 'is', null).where('created_at', '<=', at);";
 const MARK_VERIFIED = ".set({ email_verified_at: now, first_verified_at: sql<Date>`coalesce(first_verified_at, ${now.toISOString()})`, updated_at: now })";
 const firstConfirmation = webPrune('the first confirmation is kept for good');
+const linkRecords = webPrune('the verification link records the first confirmation itself');
 const SESSION = 'packages/session/src/session.ts';
 const LAZY = '    this.#started = true;\n    // No CSRF token yet (E203)';
 const csrf = (name: string) => ({ vitest: 'packages/session/src/csrf.test.ts', name }) as const;
@@ -84,11 +86,20 @@ export default defineGegenproben({
     },
     {
       id: 'G13',
-      title: 'the verification link does not keep the first confirmation: confirmed, then changed — the account is prunable',
+      title: 'the verification link does not record the first confirmation: first_verified_at stays empty after the link',
+      patch: [{ file: WEB_REPO, find: MARK_VERIFIED, replace: '.set({ email_verified_at: now, updated_at: now })' }],
+      run: linkRecords,
+      expect: /the link did not record the first confirmation: expected null not to be null/,
+      masks: 'G12',
+    },
+    {
+      // Since W10 step 9b changeEmail() keeps a confirmation itself (coalesce) — G13's old scenario (confirmed, then changed) stayed
+      // green without the link's write; found by the acceptance in a fresh worktree (W10 step 9c). The coalesce alone: s09b G4.
+      id: 'X13',
+      title: "masking probe: the same link without its write — confirmed, then changed, the account is kept (changeEmail's coalesce covers it)",
       patch: [{ file: WEB_REPO, find: MARK_VERIFIED, replace: '.set({ email_verified_at: now, updated_at: now })' }],
       run: firstConfirmation,
-      expect: /the first confirmation was not kept: expected null not to be null/,
-      masks: 'G12',
+      expectGreen: true,
     },
     {
       id: 'G13b',

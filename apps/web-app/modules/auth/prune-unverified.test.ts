@@ -127,6 +127,18 @@ describe('pruning accounts whose address was never confirmed (E203)', () => {
     expect(await app.make(UserRepository).find(kj.id), 'an account confirmed once was deleted').toBeDefined();
   });
 
+  it('the verification link records the first confirmation itself — whatever clears the address later (E203)', async () => {
+    // changeEmail() keeps a confirmation too (coalesce, W10 step 9b) and so hides a link that records none in the test above
+    // (W10 step 9c): here the link's own write, before anything else touches the account.
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    const kj = await made(30, false, 'kj@example.com');
+    await app.make(UserRepository).markEmailVerified(kj.id);
+    const confirmed = await app.make(UserRepository).find(kj.id);
+    expect(confirmed?.first_verified_at, 'the link did not record the first confirmation').not.toBeNull();
+    expect(confirmed?.first_verified_at).toEqual(confirmed?.email_verified_at);
+  });
+
   it('an account confirmed by email_verified_at alone (an import, a seeder) keeps that through a change of address (open mode)', async () => {
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
     app.freeze();
