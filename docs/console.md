@@ -184,7 +184,8 @@ export default defineModule({
   with `short: 'd'` for a one-letter form. An option the command does not declare is an error before the command runs.
 - **`static hidden = true`** keeps a command out of `marmeon list`.
 - **`handle(input)`** gets the positional arguments as `args`, the options as `options`, the console as `output` and the app's
-  directory as `root`. It returns the exit code, and nothing means 0.
+  directory as `root`, and `spawn(...args)` runs another `marmeon` command in a fresh process. It returns the exit code, and
+  nothing means 0.
 
 `output` writes `line()`, `info()`, `success()` and `table(header, rows)` to stdout, and `warn()` and `error()` to stderr. Colours
 are dropped when the output is no terminal.
@@ -263,7 +264,8 @@ stderr and the exit code is 1. A signal ends it with 130.
 Tinker works in every environment: whoever has a shell on the server can already do anything the app can. Where the app is
 protected, in production, staging or without a `NODE_ENV`, the banner says so in red and names the database:
 `PRODUCTION — NODE_ENV=production, db pgsql (db.internal:5432/app): every change is real.` It names the driver, host and
-database, never a user or a password. `--sandbox` is the safe way to look around.
+database, never a user or a password. With `--execute` the same line goes to stderr, so a script's stdout keeps only the value.
+`--sandbox` is the safe way to look around.
 
 ### History
 

@@ -15,7 +15,8 @@ pnpm marmeon make:notifications-table
 pnpm marmeon migrate
 ```
 
-A notification that tells a user about every sign-in with a password:
+A notification that tells a user about every sign-in with a password. Its mail class, `NewSignInMail`, and `describeBrowser()`,
+which names the browser of a user agent, are the app's own files:
 
 ```ts title="modules/auth/notifications/NewSignInNotification.ts"
 import type { Translator } from '@marmeon/i18n';
@@ -75,8 +76,9 @@ pnpm marmeon make:notification NoteShared --module=notes
 - **`via(recipient, data)`** returns the channels for this recipient, and may be `async`.
 - **A method per channel**: `toDatabase()` for `database` and `toMail()` for `mail`.
 - **`static database`** checks what the database channel stores. Only the fields it describes are kept.
-- **`static queue`** picks the queue, `connection`, `delay`, `tries` and `backoff` of the notification's job and of its mail.
-  Without it the job tries three times, 10 seconds, a minute and five minutes apart.
+- **`static queue`** picks the queue, `connection`, `delay`, `tries` and `backoff` of the notification's job. Its mail goes to
+  the same queue and connection, with the mail's own retries. Without `tries` the job tries three times, 10 seconds and then a
+  minute apart.
 
 The class is built through the container for each delivery, so its constructor gets what it asks for. A module lists its
 notifications, and only a listed notification can be sent:
@@ -203,7 +205,7 @@ web servers only with `LIVE_DRIVER=redis`. The [real-time updates](realtime.md) 
 ### A channel of your own
 
 A channel is a class with `deliver(delivery)`. Add its name to `NotificationChannelMap`, with what a notification needs for it,
-and register it when your provider boots:
+and register it when your provider boots. The app lists the provider, as the [service providers](providers.md) page shows:
 
 ```ts title="modules/sms/SmsServiceProvider.ts"
 import type { Application, ServiceProvider } from '@marmeon/core';
@@ -245,6 +247,9 @@ The `Inbox` reads and changes a recipient's notifications, and every method take
 | `page(recipient, { cursor?, perPage = 20, encrypter })` | A page for "load more", newest first, at most 500. |
 | `markRead(recipient, id)`, `delete(recipient, id)` | One notification. `false` when the recipient has none with this id. |
 | `markAllRead(recipient)`, `deleteAll(recipient)` | All of them, and how many. |
+
+`unread()` and `latest()` return rows with `id`, `type`, `data`, `readAt` and `createdAt`, the times as ISO strings. `page()`
+returns them as `data`, with `meta.nextCursor` for the next page.
 
 Every statement carries the recipient, so an id of somebody else's notification finds nothing and changes nothing. Answer 404
 for it, as for an id that does not exist:
@@ -298,13 +303,29 @@ export const schedule = defineSchedule((s) => {
 
 ## Testing
 
-A test app replaces `Notifications` with a fake. A send is checked as for real and recorded, and a test asserts it:
+A test app replaces `Notifications` with a fake. A send is checked as for real and recorded, and `deliver()` delivers what was
+recorded, the rows and the queued mails included:
 
-```ts
-app.notifications.assertSent({ type: 'user', id: ada.id }, NewSignInNotification, { ip: '127.0.0.1' });
-await app.notifications.deliver();
+```ts title="modules/notes/share-notification.test.ts"
+import { Inbox } from '@marmeon/notifications';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { UserFactory } from '#modules/auth';
+import { NoteRepository } from './NoteRepository.ts';
+import { NoteSharedNotification } from './notifications/NoteSharedNotification.ts';
+
+it('notifies the person a note is shared with', async () => {
+  const app = await createTestApp(application, { database: 'refresh' });
+  const ada = await app.factory(UserFactory).create();
+  const bob = await app.factory(UserFactory).create({ email: 'bob@example.com' });
+  const note = await app.make(NoteRepository).insert({ user_id: ada.id, title: 'Groceries', body: '' });
+  await app.actingAs(ada).post(`/notes/${note.id}/share`, { form: { email: 'bob@example.com' } }).assertRedirect();
+  app.notifications.assertSent({ type: 'user', id: bob.id }, NoteSharedNotification, { noteId: note.id });
+  await app.notifications.deliver();
+  expect(await app.make(Inbox).count({ type: 'user', id: bob.id })).toBe(1);
+});
 ```
 
-`deliver()` delivers what was recorded for real: the rows and the queued mails. `assertSentTimes`, `assertNotSent` and
-`assertNothingSent` check the rest. `createTestApp(app, { notifications: 'real' })` keeps the real service, and then
-`app.queue.work()` runs the jobs. The [fakes](fakes.md) page covers every fake.
+`assertSentTimes`, `assertNotSent` and `assertNothingSent` check the rest. `createTestApp(app, { notifications: 'real' })` keeps the
+real service, and then `app.queue.work()` runs the jobs. The [fakes](fakes.md) page covers every fake.

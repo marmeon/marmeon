@@ -182,7 +182,8 @@ the supported locales. The [mail](mail.md#the-recipients-language) and [notifica
 ## The request's locale
 
 The `SetLocale` middleware of the `web` group picks the request's locale, after the session starts and before the CSRF check, so
-its errors are translated too. It takes the first supported locale of:
+its errors are translated too. With only one supported locale there is nothing to choose, and every request speaks it. With more,
+it takes the first supported locale of:
 
 1. the session's `locale`, a language switcher's choice;
 2. the signed-in user's, through `LocalePreference`;
@@ -198,8 +199,9 @@ container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await
 
 A value from a session, a header or a form becomes a locale only when it names a supported one, and then in the app's spelling.
 So what reaches `<html lang>`, the page and the browser's language files is always one of your locales, never a path or markup.
-Every response carries `Content-Language`. With more than one supported locale it also carries `Vary: accept-language`, so a
-cache keeps the languages apart. The page carries its `locale` and the fallback locale, never the messages: the browser loads
+Every response of the `web` group carries `Content-Language`. With more than one supported locale it also carries
+`Vary: accept-language`, so a cache keeps the languages apart. Routes of the `api` group pass no `SetLocale`: their `Translator`
+speaks `APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads
 those itself.
 
 `Locales` is a service of the whole app: `default`, `fallback`, `supported` with the default first, `explicit` for whether
@@ -207,16 +209,13 @@ those itself.
 
 ### A language switcher
 
-A switcher posts the chosen locale, checks it with `Locales` and writes it into the session. A signed-in user's choice also goes
-into the account, so their mails come in it and their other devices start in it:
+A switcher posts the chosen locale, checks it with `Locales` and writes it into the session:
 
 ```ts title="modules/locale/controllers/UpdateLocaleController.ts"
-import { Auth } from '@marmeon/auth';
 import { ClientHistory, Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Locales } from '@marmeon/i18n';
 import { Session } from '@marmeon/session';
 import { rules as r } from '@marmeon/validation';
-import { UserRepository } from '#modules/auth';
 
 export const UpdateLocaleRequest = defineRequest({
   schema: r.object({ locale: r.string().max(35) }),
@@ -227,30 +226,30 @@ export class UpdateLocaleController extends Controller {
 
   readonly #locales: Locales;
   readonly #session: Session;
-  readonly #auth: Auth;
-  readonly #users: UserRepository;
   readonly #history: ClientHistory;
 
-  constructor(locales: Locales, session: Session, auth: Auth, users: UserRepository, history: ClientHistory) {
+  constructor(locales: Locales, session: Session, history: ClientHistory) {
     super();
     this.#locales = locales;
     this.#session = session;
-    this.#auth = auth;
-    this.#users = users;
     this.#history = history;
   }
 
-  async handle(ctx: ContextOf<typeof UpdateLocaleRequest>) {
+  handle(ctx: ContextOf<typeof UpdateLocaleRequest>) {
     const locale = this.#locales.find(ctx.body.locale);
-    if (!locale) throw new ValidationError({ locale: ['app.locale.unsupported'] }, { locale: ctx.body.locale });
+    if (!locale) throw new ValidationError({ locale: ['Choose one of the offered languages.'] }, { locale: ctx.body.locale });
     this.#session.put('locale', locale);
-    const user = await this.#auth.user();
-    if (user) await this.#users.updateLocale(user.id, locale);
     this.#history.clear({ siteData: ['cache'] });
     return this.back('/');
   }
 }
 ```
+
+A message that is no translation key, like this one, stays as written. A key of your `lang/` files is translated instead. The
+session holds the choice for this browser. To make it the account's too, so that mails come in it and other devices start in
+it, also write it into the `locale` column of the signed-in user's row, which the starter kit's `users` table has: a small method
+of your `UserRepository` that updates the column, called when `Auth` has a user. The starter kit's `LocalePreference` then reads
+it on every device.
 
 `this.#history.clear()` makes the browser load the next page in full and drops the pages its cache keeps in the old language.
 The locale is part of what the browser's other tabs watch, so they load again in the new language, as

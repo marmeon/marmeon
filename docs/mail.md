@@ -81,7 +81,8 @@ SMTP is encrypted or it fails. With `MAIL_SECURE=true` the connection speaks TLS
 it with STARTTLS and requires the upgrade: a server that does not offer it, or someone on the way who strips the offer, gets no
 credentials and no mail, and the send fails instead of going out in plain text. A queued mail then retries like any failed job.
 `MAIL_REQUIRE_TLS=false` turns the requirement off, for a local server without TLS such as Mailpit, or a relay on the same
-machine. Prefer port 465 with `MAIL_SECURE=true` where your provider offers it.
+machine. With it, credentials and mails go in plain text whenever the server offers no STARTTLS, so never use it over a network you
+do not control. Prefer port 465 with `MAIL_SECURE=true` where your provider offers it.
 
 ## Writing mails
 
@@ -104,7 +105,7 @@ when the mail is composed: a line break there could add recipients.
 MJML is a library of its own. A new app has it, and an app without it gets `pnpm add mjml@^5` in the error of its first MJML mail.
 
 The starter kit's mails share a frame: a function that returns `` mjml`…` `` and takes the translator and the body. Each mail
-nests its own body into it:
+nests its own body into it. Here is a shorter version of its `layout.ts`, without the styles and the footer:
 
 ```ts title="modules/auth/mail/layout.ts"
 import type { Translator } from '@marmeon/i18n';
@@ -134,7 +135,8 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
 Queue a mail whenever a request sends it:
 
 - **The request never waits for the mail server**, and a server that is down never turns a registration into an error. The job
-  tries five times, 10 seconds, a minute and five minutes apart, and then waits among the failed jobs for `queue:retry`.
+  tries five times, waiting 10 seconds, a minute, then five minutes before each further try, and then waits among the failed
+  jobs for `queue:retry`. Each try may take 30 seconds at most.
 - **The mail is composed when you queue it**, in the language of the translator you gave it and with its links. The worker only
   hands the finished message to the transport.
 - **The job is encrypted** with `APP_KEY`, since a mail carries what only its recipient may see, such as a reset link. The jobs
@@ -166,8 +168,9 @@ in. Composing a mail fails when a link or an image starts with `/`, `./`, `../` 
 NoteSharedMail links to "/notes/7" — a link in a mail must be absolute. Build it from APP_URL: new URL(path, config.url).href, or a signed URL with { base: config.url }.
 ```
 
-Build every link from `APP_URL`, never from the request's `Host` header: `new URL(router.url('notes.show', { note: 7 }),
-config.url).href`. A signed link takes `{ base: config.url }`, as the [URL generation](urls.md#absolute-urls) page shows.
+Build every link from `APP_URL`, never from the request's `Host` header. With the injected `AppConfig` as `app`:
+`new URL(router.url('notes.show', { note: 7 }), app.url).href`. A signed link takes `{ base: app.url }`, as the
+[URL generation](urls.md#absolute-urls) page shows.
 
 ## Attachments
 

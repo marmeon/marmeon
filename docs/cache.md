@@ -101,9 +101,8 @@ Values are stored as JSON, so they must survive `JSON.stringify()`: a `Date` com
 clock, so `app.travel()` in a test moves it, except on Redis, whose keys expire by Redis' own clock.
 
 `add()` and `increment()` are atomic in every store, and across processes in the `file`, `database` and `redis` stores. Of two
-`add()` calls at once, exactly one stores its value.
-Two processes that count at once never lose a count. A new key of `increment()` gets the time to live, and an existing one keeps
-its expiry, so a window does not start over with every hit.
+`add()` calls at once, exactly one stores its value. Two processes that count at once never lose a count. A new key of
+`increment()` gets the time to live, and an existing one keeps its expiry, so a window does not start over with every hit.
 
 `remember()` is no lock: when two requests miss at once, both compute the value. When the work must run only once, take a lock.
 
@@ -176,7 +175,9 @@ So the warning above holds for all of them: with more than one server, the cache
 ## Expired entries and clearing
 
 The `memory`, `file` and `database` stores keep an expired entry until it is read or overwritten. `cache:prune` deletes expired
-entries and locks, and never touches one that is still valid. Redis expires keys by itself, and the command says so. Schedule it:
+entries and locks, and never touches one that is still valid. Redis expires keys by itself, and the command says so. Schedule it
+in a module's schedule, which counts once the module lists it as `schedule` in its definition, as the
+[task scheduling](scheduling.md) page shows:
 
 ```ts title="modules/system/schedule.ts"
 import { defineSchedule } from '@marmeon/scheduler';

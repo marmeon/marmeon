@@ -36,7 +36,7 @@ export class DownloadMyNotesController extends Controller {
     const notes = await this.#notes.query().select(['title', 'body']).where('user_id', '=', ctx.user.id).execute();
     const disk = this.#storage.disk('local');
     const key = `exports/notes-${ctx.user.id}.json`;
-    await disk.put(key, JSON.stringify(notes, null, 2), { contentType: 'application/json' });
+    await disk.put(key, JSON.stringify(notes, null, 2));
     return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: 'my-notes.json' }), 303);
   }
 }
@@ -117,7 +117,7 @@ how to keep it.
 
 A missing file throws `FileNotFoundError`. A reader never sees half a file: the local driver writes to a temporary file and
 renames it into place. The content type comes from the key's extension on a local disk, and from what was stored on S3 and in
-memory.
+memory: `put()`'s `contentType` counts there only.
 
 ## Public and private files
 
@@ -127,7 +127,8 @@ route.
 
 `temporaryUrl()` works on every disk. For a local disk it is a path of the app,
 `/_marmeon/storage/<disk>/<key>?expires=…&signature=…`, signed with a key derived from `APP_KEY`, and the signature covers the
-path, the file name and the expiry. A changed or expired link answers 403. `base: config.url` makes it absolute, for a mail. An S3
+path, the file name and the expiry. A changed or expired link answers 403. `base` makes it absolute, for a mail: pass the `url` of
+the injected `AppConfig`, which is `APP_URL`. An S3
 disk presigns a link to the bucket instead.
 
 Every file the app serves goes out with:
@@ -208,6 +209,9 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
 - **Never echoed.** A `TemporaryUpload` turns into nothing as JSON: old input after a failed submit, a log line and a JSON answer
   never hold the token or the file.
 - **HTML, SVG and XML** are never accepted, whatever the rule's `mime` list says.
+- **The types a rule can name** are those known by their first bytes: PNG, JPEG, GIF, WebP and AVIF images, PDF, ZIP, MP4 and MP3.
+  Any other type in `mime` throws when the rule is built. A file of another format, such as CSV, counts as
+  `application/octet-stream`, which only a rule without `mime` accepts.
 - **Not yet:** lists of files, a file inside an optional or nullable object, and a form without JavaScript.
 
 On S3, the browser sends the file straight to the bucket with a presigned POST that limits its size. The bucket then needs CORS

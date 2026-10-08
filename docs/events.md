@@ -167,7 +167,7 @@ export class NotePublished {
   the jobs that wait.
 - **`static schema`** reads the event object itself and describes JSON: ids, not records, dates or maps. The payload is checked
   against it when the listener is queued and again before it runs. A record carried in a job would be stale by then. The
-  listener reads it again, as it is now.
+  listener reads it again, as it is now. The job that carries the payload is encrypted with `APP_KEY`.
 - **`static queue`** takes `queue`, `connection`, `delay`, `tries` and `backoff`. Without `tries` a queued listener runs once.
 
 `listen()` checks all of this when it compiles: an event without `static event` and `static schema`, a schema that is no JSON, a
