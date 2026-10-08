@@ -13,7 +13,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
   describe('Navigator — the history without props (E36)', () => {
     it('keeps only { component, url, scroll, key } in the entry’s state (+ its `index` in the History fallback) — never the props', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
-      win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'bc_1|secret-token', email: 'ada@example.com' }, 'auth/AccessTokens'));
+      win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'marmeon_1|secret-token', email: 'ada@example.com' }, 'auth/AccessTokens'));
       const { navigator } = boot(win, page('/users/1', { email: 'ada@example.com' }));
       await navigator.visit('/settings/tokens');
 
@@ -55,7 +55,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
 
     it('counter-check: after a reload or a session restore, Back asks the server — and shows what it answers now', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
-      win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'bc_1|secret-token' }));
+      win.handler = () => pageResponse(page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }));
       const first = boot(win, page('/users/1', { email: 'ada@example.com' }));
       await first.navigator.visit('/settings/tokens');
       first.stop();
@@ -80,7 +80,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
     it('never shows the props an older client left in history.state — the History fallback asks the server; the Navigation API path leaves the entry to the browser', async () => {
       const win = new FakeWindow(`${ORIGIN}/settings/tokens`);
       // Written by the client before E36: the whole page, plain-text token included.
-      win.history.pushState(page('/settings/tokens', { plainText: 'bc_1|secret-token' }), '', '/settings/tokens');
+      win.history.pushState(page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }), '', '/settings/tokens');
       win.history.pushState(null, '', '/login');
       win.handler = () => pageResponse(page('/login', {}, 'auth/Login'));
       const { visible, shown } = boot(win, page('/login', {}, 'auth/Login'));
@@ -89,7 +89,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
       await settle();
       // With the Navigation API, an entry without the navigator's state is the browser's (it has no state of the Navigation API).
       expect(win.requests.map((request) => request.url)).toEqual(path === 'history' ? [`${ORIGIN}/settings/tokens`] : []);
-      expect(shown.map((p) => p.props)).not.toContainEqual({ plainText: 'bc_1|secret-token' });
+      expect(shown.map((p) => p.props)).not.toContainEqual({ plainText: 'marmeon_1|secret-token' });
       expect(visible().component).toBe('auth/Login');
     });
 
@@ -113,7 +113,7 @@ describe.each(PATHS)('the navigator on the %s path (E184)', (path) => {
 
     it('loads fully on 409 + x-marmeon-location and forgets every page kept in memory', async () => {
       const win = new FakeWindow(`${ORIGIN}/settings/tokens`);
-      const { navigator } = boot(win, page('/settings/tokens', { plainText: 'bc_1|secret-token' }));
+      const { navigator } = boot(win, page('/settings/tokens', { plainText: 'marmeon_1|secret-token' }));
       win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
       expect(await navigator.visit('/logout', { method: 'post' })).toBeUndefined();
       expect(win.loads).toEqual(['assign /login']);

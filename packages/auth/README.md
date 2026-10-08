@@ -269,12 +269,12 @@ Personal access tokens, Sanctum-style, on `personal_access_tokens`:
 
 ```ts
 const { plainText, token } = await this.#tokens.create(ctx.user.id, 'CLI', { abilities: ['users:read'], expiresIn: '90d' });
-// plainText: 'bc_12|<40 characters><crc32>' — shown once, never stored; the table keeps a SHA-256 of the secret
+// plainText: 'marmeon_12|<40 characters><crc32>' — shown once, never stored; the table keeps a SHA-256 of the secret
 await this.#tokens.list(ctx.user.id);              // AccessToken[]: id, name, abilities, lastUsedAt, expiresAt, createdAt
 await this.#tokens.revoke(ctx.user.id, id);        // false when the user has no such token
 ```
 
-- **Format:** `AUTH_TOKEN_PREFIX` (`bc_`, so secret scanners recognize leaked tokens), the row id, 40 random characters and a
+- **Format:** `AUTH_TOKEN_PREFIX` (`marmeon_`, so secret scanners recognize leaked tokens), the row id, 40 random characters and a
   CRC32 over all of it — a typo fails in `parseAccessToken()` without a query. 62⁴⁰ possibilities need no slow hash.
 - **Abilities:** `['*']` by default; `tokenCan(token, ability)` and `abilities(…)` check them. Without `expiresIn` a token
   lives until revoked; `touch()` notes its use at most once a minute.
@@ -427,7 +427,7 @@ AUTH_REMEMBER_COOKIE=remember_web
 AUTH_PASSWORD_TIMEOUT=900         # seconds a confirmation counts for confirmedPassword()
 AUTH_RESET_EXPIRE=60              # minutes a reset link works
 AUTH_RESET_THROTTLE=60            # seconds before another reset link for the same e-mail
-AUTH_TOKEN_PREFIX=bc_             # API tokens; lower-case letters, digits and _, at most 16
+AUTH_TOKEN_PREFIX=marmeon_             # API tokens; lower-case letters, digits and _, at most 16
 AUTH_PRIVATE_REGISTRATION=true    # private registration (E146, E193) — only true and false boot
 AUTH_UNVERIFIED_DAYS=7            # days before an account without a confirmed address is deleted (E203); 0 keeps them
 ```

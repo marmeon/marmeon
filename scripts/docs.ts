@@ -50,7 +50,7 @@ async function check(): Promise<number> {
     CACHE_DRIVER: 'memory',
     LOG_LEVEL: 'warn',
   };
-  delete env.NODE_ENV; // `marmeon build` and `marmeon start` set production themselves
+  delete env.NODE_ENV; // `marmeon build` builds for production without one (a development NODE_ENV of .env is set aside), `marmeon start` sets production
 
   console.log('docs:check: marmeon build');
   const build = spawnSync(process.execPath, [marmeon, 'build'], { cwd: app, stdio: 'inherit', env });

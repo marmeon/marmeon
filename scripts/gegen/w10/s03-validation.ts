@@ -129,7 +129,7 @@ export default defineGegenproben({
     {
       id: 'G12',
       title: 'the lab form without its gate: with the lab off, the schema still runs (it asks the database) — a 422, not a 404',
-      patch: [{ file: 'apps/web-app/modules/lab/controllers/ValidationLabController.ts', find: '  authorize: (_ctx, resolve) => resolve(LabGate).open(),\n', replace: '' }],
+      patch: [{ file: 'apps/web-app/modules/lab/controllers/ValidationLabController.ts', find: '  attributes,\n  authorize: (_ctx, resolve) => resolve(LabGate).open(),\n});\n\n/**\n * The same form', replace: '  attributes,\n});\n\n/**\n * The same form' }],
       run: { vitest: 'apps/web-app/modules/lab/validation.test.ts', name: 'a 404 before the schema runs' },
       expect: /Expected status 404, got 422/,
     },

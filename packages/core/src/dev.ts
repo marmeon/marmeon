@@ -1,6 +1,8 @@
 /**
  * The guard of every development route (E200) — the devtools (`/_marmeon/devtools`), the mail previews (`/_marmeon/mail`) and any
- * later one. Such a route exists only with `NODE_ENV=development` (E115); this decides **who** it answers:
+ * later one. Such a route answers only with `NODE_ENV=development` (E115; and `test`, for the app's tests) — anywhere else a 404, so
+ * a route of your own registered without asking the environment stays shut on a server, where `APP_URL`'s host is public — and
+ * this decides **who** it answers:
  *
  * ```ts
  * import { devHosts, devOnly } from '@marmeon/core/dev';
@@ -80,9 +82,20 @@ export function forbiddenDevHost(): Response {
   );
 }
 
+/** Whether development routes answer at all: `NODE_ENV` is `development` (or `test`) — asked positively, per request (E115, E201). */
+export function devEnvironment(env: { readonly NODE_ENV?: string | undefined } = process.env): boolean {
+  return env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
+}
+
+/** The answer of a development route outside development: as if there were none. */
+export function notInDevelopment(): Response {
+  return devSecured(new Response('Not Found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } }));
+}
+
 /**
- * Wraps a development route's handler — or a middleware's `handle` (its `next` comes through): a request for a host outside
- * `hosts` gets 403 and the handler never runs; every answer gets {@link devSecured}'s headers (`no-store`, CORP/COOP
+ * Wraps a development route's handler — or a middleware's `handle` (its `next` comes through): outside development (`NODE_ENV`
+ * neither `development` nor `test` — production, staging, a typo, none) a 404, fail-closed; a request for a host outside `hosts`
+ * gets 403; in both cases the handler never runs. Every answer gets {@link devSecured}'s headers (`no-store`, CORP/COOP
  * `same-origin`, `nosniff`, no CORS).
  *
  * ```ts
@@ -94,5 +107,8 @@ export function devOnly<TArgs extends readonly [{ readonly request: Request }, .
   hosts: ReadonlySet<string>,
   handler: (...args: TArgs) => Response | Promise<Response>,
 ): (...args: TArgs) => Promise<Response> {
-  return async (...args) => (hostAllowed(args[0].request, hosts) ? devSecured(await handler(...args)) : forbiddenDevHost());
+  return async (...args) => {
+    if (!devEnvironment()) return notInDevelopment();
+    return hostAllowed(args[0].request, hosts) ? devSecured(await handler(...args)) : forbiddenDevHost();
+  };
 }

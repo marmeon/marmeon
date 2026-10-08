@@ -33,15 +33,23 @@ export const UPGRADING_ANCHORS: Readonly<Record<'Wave 10' | 'Wave 9' | 'Wave 8' 
     'medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount', // W10.7, E202
     'medium-accounts-without-a-confirmed-address-are-deleted-after-7-days--auth_unverified_days-authprune-unverified', // W10.8, E203
     'low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract', // W10.3, E197
+    'low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it', // W10.9b, E206
+    'low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field', // W10.9b, E197
+    'low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes', // W10.9b
     'low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major', // W10.2, E198
     'low-uploadsprune---hours-below-uploads_lifetime-needs---force', // W10.8, E204
     'low-what-a-failure-shows-loads-when-it-happens--the-dialog-of-a-5xx-and-the-error-pages-are-a-chunk-of-their-own', // W10.7, E202
     'low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none', // W10.8, E203
+    'low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone', // W10.9b, E203
     'low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions', // W10.8, E204
+    'low-a-tables-default-sort-is-a-column-everyone-sees--defaultsort-refuses-one-with-visible', // W10.9b
     'low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings', // W10.6, E201
     'low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev', // W10.6, E200
+    'low-development-routes-answer-404-outside-development--whatever-their-host', // W10.9b, E115/E200
+    'low-marmeon-build-builds-for-production-next-to-a-development-env', // W10.9b, E170/E201
     'low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace', // W10.8, E205
     'low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments', // W10.8, E204
+    'low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token', // W10.9b, E125
   ],
   'Wave 9': [
     'low-marmeon-build-needs-no-env-and-no-key--drop-the-throwaway-key-from-your-dockerfile', // W9.2, E187

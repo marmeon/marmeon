@@ -219,16 +219,22 @@ field in a body schema, through `upload(…).nullable()` as well.
 - **Never live (E187/E193/E197).** A live validation (E62) checks a field while it is being typed; a `unique` there would tell anyone who
   types an address whether it has an account — in the background, without a submit, without a throttle that notices. So database rules
   and async `custom()` rules **do not run in a live validation**: a free and a taken value get the same answer there, and the submit
-  tells (where the throttle and the request's own rules apply). Their issues are marked as well: should one run anyway — inside another
-  library's schema, which calls ours without the request — the live validation drops it. `.live()` opts a rule in, for values whose being
-  taken is no secret (a team's slug in its own settings); never for anything that tells whether an account exists. Registration has
-  no `unique` at all (private registration, E146/E193).
+  tells (where the throttle and the request's own rules apply). A schema of **another library** does not run live at all unless its
+  request says `live: true` (E206, fail-closed — the router cannot see its checks). Inside such a schema that calls ours without the
+  request, a `unique`/`exists` throws (it needs the request — a 500, on submit too: put the whole object into `rules`), and an async
+  `custom()` that ran is dropped by its mark (`NOT_LIVE`) — the second measure.
+- **`.live()` goes on the field** — a rule of one value — and opts it in, for values whose being taken is no secret (a team's slug in
+  its own settings); never for anything that tells whether an account exists. On an object, a list or a union it is a compile error
+  and throws (`r.object({ … }).live()` would open every rule inside — the address next to the slug): `r.object({ slug:
+  r.string().unique(Teams, 'slug').live() })`. Registration has no `unique` at all (private registration, E146/E193).
 - **The unique index is the truth.** Two requests can race past `unique`; `failOnDuplicate()` of
-  [@marmeon/database](../database/README.md) turns the index's conflict into the same 422 at the field.
+  [@marmeon/database](../database/README.md) turns the index's conflict into the same 422 at the field — in the handler, where the
+  router lends the error the request's `messages` and `attributes` (the same text as the rule's).
 
 ## Other libraries
 
 Standard Schema stays the contract (E197): Zod, Valibot, ArkType or any other library's schemas work wherever a rule does — the app
-installs that library itself. `rules` is what the docs, the starter kit and the generators use. A rule is a Standard Schema object with
+installs that library itself. Only a live validation leaves them out: it answers `204` without running one, unless the request says
+`live: true` (E206). `rules` is what the docs, the starter kit and the generators use. A rule is a Standard Schema object with
 the vendor `marmeon`; its issues have plain paths (`['users', 1, 'email']`) and finished messages, so any consumer of Standard Schema
 reads them. `r.object()` takes rules only (a field of another library: wrap the whole object in that library instead).

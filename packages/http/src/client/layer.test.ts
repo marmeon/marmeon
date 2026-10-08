@@ -49,7 +49,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
 
     it('keeps no layer props in history.state — the key, the URL, the depth and the keys beneath (E36)', async () => {
       const win = new FakeWindow(`${ORIGIN}/users/1`);
-      win.handler = () => pageResponse(layer('/settings/tokens', { plainText: 'bc_1|secret-token', email: 'ada@example.com' }, 'auth/NewToken', { once: true }));
+      win.handler = () => pageResponse(layer('/settings/tokens', { plainText: 'marmeon_1|secret-token', email: 'ada@example.com' }, 'auth/NewToken', { once: true }));
       const app = profile(win, { email: 'ada@example.com' });
       await app.navigator.visit('/settings/tokens', { layer: true });
 
@@ -319,7 +319,7 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
     it('a layer shown once (an action’s answer) is forgotten when it leaves — Forward asks the server, what is beneath reloads', async () => {
       const win = new FakeWindow(`${ORIGIN}/settings/tokens`);
       win.handler = (url, init) => {
-        if (init.method === 'POST') return pageResponse(layer('/settings/tokens', { plainText: 'bc_1|secret' }, 'auth/NewToken', { key: 'tokens.create', once: true, base: '/settings/tokens' }));
+        if (init.method === 'POST') return pageResponse(layer('/settings/tokens', { plainText: 'marmeon_1|secret' }, 'auth/NewToken', { key: 'tokens.create', once: true, base: '/settings/tokens' }));
         if (url.endsWith('/create')) return pageResponse(layer('/settings/tokens/create', {}, 'auth/CreateToken', { key: 'tokens.create', base: '/settings/tokens' }));
         return pageResponse(page('/settings/tokens', { tokens: ['ci'] }, 'auth/Tokens'));
       };
@@ -343,8 +343,8 @@ describe.each(PATHS)('layers on the %s path (E184)', (path) => {
       await tick();
       // Not from memory: the server was asked, and its GET is the list — the plain text is gone for good.
       expect(win.requests.length).toBeGreaterThan(requests);
-      expect(JSON.stringify(app.layers().map((open) => open.page))).not.toContain('bc_1|secret');
-      expect(JSON.stringify(app.shown)).not.toContain('bc_1|secret');
+      expect(JSON.stringify(app.layers().map((open) => open.page))).not.toContain('marmeon_1|secret');
+      expect(JSON.stringify(app.shown)).not.toContain('marmeon_1|secret');
     });
   });
 

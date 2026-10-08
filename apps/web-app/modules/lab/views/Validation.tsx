@@ -2,34 +2,47 @@ import type { PageProps } from '@marmeon/http';
 import { Head, useForm } from '@marmeon/react';
 import type { ShowValidationLabController } from '../controllers/ValidationLabController.ts';
 
-/** What the inputs hold — strings and a checkbox; the rules read them (`age: '42'` is a number to `r.integer()`). */
+/** What the inputs hold — strings and checkboxes; the rules read them (`age: '42'` is a number to `r.integer()`). */
 interface Fields {
   name: string;
   email: string;
   website: string;
   age: string;
+  starts: string;
+  port: string;
+  invite: string;
+  inviter: string;
+  kind: 'person' | 'company';
+  vat: string;
   terms: boolean;
 }
 
+type TextField = Exclude<keyof Fields, 'kind' | 'terms'>;
+
 /**
- * The rules of @marmeon/validation (W10 step 3): a form whose schema is `rules` — messages in the request's language, the field's
- * name from `attributes`, a taken address told on submit only (E197). Send it empty, with a known address, in German.
+ * The rules of @marmeon/validation (W10 steps 3 and 9b): a form whose schema is `rules` — messages in the request's language, the
+ * field's name from `attributes`, a taken address told on submit only (E197); `when` (a company's VAT number), an async `custom`
+ * (an invitation code), `exists` (an account that invites), `r.date()` and `r.port()`. "As after a race" sends the same form to a
+ * route without `unique`: the unique index answers through `failOnDuplicate()`, with the same message.
  */
 export default function Validation(_props: PageProps<ShowValidationLabController>) {
-  const form = useForm<Fields>({ name: '', email: '', website: '', age: '', terms: false });
-  const field = (name: 'name' | 'email' | 'website' | 'age', label: string, type = 'text') => (
+  const form = useForm<Fields>({ name: '', email: '', website: '', age: '', starts: '', port: '', invite: '', inviter: '', kind: 'person', vat: '', terms: false });
+  const error = (name: keyof Fields) =>
+    form.errors[name] && (
+      <small role="alert" data-error={name}>
+        {' '}
+        {form.errors[name]}
+      </small>
+    );
+  const field = (name: TextField, label: string, type = 'text') => (
     <p>
       <label htmlFor={name}>{label}</label>
       <br />
       <input id={name} name={name} type={type} value={form.data[name]} onChange={(event) => form.set(name, event.target.value)} aria-invalid={!!form.errors[name]} />
-      {form.errors[name] && (
-        <small role="alert" data-error={name}>
-          {' '}
-          {form.errors[name]}
-        </small>
-      )}
+      {error(name)}
     </p>
   );
+  const send = (path: string) => void form.post(path);
   return (
     <main>
       <Head title="Validation lab" />
@@ -40,26 +53,37 @@ export default function Validation(_props: PageProps<ShowValidationLabController
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void form.post('/lab/validation');
+          send('/lab/validation');
         }}
       >
         {field('name', 'Name')}
         {field('email', 'E-mail', 'email')}
         {field('website', 'Website', 'url')}
         {field('age', 'Age', 'number')}
+        {field('starts', 'Starts on', 'date')}
+        {field('port', 'Port', 'number')}
+        {field('invite', 'Invitation code')}
+        {field('inviter', 'Invited by (an account\'s e-mail)', 'email')}
+        <p>
+          <label htmlFor="kind">Kind</label>
+          <br />
+          <select id="kind" name="kind" value={form.data.kind} onChange={(event) => form.set('kind', event.target.value as Fields['kind'])}>
+            <option value="person">Person</option>
+            <option value="company">Company</option>
+          </select>
+        </p>
+        {form.data.kind === 'company' && field('vat', 'VAT number')}
         <p>
           <label>
             <input type="checkbox" name="terms" checked={form.data.terms === true} onChange={(event) => form.set('terms', event.target.checked)} /> I accept the terms
           </label>
-          {form.errors.terms && (
-            <small role="alert" data-error="terms">
-              {' '}
-              {form.errors.terms}
-            </small>
-          )}
+          {error('terms')}
         </p>
         <button type="submit" disabled={form.processing}>
           Check
+        </button>{' '}
+        <button type="button" disabled={form.processing} onClick={() => send('/lab/validation/race')}>
+          Check as after a race (no unique rule)
         </button>
       </form>
     </main>

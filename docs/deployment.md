@@ -173,9 +173,12 @@ process.env.NODE_ENV === 'test'`, checked positively: `staging`, a typo or none 
 `[marmeon:C1] people.show`, no warnings, no error details). Where the value comes from differs:
 
 - **The client build** — Vite replaces `process.env.NODE_ENV` itself, with the value `marmeon build` runs under (`NODE_ENV`, or
-  `production` when it is unset); the Vite plugin sets no `define` of its own. The minifier folds the branches away. Build with
-  `NODE_ENV=production` (the image does) or without one: a build under `NODE_ENV=staging` still drops Marmeon's explanations, but
-  bakes in **React's development build** (React itself asks `=== 'production'`) — bigger and slower.
+  `production` when it is unset); the Vite plugin sets no `define` of its own. The minifier folds the branches away. A
+  `NODE_ENV=development` that comes from the app's **`.env`** (a developer's machine, E170) is set aside: `pnpm build` there runs with
+  `NODE_ENV=production` — set, because Vite reads the `.env` files itself and would take theirs — and says so (W10 step 9b). A `NODE_ENV` set in the environment itself is respected — with a warning unless it is
+  `production`. Build with `NODE_ENV=production` (the image does) or without one: a build under `NODE_ENV=staging` still drops
+  Marmeon's explanations, but bakes in **React's development build** (React itself asks `=== 'production'`) — bigger and slower, and
+  an error's message and stack reach every visitor; `NODE_ENV=development` in the environment keeps every development branch.
 - **Server rendering** reads `NODE_ENV` at run time: Vite replaces it only in the client build — the SSR build leaves
   `process.env.NODE_ENV` in the framework's code (bundled or external), and React stays external. On a staging server (`NODE_ENV=staging`) Marmeon takes no development branch — but **React renders with its development
   build** there (`react-dom/server` chooses by `NODE_ENV === 'production'`): slower, with React's own warnings in the log — and

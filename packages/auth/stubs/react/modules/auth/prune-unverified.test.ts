@@ -160,4 +160,12 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
     expect(await exists(kj), 'an account confirmed once was deleted').toBe(true);
     // A sign-up that never confirmed goes, in this behaviour too (the test above).
   });
+
+  it('an account confirmed by email_verified_at alone (an import, a seeder, an admin) keeps that through a change of address', async () => {
+    const legacy = (await app.factory(UserFactory).create({ email: 'legacy@example.com', email_verified_at: new Date(app.clock.now()).toISOString(), first_verified_at: null })) as User;
+    expect(await app.make(UserRepository).changeEmail(legacy.id, 'legacy@new.example')).toMatchObject({ email_verified_at: null });
+    expect((await app.make(UserRepository).find(legacy.id))?.first_verified_at, 'the change dropped the only confirmation').not.toBeNull();
+    await app.schedule.run(night(30));
+    expect(await exists(legacy), 'a confirmed account was deleted after its address changed').toBe(true);
+  });
 });

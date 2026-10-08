@@ -23,7 +23,10 @@ describe('createHttpKernel — live validation (E62)', async () => {
   const handled: string[] = [];
   const after: string[] = [];
 
-  /** A rule that needs the app (a uniqueness check): the schema is built per request with `resolve`. */
+  /**
+   * A rule that needs the app (a uniqueness check): the schema is built per request with `resolve`. A schema of another library
+   * (Valibot here) runs live only with `live: true` (E206) — the request's word that what it checks is no secret.
+   */
   class Directory {
     static taken = ['ada@example.com'];
     has(email: string) {
@@ -39,6 +42,7 @@ describe('createHttpKernel — live validation (E62)', async () => {
         password: v.pipe(v.string(), v.minLength(8, 'At least 8 characters.')),
         address: v.optional(v.object({ city: v.pipe(v.string(), v.minLength(2, 'A city.')) })),
       }),
+    live: true,
   });
   class SignUpController extends Controller {
     static request = SignUpRequest;

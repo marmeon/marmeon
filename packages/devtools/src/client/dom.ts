@@ -53,7 +53,7 @@ export function json(value: unknown, max = 20_000): string {
 export const STYLES = `
 :host { all: initial; }
 * { box-sizing: border-box; }
-.bc { --bg: #15171b; --panel: #1c1f24; --line: #2c3038; --text: #e6e8eb; --muted: #9aa2ad; --accent: #7dd3fc; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+.marmeon-devtools { --bg: #15171b; --panel: #1c1f24; --line: #2c3038; --text: #e6e8eb; --muted: #9aa2ad; --accent: #7dd3fc; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
   font: 12px/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--text); }
 .pill { position: fixed; right: 12px; bottom: 12px; z-index: 2147483646; display: flex; gap: 6px; align-items: center; padding: 5px 10px; border: 0;
   border-radius: 999px; background: var(--panel); color: var(--text); font: 600 12px/1.2 ui-sans-serif, system-ui, sans-serif; cursor: pointer;

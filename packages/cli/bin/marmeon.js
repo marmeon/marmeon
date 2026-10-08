@@ -64,12 +64,19 @@ function compileCache() {
  * the app is protected), then runs the command — in this process.
  */
 async function runHere(args, launch) {
-  const { DOTENV_MARKER, environment, resolveEnvironment } = await import('@marmeon/core/environment');
+  const { buildEnvironment, DOTENV_MARKER, environment, resolveEnvironment } = await import('@marmeon/core/environment');
   // `start` is production unless the environment or .env says otherwise (staging); `dev` is development (E115: development-only
   // tools check for `NODE_ENV=development`, never for "not production").
-  const fallback = launch === 'start' ? 'production' : launch === 'dev' ? 'development' : undefined;
+  // `build` builds for production without one (Vite would read a NODE_ENV of the .env files itself — W10 step 9b).
+  const fallback = launch === 'start' || launch === 'build' ? 'production' : launch === 'dev' ? 'development' : undefined;
   const resolved = resolveEnvironment(process.cwd(), { fallback });
   for (const warning of resolved.warnings) process.stderr.write(`⚠ ${warning}\n`);
+  if (launch === 'build') {
+    // What the build bakes into dist/client: a development NODE_ENV of .env never (W10 step 9b) — production, as an image builds it.
+    const { notes, warnings } = buildEnvironment();
+    for (const note of notes) process.stderr.write(`${note}\n`);
+    for (const warning of warnings) process.stderr.write(`⚠ ${warning}\n`);
+  }
   if (launch === 'dev') {
     // `marmeon dev` is development by itself — its server, worker and scheduler are no production commands, whatever .env says.
     if (environment.isDevelopment()) delete process.env[DOTENV_MARKER];

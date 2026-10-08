@@ -103,7 +103,7 @@ describe('<Form>: the token form as a browser sends it (E64)', () => {
     // Signing in counts as a fresh password confirmation (the token pages ask for one).
     const ada = await signIn('ada@example.com');
     const created = await ada.layering().post('/settings/tokens', { form: { name: 'CI', 'abilities[]': 'users:read' } }).assertOk().assertLayer('auth/NewAccessToken');
-    expect((created.page()!.props as { plainText: string }).plainText).toMatch(/^bc_/);
+    expect((created.page()!.props as { plainText: string }).plainText).toMatch(/^marmeon_/);
     const none = await ada.expectingJson().post('/settings/tokens', { form: { name: 'CI' } }).assertStatus(422);
     expect(none.json()).toMatchObject({ errors: { abilities: ['Pick what the token may do.'] } });
   });

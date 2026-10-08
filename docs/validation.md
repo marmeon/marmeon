@@ -255,32 +255,45 @@ sends its own request with `x-marmeon-validate: email`, and the route answers 20
 anyone who types an address whether it has an account — in the background, without a submit, without a throttle that ever notices
 (live validations have a limit of their own, generous for typing). So database rules and async `custom()` rules do not run live: a
 free and a taken address get the **same** answer, and only the submit tells — where the throttle and the request's own rules apply.
-Their issues are marked as well (`NOT_LIVE`): should one run anyway — inside another library's schema that calls ours without the
-request — the live validation drops it. Two measures, each tested on its own.
+A schema of **another library** does not run in a live validation at all (E206, fail-closed — the router cannot see which of its
+checks ask the database): the answer is 204 unless its request says `live: true`. And should one of ours run inside such a schema that
+calls it without the request, a database rule throws (it needs the request — a 500, on submit too) and an async `custom()` is dropped by
+the mark on its issue (`NOT_LIVE`). Measures each tested on its own.
 
 `.live()` opts a rule in, for values whose being taken is no secret — a team's slug inside the team's own settings. **Never** for
-anything that tells whether an account exists. The registration of `make:auth` has no database rule at all: with private
+anything that tells whether an account exists. It goes on the **field**: on an object, a list or a union it is a compile error and
+throws — it would open every rule inside, the address next to the slug:
+
+```ts
+r.object({ slug: r.string().unique(TeamRepository, 'slug').live(), email: r.email().unique(UserRepository, 'email') })   // slug live, email not
+r.object({ … }).live()   // ✗ The 'this' context of type 'ObjectRule<…>' is not assignable to method's 'this' of type '".live() goes on the field …"'
+``` The registration of `make:auth` has no database rule at all: with private
 registration (the default, E146/E193) it never tells, and with `AUTH_PRIVATE_REGISTRATION=false` the unique index tells on submit
 ([private registration](../packages/auth/README.md#private-registration-e146-e193)). An app that wants the old live "taken" back
 writes it itself — knowing what it gives away:
 
 ```ts
-email: email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).emailTaken(address)) || 'auth.validation.email_taken').live(),
+email: email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).findByEmail(address)) || 'auth.validation.email_taken').live(),
 ```
 
 **The unique index is the truth.** Two requests can race past `unique` — both see a free address, both insert. Keep the index in the
 migration (`table.string('email').unique()`) and let `failOnDuplicate()` of [@marmeon/database](../packages/database/README.md#queries-module-boundaries-and-relations)
-turn its conflict into the same 422 at the field (the rule's message, in the request's language); a violation of another index stays
-a 500 — a bug, not the input:
+turn its conflict into the same 422 at the field (the rule's message, in the request's language, with the request's `messages` and
+`attributes` — the router lends them to a `ValidationError` of the handler); a violation of another index stays a 500 — a bug, not the
+input:
 
 ```ts
 import { failOnDuplicate } from '@marmeon/database';
 
-await failOnDuplicate('email', () => this.#users.update(ctx.user.id, { email: ctx.body.email }), ctx.body);
-await failOnDuplicate({ email: 'address' }, () => this.#users.insert(row), ctx.body);   // column → form field, when they differ
+await failOnDuplicate('slug', () => this.#teams.update(team.id, { slug: ctx.body.slug }), ctx.body);
+await failOnDuplicate({ slug: 'address' }, () => this.#teams.insert(row), ctx.body);   // column → form field, when they differ
 ```
 
-In a transaction the 422 rolls it back. `unique` gives the friendly message before the insert; the index is what holds.
+In a transaction the 422 rolls it back. `unique` gives the friendly message before the insert; the index is what holds. An
+**account's address** is no team slug: "taken" there tells who has an account — use it only with `AUTH_PRIVATE_REGISTRATION=false`;
+otherwise do what `make:auth` does (the same answer for a free and a taken address, a mail to the owner — [security](security.md)).
+The web app's `/lab/validation` shows both: the rule on one route, and on a second without it the index answering through
+`failOnDuplicate()` with the same message.
 
 ## Type errors you will meet
 
@@ -327,9 +340,10 @@ What you give up, and what to watch:
 
 - **Messages** are the library's own, as it writes them — `messages`, `attributes` and `{attribute}` are for `rules`. For your own
   language, pass the library a message function (`trans()` of @marmeon/i18n, where it takes one).
-- **Live validation** runs the whole schema. Another library knows nothing of "live": an async `refine()` that asks the database
-  answers while the field is typed — exactly what the database rules above avoid. Checks that tell whether a record exists belong in
-  `rules` (`unique`, `exists`, an async `custom()`) or in `handle()`. The `NOT_LIVE` filter catches only issues of our rules.
+- **Live validation** leaves it out (E206): another library knows nothing of "live" — an async `refine()` that asks the database would
+  answer while the field is typed — so the router answers 204 without running the schema. `defineRequest({ schema, live: true })`
+  runs it live, all of it, on every check of a field: only for a schema none of whose checks tells more than a submit. Checks that
+  tell whether a record exists belong in `rules` (`unique`, `exists`, an async `custom()`) or in `handle()`.
 - A **query** schema must still be total — every field optional or with a default, string input; the type check (`CheckQuery`) says
   which field is not.
 - `r.object()` takes rules only: mix nothing in — wrap the whole object in one library.

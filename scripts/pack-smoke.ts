@@ -457,6 +457,20 @@ class Smoke {
  * The look comes from stylesheets the built index.html links (E202): `@marmeon/react/styles.css` — resolved from the packed
  * package's `exports` — and, in the kit, the auth module's `auth.css`. No inline style needed under a strict `style-src`.
  */
+/** The built browser files that keep a development branch: the client core calls the devtools hook only there. */
+function developmentBranchesIn(client: string): string[] {
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith('.js') && readFileSync(path, 'utf8').includes('__MARMEON_DEVTOOLS_HOOK__')) found.push(path.slice(client.length + 1));
+    }
+  };
+  walk(client);
+  return found;
+}
+
 function checkStyles(app: string, classes: readonly string[]): void {
   const client = join(app, 'dist/client');
   const html = readFileSync(join(client, 'index.html'), 'utf8');
@@ -721,6 +735,15 @@ async function main(): Promise<number> {
     await npmApp.step('marmeon build without .env (E187), the framework\'s stylesheet linked (E202)', () => {
       npmApp.buildWithoutEnv();
       checkStyles(npmApp.app, ['marmeon-layer']);
+    });
+    // The README's way on a developer's machine: `npm run build` next to the .env of .env.example (NODE_ENV=development, E170) —
+    // the browser code must still be production's (W10 step 9b): no development branch, no devtools hook.
+    await npmApp.step('npm run build with the development .env → a production client (no development branch in dist/client)', () => {
+      if (!/^NODE_ENV=development$/m.test(readFileSync(join(npmApp.app, '.env'), 'utf8'))) throw new SmokeError('the app\'s .env has no NODE_ENV=development (from .env.example).');
+      const output = npmApp.run('npm', ['run', 'build']);
+      const leaked = developmentBranchesIn(join(npmApp.app, 'dist/client'));
+      if (leaked.length > 0) throw new SmokeError(`npm run build with the development .env built a development client — ${leaked.join(', ')} carry __MARMEON_DEVTOOLS_HOOK__.`);
+      if (!output.includes('marmeon build builds for production')) throw new SmokeError(`npm run build did not say that it builds for production:\n${output}`);
     });
     await npmApp.step('marmeon start → GET /up 200', () => npmApp.serve('/up'));
     const npmTests = await npmApp.step('vitest run', () => /Tests\s+(\d+) passed/.exec(npmApp.run(join(npmApp.app, 'node_modules/.bin/vitest'), ['run']))?.[1] ?? '?');

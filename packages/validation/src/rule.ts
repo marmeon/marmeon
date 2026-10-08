@@ -21,6 +21,8 @@ export interface RuleDefinition {
   readonly contextual: boolean;
   /** `.live()`: its rules run in a live validation too. */
   readonly live: boolean;
+  /** An object, a list or a union: its rules are other rules — `.live()` belongs on them, never on it (E197). */
+  readonly container: boolean;
   /** How a message names a field: in words (`password confirmation`) or as written (`APP_PORT`, for `.env`). */
   readonly attributes: 'humanized' | 'raw';
   /** What a package marks its rule with (`r.value(…, { meta })`) — kept by every rule made from it; {@link metaOf} reads it. */
@@ -155,9 +157,11 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
 
   /**
    * Runs this rule's database and async checks in a live validation too (E62) — for values whose being taken is no secret (a team's
-   * slug in its own settings). Never for anything that tells whether an account exists (E187/E193).
+   * slug in its own settings). Never for anything that tells whether an account exists (E187/E193). A rule of one value only: on an
+   * object, a list or a union it throws — it would open every rule inside, the account's address too; put it on the field.
    */
   live(): this {
+    if (this['~rule'].container) throw new TypeError(LIVE_ON_CONTAINER);
     const Class = this.constructor as new (definition: RuleDefinition) => this;
     return new Class({ ...this['~rule'], live: true });
   }
@@ -170,11 +174,17 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
       async: definition.async,
       contextual: definition.contextual,
       live: false,
+      container: definition.container,
       attributes: definition.attributes,
       meta: definition.meta,
     });
   }
 }
+
+/** What `.live()` on an object, a list or a union says — at run time, and as the type `ObjectRule#live`'s `this` must have. */
+export const LIVE_ON_CONTAINER =
+  '.live() goes on the field whose being taken is no secret — r.object({ slug: r.string().unique(Teams, \'slug\').live() }) — never on an object, a list or a union: it would open every rule inside (E197).';
+
 
 function build(definition: RuleDefinition, context: BuildContext): Engine {
   const items = definition.steps.map((step) => step.build(context)).filter((item): item is Engine => item !== undefined);
@@ -183,7 +193,7 @@ function build(definition: RuleDefinition, context: BuildContext): Engine {
 
 /** A rule's base on its own. */
 export function definition(base: (context: BuildContext) => Engine, parts: Partial<RuleDefinition> = {}): RuleDefinition {
-  return { base, steps: [], async: false, contextual: false, live: false, attributes: 'humanized', meta: {}, ...parts };
+  return { base, steps: [], async: false, contextual: false, live: false, container: false, attributes: 'humanized', meta: {}, ...parts };
 }
 
 /** A step that never depends on the request. */
@@ -377,6 +387,11 @@ export class NumberRule extends Rule<number, number | `${number}`> {
 
 /** A list, each item checked by its rule (`r.array(r.string().max(30))`). Sizes count items. */
 export class ArrayRule<Item, ItemInput, In = ItemInput[]> extends Rule<Item[], In> {
+  /** Not on a list (E197): put `.live()` on its item rule — `r.array(r.string().exists(Tags, 'slug').live())`; it throws here. */
+  override live(this: typeof LIVE_ON_CONTAINER): never {
+    throw new TypeError(LIVE_ON_CONTAINER);
+  }
+
   /** Not empty. */
   required(): this {
     return this.with(step(() => engine.check((value: unknown[]) => value.length > 0, engine.message('required'))));
@@ -430,6 +445,11 @@ export class ObjectRule<S extends Shape, When extends Shape = {}> extends Rule<S
    */
   get entries(): S {
     return objectParts(this).shape as S;
+  }
+
+  /** Not on an object (E197): put `.live()` on the field whose being taken is no secret — it throws here. */
+  override live(this: typeof LIVE_ON_CONTAINER): never {
+    throw new TypeError(LIVE_ON_CONTAINER);
   }
 
   /**
@@ -489,6 +509,7 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition, 
     async: async || steps.some((s) => s.async),
     contextual: rules.some((rule) => rule['~rule'].contextual) || steps.some((s) => s.contextual),
     live: previous?.live ?? false,
+    container: true,
     attributes,
     meta: previous?.meta ?? {},
   };

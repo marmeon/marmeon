@@ -119,7 +119,10 @@ twice — a test of the package). `queue:size` counts per queue, and lists every
 The `jobs` table of `make:queue-table` has two indexes: `(queue, reserved_at, available_at)` for a worker with `--queue`, and
 `(reserved_at, available_at, id)` for one without — its claim is `UPDATE … WHERE id = coalesce((an expired claim), (the oldest
 due job))`, each subquery `LIMIT 1` along that index (on Postgres `FOR UPDATE SKIP LOCKED`), never a sort of every due job; that
-both databases plan it so is a test of the package (EXPLAIN on SQLite and Postgres).
+both databases plan it so is a test of the package (EXPLAIN on SQLite and Postgres). **A `jobs` table made before Wave 10 does not
+get the second index** from an upgrade — a migration that ran never runs again: add it with a migration of its own
+([the queue index of an older app](../../docs/deployment.md#the-queue-index-of-an-older-app)), as the web app, the blank app and the
+starter do (`add_fair_claim_index_to_jobs_table`). Without it a worker still works, only slower on a long queue.
 A driver may also split its count (`counts(queue)` → `{ ready, delayed, reserved }`: due, not yet due or released for later,
 claimed by a worker) — all three drivers do; the devtools' queue view (`/_marmeon/devtools/queue`, development only —
 [the pages](../devtools/README.md#the-pages-_marmeondevtools)) shows it.

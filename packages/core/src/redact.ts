@@ -59,7 +59,7 @@ const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)[^@\s/]+@/gi;
 // A password hash as a PHC string — `$argon2id$v=19$m=…$salt$hash`, `$scrypt$…` (E125): never shown, wherever it appears.
 const PHC_HASH = /\$(?:argon2(?:id|i|d)|scrypt|pbkdf2(?:-sha\d+)?|bcrypt|2[abxy])\$[\w+/=,.$-]*[\w+/=$-]/g;
-// An API token (`bc_12|<secret>`, E27) under any prefix: its id stays, the secret goes.
+// An API token (`marmeon_12|<secret>`, E27) under any prefix: its id stays, the secret goes.
 const API_TOKEN = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
 // A path segment of 32 or more URL-safe characters (`/reset-password/<token>`, a signed link's hash) — kept unless it reads
 // like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).

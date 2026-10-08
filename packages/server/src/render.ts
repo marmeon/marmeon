@@ -1,4 +1,4 @@
-import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, type Application, type Container, type Logger, type Solution } from '@marmeon/core';
+import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, redactText, Translator, type Application, type Container, type Logger, type Solution } from '@marmeon/core';
 import { channels, messageBase, trace, type SsrRenderMessage } from '@marmeon/core/diagnostics';
 import {
   ACTION_HEADER,
@@ -265,7 +265,7 @@ export function createResponseFactory(
     const resolveIsland = islands && !isPrefetch(request)
       ? async (url: string): Promise<RegionResult> => {
           const result = await islands(url, { request, scope, requestId });
-          if (result.status === 'exception') logger.error(`The island ${url} on [${page.component}] failed — it shows its error`, { component: page.component, island: url, status: result.failure.status });
+          if (result.status === 'exception') logger.error(`The island ${redactText(url)} on [${page.component}] failed — it shows its error`, { component: page.component, island: redactText(url), status: result.failure.status });
           return result;
         }
       : undefined;
@@ -645,8 +645,8 @@ function regionOutcome(status: number): RegionOutcomeStatus {
 
 function describe(error: unknown): { exception: string; message: string; stack?: string } {
   return error instanceof Error
-    ? { exception: error.name, message: error.message, stack: error.stack }
-    : { exception: 'Error', message: String(error) };
+    ? { exception: error.name, message: redactText(error.message), ...(error.stack === undefined ? {} : { stack: redactText(error.stack) }) }
+    : { exception: 'Error', message: redactText(String(error)) };
 }
 
 /** The document a request of the client core names (`x-marmeon-document`, the tabSync feature) — undefined: none (a full page load). */

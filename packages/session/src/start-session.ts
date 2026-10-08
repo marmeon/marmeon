@@ -1,4 +1,4 @@
-import { Container, Logger } from '@marmeon/core';
+import { Container, Logger, redactText } from '@marmeon/core';
 import { LOCATION_HEADER, ParentRequest, ReadOnly } from '@marmeon/http';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig } from './config.ts';
@@ -130,7 +130,7 @@ export class StartSession {
     try {
       await this.#store.gc(this.#config.lifetime * 60);
     } catch (error) {
-      this.#logger.warn('Session garbage collection failed', { exception: String(error) });
+      this.#logger.warn('Session garbage collection failed', { exception: redactText(String(error)) });
     }
   }
 }

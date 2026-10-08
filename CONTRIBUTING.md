@@ -92,11 +92,16 @@ checked over every file of the repository — tracked, or new and not ignored. E
    generators write validate with `rules` of `@marmeon/validation` — no file outside a package's `src/` imports Valibot (in code or in
    a generator's template text), and no `package.json` of an app or of the template lists it. Inside `packages/<name>/src/` Valibot
    stays an internal engine. A test or Gegenprobe that must write the import builds the name from parts as well.
-3. **`NODE_ENV` is checked positively** (E201): no `!== 'production'` / `!= 'production'` (any quotes, either side) and no
-   `NODE_ENV === 'production'` in a package's code (`packages/<name>/src/` and the stubs; tests, type tests and fixtures aside) —
+3. **`NODE_ENV` is checked positively** (E201): no `!== 'production'` / `!= 'production'` (any quotes, either side), no
+   `NODE_ENV === 'production'` and no `import.meta.env.DEV` / `!import.meta.env.PROD` (Vite derives them from `NODE_ENV ===
+   'production'`: a staging build is `DEV`) in code people run or copy — a package's code (`packages/<name>/src/` and the stubs), the
+   starter's template (`packages/create-marmeon/template/`) and the apps (`apps/<name>/`); tests, type tests and fixtures aside —
    comments count too. Either sends `staging`, a typo or a missing `NODE_ENV` down the development branch. Development branches ask
    `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` inline (a client build folds it away), server code
    `environment.isDevelopment()` / `environment.isProtected()` of `@marmeon/core`.
+4. **The old prefix of API tokens is gone** (E207): `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says the two letters and the
+   underscore of before in front of a digit, a `|`, a quote, whitespace or a line's end — but the rename hint's way back in
+   `UPGRADING.md`. Tests spell it from parts like the old name.
 
 A new rule joins the same script, with its test and its Gegenprobe.
 

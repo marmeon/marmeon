@@ -103,6 +103,7 @@ export const rules = {
       definition((context) => engine.unionEngine(options.map((option) => option['~engine'](context)), async), {
         async,
         contextual: options.some((option) => option['~rule'].contextual),
+        container: true,
       }),
     );
   },
@@ -129,6 +130,7 @@ export const rules = {
       definition((context) => engine.arrayEngine(item['~engine'](context), item['~rule'].async), {
         async: item['~rule'].async,
         contextual: item['~rule'].contextual,
+        container: true,
       }),
     ),
 
@@ -180,6 +182,7 @@ export const rules = {
       definition((context) => engine.listEngine(item['~engine'](context), item['~rule'].async), {
         async: item['~rule'].async,
         contextual: item['~rule'].contextual,
+        container: true,
       }),
     ),
 };

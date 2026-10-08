@@ -89,6 +89,32 @@ export const environment = {
   },
 } as const;
 
+/**
+ * `NODE_ENV` for `marmeon build`, once {@link resolveEnvironment} decided it (into `env`): what the build bakes into `dist/client`.
+ * Vite builds the browser code with the process's `NODE_ENV` — `development` keeps every development branch and React's development
+ * build — so a developer's `.env` (`NODE_ENV=development`, E170, the commands of this machine) must not reach it: a
+ * `NODE_ENV=development` **from `.env`** is set aside, and the build runs with `NODE_ENV=production` (as an image builds it) — set,
+ * not just removed: Vite reads the `.env` files itself and takes their `NODE_ENV=development` whenever the process has none. A
+ * `NODE_ENV` set in the environment itself is respected — with a warning unless it is `production`. Returns the lines to print.
+ */
+export function buildEnvironment(env: Record<string, string | undefined> = process.env): { readonly notes: readonly string[]; readonly warnings: readonly string[] } {
+  if (environment.isDevelopment(env) && environment.fromDotEnv(env)) {
+    env.NODE_ENV = 'production';
+    delete env[DOTENV_MARKER];
+    return { notes: ['NODE_ENV=development of .env is for the commands of this machine — marmeon build builds for production.'], warnings: [] };
+  }
+  const name = nodeEnv(env);
+  if (name === undefined || name === 'production') return { notes: [], warnings: [] };
+  return {
+    notes: [],
+    warnings: [
+      `marmeon build with NODE_ENV=${name}${environment.fromDotEnv(env) ? ' (from .env)' : ''}: the browser code keeps its development branches and ` +
+        "React's development build — error messages and stacks reach every visitor. Build with NODE_ENV=production (or none)" +
+        `${name === 'development' ? ' — marmeon dev is the development server' : `, and run the build with NODE_ENV=${name}`} (docs/deployment.md#configuration).`,
+    ],
+  };
+}
+
 export interface ResolvedEnvironment {
   /** The resolved `NODE_ENV` — `undefined`: none anywhere (protected). */
   readonly name: string | undefined;

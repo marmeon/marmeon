@@ -4,6 +4,9 @@ import { Controller, type HttpContext } from '@marmeon/http';
 import { Storage } from '@marmeon/storage';
 import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
 
+/** Where a user's export lies on the private `local` disk — one per user (`DeleteDataExport` removes it with the account). */
+export const dataExportKey = (userId: number): string => `exports/user-${userId}.json`;
+
 /**
  * "Download my data": the signed-in user's account and profile links as JSON, written to the **private** `local` disk and
  * handed out through a signed URL that works for five minutes — the browser downloads it (a JSON file is never shown on
@@ -31,7 +34,7 @@ export class ExportMyDataController extends Controller {
       profile: { bio: user.bio, links },
     };
     const disk = this.#storage.disk('local');
-    const key = `exports/user-${user.id}.json`;
+    const key = dataExportKey(user.id);
     await disk.put(key, JSON.stringify(data, null, 2), { contentType: 'application/json' });
     return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: `my-data-${user.id}.json` }), 303);
   }

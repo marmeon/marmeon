@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import type { Clock, Logger } from '@marmeon/core';
+import { redactText, type Clock, type Logger } from '@marmeon/core';
 import type { Scheduler, TaskRun } from './scheduler.ts';
 import { MINUTE, minuteOf } from './time.ts';
 
@@ -51,7 +51,7 @@ export class ScheduleWorker {
         options.onTick?.(minute, runs);
       } catch (error) {
         // The cache is down, say: this minute is lost, the next one is tried again.
-        this.#logger.error('The scheduler could not tick', { exception: error instanceof Error ? `${error.name}: ${error.message}` : String(error) });
+        this.#logger.error('The scheduler could not tick', { exception: redactText(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) });
       }
     }
   }

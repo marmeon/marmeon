@@ -1,7 +1,9 @@
 # Upgrading
 
 **Marmeon was called BespokeCore up to 0.1.0** (never published). There is no entry per name — every entry below uses the new
-ones: `@marmeon/*`, the CLI `marmeon`, `create-marmeon`, `x-marmeon-*`, `/_marmeon/*`, `MARMEON_*`, `[marmeon:…]`.
+ones: `@marmeon/*`, the CLI `marmeon`, `create-marmeon`, `x-marmeon-*`, `/_marmeon/*`, `MARMEON_*`, `[marmeon:…]`. API tokens start with
+`marmeon_` (`marmeon_12|…`, E207) — a token handed out before keeps working only under its own prefix: until its users have new ones,
+the way back is `AUTH_TOKEN_PREFIX=bc_`.
 
 What changes for an app from one version of Marmeon to the next — in Laravel's manner: each entry says how likely it is
 to affect you (**impact**), what to do (before → after), and how to keep the old behaviour where there is a way.
@@ -24,14 +26,14 @@ tokens and traces:
 
 | Area | Medium | Low |
 | --- | --- | --- |
-| Validation | [the app validates with `rules`](#medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone) | [`@marmeon/validation`](#low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract) |
+| Validation | [the app validates with `rules`](#medium-the-app-validates-with-rules--password-pagequery-upload-and-a-tables-query-are-rules-confirmed-of-marmeonauth-is-gone) | [`@marmeon/validation`](#low-marmeonvalidation--laravels-rules-typed-standard-schema-stays-the-contract) · [no foreign schema live](#low-a-live-validation-runs-no-schema-of-another-library--live-true-lets-it) · [`.live()` on the field](#low-live-on-an-object-a-list-or-a-union-is-an-error--put-it-on-the-field) · [the handler's 422 with the request's labels](#low-a-validationerror-of-the-handler-speaks-with-the-requests-messages-and-attributes) |
 | Dependencies | — | [`redis` and `nodemailer` come with their packages](#low-redis-comes-with-marmeonredis-nodemailer-with-marmeonmail--install-messages-name-the-major) |
 | Queue and uploads | [`queue:work` takes every queue, fairly](#medium-queuework-takes-every-queue-fairly--a---queue-list-keeps-its-strict-order) | [`uploads:prune --force`](#low-uploadsprune---hours-below-uploads_lifetime-needs---force) |
 | Look and failures | [the stylesheet `@marmeon/react/styles.css`](#medium-the-frameworks-look-is-a-stylesheet--import-marmeonreactstylescss-layerdialogs-style-arrives-after-the-mount) | [failures load when they happen](#low-what-a-failure-shows-loads-when-it-happens--the-dialog-of-a-5xx-and-the-error-pages-are-a-chunk-of-their-own) |
-| Accounts and sessions | [unconfirmed accounts are deleted](#medium-accounts-without-a-confirmed-address-are-deleted-after-7-days--auth_unverified_days-authprune-unverified) | [the CSRF token on demand](#low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none) |
-| Lists | — | [cursors belong to their list](#low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions) |
-| Development and staging | — | [staging takes the production branches](#low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings) · [the mail previews' host check](#low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev) |
-| Logs and traces | — | [`traceparent` as a span link](#low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace) · [a `URL` in a log is masked](#low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments) |
+| Accounts and sessions | [unconfirmed accounts are deleted](#medium-accounts-without-a-confirmed-address-are-deleted-after-7-days--auth_unverified_days-authprune-unverified) | [the CSRF token on demand](#low-a-session-draws-its-csrf-token-when-something-needs-it--a-guests-request-makes-none) · [a change of address keeps the confirmation](#low-makeauth--a-change-of-address-keeps-an-accounts-confirmation-and-emailtaken-is-gone) |
+| Lists | — | [cursors belong to their list](#low-a-tables-and-an-inboxs-cursors-belong-to-their-list--name-in-cursoroptions) · [the default sort is everyone's](#low-a-tables-default-sort-is-a-column-everyone-sees--defaultsort-refuses-one-with-visible) |
+| Development and staging | — | [staging takes the production branches](#low-staging-takes-the-production-branches-of-the-browser-code-and-of-server-rendering--short-codes-no-development-warnings) · [the mail previews' host check](#low-the-mail-previews-answer-only-localhost-and-the-host-of-app_url--the-devtools-host-check-moved-to-marmeoncoredev) · [404 outside development](#low-development-routes-answer-404-outside-development--whatever-their-host) · [`marmeon build` for production](#low-marmeon-build-builds-for-production-next-to-a-development-env) |
+| Logs and traces | — | [`traceparent` as a span link](#low-a-callers-traceparent-is-a-link-of-the-requests-span--otel_trust_traceparenttrue-continues-its-trace) · [a `URL` in a log is masked](#low-a-url-in-a-log-context-is-masked-like-text--its-query-token-and-token-like-path-segments) · [errors logged as text are masked](#low-errors-the-framework-logs-as-text-are-masked--a-urls-password-a-token) |
 
 *Estimated upgrade time for Wave 10:* minutes for an app without the auth module (import `@marmeon/react/styles.css`, add the queue
 index, drop `valibot` if nothing of yours uses it); **one to two hours** for an app made with `make:auth` before Wave 10 — its module
@@ -92,7 +94,7 @@ env: v.object({ APP_URL: v.pipe(v.string(), v.url()) })        env: r.env({ APP_
 - **The registration of `make:auth` asks no database in its schema** (E197): with `AUTH_PRIVATE_REGISTRATION=false` a taken address is
   still a field error on submit (the unique index decides), but **no longer when the field is checked live** — a live check of a taken
   and of a free address gets the same answer. To keep the live answer, add the check yourself:
-  `email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).emailTaken(address)) || 'auth.validation.email_taken').live()`
+  `email.custom(async (address, { request }) => !(await request!.resolve(UserRepository).findByEmail(address)) || 'auth.validation.email_taken').live()`
   — knowing that it tells anyone who types an address whether it has an account.
 - `r.integer()`/`r.number()` take a number's spelling too (`'7'`): a job's `JobInput` (what `dispatch()` and `assertDispatched()` take)
   is ``number | `${number}` ``, `JobPayload` (what `handle()` gets) a number.
@@ -122,9 +124,10 @@ marmeon queue:work --queue=*        # alphabetically  marmeon queue:work --queue
 ```
 
 - **The `jobs` table gets a second index**, `(reserved_at, available_at, id)` — the fair claim walks it (EXPLAIN on SQLite and
-  Postgres, 200 000 jobs: 0.01 / 0.06 ms instead of a sort of every due job). `make:queue-table`'s migration has it, and so has every
-  app made since; **an app whose `jobs` table exists already does not get it from the upgrade** (a migration that ran never runs
-  again) — add one and deploy it with the new workers ([deployment](docs/deployment.md#the-queue-index-of-an-older-app)):
+  Postgres, 200 000 jobs: 0.01 / 0.06 ms instead of a sort of every due job). `make:queue-table`'s migration has it; **an app whose
+  `jobs` table exists already does not get it from the upgrade** (a migration that ran never runs again) — add one and deploy it with
+  the new workers ([deployment](docs/deployment.md#the-queue-index-of-an-older-app)), as the web app, the blank app and the starter
+  do (`2026_10_08_090000_add_fair_claim_index_to_jobs_table`, beside their `create_jobs_table` of before):
 
   ```sh
   marmeon make:migration add_fair_claim_index_to_jobs_table --module=system
@@ -241,6 +244,44 @@ re-exports the same types (`@marmeon/router` now depends on `@marmeon/core`, typ
 
 The way back: none needed — schemas of Valibot, Zod or any Standard Schema library keep working as they are.
 
+#### Low: a live validation runs no schema of another library — `live: true` lets it
+
+*Likelihood of impact: low — apps whose request schemas are Zod, ArkType, Valibot or another library's, and that check fields live
+(`useForm(…, { validate })`).* A live validation (E62) ran the whole schema of any library — an async `refine()` that asks the
+database answered "taken" while an address was typed, to anyone, without a submit. The router cannot see which of another library's
+checks ask the database, so it no longer runs one live (E206, decided by Max, 08.10.): the answer is `204`, as for a valid field;
+the submit validates as before. `rules` of `@marmeon/validation` are unchanged — they run live and keep their database checks out
+(E197). A request opts its schema in when nothing it checks tells more than a submit:
+
+```ts
+export const RenameTeamRequest = defineRequest({ schema: z.object({ slug: z.string().refine(…) }), live: true });
+```
+
+The way back: `live: true` on the request — never for a schema that asks whether an account exists.
+
+#### Low: `.live()` on an object, a list or a union is an error — put it on the field
+
+*Likelihood of impact: low — schemas that call `.live()` on `r.object()`, `r.array()`, `r.list()` or `r.union()`.* `.live()` on a
+container opened every rule inside it — `r.object({ email: r.email().unique(Users, 'email'), slug: … }).live()` asked about the
+address too, in every live validation. It is a compile error now (`The 'this' context of type 'ObjectRule<…>' is not assignable to
+method's 'this' of type '".live() goes on the field …"'`) and throws at run time (also after `.optional()`):
+
+```ts
+r.object({ slug: r.string().unique(Teams, 'slug') }).live()        // before
+r.object({ slug: r.string().unique(Teams, 'slug').live() })        // after: the field that may tell
+```
+
+The way back: none — `.live()` on each field that may answer live.
+
+#### Low: a `ValidationError` of the handler speaks with the request's `messages` and `attributes`
+
+*Likelihood of impact: low — apps that rely on the field's raw name in a `failOnDuplicate()` message.* The 422 of `failOnDuplicate()`
+(a conflict on a unique index after a race) and any `ValidationError` a handler builds from issues without labels said "The email has
+already been taken." even where the request names the field (`attributes: { email: 'auth.register.email' }`) or the rule
+(`messages: { 'email.unique': … }`). The router now lends such an error the request's labels — the same text as the `unique` rule's.
+An error with labels of its own keeps them. The way back: none needed — pass labels to `ValidationError.fromIssues(…, labels)` to
+choose others.
+
 #### Low: `redis` comes with `@marmeon/redis`, `nodemailer` with `@marmeon/mail` — install messages name the major
 
 *Likelihood of impact: low — apps on a Redis driver or on SMTP, and code that imported `RedisSetupError`.* The driver rule (E198,
@@ -290,6 +331,23 @@ it at once, as before. The check is unchanged: a post that needs the token and h
 one that reads a session without a token gives none (never one it made and cannot save). The way back: none needed — call
 `session.token()` where you need the token.
 
+#### Low: `make:auth` — a change of address keeps an account's confirmation, and `emailTaken()` is gone
+
+*Likelihood of impact: low — apps made with `make:auth` whose accounts were confirmed by `email_verified_at` alone (an import, a
+seeder, an admin tool) and that run with `AUTH_PRIVATE_REGISTRATION=false`.* With the open registration a change of address clears
+`email_verified_at` at once; an account that had only that (no `first_verified_at`) became "never confirmed" — and
+`auth:prune-unverified` deleted it seven days later. `changeEmail()` of the module's `UserRepository` now keeps the confirmation first:
+`first_verified_at = coalesce(first_verified_at, email_verified_at)`. The module is your app's code — add the line to your
+`changeEmail()`:
+
+```ts
+await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
+```
+
+`UserRepository.emailTaken()` is gone from the stubs: nothing used it, and "is this address taken?" is what the private registration
+never answers (E146). The way back: none needed — an app that wants the live check writes it with `findByEmail()`
+([validation](docs/validation.md#database-rules-and-why-they-never-run-live)).
+
 #### Low: a table's and an inbox's cursors belong to their list — `name` in `CursorOptions`
 
 *Likelihood of impact: low — cursors kept in URLs across the upgrade.* An encrypted cursor was bound to its order (columns,
@@ -298,6 +356,14 @@ an optional `name` now, part of the cursor's context: a table passes its name, a
 recipient's cursor is a 400 (`InvalidCursorError`). A cursor of a table or an inbox from before the upgrade is a 400 once ("load more"
 starts again from the first page). Unnamed lists are unchanged. The way back: none needed — name your own lists
 (`name: 'articles'`) to get the same.
+
+#### Low: a table's default sort is a column everyone sees — `defaultSort` refuses one with `.visible()`
+
+*Likelihood of impact: low — tables whose `defaultSort` (or first sortable column) has `.visible(…)`.* The default sort of such a
+column answered every user who may not see it with a 400 on the page itself, without a `?sort=` of their own ("does not sort by
+that"). `defineTable` refuses it now — a compile error (`'-email' is a column with .visible() — whoever may not see it would get a 400;
+…`) and a `TypeError` at the start — and without `defaultSort` takes the first sortable column without `.visible()`. The way back:
+none — sort by a column everyone sees; whoever may see the hidden one sorts by it in the URL.
 
 #### Low: staging takes the production branches of the browser code and of server rendering — short codes, no development warnings
 
@@ -334,6 +400,24 @@ const hosts = allowedHosts(env.APP_URL);                    const hosts = devHos
 
 The way back: open the previews through `localhost` or set `APP_URL` to the host you use.
 
+#### Low: development routes answer 404 outside development — whatever their host
+
+*Likelihood of impact: low — apps with a development route of their own behind `devOnly()`.* `devOnly(hosts, handler)` checked the
+host only: a route of your own registered without asking the environment answered on a server too — and there the host of `APP_URL`
+is the public one. Now the guard answers **404** unless `NODE_ENV` is `development` (or `test`, for the app's tests) — asked on every
+request, positively (E115, fail-closed); the host check stays as it was. The framework's own development routes are registered in
+development only, so they are unchanged. The way back: none — a route that must answer on a server is no development route; give it a
+guard of its own.
+
+#### Low: `marmeon build` builds for production next to a development `.env`
+
+*Likelihood of impact: low — builds that ran on a developer's machine (`pnpm build`) and were served.* `marmeon build` took
+`NODE_ENV=development` from the app's `.env` (E170) — and Vite baked the development branches and React's development build into
+`dist/client`: error messages and stacks for every visitor. A `NODE_ENV=development` **from `.env`** is now set aside — the build runs with
+`NODE_ENV=production` (set, not removed: Vite reads the `.env` files itself) — and says so (`NODE_ENV=development of .env is for the commands of this machine — marmeon build builds for production.`). A `NODE_ENV`
+set in the environment itself is respected, with a warning unless it is `production`; without any, the build sets `production`
+(as `marmeon start` does). Images, CI and `pack:smoke` built without a `.env` already. The way back: `NODE_ENV=development pnpm build` — with its warning.
+
 #### Low: a caller's `traceparent` is a link of the request's span — `OTEL_TRUST_TRACEPARENT=true` continues its trace
 
 *Likelihood of impact: low — apps with `@marmeon/otel` whose traces span services.* A request's server span continued the trace of
@@ -348,7 +432,7 @@ OTEL_TRUST_TRACEPARENT=true   # behind an edge (gateway, ingress, mesh) that set
 ```
 
 A trusted proxy (`TRUSTED_PROXIES`) is no such edge by itself: it usually passes the client's header on unchanged. A hand-made setup
-passes `instrument(app, api, { trustTraceparent: true })`. The way back: `OTEL_TRUST_TRACEPARENT=true`.
+passes `instrument(app, api, { redactor: app.container.make(Redactor), trustTraceparent: true })` (`Redactor` of `@marmeon/core`). The way back: `OTEL_TRUST_TRACEPARENT=true`.
 
 #### Low: a `URL` in a log context is masked like text — its query token and token-like path segments
 
@@ -356,6 +440,16 @@ passes `instrument(app, api, { trustTraceparent: true })`. The way back: `OTEL_T
 wrote the URL as it was (its `toJSON`): a `?token=…` or `/reset-password/<token>` reached the log. Now `redact()` masks a `URL` and
 `URLSearchParams` like text (`token=[redacted]`, `/reset-password/[redacted]`), and the `Redactor` (devtools, error page, spans)
 shows a `URL` through `url()` instead of an empty object. The way back: none needed — log `url.pathname` or a field you choose.
+
+#### Low: errors the framework logs as text are masked — a URL's password, a token
+
+*Likelihood of impact: low — log readers who searched for the full text of a failure.* `redact()` masks a log context by key; a
+string is written as it is. The framework wrote errors as strings — `{ exception: String(error) }` in terminate hooks, deferred work,
+islands and a layer's base, session garbage collection, the live backend and the scheduler, and the exception handler's report put the
+error's message into the log line itself — so `postgres://app:secret@db` or `token=…` in a message reached the log in clear. Each of
+them goes through `redactText()` now (`postgres://app:***@db`, `token=[redacted]`, token-like path segments, API tokens); so do an
+island's path and a listener failure's message. The way back: none needed — your own log calls: pass the error itself or
+`redactText(String(error))` ([log](packages/log/README.md#redaction)).
 
 ### Wave 9 — client and navigation
 

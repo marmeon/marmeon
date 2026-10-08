@@ -83,10 +83,16 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 // {"msg":"Login failed","email":"ada@example.com","password":"[redacted]","headers":{"authorization":"[redacted]","accept":"application/json"}}
 ```
 
-**Messages are not scanned**: never put a secret into the message text (the request log line masks its path itself: a
-sensitive route parameter or a token-like segment becomes `[redacted]`). The queue stores a failed job's error through
-`redactText()` (passwords in SMTP errors) — see [redaction](../core/README.md#redaction-e125) for the `Redactor` the error page,
-the devtools and telemetry use, which also scans text.
+**Messages and string values are not scanned** — only keys: never put a secret into the message text or a string of the context,
+and never turn an error into a string before logging it (`{ exception: String(error) }` is a string — its message, a connection URL
+with its password in it, goes out as it is). Log the error itself, or mask the text: `redactText()` of `@marmeon/core` takes values of
+sensitive keys (`token=…`), bearer credentials, URL passwords (`postgres://app:***@db`), password hashes, API tokens and token-like
+path segments out. The framework does so wherever it logs an error as text (W10 step 9b): the exception handler's report (message
+and stack), terminate hooks and deferred work, islands and a layer's base (their paths too), session garbage collection, the live
+backend, the scheduler and listener failures of queue and scheduler; the request log line masks its path itself (a sensitive route
+parameter or a token-like segment becomes `[redacted]`). The queue stores a failed job's error through `redactText()` too (passwords
+in SMTP errors) — see [redaction](../core/README.md#redaction-e125) for the `Redactor` the error page, the devtools and telemetry
+use, which also scans text.
 
 ## The `log` channel (E118)
 

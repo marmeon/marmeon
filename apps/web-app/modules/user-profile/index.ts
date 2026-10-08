@@ -3,6 +3,7 @@ import { defineModule, listen } from '@marmeon/core';
 import { AccountDeleted } from '#modules/auth';
 import { RebuildMemberStatsJob } from './jobs/RebuildMemberStatsJob.ts';
 import { DeleteAvatar } from './listeners/DeleteAvatar.ts';
+import { DeleteDataExport } from './listeners/DeleteDataExport.ts';
 import { RecordLastLogin } from './listeners/RecordLastLogin.ts';
 import { RefreshMemberStats } from './listeners/RefreshMemberStats.ts';
 import { DemoLinksSeeder } from './seeders/DemoLinksSeeder.ts';
@@ -24,8 +25,8 @@ export default defineModule({
   name: 'user-profile',
   providers: [UserProfileServiceProvider],
   config: [ProfileConfig],
-  // A deleted account (E203, AccountDeleted of the auth module): its avatar file goes after the commit.
-  listeners: [listen(Login, RecordLastLogin), listen(Registered, RefreshMemberStats), listen(AccountDeleted, DeleteAvatar)],
+  // A deleted account (E203, AccountDeleted of the auth module): its avatar file and its data export go after the commit.
+  listeners: [listen(Login, RecordLastLogin), listen(Registered, RefreshMemberStats), listen(AccountDeleted, DeleteAvatar), listen(AccountDeleted, DeleteDataExport)],
   // The dashboard's member numbers, rebuilt in the background after a registration (unique, withoutOverlapping).
   jobs: [RebuildMemberStatsJob],
   migrations: new URL('./migrations/', import.meta.url),

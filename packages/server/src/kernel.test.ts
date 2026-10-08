@@ -82,7 +82,7 @@ describe('createHttpKernel — errors & logging', async () => {
 
   const routes = defineRoutes((Route) => {
     Route.get('/boom', () => {
-      throw new Error('database password is hunter2');
+      throw new Error('database password is hunter2 (postgres://app:hunter3@db/app)');
     });
     Route.get('/forbidden', () => abort(403, 'Only admins.'));
   });
@@ -105,15 +105,17 @@ describe('createHttpKernel — errors & logging', async () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ message: 'Server Error' });
     expect(response.headers.get('x-request-id')).toBe('req-1');
+    // The log line's own text is masked like text (E125): the URL's password goes, free prose stays (redactText is a net).
+    expect(JSON.stringify(entries), 'the report logged a URL password in clear').not.toContain('hunter3');
     expect(entries.find((entry) => entry.level === 'error')).toMatchObject({
-      message: 'database password is hunter2',
+      message: 'database password is hunter2 (postgres://app:***@db/app)',
       context: { requestId: 'req-1', exception: 'Error' },
     });
   });
 
   it('shows exception details in debug mode', async () => {
     const body = (await (await debugApp.request('/boom', json)).json()) as { message: string; exception: { stack: string } };
-    expect(body.message).toBe('database password is hunter2');
+    expect(body.message).toBe('database password is hunter2 (postgres://app:hunter3@db/app)');
     expect(body.exception.stack).toContain('kernel.test.ts');
   });
 
@@ -305,7 +307,7 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
       return next();
     }
     terminate(): void {
-      throw new Error('terminate broke');
+      throw new Error('terminate broke at postgres://app:s3cretPW@db/app token=abc123');
     }
   }
   class DeferringController {
@@ -319,7 +321,7 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
         events.push('deferred work');
       });
       this.#after.defer(() => {
-        throw new Error('deferred broke');
+        throw new Error('deferred broke at postgres://app:s3cretPW@db/app');
       });
       this.#after.defer(() => events.push('after the failure'));
       return 'accepted';
@@ -374,14 +376,17 @@ describe('createHttpKernel — middleware groups & terminate', async () => {
     events.push(`responded ${response.status}`);
     await app.settle();
     expect(events.filter((event) => !event.startsWith('terminated'))).toEqual(['responded 200', 'deferred work', 'after the failure']);
-    expect(logged.some((line) => line.startsWith('Deferred work failed: Error: deferred broke'))).toBe(true);
+    expect(logged.some((line) => line.startsWith('Deferred work failed: Error: deferred broke at postgres://app:***@db/app'))).toBe(true);
+    expect(logged.join('\n'), 'a deferred failure logged its message in clear').not.toContain('s3cretPW');
   });
 
   it('logs a failing terminate hook instead of breaking anything', async () => {
     const response = await app.request('/api/items');
     await app.settle();
     expect(response.status).toBe(200);
-    expect(logged).toContain('A terminate hook failed: Error: terminate broke');
+    // Masked like text (E125): the context's keys alone never catch what an error's message quotes.
+    expect(logged.join('\n'), 'a terminate hook\'s failure logged its message in clear').not.toContain('s3cretPW');
+    expect(logged).toContain('A terminate hook failed: Error: terminate broke at postgres://app:***@db/app token=[redacted]');
   });
 });
 

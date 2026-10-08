@@ -703,7 +703,7 @@ describe('API tokens', () => {
     const created = await session.layering().post('/settings/tokens', { json: { name: 'Backup script', abilities: ['users:read'] } }).assertOk().assertLayer('auth/NewAccessToken');
     expect(created.page()!.layer).toEqual({ key: 'tokens.create', base: '/settings/tokens', once: true });
     const plainText = (created.page()!.props as { plainText: string }).plainText;
-    expect(plainText).toMatch(/^bc_\d+\|[A-Za-z0-9]{40}[0-9a-f]{8}$/);
+    expect(plainText).toMatch(/^marmeon_\d+\|[A-Za-z0-9]{40}[0-9a-f]{8}$/);
     expect(JSON.stringify(created.session())).not.toContain(plainText); // not flashed
     expect(created.headers.get('cache-control')).toContain('no-store');
     await session.navigating().get('/settings/tokens').assertPage('auth/AccessTokens', (props) => {
@@ -733,7 +733,7 @@ describe('API tokens', () => {
     const login = await app.post('/login', credentialsOf(ada));
     await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).expectingJson().get('/api/users').assertUnauthorized();
     // Revoked: dead at once.
-    const id = Number(/^bc_(\d+)\|/.exec(plainText)![1]);
+    const id = Number(/^marmeon_(\d+)\|/.exec(plainText)![1]);
     // An action (E59): JSON back, never cached.
     await (await sudo(ada)).acting().delete(`/settings/tokens/${id}`).assertOk().assertExactJson({ revoked: id }).assertHeader('cache-control', 'no-store');
     await api(plainText).get('/api/users').assertUnauthorized();
@@ -742,9 +742,9 @@ describe('API tokens', () => {
   it('counter-check: another user’s token id with a wrong secret is a 401 — and a broken checksum costs no query', async () => {
     const alan = await app.factory(UserFactory).create();
     const alansToken = await createToken(alan);
-    const id = /^bc_(\d+)\|/.exec(alansToken)![1]!;
+    const id = /^marmeon_(\d+)\|/.exec(alansToken)![1]!;
     const { crc32 } = await import('node:zlib');
-    const forgedBody = `bc_${id}|${'x'.repeat(40)}`;
+    const forgedBody = `marmeon_${id}|${'x'.repeat(40)}`;
     await api(`${forgedBody}${crc32(forgedBody).toString(16).padStart(8, '0')}`).get('/api/users').assertUnauthorized();
 
     const queries: string[] = [];
@@ -759,7 +759,7 @@ describe('API tokens', () => {
     const ada = await app.factory(UserFactory).create();
     const alan = await app.factory(UserFactory).create();
     const alansToken = await createToken(alan);
-    const id = /^bc_(\d+)\|/.exec(alansToken)![1];
+    const id = /^marmeon_(\d+)\|/.exec(alansToken)![1];
     await (await sudo(ada)).expectingJson().delete(`/settings/tokens/${id}`).assertNotFound();
     await api(alansToken).get('/api/users').assertOk();
   });

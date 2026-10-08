@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { heldOnLoopback } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { currentRequest, environment, ErrorSolutions, Logger, outsideTransaction, Redactor, redactText, runWithRequest, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
 import { channels, messageBase, trace, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
@@ -216,12 +216,12 @@ export function createHttpKernel(
     try {
       const response = await Promise.race([app.fetch(request, { parent }), timedOut]);
       if (response === 'timeout') {
-        logger.error(`The island ${target.pathname}${target.search} took longer than ${islandTimeout} ms — it shows its error`);
+        logger.error(`The island ${redactText(`${target.pathname}${target.search}`)} took longer than ${islandTimeout} ms — it shows its error`);
         return { status: 'exception', failure: { status: 504, ...(debug ? { message: `The island took longer than ${islandTimeout} ms.` } : {}) } };
       }
       return await regionResultOf(response);
     } catch (error) {
-      logger.error(`Resolving the island ${target.pathname}${target.search} failed`, { exception: String(error) });
+      logger.error(`Resolving the island ${redactText(`${target.pathname}${target.search}`)} failed`, { exception: redactText(String(error)) });
       return { status: 'exception', failure: {} };
     }
   };
@@ -256,7 +256,7 @@ export function createHttpKernel(
       await response.body?.cancel();
       return { status: 'unavailable', httpStatus: response.status };
     } catch (error) {
-      logger.error(`Resolving the layer base ${target.pathname}${target.search} failed`, { exception: String(error) });
+      logger.error(`Resolving the layer base ${redactText(`${target.pathname}${target.search}`)} failed`, { exception: redactText(String(error)) });
       return { status: 'unavailable', httpStatus: 500 };
     }
   };
@@ -575,7 +575,8 @@ export function createHttpKernel(
         .then(() => outsideTransaction(() => Promise.all(terminable.map(([handler, ctx]) => handler.terminate!(ctx, final)))))
         .then(
           () => undefined,
-          (error: unknown) => logger.error('A terminate hook failed', { exception: String(error) }),
+          // Masked like text (E125): a message may quote a connection URL or a token — the log context's keys alone would not catch it.
+          (error: unknown) => logger.error('A terminate hook failed', { exception: redactText(String(error)) }),
         );
       pending.add(task);
       void task.finally(() => pending.delete(task));
@@ -601,7 +602,7 @@ export function createHttpKernel(
             // A boundary (E107): deferred work runs outside of any transaction, also one still open around this request.
             await outsideTransaction(work);
           } catch (error) {
-            logger.error('Deferred work failed', { exception: error instanceof Error ? (error.stack ?? error.message) : String(error) });
+            logger.error('Deferred work failed', { exception: redactText(error instanceof Error ? (error.stack ?? error.message) : String(error)) });
           }
         }
       });

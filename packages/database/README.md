@@ -209,12 +209,17 @@ this.#db.selectFrom('users').selectAll('users').select((eb) => [
 **The unique index is the truth (E197).** The `unique` rule of [@marmeon/validation](../validation/README.md#database-rules-and-live-validation)
 gives the friendly message before the insert; two requests can still race past it. `failOnDuplicate(fields, work, input?)` runs the
 insert or update and turns a violation of a unique index on one of `fields` into the same **422 at that field** (the rule's message,
-`marmeon.validation.unique`, in the request's language) — a violation of another index stays a 500 (a bug, not the input):
+`marmeon.validation.unique`, in the request's language — with the request's `messages` and `attributes`, which the router lends a
+`ValidationError` of the handler) — a violation of another index stays a 500 (a bug, not the input):
 
 ```ts
-await failOnDuplicate('email', () => this.#users.update(ctx.user.id, { email: ctx.body.email }), ctx.body);
-await failOnDuplicate({ email: 'address' }, () => …);   // column → form field, when the names differ
+await failOnDuplicate('slug', () => this.#teams.update(team.id, { slug: ctx.body.slug }), ctx.body);
+await failOnDuplicate({ slug: 'address' }, () => …);   // column → form field, when the names differ
 ```
+
+For an **account's address** a "taken" tells who has an account: only with `AUTH_PRIVATE_REGISTRATION=false` — otherwise do as
+`make:auth` does (the same answer either way, a mail to the owner; [security](../../docs/security.md)). The web app's
+`/lab/validation` shows the index answering through `failOnDuplicate()` on a route without the rule.
 
 `uniqueViolationColumns(error)` names the violated index's columns as the driver tells them (Postgres's `detail`, SQLite's message).
 In a transaction the 422 rolls it back.

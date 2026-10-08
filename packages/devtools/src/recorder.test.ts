@@ -18,7 +18,7 @@ import { DevtoolsServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
-const API_TOKEN = `bc_7|${randomBytes(30).toString('hex').slice(0, 40)}`;
+const API_TOKEN = `marmeon_7|${randomBytes(30).toString('hex').slice(0, 40)}`;
 
 class ReportJob {
   static readonly job = 'test.report';
@@ -345,7 +345,7 @@ describe('what the recorder keeps', () => {
       await tester!.settled();
       const exception = tester!.assertRecorded('exception');
       expect(exception.content).toMatchObject({ class: 'Error', in: 'request', status: 500, method: 'GET', path: '/fail' });
-      expect(exception.content.message).toBe(`The report failed, password=[redacted] with bc_7|[redacted]`);
+      expect(exception.content.message).toBe(`The report failed, password=[redacted] with marmeon_7|[redacted]`);
       expect(Array.isArray(exception.content.solutions)).toBe(true);
       expect(tester!.assertRecorded('request', (request) => request.path === '/fail').batch).toBe(exception.batch);
     } finally {
@@ -438,8 +438,8 @@ describe('what the recorder keeps', () => {
         return 0;
       });
       await tester!.settled();
-      expect(tester!.assertRecorded('query', (query) => query.sql.startsWith('select ? as h')).content).toMatchObject({ sensitive: false, parameters: ['[redacted]', 'token bc_7|[redacted]'] });
-      expect(tester!.assertRecorded('log', (log) => log.message.startsWith('Checked')).content.message).toBe('Checked bc_7|[redacted] against [redacted]');
+      expect(tester!.assertRecorded('query', (query) => query.sql.startsWith('select ? as h')).content).toMatchObject({ sensitive: false, parameters: ['[redacted]', 'token marmeon_7|[redacted]'] });
+      expect(tester!.assertRecorded('log', (log) => log.message.startsWith('Checked')).content.message).toBe('Checked marmeon_7|[redacted] against [redacted]');
     } finally {
       await app.shutdown();
     }

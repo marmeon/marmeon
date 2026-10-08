@@ -25,11 +25,6 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.query().selectAll().where('email', '=', email).executeTakeFirst();
   }
 
-  /** Whether an account has this e-mail (normalized: trimmed, lower case) — the registration's uniqueness rule. */
-  async emailTaken(email: string): Promise<boolean> {
-    return (await this.query().select('id').where('email', '=', email).executeTakeFirst()) !== undefined;
-  }
-
   /** A new user — `undefined` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
   register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<User | undefined> {
     return this.tryInsert(values);
@@ -55,6 +50,10 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
    * (E193): the default keeps a change pending (`requestEmailChange`) until its link is clicked.
    */
   async changeEmail(id: number, email: string): Promise<User | undefined | 'duplicate'> {
+    // A confirmed account stays one (E203): what confirmed it — its link, or `email_verified_at` alone (an import, a seeder, an
+    // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so the nightly prune never takes it.
+    // (A taken address changes nothing else: the account was confirmed all the same.)
+    await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
     return this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
   }
 

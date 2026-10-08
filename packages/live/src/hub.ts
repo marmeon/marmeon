@@ -1,4 +1,4 @@
-import { outsideTransaction, type Logger } from '@marmeon/core';
+import { outsideTransaction, redactText, type Logger } from '@marmeon/core';
 import type { LiveHint } from '@marmeon/http';
 import type { LiveBackend, LiveMessage } from './backend.ts';
 
@@ -253,7 +253,7 @@ export class LiveHub {
       stream.hello(seqs, request.lastEventId, this.#options);
     } catch (error) {
       stream.close();
-      this.#logger.error('A live stream could not start (the live backend failed)', { exception: String(error) });
+      this.#logger.error('A live stream could not start (the live backend failed)', { exception: redactText(String(error)) });
       return refuse(503, 'Live updates are unavailable.', '5');
     }
     return new Response(stream.readable, { status: 200, headers: STREAM_HEADERS });

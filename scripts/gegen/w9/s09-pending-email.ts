@@ -28,7 +28,7 @@ const COMPOSED_IN_THE_REQUEST = [
     file: UPDATE,
     find: "      await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email, token, locale: this.#translator.locale }, { queue: 'mail' });",
     replace:
-      "      if (!(await this.#users.emailTaken(email))) await this.#mailer.queue(new ConfirmNewEmailMail(ctx.user, email, `https://app.example/email/change/${ctx.user.id}/${token}`, this.#translator), { queue: 'mail' });\n      else await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email, token, locale: this.#translator.locale }, { queue: 'mail' });",
+      "      if (!(await this.#users.findByEmail(email))) await this.#mailer.queue(new ConfirmNewEmailMail(ctx.user, email, `https://app.example/email/change/${ctx.user.id}/${token}`, this.#translator), { queue: 'mail' });\n      else await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email, token, locale: this.#translator.locale }, { queue: 'mail' });",
   },
 ];
 /** The link's account id is not compared with the signed-in user's. */
@@ -49,7 +49,7 @@ export default defineGegenproben({
       title: 'the request tells "taken" again (a field error): the answer for a taken address differs from a free one’s',
       patch: [
         // (ValidationError is imported since E193 — the switched-off path says "taken".)
-        { file: UPDATE, find: '    const { token, hash } = newEmailChangeToken();', replace: "    if (await this.#users.emailTaken(email)) throw new ValidationError({ email: ['This e-mail address is already registered.'] }, { email });\n    const { token, hash } = newEmailChangeToken();" },
+        { file: UPDATE, find: '    const { token, hash } = newEmailChangeToken();', replace: "    if (await this.#users.findByEmail(email)) throw new ValidationError({ email: ['This e-mail address is already registered.'] }, { email });\n    const { token, hash } = newEmailChangeToken();" },
       ],
       run: test('answers a free address and a taken one byte for byte alike — the answer, and the page it leads to'),
       expect: /a taken address is answered differently from a free one: expected/,

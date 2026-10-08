@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkSource, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME } from './check-source.ts';
+import { checkSource, ENGINE, engineHits, negativeEnvHits, oldNameHits, OLD_NAME, OLD_TOKEN_PREFIX, oldTokenPrefixHits } from './check-source.ts';
 import { parts } from './ci.ts';
 import { checkDriverRule, frameworkPackages } from './packages.ts';
 
@@ -122,9 +122,49 @@ describe('check:source — NODE_ENV is checked positively (E201)', () => {
       { path: 'packages/cli/src/commands/build.ts', text: "await vite.resolveConfig(shared, 'build', 'production', 'production');" },
       { path: 'packages/react/src/bundle-size.test.ts', text: "// `process.env.NODE_ENV !== 'production'` stays out of a production bundle" },
       { path: 'packages/react/src/__fixtures__/bundle.ts', text: "if (process.env.NODE_ENV !== 'production') x();" },
-      { path: 'apps/web-app/modules/lab/views/Lab.tsx', text: "if (process.env.NODE_ENV !== 'production') x();" },
+      { path: 'apps/web-app/modules/lab/lab.test.ts', text: "if (process.env.NODE_ENV !== 'production') x();" },
+      { path: 'packages/create-marmeon/template/base/modules/home/home.test.ts', text: 'if (import.meta.env.DEV) x();' },
       { path: 'packages/core/README.md', text: "never `!== 'production'`" },
+      { path: 'packages/react/src/app.tsx', text: 'if (import.meta.env.PROD) x(); const devtools = import.meta.env.DEVTOOLS;' },
     ])).toEqual([]);
+  });
+
+  it('covers the apps and the starter\'s template too — what people copy — and Vite\'s DEV / !PROD (true in a staging build)', () => {
+    expect(negativeEnvHits([
+      { path: 'apps/web-app/modules/lab/views/Lab.tsx', text: "if (process.env.NODE_ENV !== 'production') x();" },
+      { path: 'packages/create-marmeon/template/base/bootstrap/client.tsx', text: 'if (import.meta.env.DEV) console.info(\'dev\');' },
+      { path: 'packages/create-marmeon/template/kit/modules/auth/views/Login.tsx', text: '{!import.meta.env.PROD && <DevHint />}' },
+      { path: 'packages/react/src/app.tsx', text: 'const debug = import.meta.env.DEV;' },
+    ])).toEqual([
+      "apps/web-app/modules/lab/views/Lab.tsx:1: if (process.env.NODE_ENV !== 'production') x();",
+      "packages/create-marmeon/template/base/bootstrap/client.tsx:1: if (import.meta.env.DEV) console.info('dev');",
+      'packages/create-marmeon/template/kit/modules/auth/views/Login.tsx:1: {!import.meta.env.PROD && <DevHint />}',
+      'packages/react/src/app.tsx:1: const debug = import.meta.env.DEV;',
+    ]);
+  });
+});
+
+describe('check:source — the old token prefix is gone (E207)', () => {
+  const old = OLD_TOKEN_PREFIX; // spelled in parts by the script
+
+  it('finds it before a digit, a pipe, a quote, whitespace or the line\'s end — not inside a word', () => {
+    expect(oldTokenPrefixHits([
+      { path: 'packages/auth/src/config.ts', text: `AUTH_TOKEN_PREFIX: v.optional(…, '${old}'),` },
+      { path: 'packages/auth/README.md', text: `// plainText: '${old}12|<40 characters><crc32>'` },
+      { path: 'apps/web-app/.env.example', text: `# AUTH_TOKEN_PREFIX=${old}` },
+      { path: 'packages/http/src/client/layer.test.ts', text: `plainText: '${old}1|secret'` },
+      { path: 'packages/validation/src/rules.test.ts', text: `tags: ['a', 'bc'], abc_x, my-${old}thing` },
+    ])).toEqual([
+      `packages/auth/src/config.ts:1: AUTH_TOKEN_PREFIX: v.optional(…, '${old}'),`,
+      `packages/auth/README.md:1: // plainText: '${old}12|<40 characters><crc32>'`,
+      `apps/web-app/.env.example:1: # AUTH_TOKEN_PREFIX=${old}`,
+      `packages/http/src/client/layer.test.ts:1: plainText: '${old}1|secret'`,
+    ]);
+  });
+
+  it('allows the way back of the rename hint in UPGRADING.md only', () => {
+    expect(oldTokenPrefixHits([{ path: 'UPGRADING.md', text: `The way back: \`AUTH_TOKEN_PREFIX=${old}\`.` }])).toEqual([]);
+    expect(oldTokenPrefixHits([{ path: 'README.md', text: `AUTH_TOKEN_PREFIX=${old}` }])).toHaveLength(1);
   });
 });
 

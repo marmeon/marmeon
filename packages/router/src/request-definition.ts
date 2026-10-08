@@ -14,8 +14,9 @@ export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardR
  * schema: (resolve) => (resolve(RegistrationMode).private ? privately : publicly),
  * ```
  *
- * Such a rule is part of the schema, so it runs wherever the schema does — on submit and in a live validation of its field
- * (E62), with the same message. (A live validation reveals what a submit reveals, never more.)
+ * Such a rule is part of the schema, so it runs on submit. **A live validation (E62) never runs a schema of another library**
+ * (E206): the router cannot tell which of its checks ask the database, so a free and a taken value would get different answers
+ * while the field is typed — it answers 204 without running it, unless the request says {@link RequestDefinition.live}.
  *
  * `rules` of @marmeon/validation need no factory: `r.string().unique(UserRepository, 'email')` gets the request's `resolve`
  * when it validates ({@link ValidationContext}) — and does not run in a live validation unless it says `.live()` (E197).
@@ -53,6 +54,13 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
   readonly messages?: Readonly<Record<string, string>> | undefined;
   /** Names of the fields in messages (`:attribute`), Laravel's `attributes()` — see {@link ValidationLabels}. */
   readonly attributes?: Readonly<Record<string, string>> | undefined;
+  /**
+   * `true`: a live validation (E62) runs a body schema of **another library** too (Zod, ArkType …) — fail-closed without it
+   * (E206): such a schema answers 204 live without running, because the router cannot keep its database checks out (a `refine`
+   * that asks whether an address is taken would tell it to anyone typing one). Only for a schema none of whose checks tells
+   * something a submit would not. `rules` of @marmeon/validation always run live and decide per rule (`.live()`, E197).
+   */
+  readonly live?: boolean | undefined;
 }
 
 /**
@@ -151,6 +159,8 @@ export function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery e
   messages?: Readonly<Record<string, string>>;
   /** Names of the fields in messages: `{ email: 'profile.fields.email' }` ({@link ValidationLabels}). */
   attributes?: Readonly<Record<string, string>>;
+  /** A schema of another library runs in a live validation too (E206) — see {@link RequestDefinition.live}. */
+  live?: boolean;
 }): RequestDefinition<TSchema, TCtx, TQuery> {
   return definition as RequestDefinition<TSchema, TCtx, TQuery>;
 }
@@ -435,6 +445,9 @@ export async function validateRequest(
     return query ? { query } : {};
   }
   const schema: StandardSchemaV1 = typeof definition.schema === 'function' ? definition.schema(resolve) : definition.schema;
+  // E206: a live validation runs `rules` (which keep their database checks out, E197) — another library's schema only when the
+  // request opts in. Fail-closed: the router cannot see which of its checks ask the database, so it answers as for a valid field.
+  if (only && !definition.live && !runsLive(schema)) return query ? { query } : {};
   const input = await ctx.input();
   for (const hook of hooks) await hook(input, { ctx, schema, resolve });
   const context: ValidationContext = { resolve, ctx, live: only !== undefined };
@@ -449,6 +462,14 @@ export async function validateRequest(
   }
   if (result.issues) throw ValidationError.fromIssues(result.issues, input, labels);
   return query ? { body: result.value, query } : { body: result.value };
+}
+
+/** The vendor of @marmeon/validation's rules — the only schemas a live validation runs without the request's `live: true` (E206). */
+const LIVE_VENDOR = 'marmeon';
+
+/** Whether a live validation runs `schema` by itself: `rules` of @marmeon/validation, which decide per rule (E197). */
+function runsLive(schema: StandardSchemaV1): boolean {
+  return schema['~standard'].vendor === LIVE_VENDOR;
 }
 
 /** A live validation of a route that validates no body (no `schema`, a GET, a closure): a mistake of the client. */

@@ -8,7 +8,7 @@ import {
   TriggerErrorLabController,
 } from './controllers/ShowLabPageController.ts';
 import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
-import { ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
+import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
 // manifest) and answer 404 unless the lab is on.
@@ -24,7 +24,9 @@ export default defineRoutes((Route) => {
   // The devtools' bar (W7 step 9): the client hook API (E132), and a hydration mismatch on purpose (`?mismatch=1`).
   lab.get('/devtools', ShowDevtoolsLabController);
   lab.post('/devtools', SendDevtoolsLabController);
-  // The rules of @marmeon/validation (W10 step 3, E197): messages in the request's language, a taken address on submit only.
+  // The rules of @marmeon/validation (W10 step 3, E197): messages in the request's language, a taken address on submit only —
+  // and the same form without `unique`, where the unique index answers (`failOnDuplicate`, as after a race).
   lab.get('/validation', ShowValidationLabController);
   lab.post('/validation', StoreValidationLabController);
+  lab.post('/validation/race', RaceValidationLabController);
 });

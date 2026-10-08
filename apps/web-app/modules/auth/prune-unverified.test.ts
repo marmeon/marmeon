@@ -16,7 +16,7 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // The web app's prune of accounts whose address was never confirmed (E203, the same command as make:auth's): the row and what
-// the other modules keep for it (AccountDeleted) — its avatar file, its notifications, its profile links and sign-in activity
+// the other modules keep for it (AccountDeleted) — its avatar file, its data export, its notifications, its profile links and sign-in activity
 // (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts).
 
 const DAY = 86_400_000;
@@ -85,6 +85,18 @@ describe('pruning accounts whose address was never confirmed (E203)', () => {
     }
   });
 
+  it('a deleted account\'s data export goes too — after the commit; another account\'s stays', async () => {
+    app = await createTestApp(application, { database: 'refresh' });
+    app.freeze();
+    const old = await made(8, false, 'old@example.com');
+    const kept = await made(30, true, 'kept@example.com');
+    const local = app.storage.disk('local');
+    // "Download my data" left its export on the private disk — its address, name and links.
+    for (const user of [old, kept]) await local.put(`exports/user-${user.id}.json`, JSON.stringify({ account: { email: user.email } }));
+    expect(await app.make(AccountDeletion).delete([old.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toHaveLength(1);
+    local.assertMissing(`exports/user-${old.id}.json`).assertExists(`exports/user-${kept.id}.json`);
+  });
+
   it('decides again when it deletes: an account confirmed between the look-up and the delete stays', async () => {
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
@@ -113,6 +125,18 @@ describe('pruning accounts whose address was never confirmed (E203)', () => {
     expect(await app.make(UserRepository).unconfirmedSince(new Date(app.clock.now() - 7 * DAY), 100)).toEqual([]);
     expect(await app.make(AccountDeletion).delete([kj.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual([]);
     expect(await app.make(UserRepository).find(kj.id), 'an account confirmed once was deleted').toBeDefined();
+  });
+
+  it('an account confirmed by email_verified_at alone (an import, a seeder) keeps that through a change of address (open mode)', async () => {
+    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    app.freeze();
+    const longAgo = new Date(app.clock.now() - 400 * DAY).toISOString();
+    const legacy = (await app.factory(UserFactory).create({ email: 'legacy@example.com', created_at: longAgo, updated_at: longAgo, email_verified_at: longAgo, first_verified_at: null })) as User;
+    expect(await app.make(UserRepository).changeEmail(legacy.id, 'legacy@new.example')).toMatchObject({ email_verified_at: null });
+    expect((await app.make(UserRepository).find(legacy.id))?.first_verified_at, 'the change dropped the only confirmation').not.toBeNull();
+    app.travel({ days: 30 });
+    await app.schedule.run(nightAfter(app.clock.now()));
+    expect(await app.make(UserRepository).find(legacy.id), 'a confirmed account was deleted after its address changed').toBeDefined();
   });
 
   it('a deletion that fails keeps everything — the avatar too (it goes after the commit only)', async () => {

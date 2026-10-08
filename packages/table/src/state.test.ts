@@ -2,6 +2,7 @@ import { parseQuery } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { FeedTable, MembersTable } from './__fixtures__/app.ts';
+import { MemberPolicy } from './__fixtures__/policies.ts';
 import { column, defineTable, filter } from './index.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError } from './state.ts';
 import { parseKey } from './tables.ts';
@@ -65,6 +66,14 @@ describe('defineTable at runtime (what the types cannot see)', () => {
     expect(() => defineTable({ ...base, name: 'x', columns: { 'a b': column('name') } } as never)).toThrow(/names are letters/);
     expect(() => column('name; drop table x' as never)).toThrow(/a column of the query/);
     expect(() => filter.select('role', [] as never)).toThrow(/one or more/);
+  });
+
+  it('a default sort is every user\'s: never a column with .visible() — whoever may not see it would get a 400 on the page itself', () => {
+    const columns = { email: column('email').visible(MemberPolicy, 'viewEmails').sortable(), name: column('name').sortable() };
+    expect(() => defineTable({ ...base, name: 'x', columns, defaultSort: '-email' } as never)).toThrow(/defaultSort "-email" is a column with \.visible\(\)/);
+    // Without one, the first sortable column everyone sees.
+    expect(defineTable({ ...base, name: 'x', columns } as never).definition.defaultSort).toBe('name');
+    expect(defineTable({ ...base, name: 'x', columns: { email: columns.email } } as never).definition.defaultSort).toBeUndefined();
   });
 
   it('refuses a column that has the key\'s name but reads another column', () => {

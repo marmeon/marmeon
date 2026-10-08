@@ -53,7 +53,7 @@ export interface WithToken {
 }
 
 /**
- * Personal access tokens (E27, Sanctum-style): opaque, `bc_<id>|<40 characters><crc32>`. The prefix
+ * Personal access tokens (E27, Sanctum-style): opaque, `marmeon_<id>|<40 characters><crc32>`. The prefix
  * and the checksum let secret scanners find leaked tokens and let typos fail without a query; only a
  * SHA-256 of the secret is stored — 62⁴⁰ ≈ 2²³⁸ possibilities need no slow hash, and a slow hash per
  * API request would be a lever for anyone sending invalid tokens.

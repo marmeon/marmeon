@@ -81,7 +81,7 @@ export default defineGegenproben({
     {
       id: 'G3c',
       title: 'devOnly without the dev headers: a preview leaves without CORP same-origin (and no-store)',
-      patch: [{ file: DEV, find: '(hostAllowed(args[0].request, hosts) ? devSecured(await handler(...args)) : forbiddenDevHost())', replace: '(hostAllowed(args[0].request, hosts) ? await handler(...args) : forbiddenDevHost())' }],
+      patch: [{ file: DEV, find: 'return hostAllowed(args[0].request, hosts) ? devSecured(await handler(...args)) : forbiddenDevHost();', replace: 'return hostAllowed(args[0].request, hosts) ? await handler(...args) : forbiddenDevHost();' }],
       run: mailTest,
       expect: /localhost:3960 \/_marmeon\/mail: expected null to be 'same-origin'/,
     },
@@ -154,7 +154,7 @@ export default defineGegenproben({
       title: 'rule 3 matches nothing: the rule\'s own test finds the planted lines missing',
       patch: [
         { file: 'scripts/check-source.ts', find: 'const NEGATIVE_ENV = new RegExp(\n  [', replace: "const NEGATIVE_ENV = new RegExp(\n  '(?!)(?:' + [" },
-        { file: 'scripts/check-source.ts', find: "  ].join('|'),\n);\n/** A package's own code", replace: "  ].join('|') + ')',\n);\n/** A package's own code" },
+        { file: 'scripts/check-source.ts', find: "  ].join('|'),\n);\n/**\n * Code people run or copy", replace: "  ].join('|') + ')',\n);\n/**\n * Code people run or copy" },
       ],
       run: { vitest: 'scripts/ci.test.ts', name: 'finds a negative or a production check' },
       expect: /expected \[\] to deeply equal \[/,

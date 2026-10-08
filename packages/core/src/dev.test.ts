@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { devHosts, devOnly, devSecured, hostAllowed, LOOPBACK_HOSTS } from './dev.ts';
 
 const request = (host: string | undefined, url = 'http://localhost/_marmeon/mail') => new Request(url, host === undefined ? {} : { headers: { host } });
@@ -61,5 +61,35 @@ describe('the guard of every development route (E200)', () => {
     expect(answered.headers.get('cache-control')).toBe('no-store');
     expect((await guard({ request: request('evil.example') }, page)).status).toBe(403);
     expect(devSecured(new Response('x', { status: 404 })).status).toBe(404);
+  });
+
+  describe('outside development: a 404, whatever the host (fail-closed, E115) — APP_URL\'s host is public on a server', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.each(['production', 'staging', 'prod', undefined])('NODE_ENV=%s: the handler never runs, even for APP_URL\'s host', async (name) => {
+      vi.stubEnv('NODE_ENV', name);
+      let ran = 0;
+      const handler = devOnly(devHosts('https://shop.example'), () => {
+        ran++;
+        return new Response('report');
+      });
+      for (const host of ['shop.example', 'localhost']) {
+        const response = await handler({ request: request(host, 'https://shop.example/_dev/report') });
+        expect(response.status, `${host} under NODE_ENV=${name}`).toBe(404);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+      }
+      expect(ran, 'a development route ran outside development').toBe(0);
+    });
+
+    it('development and test: the host decides', async () => {
+      for (const name of ['development', 'test']) {
+        vi.stubEnv('NODE_ENV', name);
+        const handler = devOnly(devHosts('https://shop.example'), () => new Response('report'));
+        expect((await handler({ request: request('shop.example') })).status, name).toBe(200);
+        expect((await handler({ request: request('evil.example') })).status, name).toBe(403);
+      }
+    });
   });
 });

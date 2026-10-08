@@ -70,7 +70,7 @@ function app() {
   });
   const stop = navigator.start();
   const { api, bar } = attached!;
-  const text = () => bar.root.querySelector('.bc')?.textContent ?? '';
+  const text = () => bar.root.querySelector('.marmeon-devtools')?.textContent ?? '';
   return { navigator, api, bar, text, stop: () => (stop(), bar.destroy(), uninstall()) };
 }
 

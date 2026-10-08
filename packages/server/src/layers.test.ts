@@ -68,7 +68,7 @@ describe('createHttpKernel — layers (E53, E54)', async () => {
     Route.get('/loop/a', () => (ran.push('loop'), view('loop/A', {}).layer({ base: 'loop.b' }))).name('loop.a');
     Route.get('/loop/b', () => (ran.push('loop'), view('loop/B', {}).layer({ base: 'loop.a' }))).name('loop.b');
     // The answer of an action is a layer shown once.
-    Route.post('/tokens', () => view('tokens/New', { plainText: 'bc_1|secret' }).layer({ base: 'users.show', params: { user: '1' }, key: 'tokens.create' })).name('tokens.store');
+    Route.post('/tokens', () => view('tokens/New', { plainText: 'marmeon_1|secret' }).layer({ base: 'users.show', params: { user: '1' }, key: 'tokens.create' })).name('tokens.store');
     Route.put('/users/:user', () => new CloseLayerResult({ reload: ['name'] }).route('users.show', { user: '1' })).name('users.update');
     Route.get('/writes', (ctx: HttpContext) => {
       ctx.cookies.set('written', 'yes');

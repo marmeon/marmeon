@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from './config/config.ts';
-import { DOTENV_MARKER, environment, resolveEnvironment } from './environment.ts';
+import { buildEnvironment, DOTENV_MARKER, environment, resolveEnvironment } from './environment.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 describe('environment (E115, E139)', () => {
@@ -88,5 +88,46 @@ describe('resolveEnvironment — where NODE_ENV comes from (E170)', () => {
     expect(resolveEnvironment(app({ '.env': 'NODE_ENV=\n' }), { env: unset })).toMatchObject({ name: undefined, source: 'unset' });
     expect(environment.isProtected(unset)).toBe(true);
     expect(environment.describe(unset)).toBe('unset NODE_ENV (protected, like production)');
+  });
+});
+
+describe('buildEnvironment — what marmeon build bakes into the browser code (W10 step 9b)', () => {
+  const app = (files: Record<string, string>) => {
+    const root = tempDir('marmeon-env-');
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(root, name), text);
+    return root;
+  };
+
+  it('a NODE_ENV=development of .env is set aside: the build runs as production (pnpm build on a developer\'s machine)', () => {
+    const env: Record<string, string | undefined> = {};
+    resolveEnvironment(app({ '.env': 'APP_NAME=x\nNODE_ENV=development\n' }), { env });
+    expect(env.NODE_ENV).toBe('development');
+    const { notes, warnings } = buildEnvironment(env);
+    // Set, not removed: Vite reads the .env files itself and takes their NODE_ENV=development whenever the process has none.
+    expect(env.NODE_ENV, 'the development NODE_ENV of .env reached the build').toBe('production');
+    expect(env[DOTENV_MARKER]).toBeUndefined();
+    expect(notes).toEqual(['NODE_ENV=development of .env is for the commands of this machine — marmeon build builds for production.']);
+    expect(warnings).toEqual([]);
+  });
+
+  it('a NODE_ENV the environment sets is respected — and warned about unless it is production', () => {
+    for (const name of ['development', 'staging']) {
+      const env: Record<string, string | undefined> = { NODE_ENV: name };
+      resolveEnvironment(app({ '.env': 'NODE_ENV=development\n' }), { env });
+      const { warnings } = buildEnvironment(env);
+      expect(env.NODE_ENV, 'an explicit NODE_ENV was overridden').toBe(name);
+      expect(warnings[0]).toMatch(new RegExp(`^marmeon build with NODE_ENV=${name}: the browser code keeps its development branches`));
+    }
+    const production: Record<string, string | undefined> = { NODE_ENV: 'production' };
+    expect(buildEnvironment(production)).toEqual({ notes: [], warnings: [] });
+    expect(production.NODE_ENV).toBe('production');
+    expect(buildEnvironment({})).toEqual({ notes: [], warnings: [] });
+  });
+
+  it('staging from .env is no development: kept, with the warning', () => {
+    const env: Record<string, string | undefined> = {};
+    resolveEnvironment(app({ '.env': 'NODE_ENV=staging\n' }), { env });
+    expect(buildEnvironment(env).warnings[0]).toMatch(/^marmeon build with NODE_ENV=staging \(from \.env\)/);
+    expect(env.NODE_ENV).toBe('staging');
   });
 });

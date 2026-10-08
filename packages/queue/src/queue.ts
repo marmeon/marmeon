@@ -1,4 +1,4 @@
-import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, token, type Application, type Clock, type Logger } from '@marmeon/core';
+import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, redactText, token, type Application, type Clock, type Logger } from '@marmeon/core';
 import { channels, messageBase, trace, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import type { Kysely } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
@@ -319,7 +319,7 @@ export class QueueManager implements Queue {
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${error instanceof Error ? error.message : String(error)}`, { job: event.job, jobId: event.jobId });
+      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${redactText(error instanceof Error ? error.message : String(error))}`, { job: event.job, jobId: event.jobId });
     }
   }
 

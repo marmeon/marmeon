@@ -1,4 +1,4 @@
-import { afterCommit, outsideTransaction, token, type Application, type Logger } from '@marmeon/core';
+import { afterCommit, outsideTransaction, redactText, token, type Application, type Logger } from '@marmeon/core';
 import { channels, messageBase, trace } from '@marmeon/core/diagnostics';
 import { checkedChannel } from '@marmeon/http';
 import type { LiveBackend } from './backend.ts';
@@ -79,7 +79,7 @@ export class LiveBroadcaster implements Broadcaster {
           else await send();
         } catch (error) {
           // The change is committed; its hint is lost — a tab that reconnects later still compares sequences (E104).
-          this.#logger.error(`A live hint on "${name}" could not be sent`, { channel: name, exception: String(error) });
+          this.#logger.error(`A live hint on "${name}" could not be sent`, { channel: name, exception: redactText(String(error)) });
         }
       }),
     );

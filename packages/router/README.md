@@ -135,8 +135,10 @@ A request runs in this order, and the controller is built only when everything b
 
 - **`schema`** sees the body only, never the query (E65). It may be a function of `resolve`, built per request — for a schema of
   another library whose rules need the app (`schema: (resolve) => z.object({ slug: z.string().refine((slug) => resolve(Teams)…) })`);
-  such a rule runs on submit and in a live validation of its field alike. `rules` need no factory: `unique()`/`exists()` get the
-  request's `resolve` themselves and never run in a live validation unless they say `.live()` (E197).
+  such a rule runs on submit. **A live validation never runs a schema of another library** (E206): the router cannot tell which of
+  its checks ask the database, so it answers `204` as for a valid field — unless the request says `live: true`, the app's word that
+  nothing it checks is a secret (never for an account's address). `rules` need no factory and no opt-in: `unique()`/`exists()` get
+  the request's `resolve` themselves, run in a live validation, and leave their database checks out unless they say `.live()` (E197).
 - **Types:** `ContextOf<typeof Request>` is what `authorize` needs plus `body` and the parsed `query`;
   `FormOf<typeof Controller>` the schema's *input* (what a form sends — `useForm(name)` types its fields with it),
   `QueryOf<typeof Controller>` the parsed query. `handle`'s context is checked against what the route provides: a controller
@@ -286,9 +288,14 @@ A form's own request — same method, URL and body — with `x-marmeon-validate:
 validation: middleware (CSRF, authentication, throttling), bindings, `authorize` and the request schema. Its controller is
 never built. The answer is `204`, or `422` with the named fields' errors only — both with `x-marmeon-validated: name,email`
 and `no-store`. Issues of fields not named are dropped (they are not filled in yet), and so are issues of the whole body — and
-those of rules that are not live (`NOT_LIVE` on the issue: `unique`, `exists` and async rules of
+those of rules that are not live (`NOT_LIVE` on the issue: `unique`, `exists` and async `custom()` rules of
 [@marmeon/validation](../validation/README.md#database-rules-and-live-validation) unless they say `.live()`, E197). Those rules do
-not even run in a live validation; the filter catches one that ran anyway (inside another library's schema).
+not even run in a live validation; the mark is the second measure, for one of ours inside another library's schema that a request
+let run live (`live: true`) and that called it without the request.
+
+- **A schema of another library** (Zod, ArkType, Valibot — any vendor but `marmeon`) does not run in a live validation at all
+  (E206, fail-closed): the answer is `204`, whatever was typed. `defineRequest({ schema, live: true })` lets it run — only for a
+  schema none of whose checks tells more than a submit would; then its async checks run too, every time a field is checked.
 
 - Field names are paths (`email`, `address.city`, `links.0.url`), at most 64 per request; unusable ones are left out. A
   request with the header is a live validation even with none left — never a submit.

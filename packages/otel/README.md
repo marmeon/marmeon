@@ -96,7 +96,7 @@ OTEL_TRUST_TRACEPARENT=true   # continue the caller's trace (parent = the incomi
 Turn it on only where the header is yours: behind an edge — a gateway, an ingress, a service mesh — that sets or strips
 `traceparent` itself, or for an internal service whose only callers are your own services. A trusted proxy (`TRUSTED_PROXIES`)
 is **not** such an edge by itself: it usually passes the client's header on unchanged — "came through the proxy" does not mean
-"the proxy wrote it". `instrument(app, api, { trustTraceparent: true })` does the same for a hand-made setup. What stays as it was:
+"the proxy wrote it". `instrument(app, api, { redactor: app.container.make(Redactor), trustTraceparent: true })` (`Redactor` of `@marmeon/core`) does the same for a hand-made setup. What stays as it was:
 islands and a layer's base resolved in-process are children of their page's request, and a job continues the trace of its dispatch
 (its `traceparent` comes from your own queue, [E131](../queue/README.md#job-events)).
 

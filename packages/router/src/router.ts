@@ -3,7 +3,7 @@ import { runPipeline } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
 import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
-import { authorizeRequest, nothingToValidate, validateRequest, type RequestDefinition, type ValidationHook } from './request-definition.ts';
+import { authorizeRequest, nothingToValidate, validateRequest, ValidationError, type RequestDefinition, type ValidationHook } from './request-definition.ts';
 import { Route } from './route.ts';
 import type { RouteDefinition } from './route-definition.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
@@ -233,7 +233,13 @@ export class Router {
               ...(query ? { query: query.value as unknown as URLSearchParams } : {}),
             };
           }
-          result = await (resolve(action) as unknown as { handle: (ctx: HttpContext) => unknown }).handle(handlerCtx);
+          try {
+            result = await (resolve(action) as unknown as { handle: (ctx: HttpContext) => unknown }).handle(handlerCtx);
+          } catch (error) {
+            // A ValidationError of the handler (`failOnDuplicate()`'s 422, one of its own) speaks with the request's `messages` and
+            // `attributes` too — like the schema's (W10 step 9b).
+            throw action.request ? withRequestLabels(error, action.request) : error;
+          }
         } else {
           result = await action(finalCtx);
         }
@@ -305,4 +311,11 @@ async function bindParams(route: RouteDefinition, ctx: HttpContext, resolve: Cla
  */
 export function isControllerClass(action: AnyAction): action is ControllerClass {
   return typeof action.prototype?.handle === 'function';
+}
+
+/** `error` with the request's labels, when it is a `ValidationError` of issues that has none of its own. */
+function withRequestLabels(error: unknown, request: RequestDefinition): unknown {
+  if (!(error instanceof ValidationError) || error.labels !== undefined || !error.issues) return error;
+  if (request.messages === undefined && request.attributes === undefined) return error;
+  return ValidationError.fromIssues(error.issues, error.input, { messages: request.messages, attributes: request.attributes });
 }

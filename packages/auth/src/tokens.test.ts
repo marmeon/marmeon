@@ -14,16 +14,16 @@ describe.each(drivers)('API tokens on %s', (driver) => {
 
   beforeAll(async () => {
     ({ connections, close } = await migratedConnections(driver));
-    tokens = new DatabaseAccessTokens(connections, { tokenPrefix: 'bc_' } as never, new SystemClock());
+    tokens = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, new SystemClock());
     connections.onQuery((query) => queries.push(query.sql));
   });
   afterAll(() => close());
   beforeEach(() => connections.get<any>().deleteFrom(ACCESS_TOKEN_TABLE).execute());
   afterEach(() => vi.useRealTimers());
 
-  it('hands out bc_<id>|<40 characters><crc32> once — the database keeps only a hash of the secret', async () => {
+  it('hands out marmeon_<id>|<40 characters><crc32> once — the database keeps only a hash of the secret', async () => {
     const { plainText, token } = await tokens.create(1, 'CLI', { abilities: ['users:read'] });
-    expect(plainText).toMatch(new RegExp(`^bc_${token.id}\\|[A-Za-z0-9]{40}[0-9a-f]{8}$`));
+    expect(plainText).toMatch(new RegExp(`^marmeon_${token.id}\\|[A-Za-z0-9]{40}[0-9a-f]{8}$`));
     expect(token).toMatchObject({ userId: 1, name: 'CLI', abilities: ['users:read'], lastUsedAt: null, expiresAt: null });
     const secret = plainText.split('|')[1]!.slice(0, 40);
     expect(JSON.stringify(await connections.get<any>().selectFrom(ACCESS_TOKEN_TABLE).selectAll().select('token_hash').execute())).not.toContain(secret);
@@ -34,19 +34,19 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     const { plainText } = await tokens.create(1, 'CLI');
     const typo = plainText.slice(0, 10) + (plainText[10] === 'a' ? 'b' : 'a') + plainText.slice(11);
     queries.length = 0;
-    for (const presented of [typo, plainText.replace('bc_', 'gh_'), `${plainText}x`, 'bc_1|short', '', 'Bearer x']) {
+    for (const presented of [typo, plainText.replace('marmeon_', 'gh_'), `${plainText}x`, 'marmeon_1|short', '', 'Bearer x']) {
       expect(await tokens.find(presented), presented).toBeUndefined();
     }
     expect(queries).toEqual([]);
-    expect(parseAccessToken(plainText, 'bc_')).toBeDefined();
+    expect(parseAccessToken(plainText, 'marmeon_')).toBeDefined();
   });
 
   it('counter-check: the right id with a wrong secret (another user’s token id) is no token', async () => {
     const { token } = await tokens.create(2, 'Alan’s');
-    const forged = `bc_${token.id}|${'A'.repeat(40)}`;
+    const forged = `marmeon_${token.id}|${'A'.repeat(40)}`;
     const { crc32 } = await import('node:zlib');
     const withChecksum = `${forged}${crc32(forged).toString(16).padStart(8, '0')}`; // passes the checksum, not the hash
-    expect(parseAccessToken(withChecksum, 'bc_')).toBeDefined();
+    expect(parseAccessToken(withChecksum, 'marmeon_')).toBeDefined();
     expect(await tokens.find(withChecksum)).toBeUndefined();
   });
 

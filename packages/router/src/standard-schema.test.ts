@@ -1,6 +1,7 @@
 import { defineConfig, resolveConfig, type StandardSchemaV1 } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { defineRequest, parseQuery, ValidationError, type ContextOf } from './request-definition.ts';
+import { VALIDATE_HEADER } from './live-validation.ts';
 import { defineRoutes, Router } from './router.ts';
 
 /**
@@ -66,5 +67,67 @@ describe('another library\'s Standard Schema (Zod-like) works where rules do (E1
     const ServerConfig = defineConfig('server', { env: zodLike({ PORT: port }), resolve: (env) => ({ port: env.PORT }) });
     expect((await resolveConfig([ServerConfig], { PORT: '8080' })).get(ServerConfig)).toEqual({ port: 8080 });
     await expect(resolveConfig([ServerConfig], { PORT: 'eighty' })).rejects.toThrow('• server: PORT — Expected a port');
+  });
+});
+
+describe('another library\'s schema in a live validation: fail-closed (E206)', () => {
+  // A Zod-like schema whose refine asks "the database" whether an address is taken — what the router README once recommended.
+  const taken = new Set(['ada@example.com']);
+  let calls = 0;
+  const signUp = (): StandardSchemaV1 => ({
+    '~standard': {
+      version: 1,
+      vendor: 'zod',
+      validate: async (input: unknown) => {
+        calls++;
+        const email = (input as { email?: unknown }).email;
+        if (typeof email !== 'string' || !email.includes('@')) return { issues: [{ message: 'Invalid email', path: [{ key: 'email' }] }] };
+        return taken.has(email) ? { issues: [{ message: 'Email already taken', path: [{ key: 'email' }] }] } : { value: { email } };
+      },
+    },
+  });
+  class SignUp {
+    static request = defineRequest({ schema: signUp() });
+    handle() {
+      return 'created';
+    }
+  }
+  class TeamSlug {
+    // Opted in on purpose: whether a slug is taken is no secret here.
+    static request = defineRequest({ schema: signUp(), live: true });
+    handle() {
+      return 'created';
+    }
+  }
+  const router = new Router().load(
+    defineRoutes((Route) => {
+      Route.post('/sign-up', SignUp);
+      Route.post('/slug', TeamSlug);
+    }),
+  );
+  const live = async (path: string, email: string) => {
+    const route = router.routes.find((candidate) => candidate.path === path)!;
+    const request = new Request(`http://app.test${path}`, { method: 'POST', body: JSON.stringify({ email }), headers: { 'content-type': 'application/json', [VALIDATE_HEADER]: 'email' } });
+    try {
+      const response = await router.dispatch(route, { request, params: {} });
+      return { status: response.status };
+    } catch (error) {
+      if (error instanceof ValidationError) return { status: 422, errors: error.errors };
+      throw error;
+    }
+  };
+
+  it('without `live: true` the schema never runs live — a free and a taken address get the same 204', async () => {
+    calls = 0;
+    const answers = [await live('/sign-up', 'ada@example.com'), await live('/sign-up', 'grace@example.com'), await live('/sign-up', 'nope')];
+    expect(answers, 'a live validation ran a foreign schema').toEqual([{ status: 204 }, { status: 204 }, { status: 204 }]);
+    expect(calls, 'the foreign schema ran in a live validation').toBe(0);
+  });
+
+  it('`live: true` lets it run — and it tells (the opt-in is the app\'s word that nothing secret is asked)', async () => {
+    calls = 0;
+    expect(await live('/slug', 'ada@example.com')).toEqual({ status: 422, errors: { email: ['Email already taken'] } });
+    expect(await live('/slug', 'grace@example.com')).toEqual({ status: 204 });
+    expect(calls).toBe(2);
   });
 });

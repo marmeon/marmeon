@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@marmeon/core';
-import { defineRequest, defineRoutes, Router, VALIDATE_HEADER, ValidationError, type ContextOf, type HttpContext, type MessageTranslator, type Next } from '@marmeon/router';
+import { defineRequest, defineRoutes, Router, translatable, VALIDATE_HEADER, ValidationError, type ContextOf, type HttpContext, type MessageTranslator, type Next } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { rules as r } from './index.ts';
 
@@ -90,6 +90,33 @@ class UpdateProfileController {
   }
 }
 
+/**
+ * The unique index decides (two requests raced past `unique`): the handler throws what `failOnDuplicate()` of @marmeon/database
+ * throws — a ValidationError of one `marmeon.validation.unique` issue, without labels. The router lends it the request's.
+ */
+const RaceRequest = defineRequest({
+  schema: r.object({ email: r.string().trim().lowercase().required().email() }),
+  messages: { 'email.unique': 'profile.email_taken' },
+  attributes: { email: 'profile.fields.email' },
+});
+class RaceController {
+  static request = RaceRequest;
+  handle(ctx: ContextOf<typeof RaceRequest>) {
+    const issue = { message: '', path: ['email'] };
+    issue.message = translatable('marmeon.validation.unique', {}, 'The {attribute} has already been taken.')(issue);
+    throw ValidationError.fromIssues([issue], ctx.body);
+  }
+}
+const UnlabelledRaceRequest = defineRequest({ schema: r.object({ email: r.string().email() }) });
+class UnlabelledRaceController {
+  static request = UnlabelledRaceRequest;
+  handle(ctx: ContextOf<typeof UnlabelledRaceRequest>) {
+    const issue = { message: '', path: ['email'] };
+    issue.message = translatable('marmeon.validation.unique', {}, 'The {attribute} has already been taken.')(issue);
+    throw ValidationError.fromIssues([issue], ctx.body);
+  }
+}
+
 /** The same rule, live on purpose (`.live()`): a team's slug, say — whether it is taken is no secret there. */
 const LiveRequest = defineRequest({ schema: r.object({ email: r.email().unique(UserRepository, 'email').live() }) });
 class LiveController {
@@ -113,7 +140,9 @@ class InviteController {
 function wrapped(inner: StandardSchemaV1): StandardSchemaV1 {
   return { '~standard': { version: 1, vendor: 'other', validate: (value) => inner['~standard'].validate(value) } };
 }
-const WrappedRequest = defineRequest({ schema: wrapped(r.object({ code: r.string().custom(async (code) => code !== 'taken') })) });
+// `live: true`: the request lets a live validation run its foreign schema (E206) — so only the mark on the issue (NOT_LIVE) keeps
+// what our not-live rule found out of the answer.
+const WrappedRequest = defineRequest({ schema: wrapped(r.object({ code: r.string().custom(async (code) => code !== 'taken') })), live: true });
 class WrappedController {
   static request = WrappedRequest;
   handle(ctx: ContextOf<typeof WrappedRequest>) {
@@ -135,6 +164,8 @@ function app() {
       Route.middleware(Authenticate).post('/live', LiveController);
       Route.middleware(Authenticate).post('/invite', InviteController);
       Route.post('/wrapped', WrappedController);
+      Route.post('/race', RaceController);
+      Route.post('/race-unlabelled', UnlabelledRaceController);
     }),
   );
   const send = async (path: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -197,6 +228,50 @@ describe('live validation (E62) never asks the database unless the rule says .li
     expect(await live('/wrapped', { code: 'free' }, 'code')).toEqual({ status: 204, body: null });
   });
 
+  it('.live() on an object, a list or a union throws — it would open every rule inside (the account\'s address too)', () => {
+    const email = r.string().unique(UserRepository, 'email');
+    expect(() => (r.object({ email }) as any).live()).toThrow(/\.live\(\) goes on the field/);
+    expect(() => (r.array(email) as any).live()).toThrow(/\.live\(\) goes on the field/);
+    expect(() => r.union([email, r.integer()]).live()).toThrow(/\.live\(\) goes on the field/);
+    expect(() => r.object({ email }).optional().live()).toThrow(/\.live\(\) goes on the field/);
+    // On the field it is what it says.
+    expect(() => email.live().optional()).not.toThrow();
+  });
+
+  /** A repository whose every value is taken — it notes what it was asked. */
+  const lookup = () => {
+    const queries: string[] = [];
+    class Lookup {
+      query() {
+        const chain = { select: () => chain, where: (_c: string, _o: string, value: unknown) => (queries.push(String(value)), chain), limit: () => chain, executeTakeFirst: async () => ({ x: 1 }) };
+        return chain;
+      }
+    }
+    const validateLive = (schema: StandardSchemaV1, value: unknown) =>
+      schema['~standard'].validate(value, { libraryOptions: { marmeon: { resolve: (C: any) => new C(), ctx: {} as never, live: true } } } as never);
+    return { queries, Lookup, validateLive };
+  };
+
+  it('a .live() field opens only itself — its neighbours in the same object stay closed', async () => {
+    const { queries, Lookup, validateLive } = lookup();
+    const schema = r.object({ email: r.string().unique(Lookup, 'email'), slug: r.string().unique(Lookup, 'slug').live() });
+    const result = await validateLive(schema, { email: 'ada@example.com', slug: 'ada' });
+    expect(queries, 'a live validation asked about the address').toEqual(['ada']);
+    expect(result.issues?.map((issue) => issue.path?.map((segment) => (typeof segment === 'object' ? segment.key : segment)).join('.'))).toEqual(['slug']);
+  });
+
+  it('… what the refusal on a container prevents: an object opened as a whole would ask about the address too', async () => {
+    const { queries, Lookup, validateLive } = lookup();
+    let opened: StandardSchemaV1;
+    try {
+      opened = (r.object({ email: r.string().unique(Lookup, 'email'), slug: r.string().unique(Lookup, 'slug') }) as any).live();
+    } catch {
+      return; // refused, as it must be
+    }
+    await validateLive(opened, { email: 'ada@example.com', slug: 'ada' });
+    expect(queries, 'a live validation asked about the address').toEqual([]);
+  });
+
   it('.live() opts in: the rule runs and tells', async () => {
     const { live, users } = app();
     expect((await live('/live', { email: 'alan@example.com' }, 'email')).errors).toEqual({ email: ['The email has already been taken.'] });
@@ -230,6 +305,17 @@ describe('messages and attributes (Laravel\'s messages() and attributes())', () 
     expect(taken.errors).toEqual({ email: ['Diese Adresse ist vergeben.'] });
     const missing = (await send('/profile', {}, { 'x-user': '1' })).error!.translate(translator);
     expect(missing.errors).toEqual({ name: ['Das Feld name ist erforderlich.'], email: ['Das Feld E-Mail ist erforderlich.'] });
+  });
+
+  it('a ValidationError of the handler (failOnDuplicate\'s, after a race) gets them too — the same text as the unique rule\'s', async () => {
+    const { send } = app();
+    const race = (await send('/race', { email: 'ada@example.com' })).error!;
+    expect(race.labels, 'the router did not lend the request\'s labels').toEqual({ messages: { 'email.unique': 'profile.email_taken' }, attributes: { email: 'profile.fields.email' } });
+    expect(race.translate(translator).errors).toEqual({ email: ['Diese Adresse ist vergeben.'] });
+    expect(race.input).toEqual({ email: 'ada@example.com' });
+    // A request without labels: the error as it was thrown.
+    const plain = (await send('/race-unlabelled', { email: 'ada@example.com' })).error!;
+    expect(plain.errors).toEqual({ email: ['The email has already been taken.'] });
   });
 
   it('a live validation\'s errors use them too', async () => {

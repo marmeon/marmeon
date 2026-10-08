@@ -147,3 +147,14 @@ r.string().regex(/x/, 42);
 // Type 'number' is not assignable to type 'void | RuleMessage | undefined'. — r.value()'s check answers a message or nothing.
 // @ts-expect-error — a check answers a message, never a number
 r.value<string>(() => 1);
+
+// ——— .live() belongs on a field, never on a container (W10 step 9b, E197) ———
+
+r.object({ slug: r.string().unique(UserRepository, 'email').live() }); // on the field: fine
+// @ts-expect-error — on an object it would open every rule inside, the address too
+r.object({ email: r.string().unique(UserRepository, 'email') }).live();
+// The 'this' context of type 'ObjectRule<{ readonly email: StringRule; }, {}>' is not assignable to method's 'this' of type '".live() goes on
+// the field whose being taken is no secret — r.object({ slug: r.string().unique(Teams, 'slug').live() }) — never on an object, a list
+// or a union: it would open every rule inside (E197)."'.
+// @ts-expect-error — on a list: put it on the item rule
+r.array(r.string().unique(UserRepository, 'email')).live();

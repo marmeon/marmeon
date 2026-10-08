@@ -219,8 +219,11 @@ in package code.
 ## Development routes: `@marmeon/core/dev` (E200)
 
 Routes for the developer's browser only — the devtools (`/_marmeon/devtools`), the mail previews (`/_marmeon/mail`) and any later
-one — are registered only with `NODE_ENV=development` (E115) and all sit behind **one guard**: they answer only `localhost`,
-`127.0.0.1`, `[::1]` and the host of `APP_URL`; any other `Host` gets **403** and the handler never runs. Every answer leaves with
+one — are registered only with `NODE_ENV=development` (E115) and all sit behind **one guard**: outside development (`NODE_ENV`
+neither `development` nor `test` — production, staging, a typo, none) it answers **404**, asked positively on every request, so a
+route of your own that was registered without asking the environment stays shut on a server, where `APP_URL`'s host is public
+(W10 step 9b); in development it answers only `localhost`, `127.0.0.1`, `[::1]` and the host of `APP_URL` — any other `Host` gets
+**403**. In both cases the handler never runs. Every answer leaves with
 `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy`/`-Opener-Policy: same-origin`,
 `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`, its own CSP or `frame-ancestors 'self'`, and never a CORS header.
 
@@ -232,8 +235,8 @@ Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));            
 defineMiddleware('DevtoolsGuard', devOnly(hosts, (_ctx: HttpContext, next: Next<EmptyObject>) => next())); // or a middleware
 ```
 
-`hostAllowed(request, hosts)` is the check alone (the `Host` header, else the URL's host; no userinfo, path or look-alike such as
-`localhost.evil.example`), `devSecured(response)` the headers alone.
+`hostAllowed(request, hosts)` is the host check alone (the `Host` header, else the URL's host; no userinfo, path or look-alike such as
+`localhost.evil.example`), `devEnvironment()` the environment's, `devSecured(response)` the headers alone.
 
 **Why:** DNS rebinding. A page on `evil.example` whose name the attacker then points at `127.0.0.1` reaches the developer's server
 with `Host: evil.example` and would read every answer as same-origin — recorded requests, mails with reset links, source paths.
@@ -602,7 +605,7 @@ spans. It is on by default, also locally:
 - **by key**, at any depth: `REDACTED_KEYS` (passwords, tokens, secrets, cookies, `authorization`, signatures — so also
   `set-cookie`, `x-xsrf-token`, `_token`) and the names packages add — the session's cookie name (`addKeys`);
 - **in text** (`redactText`): values of sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials,
-  URL passwords, password hashes (`$argon2id$…`, `$scrypt$…`), API tokens (`bc_12|…`, any prefix) and token-like path
+  URL passwords, password hashes (`$argon2id$…`, `$scrypt$…`), API tokens (`marmeon_12|…`, any prefix) and token-like path
   segments — 32 or more URL-safe characters, hex or mixed-case with digits (`/reset-password/<token>` in a mail's link, a log
   line or a `Referer`; slugs and UUIDs stay) —, plus the added names' values (`marmeon_session=…`);
 - **statements** that touch a table with secret columns (`DbQueryMessage.secret`) show none of their parameters;

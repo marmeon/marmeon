@@ -3,12 +3,12 @@ import { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, Redactor, 
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const SCRYPT = '$scrypt$ln=15,r=8,p=1$c2FsdA$aGFzaA';
-const TOKEN = 'bc_12|q8Fz0kZb3T5wYvLp9nR2xCj7mHs4dGa1eKoU6iQt0f3c7a9e1';
+const TOKEN = 'marmeon_12|q8Fz0kZb3T5wYvLp9nR2xCj7mHs4dGa1eKoU6iQt0f3c7a9e1';
 
 describe('redactText (E125)', () => {
   it('masks password hashes and API tokens wherever they appear', () => {
     expect(redactText(`hash ${HASH} and ${SCRYPT}.`)).toBe('hash [redacted] and [redacted].');
-    expect(redactText(`Authorization failed for ${TOKEN}`)).toBe('Authorization failed for bc_12|[redacted]');
+    expect(redactText(`Authorization failed for ${TOKEN}`)).toBe('Authorization failed for marmeon_12|[redacted]');
     // Under another prefix too (AUTH_TOKEN_PREFIX).
     expect(redactText(`acme_7|${'a'.repeat(40)}x`)).toBe('acme_7|[redacted]');
     expect(redactText(`password_hash: ${HASH}`)).toBe('password_hash: [redacted]');
@@ -49,7 +49,7 @@ describe('Redactor (E125)', () => {
     expect(shown.avatar).toBe('[file me.png, 5 bytes, image/png]');
     expect(shown.bytes).toBe('[3 bytes]');
     expect(shown.when).toBe('2026-10-03T12:00:00.000Z');
-    expect(shown.failure).toMatchObject({ name: 'Error', message: 'login failed with password=[redacted] for bc_12|[redacted]' });
+    expect(shown.failure).toMatchObject({ name: 'Error', message: 'login failed with password=[redacted] for marmeon_12|[redacted]' });
     expect(shown.big).toBe('10');
   });
 
@@ -70,7 +70,7 @@ describe('Redactor (E125)', () => {
       parameters: [REDACTED, REDACTED],
     });
     // Without `secret`, a hash or a token among the parameters is still masked.
-    expect(redactor.query({ sql: 'insert into log (line) values (?)', parameters: [`token ${TOKEN}`, HASH], secret: false }).parameters).toEqual(['token bc_12|[redacted]', REDACTED]);
+    expect(redactor.query({ sql: 'insert into log (line) values (?)', parameters: [`token ${TOKEN}`, HASH], secret: false }).parameters).toEqual(['token marmeon_12|[redacted]', REDACTED]);
   });
 
   it('cuts every string at 64 KB', () => {
@@ -185,7 +185,7 @@ describe('Redactor.text — the shortcut for text without anything to mask (W7.1
     const texts = [
       '/users/7/edit', '/people', '/lab/errors/table', '/docs/packages/core', '/a-slug-of-thirty-one-characters',
       `/reset-password/${token}`, `/files/${'a'.repeat(31)}b`, '/x?password=hunter2', '/x;password:hunter2',
-      'Bearer abc', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA', 'bc_1|' + token, 'postgres://u:secret@host/db',
+      'Bearer abc', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA', 'marmeon_1|' + token, 'postgres://u:secret@host/db',
       'marmeon_session=abc', 'a b',
     ];
     for (const text of texts) {

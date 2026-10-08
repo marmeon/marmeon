@@ -102,6 +102,16 @@ describe('defineTable — typed from the query', () => {
       name: 'x',
       query: (db) => db.selectFrom('members'),
       key: 'id',
+      columns: { name: column('name').sortable(), email: column('email').visible(MemberPolicy, 'viewEmails').sortable() },
+      // Type '"-email"' is not assignable to type '"'-email' is a column with .visible() — whoever may not see it would get a 400; the
+      // default sort is a column everyone sees"'.
+      // @ts-expect-error — a column some may not see: the default sort is everyone's
+      defaultSort: '-email',
+    });
+    defineTable({
+      name: 'x',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
       columns: { name: column('name') },
       // @ts-expect-error — no such column
       filters: { role: filter.select('rol', ['a']) },

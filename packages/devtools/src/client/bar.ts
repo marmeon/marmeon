@@ -194,7 +194,7 @@ export class DevtoolsBar {
     // What the user opened and where they scrolled stay as they were (a request landing draws the panel again).
     const opened = new Set([...this.root.querySelectorAll('details[open][data-key]')].map((element) => element.getAttribute('data-key')));
     const scrolled = this.root.querySelector('.body')?.scrollTop ?? 0;
-    const container = h('div', { class: 'bc' }, this.#pill(), this.#open ? this.#panel() : null);
+    const container = h('div', { class: 'marmeon-devtools' }, this.#pill(), this.#open ? this.#panel() : null);
     for (const element of container.querySelectorAll('details[data-key]')) if (opened.has(element.getAttribute('data-key'))) element.setAttribute('open', '');
     const style = this.root.querySelector('style');
     this.root.replaceChildren(...(style ? [style] : []), container);

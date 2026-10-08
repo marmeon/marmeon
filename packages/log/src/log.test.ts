@@ -119,14 +119,14 @@ describe('@marmeon/log', () => {
       email: 'ada@example.com',
       password: 'hunter2',
       new_password: 'hunter3',
-      headers: { authorization: 'Bearer bc_1|abc', accept: 'application/json', cookie: 'marmeon_session=x' },
+      headers: { authorization: 'Bearer marmeon_1|abc', accept: 'application/json', cookie: 'marmeon_session=x' },
       remember_web: 'selector.validator',
       token: 'abc',
       api_key: 'k',
       nested: { deeper: { client_secret: 's', id: 7 } },
     });
     const line = JSON.stringify(lines[0]);
-    for (const secret of ['hunter2', 'hunter3', 'Bearer bc_1|abc', 'marmeon_session=x', 'selector.validator', '"abc"', '"k"', '"s"']) expect(line).not.toContain(secret);
+    for (const secret of ['hunter2', 'hunter3', 'Bearer marmeon_1|abc', 'marmeon_session=x', 'selector.validator', '"abc"', '"k"', '"s"']) expect(line).not.toContain(secret);
     expect(lines[0]).toMatchObject({ email: 'ada@example.com', headers: { accept: 'application/json', authorization: '[redacted]' }, nested: { deeper: { id: 7 } } });
   });
 

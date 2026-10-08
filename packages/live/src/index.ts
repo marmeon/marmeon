@@ -1,5 +1,5 @@
 import cluster from 'node:cluster';
-import { Application, CLUSTER_WORKER, Logger, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, CLUSTER_WORKER, Logger, redactText, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { CONNECTION_HEADER, defineRoutes, IncomingRequest, LIVE_PATH, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
@@ -163,7 +163,7 @@ export class LiveServiceProvider implements ServiceProvider {
         try {
           await container.make(LiveBackend).end(scope);
         } catch (error) {
-          logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: String(error) });
+          logger.error('The streams of a session that ended could not be closed (the live backend failed)', { exception: redactText(String(error)) });
         }
       });
     }

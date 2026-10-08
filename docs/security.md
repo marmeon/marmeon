@@ -38,7 +38,9 @@ same-origin — recorded requests, mails with reset links, source paths.
   (`server.https` in `vite.config.ts`) **and not with `allowedHosts: true`**. Then the guard is what stands for the devtools and the
   mail previews; Vite's own paths (source modules, `/@fs/`, `/__open-in-editor`) and the development error page have no host check
   of their own. Run `marmeon dev` over HTTPS only on a trusted network, and keep `allowedHosts` a list.
-- A development route of your own takes the same guard: `Route.get('/_dev/report', devOnly(devHosts(env.APP_URL), () => report()))`.
+- A development route of your own takes the same guard: `Route.get('/_dev/report', devOnly(devHosts(env.APP_URL), () => report()))` —
+  outside development it answers 404 by itself (`NODE_ENV` asked on every request, fail-closed): forgetting to register the route
+  only in development never opens it on a server, where `APP_URL`'s host is the public one.
 - `*.localhost` names pass Vite (they are loopback by definition) but not the guard, unless `APP_URL` names one.
 
 ## Requests from other sites (CSRF)
@@ -123,7 +125,7 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   `custom()` rules of `@marmeon/validation` do not run in a live validation — a free and a taken address get the same answer there,
   and only a submit tells, behind its throttle; `.live()` opts a rule in, never for an account. The unique index stays the truth
   (`failOnDuplicate()` → 422) ([validation](validation.md#database-rules-and-why-they-never-run-live)). A schema of another library
-  runs whole in a live validation — keep such checks out of it.
+  does not run in a live validation at all (E206) unless its request says `live: true` — never for one that asks about accounts.
 - **Never-confirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes): whoever signed up with somebody else's address stops
   holding it, and nothing of an unfinished sign-up stays — deleted at night with its tokens, sessions and what other modules keep
   ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).

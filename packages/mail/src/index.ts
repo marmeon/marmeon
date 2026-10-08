@@ -24,7 +24,7 @@ export type { SmtpOptions } from './transports.ts';
 
 export const MailConfig = defineConfig('mail', {
   env: v.object({
-    /** `log` (default: written to the log, nothing is sent), `array` (kept in memory) or `smtp` (needs nodemailer). */
+    /** `log` (default: written to the log, nothing is sent), `array` (kept in memory) or `smtp` (nodemailer, a dependency of this package — E198). */
     MAIL_MAILER: v.optional(v.picklist(['log', 'array', 'smtp']), 'log'),
     MAIL_FROM_ADDRESS: v.optional(v.pipe(v.string(), v.email('MAIL_FROM_ADDRESS must be an e-mail address')), 'hello@example.com'),
     MAIL_FROM_NAME: v.optional(v.string(), ''),

@@ -68,6 +68,9 @@ step by step and goes through the security model attack by attack.
   `uuid`; a text key by name alone is a compile error). Every key the browser sends is **parsed by that type before any query**: one
   that does not parse is no row (404, or `missing` in a bulk action) — text never reaches an integer column (on Postgres a 500), and
   no query guesses the type. A row in the props has the key under its column's name (`users.id` → `id`).
+- **The default sort** (`defaultSort: '-joined'`, otherwise the first sortable column everyone sees) is every user's: a column with
+  `.visible(…)` there would answer 400 to whoever may not see it — on the page itself, without a `?sort=` of their own — so
+  `defineTable` refuses it (a compile error and at run time).
 - **Filters** are an allowlist too: `filter.select(column, options)` (`?filter[role]=admin`) and `filter.dateRange(column)`
   (`?filter[joined]=2026-01-01..2026-03-31`, either end may be empty, both days included). `.visible(…)` like columns.
 - **Pagination:** by number with a total (the default; `?page=`, `?per_page=` from `perPage`, default `[25, 50, 100]`), or by an
@@ -245,6 +248,7 @@ column('password')         // 'password' is a secret column — a table never re
 key: 'uuid'                // 'uuid' is not a column of the table's query — it has …
 key: 'email'               // the key 'email' holds text — say how to read it: key: { column: 'email', type: 'string' } (or 'uuid', 'bigint')
 defaultSort: '-email'      // '-email' is not a sortable column — it sorts by -name, name
+defaultSort: '-email'      // with email: column('email').visible(…).sortable(): '-email' is a column with .visible() — whoever may not see it would get a 400; …
 action(NeedsRole)          // 'promote': its handler's handle(row, ctx) takes other rows than the table's — they have id, name
 .authorize(MemberPolicy, 'deactivat')    // 'deactivat' is not an ability of this policy — it has deactivate, export, …
 column('email').visible(MemberPolicy, 'deactivate')   // 'deactivate' takes a resource — this is asked once per request: …

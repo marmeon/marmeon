@@ -138,7 +138,7 @@ export default defineGegenproben({
     {
       id: 'G6',
       title: 'the user-profile module does not listen: the avatar file of the deleted account stays',
-      patch: [{ file: 'apps/web-app/modules/user-profile/index.ts', find: ', listen(AccountDeleted, DeleteAvatar)]', replace: ']' }],
+      patch: [{ file: 'apps/web-app/modules/user-profile/index.ts', find: ', listen(AccountDeleted, DeleteAvatar)', replace: '' }],
       run: pruneAll,
       expect: /Expected no "avatars\/old\.png" on the disk "public"\./,
     },

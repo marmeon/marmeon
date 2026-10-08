@@ -20,7 +20,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
     const resets = new DatabasePasswordResetTokens(connections, clock);
     const remember = new DatabaseRememberTokens(connections, clock);
-    const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'bc_' } as never, clock);
+    const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock);
     const config = { resetExpire: 60 } as never;
 
     // Two hours ago: a reset token (expired after 60 minutes), a remember-me token for one hour, API tokens for one hour.

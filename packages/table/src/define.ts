@@ -469,15 +469,19 @@ export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string e
 
 /** The sortable columns' names. */
 type SortableNames<Cols> = { [A in keyof Cols]: Cols[A] extends Column<string, true> ? A : never }[keyof Cols] & string;
+/** Sortable columns every user sees (no `.visible()`) — what a default sort may name. */
+type SortableForEveryone<Cols> = { [A in keyof Cols]: Cols[A] extends Column<string, true, boolean, false> ? A : never }[keyof Cols] & string;
 
 /** `name` or `-name` of a sortable column. */
 export type CheckSort<Cols, S extends string> = string extends S
   ? SortableNames<Cols> | `-${SortableNames<Cols>}`
-  : S extends SortableNames<Cols> | `-${SortableNames<Cols>}`
+  : S extends SortableForEveryone<Cols> | `-${SortableForEveryone<Cols>}`
     ? S
-    : [SortableNames<Cols>] extends [never]
-      ? `'${S}' is not a sortable column — mark one with .sortable()`
-      : `'${S}' is not a sortable column — it sorts by ${JoinNames<SortableNames<Cols> | `-${SortableNames<Cols>}`>}`;
+    : S extends SortableNames<Cols> | `-${SortableNames<Cols>}`
+      ? `'${S}' is a column with .visible() — whoever may not see it would get a 400; the default sort is a column everyone sees`
+      : [SortableNames<Cols>] extends [never]
+        ? `'${S}' is not a sortable column — mark one with .sortable()`
+        : `'${S}' is not a sortable column — it sorts by ${JoinNames<SortableNames<Cols> | `-${SortableNames<Cols>}`>}`;
 
 /** The name a key column has in a row: its last part (`users.id` → `id`). */
 export type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
@@ -678,9 +682,16 @@ function normalize(input: RawInput): TableDefinition {
   const bulkActions = entries(input.bulk, 'bulk action', BulkAction, name);
   const exports = entries(input.export, 'export', TableExport, name);
   const sortable = Object.entries(columns).filter(([, col]) => col.isSortable).map(([alias]) => alias);
-  const defaultSort = input.defaultSort ?? sortable[0];
+  // The default sort is every user's: a column only some may see (`.visible()`) would answer 400 to the others on the page itself.
+  const forEveryone = sortable.filter((alias) => columns[alias]!.visibility === undefined);
+  const defaultSort = input.defaultSort ?? forEveryone[0];
   if (defaultSort !== undefined && (typeof defaultSort !== 'string' || !sortable.includes(defaultSort.replace(/^-/, '')))) {
     throw new TypeError(`defineTable('${name}'): defaultSort ${JSON.stringify(defaultSort)} is not a sortable column (${sortable.join(', ') || 'none is .sortable()'}).`);
+  }
+  if (typeof defaultSort === 'string' && !forEveryone.includes(defaultSort.replace(/^-/, ''))) {
+    throw new TypeError(
+      `defineTable('${name}'): defaultSort ${JSON.stringify(defaultSort)} is a column with .visible() — whoever may not see it would get a 400 on the page itself; sort by a column everyone sees (${forEveryone.join(', ') || 'mark one without .visible() as .sortable()'}).`,
+    );
   }
   const perPageOption = input.pagination?.perPage ?? [25, 50, 100];
   const perPage = (Array.isArray(perPageOption) ? perPageOption : [perPageOption]) as unknown as readonly [number, ...number[]];

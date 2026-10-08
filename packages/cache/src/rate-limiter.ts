@@ -177,7 +177,8 @@ export const DEFAULT_LIVE_VALIDATION_LIMIT = 30;
  * validation to them without counting it), never the session's. An app sets its own with
  * `limiter.for('live-validation', (ctx) => Limit.perMinute(60).by(ctx.ip ?? ''))` — `Limit.none()` turns it off.
  *
- * A live validation answers what the form's submit would (a uniqueness rule's "taken", say) — this limit is what keeps it
+ * A live validation never asks the database (E197: `unique`/`exists`/async rules stay out unless `.live()`; a schema of another
+ * library runs only with `live: true`, E206) — what it may still tell (a `.live()` rule's "taken", a format) this limit keeps
  * from being a faster way to ask than submitting.
  */
 export class LimitLiveValidation {

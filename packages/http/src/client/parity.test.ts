@@ -105,7 +105,7 @@ describe('remembered state (E63) — in memory, per history entry', () => {
         name: 'Ada',
         password: 'hunter2',
         password_confirmation: 'hunter2',
-        account: { currentPassword: 'old', apiToken: 'bc_1|x', bio: 'Hi' },
+        account: { currentPassword: 'old', apiToken: 'marmeon_1|x', bio: 'Hi' },
         card_number: '4242',
         cvc: '123',
         avatar: new Blob(['x']),

@@ -12,12 +12,18 @@
  *      imports Valibot (in code or in the code a generator writes: `make:*`'s templates count), and no `package.json` of an app or of
  *      the template lists it. Inside a package's `src/` Valibot stays an internal engine (its env schemas, its tests).
  *
- *   3. **`NODE_ENV` is checked positively** (E201, W10 step 6): no `!== 'production'` (any quotes, also `!=`) and no
- *      `NODE_ENV === 'production'` in a package's code (`packages/<name>/src/` and the `make:auth` stubs, tests and fixtures aside).
+ *   3. **`NODE_ENV` is checked positively** (E201, W10 step 6): no `!== 'production'` (any quotes, also `!=`), no
+ *      `NODE_ENV === 'production'` and no `import.meta.env.DEV` / `!import.meta.env.PROD` (Vite sets them from `NODE_ENV ===
+ *      'production'`: a staging build is `DEV`) in a package's code (`packages/<name>/src/`, the `make:auth` stubs), the starter's
+ *      template (`packages/create-marmeon/template/`) and the apps (`apps/<name>/`) — what people copy — tests and fixtures aside.
  *      Either sends `staging`, a typo or a missing `NODE_ENV` down the development branch — long messages, warnings, devtools hooks
  *      and error details in server rendering, which reads `NODE_ENV` at run time. Development branches ask
  *      `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'` (inline: a client build folds it away), server
  *      code `environment.isDevelopment()` / `environment.isProtected()` of @marmeon/core.
+ *
+ *   4. **The old default prefix of API tokens is gone** (E207, W10 step 9b): `AUTH_TOKEN_PREFIX` defaults to `marmeon_`; no file says
+ *      the two-letter prefix of before (before a digit, `|`, a quote, whitespace or the line's end) — but the rename hint's way back
+ *      (`AUTH_TOKEN_PREFIX=…` in `UPGRADING.md`). A forgotten copy in a test or a README would teach the old default.
  *
  * Later rules join this script (one script, several rules, each with its test and Gegenprobe).
  */
@@ -63,6 +69,26 @@ export function oldNameHits(files: Iterable<SourceFile>): string[] {
       if (!OLD.test(line)) return;
       const rest = allowed.reduce((remaining, allowance) => remaining.replace(allowance.pattern, ''), line);
       if (OLD.test(rest)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
+    });
+  }
+  return hits;
+}
+
+/** The old default prefix of API tokens (E207), spelled in parts: this file passes its own rule. */
+export const OLD_TOKEN_PREFIX = `${['b', 'c'].join('')}_`;
+const OLD_PREFIX = new RegExp(`(?<![\\w-])${OLD_TOKEN_PREFIX}(?=[\\d|'"\`\\s]|$)`, 'm');
+/** Where the old prefix may stand: the way back of the rename hint. */
+const OLD_PREFIX_ALLOWED: readonly Allowance[] = [{ pattern: new RegExp(`AUTH_TOKEN_PREFIX=${OLD_TOKEN_PREFIX}`, 'g'), files: ['UPGRADING.md'] }];
+
+/** Rule 4: every line that says the old token prefix outside its allowance — `path:line: text`. */
+export function oldTokenPrefixHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!OLD_PREFIX.test(text)) continue;
+    const allowed = OLD_PREFIX_ALLOWED.filter((allowance) => !allowance.files || allowance.files.includes(path));
+    text.split('\n').forEach((line, index) => {
+      const rest = allowed.reduce((remaining, allowance) => remaining.replace(allowance.pattern, ''), line);
+      if (OLD_PREFIX.test(rest)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
     });
   }
   return hits;
@@ -116,12 +142,17 @@ const NEGATIVE_ENV = new RegExp(
     `(['"\`])production\\2\\s*!==?`, // 'production' !== x
     `NODE_ENV\\s*===?\\s*(['"\`])production\\3`, // NODE_ENV === 'production' (staging falls into the else)
     `(['"\`])production\\4\\s*===?\\s*(?:process\\.env\\.|env\\.)?NODE_ENV`,
+    `\\bimport\\.meta\\.env\\.DEV\\b`, // Vite's DEV: true for any NODE_ENV but production (a staging build)
+    `!\\s*import\\.meta\\.env\\.PROD\\b`,
   ].join('|'),
 );
-/** A package's own code — sources and the stubs it writes into apps — not its tests and fixtures. */
-const PACKAGE_CODE = /^packages\/[^/]+\/(?:src|stubs)\/(?!.*(?:\.test\.|\.type-test\.|__fixtures__\/))/;
+/**
+ * Code people run or copy — a package's sources and the stubs it writes into apps, the starter's template, the apps — not tests
+ * and fixtures.
+ */
+const PACKAGE_CODE = /^(?:packages\/[^/]+\/(?:src|stubs)\/|packages\/create-marmeon\/template\/|apps\/[^/]+\/)(?!.*(?:\.test\.|\.type-test\.|__fixtures__\/))/;
 
-/** Rule 3: every negative or `=== 'production'` check of the environment in a package's code. */
+/** Rule 3: every negative or `=== 'production'` check of the environment in code people run or copy (packages, template, apps). */
 export function negativeEnvHits(files: Iterable<SourceFile>): string[] {
   const hits: string[] = [];
   for (const { path, text } of files) {
@@ -160,6 +191,7 @@ export function checkSource(repository: string = root): string[] {
     ...negativeEnvHits(files).map(
       (hit) => `NODE_ENV checked positively (E201 — staging is not development): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
     ),
+    ...oldTokenPrefixHits(files).map((hit) => `the old token prefix (E207 — API tokens start with marmeon_): ${hit}`),
   ];
 }
 
@@ -170,6 +202,6 @@ if (import.meta.main) {
     console.error(`\ncheck:source: ${problems.length} problem${problems.length === 1 ? '' : 's'}.`);
     process.exitCode = 1;
   } else {
-    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package checks NODE_ENV against 'production'.`);
+    console.log(`check:source: no file or path says the old name (allowed: the company name and the one rename hint); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix.`);
   }
 }
