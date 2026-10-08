@@ -8,11 +8,13 @@ each route usually points to an invokable controller: a class with a single `han
 ```ts title="modules/notes/routes.ts"
 import { defineRoutes } from '@marmeon/http';
 import { ListNotesController } from './controllers/ListNotesController.ts';
+import { ShowNoteController } from './controllers/ShowNoteController.ts';
 import { StoreNoteController } from './controllers/StoreNoteController.ts';
 
 export default defineRoutes((Route) => {
   Route.get('/notes', ListNotesController).name('notes.index');
   Route.post('/notes', StoreNoteController).name('notes.store');
+  Route.get('/notes/:note', ShowNoteController).name('notes.show');
 });
 ```
 
@@ -36,8 +38,9 @@ export default defineModule({
 });
 ```
 
-`marmeon make:module notes` writes both files for you. A module can list two route files, and each one is loaded into its own
-middleware group:
+`marmeon make:module notes` writes both files for you. The app loads a module only when it is listed in `modules` of
+`bootstrap/app.ts`, so add it there, as the command's output reminds you. A module can list two route files, and each one is
+loaded into its own middleware group:
 
 | Module key | Group | Prefix | What the group does |
 | --- | --- | --- | --- |
@@ -51,16 +54,25 @@ Routes load in the order of `modules: [...]` in `bootstrap/app.ts`, and within a
 The registrar has a method for each HTTP verb:
 
 ```ts title="modules/notes/routes.ts"
-Route.get('/notes', ListNotesController);
-Route.post('/notes', StoreNoteController);
-Route.put('/notes/:note', UpdateNoteController);
-Route.patch('/notes/:note/pin', PinNoteController);
-Route.delete('/notes/:note', DeleteNoteController);
-Route.options('/notes', DescribeNotesController);
+import { defineRoutes } from '@marmeon/http';
+import { DeleteNoteController } from './controllers/DeleteNoteController.ts';
+import { ListNotesController } from './controllers/ListNotesController.ts';
+import { PinNoteController } from './controllers/PinNoteController.ts';
+import { StoreNoteController } from './controllers/StoreNoteController.ts';
+import { UpdateNoteController } from './controllers/UpdateNoteController.ts';
+
+export default defineRoutes((Route) => {
+  Route.get('/notes', ListNotesController);
+  Route.post('/notes', StoreNoteController);
+  Route.put('/notes/:note', UpdateNoteController);
+  Route.patch('/notes/:note/pin', PinNoteController);
+  Route.delete('/notes/:note', DeleteNoteController);
+});
 ```
 
-A `get` route answers `HEAD` requests too. `Route.match(['GET', 'POST'], path, action)` registers several methods at once, and
-`Route.any(path, action)` registers `GET`, `POST`, `PUT`, `PATCH`, `DELETE` and `OPTIONS`.
+`Route.options()` registers an `OPTIONS` route the same way. A `get` route answers `HEAD` requests too.
+`Route.match(['GET', 'POST'], path, action)` registers several methods at once, and `Route.any(path, action)` registers `GET`,
+`POST`, `PUT`, `PATCH`, `DELETE` and `OPTIONS`.
 
 A plain HTML form can only send `GET` and `POST`. For a `PUT`, `PATCH` or `DELETE` route it posts a `_method` field, and the
 request is routed as that method. The `<Form>` component writes the field for you. The [forms](forms.md) page shows it.
@@ -71,15 +83,21 @@ A `GET` request has no body, so a `get` route refuses a controller whose request
 a GET request has no body — validate its URL with `query` (defineRequest({ query }))
 ```
 
-Validate the query string instead. The [requests](requests.md) page explains query schemas.
+Validate the query string instead. The [requests](requests.md) page explains query schemas. The other way round, a route of any
+other method refuses a controller that answers with an island, because an island only reads. The
+[deferred props](deferred-props.md) page explains islands.
 
 ### Closures
 
 A route can also answer with a function. It gets the same context a controller gets:
 
 ```ts title="modules/status/routes.ts"
-Route.get('/ping', () => 'pong');
-Route.get('/version', () => ({ version: '1.4.0' }));
+import { defineRoutes } from '@marmeon/http';
+
+export default defineRoutes((Route) => {
+  Route.get('/ping', () => 'pong');
+  Route.get('/version', () => ({ version: '1.4.0' }));
+});
 ```
 
 A string becomes an HTML response, an object or an array becomes JSON, and `null` or `undefined` becomes an empty `204`. A
@@ -93,7 +111,12 @@ a controller, which the container builds for each request. The [controllers](con
 A segment that starts with a colon is a parameter. Its value arrives in `ctx.params`, always as a string:
 
 ```ts title="modules/notes/routes.ts"
-Route.get('/notes/:note/revisions/:revision', ShowRevisionController).name('notes.revisions.show');
+import { defineRoutes } from '@marmeon/http';
+import { ShowRevisionController } from './controllers/ShowRevisionController.ts';
+
+export default defineRoutes((Route) => {
+  Route.get('/notes/:note/revisions/:revision', ShowRevisionController).name('notes.revisions.show');
+});
 ```
 
 ```ts title="modules/notes/controllers/ShowRevisionController.ts"
@@ -114,7 +137,7 @@ error.
 A question mark makes the last parameter optional. The route then matches with and without it, and the parameter's type is
 `string | undefined`:
 
-```ts title="modules/notes/routes.ts"
+```ts
 Route.get('/notes/archive/:year/:month?', (ctx) => ({ year: ctx.params.year, month: ctx.params.month ?? null }));
 ```
 
@@ -125,7 +148,7 @@ Route.get('/notes/archive/:year/:month?', (ctx) => ({ year: ctx.params.year, mon
 A regular expression in braces after the name restricts what the parameter matches. A path whose value does not fit does not
 match the route at all:
 
-```ts title="modules/notes/routes.ts"
+```ts
 Route.get('/notes/:note{[0-9]+}', ShowNoteController).name('notes.show');
 ```
 
@@ -138,8 +161,14 @@ When two routes match the same path, the one registered first answers. Register 
 also match them:
 
 ```ts title="modules/notes/routes.ts"
-Route.get('/notes/drafts', ListDraftsController).name('notes.drafts');
-Route.get('/notes/:note', ShowNoteController).name('notes.show');
+import { defineRoutes } from '@marmeon/http';
+import { ListDraftsController } from './controllers/ListDraftsController.ts';
+import { ShowNoteController } from './controllers/ShowNoteController.ts';
+
+export default defineRoutes((Route) => {
+  Route.get('/notes/drafts', ListDraftsController).name('notes.drafts');
+  Route.get('/notes/:note', ShowNoteController).name('notes.show');
+});
 ```
 
 In the other order, `/notes/drafts` would reach `ShowNoteController` with `drafts` as the note. A trailing slash makes a
@@ -149,7 +178,7 @@ different path: `/notes/` does not match `/notes`.
 
 A name gives a route an identity that does not change when its path does. Links, redirects and forms refer to routes by name:
 
-```ts title="modules/notes/routes.ts"
+```ts
 Route.get('/notes/:note', ShowNoteController).name('notes.show');
 ```
 
@@ -163,9 +192,9 @@ A route without a name still answers requests. Nothing can link to it by name, t
 
 ### Generating URLs
 
-Inside a controller, redirect to a named route with its parameters:
+Inside a controller's `handle()`, redirect to a named route with its parameters:
 
-```ts title="modules/notes/controllers/StoreNoteController.ts"
+```ts
 return this.redirect().route('notes.show', { note: note.id });
 ```
 
@@ -194,15 +223,16 @@ page covers signed URLs and the details.
 ### Typed route names
 
 `marmeon route:types` writes `bootstrap/routes.ts`. The file declares every named route of the app with its method, path and
-controller, and every API that takes a route name is checked against it. A wrong name is a compile error with a suggestion:
+controller, and every view. Every API that takes a route name is checked against it. A wrong name is a compile error with a
+suggestion:
 
 ```text
 'notes.indx' is not a route name — did you mean notes.index?
 ```
 
 A missing required parameter is a compile error too. `marmeon dev` keeps the file current while you work, and `marmeon build`
-writes it before it builds. In CI, `marmeon route:types --check` fails when someone changed a route and did not regenerate the
-file. Commit `bootstrap/routes.ts` with your routes.
+writes it before it builds. In CI, `marmeon route:types --check` fails when someone changed a route or a view and did not
+regenerate the file. Commit `bootstrap/routes.ts` with your routes.
 
 `route:types` reads the routes without booting the app, so it needs no `.env` and no key. It sees the route files of your
 modules. A route that a service provider registers in its `boot()` method serves requests but is not in the file.
@@ -233,8 +263,8 @@ client code is a compile error:
 'auth.verification.verify' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server
 ```
 
-`Route.internal()` on a registrar makes every route registered through it internal. The [URL generation](urls.md) page
-explains which other routes stay on the server.
+`Route.internal()` on a registrar makes every route registered through it internal. API routes stay on the server too, and
+`clientRoutes.except` in `defineApplication()` keeps more names out by pattern. The [URL generation](urls.md) page explains both.
 
 ## Route groups
 
@@ -270,9 +300,9 @@ The attributes combine in any order:
 
 `group()` reads well when a block of routes shares its attributes:
 
-```ts title="modules/notes/routes.ts"
+```ts
 Route.prefix('/teams/:team').name('teams.').group((Route) => {
-  Route.get('/notes', ListTeamNotesController).name('notes.index'); // GET /teams/:team/notes, ctx.params.team
+  Route.get('/notes', (ctx) => `The notes of ${ctx.params.team}`).name('notes.index'); // GET /teams/:team/notes
 });
 ```
 
@@ -360,6 +390,8 @@ An `id` is a number, so the repository accepts digits only, up to 15 of them. `/
 database. To look records up by another column, set `routeKey`, and `routeKeyPattern` for the values it accepts:
 
 ```ts title="modules/notes/NoteRepository.ts"
+import { Repository } from '@marmeon/database';
+
 export class NoteRepository extends Repository<'notes'> {
   static table = 'notes' as const;
   static routeKey = 'slug';
@@ -372,10 +404,18 @@ export class NoteRepository extends Repository<'notes'> {
 A record that belongs to another record is looked up within its parent. Pass `scopedBy` with the parent's parameter:
 
 ```ts title="modules/notes/routes.ts"
-const note = notes.bind('note', NoteRepository);
-const attachment = note.bind('attachment', AttachmentRepository, { scopedBy: 'note' });
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { AttachmentRepository } from './AttachmentRepository.ts';
+import { ShowAttachmentController } from './controllers/ShowAttachmentController.ts';
+import { NoteRepository } from './NoteRepository.ts';
 
-attachment.get('/:note/attachments/:attachment', ShowAttachmentController).name('attachments.show');
+export default defineRoutes((Route) => {
+  const note = Route.prefix('/notes').middleware(authenticate()).name('notes.').bind('note', NoteRepository);
+  const attachment = note.bind('attachment', AttachmentRepository, { scopedBy: 'note' });
+
+  attachment.get('/:note/attachments/:attachment', ShowAttachmentController).name('attachments.show');
+});
 ```
 
 The attachment is looked up with `note_id` equal to the bound note's `id`. An attachment of another note answers 404, so a
@@ -407,7 +447,13 @@ export class PublishedNotes implements RouteBinder<Row<'notes'>> {
 ```
 
 ```ts title="modules/notes/routes.ts"
-Route.bind('note', PublishedNotes).get('/p/:note', ShowPublishedNoteController).name('notes.published');
+import { defineRoutes } from '@marmeon/http';
+import { ShowPublishedNoteController } from './controllers/ShowPublishedNoteController.ts';
+import { PublishedNotes } from './PublishedNotes.ts';
+
+export default defineRoutes((Route) => {
+  Route.bind('note', PublishedNotes).get('/p/:note', ShowPublishedNoteController).name('notes.published');
+});
 ```
 
 The second argument of `resolveRouteBinding` carries the request's context and, for a scoped binding, the parent.
@@ -435,7 +481,13 @@ Some routes read the session, decide on it and write it back. Two such requests 
 `.block()` runs the requests of one session on this route one after another:
 
 ```ts title="modules/auth/routes.ts"
-Route.middleware(authenticate()).put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
+import { authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { UpdatePasswordController } from './controllers/UpdatePasswordController.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(authenticate()).put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
+});
 ```
 
 A second request waits up to 10 seconds for the first one, then answers `423`. `.block(lockSeconds, waitSeconds)` changes both
@@ -483,8 +535,8 @@ The host check stops DNS rebinding. A page on another site can point its own dom
 development server as if it were its own. A request for a host the guard does not know never reaches the handler.
 
 > [!NOTE]
-> `process.env` holds the real environment only. Values from `.env` reach the app's configuration, not `process.env`. Without
-> `APP_URL` in the real environment, the guard above answers the loopback names alone.
+> Apart from `NODE_ENV`, values from `.env` reach the app's configuration, not `process.env`. Without `APP_URL` in the real
+> environment, the guard above answers the loopback names alone.
 
 `devOnly()` also wraps a closure directly: `Route.get('/_playground/ping', devOnly(hosts, () => new Response('pong')))`. The
 [security](security.md) page lists every protection that depends on `NODE_ENV`.

@@ -238,18 +238,21 @@ pnpm changeset         # pick any package and the bump; the fixed group carries 
 ## Writing documentation
 
 The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/docs/docs.config.ts` lists
-them. They are the source — the package READMEs only point to them. **A change to a public API, an environment default or a
-command changes its docs page in the same commit.** No check compiles the examples, so that commit is where they stay true.
+them. They are the source, written in English for people who build apps. The package READMEs are material for them, not text
+to copy, and shrink to short cards for npm. **A change to a public API, an environment default or a command changes its docs
+page in the same commit.** No check compiles the examples, so that commit is where they stay true.
 `pnpm docs:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
 other page.
 
 - **Structure.** `# Title`, then `## Introduction`: what the feature is, what it is for, and a first example, in one to three
   paragraphs. Then the sections, from the common to the rare. A short `## Testing` section at the end only where it helps — it
   links to the Fakes page instead of repeating it.
-- **One example per section,** complete enough to copy: imports included, and the file it belongs in as its title, as in
-  the fence ```` ```ts title="modules/notes/routes.ts" ````. Derive examples from real code: `apps/web-app`, the starter's
-  template and the `make:auth` stubs. Compile a complex example once in a temporary file in `apps/web-app`, and delete the file
-  again.
+- **One example per section** — a file and what goes with it, such as a route and its controller. Derive examples from real
+  code: `apps/web-app`, the starter's template and the `make:auth` stubs. Compile a complex example once in a temporary file in
+  `apps/web-app`, and delete the file again.
+- **Titles and imports.** A code block with a title names its file — the fence reads ```` ```ts title="modules/notes/routes.ts" ````
+  — and is complete enough to copy, imports included. A block without a title may continue an example of the same page, and
+  leaves out the imports the page has already shown.
 - **Tone.** Address the reader as "you", in the present tense and the active voice. One idea per sentence. No chains of
   parentheses, no strings of abbreviations, no marketing adjectives. No decision numbers and no wave numbers, and no comparisons
   with other frameworks: a page stands on its own.
@@ -257,9 +260,9 @@ other page.
   loss, `> [!TIP]` for a shortcut.
 - **Security defaults** get two to four sentences: what the default does, why, and how to change it on purpose.
 - **Configuration** is a table with the columns Variable, Default and Effect. The default is the one in the code's schema.
-- **Links** are relative links to other docs pages: `[validation](validation.md#messages)`. Link to an anchor only on a page that
-  is written; a page still marked pending gets a link without one. Never link to a package README or a source file — a reader of
-  the docs app cannot follow it.
+- **Links** are relative links to other docs pages: `[route model binding](routing.md#route-model-binding)`. Link to an anchor
+  only on a page that is written; a page still marked pending gets a link without one. Never link to a package README or a
+  source file — a reader of the docs app cannot follow it.
 - **Placeholders.** A page still to be written carries `<!-- docs:pending -->` as its own paragraph on line 2. The docs app
   removes the line and marks the page "draft" in the navigation. Delete the line in the commit that writes the page.
 - **Length:** as long as the topic needs. A page past about 600 lines probably wants splitting — propose it rather than

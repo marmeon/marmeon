@@ -3,8 +3,8 @@
 ## Introduction
 
 Marmeon is a full-stack framework for TypeScript. One command creates a new app: a server that renders React pages, a
-database, sessions, mail, a queue and a scheduler, already wired together. You run it with one more command and sign in a few
-seconds later.
+database, sessions, mail, a queue and a scheduler, already wired together. You run it with one more command and register your
+first account a few seconds later.
 
 ```sh
 pnpm create marmeon my-app
@@ -21,7 +21,8 @@ You need **Node.js 26.10** or newer. Marmeon runs your TypeScript directly on No
 recent Node versions provide for that. An older Node stops the creator before it writes a single file.
 
 You also need a package manager. Marmeon is built and tested with **pnpm 12**, and a new app pins the exact version in its
-`package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well: pass `--npm` and the app has nothing of pnpm.
+`package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well: with `--npm`, the app's `package.json` has no
+`packageManager` field, and its README names the npm commands.
 
 Nothing else is required. The app uses SQLite in a file by default, so you need no database server to get started.
 
@@ -80,9 +81,10 @@ create-marmeon needs a directory: create-marmeon <dir> [--yes]
 ```
 
 Every wrong call ends with exit code 2: an unknown flag, two directories, or `--npm` together with `--pnpm`. A directory that is
-not empty, a missing pnpm and a Node older than 26.10 end with exit code 1, before anything is written. When a later step fails,
-for example the install, the run ends with exit code 1 and shows that step's output. The directory stays as it was at that
-moment, so you can fix the cause and run the step yourself.
+not empty and a Node older than 26.10 end with exit code 1, before anything is written. So does a missing pnpm when the creator
+is about to install. When a later step fails, for example the install, the run ends with exit code 1 and shows that step's
+output. The directory stays as it was at that moment, so you can fix the cause and run the step yourself. Ctrl+C at a question
+ends the run with exit code 130.
 
 ## What you get
 
@@ -97,16 +99,18 @@ By default you get the starter kit. It is a complete app with accounts:
   "sign out other devices", and API tokens. The `marmeon make:auth` generator writes it into your app, so the code is yours to
   read and change.
 - **A home page** in `modules/home/` and a **dashboard** for signed-in users, framed by the auth module's layout.
-- **The devtools**, which record what the app does while you develop.
-- **Tests and lint**: Vitest with tests for all of the above, and oxlint with the app's own preset.
+- **Tests** for all of the above.
 
 The starter kit's registration is private: it never tells anyone whether an address already has an account. The
 [starter kit](starter-kit.md) page explains what that means and how to turn it off.
 
 ### A blank app
 
-`--minimal` creates a blank app. It has the same `bootstrap/`, configuration, security headers and test setup as the starter
-kit, and one module, `system`, that holds the tables of the framework's queue. You add your own modules from there.
+`--minimal` creates a blank app. It has one module, `system`, that holds the tables of the framework's queue. You add your own
+modules from there.
+
+Both kinds of app share the rest: `bootstrap/`, the configuration, the security headers, the devtools that record what the app
+does while you develop, Vitest and oxlint with the app's own preset.
 
 ### The environment file
 
@@ -121,7 +125,7 @@ PORT=3000
 ```
 
 `APP_KEY` encrypts the session cookie and everything else the app encrypts or signs. The file is readable by its owner only,
-and git ignores it. `.env.example` lists every setting with a comment and carries no key. `.env.test` is what the tests run
+and git ignores it. `.env.example` lists the common settings with a comment and carries no key. `.env.test` is what the tests run
 with, and it has a test key of its own.
 
 `NODE_ENV=development` in `.env` makes every `marmeon` command on this machine run in development: the server, `migrate`, the
@@ -158,9 +162,12 @@ pnpm dev
 - **A queue worker**, which runs the queued jobs. The starter kit sends its mails through the queue.
 - **The scheduler**, when a module has scheduled tasks. The starter kit's auth module prunes expired tokens at night.
 
-`marmeon dev` always runs in development. A failing page shows the development error page: the code that threw, the request's
-queries and suggested solutions. The devtools record requests, queries, jobs and mails at http://localhost:3000/_marmeon/devtools,
-and a small panel at the bottom right of every page links to them. The [devtools](devtools.md) page covers both.
+`marmeon dev` runs in development unless your shell exports another `NODE_ENV`. Then it says so and serves the build instead,
+without Vite, the devtools, the worker and the scheduler.
+
+In development, a failing page shows the development error page: the code that threw, the request's queries and suggested
+solutions. The devtools record requests, queries, jobs and mails at http://localhost:3000/_marmeon/devtools, and a small panel at
+the bottom right of every page links to them. The [devtools](devtools.md) page covers both.
 
 ### Your first account
 
