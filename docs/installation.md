@@ -1,90 +1,212 @@
-# Getting started with Marmeon
-<!-- docs:pending -->
+# Installation
 
-From nothing to a running app with sign-in, and the first feature of your own. You need **Node 26.10** or newer and **pnpm 12**
-(or npm). Marmeon runs TypeScript natively — there is no compile step for your code.
+## Introduction
 
-## Create the app
+Marmeon is a full-stack framework for TypeScript. One command creates a new app: a server that renders React pages, a
+database, sessions, mail, a queue and a scheduler, already wired together. You run it with one more command and sign in a few
+seconds later.
 
 ```sh
 pnpm create marmeon my-app
-npm create marmeon@latest my-app -- --npm     # with npm: the flags after --
-```
-
-On a terminal it asks four things — the starter kit (yes), Docker files (no), the package manager (pnpm), a git repository
-(yes) — `--yes` takes those answers without asking. What you get:
-
-- **the starter kit**: an auth module (`modules/auth/`: sign-in, registration with e-mail confirmation, password reset, a
-  security page with "sign out other devices", API tokens — written by `marmeon make:auth`, so it is your code), a home page
-  (`modules/home/`), a layout, the devtools, oxlint with the app's preset and Vitest, with tests for all of it;
-- `.env` with a fresh `APP_KEY` and `NODE_ENV=development` (never committed — this machine's environment for every `marmeon`
-  command, E170), SQLite in `storage/`, the tables migrated;
-- a strict Content-Security-Policy with a nonce per response, security headers, no session for guests;
-- the framework's look as a stylesheet — `bootstrap/client.tsx` imports `@marmeon/react/styles.css` (layers, dialogs, the error
-  page) and the auth module's `modules/auth/auth.css`: no `style` attribute anywhere, so a strict `style-src` blocks nothing;
-- a git repository with one commit.
-
-`--minimal` makes a blank app (only the `system` module), `--docker` the files of [deployment](deployment.md), `--npm` an npm app.
-The starter kit's registration never tells whether an address has an account (a note goes to the owner instead, and the app opens
-for a confirmed address only); `AUTH_PRIVATE_REGISTRATION=false` in `.env` makes it say "taken" and sign a new account in at once,
-like Laravel's starter kits — and gives away who has an account ([private registration](../packages/auth/README.md#private-registration-e146-e193)). Without a terminal — in CI, in a
-script — nothing is asked and a missing directory is exit code 2. All options:
-[create-marmeon](../packages/create-marmeon/README.md) — also what to do in the first day after a release, when pnpm's
-`minimumReleaseAge` still holds the new versions back.
-
-## Run it
-
-```sh
 cd my-app
 pnpm dev
 ```
 
-`marmeon dev` starts the server with Vite (hot reload), a queue worker and the scheduler on http://localhost:3000, with
-`NODE_ENV=development`: errors show the development error page, and the devtools (`/_marmeon/devtools`, and a bar on every page)
-record requests, queries, jobs and mails.
+This page walks through those three commands: what you need first, what the creator asks, what it writes, and what runs when
+you start the app.
 
-Register an account. The confirmation mail goes to the log (`MAIL_MAILER=log` in development) — the worker sends it, so it shows
-in the terminal of `pnpm dev` a moment later; open its link, and the dashboard is yours. Sign out in one tab and the other tabs
-follow (tab sync is on by default).
+## Requirements
 
-```sh
-pnpm test        # Vitest: modules/**/*.test.ts — the auth module's, the home page's, the system module's
-pnpm lint        # oxlint: views import controllers only as types (a value import would bundle server code)
-```
+You need **Node.js 26.10** or newer. Marmeon runs your TypeScript directly on Node, without a compile step, and relies on what
+recent Node versions provide for that. An older Node stops the creator before it writes a single file.
 
-## Your first module
+You also need a package manager. Marmeon is built and tested with **pnpm 12**, and a new app pins the exact version in its
+`package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well: pass `--npm` and the app has nothing of pnpm.
 
-A feature is a module: routes, controllers, views, migrations, tests in one folder. The CLI is the app's own dependency `marmeon`
-— `pnpm marmeon <command>` (with npm: `npx marmeon <command>`), `pnpm marmeon --help` lists every command:
+Nothing else is required. The app uses SQLite in a file by default, so you need no database server to get started.
 
-```sh
-pnpm marmeon make:module notes                                  # modules/notes/index.ts + routes.ts
-pnpm marmeon make:controller ShowNotes --module=notes --view    # an invokable controller and its page
-```
+## Creating an app
 
-Register it in `bootstrap/app.ts` (`modules: [auth, home, notes, system]`), add the route
-(`Route.get('/notes', ShowNotesController).name('notes.index')` in `modules/notes/routes.ts`), and the page is there — typed
-end to end: the controller's props are the page's, `<Link route="notes.index">` knows the route. `marmeon dev` keeps
-`bootstrap/routes.ts` (the route and page types) current. A table: `pnpm marmeon make:migration create_notes_table --module=notes`,
-then `pnpm marmeon migrate` — it writes the table types into `bootstrap/database.d.ts`. A form's request validates with `rules` of
-`@marmeon/validation` — `r.object({ title: r.string().trim().required().max(120) })`, messages in English and German — see
-[validation](validation.md).
-
-The packages' READMEs go further: [core](../packages/core/README.md) (modules, providers, injection, config),
-[router](../packages/router/README.md) (routes, controllers, validation), [react](../packages/react/README.md) (pages, forms,
-layouts), [database](../packages/database/README.md), [auth](../packages/auth/README.md).
-
-## Build and start
+Run the creator with the directory of the new app:
 
 ```sh
-pnpm build       # type-checks the app, builds client and SSR, precomputes the injection lists, compresses the assets
-pnpm start       # the build, one Node process — set NODE_ENV and the configuration in the environment of the server
+pnpm create marmeon my-app
 ```
 
-`.env` is this machine's file: on a server, `NODE_ENV=production` (a `staging` server runs React's development build and shows
-server errors to its visitors — [deployment](deployment.md#configuration)), `APP_KEY`, `APP_URL=https://…`, the database
-and the mailer come from the real environment, which wins over `.env`. A `NODE_ENV` that is missing everywhere counts as
-production; one that comes from a `.env` on the server is named loudly in the log — never deploy this file. The queue worker
-`marmeon queue:work` takes every queue (the auth module's mails wait on `mail`, the welcome job on `default`). Containers,
-proxies and the scheduler in production: [deployment](deployment.md); what the app protects by itself and what is left to you:
-[security](security.md).
+With npm, the creator's own flags follow a `--`:
+
+```sh
+npm create marmeon@latest my-app -- --npm
+```
+
+The directory must not exist yet, or it must be empty. Its name becomes the package name, and a readable form of it becomes the
+app's name: `my-app` is the package `my-app` and the app "My App".
+
+### The questions
+
+On a terminal, the creator asks four questions. Press Enter to take the default:
+
+| Question | Default |
+| --- | --- |
+| The starter kit — sign-in and registration, a layout, a home page? | yes |
+| Docker files (Dockerfile, compose.production.yaml)? | no |
+| Package manager — pnpm or npm? | pnpm |
+| A git repository with a first commit? | yes |
+
+A flag answers its question in advance. `--yes` takes every default without asking: the starter kit, pnpm, the install and a
+first commit.
+
+### Options
+
+| Option | Effect |
+| --- | --- |
+| `<dir>` | The directory of the new app. On a terminal it is asked for when you leave it out. |
+| `-y`, `--yes` | Takes the defaults and asks nothing. |
+| `--minimal` | A blank app instead of the starter kit: no sign-in, no home page. |
+| `--docker` | Adds a `Dockerfile`, a `.dockerignore` and a `compose.production.yaml`. |
+| `--npm`, `--pnpm` | Chooses the package manager. pnpm is the default. |
+| `--no-install` | Writes the files only. The output lists the commands to run next. |
+| `--no-git` | Creates no git repository. |
+| `-h`, `--help` | Shows the help. |
+| `-v`, `--version` | Shows the version. Every framework package of the new app has this same version. |
+
+### Without a terminal
+
+In a script or in CI, the creator never waits for an answer. The flags and the defaults decide everything. A missing directory
+ends the run with exit code 2:
+
+```text
+create-marmeon needs a directory: create-marmeon <dir> [--yes]
+```
+
+Every wrong call ends with exit code 2: an unknown flag, two directories, or `--npm` together with `--pnpm`. A directory that is
+not empty, a missing pnpm and a Node older than 26.10 end with exit code 1, before anything is written. When a later step fails,
+for example the install, the run ends with exit code 1 and shows that step's output. The directory stays as it was at that
+moment, so you can fix the cause and run the step yourself.
+
+## What you get
+
+The creator copies the app's template, writes its `package.json` and `.env`, installs the dependencies and runs the app's own
+generators. It then creates a git repository with one commit, unless the directory is already inside a repository.
+
+### The starter kit
+
+By default you get the starter kit. It is a complete app with accounts:
+
+- **An auth module** in `modules/auth/`: sign-in, registration with a confirmation mail, password reset, a security page with
+  "sign out other devices", and API tokens. The `marmeon make:auth` generator writes it into your app, so the code is yours to
+  read and change.
+- **A home page** in `modules/home/` and a **dashboard** for signed-in users, framed by the auth module's layout.
+- **The devtools**, which record what the app does while you develop.
+- **Tests and lint**: Vitest with tests for all of the above, and oxlint with the app's own preset.
+
+The starter kit's registration is private: it never tells anyone whether an address already has an account. The
+[starter kit](starter-kit.md) page explains what that means and how to turn it off.
+
+### A blank app
+
+`--minimal` creates a blank app. It has the same `bootstrap/`, configuration, security headers and test setup as the starter
+kit, and one module, `system`, that holds the tables of the framework's queue. You add your own modules from there.
+
+### The environment file
+
+The creator writes `.env` from `.env.example` and puts a fresh application key into it:
+
+```sh title=".env"
+NODE_ENV=development
+APP_NAME="My App"
+APP_URL=http://localhost:3000
+APP_KEY=base64:…
+PORT=3000
+```
+
+`APP_KEY` encrypts the session cookie and everything else the app encrypts or signs. The file is readable by its owner only,
+and git ignores it. `.env.example` lists every setting with a comment and carries no key. `.env.test` is what the tests run
+with, and it has a test key of its own.
+
+`NODE_ENV=development` in `.env` makes every `marmeon` command on this machine run in development: the server, `migrate`, the
+queue worker. The [configuration](configuration.md) page explains how `NODE_ENV` and the other variables are resolved.
+
+> [!WARNING]
+> `.env` belongs to this machine. Never deploy it. On a server, set `NODE_ENV=production`, `APP_KEY`, `APP_URL` and the rest in
+> the real environment, which always wins over `.env`. The [deployment](deployment.md) page lists what a server needs.
+
+### The database
+
+The app starts on SQLite, in the file `storage/database.sqlite`. The creator runs `marmeon migrate`, so the tables exist when you
+first start the app. In development, `migrate` also writes the table types to `bootstrap/database.d.ts`, which the type checker
+uses for every query. You switch to PostgreSQL with `DB_CONNECTION=pgsql` and `DB_URL` in `.env`.
+
+### Security from the start
+
+A new app answers with security headers and a strict Content-Security-Policy with a fresh nonce on every page. Guests get no
+session cookie until something needs one. The stylesheet of the framework's components is imported in the client entry, so no
+component writes a `style` attribute that the policy would have to allow.
+
+## Running the app
+
+Start the development server from the app's directory:
+
+```sh
+pnpm dev
+```
+
+`pnpm dev` runs `marmeon dev`. It serves the app on http://localhost:3000 and starts what the app needs next to it:
+
+- **The server**, with Vite in front of it. Changes to a page appear in the browser at once. Changes to server code restart the
+  server.
+- **A queue worker**, which runs the queued jobs. The starter kit sends its mails through the queue.
+- **The scheduler**, when a module has scheduled tasks. The starter kit's auth module prunes expired tokens at night.
+
+`marmeon dev` always runs in development. A failing page shows the development error page: the code that threw, the request's
+queries and suggested solutions. The devtools record requests, queries, jobs and mails at http://localhost:3000/_marmeon/devtools,
+and a small panel at the bottom right of every page links to them. The [devtools](devtools.md) page covers both.
+
+### Your first account
+
+Open http://localhost:3000 and register. The confirmation mail does not leave your machine: in development the mailer writes
+every mail to the log. The queue worker sends it a moment after you register, and it appears in the terminal where `pnpm dev`
+runs. Copy the confirmation link from it and open it. The app asks you to sign in first, confirms the address and takes you to
+the dashboard.
+
+> [!NOTE]
+> The log mailer writes links and tokens in plain text. Outside development the app warns at every start while `MAIL_MAILER` is
+> still `log`. Set up a real mailer before anyone else uses the app.
+
+### Tests and lint
+
+The app's tests and lint run with two more scripts:
+
+```sh
+pnpm test
+pnpm lint
+```
+
+`pnpm test` runs Vitest over `modules/**/*.test.ts`, on an in-memory SQLite database with the settings of `.env.test`. `pnpm lint`
+runs oxlint with the app's preset. The preset keeps views from importing server code by value, which would bundle it into the
+browser. The [testing](testing.md) page explains how a test boots the app.
+
+With npm, the scripts are `npm run dev`, `npm test` and `npm run lint`. The `marmeon` command itself runs as
+`pnpm marmeon <command>` or `npx marmeon <command>`.
+
+## The first day after a release
+
+pnpm installs no package version younger than its `minimumReleaseAge`, one day by default. This protects you from a package that
+is pulled again soon after it appears. For a day after a Marmeon release, `pnpm create marmeon` therefore falls back to an older
+version of the creator, or stops when there is none, and the install of the new framework versions fails.
+
+Wait a day, or let only the framework through for this one command:
+
+```sh
+pnpm_config_minimum_release_age_exclude='["@marmeon/*","marmeon","create-marmeon"]' pnpm create marmeon my-app
+```
+
+The variable reaches the install the creator runs and changes nothing else. The creator never changes your pnpm settings. npm
+has no such delay.
+
+## Next steps
+
+- [Directory Structure](structure.md) shows where everything in the new app lives, and walks you through your first module.
+- [Configuration](configuration.md) explains `.env`, `NODE_ENV` and each package's settings.
+- [Routing](routing.md) is where every feature starts: a URL, a controller and a page.
+- [Deployment](deployment.md) takes the app to a server: `marmeon build`, `marmeon start`, the worker and the scheduler.
