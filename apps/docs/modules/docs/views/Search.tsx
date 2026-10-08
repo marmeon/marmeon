@@ -29,7 +29,7 @@ export default function Search({ results }: PageProps<SearchController>) {
           />
         </form>
         {query.q.trim() === '' ? (
-          <p className="muted">Words are found in every package's README — as parts of words, all of them in one section.</p>
+          <p className="muted">Words are found on every page — as parts of words, all of them in one section.</p>
         ) : results.length === 0 ? (
           <p className="muted">Nothing found for “{query.q}”.</p>
         ) : (

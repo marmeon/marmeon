@@ -1,4 +1,5 @@
 # Versions and deprecations
+<!-- docs:pending -->
 
 How Marmeon is versioned, what a version number promises, and how to upgrade. The short form is in the repository's
 [README](../README.md#versions-and-deprecations); the changes themselves are in [UPGRADING.md](../UPGRADING.md) and in each

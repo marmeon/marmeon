@@ -1,4 +1,5 @@
 # Deploying a Marmeon app
+<!-- docs:pending -->
 
 A Marmeon app in production is **one image (or one directory) and three roles**: the web server (`marmeon start`), the
 queue worker (`marmeon queue:work`) and the scheduler (`marmeon schedule:work`). Each runs as a single Node process, each stops

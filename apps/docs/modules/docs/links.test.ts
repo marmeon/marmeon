@@ -8,9 +8,9 @@ import { DOCS_CSP } from './DocsServiceProvider.ts';
 import { DocsRepository } from './DocsRepository.ts';
 
 /**
- * The link check (instead of checking a static export, E133): every page — the start page, the guides, the packages — renders
+ * The link check (instead of checking a static export, E133): every page — the start page, the docs, the packages — renders
  * on the server, and every link on it that stays in the docs leads to a page that exists — and to an anchor that exists on it.
- * A README or guide link that breaks on GitHub breaks here.
+ * A link of a page or README that breaks on GitHub breaks here.
  */
 let app: TestApp;
 beforeAll(async () => {
@@ -18,8 +18,8 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(() => app?.close());
 
-const GUIDES = (docsConfig.guides ?? []).map((guide) => `/guides/${guide.slug}`);
-const PAGES = ['/', ...GUIDES, ...PACKAGES.map((name) => `/packages/${name}`)];
+const DOCS = docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`));
+const PAGES = ['/', ...DOCS, ...PACKAGES.map((name) => `/packages/${name}`)];
 const html = { headers: { accept: 'text/html' } };
 
 /** The links of the page's content and navigation, and the ids on it — read from the server-rendered markup. */
@@ -81,12 +81,14 @@ describe('every page', () => {
     }
     // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
     expect(broken, broken.join('\n')).toEqual([]);
-    expect(internal).toBeGreaterThan(600);
+    // Measured 12 157 (the start page, 73 pages of the docs, 27 READMEs — the header's and the navigation's links on each page count too): the
+    // threshold is that − 10 %, so a page that renders without its links or its navigation shows.
+    expect(internal).toBeGreaterThan(10_940);
   });
 
   it('names only files that exist where a README points at the code (`src/kernel.ts` — code text, no link: E10)', () => {
     const repo = resolve(import.meta.dirname, '../../../..');
     const missing = app.make(DocsRepository).pages().flatMap((page) => page.fileLinks.filter((file) => !existsSync(join(repo, file))).map((file) => `${page.file}: ${file}`));
-    expect(missing).toEqual([]);
+    expect(missing, missing.join('\n')).toEqual([]);
   });
 });

@@ -38,7 +38,7 @@ export function DocsLayout({ children }: LayoutProps) {
       </header>
       <div className={nav ? 'frame' : 'frame bare'}>
         {nav && (
-          <nav id="sidebar" className="sidebar" aria-label="Guides and packages" data-open={menu ? '' : undefined}>
+          <nav id="sidebar" className="sidebar" aria-label="Documentation" data-open={menu ? '' : undefined}>
             <Link route="docs.home" className="sidebar-home" prefetch>
               Overview
             </Link>
@@ -50,6 +50,7 @@ export function DocsLayout({ children }: LayoutProps) {
                     <li key={page.path}>
                       <Link href={page.path} prefetch>
                         {page.label}
+                        {page.pending && <span className="draft">draft</span>}
                       </Link>
                     </li>
                   ))}

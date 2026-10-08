@@ -176,6 +176,17 @@ input[type='search'] {
   font-weight: 600;
 }
 
+/* A page still to be written */
+.draft {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 main {
   min-width: 0;
 }
@@ -300,6 +311,30 @@ main {
   margin: 16px 0;
 }
 
+/* A code block with its file name above it (```ts title="…") */
+figure.code {
+  margin: 16px 0;
+}
+
+.code > figcaption {
+  padding: 6px 16px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font: 13px/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+figure.code .code-block {
+  margin: 0;
+}
+
+figure.code pre.code {
+  border-radius: 0 0 8px 8px;
+}
+
 pre.code {
   margin: 0;
   padding: 14px 16px;
@@ -415,6 +450,63 @@ pre.code {
 
 .pager small {
   color: var(--muted);
+}
+
+/* Start page: what Marmeon is, where to start, the sections */
+.page.home {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.home .doc {
+  max-width: 1100px;
+}
+
+.lead {
+  max-width: 760px;
+  font-size: 18px;
+}
+
+.home ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home h2 {
+  border: 0;
+}
+
+.start ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.home .start li {
+  margin: 0;
+}
+
+.start a {
+  display: block;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 32px;
+}
+
+.sections h2 {
+  margin: 24px 0 6px;
+  font-size: 17px;
+}
+
+.sections li {
+  margin: 2px 0;
 }
 
 /* Search */

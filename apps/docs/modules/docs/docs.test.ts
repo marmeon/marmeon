@@ -1,15 +1,16 @@
-import { appendFileSync, cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import docsConfig, { PACKAGES } from '../../docs.config.ts';
+import docsConfig, { PACKAGES, type DocsPageEntry } from '../../docs.config.ts';
 import type { SearchController } from './controllers/SearchController.ts';
-import { DocsError, DocsRepository } from './DocsRepository.ts';
+import { DocsError, DocsRepository, type Navigation } from './DocsRepository.ts';
 import { createCodeHighlighter } from './highlight.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
 import { DocsConfig } from '../../config/docs.ts';
+import { PENDING_MARKER } from './markdown.ts';
 import type { SearchResult } from './search.ts';
 
 // Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
@@ -20,6 +21,22 @@ let app: TestApp;
 beforeEach(async () => {
   app = await createTestApp(application);
 });
+
+/** Every page of the docs in the order of docs.config.ts — across the sections. */
+const ENTRIES = docsConfig.sections.flatMap((section) => section.pages);
+const fileOf = (entry: DocsPageEntry) => entry.file ?? `docs/${entry.slug}.md`;
+const SECTIONS = [
+  'Prologue',
+  'Getting Started',
+  'Architecture Concepts',
+  'The Basics',
+  'Frontend',
+  'Digging Deeper',
+  'Security',
+  'Database',
+  'Testing',
+  'Tools',
+];
 
 const results = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResult[] }).results;
 
@@ -75,41 +92,81 @@ describe('pages', () => {
     expect(response.body).not.toContain('id="sidebar"');
   });
 
-  it('shares the navigation — every package in its group — once per tab', async () => {
+  it('shares the navigation — the ten sections, then every package in its group — once per tab', async () => {
     const page = (await app.navigating().get('/packages/http').assertOk()).page()!;
-    const nav = page.props.nav as { groups: { title: string; pages: { name: string; label: string; path: string }[] }[] };
-    expect(nav.groups.map((group) => group.title)).toEqual(['Guides', 'Core', 'HTTP', 'Data', 'Auth & Mail', 'Background', 'Frontend', 'Tools']);
-    expect(nav.groups.slice(1).flatMap((group) => group.pages.map((pkg) => pkg.name)).sort()).toEqual([...PACKAGES].sort());
-    expect(nav.groups[0]!.pages.map((guide) => guide.path)).toEqual(docsConfig.guides!.map((guide) => `/guides/${guide.slug}`));
-    expect(page.props).toMatchObject({ previous: { path: '/packages/router' }, next: { path: '/packages/server' }, group: 'HTTP', title: '@marmeon/http' });
+    const nav = page.props.nav as Navigation;
+    const packageGroups = ['Core', 'HTTP', 'Data', 'Auth & Mail', 'Background', 'Frontend', 'Tools'].map((title) => `Package READMEs · ${title}`);
+    expect(nav.groups.map((group) => group.title)).toEqual([...SECTIONS, ...packageGroups]);
+    expect(nav.groups.slice(0, 10).flatMap((group) => group.pages.map((entry) => entry.path))).toEqual(ENTRIES.map((entry) => `/docs/${entry.slug}`));
+    expect(nav.groups.slice(0, 10).flatMap((group) => group.pages.map((entry) => entry.label))).toEqual(ENTRIES.map((entry) => entry.label));
+    expect(nav.groups.slice(10).flatMap((group) => group.pages.map((pkg) => pkg.name)).sort()).toEqual([...PACKAGES].sort());
+    expect(page.props).toMatchObject({ previous: { path: '/packages/router' }, next: { path: '/packages/server' }, section: 'Package READMEs · HTTP', title: '@marmeon/http' });
   });
 });
 
-describe('the guides (docs/*.md and the policies at the root, E168)', () => {
-  it('are pages under /guides — with their own neighbours, in the search, and an unknown one is a 404', async () => {
-    const deployment = (await app.navigating().get('/guides/deployment').assertOk().assertPage('docs/Page')).page()!;
-    expect(deployment.props).toMatchObject({ title: 'Deploying a Marmeon app', group: 'Guides', previous: { path: '/guides/realtime' }, next: { path: '/guides/security' } });
-    const upgrading = (await app.navigating().get('/guides/upgrading').assertOk()).page()!;
-    expect(upgrading.props).toMatchObject({ title: 'Upgrading' });
-    await app.get('/guides/no-such-guide').assertNotFound();
-    await app.get('/guides/README').assertNotFound();
+describe('the docs: sections of pages under /docs', () => {
+  it('lists the 73 pages in ten sections, in this order', () => {
+    expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
+    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([5, 5, 5, 11, 9, 13, 9, 7, 6, 3]);
+    expect(ENTRIES[0]).toEqual({ slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true });
+    expect(ENTRIES.filter((entry) => entry.file).map((entry) => [entry.slug, entry.file])).toEqual([
+      ['upgrading', 'UPGRADING.md'],
+      ['contributing', 'CONTRIBUTING.md'],
+      ['security-policy', 'SECURITY.md'],
+    ]);
+  });
+
+  it('answers every page under /docs/<slug> with its title — the file’s # heading — and its section', async () => {
+    for (const section of docsConfig.sections) {
+      for (const entry of section.pages) {
+        const title = /^# (.+)$/m.exec(readFileSync(join(repo, fileOf(entry)), 'utf8'))![1];
+        const page = (await app.navigating().get(`/docs/${entry.slug}`).assertOk().assertPage('docs/Page')).page()!;
+        expect(page.props, entry.slug).toMatchObject({ title, section: section.title });
+      }
+    }
+  }, 60_000);
+
+  it('an unknown page is a 404 — and the old /guides/ paths are gone', async () => {
+    await app.get('/docs/no-such-page').assertNotFound();
+    await app.get('/docs/README').assertNotFound();
+    await app.get('/guides/deployment').assertNotFound();
+  });
+
+  it('leads from page to page across the sections — the first has no previous page, the last no next', async () => {
+    /** `previous ← page → next`, the pages under /docs by their slugs — short enough that a failure shows the whole line. */
+    const neighbours = async (slug: string) => {
+      const props = (await app.navigating().get(`/docs/${slug}`).assertOk()).page()!.props as Record<'previous' | 'next', { path: string } | null>;
+      const name = (link: { path: string } | null) => link?.path.replace(/^\/docs\//, '') ?? 'none';
+      return `${name(props.previous)} ← ${slug} → ${name(props.next)}`;
+    };
+    expect(await neighbours('deployment')).toBe('starter-kit ← deployment → lifecycle');
+    expect(await neighbours('packages')).toBe('security-policy ← packages → installation');
+    expect(await neighbours('upgrading')).toBe('none ← upgrading → releases');
+    expect(await neighbours('health')).toBe('observability ← health → none');
+  });
+
+  it('the start page lists every docs page exactly once, in its section — and no package page', async () => {
+    const page = (await app.navigating().get('/').assertOk().assertPage('docs/Home')).page()!;
+    const sections = page.props.sections as { title: string; pages: { label: string; path: string }[] }[];
+    expect(sections.map((section) => section.title)).toEqual(SECTIONS);
+    expect(sections.flatMap((section) => section.pages)).toEqual(ENTRIES.map((entry) => ({ label: entry.label, path: `/docs/${entry.slug}` })));
+    expect(JSON.stringify(sections)).not.toContain('/packages/');
+  });
+
+  it('finds the deployment page’s sections — and the record of changes comes after every other hit', async () => {
     const hits = results(await app.navigating().get('/search?q=SHUTDOWN_DELAY').assertOk());
-    expect(hits.some((hit) => hit.href.startsWith('/guides/deployment'))).toBe(true);
+    expect(hits.some((hit) => hit.href.startsWith('/docs/deployment'))).toBe(true);
+    const late = hits.map((hit) => hit.href.startsWith('/docs/upgrading'));
+    expect(late).toContain(true);
+    expect(late.indexOf(true)).toBeGreaterThan(late.lastIndexOf(false));
   });
 
-  it('validation is the guide after Getting started — and the search finds its sections (W10 step 9a)', async () => {
-    const validation = (await app.navigating().get('/guides/validation').assertOk().assertPage('docs/Page')).page()!;
-    expect(validation.props).toMatchObject({ group: 'Guides', previous: { path: '/guides/getting-started' }, next: { path: '/guides/lists' } });
-    const hits = results(await app.navigating().get('/search?q=failOnDuplicate').assertOk());
-    expect(hits.some((hit) => hit.href === '/guides/validation#database-rules-and-why-they-never-run-live'), JSON.stringify(hits.map((hit) => hit.href))).toBe(true);
-  });
-
-  it('a link of a README to a guide is a visit to its page, with the anchor (no longer code text)', async () => {
+  it('a link of a page to another page is a visit to it, with the anchor; a link to the root README stays code text', async () => {
     const docs = app.make(DocsRepository);
-    const home = JSON.stringify(docs.home().body);
-    expect(home).toContain('"href":"/guides/deployment","data-internal":""');
-    expect(home).toContain('"href":"/guides/upgrading","data-internal":""');
-    expect(docs.pages().flatMap((page) => page.fileLinks).filter((file) => /^docs\/|^[A-Z]+\.md$/.test(file))).toEqual([]);
+    const tables = JSON.stringify(docs.doc('tables')!.body);
+    expect(tables).toContain('"href":"/docs/pagination#revalidations-replace-load-more-appends","data-internal":""');
+    expect(docs.pages().flatMap((page) => page.fileLinks).filter((file) => /^docs\/|^[A-Z]+\.md$/.test(file) && file !== 'README.md')).toEqual([]);
+    expect(docs.pages().some((page) => page.fileLinks.includes('README.md'))).toBe(true);
   });
 });
 
@@ -117,7 +174,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
   const document = { headers: { accept: 'text/html' } };
 
   it('sets no cookie, on any page — the docs group has no session, no CSRF, no encrypted cookies', async () => {
-    for (const path of ['/', '/packages/session', '/guides/security', '/search?q=csrf']) {
+    for (const path of ['/', '/packages/session', '/docs/security', '/search?q=csrf']) {
       const response = await app.get(path, document).assertOk();
       expect(response.headers.get('set-cookie'), path).toBeNull();
       expect(response.headers.get('cache-control'), path).toMatch(/^public, max-age=300$/);
@@ -196,31 +253,69 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
 });
 
 describe('the repository and docs.config.ts', () => {
-  /** A copy of the repository's READMEs — the real ones are never touched. */
+  /** A copy of the repository's pages and READMEs — the real ones are never touched. */
   function copy(): string {
     const dir = mkdtempSync(join(tmpdir(), 'marmeon-docs-'));
-    cpSync(join(repo, 'README.md'), join(dir, 'README.md'));
     for (const name of PACKAGES) {
       mkdirSync(join(dir, 'packages', name), { recursive: true });
       cpSync(join(repo, 'packages', name, 'README.md'), join(dir, 'packages', name, 'README.md'));
       writeFileSync(join(dir, 'packages', name, 'package.json'), '{}');
     }
     mkdirSync(join(dir, 'docs'));
-    for (const guide of docsConfig.guides!) cpSync(join(repo, guide.file), join(dir, guide.file));
+    for (const entry of ENTRIES) cpSync(join(repo, fileOf(entry)), join(dir, fileOf(entry)));
     return dir;
   }
 
-  it('stops the start for a docs/*.md without its entry in the guides — and for a listed guide that is gone', async () => {
+  it('stops the start for a docs/*.md without its entry in a section — and for a listed page whose file is gone', async () => {
     const dir = copy();
     try {
       writeFileSync(join(dir, 'docs/brandnew.md'), '# Brand new\n');
       rmSync(join(dir, 'SECURITY.md'));
+      rmSync(join(dir, 'docs/routing.md'));
       const error = await new DocsRepository({ source: dir }).load().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(DocsError);
       expect((error as DocsError).problems).toEqual([
-        `docs.config.ts lists the guide SECURITY.md, but it does not exist in ${dir}.`,
-        'docs/brandnew.md has no entry in docs.config.ts — add it to the guides.',
+        `docs.config.ts lists SECURITY.md, but it does not exist in ${dir}.`,
+        `docs.config.ts lists docs/routing.md, but it does not exist in ${dir}.`,
+        'docs/brandnew.md has no entry in docs.config.ts — add it to a section.',
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, ciTimeout);
+
+  it('stops the start for a slug that is no lower-case words with dashes, a slug or a file listed twice, and a file of the wrong place', async () => {
+    const extra: DocsPageEntry[] = [
+      { slug: 'Routing_Guide', label: 'Routing guide' },
+      { slug: 'routing', label: 'Routing again' },
+      { slug: 'upgrade', label: 'Upgrade', file: 'UPGRADING.md' },
+      { slug: 'notes', label: 'Notes', file: 'packages/core/README.md' },
+      { slug: 'other', label: 'Other', file: 'docs/routing.md' },
+    ];
+    const docs = { sections: [...docsConfig.sections, { title: 'More', pages: extra }], groups: docsConfig.groups };
+    const error = await new DocsRepository({ source: repo, docs }).load().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DocsError);
+    expect((error as DocsError).problems).toEqual([
+      "The page slug 'Routing_Guide' in docs.config.ts is not lower-case words with dashes.",
+      "The page slug 'routing' is listed twice in docs.config.ts.",
+      'UPGRADING.md is listed twice in docs.config.ts.',
+      "The page 'notes' names packages/core/README.md — a page's file is docs/<slug>.md or a Markdown file at the root.",
+      "The page 'other' names docs/routing.md — a page's file is docs/<slug>.md or a Markdown file at the root.",
+    ]);
+  }, ciTimeout);
+
+  it('marks a page that carries the pending marker in the navigation — and not one without it', async () => {
+    const dir = copy();
+    try {
+      writeFileSync(join(dir, 'docs/routing.md'), '# Routing\n\nWritten.\n');
+      writeFileSync(join(dir, 'docs/middleware.md'), `# Middleware\n${PENDING_MARKER}\n\n> [!NOTE]\n> This page is being written.\n`);
+      const docs = await new DocsRepository({ source: dir }).load();
+      const entries = docs.navigation().groups.flatMap((group) => group.pages);
+      expect(entries.find((entry) => entry.name === 'routing')).toEqual({ name: 'routing', label: 'Routing', path: '/docs/routing' });
+      expect(entries.find((entry) => entry.name === 'middleware')).toEqual({ name: 'middleware', label: 'Middleware', path: '/docs/middleware', pending: true });
+      expect(docs.doc('routing')!.pending).toBe(false);
+      expect(docs.doc('middleware')!.pending).toBe(true);
+      expect(JSON.stringify(docs.doc('middleware')!.body)).not.toContain('docs:pending');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -263,8 +358,8 @@ describe('the repository and docs.config.ts', () => {
   it('the app does not boot then', async () => {
     const dir = copy();
     try {
-      rmSync(join(dir, 'README.md'));
-      await expect(createTestApp(application, { env: { DOCS_SOURCE: dir } })).rejects.toThrow(/README\.md is missing — the start page/);
+      rmSync(join(dir, 'docs/routing.md'));
+      await expect(createTestApp(application, { env: { DOCS_SOURCE: dir } })).rejects.toThrow(/docs\.config\.ts lists docs\/routing\.md, but it does not exist/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -273,7 +368,7 @@ describe('the repository and docs.config.ts', () => {
   it('highlights every code block of every README with the stylesheet’s token classes (no inline colours left)', async () => {
     const highlighter = await createCodeHighlighter();
     const docs = await new DocsRepository({ source: repo }).load();
-    expect(docs.pages().length).toBe(PACKAGES.length + 1 + docsConfig.guides!.length);
+    expect(docs.pages().length).toBe(PACKAGES.length + 73);
     expect(highlighter.highlight("import { x } from 'y';", 'ts')).toBe(
       '<pre class="code" tabindex="0" data-lang="ts"><code><span class="line"><span class="tk">import</span> { x } <span class="tk">from</span><span class="ts"> \'y\'</span>;</span></code></pre>',
     );

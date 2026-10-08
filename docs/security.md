@@ -1,4 +1,5 @@
 # Security
+<!-- docs:pending -->
 
 What a Marmeon app protects by itself, what it leaves to you, and where each part is explained. The defaults are chosen to
 be safe when nobody changes them; where a protection costs something (a dependency, a migration, a cache), it is a switch, and
@@ -160,7 +161,7 @@ hand-written tables, and what stops each ([the whole model](tables.md#the-securi
 - **Keys are parsed by their declared type** before any query — text never reaches an integer column.
 
 Cursors of `cursorPaginate` (and of cursor tables) are encrypted with the app key: a hidden sort column's value never shows in a
-URL, and a changed or made-up cursor is a 400 ([lists](lists.md#cursors-and-load-more)).
+URL, and a changed or made-up cursor is a 400 ([lists](pagination.md#cursors-and-load-more)).
 
 ## Live updates
 
@@ -203,4 +204,4 @@ the client's header on unchanged.
 - Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the table's
   routes.
 - Update in lockstep and read [UPGRADING.md](../UPGRADING.md); security fixes go to the latest minor version
-  ([versions](versioning.md)).
+  ([versions](releases.md)).

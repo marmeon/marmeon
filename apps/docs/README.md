@@ -1,8 +1,8 @@
 # Marmeon docs
 
-The repository's READMEs — `README.md` and every `packages/*/README.md` — and its guides — `docs/*.md` and the policies at the
-root (`UPGRADING.md`, `CONTRIBUTING.md`, `SECURITY.md`) — as a normal Marmeon app (E114, E133: no static export):
-server-rendered React pages in a layout, `<Link prefetch>` between them, a search route on the server. Deployed as an image
+The documentation of Marmeon — its pages in sections, `docs/*.md` and the policies at the root (`UPGRADING.md`,
+`CONTRIBUTING.md`, `SECURITY.md`), and for now every `packages/*/README.md` — as a normal Marmeon app (E114, E133: no static
+export): server-rendered React pages in a layout, `<Link prefetch>` between them, a search route on the server. Deployed as an image
 behind Caddy (E142, [below](#deployment)).
 
 ```sh
@@ -11,16 +11,23 @@ pnpm docs:check    # marmeon build, the production server on a free port, a smok
 pnpm docs:image    # the image: built from this checkout, checked, run read-only and behind Caddy — part of the `image` part
 ```
 
-- **`docs.config.ts`** puts every package in one group of the navigation, typed against the package names, and lists the
-  guides (`/guides/<slug>`, the navigation's first group). The start fails when a package has no entry or no README, when a
-  `docs/*.md` has no entry, or when a listed guide is gone (`DocsError`). `UPGRADING.md` is marked `changes: true`: its sections
-  come after every other hit of the search.
+- **`docs.config.ts`** lists the sections and their pages (`/docs/<slug>`, the file `docs/<slug>.md` or a policy at the root via
+  `file`) and puts every package in one group, typed against the package names. The navigation shows the sections first, then
+  the package READMEs (`Package READMEs · Core`, …); previous and next lead through every page of every section in this order.
+  The start fails when a slug is not lower-case words with dashes or listed twice, when a file is listed twice, lies elsewhere
+  or is gone, when a `docs/*.md` has no entry, and when a package has no entry or no README (`DocsError`). `UPGRADING.md` is
+  marked `changes: true`: its sections come after every other hit of the search.
+- **A page still to be written** carries the line `<!-- docs:pending -->` (the second line, by convention): the navigation marks
+  it "draft", the line itself is never rendered.
+- **The start page** (`/`) is the app's own (`views/Home.tsx`): what Marmeon is, where to start, every section with its pages.
+  The root `README.md` is no page — a link to it stays code text.
 - **`modules/docs/DocsRepository.ts`** reads, renders (markdown-it, CommonMark + GFM tables; raw HTML stays text; GitHub's heading
   anchors via github-slugger; code highlighted by Shiki on the server — one Shiki per process) and indexes the pages when the app
   boots — again when one changes under `marmeon dev`. An app singleton without request data, and the route binder of
-  `/packages/:name` (`GuideBinding` binds `/guides/:guide`).
-- **Pages** are a tree of elements, not HTML: links to other READMEs and guides become `<Link prefetch>`, links to source files
-  code text.
+  `/packages/:name` (`DocBinding` binds `/docs/:page`).
+- **Pages** are a tree of elements, not HTML: links to other pages and READMEs become `<Link prefetch>`, links to source files
+  code text. A code block names its file with `title="…"` in its info string (```` ```ts title="modules/notes/routes.ts" ````):
+  a caption above the block.
 - **Routes** live in a middleware group of their own (`docs`): no session, no CSRF, no cookies; answers are `Cache-Control: public`
   with an `ETag` (`no-cache` in development) and a `Vary` that keeps the document and its JSON apart.
 - **Content-Security-Policy:** `script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` on every document —
@@ -34,8 +41,8 @@ pnpm docs:image    # the image: built from this checkout, checked, run read-only
   `Strict-Transport-Security` comes from Caddy (`deploy/docs/Caddyfile`). `pnpm docs:check` and `pnpm docs:image` check `nosniff`
   on the pages they fetch.
 - **Tests:** `modules/docs/links.test.ts` renders every page on the server and checks every link and anchor and that no page runs
-  an inline script; `docs.test.ts` the guides, the search, caching, the policy and the headers, cookies, the 404 and the boot
-  checks.
+  an inline script; `docs.test.ts` the sections and their pages, previous and next, the start page, the search, caching, the
+  policy and the headers, cookies, the 404 and the boot checks.
 
 Settings (`config/docs.ts`): `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image),
 `DOCS_CACHE_MAX_AGE` (300 s), `DOCS_SEARCH_PER_MINUTE` (120).
@@ -47,7 +54,7 @@ installs the workspace, builds the packages and the docs, then `pnpm deploy --pr
 tests, no `.env`), its production dependencies, the framework's packages with their `dist/` (their manifests keep the
 workspace's `exports` with the source condition — `marmeon` sets it only inside the workspace, E187, so the copies run `dist/`) — and
 the discovery manifest is written for exactly these packages (E160). `marmeon build` runs without a key or any other secret (E187);
-PID 1 of the image is `tini` (signals, orphans). The READMEs and guides are copied into `/app/content`: a new version of the
+PID 1 of the image is `tini` (signals, orphans). The pages and READMEs are copied into `/app/content`: a new version of the
 docs is a new image. `node:26-slim`, `USER node`, `NODE_ENV=production`, the root file system may be read-only (only `storage/` —
 the rate limit's cache and the compile cache — is written). `apps/docs/Dockerfile.dockerignore` keeps every `.env`, `node_modules`,
 the builds and the other apps' code out of the build context.

@@ -29,7 +29,7 @@ export const DOCS_CSP: ContentSecurityPolicyOptions = { scriptSrc: ["'self'"], f
 export const DOCS_DEV_CSP: ContentSecurityPolicyOptions = { frameAncestors: ["'none'"] };
 
 /**
- * Loads the routes into a group of their own (while registering) and reads the READMEs while the app boots (a missing or
+ * Loads the routes into a group of their own (while registering) and reads the pages while the app boots (a missing or
  * unlisted one stops the start). A group of their own: `web` would encrypt cookies and — with @marmeon/session — start a session and set its cookie and the CSRF
  * cookie on every page. Public pages need none of it: the `docs` group checks the asset version (a client of an old build
  * reloads, E36-safe), shares the navigation and marks the answers cacheable.
@@ -43,7 +43,7 @@ export class DocsServiceProvider implements ServiceProvider {
       return new DocsRepository({
         source: resolve(c.make(Application).root, config.source),
         watch: config.development,
-        onReloadError: (error) => c.make(Logger).error(`The READMEs could not be read again — the pages stay as they were. ${error instanceof Error ? error.message : String(error)}`),
+        onReloadError: (error) => c.make(Logger).error(`The pages could not be read again — they stay as they were. ${error instanceof Error ? error.message : String(error)}`),
       });
     });
   }

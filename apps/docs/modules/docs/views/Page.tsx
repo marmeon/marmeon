@@ -4,13 +4,13 @@ import type { ShowPackageController } from '../controllers/ShowPackageController
 import { Markdown } from '../components/Markdown.tsx';
 import { Toc } from '../components/Toc.tsx';
 
-/** `/packages/:name` and `/guides/:guide`: a package's README or a guide. */
-export default function Page({ title, group, body, toc, previous, next }: PageProps<ShowPackageController>) {
+/** `/docs/:page` and `/packages/:name`: a page of the docs or a package's README. */
+export default function Page({ title, section, body, toc, previous, next }: PageProps<ShowPackageController>) {
   return (
     <div className="page">
       <Head title={title} />
       <article className="doc">
-        {group && <p className="eyebrow">{group}</p>}
+        <p className="eyebrow">{section}</p>
         <h1>{title}</h1>
         <Markdown nodes={body} />
         <nav className="pager" aria-label="More pages">

@@ -5,11 +5,11 @@
  *   pnpm docs:check     # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
  *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
- * The smoke test asks the running production build what the acceptance asks: the start page, every guide (`docs/*.md`,
- * `UPGRADING.md`, …) and every package page (200, server-rendered, the static `'self'` Content-Security-Policy without a
- * nonce), the search (`onOneServer` → the scheduler, `TracingChannel` → core, `SHUTDOWN_DELAY` → the deployment guide), `/up`,
- * no `Set-Cookie` on any public page, caching headers (`public`, `ETag`, `Vary`, `304`), an unknown package and guide (404)
- * and a 10 000-character query (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
+ * The smoke test asks the running production build what the acceptance asks: the start page, every page of the docs'
+ * sections (`/docs/<slug>`: `docs/*.md`, `UPGRADING.md`, …) and every package page (200, server-rendered, the static `'self'`
+ * Content-Security-Policy without a nonce), the search (`onOneServer` → the scheduler, `TracingChannel` → core,
+ * `SHUTDOWN_DELAY` → the deployment page), `/up`, no `Set-Cookie` on any public page, caching headers (`public`, `ETag`,
+ * `Vary`, `304`), an unknown package and page (404) and a 10 000-character query (no 500). The image of the docs is built and run by the `image` part (scripts/docs-image.ts).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -23,7 +23,8 @@ const app = fileURLToPath(new URL('../apps/docs/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
 const marmeon = fileURLToPath(new URL('../packages/cli/bin/marmeon.js', import.meta.url));
 const mode = process.argv[2];
-const guides = docsConfig.guides ?? [];
+/** Every page of the docs' sections, in their order — with its file (`docs/<slug>.md` or a policy at the root). */
+const pages = docsConfig.sections.flatMap((section) => section.pages.map((entry) => ({ slug: entry.slug, file: entry.file ?? `docs/${entry.slug}.md` })));
 /** The docs' policy in production (apps/docs DocsServiceProvider, DOCS_CSP). */
 const DOCS_POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
@@ -75,7 +76,7 @@ async function check(): Promise<number> {
     console.error(`docs:check: ${failures.length} problem(s):\n${failures.map((failure) => `  ✗ ${failure}`).join('\n')}`);
     return 1;
   }
-  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${PACKAGES.length + guides.length + 1} pages) and stop in ${seconds} s`);
+  console.log(`docs:check: ✓ build, start, smoke test (${checks} checks, ${PACKAGES.length + pages.length + 1} pages) and stop in ${seconds} s`);
   return 0;
 }
 
@@ -119,10 +120,10 @@ async function smoke(base: string, failures: string[]): Promise<number> {
     const { name: npmName } = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8')) as { name: string };
     await publicPage(`/packages/${name}`, `${npmName}</h1>`);
   }
-  // Each guide's heading is its file's first `#` line.
-  for (const guide of guides) {
-    const title = /^# (.+)$/m.exec(readFileSync(join(root, guide.file), 'utf8'))?.[1] ?? guide.slug;
-    await publicPage(`/guides/${guide.slug}`, `${title.replace(/&/g, '&amp;')}</h1>`);
+  // Each page's heading is its file's first `#` line (React escapes `&` and quotes in it).
+  for (const page of pages) {
+    const title = /^# (.+)$/m.exec(readFileSync(join(root, page.file), 'utf8'))?.[1] ?? page.slug;
+    await publicPage(`/docs/${page.slug}`, `${title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')}</h1>`);
   }
 
   const search = async (q: string, page: string) => {
@@ -135,12 +136,12 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   };
   await search('onOneServer', '/packages/scheduler');
   await search('TracingChannel', '/packages/core');
-  await search('SHUTDOWN_DELAY', '/guides/deployment');
+  await search('SHUTDOWN_DELAY', '/docs/deployment');
 
   const missing = await get('/packages/no-such-package');
   expect(missing.response.status === 404, `/packages/no-such-package: status ${missing.response.status}, expected 404`);
-  const noGuide = await get('/guides/no-such-guide');
-  expect(noGuide.response.status === 404, `/guides/no-such-guide: status ${noGuide.response.status}, expected 404`);
+  const noPage = await get('/docs/no-such-page');
+  expect(noPage.response.status === 404, `/docs/no-such-page: status ${noPage.response.status}, expected 404`);
   const long = await get(`/search?q=${'a'.repeat(10_000)}`);
   expect(long.response.status < 500, `/search with 10 000 characters: status ${long.response.status}`);
 

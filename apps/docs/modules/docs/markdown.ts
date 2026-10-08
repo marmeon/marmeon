@@ -22,6 +22,13 @@ const element = (t: string, a?: Record<string, string> | null): Building => (a ?
  */
 const markdown = new MarkdownIt('commonmark', { html: false, linkify: false, typographer: false }).enable(['table', 'strikethrough']);
 
+/**
+ * The mark of a page still to be written: a line of its own (a paragraph, outside code), by convention the file's second. The
+ * page is `pending` — the navigation says "draft" — and the line is taken out before the page is built: with `html: false` it
+ * would show as text.
+ */
+export const PENDING_MARKER = '<!-- docs:pending -->';
+
 /** Where a link of a README points. */
 export type LinkTarget =
   | { kind: 'page'; path: string; hash: string }
@@ -46,10 +53,12 @@ export interface RenderedMarkdown {
   readonly anchors: string[];
   /** Links to files that are no page (`src/kernel.ts`) — shown as code text. */
   readonly fileLinks: string[];
+  /** The page carries {@link PENDING_MARKER}. */
+  readonly pending: boolean;
 }
 
 export interface RenderOptions {
-  /** The README's path relative to the repository: `README.md`, `packages/core/README.md`. */
+  /** The file's path relative to the repository: `docs/routing.md`, `packages/core/README.md`. */
   readonly file: string;
   /** Which repository path is which page: `packages/core/README.md` → `/packages/core`. */
   readonly pageOf: (repoPath: string) => string | undefined;
@@ -67,6 +76,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
   const fileLinks: string[] = [];
   const sections: { heading: string; anchor: string; depth: number; text: string[] }[] = [];
   let title = '';
+  let pending = false;
   let section = { heading: '', anchor: '', depth: 1, text: [] as string[] };
   sections.push(section);
 
@@ -78,6 +88,11 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!;
     if (token.hidden) continue; // the paragraphs of a tight list
+    if (token.type === 'paragraph_open' && tokens[i + 1]!.content.trim() === PENDING_MARKER) {
+      pending = true;
+      i += 2; // the inline and the close token
+      continue;
+    }
     switch (token.type) {
       case 'heading_open': {
         const inline = tokens[i + 1]!;
@@ -164,8 +179,10 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
         break;
       case 'fence':
       case 'code_block': {
-        const lang = token.info.trim().split(/\s+/)[0] ?? '';
-        append({ html: options.highlight(token.content, lang) });
+        const { lang, title } = codeInfo(token.info);
+        const code = { html: options.highlight(token.content, lang) };
+        // The file a block shows, above it: a caption of text — React escapes it, quotes and markup alike.
+        append(title ? { t: 'figure', a: { class: 'code' }, c: [{ t: 'figcaption', c: [title] }, code] } : code);
         section.text.push(token.content);
         break;
       }
@@ -250,10 +267,18 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
     toc,
     anchors,
     fileLinks,
+    pending,
     sections: sections
       .map((s) => ({ heading: s.heading, anchor: s.anchor, depth: s.depth, text: s.text.join(' ').replace(/\s+/g, ' ').trim() }))
       .filter((s) => s.text || s.anchor),
   };
+}
+
+/** A fence's info string: its language (the first word) and the file it shows — ```` ```ts title="modules/notes/routes.ts" ````. */
+function codeInfo(info: string): { lang: string; title: string } {
+  const first = info.trim().split(/\s+/)[0] ?? '';
+  const title = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)')/.exec(info);
+  return { lang: first.startsWith('title=') ? '' : first, title: (title?.[1] ?? title?.[2] ?? '').trim() };
 }
 
 /** `> [!NOTE]` (GitHub's alerts) → a callout; any other blockquote stays one. */
@@ -296,10 +321,13 @@ export function linkTarget(href: string, options: Pick<RenderOptions, 'file' | '
   return page === options.pageOf(options.file) && hash ? { kind: 'page', path: '', hash } : { kind: 'page', path: page, hash };
 }
 
-/** A README the docs do not have (a typo, a package that is gone): still a page link — the link check reports it. */
+/**
+ * A README the docs do not have (a typo, a package that is gone): still a page link — the link check reports it. The root
+ * README is no page (the start page is the app's own): a link to it stays code text, as on any file.
+ */
 function missingPage(path: string): string | undefined {
   const name = /^packages\/([^/]+)(?:\/README\.md)?$/.exec(path)?.[1];
-  return name ? `/packages/${name}` : path.endsWith('README.md') ? `/${path}` : undefined;
+  return name ? `/packages/${name}` : path.endsWith('/README.md') ? `/${path}` : undefined;
 }
 
 /** The text of inline tokens, as GitHub reads a heading for its anchor (code spans without their backticks). */

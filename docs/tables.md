@@ -1,4 +1,5 @@
 # Tables
+<!-- docs:pending -->
 
 A list that people sort, filter, page through, tick rows in and act on — and download. Hand-written, such a table is where the
 classic leaks live: a hidden column that still travels in the props, a sort parameter that goes into `ORDER BY`, a bulk action that
@@ -134,7 +135,7 @@ export default function Index({ members }: PageProps<ListMembersController>) {
 - **The selection** lives with the history entry — in memory, never in `history.state` or storage: a new sort, filter or page
   starts with nothing selected, Back brings the old one back, and leaving the document (signing out, a new build) forgets it.
 - **Actions** (`table.run('removeLinks', row)`, `table.runBulk('removeLinks')`) are action requests; afterwards the table's prop
-  reloads and **replaces** what the page had — also a table that is `merge()`d ([lists](lists.md#revalidations-replace-load-more-appends)).
+  reloads and **replaces** what the page had — also a table that is `merge()`d ([lists](pagination.md#revalidations-replace-load-more-appends)).
   Their code is a chunk of its own, loaded with the first run.
 - **`table.exportUrl('csv')`** is a link to the download with the table's current state.
 

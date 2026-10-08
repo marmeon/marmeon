@@ -3,11 +3,11 @@ import { createElement, type ReactNode } from 'react';
 import type { DocNode } from '../types.ts';
 
 /** The tags the server's renderer produces — anything else (there is nothing else) would be a `span`. */
-const TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'aside', 'div', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'code', 'strong', 'em', 's', 'a', 'br', 'hr']);
+const TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'aside', 'div', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'code', 'strong', 'em', 's', 'a', 'br', 'hr', 'figure', 'figcaption']);
 const PROPS: Record<string, string> = { class: 'className', tabindex: 'tabIndex' };
 
 /**
- * A README as React elements: links to other pages are `<Link prefetch>` (a visit over the protocol, fetched ahead while the
+ * A page — a doc or a README — as React elements: links to other pages are `<Link prefetch>` (a visit over the protocol, fetched ahead while the
  * pointer rests on them), anchors and external links stay `<a>`. Code blocks are the server's highlighted markup — escaped
  * text in spans, no highlighter in the browser.
  */

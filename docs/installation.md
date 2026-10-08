@@ -1,4 +1,5 @@
 # Getting started with Marmeon
+<!-- docs:pending -->
 
 From nothing to a running app with sign-in, and the first feature of your own. You need **Node 26.10** or newer and **pnpm 12**
 (or npm). Marmeon runs TypeScript natively — there is no compile step for your code.

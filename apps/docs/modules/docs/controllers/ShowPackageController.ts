@@ -1,12 +1,12 @@
 import { Controller, type HttpContext } from '@marmeon/http';
 import { DocsRepository, type DocPage } from '../DocsRepository.ts';
 
-/** What `docs/Page` shows of a package's README or a guide: the page, and the pages before and after it in the navigation. */
+/** What `docs/Page` shows of a page of the docs or a package's README: the page, and the pages before and after it in the navigation. */
 export function pageProps(page: DocPage, docs: DocsRepository) {
-  const { title, group, body, toc } = page;
+  const { title, section, body, toc } = page;
   const { previous, next } = docs.neighbours(page);
   const link = (other: DocPage | null) => (other ? { path: other.path, title: other.title } : null);
-  return { title, group, body, toc, previous: link(previous), next: link(next) };
+  return { title, section, body, toc, previous: link(previous), next: link(next) };
 }
 
 /** `/packages/:name`: a package's README, its table of contents, and the pages before and after it. */

@@ -1,4 +1,5 @@
 # Real time: live hints
+<!-- docs:pending -->
 
 When something changes, the other tabs that show it should follow — another user added a link to a profile, a notification came,
 an administrator removed a row. In Marmeon real time is **live hints** (E89): the server tells the tabs that follow a channel
@@ -44,7 +45,7 @@ A notification sent `via()` `'live'` hints its recipient's channel by itself.
 - **Read-only.** The stream (`GET /_marmeon/live`) never writes a session, a cookie or a flash message.
 
 Reloads coalesce: hints are collected until 250 ms pass without one (at most 2 s), then **one** partial reload per page, island or
-layer. A reload after a hint is a revalidation — it **replaces** `merge()`d props ([lists](lists.md#revalidations-replace-load-more-appends)).
+layer. A reload after a hint is a revalidation — it **replaces** `merge()`d props ([lists](pagination.md#revalidations-replace-load-more-appends)).
 While tab sync asks whether to keep a page after a sign-in or sign-out elsewhere, the stream is paused (no reconnect, no reload) until
 a page of the new session is on screen.
 

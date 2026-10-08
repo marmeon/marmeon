@@ -2,15 +2,15 @@
 // `marmeon dev` and `marmeon build` keep it current; CI checks it with `marmeon route:types --check`.
 
 import type { SearchController } from '../modules/docs/controllers/SearchController.ts';
-import type { ShowGuideController } from '../modules/docs/controllers/ShowGuideController.ts';
+import type { ShowDocController } from '../modules/docs/controllers/ShowDocController.ts';
 import type { ShowHomeController } from '../modules/docs/controllers/ShowHomeController.ts';
 import type { ShowPackageController } from '../modules/docs/controllers/ShowPackageController.ts';
 
 declare module '@marmeon/router' {
   interface Routes {
-    'docs.guide': { method: 'get'; path: '/guides/:guide'; controller: typeof ShowGuideController };
     'docs.home': { method: 'get'; path: '/'; controller: typeof ShowHomeController };
     'docs.package': { method: 'get'; path: '/packages/:name'; controller: typeof ShowPackageController };
+    'docs.page': { method: 'get'; path: '/docs/:page'; controller: typeof ShowDocController };
     'docs.search': { method: 'get'; path: '/search'; controller: typeof SearchController };
   }
 }

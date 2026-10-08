@@ -3,11 +3,11 @@
  * starter kit's image): `apps/docs/Dockerfile` built from this checkout, then
  *
  *   the image: runs as a user other than root · no .env*, no test, no other app's code, no config of the build (vite, vitest,
- *   tsconfig) · no dev dependency · every README and guide in /app/content · a command besides start (route:types --check, no
+ *   tsconfig) · no dev dependency · every page of the docs and every package README in /app/content · a command besides start (route:types --check, no
  *   key given) runs the framework's dist/ — the copies of pnpm deploy keep their workspace manifests, and marmeon gives the
  *   source condition only inside the workspace (E187) · tini is PID 1 and reaps an orphaned process
  *   the container (read-only root file system, the storage volume — as deploy/docs/compose.yaml runs it): /up 200 · the start page,
- *   every guide and every package 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
+ *   every page of the docs and every package 200 without Set-Cookie, with the static 'self' policy · the health check turns healthy · tini
  *   reaps an orphan · no warning in the log · SIGTERM → exit 0
  *   behind Caddy (deploy/docs/compose.yaml itself, Caddy's port moved to a free one on 127.0.0.1, DOCS_DOMAIN=localhost — Caddy's
  *   own CA): HTTP/2 · no Set-Cookie · Strict-Transport-Security · X-Forwarded-Proto/-Host trusted (an old client's 409 names
@@ -65,9 +65,12 @@ async function until<T>(what: string, check: () => Promise<T | undefined> | T | 
   throw new SmokeError(`${what} did not happen within ${ms / 1000} s${last ? ` (last: ${last})` : ''}${logs ? `:\n${logs()}` : ''}`);
 }
 
-/** Every page of the docs: the start page, the guides, the packages. */
+/** The docs' pages in the order of their sections. */
+const entries = () => docsConfig.sections.flatMap((section) => section.pages);
+
+/** Every page of the docs: the start page, the sections' pages, the packages. */
 export function docsPages(): string[] {
-  return ['/', ...(docsConfig.guides ?? []).map((guide) => `/guides/${guide.slug}`), ...PACKAGES.map((name) => `/packages/${name}`)];
+  return ['/', ...entries().map((entry) => `/docs/${entry.slug}`), ...PACKAGES.map((name) => `/packages/${name}`)];
 }
 
 /** Lists, inside the image, what must not be there (printed as JSON by Node — the image has no find). */
@@ -129,14 +132,13 @@ export function inspectionProblems(found: Inspection, repository = root): string
   const dev = found.store.filter((entry) => DEV_PACKAGES.test(entry));
   if (dev.length > 0) problems.push(`dev dependencies in the image: ${dev.join(', ')} (pnpm deploy --prod)`);
   const pages = [
-    'content/README.md',
-    ...(docsConfig.guides ?? []).map((guide) => `content/${guide.file}`),
+    ...entries().map((entry) => `content/${entry.file ?? `docs/${entry.slug}.md`}`),
     ...PACKAGES.flatMap((name) => [`content/packages/${name}/README.md`, `content/packages/${name}/package.json`]),
   ];
   const absent = pages.filter((file) => !found.content.includes(file));
   if (absent.length > 0) problems.push(`/app/content lacks ${absent.slice(0, 8).join(', ')}`);
-  const guides = readdirSync(join(repository, 'docs')).filter((name) => name.endsWith('.md')).map((name) => `content/docs/${name}`);
-  const unshipped = guides.filter((file) => !found.content.includes(file));
+  const docs = readdirSync(join(repository, 'docs')).filter((name) => name.endsWith('.md')).map((name) => `content/docs/${name}`);
+  const unshipped = docs.filter((file) => !found.content.includes(file));
   if (unshipped.length > 0) problems.push(`/app/content lacks ${unshipped.join(', ')}`);
   return problems;
 }
@@ -256,7 +258,7 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
       const base = `https://localhost:${port}`;
       await until('Caddy answering over HTTPS', () => (curl(`${base}/up`).status === 200 ? true : undefined), 60_000, () => compose(['logs'], 'any').output);
       const problems: string[] = [];
-      for (const path of ['/', '/guides/getting-started', '/packages/session']) {
+      for (const path of ['/', '/docs/installation', '/packages/session']) {
         const page = curl(base + path, { accept: 'text/html' });
         if (page.version !== 'HTTP/2' || page.status !== 200) problems.push(`${path}: ${page.version} ${page.status}, expected HTTP/2 200`);
         if (page.headers.has('set-cookie')) problems.push(`${path}: Set-Cookie behind Caddy: ${page.headers.get('set-cookie')}`);
@@ -264,18 +266,18 @@ export async function docsImage({ keep = false }: { keep?: boolean } = {}): Prom
         if (page.headers.get('content-security-policy') !== POLICY) problems.push(`${path}: Content-Security-Policy "${page.headers.get('content-security-policy')}"`);
       }
       // An old client's visit: the docs build the reload URL from what Caddy forwarded — trusted, it is Caddy's https address.
-      const stale = curl(`${base}/guides/deployment`, { 'x-marmeon': 'true', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
-      if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/guides/deployment`) {
-        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/guides/deployment (TRUSTED_PROXIES)`);
+      const stale = curl(`${base}/docs/deployment`, { 'x-marmeon': 'true', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
+      if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/docs/deployment`) {
+        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/docs/deployment (TRUSTED_PROXIES)`);
       }
-      const compressed = curl(`${base}/guides/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
-      const plain = curl(`${base}/guides/upgrading`, { accept: 'text/html' });
+      const compressed = curl(`${base}/docs/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
+      const plain = curl(`${base}/docs/upgrading`, { accept: 'text/html' });
       if (!/zstd|gzip/.test(compressed.headers.get('content-encoding') ?? '') || compressed.length >= plain.length / 2) {
-        problems.push(`/guides/upgrading: Content-Encoding "${compressed.headers.get('content-encoding')}", ${compressed.length} of ${plain.length} bytes`);
+        problems.push(`/docs/upgrading: Content-Encoding "${compressed.headers.get('content-encoding')}", ${compressed.length} of ${plain.length} bytes`);
       }
       const etag = compressed.headers.get('etag');
-      const again = etag ? curl(`${base}/guides/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip', 'if-none-match': etag }) : undefined;
-      if (again?.status !== 304) problems.push(`/guides/upgrading revalidated with ${etag}: ${again?.status}, expected 304`);
+      const again = etag ? curl(`${base}/docs/upgrading`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip', 'if-none-match': etag }) : undefined;
+      if (again?.status !== 304) problems.push(`/docs/upgrading revalidated with ${etag}: ${again?.status}, expected 304`);
       if (problems.length > 0) throw new SmokeError(`behind Caddy:\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n${compose(['logs', '--tail', '40'], 'any').output}`);
     });
     const size = Number(docker(['image', 'inspect', '-f', '{{.Size}}', image]).output.trim());

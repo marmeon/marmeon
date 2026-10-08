@@ -1,4 +1,5 @@
 # Navigation, history and view transitions
+<!-- docs:pending -->
 
 A Marmeon app moves between pages without full loads: a link asks the server for the next page's props as JSON, the client
 renders it and writes a history entry. This guide is about that history — how the client follows Back and Forward (through the

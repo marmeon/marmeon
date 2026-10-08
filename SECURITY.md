@@ -24,7 +24,7 @@ What happens then:
 
 Marmeon is in 0.x ([versions and deprecations](README.md#versions-and-deprecations)): security fixes are released for the
 **latest minor version** only — upgrade along [UPGRADING.md](UPGRADING.md). How long a major version receives security fixes is
-set with 1.0 ([versions and deprecations](docs/versioning.md)).
+set with 1.0 ([versions and deprecations](docs/releases.md)).
 
 | Version | Security fixes |
 |---|---|

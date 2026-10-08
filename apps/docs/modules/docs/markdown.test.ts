@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from './markdown.ts';
+import { PENDING_MARKER, renderMarkdown } from './markdown.ts';
 import type { DocNode } from './types.ts';
 
-const pageOf = (file: string) => (file === 'README.md' ? '/' : /^packages\/(\w+)\/README\.md$/.exec(file) ? `/packages/${/^packages\/(\w+)\//.exec(file)![1]}` : undefined);
+/** As the repository maps them: `docs/<slug>.md` and the packages' READMEs are pages — the root README is none (code text). */
+const pageOf = (file: string) => {
+  const doc = /^docs\/([a-z-]+)\.md$/.exec(file)?.[1];
+  const name = /^packages\/(\w+)\/README\.md$/.exec(file)?.[1];
+  return doc ? `/docs/${doc}` : name ? `/packages/${name}` : undefined;
+};
 const render = (source: string, file = 'packages/http/README.md') => renderMarkdown(source, { file, pageOf, highlight: (code) => `<pre>${code}</pre>` });
 
 /** The tree as markup — what React renders from it. */
@@ -40,15 +45,15 @@ describe('README markdown', () => {
     expect(anchors).toContain('deep');
   });
 
-  it('turns links to READMEs into page links, keeps anchors into the page itself, and shows links to source files as code text', () => {
+  it('turns links to READMEs and docs pages into page links, keeps anchors into the page itself, and shows links to source files as code text', () => {
     const markup = html(
       render(
-        '# H\n\nSee [the router](../router/README.md#middleware), [the start](../../README.md), [here](#features), ' +
+        '# H\n\nSee [the router](../router/README.md#middleware), [routing](../../docs/routing.md#groups), [here](#features), ' +
           '[this page](./README.md#the-protocol), [the kernel](src/kernel.ts), [Kysely](https://kysely.dev).',
       ).body,
     );
     expect(markup).toContain('<a href="/packages/router#middleware" data-internal>the router</a>');
-    expect(markup).toContain('<a href="/" data-internal>the start</a>');
+    expect(markup).toContain('<a href="/docs/routing#groups" data-internal>routing</a>');
     expect(markup).toContain('<a href="#features">here</a>');
     expect(markup).toContain('<a href="#the-protocol">this page</a>');
     expect(markup).toContain('<span class="file">the kernel</span>');
@@ -68,5 +73,52 @@ describe('README markdown', () => {
       { heading: '@marmeon/x', anchor: '', depth: 1, text: 'Intro.' },
       { heading: 'Locks', anchor: 'locks', depth: 2, text: 'Use onOneServer(). s.command(x).onOneServer();' },
     ]);
+  });
+
+  it('keeps a link to the root README code text — it is no page (a page link to /README.md would be a broken link)', () => {
+    const fromPackage = render('# H\n\nSee [the README](../../README.md#versions-and-deprecations).');
+    expect(html(fromPackage.body)).toContain('<span class="file">the README</span>');
+    expect(fromPackage.fileLinks).toEqual(['README.md']);
+    const fromDocs = render('# H\n\n[Back](../README.md)', 'docs/releases.md');
+    expect(html(fromDocs.body)).toContain('<span class="file">Back</span>');
+    expect(fromDocs.fileLinks).toEqual(['README.md']);
+  });
+
+  it('puts the file name of a code block with title="…" above it — a figure with its caption', () => {
+    const { body, sections } = render('# H\n\n```ts title="a/b.ts"\nconst x = 1;\n```');
+    expect(html(body)).toBe('<figure class="code"><figcaption>a/b.ts</figcaption><pre>const x = 1;\n</pre></figure>');
+    expect(body).toEqual([{ t: 'figure', a: { class: 'code' }, c: [{ t: 'figcaption', c: ['a/b.ts'] }, { html: '<pre>const x = 1;\n</pre>' }] }]);
+    expect(sections[0]!.text).toBe('const x = 1;');
+  });
+
+  it('highlights a titled block in its language (the first word) and leaves a block without title as it was', () => {
+    const languages: string[] = [];
+    const highlight = (code: string, lang: string) => (languages.push(lang), `<pre>${code}</pre>`);
+    const titled = renderMarkdown('```tsx title="views/Show.tsx"\nx\n```', { file: 'docs/x.md', pageOf, highlight });
+    const plain = renderMarkdown('```tsx\nx\n```\n\n```\ny\n```', { file: 'docs/x.md', pageOf, highlight });
+    expect(languages).toEqual(['tsx', 'tsx', '']);
+    expect(titled.body).toEqual([{ t: 'figure', a: { class: 'code' }, c: [{ t: 'figcaption', c: ['views/Show.tsx'] }, { html: '<pre>x\n</pre>' }] }]);
+    expect(plain.body).toEqual([{ html: '<pre>x\n</pre>' }, { html: '<pre>y\n</pre>' }]);
+  });
+
+  it('shows a title with quotes or HTML as text — escaped, never markup', () => {
+    const markup = html(render(`# H\n\n\`\`\`ts title='say "hi" <img src=x onerror=alert(1)>'\nx\n\`\`\``).body);
+    expect(markup).toContain('<figcaption>say "hi" &lt;img src=x onerror=alert(1)&gt;</figcaption>');
+    expect(markup).not.toContain('<img');
+  });
+
+  it('marks a page with the pending marker and renders no marker text', () => {
+    const placeholder = render(`# Routing\n${PENDING_MARKER}\n\n> [!NOTE]\n> This page is being written.\n`, 'docs/routing.md');
+    expect(PENDING_MARKER).toBe('<!-- docs:pending -->');
+    expect(placeholder.pending).toBe(true);
+    expect(placeholder.title).toBe('Routing');
+    expect(html(placeholder.body)).toBe('<aside class="callout note" role="note"><p class="callout-title">Note</p><p>This page is being written.</p></aside>');
+    expect(JSON.stringify(placeholder)).not.toContain('docs:pending');
+    const finished = render('# Routing\n\nText.\n', 'docs/routing.md');
+    expect(finished.pending).toBe(false);
+    // In a code block the marker is an example, not a mark.
+    const shown = render(`# Writing\n\n\`\`\`md\n${PENDING_MARKER}\n\`\`\`\n`, 'CONTRIBUTING.md');
+    expect(shown.pending).toBe(false);
+    expect(JSON.stringify(shown.body)).toContain('docs:pending');
   });
 });

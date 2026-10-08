@@ -1,14 +1,14 @@
 import { defineConfig, type ConfigOf } from '@marmeon/core';
 import { rules as r } from '@marmeon/validation';
 
-/** Where the READMEs come from and how long browsers and caches may keep a page. */
+/** Where the pages come from and how long browsers and caches may keep a page. */
 export const DocsConfig = defineConfig('docs', {
   env: r.env({
-    /** The repository whose `README.md` and `packages/*\/README.md` are the pages — relative to the app root. */
+    /** The repository whose `docs/*.md`, policies at the root and `packages/*\/README.md` are the pages — relative to the app root. */
     DOCS_SOURCE: r.string().default('../..'),
     /**
      * `Cache-Control: public, max-age=…` of a page in seconds (the content changes only with a deploy; an `ETag` lets a
-     * browser ask again cheaply after that). In development pages are `no-cache`: an edited README shows on the next visit.
+     * browser ask again cheaply after that). In development pages are `no-cache`: an edited page shows on the next visit.
      */
     DOCS_CACHE_MAX_AGE: r.integer().min(0).default(300),
     /** Searches per minute and client (`throttle('docs.search')`) — typing sends one per pause. */
@@ -19,7 +19,7 @@ export const DocsConfig = defineConfig('docs', {
     source: env.DOCS_SOURCE,
     cacheMaxAge: env.DOCS_CACHE_MAX_AGE,
     searchPerMinute: env.DOCS_SEARCH_PER_MINUTE,
-    /** Re-read the READMEs when one changes, and no long caching. */
+    /** Re-read the pages when one changes, and no long caching. */
     development: env.NODE_ENV === 'development',
   }),
 });

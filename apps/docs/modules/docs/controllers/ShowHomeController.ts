@@ -1,7 +1,7 @@
 import { Controller } from '@marmeon/http';
 import { DocsRepository } from '../DocsRepository.ts';
 
-/** `/`: the repository's README — what Marmeon is, the principles, the quick start, the packages. */
+/** `/`: what Marmeon is, where to start, and every section of the docs with its pages (the package READMEs are not among them). */
 export class ShowHomeController extends Controller {
   readonly #docs: DocsRepository;
 
@@ -11,7 +11,7 @@ export class ShowHomeController extends Controller {
   }
 
   handle() {
-    const { title, body, toc } = this.#docs.home();
-    return this.view('docs/Home', { title, body, toc });
+    const sections = this.#docs.sections().map(({ title, pages }) => ({ title, pages: pages.map(({ label, path }) => ({ label, path })) }));
+    return this.view('docs/Home', { sections });
   }
 }

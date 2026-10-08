@@ -1,6 +1,6 @@
 /** One section of a page in the search index: what is under one heading. */
 export interface IndexedSection {
-  /** The page: `/`, `/guides/<slug>` or `/packages/<name>`. */
+  /** The page: `/docs/<slug>` or `/packages/<name>`. */
   readonly path: string;
   /** The page's title — `@marmeon/scheduler`. */
   readonly page: string;

@@ -1,4 +1,5 @@
 # Lists: queries, pages and actions
+<!-- docs:pending -->
 
 Most pages of an app are lists: people, orders, notifications — searched, sorted, paged or loaded a bit more at a time, with
 actions on their rows. This guide puts the parts together: the **query schema** that makes the URL the list's typed state, **pages

@@ -55,7 +55,7 @@ security: [deployment](docs/deployment.md), [security](docs/security.md).
 
 *Estimated upgrade time for Wave 9:* minutes for most apps (read the Medium entries of the features you use); about an hour for an app with
 `merge()`d lists that load more, `paginationFrom`, live props under `--workers`, or private registration (its migration and
-controllers). The guides of the wave: [lists](docs/lists.md), [tables](docs/tables.md), [navigation](docs/navigation.md),
+controllers). The guides of the wave: [lists](docs/pagination.md), [tables](docs/tables.md), [navigation](docs/navigation.md),
 [real time](docs/realtime.md).
 
 ### Wave 10 — Marmeon: lean dependencies and the last security gaps
@@ -838,7 +838,7 @@ upwards.
 *Estimated upgrade time:* about an hour for an app from Wave 7 — the High entries of Wave 8 (`marmeon` as a
 dependency, the sessions table) and the Medium ones its features touch; half a day from Wave 6 or with a `SessionStore` of its
 own. The first day after a release pnpm may hold the new versions back (`minimumReleaseAge`) — see
-[the first day after a release](docs/versioning.md#the-first-day-after-a-release).
+[the first day after a release](docs/releases.md#the-first-day-after-a-release).
 
 ### Wave 8 — ship-ready
 

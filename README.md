@@ -85,7 +85,7 @@ pnpm dev                              # marmeon dev: the server with Vite, a que
 blank app instead (the starter kit's registration never tells whether an address has an account — `AUTH_PRIVATE_REGISTRATION=false`
 turns that off), `--docker` adds the files to run it in containers, `--npm` uses npm; without a terminal nothing is asked
 ([create-marmeon](packages/create-marmeon/README.md), and the longer walk-through in
-[docs/getting-started.md](docs/getting-started.md)).
+[docs/installation.md](docs/installation.md)).
 
 `marmeon dev` sets `NODE_ENV=development`: the error page with code and queries, the devtools under `/_marmeon/devtools` and the
 in-page bar are on ([@marmeon/devtools](packages/devtools/README.md)); in development mails go to the log, the confirmation
@@ -156,7 +156,7 @@ The framework is released in **lockstep** (E152): every `@marmeon/*` package, th
 - **A broken release** is never unpublished: it is deprecated on npm and fixed by the next patch. **Node** 26.10 or newer (E9) — a
   new minimum is a breaking change. Security fixes go to the latest minor version ([SECURITY.md](SECURITY.md)).
 
-The whole policy, the first day after a release and how to upgrade: [docs/versioning.md](docs/versioning.md).
+The whole policy, the first day after a release and how to upgrade: [docs/releases.md](docs/releases.md).
 
 ## Security
 
@@ -168,10 +168,10 @@ vulnerability reporting, as [SECURITY.md](SECURITY.md) describes (security fixes
 
 ## Guides
 
-[Getting started](docs/getting-started.md) · [Validation](docs/validation.md) · [Lists and pagination](docs/lists.md) · [Tables](docs/tables.md) ·
+[Getting started](docs/installation.md) · [Validation](docs/validation.md) · [Lists and pagination](docs/pagination.md) · [Tables](docs/tables.md) ·
 [Navigation and view transitions](docs/navigation.md) · [Real time](docs/realtime.md) · [Deployment](docs/deployment.md) ·
-[Security](docs/security.md) · [Versions and deprecations](docs/versioning.md) · [Upgrading](UPGRADING.md) ·
-[Contributing](CONTRIBUTING.md) — in the docs app under `/guides/…`, beside the packages' READMEs.
+[Security](docs/security.md) · [Versions and deprecations](docs/releases.md) · [Upgrading](UPGRADING.md) ·
+[Contributing](CONTRIBUTING.md) — in the docs app under `/docs/…`, beside the packages' READMEs.
 
 ## Contributing
 

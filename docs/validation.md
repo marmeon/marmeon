@@ -1,4 +1,5 @@
 # Validation: rules, messages and what never runs live
+<!-- docs:pending -->
 
 Every input of a Marmeon app passes a schema: a form's body, a URL's query, a config's environment variables, a job's payload. The
 schemas are **Standard Schema** objects — the one contract (E197) — and the framework's own way to write them is `rules` of
@@ -205,7 +206,7 @@ export const ListPeopleRequest = defineRequest({
 ```
 
 A field without a default does not compile — the message says why ([type errors](#type-errors-you-will-meet)). Spread one query's
-fields into another with `entries` (`r.query({ ...MembersTable.query.entries, tab: … })`). The guide [lists](lists.md) builds a whole
+fields into another with `entries` (`r.query({ ...MembersTable.query.entries, tab: … })`). The guide [lists](pagination.md) builds a whole
 list on it; a [table's](tables.md) query is stricter on purpose (400).
 
 ## Environment variables
