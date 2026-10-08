@@ -1,158 +1,459 @@
-# Navigation, history and view transitions
-<!-- docs:pending -->
+# Navigation & View Transitions
 
-A Marmeon app moves between pages without full loads: a link asks the server for the next page's props as JSON, the client
-renders it and writes a history entry. This guide is about that history — how the client follows Back and Forward (through the
-Navigation API, or the History fallback where a browser lacks it), what the navigation guard can and cannot stop, what is kept in
-the browser's history and what never is — and about animating page changes with view transitions. The client core's README is the
-reference: [the Navigation API](../packages/http/README.md#the-navigation-api-e184) and
-[view transitions](../packages/http/README.md#view-transitions-e185); React's side: [links and navigation](../packages/react/README.md#links-and-navigation).
+## Introduction
 
-## What the history holds (E36)
+A Marmeon app moves between pages without loading a new document. A `<Link>` asks the server for the next page's props, the
+browser swaps the page in place, and the layout around it stays:
 
-**Never a page's data.** An entry holds its key, its URL and component, its scroll positions and the session's epoch (tab sync) —
-nothing else. Props live in memory, per entry, for as long as the document lives; Back to an entry memory let go of (after a reload,
-a session restore, a long session) asks the server again, through the route, its middleware and its policies. So what a user saw
-is never on disk: not in `history.state`, not in session or local storage, and a signed-in page is `no-store` for the HTTP cache.
+```tsx title="modules/notes/views/Index.tsx"
+import type { PageProps } from '@marmeon/http';
+import { Head, Link } from '@marmeon/react';
+import type { ListNotesController } from '../controllers/ListNotesController.ts';
 
-- **`history.state` is `null`** where the navigator uses the Navigation API: an entry's state is
-  `navigation.currentEntry.getState()` — the positions above, nothing more. Code that read `history.state.url` reads `location`.
-- Another script's `history.replaceState(…)` (an analytics snippet, a widget) erases that state; the navigator writes it again when
-  the entry is left, so Back still finds it.
-- Anything else in a state is dropped before it is written — in development it throws, so a client feature notices: a feature
-  registers each position it adds (`host.history.field(name, check, value)`) and keeps what a page showed in memory.
+export default function Index({ notes }: PageProps<ListNotesController>) {
+  return (
+    <main>
+      <Head title="Notes" />
+      <ul>
+        {notes.map((note) => (
+          <li key={note.id}>
+            <Link route="notes.show" params={{ note: note.id }} prefetch>
+              {note.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </main>
+  );
+}
+```
 
-## The Navigation API and the History fallback (E184)
+Each visit writes a history entry, so Back and Forward work as in any website. The entry holds the URL and the scroll position,
+never the page's data. This page covers links and visits, prefetching, the history, what happens to unsaved changes when the user
+leaves, and how to animate page changes with view transitions.
 
-| Browser | How the client follows the history |
+## Links
+
+### Links to routes
+
+`<Link route>` takes a route name, its parameters and its query, all checked against `bootstrap/routes.ts`:
+
+```tsx
+<Link route="notes.show" params={{ note: note.id }}>{note.title}</Link>
+<Link route="notes.index" query={{ sort: '-updated', page: 2 }}>Recently edited</Link>
+<Link href="https://example.com/help">Help</Link>
+```
+
+A typo in the name, a missing parameter or a query field the route's query schema does not have is a compile error. A link to the
+page on screen leaves out query fields that are at their default. `href` takes any URL instead, unchecked. A link opens normally
+when it is not a plain left click, when it leads to another site, or when its `target` is not `_self`.
+
+`<Link route>` takes only routes that the browser may know and that render a page. An island's route, an API route and an
+`.internal()` one are compile errors. The [URL generation](urls.md#in-the-browser) page explains which routes the browser knows,
+and `useRoute()` for a URL without a link.
+
+### Links that send
+
+A link to a route of another method, such as `POST` or `DELETE`, renders a `<button>` that sends the request with the CSRF
+token:
+
+```tsx
+<Link route="auth.logout">Sign out</Link>
+<Link route="notes.archive" params={{ note: note.id }} confirm={{ message: 'Archive this note?', destructive: true }}>
+  Archive
+</Link>
+```
+
+`method` and `data` set the method and the body of an `href` link. `confirm` asks first, through the app's dialog: a message, or
+an object with `title`, `confirmLabel`, `destructive` and `prompt`, a text the user must type. A no sends nothing. The button needs
+JavaScript. A request that must work without it is a [form](forms.md).
+
+### The current link
+
+The link to the page on screen gets `aria-current="page"` and `data-current`, so assistive technology announces it and your
+stylesheet can mark it. It is current when its URL is exactly the page's URL, with the query in any order. `activeMatch` makes it
+current for more pages:
+
+```tsx
+<Link route="notes.index" activeMatch="notes.*">Notes</Link>
+<Link route="auth.security" activeMatch={['auth.security', 'auth.tokens']}>Settings</Link>
+```
+
+`activeMatch` takes a route name, a prefix with `*`, `*` alone, or a list of them, checked against your routes. A link whose visit
+is under way gets `data-pending`.
+
+### Link options
+
+| Prop | Effect |
 | --- | --- |
-| Chrome / Edge 102+, Firefox 147+, Safari 26.2+ | the **Navigation API** (`window.navigation`) — in the core, no extra code |
-| Safari before 26.2 (iOS 18 included), older browsers | the **History fallback** — `pushState`/`popstate`, a chunk of its own (≈ 0.6 KB gzip) loaded only there |
+| `replace` | Replaces the current history entry instead of adding one. |
+| `preserveScroll` | Keeps the scroll position. By default a new page starts at the top. |
+| `preserveState` | Keeps the page's component state when the same page comes back. |
+| `preserveUrl` | Keeps the address bar's URL, for "load more". |
+| `async` | Runs in the background: no progress bar, and it cancels no other visit. |
+| `only`, `except`, `reset` | A partial reload of the page on screen. See [deferred props](deferred-props.md). |
+| `prefetch`, `cacheFor` | Fetches the page ahead. See [prefetching](#prefetching). |
+| `instant` | Shows the target's placeholder at once. See [instant visits](#instant-visits). |
+| `layer` | Opens the page as a dialog over this one. See [dialogs](dialogs.md). |
+| `viewTransition` | Animates this page change. See [view transitions](#view-transitions). |
+| `confirm` | Asks before the visit. |
 
-With the Navigation API the navigator **intercepts its own navigations only**: a visit commits its entry with
-`navigation.navigate(url, { state, info })` once the answer is there (the address bar never shows a page that has not landed), and
-Back/Forward to one of its own entries is intercepted and shown from memory or asked of the server — the browser's loading indicator
-shows meanwhile. Everything else stays the browser's: a plain `<a href>`, a plain form, another site, an entry of an earlier document,
-an entry another script pushed. The `navigate` events of visits reach the app's own listeners too (`info` set, `navigationType`
-`push`/`replace`) — a listener that intercepts every `navigate` leaves those alone.
+## Visiting from code
 
-Entry keys survive a reload and a session restore, so Back after a reload is still the app's own navigation (asked of the server,
-no full load). Visits keep the app's own progress indicator; a navigation that starts before the answer (`precommitHandler`) is not
-used.
+`useRouter()` visits without a link:
 
-`createMarmeonApp` loads the fallback only when `window.navigation` is missing, beside the first page's component — no first download
-carries it. An adapter of your own does the same: `features: [await loadHistoryFallback()]` where `!window.navigation`
-(development warns `[marmeon:C13]` when neither is there).
+```tsx title="modules/notes/views/Search.tsx"
+import type { PageProps } from '@marmeon/http';
+import { useRouter } from '@marmeon/react';
+import { useEffect } from 'react';
+import type { SearchNotesController } from '../controllers/SearchNotesController.ts';
 
-## The navigation guard and its limits
-
-```tsx
-const form = useForm('user-profile.update', { user: profile.id }, initial, { guard: t('unsaved') });   // while dirty
-useBlocker({ when: dirty, message: t('unsaved') });                                                    // anything else
+export default function Search({ results }: PageProps<SearchNotesController>) {
+  const router = useRouter<SearchNotesController>();
+  useEffect(() => router.on('finish', () => document.getElementById('results')?.focus()), [router]);
+  return (
+    <main>
+      <button type="button" onClick={() => void router.visit('/notes', { replace: true })}>All notes</button>
+      <button type="button" onClick={() => void router.reload({ only: ['results'] })}>Refresh</button>
+      <ul id="results" tabIndex={-1}>{results.map((note) => <li key={note.id}>{note.title}</li>)}</ul>
+    </main>
+  );
+}
 ```
 
-While a guard holds, leaving asks first — a visit, Back/Forward, closing its layer. What the browser lets a page stop is limited,
-on purpose (a page must not trap its user), and the guard works within those limits:
+- **`visit(url, options)`** takes the link options above, plus `method`, `data` and `headers`. It resolves with the page, or with
+  `undefined` when the visit did not land.
+- **`reload(options)`** asks the server for the page on screen again, keeping the scroll position and the component state.
+- **`prefetch(url)`** fetches a page ahead.
+- **`on(event, listener)`** listens to every visit and returns the function that stops listening. The events are `start`,
+  `progress`, `success`, `error` (the answer brought validation errors), `exception` (offline or a server error), `cancel`,
+  `finish` and `version`.
 
-- **Back with a fresh user activation** — a click or a key press shortly before, or Back from a script: the navigation is
-  **cancelled**; the address bar never changes, the question comes, Stay keeps everything.
-- **Back without an activation** — a Back a while after the last click, or **the second of two quick Backs** (the first used the
-  activation up): the browser goes. The guard goes back at once to the entry it left — **by the browser's key**
-  (`navigation.traverseTo(key)`), right after a reload or a session restore too — and then asks. The address bar shows the other
-  entry for a moment. So **two quick Backs escape the cancel, never the guard.**
-- **Leave** goes again — a task later (the browser refuses a traversal in the same task as a cancelled one).
-- **Closing the tab or reloading** gets the browser's own question (`beforeunload`) — a page cannot word that one.
-- **Layers** close by going back (`history.go(-n)`); the guard asks before a layer with unsaved changes closes.
-- **The fallback** (no Navigation API): the browser has always moved when `popstate` fires; the guard goes back by the counted
-  index (`history.go(-delta)`), asks, and goes again on Leave — the address bar always moves for a moment.
+With the controller's type, `useRouter<SearchNotesController>()` checks the prop names of `only`, `except` and `reset`. A visit
+also takes the callbacks `onStart`, `onProgress`, `onSuccess`, `onError`, `onException`, `onCancel` and `onFinish` for itself.
 
-Live updates wait while a guard holds ([real time](realtime.md)); tab sync keeps a page with unsaved changes after a sign-out
-elsewhere and asks.
+## Prefetching
 
-## View transitions (E185)
-
-A page change can animate — **only when the app asks** (E185, variant A): without the option nothing changes, not even how React
-renders a page change.
+A prefetched page shows at once when the user clicks:
 
 ```tsx
-<Link route="user-profile.show" params={{ user: person.id }} viewTransition>…</Link>       // one link
-router.visit('/people', { viewTransition: { types: ['slide'] } });                        // one visit, with a type of its own
-createMarmeonApp({ /* … */, viewTransition: true });                                      // every page change: the core's
-createMarmeonApp({ /* … */, viewTransition: 'react' });                                   // every page change: React 19.3's <ViewTransition>
+<Link route="notes.show" params={{ note: note.id }} prefetch>{note.title}</Link>
+<Link route="notes.index" prefetch="mount" cacheFor={60_000}>Notes</Link>
 ```
 
-**The core's** (`true`): the page is loaded first; then only its swap runs in `document.startViewTransition({ update, types })` — the
-browser captures the old page, the update renders the new one, its history entry and scroll position follow at once. The browser
-crossfades the two; the framework ships no animation.
+`prefetch` or `prefetch="hover"` fetches the page when the pointer rests on the link for 75 milliseconds, or presses it.
+`prefetch="mount"` fetches it as soon as the link renders, and `prefetch={['hover', 'mount']}` does both. The page is kept for `cacheFor`
+milliseconds, 30 seconds by default.
 
-**React's** (`'react'`): each page change renders in `startTransition` with its types added (`addTransitionType`); React starts the
-transition for the views' `<ViewTransition>` components and the core starts none — **never two** for one page change. React animates
-only what is inside a `<ViewTransition>`: wrap the page in the layout (`<ViewTransition name="page">{children}</ViewTransition>`). With
-`'react'`, transition semantics apply: a page that suspends keeps the old one on screen until it is ready (instead of a fallback),
-React waits briefly (up to ~0.8 s) for a new image inside a `<ViewTransition>`, and a page change waits for an async action of
-React's under way.
+Only `GET` links to whole pages are prefetched. A link with `only` or `except`, a link that sends, an action and an island never
+are. Any request that writes, and leaving the document, drops every prefetched page. A prefetch never takes a flash message: the
+click asks the server, whose answer brings it. The prefetching code loads with the first prefetch, so an app without `prefetch`
+never downloads it.
 
-**Types**, for `:active-view-transition-type()`: `forward` for a visit's new entry, `replace` for `replace: true`, `back`/`forward`
-on Back/Forward — plus the app's own. Back from a page a visit entered with its own transition animates alike.
+## Instant visits
 
-**What animates:** page changes — every visit that takes the page off the screen, every Back/Forward between pages. **Not:** a
-partial reload, "load more", a request in the background, a form that comes back with its errors, a layer opening or closing
-(its `<dialog>` animates in CSS). The guard asks before a visit starts — a page change it stops starts no transition. A new visit
-skips an animation still running.
+An instant visit shows the target page's placeholder at once, inside the target's layouts, and the page when its answer lands.
+The controller declares what a link hands the placeholder, and the view brings the placeholder:
 
-**Skipped** — the swap runs as without — under **`prefers-reduced-motion: reduce`** (no transition at all: a transition freezes the
-page until the swap), in a hidden tab, and without the API. React reveals streamed Suspense boundaries in view transitions of its
-own when a `<ViewTransition>` is on the page — those do not ask the navigator, so stop their animation in CSS (below).
+```ts title="modules/notes/controllers/ShowNoteController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { Controller, type HttpContext } from '@marmeon/http';
 
-### Recipes — in the stylesheet, nothing inline (CSP)
+export class ShowNoteController extends Controller {
+  declare readonly instant: { title: string };
 
-The core sets no `view-transition-name` and adds no `<style>`. Name and animate in the app's stylesheet; a `style` attribute in the
-server's markup is what a strict `style-src` blocks. Per element (each row of a list its own name) set it through the CSSOM
-(`element.style.viewTransitionName = …`), which a strict policy allows — React's `<ViewTransition name>` does exactly that during
-the transition, and its server markup carries only `vt-name` attributes. From the web app's `styles/app.css` (linked from
-`index.html`):
+  handle(ctx: HttpContext<Authenticated, { note: Row<'notes'> }>) {
+    return this.view('notes/Show', { note: ctx.params.note });
+  }
+}
+```
 
-```css
-/* The page (<ViewTransition name="page"> in the layout): forward it comes in from the right, Back from the left. */
-html:active-view-transition-type(forward)::view-transition-old(page) { animation: 150ms ease-in both page-out-to-left; }
-html:active-view-transition-type(forward)::view-transition-new(page) { animation: 220ms ease-out both page-in-from-right; }
-html:active-view-transition-type(back)::view-transition-old(page) { animation: 150ms ease-in both page-out-to-right; }
-html:active-view-transition-type(back)::view-transition-new(page) { animation: 220ms ease-out both page-in-from-left; }
+```tsx title="modules/notes/views/Show.tsx"
+import type { PageProps } from '@marmeon/http';
+import { Head, type Placeholder } from '@marmeon/react';
+import type { ShowNoteController } from '../controllers/ShowNoteController.ts';
 
-/* A shared element — the avatar in the list and on the profile (<ViewTransition name={`avatar-${id}`} share="avatar">). */
-::view-transition-group(.avatar) { animation-duration: 320ms; }
+export default function Show({ note }: PageProps<ShowNoteController>) {
+  return (
+    <main>
+      <Head title={note.title} />
+      <h1>{note.title}</h1>
+      <p>{note.body}</p>
+    </main>
+  );
+}
 
-/* Reduced motion: the navigator starts none — this stops React's own Suspense reveals too. */
+function ShowPlaceholder({ title }: { title: string }) {
+  return (
+    <main aria-busy="true">
+      <Head title={title} />
+      <h1>{title}</h1>
+      <p>Loading…</p>
+    </main>
+  );
+}
+Show.placeholder = ShowPlaceholder satisfies Placeholder<ShowNoteController>;
+```
+
+The link passes the values: `<Link route="notes.show" params={{ note: note.id }} instant={{ title: note.title }}>`. A controller
+that declares `instant: {}` takes `instant` alone. A link with `instant` to a route whose controller declares nothing is a compile
+error.
+
+The placeholder never gets the page's props, only what the link handed it. The history entry is written when the page lands. A
+visit that fails or is cancelled shows the page on screen again, and Back during the visit cancels it. A page fetched ahead shows
+at once without a placeholder. The code loads when the first instant link renders.
+
+## Showing that a visit runs
+
+A new app shows a thin bar at the top of the window for visits slower than 250 milliseconds. It is the `progress` option in
+`bootstrap/client.tsx`:
+
+```tsx
+void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delay: 250 }) });
+```
+
+`progressBar()` takes `delay` and `color`, and the CSS variables `--marmeon-progress-color`, `--marmeon-progress-height` and
+`--marmeon-progress-z-index` style it. Visits in the background never show it. Leave the option out, and the app carries none of
+its code.
+
+Without the bar, every app still knows that a visit runs. `<html>` gets `aria-busy="true"`, the link being visited gets
+`data-pending`, and `usePending(name)` tells whether a route's visit or action is under way:
+
+```tsx
+const saving = usePending('notes.update', { delay: 'short' });
+<button disabled={saving} data-pending={saving || undefined}>Save</button>
+```
+
+`delay: 'short'` waits 150 milliseconds before it says yes, so fast requests do not flicker. An indicator of your own is a
+function of the visit events that returns its stop:
+
+```ts title="bootstrap/spinner.ts"
+import type { ProgressIndicator } from '@marmeon/react';
+
+export const spinner: ProgressIndicator = (navigator) => {
+  const stops = [
+    navigator.on('start', (visit) => visit.async || document.body.classList.add('loading')),
+    navigator.on('finish', (visit) => visit.async || document.body.classList.remove('loading')),
+  ];
+  return () => stops.forEach((stop) => stop());
+};
+```
+
+Pass it as `progress: spinner`. CSS alone also works: `html[aria-busy='true'] main { opacity: 0.6 }`.
+
+## Back and Forward
+
+### What the history holds
+
+A history entry holds the page's URL, its component's name, its scroll positions and a key. It never holds the page's props.
+The props of the last 20 pages live in the tab's memory, so Back shows them at once. Back to a page memory let go of, after a
+reload or a session restore for example, asks the server again, through the route, its middleware and its policies.
+
+So what a user saw never lands on disk: not in the history's state, not in the browser's storage. The pages of a signed-in user go
+out with `Cache-Control: no-store`, so the browser's cache does not keep them either. When the user signs out in another tab, every
+tab lets go of what it kept. The [client features](client-features.md) page explains how.
+
+Where the browser has the Navigation API, `history.state` is `null`. Read the URL from `location` or from `usePage().url`, and
+keep state of your own with `useRemember()`.
+
+### Scroll positions
+
+Back and Forward restore the scroll position of the window and of every element with the `scroll-region` attribute:
+
+```tsx
+<aside scroll-region="">…</aside>
+```
+
+A new page starts at the top, unless the visit has `preserveScroll`.
+
+### Reloading on Back
+
+Back shows the page from memory, exactly as it was. A page whose data changes often can ask for some props again in the
+background:
+
+```tsx
+Show.revalidateOnBack = ['note'] as const satisfies RevalidateOnBack<ShowNoteController>;
+```
+
+`true` reloads every prop, a list reloads those props, and leaving it out reloads none. The page shows at once and the reload
+follows without a progress bar. A layer and an island can declare it too.
+
+### Remembered state
+
+`useRemember()` is `useState` that survives Back and Forward:
+
+```tsx
+const [tab, setTab] = useRemember('note-tab', 'body');
+```
+
+The value belongs to the history entry, in memory only. A reload, signing in or out, a new build and a language switch start
+over. A key named like a password is never remembered, and one named like a token, a secret or a card is a compile error unless
+you pass `{ sensitive: true }`. A form can remember its input the same way, which the [forms](forms.md) page shows.
+
+### The Navigation API and the fallback
+
+| Browser | How the app follows the history |
+| --- | --- |
+| Chrome and Edge 102+, Firefox 147+, Safari 26.2+ | The Navigation API, built into the app's code. |
+| Older browsers, Safari before 26.2 included | The History API, through a small fallback that loads only there. |
+
+With the Navigation API, the app handles only its own navigations: the visits it starts, and Back and Forward between its own
+entries. A plain `<a href>`, a plain form, another site and an entry another script added stay the browser's. Entry keys survive a
+reload and a session restore, so Back after a reload is still the app's navigation. The browser's loading indicator shows while
+Back or Forward asks the server.
+
+`createMarmeonApp()` loads the fallback only when `window.navigation` is missing, together with the first page. No other browser
+downloads it.
+
+## Leaving with unsaved changes
+
+A navigation guard asks before the user leaves unsaved changes. A form turns it on with `guard`, and `useBlocker()` turns it on
+for anything else:
+
+```tsx
+const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body }, { guard: 'Discard your changes?' });
+useBlocker({ when: drawing.length > 0, message: 'Discard your drawing?' });
+```
+
+While the guard holds, a visit elsewhere, Back, Forward and closing the dialog it is in ask first, through the app's confirm
+dialog. Closing the tab and reloading get the browser's own question, whose words a page cannot choose. The form's own submit
+passes its guard. Background requests never ask, and neither does a sign-in or sign-out, which always loads the page anew.
+
+What a page may stop is limited on purpose, so that no page can trap its user:
+
+- **Back after a recent click or key press** is cancelled. The address bar never changes, and Stay keeps everything.
+- **Back without one**, such as a Back long after the last click or the second of two quick Backs, goes. The guard brings the user
+  back to the entry they left at once and then asks. The address bar shows the other entry for a moment.
+- **Leave** goes again, a moment later.
+- **In the fallback**, the browser has always moved already. The guard goes back by the counted number of entries, asks, and goes
+  again on Leave.
+
+So two quick Backs escape the cancel, but never the question. Live updates wait while a guard holds, and a sign-out in another
+tab asks before it reloads this one.
+
+## A new version of the app
+
+When the server runs a newer build than the tab, its answer to the next visit says so, and the browser loads the page as a whole
+document. With unsaved changes on screen, it asks first. An app can postpone that load and show a notice instead:
+
+```tsx title="layouts/NewVersionBanner.tsx"
+import { useNewVersion, useRouter } from '@marmeon/react';
+import { useEffect } from 'react';
+
+export function NewVersionBanner() {
+  const router = useRouter();
+  useEffect(() => router.on('version', (event) => event.unsaved && event.preventDefault()), [router]);
+  const waiting = useNewVersion();
+  if (!waiting) return null;
+  return (
+    <p role="status">
+      A new version is available. <button type="button" onClick={() => waiting.reload()}>Load it</button>
+    </p>
+  );
+}
+```
+
+`event.preventDefault()` keeps the page. `useNewVersion()` then returns `{ location, reload() }`, and the user's next visit loads
+the new version anyway. Signing in or out also loads a whole document, and that load cannot be postponed.
+
+## View transitions
+
+A page change can animate with the browser's view transitions. Nothing animates until you ask for it.
+
+### Turning them on
+
+```tsx
+<Link route="notes.show" params={{ note: note.id }} viewTransition>{note.title}</Link>
+router.visit('/notes', { viewTransition: { types: ['slide'] } });
+```
+
+`viewTransition` on a link or a visit animates that page change, and Back from the page it opened animates alike. For every page
+change, pass the option to the app in `bootstrap/client.tsx`:
+
+| `createMarmeonApp({ viewTransition })` | What runs |
+| --- | --- |
+| `true` or `{ types: ['slide'] }` | The browser's view transition around each page swap. The browser crossfades the page. |
+| `'react'` | Each page change renders in a React transition. React's `<ViewTransition>` components in your views animate. |
+
+With the app's option on, `viewTransition={false}` leaves one link out. The code loads before the first page change that asks for
+it.
+
+### Animating in your stylesheet
+
+The page loads first, and only the swap runs in the transition. Each transition has a type: `forward` for a new entry, `replace`
+for `replace: true`, `back` and `forward` for Back and Forward, plus the types you pass. Your stylesheet animates by type:
+
+```css title="styles/app.css"
+::view-transition-old(root) { animation: 150ms ease-in both fade-out; }
+::view-transition-new(root) { animation: 220ms ease-out both slide-in; }
+html:active-view-transition-type(back)::view-transition-new(root) { animation-name: slide-in-back; }
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 ```
 
-With the core's mode name the root (`::view-transition-old(root)`) or elements of your own in the same way.
+The keyframes are yours, and the framework ships none. Name the elements that should move in the stylesheet, with
+`view-transition-name`. Never set the name in a `style` attribute, because a strict Content-Security-Policy blocks it. The
+[styling](styling.md) page explains why. A name per element, such as one per row of a list, is set through the CSSOM, which the
+policy allows: `element.style.viewTransitionName = 'note-7'`.
 
-### Instant placeholders and shared elements
+### React's `<ViewTransition>`
 
-An instant visit (`<Link instant>`, E64) shows the target's placeholder at once — without a transition — and the transition runs
-from the placeholder to the page. An element shared by two pages (the same `view-transition-name`, an avatar that moves from a list
-into a profile) has no partner in the placeholder, so it does not move: **leave `instant` off a link whose target shares an element**
-(the web app's person links prefetch but are not instant). React also animates only elements in the viewport — a list scrolled
-away has nothing to share.
+With `viewTransition: 'react'`, React animates only what is inside a `<ViewTransition>`. Wrap the page in your layout to animate
+it as a whole, and give elements shared between two pages the same name:
 
-### Cost
+```tsx title="layouts/AppLayout.tsx"
+import type { LayoutProps } from '@marmeon/react';
+import { ViewTransition } from 'react';
 
-The core's code is a chunk of its own (≈ 0.8 KB gzip), loaded before the first page change that asks for one; an app that never asks
-carries only its loader.
+export function AppLayout({ children }: LayoutProps) {
+  return <ViewTransition name="page">{children}</ViewTransition>;
+}
+```
 
-## Safari
+```tsx
+<ViewTransition name={`cover-${note.id}`} share="cover">
+  <img src={note.cover} alt="" className="cover" />
+</ViewTransition>
+```
 
-| | Safari 26.2+ | Safari 18.2 – 26.1 | Safari 18.0 / 18.1 | before 18 |
+Animate the `page` group with `::view-transition-old(page)` and `::view-transition-new(page)`. In this mode React keeps the old
+page until the new one is ready instead of showing a loading fallback, waits briefly for a new image inside a `<ViewTransition>`,
+and waits for an async action of React's that is under way.
+
+React also animates streamed parts of a page that appear while a `<ViewTransition>` is on screen. Those animations do not ask the
+app, so the reduced-motion rule above is what stops them.
+
+### When nothing animates
+
+These page changes run without a transition:
+
+- The user prefers reduced motion. No transition starts at all, because a transition freezes the page until the swap.
+- The tab is hidden.
+- The browser has no view transitions with types: Chrome before 125, Safari before 18.2.
+- A partial reload, "load more", a background request and a form that comes back with its errors. The page stays, so nothing
+  changes pages.
+- A dialog opening or closing. Its frame can animate itself in CSS.
+
+The navigation guard asks before the visit starts, so a page change it stops starts no transition. A new visit ends an animation
+that is still running.
+
+### Instant visits and shared elements
+
+An instant visit shows the placeholder at once, without a transition, and the transition runs from the placeholder to the page.
+An element shared by two pages has no partner in the placeholder, so it does not move. Leave `instant` off a link whose target
+shares an element, and use `prefetch` there instead.
+
+## Browser support
+
+| | Safari 26.2+ | Safari 18.2 to 26.1 | Safari 18.0 and 18.1 | Safari before 18 |
 | --- | --- | --- | --- | --- |
-| History | Navigation API (without `precommitHandler` — not used) | History fallback | History fallback | History fallback |
-| Guard | cancels Back with an activation, else goes back by key | goes back by index, then asks | the same | the same |
-| View transitions | yes, with types | yes, with types | **none** (the API without types — skipped, no error) | none |
+| History | The Navigation API | The fallback | The fallback | The fallback |
+| Unsaved changes | Back cancelled after a recent click, else undone and asked | Undone, then asked | Undone, then asked | Undone, then asked |
+| View transitions | With types | With types | None | None |
 
-What is proved where: the navigator's tests run on both paths (the Navigation API against a faithful fake, the fallback in
-happy-dom), and Chrome is driven for real (cancelled and undone Backs with and without activation, Forward, reload, session restore,
-the bfcache, view transitions with reduced motion). Safari's cancelable traversals, the `traverseTo` timing and its view transitions
-follow the same specifications and are checked by hand before a release — if Safari behaves differently, the fallback rules above
-(go back, then ask) still hold the guard.
+The app's tests cover both the Navigation API and the fallback, and Chrome is tested in a real browser. Safari's support is taken
+from the specifications it implements and is not yet confirmed in Safari itself. Wherever Safari behaves differently, the
+fallback's rule still holds: the guard goes back first and then asks.
