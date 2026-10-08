@@ -71,8 +71,15 @@ flash message: `.flash(key, data)` on a redirect, a page or JSON. The [responses
 
 A failed form flashes its errors and its input. The session's `ShareErrorsFromSession` middleware then shares the errors as the
 `errors` prop with every page of the `web` group, `{}` when there are none, so a form shows them next to its fields. `old(key)`
-returns the flashed input, and `flashInput(input)` flashes input yourself. Fields named like a password and files are never
-flashed.
+returns the flashed input. The failed form and `redirect().withInput(input)` leave out every field whose name contains
+"password", the `_token` and every file.
+
+`flashInput(input)` flashes input too, but stores exactly what you give it.
+
+> [!WARNING]
+> `session.flashInput(ctx.body)` writes a password field into the session store as it is: a file, a database row or a Redis
+> value, in plain text unless `SESSION_ENCRYPT` is on. Flash a form's input with `redirect().withInput(input)` instead, or pick
+> the fields you pass.
 
 ### Signing in and out
 
@@ -111,6 +118,10 @@ token it hands out must still be valid when it comes back.
 `SESSION_SECURE_COOKIE` covers every cookie of a request, not only the session's: the `XSRF-TOKEN`, the remember-me token and any
 cookie your code sets without saying otherwise. An app served as `https://` therefore sends no cookie over plain HTTP. Behind a
 proxy that terminates TLS, nothing else is needed, since the decision comes from `APP_URL` and not from the request.
+
+The session cookie itself is encrypted like every cookie of the `web` group, `HttpOnly`, so no script can read it, and sent with
+the `SameSite` of `SESSION_SAME_SITE`. `SameSite=None` requires `Secure`: with `SESSION_SAME_SITE=none` and cookies without
+`Secure`, every response that sets the session cookie throws.
 
 Outside development and tests, an app whose cookies go without `Secure` says so once at start-up:
 
@@ -243,7 +254,8 @@ export class NotesServiceProvider implements ServiceProvider {
 ```
 
 A listener gets the old session's scope, a hash of its id, never the id itself, which is a secret. A listener that fails does not
-stop the others. `listen()` returns a function that stops listening, for a provider's `shutdown()`. The live updates of the framework close the streams of an ended session this way, in every process.
+stop the others. `listen()` returns a function that stops listening, for a provider's `shutdown()`. The live updates of the
+framework close the streams of an ended session this way, in every process.
 
 ## Requests that only read
 

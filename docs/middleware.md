@@ -313,11 +313,14 @@ These middleware come with the framework's packages. Add them to routes with `Ro
 | `abilities(...names)` | `@marmeon/auth` | The API token must grant every ability. Needs `authenticate('api')` before it. |
 | `throttle(name)` | `@marmeon/cache` | A rate limit of a named limiter. Answers 429 once it is used up. |
 | `signed()` | `@marmeon/http` | Only URLs with a valid signature. Answers 403 otherwise. |
-| `devOnly(hosts, handler)` | `@marmeon/core/dev` | Only with `NODE_ENV` `development` or `test`, and only for the loopback names and the hosts you list. |
+| `cacheControl(value)` | `@marmeon/http` | Sets `Cache-Control` on responses that do not set it themselves. |
 
-The [authentication](authentication.md), [API tokens](api-tokens.md), [rate limiting](rate-limiting.md) and
-[URL generation](urls.md) pages explain them in detail, and the routing page covers
-[development-only routes](routing.md#development-only-routes).
+The [authentication](authentication.md), [API tokens](api-tokens.md), [rate limiting](rate-limiting.md),
+[URL generation](urls.md) and [responses](responses.md#headers) pages explain them in detail.
+
+`devOnly(hosts, handler)` of `@marmeon/core/dev` is no middleware of its own: it wraps a middleware's `handle` or a route's
+closure, and answers only with `NODE_ENV` `development` or `test`, and only for the hosts in `hosts`. `devHosts()` builds that set
+with the loopback names. The routing page covers [development-only routes](routing.md#development-only-routes).
 
 ## Testing
 

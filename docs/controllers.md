@@ -180,8 +180,8 @@ export class NotePolicy {
 }
 ```
 
-A refusal answers 403, "This action is unauthorized.", in the request's language. A policy's `denyAsNotFound()` answers 404
-instead, so the record's existence stays hidden. The [authorization](authorization.md) page explains policies and the gate.
+A refusal answers 403, "This action is unauthorized.", in the request's language. A policy that refuses with `deny('reason')`
+shows its own reason instead. A policy's `denyAsNotFound()` answers 404, so the record's existence stays hidden. The [authorization](authorization.md) page explains policies and the gate.
 
 ### Types for the browser
 
@@ -243,8 +243,10 @@ export class ShareNoteController extends Controller {
 ```
 
 Deferred work runs outside any open database transaction, one task after the other. An error is logged and never reaches the
-client. It is no queue: the work is lost when the process stops. Work that must not get lost belongs in a job, which the
-[queues](queues.md) page explains.
+client. A server that stops gracefully waits up to 8 seconds for deferred work. It is no queue all the same: work that takes
+longer, or a process that crashes, loses it. Work that must not get lost belongs in a job, which the [queues](queues.md) page
+explains. A request that only reads, such as an island's or a live validation, cannot defer work: it throws in development and
+in tests, and is dropped everywhere else.
 
 ## Testing
 

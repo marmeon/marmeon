@@ -28,7 +28,8 @@ from `X-Forwarded-Proto` and `X-Forwarded-Host`.
 
 A plain HTML form can only send `GET` and `POST`. A `POST` whose form body has a `_method` field of `PUT`, `PATCH` or `DELETE`
 reaches the router as that method. The field counts only in a form's body, never in the query, so a link cannot change a
-request's method. `<Form>` writes the field for you.
+request's method. It also counts only within the first 16 KB of the body, before the first file of a multipart form. `<Form>`
+writes the field first, so this matters only for a form you write by hand: put `_method` before any file field.
 
 `ctx.route` is the route that matched, and `ctx.params` holds the path's parameters: strings, or records where the route binds
 them. The [routing](routing.md#route-parameters) page covers parameters.
@@ -64,6 +65,7 @@ or `HEAD` request has the input `{}`. The parsed body is kept, so call `ctx.inpu
 | A body over `MAX_BODY_SIZE` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
 | Malformed JSON | 400, `Malformed JSON body.` |
 | JSON that is not an object | 400, `The JSON body must be an object.` |
+| A multipart body that cannot be parsed | 400, `Malformed multipart body.` |
 | Brackets nested more than 20 levels deep | 400 |
 
 ### Validated input
@@ -227,7 +229,7 @@ Pass `delete` the same `path` and `domain` the cookie was set with.
 | `httpOnly` | `true`: scripts cannot read the cookie. |
 | `sameSite` | `lax`. `none` requires `secure`, and throws without it. |
 | `secure` | `true` when `APP_URL` starts with `https://`, or as `SESSION_SECURE_COOKIE` says. `secure: false` turns it off for one cookie. |
-| `maxAge`, `expires` | none: the cookie ends when the browser closes. |
+| `maxAge`, `expires` | none: a session cookie, which ends when the browser session does. |
 | `domain` | none: the cookie belongs to the host that set it. |
 
 In the `web` group, every cookie is encrypted with the app's key on its way out and decrypted on its way in. A cookie that fails to

@@ -46,7 +46,8 @@ and a missing parameter throws `Missing required parameter [note] for route [not
 ### Absolute URLs
 
 `router.url()` returns a path, which is what links and redirects need. A link that leaves the app, say in a mail, needs your
-app's address in front of it. The starter's `AppConfig` holds `APP_URL`:
+app's address in front of it. The starter's `AppConfig` holds `APP_URL`, and the same `NoteLinks` class, extended, puts it in
+front:
 
 ```ts title="modules/notes/NoteLinks.ts"
 import { Router } from '@marmeon/http';

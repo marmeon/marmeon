@@ -55,14 +55,29 @@ and the head.
 A prop can be more than a value. A function is called only when the response includes the prop, `optional()` sends a prop only
 when the page asks for it, `defer()` loads it right after the page shows, and `merge()` appends what a partial reload brings:
 
-```ts
-import { defer, optional } from '@marmeon/http';
+```ts title="modules/notes/controllers/ShowNoteHistoryController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { Controller, defer, optional, type HttpContext } from '@marmeon/http';
+import { NoteHistory } from '../NoteHistory.ts';
 
-return this.view('notes/Show', {
-  note,
-  history: defer(() => this.#history.of(note.id)),
-  stats: optional(() => this.#stats.of(note.id)),
-});
+export class ShowNoteHistoryController extends Controller {
+  readonly #history: NoteHistory;
+
+  constructor(history: NoteHistory) {
+    super();
+    this.#history = history;
+  }
+
+  handle(ctx: HttpContext<Authenticated, { note: Row<'notes'> }>) {
+    const { note } = ctx.params;
+    return this.view('notes/Show', {
+      note,
+      history: defer(() => this.#history.of(note.id)),
+      stats: optional(() => this.#history.stats(note.id)),
+    });
+  }
+}
 ```
 
 The [deferred props](deferred-props.md) page explains each of them, with islands and polling.
@@ -207,8 +222,8 @@ export {};
 ```
 
 A page and an action's JSON can carry a flash message too: `this.view(…).flash(…)` and `this.json(…).flash(…)`. Both flash data
-and flash messages need a session. Without one, the redirect throws `redirect().with() needs a session` or `redirect().flash()
-needs a session`, so a route of the `api` group cannot use them.
+and flash messages need a started session, so a route of the `api` group cannot use them: the redirect fails with an error that
+says the session has not been started.
 
 ## JSON
 
@@ -275,9 +290,24 @@ tag in such HTML needs the response's nonce, `ctx.nonce()`, under a Content-Secu
 
 ### Headers
 
-A redirect takes headers with `.header(name, value)`. For other results, `view()` and `json()` of `@marmeon/http` take headers as
-an argument: `view(name, props, status, headers)` and `json(data, status, headers)`. A header that every response of some routes
-needs belongs in a middleware, which the [middleware](middleware.md#changing-the-response) page shows.
+A redirect takes headers with `.header(name, value)`. The base class's `this.view()` and `this.json()` take none. For a page or
+JSON with a header of its own, return the standalone functions of `@marmeon/http` instead, which take headers as their fourth and
+third argument: `view(name, props, status, headers)` and `json(data, status, headers)`:
+
+```ts title="modules/notes/controllers/ShowDraftController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import { Controller, view, type HttpContext } from '@marmeon/http';
+
+export class ShowDraftController extends Controller {
+  handle(ctx: HttpContext<Authenticated, { note: Row<'notes'> }>) {
+    return view('notes/Show', { note: ctx.params.note }, 200, { 'x-robots-tag': 'noindex' });
+  }
+}
+```
+
+The view's props are typed from this controller the same way. A header that every response of some routes needs belongs in a
+middleware, which the [middleware](middleware.md#changing-the-response) page shows.
 
 Pages of a signed-in user go out with `Cache-Control: no-store, private`, so the browser does not show them again after a
 sign-out. A route that may be kept sets its own header, for example with the `cacheControl()` middleware:

@@ -54,8 +54,9 @@ body and only the body, never the query.
 
 A body that fails answers in one of two ways:
 
-- **A page's form** goes back to where it came from. The errors and the input are flashed, and the page shows the errors next to
-  the fields: the session shares them as the `errors` prop.
+- **A page's form** goes back to where it came from, the `Referer` of this host. The errors and the input are flashed, and the
+  page shows the errors next to the fields: the session shares them as the `errors` prop. A request without such a `Referer`,
+  say from a browser or policy that strips it, goes to `/`.
 - **A JSON client**, and an action of a page, gets a 422 with the errors per field:
 
 ```json
@@ -254,7 +255,8 @@ filled in yet, and so are errors of the body as a whole.
 - Field names are paths, such as `title`, `address.city` or `links.0.url`, at most 64 per request.
 - A route without a body schema, such as a `GET` or a closure, has nothing to check and answers 400.
 - A live validation is read-only: it writes no session, sets no cookie and does no work after its response.
-- Live validations have a rate limit of their own: 30 a minute per route and address. A `throttle()` on the route holds them to
+- Live validations have a rate limit of their own, from the cache package that every new app has: 30 a minute per route and
+  address. A `throttle()` on the route holds them to
   its limit without counting them. The [rate limiting](rate-limiting.md) page shows how to change it.
 - Password fields and files are never sent.
 
@@ -364,8 +366,19 @@ supported yet. The [requests](requests.md#files) page shows a whole controller.
 
 `r.query({ … })` reads a URL. A query never answers 422: a field the schema rejects falls back to its default. So every field needs
 one or is `optional()`, and its rule must take a string, as `r.integer()`, `r.boolean()`, `r.in([10, 25])` and `r.array()` with a
-repeated key do. The [requests](requests.md#query-schemas) page explains how a query is parsed. A
-[data table's](tables.md) query is stricter on purpose: it answers 400.
+repeated key do. `pageQuery()` of `@marmeon/database` brings the fields of a paginated list:
+
+```ts
+query: r.query({
+  q: r.string().trim().max(60).default(''),
+  sort: r.in(['title', '-title', 'created', '-created']).default('created'),
+  ...pageQuery({ perPage: [10, 25, 50] }),
+}),
+// QueryOf: { q: string; sort: 'title' | '-title' | 'created' | '-created'; page: number; per_page: 10 | 25 | 50 }
+```
+
+The [requests](requests.md#query-schemas) page explains how a query is parsed, and the [pagination](pagination.md) page builds a
+list on it. A [data table's](tables.md) query is stricter on purpose: it answers 400.
 
 `r.env({ … })` is the `env` of a `defineConfig()`. Every variable is a string, read like a query, with `r.port()` and
 `r.list(rule)` for `ADMINS=ada@example.com, alan@example.com`, and an empty variable is missing. A wrong value stops the start and
