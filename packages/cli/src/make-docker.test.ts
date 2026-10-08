@@ -150,6 +150,12 @@ describe('marmeon make:docker', () => {
     expect(result.file('deploy/systemd/worker.service')).toMatch(/^ExecStart=\/srv\/shop\/node_modules\/\.bin\/marmeon queue:work$/m);
     expect(result.file('deploy/systemd/worker.service')).toContain('Restart=always');
     expect(result.file('deploy/systemd/scheduler.service')).toContain('marmeon schedule:work');
+    // Each unit names the file it is copied to after its role's key — never with a space ("shop-web server.service").
+    for (const role of ['web', 'worker', 'scheduler']) {
+      const unit = result.file(`deploy/systemd/${role}.service`);
+      expect(unit).toContain(`Copy to /etc/systemd/system/shop-${role}.service, then`);
+      expect(unit).toMatch(new RegExp(`^#   systemctl daemon-reload && systemctl enable --now shop-${role}$`, 'm'));
+    }
     expect(result.file('deploy/Caddyfile')).toContain('reverse_proxy 127.0.0.1:3000');
     // Compose then publishes the web server on loopback for the host's proxy, and runs no proxy of its own.
     expect(result.file('compose.production.yaml')).toContain("- '127.0.0.1:3000:3000'");

@@ -302,8 +302,9 @@ server {
 
 /** The systemd units of the three roles — the app in /srv/<name>, run as the user <name>. */
 export function systemdUnits(app: DockerApp): Record<'web' | 'worker' | 'scheduler', string> {
-  const unit = (role: string, description: string, command: string, stop: number, extra: string[] = []) => `# Written by \`marmeon make:docker --systemd\`: the ${role} of ${app.name}. Copy to /etc/systemd/system/${app.name}-${role}.service, then
-#   systemctl daemon-reload && systemctl enable --now ${app.name}-${role}
+  // `key` names the unit file (deploy/systemd/<key>.service → <app>-<key>.service), `role` is what the comment calls it.
+  const unit = (key: string, role: string, description: string, command: string, stop: number, extra: string[] = []) => `# Written by \`marmeon make:docker --systemd\`: the ${role} of ${app.name}. Copy to /etc/systemd/system/${app.name}-${key}.service, then
+#   systemctl daemon-reload && systemctl enable --now ${app.name}-${key}
 # The app lives in /srv/${app.name} (marmeon build and a production install done there), runs as the user ${app.name}, and reads
 # its configuration from /etc/${app.name}/env (APP_KEY, APP_URL, DB_*, MAIL_MAILER=smtp, … — chmod 600). Node must be on PATH.
 [Unit]
@@ -333,16 +334,16 @@ ReadWritePaths=/srv/${app.name}/storage
 WantedBy=multi-user.target
 `;
   return {
-    web: unit('web server', 'web server (marmeon start)', 'start', 30, [
+    web: unit('web', 'web server', 'web server (marmeon start)', 'start', 30, [
       '# Only the proxy on this machine connects: listen on loopback, trust its X-Forwarded-* (E162).',
       'Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1',
       '# SIGTERM → SHUTDOWN_DELAY (E163) → drain (at most 10 s): TimeoutStopSec covers both.',
     ]),
-    worker: unit('queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 30, [
+    worker: unit('worker', 'queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 30, [
       '# Every queue, fairly (E199). For a priority, a second unit with --queue=mail.',
       '# A job past its timeout ends the worker with exit code 70 (E83): Restart=always brings a fresh one. On SIGTERM the running',
       '# job gets --stop-timeout (10 s): TimeoutStopSec must be longer — raise both together for long jobs.',
     ]),
-    scheduler: unit('scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 30),
+    scheduler: unit('scheduler', 'scheduler', 'scheduler (marmeon schedule:work)', 'schedule:work', 30),
   };
 }

@@ -17,9 +17,9 @@ export default function Home({ sections }: PageProps<ShowHomeController>) {
       <article className="doc">
         <h1>Marmeon</h1>
         <p className="lead">
-          Marmeon is a full-stack framework for TypeScript: a modular monolith on Node.js that runs your TypeScript as it is, renders React pages on the
-          server and brings what a web app needs — sessions, authentication, mail, queues, a scheduler, file storage and live updates, each with a
-          contract, drivers to choose from and a fake for your tests.
+          Marmeon is a full-stack framework for TypeScript on Node.js: an app is a set of modules whose routes, controllers and React pages are typed
+          from end to end, and the server renders each page before the browser takes over. A new app comes with a database, sessions, validation,
+          mail, queues and a scheduler already wired together, and further packages add file storage, Redis, live updates and more.
         </p>
         <section className="start" aria-labelledby="start-here">
           <h2 id="start-here">Start here</h2>

@@ -335,7 +335,7 @@ the shared peers `@opentelemetry/api` and `vite` are named with the tested major
 @aws-sdk/s3-request-presigner@^3`, `pnpm add @aws-sdk/s3-presigned-post@^3`, `pnpm add mjml@^5`, `pnpm add pg@^8`,
 `pnpm add @opentelemetry/api@^1`, `pnpm add -D vite@^8 @marmeon/vite`. A default disk or `UPLOADS_DISK` on S3 without the SDK now fails
 the start (it failed the first use); an S3 disk the app only names still says it on first use. A broken install of `mjml` or `pg`
-shows its own error instead of "install it". The table of what to install for which driver: [deployment](docs/deployment.md#drivers-what-an-app-installs-e198).
+shows its own error instead of "install it". The table of what to install for which driver: [deployment](docs/deployment.md#drivers-what-an-app-installs).
 
 The way back: none needed — an app's own `redis` or `nodemailer` entry may stay (the same major is one copy); an S3 default disk
 that should start without the SDK is not possible any more (it failed on first use before).
