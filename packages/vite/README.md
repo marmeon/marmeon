@@ -32,6 +32,18 @@ What `marmeon()` does:
 - **virtual modules** (below) and the browser's **route manifest** (E57);
 - keeps **server code out of the browser** (E121, below).
 
+## Dev server
+
+`marmeon dev` runs Vite in middleware mode in front of the app's routes. What to know before changing `server` in `vite.config.ts`
+([security](../../docs/security.md#development-routes)):
+
+- `server.allowedHosts` must contain the host of `APP_URL` (any other `Host` gets Vite's 403 — DNS rebinding); under `server.https`
+  and with `allowedHosts: true` Vite skips that check, and only the framework's own development routes keep theirs (`devOnly()` of
+  [@marmeon/core](../core/README.md#development-routes-marmeoncoredev-e200)).
+- The server sets `cors: false` — Vite answers no other origin.
+- The style tags Vite injects in development carry the response's nonce (read from the `csp-nonce` meta that `html.cspNonce` adds),
+  so a policy with `styleSrc: ["'self'", NONCE]` holds in development too.
+
 ## Options
 
 | Option | Default | What |

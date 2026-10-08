@@ -6,7 +6,7 @@ or a blank app. Node 26.10 or newer.
 ```sh
 pnpm create marmeon my-app            # on a terminal it asks: the starter kit? Docker files? pnpm or npm? git?
 pnpm create marmeon my-app --yes      # the defaults, nothing asked: the starter kit, pnpm, install, a first commit
-npm init marmeon my-app -- --npm      # with npm: the flags after --
+npm create marmeon@latest my-app -- --npm   # with npm: the flags after --
 npx create-marmeon my-app --minimal   # a blank app
 ```
 

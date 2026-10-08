@@ -92,7 +92,9 @@ primary asks once for its workers).
   the app's Vite in middleware mode — HMR, source modules, `/__open-in-editor`, the SSR entry of the `marmeon()` plugin
   (`bootstrap/ssr.tsx`). Without Vite or without the plugin it fails with a `ViteSetupError` that says what to install. `marmeon
   dev` sets `NODE_ENV=development` when it is unset; with another `NODE_ENV` (`staging`, `test`) it serves the build and says so;
-- **production** (the default with any other `NODE_ENV`, also none): the built `dist/client/index.html` and
+- **production** (the default with any other `NODE_ENV`, also none — on `staging` React still renders with its development build,
+  which shows a late server error's message and stack to the visitor: [deployment](../../docs/deployment.md#configuration)): the
+  built `dist/client/index.html` and
   `dist/server/ssr.js`, loaded once; without them the start fails with "No production build in dist/client — run marmeon
   build first."
 

@@ -462,9 +462,9 @@ await navigator.load(loadInstant);                           // async: fetch the
 **The size budget** (E75). `packages/react/size-budget.json` holds a limit per scenario, in KB gzip of the initial download,
 measured in Vite's app mode against `dist/` (minified, production defines, React and i18n left out, and without Vite's preload
 helper — the first `import()` of any client build brings it, so it is no framework code). Wave 9 set every limit once to the
-measured size + 0.5 KB (E186) — the reserve stays: a saving lowers a limit to the new size + 0.5, extra cost eats the reserve and is
-never refilled. The limits now (KB gzip): core 11.57, `emptyApp` 14.08, `minimalApp` 18.61, `table` 17.46, `blank-app` 14.57,
-`web-app` 22.82 and `docs` 17.48 (both lowered by the Navigation API step), the `everything` ceiling 31.62. They only go down:
+measured size + 0.5 KB (E186): a saving lowers a limit to the new size + 0.5, extra cost eats the reserve and is never refilled —
+Wave 10 has no reset (E204). The limits now (KB gzip): core 11.57, `emptyApp` 13.74, `minimalApp` 18.26, `table` 17.09, `blank-app`
+14.26, `web-app` 22.14 and `docs` 16.90 (lowered by Wave 10's lazy failure views), the `everything` ceiling 31.62. They only go down:
 
 | Scenario | What |
 | --- | --- |

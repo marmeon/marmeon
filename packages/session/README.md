@@ -128,7 +128,7 @@ Chosen with `SESSION_DRIVER` (see `SessionConfig`):
 | ---------- | ------------------------------------------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
 | `file`     | one file per session (`SESSION_FILES`) — the default                     | lottery / `session:prune` (by mtime)     | apps with login on one server                       |
 | `database` | a row in `sessions` (`marmeon make:session-table`, `SESSION_CONNECTION`) | lottery / `session:prune` (`last_activity`) | apps with login, several processes or servers    |
-| `redis`    | `<REDIS_PREFIX>session:<key>` ([@marmeon/redis](../redis/README.md) + `redis`, `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
+| `redis`    | `<REDIS_PREFIX>session:<key>` ([@marmeon/redis](../redis/README.md), `SESSION_CONNECTION`) | Redis' own TTL — nothing to prune | apps with login and Redis anyway |
 | `memory`   | the process                                                              | on read                                  | tests (gone with the process)                       |
 | `cookie`   | an encrypted cookie next to the session id                               | the cookie's `Max-Age`                   | apps **without** login (≈ 2.8 KB of JSON at most)   |
 

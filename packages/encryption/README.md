@@ -68,7 +68,7 @@ something resolves it, and reading `EncryptionConfig` then throws a `ConfigError
   string all end in the same `DecryptError` (`The payload is invalid.`) — it never says which.
 - **`context` binds a payload to its use** (additional authenticated data, default `''`): a value encrypted for the cookie
   `session` does not decrypt as the cookie `remember`. The framework's contexts are `cookie:<name>`, `queue:<job name>`, `session:<key>` and
-  `marmeon:cursor:<direction>:<columns>`;
+  `marmeon:cursor:<direction>:<columns>` — `marmeon:cursor@<name>:<direction>:<columns>` for a named list (a table, an inbox);
   pick your own for your own payloads (`exports:download`).
 - **Strings in, strings out:** serialize yourself (`JSON.stringify`) — there is no implicit serialization like Laravel's.
 - **Outside the container:** `new AesGcmEncrypter(key, previousKeys)` takes raw 32-byte keys (anything else is a `TypeError`),
@@ -101,7 +101,7 @@ absent), invalidates every signed link and turns encrypted jobs still waiting in
 | [@marmeon/http](../http/README.md) | `EncryptCookies` in the `web` group: every cookie the app sets and reads | the `Encrypter`, context `cookie:<name>` |
 | [@marmeon/queue](../queue/README.md#secrets-in-payloads-e105) | jobs with `static encrypted = true`, the framework's own jobs | the `Encrypter`, context `queue:<job name>` |
 | [@marmeon/session](../session/README.md#hashed-keys-versions-and-encryption-e144-e145) | the session data in its store with `SESSION_ENCRYPT=true` (off by default) | the `Encrypter`, context `session:<key>` (the session's store key) |
-| [@marmeon/database](../database/README.md#pagination) | `cursorPaginate`'s `nextCursor` (W9: the last row's values — hidden sort columns too — neither readable nor made up; one that does not decrypt is a 400) | the `Encrypter` (its `encrypter` option), context `marmeon:cursor:<direction>:<columns>` |
+| [@marmeon/database](../database/README.md#pagination) | `cursorPaginate`'s `nextCursor` (W9: the last row's values — hidden sort columns too — neither readable nor made up; one that does not decrypt is a 400) | the `Encrypter` (its `encrypter` option), context `marmeon:cursor:<direction>:<columns>` (`marmeon:cursor@<name>:…` with a `name`) |
 | [@marmeon/http](../http/README.md) | `UrlSigner` — signed URLs, HMAC-SHA-256 | HKDF-SHA-256 of each key, info `marmeon:signed-url` |
 | [@marmeon/live](../live/README.md#the-guarantees) | the tokens of the channels a page follows | HKDF-SHA-256, info `marmeon:live` |
 | [@marmeon/storage](../storage/README.md#uploads) | upload tokens | HKDF-SHA-256, info `marmeon:upload-token` |

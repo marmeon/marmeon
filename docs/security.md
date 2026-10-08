@@ -50,7 +50,7 @@ Every request of the `web` group that changes something is checked in stages
 from another site is refused with 403; without Fetch Metadata the `Origin` decides; only a client that sends neither needs the
 session's token. Guests get no session just for a token — and a session draws its token only when something needs it (E203): the
 first `session.token()`, a page of a kept session (`page.csrf`) or its `XSRF-TOKEN` cookie makes it, signing in and out renews it
-at once; a guest's GET sets no cookie at all. The check itself is unchanged — a post that needs the token and has none is a 419.
+at once; a guest's GET sets no cookie — unless its page keeps a session (an upload, a live stream). The check itself is unchanged — a post that needs the token and has none is a 419.
 List other origins you trust in `CSRF_TRUSTED_ORIGINS` (whole origins); webhooks that cannot carry a token go into a module's
 `csrfExcept`.
 
@@ -127,7 +127,9 @@ rotate it with `APP_PREVIOUS_KEYS`: old cookies and signed URLs stay readable un
   (`failOnDuplicate()` → 422) ([validation](validation.md#database-rules-and-why-they-never-run-live)). A schema of another library
   does not run in a live validation at all (E206) unless its request says `live: true` — never for one that asks about accounts.
 - **Never-confirmed accounts go after 7 days** (`AUTH_UNVERIFIED_DAYS`, E203; one confirmed once never goes): whoever signed up with somebody else's address stops
-  holding it, and nothing of an unfinished sign-up stays — deleted at night with its tokens, sessions and what other modules keep
+  holding it (a sign-up; with `AUTH_PRIVATE_REGISTRATION=false` an account confirmed once keeps an address it changed to unconfirmed),
+  and nothing of an unfinished sign-up stays — deleted at night with its tokens, what other modules keep and its sessions (removed with
+  `SESSION_DRIVER=database`, ended at their next request with the other drivers)
   ([unconfirmed accounts](../packages/auth/README.md#unconfirmed-accounts-e203)).
 - **Mail goes out encrypted or not at all:** SMTP uses TLS from the first byte (`MAIL_SECURE=true`, port 465) or requires STARTTLS
   (`MAIL_REQUIRE_TLS`, default `true`, E192) — a server without it, or someone who strips the offer, never sees the credentials or a

@@ -177,7 +177,9 @@ mirror images:
 | `environment.isDevelopment()` — development tools (Vite's dev server, error page details, devtools, `Server-Timing`, mail previews, pretty logs, regenerated table types) | yes | no | no |
 | `environment.isProtected()` — protections (JSON logs, `migrate` needs `--force`, boot warnings, no lab pages, read-only writes dropped instead of thrown) | no | no | **yes** |
 
-Protections are **fail-closed**: a staging box, a typo and a server without `NODE_ENV` are protected like production. Check
+Protections are **fail-closed**: a staging box, a typo and a server without `NODE_ENV` are protected like production. (React is
+not: with any `NODE_ENV` but `production` it renders with its development build, which shows a late server error's message and
+stack to the visitor — run servers with `production`, keep staging private; [deployment](../../docs/deployment.md#configuration).) Check
 `isProtected()` on the protecting side and `isDevelopment()` for a development tool — never `=== 'production'` or a negative
 check against it. Both read `process.env` unless given the `env` a config definition resolves from:
 

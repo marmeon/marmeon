@@ -5,7 +5,7 @@ export const CacheConfig = defineConfig('cache', {
   env: v.object({
     /**
      * `file` (default: shared by the processes of one machine, survives restarts), `database` (the app's database —
-     * `marmeon make:cache-table` writes the migration), `redis` (needs @marmeon/redis and redis) or `memory`
+     * `marmeon make:cache-table` writes the migration), `redis` (needs @marmeon/redis — it brings redis) or `memory`
      * (tests, one process).
      */
     CACHE_DRIVER: v.optional(v.picklist(['file', 'memory', 'database', 'redis']), 'file'),

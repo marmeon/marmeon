@@ -57,8 +57,8 @@ export interface MarmeonOptions {
    */
   serverModules?: readonly string[];
   /**
-   * For `vitest.config.ts`: conditions, injection and virtual modules only — no entries, no HTML,
-   * no build settings.
+   * For `vitest.config.ts`: conditions, injection, virtual modules and the server-import check only — no entries, no HTML, no CSP
+   * nonce, no pre-bundling, no build settings.
    */
   test?: boolean;
 }

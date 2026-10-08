@@ -358,10 +358,10 @@ beyond the template:
   idle timeout to the app
 - [ ] `MAIL_MAILER=smtp`
 - [ ] web, worker and scheduler each under a supervisor that restarts them; grace periods longer than the drain
-- [ ] a worker takes every queue the app uses (one without `--queue` does; a `--queue` list names every queue or ends with `*`); a
+- [ ] a worker takes every queue the app uses (one without `--queue` does; a `--queue` list names every queue or has a `*` — anywhere in it); a
   `jobs` table older than Wave 10 has [the index](#the-queue-index-of-an-older-app)
 - [ ] the drivers the configuration names are installed as `dependencies` ([drivers](#drivers-what-an-app-installs-e198)) — the
-  start says which one is missing
+  start says which one is missing for the default disk, `UPLOADS_DISK` and a Redis driver; `pg` and another S3 disk say it on first use
 - [ ] staging: not public, no real data — it shows server errors ([configuration](#configuration)); `OTEL_TRUST_TRACEPARENT` only
   behind an edge that owns the header
 - [ ] HSTS once the site is HTTPS only (the app's `SecurityHeaders` switch or the proxy); the rest of the list: [security](security.md#your-checklist)

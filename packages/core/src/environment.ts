@@ -83,8 +83,8 @@ export const environment = {
     if (!environment.isDevelopment(env) || !environment.fromDotEnv(env)) return undefined;
     return (
       `NODE_ENV=development comes from .env, not from the environment: marmeon ${command} runs with the development tools ` +
-      '(error pages with source code, devtools, Vite) and without the production protections. On a server, set NODE_ENV ' +
-      '(production, staging) in the environment — it wins over .env — and never deploy a development .env.'
+      '(error pages with source code, devtools, Vite) and without the production protections. On a server, set NODE_ENV=production ' +
+      'in the environment — it wins over .env — and never deploy a development .env (staging renders with React\'s development build).'
     );
   },
 } as const;

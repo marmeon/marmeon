@@ -63,7 +63,8 @@ alone (E76). It depends on `@marmeon/core`, [@marmeon/router](../router/README.m
 - **The framework's texts** (namespace `marmeon`, English and German): status pages (`marmeon.status.404`), framework errors
   (CSRF — `marmeon.errors.csrf` for the 419, `marmeon.errors.cross_site` for the 403 of a cross-site request, E143 —, throttling,
   signatures), the password and upload rules of [@marmeon/auth](../auth/README.md) and
-  [@marmeon/storage](../storage/README.md#uploads), and `marmeon.validation.more` ("(and 2 more errors)"). Each package
+  [@marmeon/storage](../storage/README.md#uploads), the rules of [@marmeon/validation](../validation/README.md)
+  (`marmeon.validation.<rule>`, English and German, E197) and `marmeon.validation.more` ("(and 2 more errors)"). Each package
   keeps its English text inline as well, for apps without i18n.
 
 ## Messages: the ICU subset

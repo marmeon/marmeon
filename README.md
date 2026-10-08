@@ -214,7 +214,7 @@ pnpm csp:probe --app apps/web-app --build   # a built app in headless Chrome und
 
 `pnpm run ci` runs 15 parts one after the other, each with its exit code and time, and fails when one is red: `build`,
 `typecheck`, `lint`, `check:source` (rules over the repository's own files — [CONTRIBUTING](CONTRIBUTING.md#rules-over-the-source-pnpm-checksource)), `test`, then `test:pgsql`, `test:redis` and `test:s3` against this repository's containers (`compose.yaml`,
-started as needed), `size` (the bundle limits — they only go down, each keeps a 0.5 KB reserve, E186), `types:check` (the apps' generated route and table types are current), `docs:check`,
+started as needed), `size` (the bundle limits — they only go down, each at most 0.5 KB above its size, E186; no reset in Wave 10, E204 — core keeps 0.22, `everything` is a ceiling), `types:check` (the apps' generated route and table types are current), `docs:check`,
 `pack:check`, `pack:smoke`, `image` (the starter kit's image from `make:docker`, then the docs' image) and `check-changesets`.
 `pack:smoke` and `image` without a package store, the registry or Docker are reported as skipped, never as green.
 `--only a,b`, `--skip a,b`, `--bail`, `--no-compose` (the databases already run) and `--list` choose; `ci.yml` splits the parts

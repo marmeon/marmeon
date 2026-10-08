@@ -105,7 +105,7 @@ names only somewhere says it on first use. A disk without a bucket (an unset `S3
 are only sent when required (S3-compatible stores). Visibility is the disk's, not the object's: a public S3 disk needs a
 bucket policy that makes it readable — the disk sets no ACLs. `temporaryUrl()` presigns a GET with
 `response-content-disposition` (attachment unless the file's name — `filename`, else the key — has a raster image's extension;
-the stored `Content-Type` goes out as it is). The store serves these files itself: the headers of [Serving](#serving)
+the `Content-Type` follows the file name's extension — `response-content-type`, `ResponseContentType` —, not what was stored). The store serves these files itself: the headers of [Serving](#serving)
 (`nosniff`, `sandbox`) are the app's and do not apply — keep the bucket on an origin of its own, never the app's. Streams of
 unknown length are read into memory before the `PutObject` (multipart uploads: later).
 
@@ -157,7 +157,9 @@ const path = await ctx.body.avatar.store(this.#storage.disk('public'), 'avatars'
   statement), then their files. `--hours` below `UPLOADS_LIFETIME` would delete uploads whose token still works (a form still
   open): refused unless `--force`. Schedule it hourly (`s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` —
   [@marmeon/scheduler](../scheduler/README.md); with a local uploads disk on several servers, on each, without `onOneServer()`).
-- **Not yet:** lists of files (`r.array(upload(…))`), files in an optional object, and a `<Form>` without JavaScript (it would post the file itself — refused).
+- **Not yet:** lists of files (`r.array(upload(…))`), files in an optional or nullable object (`r.object({ avatar: upload() }).optional()` —
+  the upload target does not find the field: a 404 for the upload, "did not arrive" on submit; fail-closed — put the field into the
+  body's own object), and a `<Form>` without JavaScript (it would post the file itself — refused).
 
 The browser side is the `uploads` feature of `@marmeon/http/client` ([features](../http/README.md#features)) and `<FileInput
 field={form.field('avatar')} />` of [@marmeon/react](../react/README.md). Tests: `app.upload(route, field, file, params)`

@@ -261,7 +261,9 @@ const form = useForm('user-profile.update', { user: profile.id }, { name: profil
 - **`guard`** (E64): while dirty, leaving asks first — a visit, Back/Forward, closing its layer; the tab gets the browser's
   question. Back right after a click is cancelled (the URL stays); without a recent click — or a second Back right after the
   first — the browser goes and the guard comes back at once, then asks ([The Navigation API](../http/README.md#the-navigation-api-e184)). **`validate`** (E62): `true` or `{ on: 'blur' | 'change', debounce, fields }` — fields are checked against the
-  server's schema (`form.validate(field)`, `form.validating(field)`); password fields are never sent. **`remember`** (E63):
+  server's schema (`form.validate(field)`, `form.validating(field)`); password fields are never sent; database and async rules never
+  answer live (no "taken" while typing, E197), and a schema of another library not at all unless its request says `live: true`
+  (E206 — [validation](../../docs/validation.md#database-rules-and-why-they-never-run-live)). **`remember`** (E63):
   the input survives Back/Forward, in memory only; passwords, token-, secret- and card-like fields and files are never kept.
 - **By controller**, to any URL: `useForm<UpdateUserProfileController>(initial)` then `form.put(url)`.
 - **`<Form route>`** — uncontrolled (E64): fields are named inputs read from the DOM, `form.field('abilities[]')` checks a

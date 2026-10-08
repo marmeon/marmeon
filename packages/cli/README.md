@@ -29,7 +29,7 @@ says so and serves the build, without workers or watchers (never "anything but p
 marmeon build                  # injection lists, route:types, tsc --noEmit, the client build (dist/client), the SSR build (dist/server/ssr.js), .br/.gz of the assets, the manifest
 marmeon build --no-typecheck   # without the type check
 marmeon start                  # the server on the build — no Vite, no workers; NODE_ENV=production unless set (environment, then .env)
-NODE_ENV=staging marmeon start # staging: protected like production (E139) — the environment wins over .env (E170)
+NODE_ENV=staging marmeon start # staging: protected like production (E139) — but React's development build: see below
 marmeon start --workers=4      # four servers on one port (node:cluster, E140) — each drains on SIGTERM
 SHUTDOWN_DELAY=5 marmeon start # SIGTERM: /up/ready 503 at once, 5 more seconds of requests, then the drain (E163)
 ```
@@ -49,9 +49,11 @@ so the first `start` rewrites nothing and `.marmeon/` may be read-only on the se
 failing that, in the app's `.env` (E170, [Where it comes from](../core/README.md#the-environment-node_env)). A `.env` that says
 `development` makes `start`, `queue:work` and `schedule:work` development — with a loud warning in their log and
 `development (from .env)` in the start line; on a server set `NODE_ENV` in the environment. Every `NODE_ENV` but
-`development` and `test` is **protected** — JSON logs, `migrate` asks for `--force`, no lab pages, the boot warnings — so
-staging behaves like production; the development tools still need `NODE_ENV=development` (E115,
-[@marmeon/core](../core/README.md#the-environment-node_env)). The start line names it:
+`development` and `test` is **protected** — JSON logs, `migrate` asks for `--force`, no lab pages, the boot warnings — and
+Marmeon takes its production branches there; the development tools still need `NODE_ENV=development` (E115,
+[@marmeon/core](../core/README.md#the-environment-node_env)). Staging is **not** production for React: it renders with its
+development build and sends a late server error's message and stack into the page — keep staging private, or run it with
+`NODE_ENV=production` ([deployment](../../docs/deployment.md#configuration)). The start line names it:
 `Marmeon in staging (protected) on http://localhost:3000 (the build; 54 routes, …)`. Queue workers and the scheduler run as
 processes of their own there (`marmeon queue:work`, `marmeon schedule:work`, under a supervisor); each names the environment it
 assumed when it starts, and so do `migrate` and its siblings. `dev` and `start` stop gracefully on SIGINT/SIGTERM
@@ -168,9 +170,9 @@ file without `--force`:
 | [@marmeon/scheduler](../scheduler/README.md) | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test` |
 | [@marmeon/cache](../cache/README.md) | `cache:clear`, `cache:prune`, `make:cache-table` |
 | [@marmeon/session](../session/README.md) | `session:prune`, `make:session-table` |
-| [@marmeon/storage](../storage/README.md) | `uploads:prune`, `make:uploads-table` |
+| [@marmeon/storage](../storage/README.md) | `uploads:prune` (`--hours` below `UPLOADS_LIFETIME` needs `--force`), `make:uploads-table` |
 | [@marmeon/notifications](../notifications/README.md) | `notifications:prune`, `make:notifications-table` |
-| [@marmeon/auth](../auth/README.md) | `make:auth [--adapter=react] [--force]` ([private registration](../auth/README.md#private-registration-e146-e193) by default, E146/E193), `auth:prune-tokens` |
+| [@marmeon/auth](../auth/README.md) | `make:auth [--adapter=react] [--force]` ([private registration](../auth/README.md#private-registration-e146-e193) by default, E146/E193), `auth:prune-tokens`; the module of `make:auth` adds `auth:prune-unverified` (E203) |
 | [@marmeon/devtools](../devtools/README.md) | `devtools:clear`, `devtools:prune` |
 
 ### Writing a command

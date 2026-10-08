@@ -153,6 +153,7 @@ them; an empty variable (`APP_PORT=`) is missing. Messages name the variable as 
 Invalid configuration — the application cannot start:
   • app: APP_PORT — The APP_PORT field must be a port number from 1 to 65535.
   • app: ADMINS.1 — The ADMINS.1 field must be a valid email address.
+Set these variables in the environment or in .env (see .env.example).
 ```
 
 A rule that cannot read a string (`r.array()` — `r.list()` does) does not compile ("Environment variable 'TAGS' is text — …").

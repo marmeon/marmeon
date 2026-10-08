@@ -80,7 +80,8 @@ pnpm build       # type-checks the app, builds client and SSR, precomputes the i
 pnpm start       # the build, one Node process — set NODE_ENV and the configuration in the environment of the server
 ```
 
-`.env` is this machine's file: on a server, `NODE_ENV=production` (or `staging`), `APP_KEY`, `APP_URL=https://…`, the database
+`.env` is this machine's file: on a server, `NODE_ENV=production` (a `staging` server runs React's development build and shows
+server errors to its visitors — [deployment](deployment.md#configuration)), `APP_KEY`, `APP_URL=https://…`, the database
 and the mailer come from the real environment, which wins over `.env`. A `NODE_ENV` that is missing everywhere counts as
 production; one that comes from a `.env` on the server is named loudly in the log — never deploy this file. The queue worker
 `marmeon queue:work` takes every queue (the auth module's mails wait on `mail`, the welcome job on `default`). Containers,

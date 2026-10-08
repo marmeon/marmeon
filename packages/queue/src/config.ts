@@ -7,7 +7,7 @@ const seconds = (name: string) => v.pipe(v.string(), v.transform(Number), v.numb
 /**
  * The queue connections (E83): `sync` runs a job at once, in the dispatching process (scripts, tests); `database` keeps
  * jobs in the `jobs` table for `marmeon queue:work` (`marmeon make:queue-table`); `redis` keeps them in Redis lists
- * (needs @marmeon/redis and redis).
+ * (needs @marmeon/redis — it brings redis).
  *
  * ```sh
  * QUEUE_CONNECTION=database       # the default connection: database (default) | redis | sync

@@ -237,7 +237,7 @@ In a transaction the 422 rolls it back.
   ("this query has no page — spread pageQuery() into the route's query schema …") — or `{ page, perPage }` written out.
 - **`paginationFrom(query, { perPage = 15, maxPerPage = 100 })`** — *deprecated since Wave 9*: reads `?page=` and `?per_page=`
   safely from the search params (or a parsed query object). Use `pageQuery()` and hand `paginate` the parsed `ctx.query`.
-- **`cursorPaginate(query, { column, key = 'id', cursor, perPage, direction, encrypter })`** — keyset pagination for large tables
+- **`cursorPaginate(query, { column, key = 'id', cursor, perPage, direction, encrypter, name? })`** — keyset pagination for large tables
   and "load more": no count, no offset, nobody twice while rows are added.
   - **Its own order:** by `column` (one or several), then the unique `key` as the tie-breaker — added by itself, so
     `{ column: 'name' }` orders by `(name, id)`. An `orderBy` of the query is taken out (it would come first).
@@ -254,8 +254,8 @@ In a transaction the 422 rolls it back.
 ```ts
 constructor(db: Database<'blog'>, encrypter: Encrypter) { … }
 const page = await cursorPaginate(this.#db.selectFrom('articles').select(['id', 'title', 'published_at']), {
-  column: 'published_at', direction: 'desc', cursor: ctx.query.cursor, perPage: 20, encrypter: this.#encrypter,
-});   // by (published_at desc nulls last, id desc)
+  column: 'published_at', direction: 'desc', cursor: ctx.query.cursor, perPage: 20, encrypter: this.#encrypter, name: 'articles',
+});   // by (published_at desc nulls last, id desc) — and a cursor of another list never decrypts here
 ```
 
 ## Factories and seeders

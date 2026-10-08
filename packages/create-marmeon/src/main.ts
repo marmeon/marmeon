@@ -7,7 +7,7 @@
  *
  *   pnpm create marmeon my-app                # asks (starter kit? Docker? pnpm or npm? git?) on a terminal
  *   pnpm create marmeon my-app --yes          # the defaults: starter kit, pnpm, install, git
- *   npm init marmeon my-app -- --minimal --npm --docker --no-git --no-install
+ *   npm create marmeon@latest my-app -- --minimal --npm --docker --no-git --no-install
  */
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -47,7 +47,7 @@ export interface Io {
 const USAGE_TEXT = `Usage: create-marmeon <dir> [options]
 
   pnpm create marmeon my-app            asks on a terminal; --yes takes the defaults
-  npm init marmeon my-app -- --npm      flags after -- with npm
+  npm create marmeon@latest my-app -- --npm   flags after -- with npm
 
 Options:
   -y, --yes                 the defaults, nothing asked: the starter kit, pnpm, install, git

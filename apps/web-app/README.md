@@ -24,7 +24,12 @@ What the starter kit has, and a little more — each part tested here:
   `SESSION_ENCRYPT=true` (E144); the password change and "sign out other devices" run one at a time per session (`block()`,
   E145).
 - **Headers:** `middleware/SecurityHeaders.ts` (`nosniff`, a referrer policy, `X-Frame-Options`, an HSTS switch) and
-  `contentSecurityPolicy({ frameAncestors: ["'none'"] })` — a nonce per document (E147) — in `bootstrap/app.ts`.
+  `contentSecurityPolicy({ styleSrc: ["'self'", NONCE], frameAncestors: ["'none'"] })` — a nonce per document (E147), no inline
+  style (E202, `pnpm csp:probe` counts 0 violations) — in `bootstrap/app.ts`.
+- **Wave 10:** development routes answer 404 outside development and 403 to a foreign host (E200, `devOnly()`); `NODE_ENV` is
+  asked positively (E201); accounts that never confirmed an address go after 7 days, with their avatar, data export and
+  notifications (E203); the CSRF token is drawn on demand; validation never answers "taken" live (E197, E206); the lab
+  (`/lab/validation`) shows the rules, `when`, an async check, `exists` and `failOnDuplicate()` after a race.
 - **Tab sync** (E148): sign in, out or switch the language in one tab and the others follow; a tab with unsaved changes asks
   first, in the app's own `Confirm` (`layouts/Confirm.tsx`). Signing out clears the site's cache and storage, the language
   switch the cache only (`clear({ siteData: ['cache'] })`). `modules/auth/tab-sync.test.ts` drives two tabs against the app.

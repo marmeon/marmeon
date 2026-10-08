@@ -48,7 +48,7 @@ runs `CACHE_DRIVER=database` with `CACHE_CONNECTION=system` (a SQLite file of it
 | ---------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
 | `file`     | a file per key (`CACHE_PATH`) — the default                                       | one server                                    |
 | `database` | rows in `cache` and `cache_locks` (`marmeon make:cache-table`, `CACHE_CONNECTION`) | several processes or servers                  |
-| `redis`    | `<REDIS_PREFIX>cache:<key>` and `<REDIS_PREFIX>lock:<name>` ([@marmeon/redis](../redis/README.md) + `redis`, `CACHE_CONNECTION`) | several servers, Redis anyway |
+| `redis`    | `<REDIS_PREFIX>cache:<key>` and `<REDIS_PREFIX>lock:<name>` ([@marmeon/redis](../redis/README.md), `CACHE_CONNECTION`) | several servers, Redis anyway |
 | `memory`   | the process                                                                       | tests                                         |
 
 ### `database`: its own connection, never the app's transactions (E108)

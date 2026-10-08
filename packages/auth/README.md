@@ -25,7 +25,7 @@ marmeon make:auth [--adapter=react] [--force]
 
 Copies `stubs/<adapter>/modules/auth` of this package to the app's `modules/auth/` (`react` is the only adapter with templates),
 adds `import auth from '#modules/auth'` and `modules: [auth, …]` to `bootstrap/app.ts` (or says how), names the packages the
-module imports that `package.json` lacks (`@marmeon/cache`, `cli`, `i18n`, `mail`, `queue`, `react`, `scheduler`,
+module imports that `package.json` lacks (`@marmeon/cache`, `marmeon`, `@marmeon/i18n`, `mail`, `queue`, `react`, `scheduler`,
 `session`, `validation`, `mjml`, …; `@marmeon/testing` and `vitest` for its tests) and those it has only as dev dependencies
 (production runs the module through `marmeon` — `marmeon start`, the worker, the scheduler — so `pnpm install --prod`
 must keep them), and — when nothing is missing — runs `marmeon route:types`. It needs `config/app.ts` exporting `AppConfig`
@@ -47,7 +47,7 @@ What the module holds:
 | | |
 |---|---|
 | `index.ts` | `defineModule({ … })`: provider, the queued listener `listen(Registered, SendEmailVerification)`, the jobs, migrations, `exposes: ['users']`, the seeder, `routes`, `apiRoutes`, `schedule`, `commands` |
-| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` and `email-change` (6/min per user) ([@marmeon/cache](../cache/README.md)) |
+| `AuthServiceProvider.ts` | binds `UserProvider` to the `UserRepository`, the signed-in user's language (`LocalePreference`), `ShareAuthProps` in the `web` group, the rate limits `password-reset`, `register` (10/min per IP), `verification` (3/min per user) and `email-change` (6/min per user) ([@marmeon/cache](../cache/README.md)) |
 | `users.ts`, `UserRepository.ts` | `type User = Row<'users'>` and the `AuthTypes` declaration; the repository implements `UserProvider` — the only code that reads the hash (`secret()`) |
 | `routes.ts` | `/login`, `/register`, `/register/sent`, `/forgot-password`, `/reset-password` (behind `guest('/dashboard')`) — not `/`: that is the app's (the starter kit's home module); `/dashboard`, `/logout`, `/confirm-password`, `/settings/security`, `/settings/password` and `/settings/devices/logout` (both `block()`: one per session at a time, [E145](../session/README.md#blocking-routes-block)), `/settings/email`, `/settings/tokens` (sudo mode), `/email/verify…`, `/email/change…` (behind `authenticate()`; the app's pages also behind `ConfirmedAddress`) |
 | `api-routes.ts` | `GET /api/user` behind `authenticate('api')` — Sanctum's `/api/user` |
@@ -347,6 +347,9 @@ schema: r.object({ password: password(), password_confirmation: r.string() }).co
   `password_confirmation` once the password itself is valid; a request's `messages` gives it the app's words
   (`{ 'password_confirmation.confirmed': 'auth.validation.passwords_differ' }`). (Before Wave 10 `confirmed()` of this package
   wrapped a Valibot schema — see UPGRADING.)
+- **The registration's schema asks no database** (E193, precised in Wave 10): neither mode answers "taken" while a field is typed —
+  with `AUTH_PRIVATE_REGISTRATION=false` only the submit says it (the unique index decides). Why, and how to have it back knowingly:
+  [validation](../../docs/validation.md#database-rules-and-why-they-never-run-live).
 
 ## Events
 
@@ -392,10 +395,12 @@ marmeon auth:prune-unverified        # the module's command — scheduled nightl
 ```
 
 An account that never confirmed an address within `AUTH_UNVERIFIED_DAYS` of its sign-up (default **7**) is deleted: whoever
-signed up with somebody else's address stops holding it (a "pre-hijacked" account), and the data of sign-ups nobody finished
+signed up with somebody else's address stops holding it (a "pre-hijacked" account — a sign-up; an account confirmed once keeps
+an address it changed to without confirming it, with `AUTH_PRIVATE_REGISTRATION=false`), and the data of sign-ups nobody finished
 goes (data minimization). **Never deleted is what was confirmed once:** the module keeps the first confirmation in
-`users.first_verified_at` (set by the verification link, never cleared — migration `0001_01_01_000005_…`, which fills it for
-accounts confirmed before). Only accounts with `email_verified_at` **and** `first_verified_at` null **and** made before the days
+`users.first_verified_at` (set by the verification link and by a confirmed change of address, kept by `changeEmail()` from
+`email_verified_at` when an account had only that — an import, a seeder —, never cleared; migration `0001_01_01_000005_…`, which
+fills it for accounts confirmed before). Only accounts with `email_verified_at` **and** `first_verified_at` null **and** made before the days
 go (`created_at` — a later change does not extend them); a pending change of address of a confirmed account is untouched
 ([private registration](#private-registration-e146-e193)). The delete checks all of it again (one confirmed a moment ago
 stays). It goes through the module's `AccountDeletion` — the row (its remember-me and API tokens with it: the foreign keys
