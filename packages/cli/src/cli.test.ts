@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runtimeConditions, writeInjectionArtifacts, writeManifest } from '@marmeon/core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 
 // Slow under load (it hit Vitest's 5 s on a fully loaded machine): more time on CI runners only (CI=true, W8 step 1).
 const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
@@ -549,17 +549,32 @@ describe('marmeon start', () => {
 
   it('a worker that cannot start stops the cluster with its exit code; --workers needs a number', async () => {
     const { MARMEON_CHILD: _child, NODE_ENV: _env, NODE_OPTIONS: _options, ...parent } = process.env;
+    // A cluster that hangs (the bug this test is for) must not outlive the test: each runs in a process group of its own, killed
+    // whole when the test ends — also after a timeout, when the awaits below never return (W10 step 9c: a hung primary with its
+    // workers stayed behind after every red run of W9.4 G7c).
+    const groups: number[] = [];
+    onTestFinished(() => {
+      for (const pid of groups) {
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          // ended already, workers and all
+        }
+      }
+    });
     // The port is taken: every worker fails to listen — the cluster must end, not fork them forever.
     const busy = createServer();
     await new Promise<void>((resolve) => busy.listen(0, '127.0.0.1', resolve));
     try {
       const port = (busy.address() as AddressInfo).port;
       const failed = await new Promise<{ code: number | null; output: string }>((resolve) => {
-        const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: String(port), NODE_ENV: 'production' } });
+        const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, detached: true, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: String(port), NODE_ENV: 'production' } });
+        groups.push(child.pid!);
         let output = '';
         child.stdout.on('data', (chunk) => (output += chunk));
         child.stderr.on('data', (chunk) => (output += chunk));
-        child.once('exit', (code) => resolve({ code, output }));
+        const timer = setTimeout(() => child.kill('SIGKILL'), 12_000);
+        child.once('exit', (code) => (clearTimeout(timer), resolve({ code, output })));
       });
       expect(failed.output).toContain('ended before it listened');
       expect(failed.code).not.toBe(0);
@@ -569,11 +584,12 @@ describe('marmeon start', () => {
     // A worker whose app fails to boot (a provider throws — LIVE_DRIVER=memory with --workers, W9 step 4): it ends, and so does
     // the cluster — it neither hangs on its channel to the primary nor forks again.
     const booting = await new Promise<{ code: number | null; output: string }>((resolve) => {
-      const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', NODE_ENV: 'production', GREETER_FAILS: '1' } });
+      const child = spawn(process.execPath, [bin, 'start', '--workers=2'], { cwd: app, detached: true, env: { ...parent, APP_KEY: key, HOST: '127.0.0.1', PORT: '0', NODE_ENV: 'production', GREETER_FAILS: '1' } });
+      groups.push(child.pid!);
       let output = '';
       child.stdout.on('data', (chunk) => (output += chunk));
       child.stderr.on('data', (chunk) => (output += chunk));
-      const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
+      const timer = setTimeout(() => child.kill('SIGKILL'), 12_000);
       child.once('exit', (code) => (clearTimeout(timer), resolve({ code, output })));
     });
     expect(booting.output).toContain('the greeter cannot boot in a worker');
