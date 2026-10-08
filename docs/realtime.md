@@ -1,132 +1,285 @@
-# Real time: live hints
-<!-- docs:pending -->
+# Real-time Updates
 
-When something changes, the other tabs that show it should follow — another user added a link to a profile, a notification came,
-an administrator removed a row. In Marmeon real time is **live hints** (E89): the server tells the tabs that follow a channel
-*that* something changed — never *what* — and each tab reloads the affected props through the page's own route, as a partial reload,
-with its middleware and policies. One Server-Sent-Events stream per tab carries the hints of every channel on screen.
+## Introduction
 
-This guide shows how to use it, what holds it in bounds, what it needs in production — and, honestly, what it is not. The reference:
-[@marmeon/live](../packages/live/README.md).
+When something changes, the other tabs that show it should follow: another user added a link to a profile, a notification
+arrived, an administrator removed a row. A page **follows a channel**, and when something changes the server sends the channel a
+**hint**. Every tab that follows the channel then reloads the props it named, through the page's own route, as a partial reload.
+A hint says *that* something changed, never *what*: the data always comes from the route, its middleware and its policies.
 
-## Following and hinting
+Install the package first:
 
-```ts
-// The page follows a channel; a hint reloads the props it names (typed: a name that is not a prop is a compile error).
-return this.view('user-profile/Show', { profile, activity: defer(() => this.#activity.recent(user.id)) })
-  .live(`users.${user.id}`, { only: ['profile', 'activity'] });
-
-// Islands and layers the same way; shared props (the bell in every layout) from middleware:
-shared.live(async () => {
-  const user = await auth.user();
-  return user ? notificationsChannel({ type: 'user', id: user.id }) : undefined;     // a guest follows nothing
-}, { only: ['bell'] });
-
-// Anywhere on the server — a controller, a job, a listener: the injected Broadcaster.
-await this.#broadcast.refresh(`users.${user.id}`, { only: ['profile'] });
+```sh
+pnpm add @marmeon/live
 ```
 
-In the browser there is usually nothing to write: the client core reads the page's channels and follows them.
-`useLiveUpdates()` says whether updates wait — they do while a form on screen has unsaved changes — and `apply()` loads them.
-A notification sent `via()` `'live'` hints its recipient's channel by itself.
+A page follows a channel with `.live()`:
+
+```ts title="modules/user-profile/controllers/ShowUserProfileController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, type HttpContext } from '@marmeon/http';
+import type { Profile } from '../ProfileDirectory.ts';
+
+export class ShowUserProfileController extends Controller {
+  handle(ctx: HttpContext<Authenticated, { user: Profile }>) {
+    const { id, name, bio, links } = ctx.params.user;
+    return this.view('user-profile/Show', { profile: { id, name, bio, links } }).live(`users.${id}`, { only: ['profile'] });
+  }
+}
+```
+
+A write hints the channel with the injected `Broadcaster`:
+
+```ts title="modules/user-profile/controllers/AddProfileLinkController.ts"
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Broadcaster } from '@marmeon/live';
+import { rules as r } from '@marmeon/validation';
+import { ProfilePolicy } from '../policies/ProfilePolicy.ts';
+import { ProfileLinkRepository } from '../ProfileLinkRepository.ts';
+
+export const AddProfileLinkRequest = defineRequest({
+  schema: r.object({ label: r.string().trim().required().max(60), url: r.string().trim().required().url().max(2048) }),
+  authorize: can(ProfilePolicy, 'update', 'user'),
+});
+
+export class AddProfileLinkController extends Controller {
+  static request = AddProfileLinkRequest;
+
+  readonly #links: ProfileLinkRepository;
+  readonly #broadcast: Broadcaster;
+
+  constructor(links: ProfileLinkRepository, broadcast: Broadcaster) {
+    super();
+    this.#links = links;
+    this.#broadcast = broadcast;
+  }
+
+  async handle(ctx: ContextOf<typeof AddProfileLinkRequest>) {
+    await this.#links.insert({ user_id: ctx.params.user.id, ...ctx.body });
+    await this.#broadcast.refresh(`users.${ctx.params.user.id}`, { only: ['profile'] });
+    return this.redirect().route('user-profile.show', { user: ctx.params.user.id });
+  }
+}
+```
+
+Every other tab on that profile reloads its `profile` prop. In the browser there is nothing to write: the client reads the page's
+channels and follows them over one Server-Sent Events stream per tab, which carries the hints of every channel on screen.
+
+## Following a channel
+
+`.live(channel, { only })` works on a page, a layer and an island alike. `only` names the props a hint reloads, and a name that is
+not a prop is a compile error:
+
+```text
+'avtar' is not a prop of this page — its props: activity, profile, …
+```
+
+A channel's name is made of letters, digits, `_`, `-`, `.` and `:`, at most 200 characters, such as `users.7` or `team:4.tasks`.
+Anything else throws. The name travels in the page, so keep secrets out of it.
+
+What a hint reloads depends on both sides. A tab reloads the props that the page's `only` and the hint's `only` both name. A hint
+without `only` reloads every prop the page names, and a page without `only` reloads what the hint names, or all of its props. A
+reload after a hint replaces [merged props](deferred-props.md#merged-props) instead of appending to them.
+
+### Shared props
+
+A prop that every page's layout shows, such as the count of unread notifications, follows a channel from the middleware that
+shares it. `SharedData.live()` takes the channel, or a function of the request that says which:
+
+```ts title="middleware/ShareAppProps.ts"
+import { Auth } from '@marmeon/auth';
+import { SharedData, type HttpContext, type Next } from '@marmeon/http';
+import { notificationsChannel } from '@marmeon/live';
+import { Inbox } from '@marmeon/notifications';
+
+declare module '@marmeon/http/page' {
+  interface SharedProps {
+    bell?: { unread: number } | null;
+  }
+}
+
+export class ShareAppProps {
+  readonly #shared: SharedData;
+  readonly #auth: Auth;
+  readonly #inbox: Inbox;
+
+  constructor(shared: SharedData, auth: Auth, inbox: Inbox) {
+    this.#shared = shared;
+    this.#auth = auth;
+    this.#inbox = inbox;
+  }
+
+  handle(_ctx: HttpContext, next: Next<{}>) {
+    this.#shared
+      .share('bell', async () => {
+        const user = await this.#auth.user();
+        return user ? { unread: await this.#inbox.count({ type: 'user', id: user.id }) } : null;
+      })
+      .live(
+        async () => {
+          const user = await this.#auth.user();
+          return user ? notificationsChannel({ type: 'user', id: user.id }) : undefined;
+        },
+        { only: ['bell'] },
+      );
+    return next();
+  }
+}
+```
+
+A guest follows nothing, because the function returns `undefined`. The function runs only when a page renders, and a shared
+channel goes into pages only, never into an island or a layer, which show no layout. A notification sent through the
+[live channel](notifications.md#the-live-channel) hints `notificationsChannel(recipient)` by itself.
+
+## Sending hints
+
+`broadcast.refresh(channel, { only })` works anywhere on the server: in a controller, a listener or a job.
+
+- **After the commit.** Inside a transaction the hint goes out once the transaction committed, and a rollback sends nothing. A tab
+  never reloads data that is not there yet.
+- **Not back to the tab that caused it.** Every request of a tab that follows a channel names its document in the
+  `x-marmeon-connection` header. The hint of its own write reaches that tab with nothing to reload, since it shows the server's
+  answer already. A hint sent from a job or a command reaches every tab.
+- **Gathered.** A tab collects hints until 250 milliseconds pass without one, at most 2 seconds after the first, and then makes
+  **one** partial reload per page, island or layer.
+
+With Redis down, `refresh()` logs the lost hint and does not retry it. The change itself is committed, and tabs that connect again
+later catch up.
 
 ## Why hints, not data
 
-- **One authorization path.** What a tab shows next comes from its own request — the same route, middleware, policies and props
-  as any page load. A hint about something the user may no longer see reloads into a 403 or the login page, never into data. There
-  is no second set of rules for "who may receive this event".
-- **Signed subscriptions (E90).** `.live()` puts each channel into the page object with a token — an HMAC over the channel and the
-  session, keyed from `APP_KEY`. Whoever may see the page may hear its hints; a channel rewritten (`users.1` → `users.2`), another
-  session's token or one of a session that ended is refused with a 403, and a stream without a session with a 401.
-- **After the commit (E107).** A `refresh()` inside a transaction goes out once it committed; a rollback sends nothing.
-- **Not back to the tab that caused it.** Every request of a following tab names its document (`x-marmeon-connection`): the hint
-  of its own write reloads nothing there (it shows its own answer).
-- **Signing in or out ends the old session's streams**, in every process; the next page the tab asks for is the server's answer.
-- **Read-only.** The stream (`GET /_marmeon/live`) never writes a session, a cookie or a flash message.
+- **One authorization path.** What a tab shows next comes from its own request: the same route, middleware, policies and props as
+  any page load. A hint about something the user may no longer see reloads into a 403 or the login page, never into data.
+- **Signed subscriptions.** `.live()` puts each channel into the page with a token: an HMAC over the channel and the session,
+  keyed from `APP_KEY`, so whoever may see the page may hear its hints. The stream refuses a channel that was rewritten, such as
+  `users.1` to `users.2`, and a token of another session or of one that ended, with a 403. A stream without a session gets a 401.
+- **Sessions.** A page that signs a channel keeps the session it was signed for, also a guest's. An island cannot start a session,
+  so a guest without one gets the island without its subscription, and no error. A route without a session, such as one of the
+  `api` group, cannot sign a channel and throws.
+- **Signing in or out ends the streams** of the old session, in every process. The tab does not connect again, and the next page
+  it asks for shows the new session.
+- **Read-only.** The stream at `GET /_marmeon/live` never writes the session, sets no cookie and takes no flash message.
 
-Reloads coalesce: hints are collected until 250 ms pass without one (at most 2 s), then **one** partial reload per page, island or
-layer. A reload after a hint is a revalidation — it **replaces** `merge()`d props ([lists](pagination.md#revalidations-replace-load-more-appends)).
-While tab sync asks whether to keep a page after a sign-in or sign-out elsewhere, the stream is paused (no reconnect, no reload) until
-a page of the new session is on screen.
+> [!NOTE]
+> Channel tokens do not expire while their session lives. A user who loses access to a channel keeps hearing *that* it changed,
+> its name and when, until the session ends. Every reload this causes meets the route's policy, so no data reaches them.
 
-## Limits
+## Unsaved changes
 
-| | Default | Beyond it |
-|---|---|---|
-| `LIVE_MAX_STREAMS` — streams per **process** | 1000 | 503 + `Retry-After: 10` |
-| `LIVE_MAX_STREAMS_PER_SESSION` — streams of one **session** per process | 16 | **429** + `Retry-After: 30`, a `warn` log line |
-| `LIVE_MAX_CHANNELS` — channels per stream | 20 | 400 |
+While a form on screen has unsaved changes and guards them, no hint reloads anything. The updates wait, and `useLiveUpdates()`
+tells the page:
 
-- **Per session (W9):** without it one user — or a script with their cookie — could take every stream of the process and leave live
-  updates dead for everybody else. Sixteen tabs of one browser stay connected; the 17th is refused and tries again 30 s later. The
-  key is the session (what the tokens are signed for), not the IP address: NAT and company networks would put many users together.
-  Someone who mints a fresh session per request meets the process limit — a flood of connections belongs to the proxy's limits.
-- **Atomic:** a stream takes its place in the counts before anything is awaited — fifty tabs opening at once never get past a limit.
-- **Per process:** with `--workers=4` or four containers, a session may hold 16 streams in each.
-- **Cost of a hint:** the hub indexes streams by channel — a hint on a channel one tab follows takes ~0.01 ms among 50 000 open
-  streams; a hint every stream follows is one event per stream (≈ 55 ms for 50 000). Measure with `pnpm bench fanout`.
+```tsx title="modules/user-profile/views/Edit.tsx"
+import { useLiveUpdates } from '@marmeon/react';
+
+export default function Edit() {
+  const updates = useLiveUpdates();
+  return (
+    <section>
+      {updates.pending && (
+        <p role="status">
+          This profile changed in another tab. <button type="button" onClick={updates.apply}>Load the changes</button>
+        </p>
+      )}
+    </section>
+  );
+}
+```
+
+`apply()` loads them. The [forms](forms.md#unsaved-changes) page shows the guard. While [tab sync](client-features.md#tab-sync)
+asks whether to keep a page after a sign-in or sign-out in another tab, the stream pauses until a page of the new session is on
+screen.
+
+## Configuration
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `LIVE_DRIVER` | `memory` | How hints travel: `memory` within one process, `redis` to every process. |
+| `LIVE_REDIS_CONNECTION` | `default` | The Redis connection of the `redis` driver. |
+| `LIVE_HEARTBEAT` | `20` | Seconds between heartbeats on an idle stream, from 1 to 300. |
+| `LIVE_RETRY` | `3000` | Milliseconds before a browser opens a broken stream again, from 100 to 600000. |
+| `LIVE_MAX_STREAMS` | `1000` | Open streams per process. Beyond it, `503` with `Retry-After: 10`. |
+| `LIVE_MAX_STREAMS_PER_SESSION` | `16` | Open streams of one session per process. Beyond it, `429` with `Retry-After: 30` and a warning in the log. |
+| `LIVE_MAX_CHANNELS` | `20` | Channels per stream, at most 200. Beyond it, `400`. |
+
+The app fails at the start without an `APP_KEY`, with `LIVE_DRIVER=redis` but no `@marmeon/redis`, or with an unknown Redis
+connection.
+
+### Limits
+
+The limit per session keeps one user, or a script with their cookie, from taking every stream of the process. Sixteen tabs of one
+browser stay connected, and the seventeenth tries again 30 seconds later. The key is the session, not the address, because many
+users of one company share an address. Someone who makes a fresh session for every request meets the limit per process; a flood of
+connections belongs to the limits of your proxy.
+
+A stream takes its place in the counts before it waits for anything, so fifty tabs that open at once never get past a limit. The
+counts are each process's own: with four processes, a session may hold 16 streams in each.
 
 ## More than one process
 
-`LIVE_DRIVER=memory` (the default) reaches the streams of its own process only. Use **`LIVE_DRIVER=redis`**
-([@marmeon/redis](../packages/redis/README.md)) as soon as there is more than one:
+`LIVE_DRIVER=memory` reaches the streams of its own process only. Use `LIVE_DRIVER=redis` as soon as there is more than one:
 
-- **`marmeon start --workers=N` needs Redis.** With `memory` a worker refuses to start (`LiveSetupError`: "memory pub/sub never
-  reaches the other workers — use LIVE_DRIVER=redis") and the cluster stops — a hint would have reached one worker's tabs only.
-- **Queue workers and the scheduler** send hints too (a queued notification, a job): they publish, the web processes deliver — only
-  through Redis.
-- **Several containers or machines**: the same.
+- **`marmeon start --workers`** fails at the start with `memory`: a hint would reach the tabs of one server only.
+- **Queue workers and the scheduler** send hints too, such as a queued notification. They publish, and the web processes deliver.
+  That works only through Redis.
+- **Several containers or machines** need it for the same reason.
 
-## Sequences and catching up
+`@marmeon/redis` brings the Redis client, and the [Redis](redis.md) page covers its connection.
 
-Every hint carries its channel's sequence; a stream says `hello` with each channel's sequence when it opens (and, on a reconnect with
-`Last-Event-ID`, which ones moved). A channel that moved while the tab was away — a broken connection, a frozen or hidden tab, a
-server restart — reloads **once**. Sequences live a day after a channel's last hint; a tab away longer reloads once.
+## Catching up
 
-**A counter that starts again never silences a stream.** When a channel's Redis key expired, was evicted or flushed, its counter
-starts over at 1. A stream that already said `hello` delivers every hint whatever its number, and a reconnect whose `Last-Event-ID`
-names another sequence than the channel's now (higher or lower) reloads that channel once. The memory backend forgets a channel a
-day after its last hint, or beyond 10 000 channels, and counts on above every sequence it forgot. With Redis down, `refresh()` logs the lost hint (the change itself is committed) and new
-streams answer 503; tabs that reconnect later catch up by sequence.
+Every hint carries its channel's sequence number. When a stream opens it says each channel's number, and the tab compares. A
+channel that moved while the tab was away reloads **once**, however many hints it missed: after a broken connection, a frozen tab
+or a restart of the server. Sequence numbers live a day after a channel's last hint, so a tab away longer reloads once anyway.
+
+A number that starts again, because its Redis key expired or was flushed, never silences a stream: an open stream delivers every
+hint whatever its number, and a reconnect that finds another number than it knew reloads that channel once. When the server stops,
+it closes every stream, and the browsers connect to the next server and catch up.
 
 ## Behind a proxy
 
-- **HTTP/2 (or 3) to the browser.** Over HTTP/1.1 a browser opens six connections per host across all tabs: the client then keeps a
-  stream only while its tab is visible. The Node development server speaks HTTP/1.1 — in development with many tabs that fallback
-  is active. Behind Caddy, nginx with `http2 on;` or a cloud load balancer every tab stays connected.
-- **Unbuffered and uncompressed.** The stream sends `X-Accel-Buffering: no` (nginx honours it) and `no-transform`; a proxy that
-  compresses `text/event-stream` anyway holds hints back.
-- **Idle timeouts longer than the heartbeat** (`LIVE_HEARTBEAT`, 20 s): nginx's `proxy_read_timeout` (the template: 75 s), an AWS
-  load balancer's 60 s, Cloudflare's 100 s.
-- **Keep-alive: the proxy closes first.** The app keeps idle connections `KEEP_ALIVE_TIMEOUT` (65 s) — above nginx's upstream
-  `keepalive_timeout` (60 s in the template) and an AWS load balancer's 60 s; behind Google's load balancer (600 s) set it to 620.
-  Otherwise a request now and then meets a closing connection: a 502, for a page as for a stream.
+A stream holds a connection open for each tab. Over HTTP/1.1 a browser opens at most six connections per host, so on such a page
+the client keeps a stream only while its tab is visible. The development server speaks HTTP/1.1, so in development with many tabs
+this fallback is active. Behind a proxy that speaks HTTP/2 to the browser, every tab stays connected.
 
-Proved in a browser behind `caddy:2` and behind nginx (the `make:docker --nginx` template), both over h2: two tabs connected, a hint
-reaching both, the 17th stream of the session refused. The whole picture: [deployment](deployment.md#proxies-and-http2).
-
-## Testing
-
-```ts
-const stream = await app.actingAs(ada).live(`/users/${ada.id}`);    // the page's channels, signed for this session
-await stream.hello();
-await app.actingAs(ada).withHeaders({ 'x-marmeon-connection': 'tab-a' }).post(`/users/${ada.id}/links`, { json });
-await stream.waitFor(1);
-expect(stream.hints).toEqual([{ channel: `users.${ada.id}`, only: ['profile'], seq: 1 }]);
-app.broadcast.assertRefreshed(`users.${ada.id}`, { only: ['profile'] });
-```
+The stream sends `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-store, no-transform`, and the app never compresses it. A
+proxy that buffers or compresses `text/event-stream` holds hints back. Its idle timeout must be longer than `LIVE_HEARTBEAT`. The
+[deployment](deployment.md#live-updates-need-http2) page shows the settings for Caddy, nginx and other proxies.
 
 ## What there is not
 
-Real time in Marmeon is the hints above — and stays so until a better design is settled. **Not** part of the framework (E191,
-in the backlog with their design notes):
+Real-time updates are the hints on this page. These are not part of the framework:
 
-- **Broadcasting over WebSockets** — no WebSocket server or client, no Pusher-compatible protocol, no driver for Pusher, Ably,
-  Soketi or Reverb.
-- **Data events** — a stream never carries data; a tab always reloads through its route.
-- **Presence channels** — no "who is here" lists.
-- **Client events** ("whisper", typing indicators) — tabs never send each other anything through the server.
-- **Encrypted channels**, a Postgres `LISTEN/NOTIFY` backend, retrying a hint lost while Redis was down.
+- **Broadcasting over WebSockets:** no WebSocket server or client, no Pusher-compatible protocol, no driver for a hosted service.
+- **Data events:** a stream never carries data. A tab always reloads through its route.
+- **Presence channels:** no list of who is on a page.
+- **Client events:** tabs never send each other anything through the server.
+- **Encrypted channels**, a Postgres `LISTEN/NOTIFY` driver, and a retry for a hint lost while Redis was down.
 
-Channel tokens do not expire: a hint carries no data, every reload goes through the route's policy, and signing in or out ends the
-streams.
+## Testing
+
+In a test, hints go out as in production, and `app.broadcast` records them. `app.live(path)` opens the stream of a page, signed for
+the test's session:
+
+```ts title="modules/user-profile/live.test.ts"
+import { UserRepository, type User } from '#modules/auth';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('a link added in one tab reloads the profile in another', async () => {
+  const app = await createTestApp(application, { database: 'refresh', seed: true });
+  const [ada] = (await app.make(UserRepository).query().selectAll().orderBy('id').execute()) as User[];
+  const stream = await app.actingAs(ada!).live(`/users/${ada!.id}`);
+  await stream.hello();
+
+  await app.actingAs(ada!).post(`/users/${ada!.id}/links`, { json: { label: 'Blog', url: 'https://ada.example' } });
+
+  await stream.waitFor(1);
+  expect(stream.hints).toEqual([{ channel: `users.${ada!.id}`, only: ['profile'], seq: 1 }]);
+  app.broadcast.assertRefreshed(`users.${ada!.id}`, { only: ['profile'] });
+});
+```
+
+The [fakes](fakes.md) page lists the other assertions.

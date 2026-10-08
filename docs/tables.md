@@ -1,42 +1,42 @@
-# Tables
-<!-- docs:pending -->
+# Data Tables
 
-A list that people sort, filter, page through, tick rows in and act on — and download. Hand-written, such a table is where the
-classic leaks live: a hidden column that still travels in the props, a sort parameter that goes into `ORDER BY`, a bulk action that
-takes another tenant's IDs, a cell that a spreadsheet runs as a formula. [@marmeon/table](../packages/table/README.md) handles
-them once (E183): **one definition** per table on the server, the URL as its state, parsed strictly, and endpoints that check
-everything again. The browser half is headless — `useTable` gives a component what the props allow and renders nothing itself.
+## Introduction
 
-This guide builds the members table of the web app (`apps/web-app/modules/members`) step by step, then goes through the security
-model attack by attack, and ends with the markup. The package's README is the reference for every option.
+A list that people sort, filter, page through, tick rows in, act on and download is where the classic leaks of a web app live: a
+hidden column that still travels in the props, a sort parameter that reaches `ORDER BY`, a bulk action that takes another tenant's
+ids, a cell that a spreadsheet runs as a formula. A data table handles them once. You write **one definition** per table on the
+server; the URL holds its state and is parsed strictly; its actions and exports are endpoints that check everything again. The
+browser half is headless: `useTable()` gives a component what the props allow and renders nothing itself.
 
-## 1. The definition
+Install the package first:
 
-```ts
-// modules/members/tables/MembersTable.ts
+```sh
+pnpm add @marmeon/table
+```
+
+This page builds the members table of the web app: every member with a confirmed address, an e-mail column only administrators see,
+a row action, a bulk action and a CSV export.
+
+```ts title="modules/members/tables/MembersTable.ts"
 import type { Authenticated } from '@marmeon/auth';
-import { sql } from '@marmeon/database';
 import { action, bulk, column, defineTable, exportCsv, filter, type TableContext } from '@marmeon/table';
+import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
+import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
+import { MemberPolicy } from '../policies/MemberPolicy.ts';
 
 export const MembersTable = defineTable({
   name: 'members',
-  // The base query: every row this table may ever show in this request. Pages, actions, bulk actions and exports all start here.
-  query: (db, _ctx: TableContext<Authenticated>) =>
-    db
-      .selectFrom('users')
-      .leftJoin(
-        (eb) => eb.selectFrom('profile_links').select(['profile_links.user_id', sql<number>`cast(count(*) as integer)`.as('links')]).groupBy('profile_links.user_id').as('link_counts'),
-        (join) => join.onRef('link_counts.user_id', '=', 'users.id'),
-      )
-      .where('users.email_verified_at', 'is not', null),
+  query: (db, _ctx: TableContext<Authenticated>) => db.selectFrom('users').where('users.email_verified_at', 'is not', null),
   key: 'users.id',
   columns: {
     name: column('users.name').sortable().searchable(),
-    email: column('users.email').visible(MemberPolicy, 'viewEmails').sortable().searchable(),   // administrators only
-    joined: column('users.created_at').sortable(),                                            // the alias `joined`, never created_at
-    links: column('link_counts.links').sortable(),
+    email: column('users.email').visible(MemberPolicy, 'viewEmails').sortable().searchable(),
+    joined: column('users.created_at').sortable(),
   },
-  filters: { joined: filter.dateRange('users.created_at'), locale: filter.select('users.locale', ['en', 'de']) },
+  filters: {
+    joined: filter.dateRange('users.created_at'),
+    locale: filter.select('users.locale', ['en', 'de']),
+  },
   defaultSort: 'name',
   pagination: { perPage: [10, 25, 50] },
   actions: { removeLinks: action(RemoveMemberLinks).visible(MemberPolicy, 'moderate').authorize(MemberPolicy, 'removeLinks').confirm() },
@@ -45,163 +45,433 @@ export const MembersTable = defineTable({
 });
 ```
 
-- **The base query selects nothing** — the table selects the visible columns and the key itself. A tenant belongs into it
-  (`.where('users.team_id', '=', ctx.user.team_id)`): it is the boundary every endpoint starts from.
-- **Columns have aliases** — their key in `columns`. The URL, the props and the export use the alias only; a column of the query
-  that is no column of the table cannot be sorted, filtered or seen. A secret column of a migration (`.secret()`) cannot be a
-  column at all — that is a compile error, as is a typo, a sort that is not sortable or an ability the policy does not have
-  ([type checks](../packages/table/README.md#type-checks)).
-- **`.visible(Policy, 'ability')`** is asked once per request (no row); **`.authorize(Policy, 'ability')`** of an action is asked
-  per row. The web app's `MemberPolicy` lets administrators see addresses, moderate and export, and nobody remove their own links.
-- **The key's type** is part of the definition: `key: 'users.id'` is an integer; a text key says how to read it
-  (`key: { column: 'users.uuid', type: 'uuid' }` — `string`, `uuid`, `bigint`).
+`defineTable()` is typed from the base query's tables, so a column that does not exist, a sort that is not sortable or an ability
+the policy lacks is a compile error.
 
-## 2. The controller and the routes
+## Defining a table
+
+### The base query
+
+`query(db, ctx)` returns every row the table may ever show in this request. Pages, actions, bulk actions and exports all start
+from it, so it is the boundary: put the tenant here, `.where('users.team_id', '=', ctx.user.team_id)`, and nothing of another
+tenant can be shown, changed or downloaded. The base query selects nothing. The table selects the visible columns and the key
+itself. Type its `ctx` as `TableContext<…>` with what the routes' middleware adds, such as `Authenticated`.
+
+### Columns
+
+A column is a column of the query: `column('name')`, or `column('users.name')` for a join. Its key in `columns` is its **alias**,
+the only name the URL, the props and the export ever use. The members table calls `users.created_at` `joined`, and no URL ever
+says `created_at`.
+
+| Method | What it does |
+| --- | --- |
+| `.sortable()` | The table may sort by it. |
+| `.searchable()` | The search looks into it: case-insensitive, with `LIKE`'s wildcards taken literally. |
+| `.label(text)` | Its heading. Without it, the app labels the column by its alias, in its own translations. |
+| `.visible(Policy, 'ability')` | Only users the policy allows see it. Asked once per request, without a row. |
+| `.visible((ctx, resolve) => …)` | The same with a function of your own. |
+
+A hidden column is not selected, not sent and not exported, and in the row's type it is optional. A column that a migration marked
+`.secret()`, such as a password hash, cannot be a column at all: that is a compile error.
+
+### The key
+
+The key identifies a row, and it is what actions send. A number column goes by name, `key: 'users.id'`, and is read as an integer.
+A text key says how to read it: `key: { column: 'users.uuid', type: 'uuid' }`, with the types `integer`, `bigint`, `string` and
+`uuid`. A text key by name alone is a compile error. Every key from the browser is parsed by its type before any query. One that
+does not parse is no row, so text never reaches an integer column. In the props, the key of a row is under its column's name:
+`users.id` becomes `id`.
+
+### Filters
+
+Filters are an allowlist too:
+
+| Filter | URL |
+| --- | --- |
+| `filter.select(column, options)` | `?filter[locale]=de`. Anything but one of `options` is a 400. |
+| `filter.dateRange(column)` | `?filter[joined]=2026-01-01..2026-03-31`, both days included. Either end may be empty. |
+
+A filter takes `.visible(…)` like a column. A filter on the column of a hidden column is hidden with it, because the number of rows
+it leaves would tell that column's values.
+
+### Sorting and pages
+
+`defaultSort` is the sort without a `?sort=`: an alias, with `-` in front for descending. Without it, the table sorts by its first
+sortable column that everyone sees. The key always breaks ties. A default sort by a column with `.visible(…)` is refused, as a compile
+error and when `defineTable()` runs, because it would answer 400 to everyone who may not see the column.
+
+`pagination` pages by number with a total, by default. `perPage` lists the page sizes `?per_page=` allows, and the first one is the
+default: `[25, 50, 100]` unless you say otherwise. `{ cursor: true }` pages by an encrypted cursor instead, for "load more", without
+counting every row. The [pagination](pagination.md) page explains both.
+
+### Who may see the table
+
+`authorize` decides whether the user may see the table at all. It is asked on the page and in every endpoint:
 
 ```ts
-// modules/members/controllers/ListMembersController.ts
-export const ListMembersRequest = defineRequest({ query: MembersTable.query });   // the table's state — strict: 400 for what it does not offer
+authorize: can(MemberPolicy, 'viewAny'),
+```
+
+The endpoints run the middleware of the page's routes, but **not** the `authorize` of the page's controller. A table that needs a
+check says so here.
+
+### More than one table on a page
+
+`prefix: 'teams'` puts a prefix before the table's keys in the URL: `teams_sort`, `teams_filter[role]`. Spread both tables' query
+schemas into the page's request: `defineRequest({ query: r.query({ ...MembersTable.query.entries, ...TeamsTable.query.entries }) })`.
+
+## The controller and the routes
+
+The page's controller validates the table's state as its query and resolves the table as a prop:
+
+```ts title="modules/members/controllers/ListMembersController.ts"
+import type { Authenticated } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Tables } from '@marmeon/table';
+import { MembersTable } from '../tables/MembersTable.ts';
+
+export const ListMembersRequest = defineRequest({ query: MembersTable.query });
 
 export class ListMembersController extends Controller {
   static request = ListMembersRequest;
+
   readonly #tables: Tables;
-  constructor(tables: Tables) { super(); this.#tables = tables; }
+
+  constructor(tables: Tables) {
+    super();
+    this.#tables = tables;
+  }
 
   handle(ctx: ContextOf<typeof ListMembersRequest> & Authenticated) {
-    return this.view('members/Index', { members: () => this.#tables.resolve(MembersTable, ctx) });   // TableProps<typeof MembersTable>
+    return this.view('members/Index', { members: () => this.#tables.resolve(MembersTable, ctx) });
   }
 }
+```
 
-// modules/members/routes.ts
+The prop is a function, so a partial reload of another prop leaves the table out. `tableRoutes()` registers the table's endpoints
+**on the registrar you pass**, the page's:
+
+```ts title="modules/members/routes.ts"
+import { authenticate, verified } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { defineRoutes } from '@marmeon/http';
+import { tableRoutes } from '@marmeon/table';
+import { ListMembersController } from './controllers/ListMembersController.ts';
+import { MembersTable } from './tables/MembersTable.ts';
+
 export default defineRoutes((Route) => {
   const members = Route.prefix('/members').middleware(authenticate()).middleware(verified()).name('members.');
   members.get('/', ListMembersController).name('index');
-  tableRoutes(members.middleware(throttle('members-table')), MembersTable);   // POST …/_tables/members/actions/:tableAction, …/bulk/…, GET …/export/…
+  tableRoutes(members.middleware(throttle('members-table')), MembersTable);
 });
 ```
 
-`tableRoutes` registers the table's endpoints **on the registrar you pass** — the page's, with its middleware, its route bindings
-and its group (session, CSRF). A registrar that lacks what the base query needs (`ctx.user` without `authenticate()`) is a
-compile error. The limiter (`members-table`: 60 a minute per user in the web app's `MembersServiceProvider`) is there because an
-export reads the whole filtered table.
+| Route | Body | Answer |
+| --- | --- | --- |
+| `POST /members/_tables/members/actions/:tableAction` | `{ key }` | `{ done, skipped, missing, data? }` |
+| `POST /members/_tables/members/bulk/:tableBulk` | `{ keys: [...] }` or `{ all: true, query }` | `{ done, skipped, missing, data? }` |
+| `GET /members/_tables/members/export/:tableExport` | none: the table's state in the query | a CSV file |
 
-## 3. The page
+The endpoints are ordinary routes of the page's group, with its middleware, its route bindings, the session and CSRF protection for
+the posts. A guest or an unconfirmed account never reaches them. A registrar that lacks what the base query needs, such as `ctx.user`
+without `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs. Throttle them: an export
+reads the whole filtered table. The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
 
-```tsx
-// modules/members/views/Index.tsx (shortened)
+## What the browser gets
+
+`tables.resolve(MembersTable, ctx)` resolves to `TableProps<typeof MembersTable>`:
+
+```ts
+{
+  name: 'members', key: 'id',
+  columns: [{ name: 'name', label: null, sortable: true, searchable: true, sort: 'asc' }, …],
+  rows: [{ id: 7, name: 'Ada', joined: '2026-01-10T09:00:00.000Z', can: { removeLinks: true } }, …],
+  sort: { column: 'name', direction: 'asc' },
+  search: { value: '' },
+  filters: [{ name: 'locale', type: 'select', key: 'filter[locale]', options: ['en', 'de'], value: null }, …],
+  page: { type: 'offset', page: 1, perPage: 10, perPageOptions: [10, 25, 50], total: 42, lastPage: 5, from: 1, to: 10 },
+  query: { sort: 'sort', page: 'page', perPage: 'per_page', cursor: 'cursor', search: 'search' },
+  state: { sort: '-joined', 'filter[locale]': 'de' },
+  actions: [{ name: 'removeLinks', url: '/members/_tables/members/actions/removeLinks', confirm: true }],
+  bulk: [{ name: 'removeLinks', url: '/members/_tables/members/bulk/removeLinks', confirm: true, max: 100 }],
+  exports: [{ name: 'csv', format: 'csv', url: '/members/_tables/members/export/csv?sort=-joined&filter%5Blocale%5D=de', max: 10000 }],
+}
+```
+
+- `columns` holds the visible columns, in the definition's order.
+- Each row has the key and the visible columns, nothing else. `can` holds one boolean per row action, computed for the whole page
+  with one policy call per ability, never a policy's reason.
+- `search` is `null` when no visible column is searchable.
+- `state` is the table's state in the URL, without defaults.
+- Actions, bulk actions and exports the user may not use are not in the props at all.
+
+The URLs carry the page's own route parameters: a table under `/teams/:team` links to `/teams/7/_tables/…`.
+
+## The URL is strict
+
+`MembersTable.query` is the table's state as a query schema: `sort`, `page` or `cursor`, `per_page`, `search` when a column is
+searchable, and `filter[<name>]`, with the table's prefix. It is typed, so `ctx.query.sort` is `'name' | '-name' | 'joined' | …`.
+
+Other query schemas [fall back per field](requests.md#how-a-query-is-parsed): a link with a broken value shows the default. A table
+does not. Each of these is a **400**:
+
+- a sort that is not offered, or a raw column name: `?sort=password`, `?sort=created_at` instead of `joined`,
+- a filter that does not exist, `?filter[password]=x`, or a value its filter does not offer,
+- a page size that is not in `perPage`, `?per_page=10000`, or a page that is no whole number,
+- a repeated key, or a search longer than 100 characters,
+- sorting or searching by a column the user cannot see, or a filter the user cannot see.
+
+Nothing from the URL reaches `ORDER BY` or `WHERE` that the definition did not name. A sort or a filter is an alias that is looked
+up, and only its column goes into the query.
+
+## Actions
+
+### Row actions
+
+A row action is a class with `handle(row, ctx)`, built per request through the container:
+
+```ts title="modules/members/actions/RemoveMemberLinks.ts"
+import { ProfileLinkRepository } from '#modules/user-profile';
+
+export class RemoveMemberLinks {
+  readonly #links: ProfileLinkRepository;
+
+  constructor(links: ProfileLinkRepository) {
+    this.#links = links;
+  }
+
+  async handle(member: { readonly id: number }) {
+    return { removed: await this.#links.removeAllOf([member.id]) };
+  }
+}
+```
+
+`action(Handler)` puts it into the table. `.visible(Policy, 'ability')` offers it only to some users, asked once per request.
+`.authorize(Policy, 'ability')` asks the policy **for each row**, with the row as the table hands it out. `.confirm()` makes the
+browser ask first. The endpoint checks, in this order:
+
+1. the table's `authorize`, else 403,
+2. that the action exists, else 404, and is visible, else 403,
+3. the body,
+4. that the row is in the **base query**: another tenant's row, a deleted one or a made-up key is a 404,
+5. the action's policy for that row, else 403.
+
+Only then does `handle()` run. A policy that decides per row sees the key and the visible columns, by alias. One that needs more
+looks the row up by its key, or the column becomes part of the table.
+
+### Bulk actions
+
+A bulk action is a class with `handle(rows, ctx)`. It acts on the chosen keys **∩ the base query ∩ the policy per row**. Keys that
+are no rows of the table are left out and counted as `missing`, and rows the policy refuses as `skipped`. The handler gets only the
+rest, and none of it runs when nothing is left.
+
+"All matching" sends the table's state, `{ all: true, query }`, never a list of keys. The server parses it again, as strictly as
+the URL, and refuses more rows than the action's `max`, 1000 by default, with a 422. It never acts on a list that was cut short.
+Chosen keys are held to `max` as well.
+
+### The answer
+
+An action request, the kind `useTable()` sends, and an API client get JSON: `{ done, skipped, missing }`, and `data` with what the
+handler returned. The answer is never cached. A form posted without JavaScript, or a page visit, goes back to the page with a 303.
+A handler that returns a redirect, a JSON result or a `Response` answers for itself.
+
+## Exports
+
+`exportCsv()` downloads the visible columns, filtered and sorted as the URL says:
+
+- **Its own `authorize`.** Without one, whoever sees the table may download what they see.
+- **A limit.** `exportCsv().max(rows)`, 10000 by default. One count runs first, and an export over the limit is a 422 before a byte
+  is sent, never a file cut short.
+- **Batches.** Rows stream in batches of 500. The first batch runs in the handler, and the later ones after it has answered: in the
+  request's context, for the log and the request id, and **outside** any transaction that was open around the handler.
+- **Headers.** `Content-Disposition: attachment` with a safe file name such as `members-2026-10-06.csv`, `Cache-Control: no-store`,
+  `X-Content-Type-Options: nosniff`, and a byte order mark, so spreadsheets read umlauts right.
+- **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed gets a
+  `'` in front. Every field is quoted, with quotes doubled. Numbers stay numbers, so `-5` is no formula.
+
+## The security model
+
+Every endpoint starts again at the beginning. Nothing the browser sends is trusted, whatever the page showed:
+
+| Attack | What stops it |
+| --- | --- |
+| A hidden column read anyway, in the props, the devtools' query log, a cursor or the CSV | Two measures: the **projection** selects only the visible columns and the key, so the column is not in the SQL, and the **props** pick only the visible columns by name, even when the base query selects more. |
+| Sorting by a column you may not see: the order alone tells its values | The **allowlist**: a sort, a filter, a search or a page size the definition does not offer is a 400, never a fallback. Sorting, filtering or searching by a hidden column is a 400 too. |
+| Another tenant's rows | The **base query**: a row action looks its row up there, a bulk action intersects with it, an export reads from it. |
+| An endpoint without the page's protection | `tableRoutes()` runs on the **page's registrar**, with its middleware. A registrar without what the base query needs does not compile. |
+| Keys of rows you may not touch, in a bulk action's body | **Keys ∩ base query ∩ policy per row**: what is left out is counted, never acted on. |
+| "All matching" as a huge or forged list | The **state** is sent, never keys, and parsed again. More rows than `max` is a 422. |
+| A cell a spreadsheet runs, such as `=HYPERLINK(…)` | **Escaping** of every text cell that starts like a formula. |
+| An export as a denial of service | **`max`** before the first byte, an `authorize` of its own, and a `throttle()` on the table's routes. |
+| A key of the wrong type, such as text for an integer column | **Key types**: every key is parsed by its type before any query, and one that does not parse is no row. |
+
+The [security](security.md) page puts the table's model next to the app's other defaults.
+
+## In the browser
+
+`useTable(props.members)` from `@marmeon/react/table` gives a component what the props allow, typed by them: only sortable columns
+sort, only the table's filters filter, only its actions run. The markup is yours:
+
+```tsx title="modules/members/views/Index.tsx"
+import type { PageProps } from '@marmeon/http';
+import { useTranslation } from '@marmeon/react';
 import { useTable } from '@marmeon/react/table';
+import type { ListMembersController } from '../controllers/ListMembersController.ts';
 
 export default function Index({ members }: PageProps<ListMembersController>) {
   const t = useTranslation('members');
   const table = useTable(members, {
-    labels: { column: (name) => t(`column.${name}`), row: (row) => row.name, select: (name) => t('select', { name }) },
+    labels: { column: (name) => t(`column.${name}`), row: (row) => row.name, action: (_action, name) => t('remove_links_of', { name }) },
   });
+  const csv = table.exports.find((entry) => entry.name === 'csv');
+
   return (
-    <>
+    <main>
       <p {...table.statusProps}>{table.status}</p>
       <table>
         <caption>{t('caption')}</caption>
         <thead>
           <tr>
-            <th scope="col"><input {...table.pageCheckboxProps()} /></th>
+            <th scope="col">
+              <input {...table.pageCheckboxProps()} />
+            </th>
             {table.columns.map((column) => (
               <th key={column.name} {...column.headerProps}>
                 {column.sortLinkProps ? <a {...column.sortLinkProps}>{column.label}</a> : column.label}
               </th>
             ))}
+            <th scope="col">{t('actions')}</th>
           </tr>
         </thead>
         <tbody>
           {table.rows.map((row) => (
             <tr key={row.id}>
-              <td><input {...table.checkboxProps(row)} /></td>
+              <td>
+                <input {...table.checkboxProps(row)} />
+              </td>
               <th scope="row">{row.name}</th>
-              …
+              <td>{row.email ?? ''}</td>
+              <td>{row.joined}</td>
+              <td>
+                {table.can('removeLinks', row) && (
+                  <button type="button" aria-label={table.actionLabel('removeLinks', row)} onClick={() => void table.run('removeLinks', row)}>
+                    {t('remove_links')}
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {table.page.type === 'offset' && <Pagination meta={table.page} />}
-      {members.exports.length > 0 && <a href={table.exportUrl('csv')} download>{t('export')}</a>}
-    </>
+      <button type="button" onClick={() => void table.runBulk('removeLinks')}>
+        {t('bulk_remove', { count: table.selectedCount })}
+      </button>
+      {csv && (
+        <a href={table.exportUrl('csv')} download>
+          {t('export')}
+        </a>
+      )}
+    </main>
   );
 }
 ```
 
-- **Sorting, filtering, searching, paging** (`table.sort('joined')`, `filter`, `filterBy`, `setSearch`, `goTo`, `perPage`, `next`)
-  are visits of the page's URL with the props' keys and the columns' aliases — only the table's prop reloads. Asking for something
-  the props do not offer throws before a request leaves (`[marmeon:C9]`–`[C12]`). Sort links are real links: without JavaScript,
-  or in a new tab, they work.
-- **The selection** lives with the history entry — in memory, never in `history.state` or storage: a new sort, filter or page
-  starts with nothing selected, Back brings the old one back, and leaving the document (signing out, a new build) forgets it.
-- **Actions** (`table.run('removeLinks', row)`, `table.runBulk('removeLinks')`) are action requests; afterwards the table's prop
-  reloads and **replaces** what the page had — also a table that is `merge()`d ([lists](pagination.md#revalidations-replace-load-more-appends)).
-  Their code is a chunk of its own, loaded with the first run.
-- **`table.exportUrl('csv')`** is a link to the download with the table's current state.
+The example assumes the e-mail column is visible. The web app's page renders each cell from `table.columns`, so a column the user
+cannot see leaves no empty cell.
 
-The web app's page works without JavaScript too: sort links are links, filters a GET form, row and bulk actions plain forms that
-come back with a 303.
+- **Sorting, filtering, searching and paging** are visits of the page's URL with the props' keys and the columns' aliases:
+  `table.sort('joined')`, `table.filter('locale', 'de')`, `table.filterBy({ … })`, `table.setSearch('ada')`, `table.goTo(2)`,
+  `table.perPage(25)` and `table.next()` for a cursor. Only the table's prop reloads, and the server parses the state again.
+  Asking for something the props do not offer throws before a request goes out. The search waits 300 milliseconds after the last
+  keystroke and adds one history entry. Sort links are real links: without JavaScript, or opened in a new tab, they work.
+- **The selection** lives with the history entry, in memory, never in `history.state` or the browser's storage. A new sort, filter
+  or page starts with nothing selected, and Back brings the old selection back. Leaving the document, by signing out or after a new
+  build, forgets it. `table.selectMatching()` selects every matching row, not only those on screen.
+- **Actions** are [action requests](actions.md): `table.run(action, row)` and `table.runBulk(action)`. Afterwards the table's prop
+  reloads and **replaces** what the page had, also a merged table. A bulk action clears the selection. The action's code loads with
+  the table's first run, in a chunk of its own. An action with `.confirm()` asks first, with `labels.confirm` or the run's
+  `confirm` option.
+- **`table.exportUrl('csv')`** is the download's URL with the table's current sort, search and filters. Use it in a link with
+  `download`, not in a visit.
 
-## The security model
+The web app's page works without JavaScript as well: sort links are links, the filters are a GET form, and the row and bulk actions
+are plain forms that come back with a 303. The table's browser code is in the chunk of the page that imports `useTable()`, so an
+app's first download carries none of it unless its first page shows a table.
 
-Every endpoint starts again at the beginning — nothing the browser sends is trusted, whatever the page showed.
+### Accessible markup
 
-| Attack | What stops it |
-| --- | --- |
-| **A hidden column read anyway** — in the props, the devtools' query log, a cursor or the CSV | Two measures, each tested on its own: the **projection** (only visible columns and the key are selected — the column is not in the SQL) and the **props filter** (only visible columns are picked by name, even when the base query selects more). |
-| **Sorting by a column you may not see** — the order alone tells its values (a sort by a password hash is an oracle) | The **allowlist**: a sort, filter, search or page size the definition does not offer — a raw column name (`?sort=password`, `?sort=created_at` instead of `joined`), `?filter[password]=x`, `?per_page=10000` — is a **400**, never a fallback. Sorting, filtering or searching by a column the user cannot see is a 400 too; the search looks into visible columns only. Nothing from the URL reaches `ORDER BY` or `WHERE` that the definition did not name. |
-| **Another tenant's rows** | The **base query** is the boundary: a row action looks its row up in it (another tenant's, a deleted or a made-up key: 404), a bulk action intersects with it, an export reads from it. |
-| **An endpoint without the page's protection** | `tableRoutes` **inherits the page registrar's middleware**: a guest, an unconfirmed account, a tenant the binding refuses never reach it — and a registrar without what the base query needs does not compile. The endpoints do not run the page controller's `authorize`: a table that needs one says so (`authorize: can(MemberPolicy, 'viewAny')`). |
-| **Bulk IDOR** — keys of rows you may not touch in the request body | A bulk action acts on **keys ∩ base query ∩ policy per row**: keys that are no row of the table are left out and counted (`missing`), rows the policy refuses too (`skipped`) — the handler gets only the rest. |
-| **"All matching" as a huge or forged list** | "All matching" sends the table's **state**, never keys (`{ all: true, query }`): the server parses it again, as strictly as the URL, and refuses more rows than the action's `max` (default 1000) with a **422** — it never acts on a cut-off list. |
-| **CSV injection** — a cell a spreadsheet runs (`=HYPERLINK(…)`, `+cmd`, `@SUM(…)`) | **OWASP escaping:** a text cell that starts with `=`, `+`, `-`, `@`, a tab, CR or LF gets a `'` in front; every field is quoted, quotes doubled; numbers stay numbers. |
-| **An export as a denial of service** | `exportCsv().max(rows)` (default **10 000**): one `count(*)` first, over it a **422** before a byte is streamed (never a file cut short); **throttle** the table's routes. The export has its own `authorize` and exports only visible columns, `no-store`, `attachment`, `nosniff`. |
-| **A key of the wrong type** — text at an integer column (a 500 on Postgres), a guessed query | **Key types:** every key from the browser is parsed by the declared type before any query; one that does not parse is no row (404, or `missing`). |
-| **An export that writes with a transaction long gone** | The **export runs outside the transaction**: the first batch of 500 in the handler, the later ones after the answer — in the request's context (logs, request id) and **outside** any transaction open around the handler (`outsideTransaction`, E107). |
+`useTable()` hands out the attributes for markup that follows the WAI-ARIA Authoring Practices for sortable tables:
 
-Policies that decide per row see the row as the table hands it out — the key and the visible columns. One that needs more looks it
-up by the key, or the column becomes part of the table.
+- A native `<table>` with a `<caption>` that names it. No `role="grid"` without real cell navigation by arrow keys.
+- `aria-sort` **only** on the heading the table is sorted by, through `headerProps`. Never `none` on the others.
+- The sort control is a link or a button **inside** the `<th>`, named after its column: `sortLinkProps` or `toggleSort()`.
+- The cell that names the row is a `<th scope="row">`, so a screen reader says whose value a cell holds.
+- The number of rows, with the sort and the page, goes into a live region: `statusProps` and `status`. What an action did goes into
+  a second one, because the list's count often stays the same.
+- Checkboxes and row buttons are named after their row. A button's name **starts with its visible text**, "Remove links: Ada
+  Lovelace" for a button that says "Remove links", so a voice user can say what they see.
+- Focus is never dropped. A control that cannot be used right now stays focusable, with `aria-disabled` and a click that does
+  nothing, instead of `disabled`. A confirmation dialog gives focus back to the button that opened it.
 
-**Testing:** `app.actingAs(user).acting().post(url, { json: { key } })` runs an action as the browser would;
-`app.actingAs(user).get(exportUrl)` downloads the CSV — of any length: under the test isolation (one pinned connection per test)
-the later batches run on the test's connection like everything else (the package's own tests stream 1 203 rows, on SQLite and Postgres).
+### TanStack Table
 
-## Accessible markup
+An app that wants TanStack Table's column model, sizing or pinning keeps the server in charge with a bridge:
 
-`useTable` hands out the attributes; the markup is yours. The rules, after the WAI-ARIA Authoring Practices for sortable tables
-([accessible markup](../packages/table/README.md#accessible-markup)):
-
-- a native `<table>` with a `<caption>` that names it — no `role="grid"` without real cell navigation;
-- `aria-sort` **only** on the heading the table is sorted by (`headerProps`), never `none` on the others;
-- the sort control is a link or button **inside** the `<th>` (`sortLinkProps`), named after its column;
-- the row's header is a `<th scope="row">` (the member's name);
-- the count — with the sort and the page — in a live region (`statusProps` + `status`); what an action did in a second one;
-- checkboxes and row buttons named after their row, the name **starting with the visible text** ("Remove links: Ada Lovelace",
-  WCAG 2.5.3) — `checkboxProps`, `pageCheckboxProps` (indeterminate), `actionLabel`;
-- focus never dropped: a control that cannot run right now stays focusable (`aria-disabled`, its click does nothing) instead of
-  `disabled` — a confirmation dialog gives focus back to the button that opened it.
-
-## TanStack Table
-
-An app that wants TanStack's header and cell model, column sizing or pinning keeps the server in charge:
-
-```tsx
-import { rowPaginationFeature, rowSelectionFeature, rowSortingFeature, tableFeatures, useTable as useTanStackTable } from '@tanstack/react-table';
+```tsx title="modules/members/views/Grid.tsx"
+import type { PageProps } from '@marmeon/http';
 import { useTable } from '@marmeon/react/table';
 import { toTanStack } from '@marmeon/react/table-tanstack';
+import { rowPaginationFeature, rowSelectionFeature, rowSortingFeature, tableFeatures, useTable as useTanStackTable } from '@tanstack/react-table';
+import type { ListMembersController } from '../controllers/ListMembersController.ts';
 
-const features = tableFeatures({ rowSortingFeature, rowPaginationFeature, rowSelectionFeature });   // module scope: stable
+const features = tableFeatures({ rowSortingFeature, rowPaginationFeature, rowSelectionFeature });
 
-const table = useTable(props.members);
-const tanstack = useTanStackTable(toTanStack(table, { features }));
+export default function Grid({ members }: PageProps<ListMembersController>) {
+  const table = useTable(members);
+  const tanstack = useTanStackTable(toTanStack(table, { features }));
+  return <p>{tanstack.getRowModel().rows.length}</p>;
+}
 ```
 
-TanStack runs in manual mode — it sees one page and sorts nothing itself; its sorting, pagination and row selection go back
-through `useTable` (a visit, the entry's selection). `@tanstack/react-table` is an optional peer of `@marmeon/react` (the
-[driver rule, E198](../CONTRIBUTING.md#dependencies-of-drivers): one table library among others — the app installs it), and the
-bridge imports only its types: TanStack is in a bundle only where the app imports it. Put the sort toggle into a button inside the `<th>`, as above.
+TanStack runs in manual mode: it sees one page and sorts nothing itself, and its sorting, paging and row selection go back through
+`useTable()`. Install TanStack yourself with `pnpm add @tanstack/react-table@^9`. The bridge imports only its types, so TanStack
+is in a bundle only where the app imports it. Define `features` at module scope, so it stays the same object between renders.
 
-## Size
+## Type checks
 
-`useTable` and its controller are in the page's chunk only (≈ 3.3 KB gzip over an empty app, the budget's `table` scenario); the
-action code loads with the first run. Nothing of it is in an app's first download unless a page there uses it.
+Mistakes in a definition are compile errors with readable messages:
+
+```text
+'emial' is not a column of the table's query — it has avatar_path, bio, created_at, email, …
+'password' is a secret column — a table never reads it (its migration marked it .secret())
+the key 'email' holds text — say how to read it: key: { column: 'email', type: 'string' } (or 'uuid', 'bigint')
+'-email' is not a sortable column — it sorts by -name, name
+'deactivat' is not an ability of this policy — it has deactivate, export, …
+```
+
+The same goes for a default sort by a hidden column, an action whose handler takes other rows than the table's, a `.visible()`
+ability that wants a row, and `tableRoutes()` on a registrar that lacks what the base query needs. A handler's `ctx` is not compared
+with the base query's context, so type it as `TableContext<…>` like the query.
+
+## Testing
+
+A test runs an action the way the browser does, and downloads an export of any length:
+
+```ts title="modules/members/members.test.ts"
+import { UserRepository, type User } from '#modules/auth';
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('a member who is no administrator can neither sort by e-mail nor export', async () => {
+  const app = await createTestApp(application, { database: 'refresh', seed: true });
+  const [, alan] = (await app.make(UserRepository).query().selectAll().orderBy('id').execute()) as User[];
+
+  await app.actingAs(alan!).navigating().get('/members?sort=password').assertStatus(400);
+  await app.actingAs(alan!).navigating().get('/members?sort=email').assertStatus(400);
+  await app.actingAs(alan!).get('/members/_tables/members/export/csv').assertForbidden();
+});
+```
+
+`app.actingAs(user).acting().post(url, { json: { key } })` sends a row action as `useTable()` would. The [HTTP tests](http-tests.md)
+page covers requests in tests.

@@ -11,7 +11,8 @@ import { defineGegenproben } from '../define.ts';
  *   UPGRADING.md's new overview of the wave (G3c).
  *
  * Since the docs have sections, the guides are pages of them (`/docs/<slug>`; `lists.md` is `pagination.md`): the anchors and reasons
- * moved with them, the measures are the same.
+ * moved with them, the measures are the same. The rewritten tables page links no README and no pending page by anchor (W11 step 7):
+ * G3 patches a README link of UPGRADING.md, G3b the tables page's link into the requests page.
  */
 const START = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'highlights every code block of every README' };
 const UNLISTED = { vitest: 'apps/docs/modules/docs/docs.test.ts', name: 'stops the start for a docs/*.md without its entry in a section' };
@@ -47,17 +48,17 @@ export default defineGegenproben({
     // --- The link check -----------------------------------------------------------------------------------------------------------
     {
       id: 'G3',
-      title: 'a guide links to an anchor a README does not have',
-      patch: [{ file: 'docs/tables.md', find: '(../packages/table/README.md#type-checks)', replace: '(../packages/table/README.md#type-check)' }],
+      title: 'a page links to an anchor a README does not have',
+      patch: [{ file: 'UPGRADING.md', find: '(packages/session/README.md#blocking-routes-block)', replace: '(packages/session/README.md#blocking-routes)' }],
       run: LINKS,
-      expect: /\/docs\/tables: \/packages\/table#type-check — no #type-check on \/packages\/table/,
+      expect: /\/docs\/upgrading: \/packages\/session#blocking-routes — no #blocking-routes on \/packages\/session/,
     },
     {
       id: 'G3b',
-      title: 'a guide links to an anchor another guide does not have',
-      patch: [{ file: 'docs/tables.md', find: '(pagination.md#revalidations-replace-load-more-appends)', replace: '(pagination.md#revalidations-replace)' }],
+      title: 'a page links to an anchor another page does not have',
+      patch: [{ file: 'docs/tables.md', find: '(requests.md#how-a-query-is-parsed)', replace: '(requests.md#how-a-query)' }],
       run: LINKS,
-      expect: /\/docs\/tables: \/docs\/pagination#revalidations-replace — no #revalidations-replace on \/docs\/pagination/,
+      expect: /\/docs\/tables: \/docs\/requests#how-a-query — no #how-a-query on \/docs\/requests/,
     },
     {
       id: 'G3c',

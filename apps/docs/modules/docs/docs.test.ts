@@ -164,7 +164,7 @@ describe('the docs: sections of pages under /docs', () => {
   it('a link of a page to another page is a visit to it, with the anchor; a link to the root README stays code text', async () => {
     const docs = app.make(DocsRepository);
     const tables = JSON.stringify(docs.doc('tables')!.body);
-    expect(tables).toContain('"href":"/docs/pagination#revalidations-replace-load-more-appends","data-internal":""');
+    expect(tables).toContain('"href":"/docs/requests#how-a-query-is-parsed","data-internal":""');
     expect(docs.pages().flatMap((page) => page.fileLinks).filter((file) => /^docs\/|^[A-Z]+\.md$/.test(file) && file !== 'README.md')).toEqual([]);
     expect(docs.pages().some((page) => page.fileLinks.includes('README.md'))).toBe(true);
   });

@@ -1,5 +1,218 @@
 # Rate Limiting
-<!-- docs:pending -->
 
-> [!NOTE]
-> This page is being written.
+## Introduction
+
+A rate limit caps how often something may happen in a window of time: ten registrations a minute from one address, five password
+guesses a minute for one account. It slows down scripts that guess passwords, create accounts or read a whole table, and it keeps
+one client from using up what everyone shares. The limits count in the app's [cache](cache.md), so every new app has them.
+
+You define a named limiter once, in a service provider's `boot()`, and put it on routes with `throttle()`:
+
+```ts title="modules/auth/AuthServiceProvider.ts"
+import { Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+
+export class AuthServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    const limiter = app.container.make(RateLimiter);
+    limiter.for('register', (ctx) => Limit.perMinute(10).by(ctx.ip ?? 'unknown'));
+    limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(ctx.ip ?? 'unknown'));
+  }
+}
+```
+
+```ts title="modules/auth/routes.ts"
+import { throttle } from '@marmeon/cache';
+import { defineRoutes } from '@marmeon/http';
+import { RegisterController } from './controllers/RegisterController.ts';
+
+export default defineRoutes((Route) => {
+  Route.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
+});
+```
+
+The eleventh registration from one address within a minute gets a `429 Too Many Requests` instead of an account. The starter
+kit limits registrations, reset links, a new confirmation mail and the change of an address this way.
+
+## Defining limiters
+
+`limiter.for(name, callback)` names a limiter. The callback gets the request's context and returns a `Limit`, a list of them, or a
+promise of either:
+
+| Method | Window |
+| --- | --- |
+| `Limit.perSecond(max, seconds = 1)` | `max` attempts per `seconds` seconds. |
+| `Limit.perMinute(max, minutes = 1)` | `max` attempts per `minutes` minutes: `Limit.perMinute(5, 10)` is five in ten minutes. |
+| `Limit.perHour(max, hours = 1)` | `max` attempts per `hours` hours. |
+| `Limit.perDay(max, days = 1)` | `max` attempts per `days` days. |
+| `Limit.none()` | No limit. |
+
+`.by(key)` says whose attempts count together. Use the client's address for guests and the user's id for signed-in users. A list
+of limits counts each one on its own, and the first one that is used up refuses the request:
+
+```ts title="modules/members/MembersServiceProvider.ts"
+import { Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+
+export class MembersServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    app.container.make(RateLimiter).for('members-table', (ctx) => {
+      const user = (ctx as { user?: { id: number; admin: boolean } }).user;
+      if (user?.admin) return Limit.none();
+      const key = String(user?.id ?? ctx.ip);
+      return [Limit.perMinute(60).by(key), Limit.perDay(1000).by(key)];
+    });
+  }
+}
+```
+
+The callback's context does not know which middleware ran before it, so `ctx.user` needs the cast. It holds the user only when
+`authenticate()` runs before `throttle()` on the route.
+
+> [!WARNING]
+> A limit without `.by()` is one counter for every client. Ten registrations a minute then means ten for the whole app, and one
+> script locks everyone else out.
+
+`ctx.ip` is the client's address. Behind a proxy it is the client's only when the proxy is in `TRUSTED_PROXIES`; otherwise every
+visitor has the proxy's address and shares its limit. The [requests](requests.md#the-clients-address) page explains how the
+address is found.
+
+## Applying limits to routes
+
+`throttle(name)` is route middleware. Put it on a single route or on a group, like any other
+[middleware](middleware.md#on-routes):
+
+```ts title="modules/auth/routes.ts"
+import { authenticate } from '@marmeon/auth';
+import { throttle } from '@marmeon/cache';
+import { defineRoutes } from '@marmeon/http';
+import { ResendVerificationController } from './controllers/ResendVerificationController.ts';
+
+export default defineRoutes((Route) => {
+  const signedIn = Route.middleware(authenticate());
+  signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController);
+});
+```
+
+- **Every request counts**, also one the controller then refuses, such as a form that fails validation. Requests that the `web`
+  group stops first, such as a missing CSRF token, never reach the limit.
+- **Counting and deciding are one atomic step.** A hundred requests at once against a limit of ten let exactly ten through, across
+  processes when they share the cache.
+- **Routes that use the same limiter share its counters.** The members table puts one limiter on its actions, bulk actions and
+  export, so all three count together.
+- **A limiter that is not defined** throws on the first request: `Rate limiter [members-table] is not defined. Define it with
+  RateLimiter.for('members-table', …).`
+
+The window opens with the first attempt and does not move with later ones. Once it has passed, the count starts again at zero.
+
+## The answer
+
+A request over the limit gets a `429` with these headers:
+
+| Header | Value |
+| --- | --- |
+| `Retry-After` | Seconds until the window ends. |
+| `X-RateLimit-Limit` | The limit's maximum. |
+| `X-RateLimit-Remaining` | `0`. |
+| `X-RateLimit-Reset` | When the window ends, in seconds since 1970. |
+
+Its message is the translation `marmeon.errors.throttled`, "Too Many Attempts." in English. A page, a form and a JSON client each
+see it the way they see any other HTTP error, as the [error handling](errors.md#what-the-client-sees) page shows. A request within
+the limit goes on, and its response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`. With several limits, these two headers
+describe the last limit of the list.
+
+### Live validations
+
+A form that checks its fields while you type sends a live validation to the form's route. A `throttle()` on that route holds the
+check to its limit, but the check does not count against it: checking a form field by field must not use up the tries of sending
+it. Live validations have a limit of their own instead, in the global middleware: 30 a minute per route and client address. A
+limiter named `live-validation` replaces it:
+
+```ts title="modules/system/SystemServiceProvider.ts"
+import { Limit, RateLimiter } from '@marmeon/cache';
+import type { Application, ServiceProvider } from '@marmeon/core';
+
+export class SystemServiceProvider implements ServiceProvider {
+  boot(app: Application): void {
+    app.container.make(RateLimiter).for('live-validation', (ctx) => Limit.perMinute(60).by(ctx.ip ?? 'unknown'));
+  }
+}
+```
+
+`Limit.none()` turns it off. The [validation](validation.md#live-validation) page explains live validation.
+
+## Counting by hand
+
+Some limits cannot be middleware, because their key comes from validated input. A sign-in counts per address and client, and the
+address is known only once the controller has validated the form. Inject the `RateLimiter` and count in the controller:
+
+```ts title="modules/auth/controllers/LoginController.ts"
+import { Auth } from '@marmeon/auth';
+import { RateLimiter } from '@marmeon/cache';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+
+export const LoginRequest = defineRequest({
+  schema: r.object({ email: r.string().trim().lowercase().required().email(), password: r.string().required() }),
+});
+
+export class LoginController extends Controller {
+  static request = LoginRequest;
+
+  readonly #auth: Auth;
+  readonly #limiter: RateLimiter;
+
+  constructor(auth: Auth, limiter: RateLimiter) {
+    super();
+    this.#auth = auth;
+    this.#limiter = limiter;
+  }
+
+  async handle(ctx: ContextOf<typeof LoginRequest>) {
+    const { email, password } = ctx.body;
+    const key = `login:${email}|${ctx.ip ?? 'unknown'}`;
+    if (!(await this.#limiter.attempt(key, 5, 60))) {
+      const seconds = await this.#limiter.availableIn(key);
+      throw new ValidationError({ email: [`Too many attempts. Try again in ${seconds} seconds.`] }, { email });
+    }
+    if (!(await this.#auth.attempt(email, password))) {
+      throw new ValidationError({ email: ['These credentials do not match our records.'] }, { email });
+    }
+    await this.#limiter.clear(key);
+    return this.redirect().intended().route('dashboard');
+  }
+}
+```
+
+The attempt is counted **before** the password is checked, and a right password clears the count. Counting only after a failure
+would let every guess that is sent at the same moment through.
+
+| Method | What it does |
+| --- | --- |
+| `attempt(key, max, decaySeconds)` | Counts one attempt and says whether it is within `max`, in one atomic step. A refused attempt counts too. |
+| `hit(key, decaySeconds)` | Counts one attempt and returns the count of the window, this one included. |
+| `attempts(key)` | The count of the window. |
+| `tooManyAttempts(key, max)` | Whether `max` is used up. For showing a state, never for letting an attempt through. |
+| `availableIn(key)` | Seconds until the window ends. |
+| `clear(key)` | Forgets the count. |
+
+> [!WARNING]
+> Never check with `tooManyAttempts()` and count afterwards. Requests that check at the same moment all pass before any of them
+> counts. `attempt()` counts and decides in one step.
+
+## Where the counts live
+
+The counts are entries of the app's cache, under `limiter:` and the key. They follow the cache's driver:
+
+- With more than one server, the cache must be one they share, `database` or `redis`. With `file` each machine counts on its own,
+  and with `memory` each process.
+- `cache:clear` empties the counts with everything else, and every window starts again.
+- A limit on the `database` driver counts on the cache's own connection, so a count survives a rollback of the request's
+  transaction.
+
+The [cache](cache.md#drivers) page covers the drivers.
+
+## Testing
+
+Tests run on the `memory` cache, and its windows follow the app's clock. `app.travel({ minutes: 1 })` lets a window pass without
+waiting, as the [time](time.md) page shows.
