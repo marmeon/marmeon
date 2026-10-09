@@ -206,7 +206,7 @@ describe('the queue commands', () => {
     // Failed jobs only logged: their table is never used, wherever QUEUE_FAILED_CONNECTION points.
     expect(await on({ DB_QUEUE_CONNECTION: 'queue', QUEUE_FAILED_DRIVER: 'null', QUEUE_FAILED_CONNECTION: 'archive' })).toBe('queue');
     await expect(on({ QUEUE_FAILED_CONNECTION: 'archive' })).rejects.toThrow(
-      'The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Move the failed_jobs part into a migration of its own with connection: \'archive\', or let both use one connection.',
+      'The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Split it: this migration keeps jobs with connection: \'default\', a migration of its own creates failed_jobs with connection: \'archive\' — or let both use one connection.',
     );
   });
 

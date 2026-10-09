@@ -61,7 +61,7 @@ export function queueTablesConnection(container: Resolver): string {
   const jobs = database && 'connection' in database ? database.connection : 'default';
   if (config.failed.driver === 'database' && config.failed.connection !== jobs) {
     throw new Error(
-      `The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (${jobs}) — but QUEUE_FAILED_CONNECTION is ${config.failed.connection}. Move the failed_jobs part into a migration of its own with connection: '${config.failed.connection}', or let both use one connection.`,
+      `The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (${jobs}) — but QUEUE_FAILED_CONNECTION is ${config.failed.connection}. Split it: this migration keeps jobs with connection: '${jobs}', a migration of its own creates failed_jobs with connection: '${config.failed.connection}' — or let both use one connection.`,
     );
   }
   return jobs;

@@ -337,5 +337,6 @@ reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `S
 [connection](database.md#infrastructure-connections) the driver reads and writes.
 
 The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops
-with a message instead of creating the table where nothing looks. Move the `failed_jobs` part into a migration of its own with
-that `connection`, as in [migrations on another connection](#migrations-on-another-connection).
+with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `jobs` with
+`connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `failed_jobs` with
+the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).

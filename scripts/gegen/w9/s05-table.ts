@@ -297,7 +297,7 @@ export default defineGegenproben({
     {
       id: 'G19',
       title: 'later export batches run in the transaction the handler answered in — finished by then: the stream breaks',
-      patch: [{ file: TABLES, find: '        const rows = await inRequest(() => outsideTransaction(() => batch(offset)));', replace: '        const rows = await inRequest(() => batch(offset));' }],
+      patch: [{ file: TABLES, find: '        const page = await inRequest(() => outsideTransaction(() => batch(next)));', replace: '        const page = await inRequest(() => batch(next));' }],
       run: table('streams its later batches outside the transaction'),
       expect: /a later batch ran in the finished transaction/,
     },
