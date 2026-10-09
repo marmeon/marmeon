@@ -4,11 +4,26 @@
  * a route of your own registered without asking the environment stays shut on a server, where `APP_URL`'s host is public — and
  * this decides **who** it answers:
  *
+ * The framework's own routes take `APP_URL` from their config (`devHosts(e.APP_URL)` in its `resolve`). An app's route takes it
+ * from the app's config, injected into a middleware — a route file has no config, and `process.env` misses a value of `.env`:
+ *
  * ```ts
  * import { devHosts, devOnly } from '@marmeon/core/dev';
+ * import type { EmptyObject, HttpContext, Next } from '@marmeon/http';
+ * import { AppConfig } from '../../config/app.ts';
  *
- * const hosts = devHosts(env.APP_URL); // localhost, 127.0.0.1, [::1] and APP_URL's host
- * Route.get('/_marmeon/mail', devOnly(hosts, () => previews.index()));
+ * export class DevelopmentOnly {
+ *   readonly #guard: (ctx: HttpContext, next: Next<EmptyObject>) => Promise<Response>;
+ *   constructor(app: AppConfig) {
+ *     // localhost, 127.0.0.1, [::1] and APP_URL's host
+ *     this.#guard = devOnly(devHosts(app.url), (_ctx: HttpContext, next: Next<EmptyObject>) => next());
+ *   }
+ *   handle(ctx: HttpContext, next: Next<EmptyObject>): Promise<Response> {
+ *     return this.#guard(ctx, next);
+ *   }
+ * }
+ *
+ * Route.middleware(DevelopmentOnly).get('/_playground', ShowPlaygroundController);
  * ```
  *
  * **Why a host check:** DNS rebinding. A page on `evil.example` whose name the attacker then points at 127.0.0.1 reaches the

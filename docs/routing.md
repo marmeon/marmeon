@@ -518,19 +518,35 @@ There is no fallback route. A controller answers 404 itself with `abort(404)`, a
 
 Some routes are for your own browser while you develop: the devtools at `/_marmeon/devtools` and the mail previews at
 `/_marmeon/mail`. The framework registers them only in development. In addition, each one sits behind a guard,
-`devOnly()`, that you can put in front of a route of your own:
+`devOnly()`, that you can put in front of a route of your own. It takes the hosts to answer, and `devHosts()` builds them from
+`APP_URL`. Read `APP_URL` from the app's configuration, which a middleware gets injected:
+
+```ts title="modules/playground/DevelopmentOnly.ts"
+import { devHosts, devOnly } from '@marmeon/core/dev';
+import type { EmptyObject, HttpContext, Next } from '@marmeon/http';
+import { AppConfig } from '../../config/app.ts';
+
+export class DevelopmentOnly {
+  readonly #guard: (ctx: HttpContext, next: Next<EmptyObject>) => Promise<Response>;
+
+  constructor(app: AppConfig) {
+    // localhost, 127.0.0.1 and [::1], and the host of APP_URL.
+    this.#guard = devOnly(devHosts(app.url), (_ctx: HttpContext, next: Next<EmptyObject>) => next());
+  }
+
+  handle(ctx: HttpContext, next: Next<EmptyObject>): Promise<Response> {
+    return this.#guard(ctx, next);
+  }
+}
+```
 
 ```ts title="modules/playground/routes.ts"
-import { devHosts, devOnly } from '@marmeon/core/dev';
-import { defineMiddleware, defineRoutes, type EmptyObject, type HttpContext, type Next } from '@marmeon/http';
+import { defineRoutes } from '@marmeon/http';
 import { ShowPlaygroundController } from './controllers/ShowPlaygroundController.ts';
-
-// localhost, 127.0.0.1 and [::1] — plus the host of APP_URL when the real environment sets it.
-const hosts = devHosts(process.env.APP_URL);
-const developmentOnly = defineMiddleware('DevelopmentOnly', devOnly(hosts, (_ctx: HttpContext, next: Next<EmptyObject>) => next()));
+import { DevelopmentOnly } from './DevelopmentOnly.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(developmentOnly).get('/_playground', ShowPlaygroundController);
+  Route.middleware(DevelopmentOnly).get('/_playground', ShowPlaygroundController);
 });
 ```
 
@@ -543,10 +559,11 @@ The host check stops DNS rebinding. A page on another site can point its own dom
 development server as if it were its own. A request for a host the guard does not know never reaches the handler.
 
 > [!NOTE]
-> Apart from `NODE_ENV`, values from `.env` reach the app's configuration, not `process.env`. Without `APP_URL` in the real
-> environment, the guard above answers the loopback names alone.
+> Apart from `NODE_ENV`, values from `.env` reach the app's configuration, not `process.env`. A guard built in a route file from
+> `process.env.APP_URL` misses an `APP_URL` of `.env` and answers the loopback names alone.
 
-`devOnly()` also wraps a closure directly: `Route.get('/_playground/ping', devOnly(hosts, () => new Response('pong')))`. The
+`devOnly()` also wraps a closure directly, with the hosts it should answer: `devOnly(devHosts(undefined), () => new Response('pong'))`
+answers the loopback names. The
 [security](security.md#the-environment-decides-and-fails-closed) page lists every protection that depends on `NODE_ENV`.
 
 ## Listing routes
