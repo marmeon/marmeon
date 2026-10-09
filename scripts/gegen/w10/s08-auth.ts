@@ -212,7 +212,7 @@ export default defineGegenproben({
     {
       id: 'G8',
       title: 'a URL object on the log path written as it is: its token reaches the log',
-      patch: [{ file: 'packages/core/src/redact.ts', find: '  if (value instanceof URL || value instanceof URLSearchParams) return redactText(String(value));\n', replace: '' }],
+      patch: [{ file: 'packages/core/src/redact.ts', find: '    if (value instanceof URL || value instanceof URLSearchParams) return this.text(String(value));\n', replace: '' }],
       run: { vitest: 'packages/core/src/redact.test.ts', name: 'are masked like text on the log path' },
       expect: /reset-password\/Q7mZ2xLk9TcV4bN8rW1yH6sD3fG5jA0pE2uI7oK9qMz\?email=ada%40example\.com&token=t0k3n-abc&page=2: expected/,
     },
