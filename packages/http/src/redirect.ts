@@ -189,7 +189,11 @@ export function isLocalPath(value: unknown): value is string {
   }
 }
 
-function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
+/**
+ * The input as the session may keep it for `old()`: without fields whose name contains "password", without `_token` and
+ * without files, at every depth. `redirect().withInput()`, the failed form and `Session.flashInput()` all flash through it.
+ */
+export function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
   const clean = (given: unknown): unknown => {
     // What JSON would make of it: a verified upload (W6.9) is nothing — neither its token nor its file go into the session.
     const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;

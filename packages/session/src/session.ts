@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@marmeon/http';
+import { flashableInput, OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@marmeon/http';
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
 import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
@@ -269,9 +269,12 @@ export class Session {
     flash.old = flash.old.filter((key) => !keys.includes(key));
   }
 
-  /** Flashes the request input, so the next page can refill the form (`old()`). */
+  /**
+   * Flashes the request input, so the next page can refill the form (`old()`) — filtered like `redirect().withInput()`:
+   * no field whose name contains "password", no `_token`, no file.
+   */
   flashInput(input: Record<string, unknown>): void {
-    this.flash(OLD_INPUT, input);
+    this.flash(OLD_INPUT, flashableInput(input));
   }
 
   /** Input flashed by the previous request — all of it, or one field. */

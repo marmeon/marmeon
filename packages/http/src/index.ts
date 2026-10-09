@@ -7,7 +7,7 @@ export { island, isIslandResult } from './island.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export { CloseLayerResult, isCloseLayerResult, isLayerResult, toLayer } from './layer.ts';
 export type { CloseLayerOptions, LayerBaseRoute, LayerMethod, LayerOptions, LayerResult } from './layer.ts';
-export { ERRORS_KEY, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
+export { ERRORS_KEY, flashableInput, Flasher, INTENDED_KEY, isLocalPath, isRedirectResult, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
 export type { RedirectStatus } from './redirect.ts';
 export type { PageProps, PageResult, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export {

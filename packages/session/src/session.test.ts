@@ -134,6 +134,24 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.get('a')).toBe(1));
   });
 
+  it('flashes input like redirect().withInput(): no password field, no _token, no file — not even nested', async () => {
+    const store = new MemorySessionStore();
+    const { id } = await request(store, undefined, (session) => {
+      session.flashInput({
+        email: 'ada@example.com',
+        password: 'secret',
+        new_password: 'new',
+        Password: 'x',
+        _token: 'csrf',
+        avatar: new File(['x'], 'a.png'),
+        nested: { current_password: 'deep', name: 'n' },
+      });
+    });
+    const kept = JSON.stringify(await stored(store, id));
+    expect(kept, kept).not.toMatch(/secret|csrf|deep|password|_token|avatar/i);
+    await request(store, id, (session) => expect(session.old()).toEqual({ email: 'ada@example.com', nested: { name: 'n' } }));
+  });
+
   it('regenerates the id and token but keeps the data — and destroys the old id (session fixation)', async () => {
     const store = new MemorySessionStore();
     const planted = await request(store, undefined, (session) => session.put('visits', 3));

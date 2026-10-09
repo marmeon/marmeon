@@ -72,15 +72,9 @@ explains both.
 
 A failed form flashes its errors and its input. The session's `ShareErrorsFromSession` middleware then shares the errors as the
 `errors` prop with every page of the `web` group, `{}` when there are none, so a form shows them next to its fields. `old(key)`
-returns the flashed input. The failed form and `redirect().withInput(input)` leave out every field whose name contains
-"password", the `_token` and every file.
-
-`flashInput(input)` flashes input too, but stores exactly what you give it.
-
-> [!WARNING]
-> `session.flashInput(ctx.body)` writes a password field into the session store as it is: a file, a database row or a Redis
-> value, in plain text unless `SESSION_ENCRYPT` is on. Flash a form's input with `redirect().withInput(input)` instead, or pick
-> the fields you pass.
+returns the flashed input. The failed form, `redirect().withInput(input)` and `session.flashInput(input)` all leave out every
+field whose name contains "password", the `_token` and every file, also inside nested objects and lists. So a password never
+reaches the session store through flashed input.
 
 ### Signing in and out
 
