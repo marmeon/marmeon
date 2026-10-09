@@ -15,12 +15,18 @@ import { defineGegenproben } from '../define.ts';
  *   taken out of the shared step (G3) leaves every token valid after a reset and a change; outside the transaction (G3b) a failed
  *   revocation keeps its delete while the reset fails; the default `true` (G3c) revokes without the option. Each caller asks the shared
  *   step: `Auth.updatePassword()` writing the hash itself (G3d), `PasswordBroker.reset()` alike (G3e). G3 masks G3d and G3e.
+ * - **`can()` and the gate see the token's user on API routes** — two halves, each its own case: the token guard does not tell the
+ *   request's gate (G4), the gate does not ask what it was told (G4b); either way the author's token gets 403. The session's user
+ *   still counts on pages (G4c: a gate that asks only the token refuses every signed-in page). The token's abilities stay checked
+ *   on top (G4d: `abilities()` taken out lets a read-only token update through the policy).
  */
 const SESSION_FLASH = { vitest: 'packages/session/src/session.test.ts', name: 'flashes input like redirect().withInput()' } as const;
 const LOG_KEYS = { vitest: 'packages/log/src/log.test.ts', name: 'redacts the names the app' } as const;
 const RESET_REVOKES = { vitest: 'packages/auth/src/password-reset.test.ts', name: 'revokes every API token of the user with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true' } as const;
 const CHANGE_REVOKES = { vitest: 'packages/auth/src/auth.test.ts', name: 'revokes every API token of the user with a new password' } as const;
 const NEW_PASSWORD = 'packages/auth/src/new-password.ts';
+const TOKEN_POLICIES = { vitest: 'packages/auth/src/gate.test.ts', name: 'lets a token user the policy allows through' } as const;
+const GATE = 'packages/auth/src/gate.ts';
 const LOG_ERRORS = { vitest: 'packages/log/src/log.test.ts', name: 'writes an error under any key with its type, message and stack' } as const;
 
 export default defineGegenproben({
@@ -143,6 +149,49 @@ export default defineGegenproben({
       run: RESET_REVOKES,
       expect: /Ada's tokens still valid: \[true,true\]/,
       masks: 'G3',
+    },
+    // --- 4 · can() and the gate see the token's user on API routes ----------------------------------------------------------------------
+    {
+      id: 'G4',
+      title: "the token guard does not tell the request's gate: can() on an API route finds no user — the author's token gets 403",
+      patch: [{ file: 'packages/auth/src/middleware.ts', find: '      authenticatedByToken(this.#gate, found.user);\n', replace: '' }],
+      run: TOKEN_POLICIES,
+      expect: /the author's token: \{"status":403,"body":\{"message":"This action is unauthorized\."\}\}/,
+      masks: 'G4b',
+    },
+    {
+      id: 'G4b',
+      title: 'the gate does not ask the user the token guard named: the session (none on an API route) decides — 403',
+      patch: [
+        {
+          file: GATE,
+          find: '    return this.#tokenUser === undefined ? this.#auth.user() : Promise.resolve(this.#tokenUser);',
+          replace: '    return this.#auth.user();',
+        },
+      ],
+      run: TOKEN_POLICIES,
+      expect: /the author's token: \{"status":403,"body":\{"message":"This action is unauthorized\."\}\}/,
+      masks: 'G4',
+    },
+    {
+      id: 'G4c',
+      title: "the gate asks only the token's user: a signed-in session on a page is a guest to every policy",
+      patch: [
+        {
+          file: GATE,
+          find: '    return this.#tokenUser === undefined ? this.#auth.user() : Promise.resolve(this.#tokenUser);',
+          replace: '    return Promise.resolve(this.#tokenUser);',
+        },
+      ],
+      run: { vitest: 'packages/auth/src/gate.test.ts', name: 'lets the author update and refuses others with the policy' },
+      expect: /expected \{ status: 403.* to deeply equal \{ status: 200/,
+    },
+    {
+      id: 'G4d',
+      title: "abilities() lets every token through: the author's read-only token updates through the policy",
+      patch: [{ file: 'packages/auth/src/middleware.ts', find: '      const missing = required.filter((ability) => !tokenCan(ctx.token, ability));', replace: '      const missing: string[] = [];' }],
+      run: { vitest: 'packages/auth/src/gate.test.ts', name: "still asks the token's abilities on top" },
+      expect: /expected \{ status: 200.* to deeply equal \{ status: 403/,
     },
   ],
 });

@@ -2,6 +2,7 @@ import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
 import { Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { Session } from '@marmeon/session';
 import { Auth } from './auth.ts';
+import { authenticatedByToken, Gate } from './gate.ts';
 import { AccessTokenStore, tokenCan, type WithToken } from './tokens.ts';
 import { UserProvider, type Authenticated } from './user.ts';
 
@@ -16,7 +17,8 @@ export interface AuthenticateOptions<N extends string = string> {
  * (`redirect().intended()`).
  *
  * `authenticate('api')` is the token guard of the stateless `api` group: `Authorization: Bearer <token>`,
- * then `ctx.user` and `ctx.token` (its abilities). Anything else is a 401 — a session cookie included.
+ * then `ctx.user` and `ctx.token` (its abilities), and `can()` and the `Gate` ask their policies about the token's user.
+ * Anything else is a 401 — a session cookie included.
  */
 export function authenticate(guard: 'api'): MiddlewareClass<{}, Authenticated & WithToken>;
 export function authenticate<const N extends RouteNameInput = never>(options?: AuthenticateOptions<N>): MiddlewareClass<{}, Authenticated>;
@@ -114,10 +116,12 @@ function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
   const AuthenticateToken = class {
     readonly #tokens: AccessTokenStore;
     readonly #users: UserProvider;
+    readonly #gate: Gate;
 
-    constructor(tokens: AccessTokenStore, users: UserProvider) {
+    constructor(tokens: AccessTokenStore, users: UserProvider, gate: Gate) {
       this.#tokens = tokens;
       this.#users = users;
+      this.#gate = gate;
     }
 
     async handle(ctx: HttpContext, next: Next<Authenticated & WithToken>): Promise<Response> {
@@ -129,6 +133,8 @@ function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
         return Response.json({ message: 'Unauthenticated.' }, { status: 401, headers: { 'www-authenticate': 'Bearer' } });
       }
       await this.#tokens.touch(token);
+      // The policies of this request see the token's user — the api group has no session to ask (`abilities()` still checks the token).
+      authenticatedByToken(this.#gate, found.user);
       return next({ user: found.user, token });
     }
   };

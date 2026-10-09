@@ -124,6 +124,9 @@ function projection<T>(compute: () => Promise<T>): Projection<T> {
   return Object.assign(run, { then: <A = T, B = never>(fulfilled?: ((value: T) => A | PromiseLike<A>) | null, rejected?: ((reason: unknown) => B | PromiseLike<B>) | null) => run().then(fulfilled, rejected) });
 }
 
+/** Tells a request's gate the user the token guard authenticated — set once below, by the class itself. */
+let setTokenUser: (gate: Gate, user: AuthUser) => void;
+
 /**
  * Asks policies (E28): explicitly named, type-checked, no string gates — Laravel's `Gate`, per request.
  *
@@ -132,16 +135,30 @@ function projection<T>(compute: () => Promise<T>): Projection<T> {
  * await this.#gate.authorize(ProfilePolicy, 'update', profile);   // or 403 / 404
  * ```
  *
- * Guests are denied before any policy runs. A policy's `before(user, ability)` may decide first
+ * The user is the session's — or, on a route behind `authenticate('api')`, the token's user: the token guard tells the
+ * request's gate. Guests are denied before any policy runs. A policy's `before(user, ability)` may decide first
  * (`true`/`false`); `undefined` lets the ability decide.
  */
 export class Gate {
   readonly #auth: Auth;
   readonly #resolve: ClassResolver;
+  /** The user of this request's API token — set by the token guard, never by app code. */
+  #tokenUser: AuthUser | undefined;
+
+  static {
+    setTokenUser = (gate, user) => {
+      gate.#tokenUser = user;
+    };
+  }
 
   constructor(auth: Auth, resolve: ClassResolver) {
     this.#auth = auth;
     this.#resolve = resolve;
+  }
+
+  /** Whom the policies are asked about: the token's user on an API route, else the session's. */
+  #user(): Promise<AuthUser | undefined> {
+    return this.#tokenUser === undefined ? this.#auth.user() : Promise.resolve(this.#tokenUser);
   }
 
   async allows<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean> {
@@ -160,7 +177,7 @@ export class Gate {
 
   /** The policy's full answer. */
   async inspect<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<PolicyResponse> {
-    const user = await this.#auth.user();
+    const user = await this.#user();
     if (user === undefined) return new PolicyResponse(false);
     const instance = this.#resolve(policy) as P & Before;
     const method = instance[ability] as unknown;
@@ -230,7 +247,7 @@ export class Gate {
   async #project(policy: PolicyClass, names: readonly string[], resources: readonly unknown[][]): Promise<Abilities<string>[]> {
     const denied = () => Object.fromEntries(names.map((name) => [name, false]));
     if (resources.length === 0) return [];
-    const user = await this.#auth.user();
+    const user = await this.#user();
     if (user === undefined) return resources.map(denied);
     const instance = this.#resolve(policy) as Record<string, unknown> & Before;
     for (const name of names) if (typeof instance[name] !== 'function') throw new TypeError(`${policy.name} has no ability "${name}".`);
@@ -254,6 +271,11 @@ export class Gate {
     }
     return answers;
   }
+}
+
+/** The token guard's word to this request's gate: the user its API token belongs to (the gate's policies see them). */
+export function authenticatedByToken(gate: Gate, user: AuthUser): void {
+  setTokenUser(gate, user);
 }
 
 /** Where `can()` finds the resource: a bound route parameter by name, or a function of the context. */

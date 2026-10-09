@@ -7,6 +7,8 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import {
+  abilities,
+  AccessTokenStore,
   Auth,
   authenticate,
   AuthorizationError,
@@ -17,6 +19,7 @@ import {
   Gate,
   RememberTokenStore,
   UserProvider,
+  type AccessToken,
   type Authenticated,
   type AuthUser,
   type Credentials,
@@ -136,6 +139,33 @@ const provider: UserProvider = {
 };
 const noRemember: RememberTokenStore = { create: async () => '', consume: async () => undefined, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
+/** API tokens in memory: the plain text is `<user>/<abilities>` — what the token guard needs, nothing more. */
+const memoryTokens: AccessTokenStore = {
+  create: async () => {
+    throw new Error('not used');
+  },
+  find: async (plainText) => {
+    const [user, granted = '*'] = plainText.split('/');
+    if (!users.has(Number(user))) return undefined;
+    return { id: Number(user), userId: Number(user), name: 'test', abilities: granted.split(','), lastUsedAt: null, expiresAt: null, createdAt: '' } satisfies AccessToken;
+  },
+  touch: async () => {},
+  list: async () => [],
+  revoke: async () => false,
+  revokeAll: async () => 0,
+  prune: async () => 0,
+};
+
+/** The `api` group: no session — the token guard says who it is, and the token must also grant `posts:write`. */
+const apiRoutes = defineRoutes((Route) => {
+  const api = Route.middleware(authenticate('api'));
+  const post = api.bind('post', PostBinder);
+  post.get('/posts/:post', ShowPostController);
+  // The order the docs show: the ability first, then the binding.
+  api.middleware(abilities('posts:write')).bind('post', PostBinder).put('/posts/:post', UpdatePostController);
+  post.middleware(abilities('posts:write')).delete('/posts/:post', DeletePostController);
+});
+
 const routes = defineRoutes((Route) => {
   Route.post('/as/:id', SignInController);
   Route.get('/login', () => 'login').name('auth.login');
@@ -154,15 +184,16 @@ async function boot() {
     discover: false,
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, AuthServiceProvider],
-    modules: [defineModule({ name: 'gate-test', routes })],
+    modules: [defineModule({ name: 'gate-test', routes, apiRoutes })],
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, provider);
       container.instance(RememberTokenStore, noRemember);
+      container.instance(AccessTokenStore, memoryTokens);
     },
   });
   const kernel = createHttpKernel(application);
-  return async (as: number | undefined) => {
+  return Object.assign(async (as: number | undefined) => {
     let cookie = '';
     if (as !== undefined) {
       const response = await kernel.request(`/as/${as}`, { method: 'POST', headers: { accept: 'application/json' } });
@@ -176,7 +207,17 @@ async function boot() {
       });
       return { status: response.status, body: await response.json().catch(() => null) };
     };
-  };
+  }, {
+    /** A request of the `api` group with the bearer token `token` (`<user>/<abilities>`). */
+    api: async (token: string, method: string, path: string, json?: unknown) => {
+      const response = await kernel.request(`/api${path}`, {
+        method,
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json', ...(json ? { 'content-type': 'application/json' } : {}) },
+        ...(json ? { body: JSON.stringify(json) } : {}),
+      });
+      return { status: response.status, body: await response.json().catch(() => null) };
+    },
+  });
 }
 
 describe('policies at the request (can) — after route binding', () => {
@@ -213,6 +254,31 @@ describe('policies at the request (can) — after route binding', () => {
     expect((await (await as(1))('POST', '/posts')).status).toBe(200);
     expect((await (await as(3))('POST', '/posts')).status).toBe(403);
     expect((await (await as(undefined))('POST', '/posts')).status).toBe(401);
+  });
+});
+
+describe('policies on api routes — the token guard tells the gate who it is', () => {
+  it('lets a token user the policy allows through (200) and refuses one it does not (403) — can() at the request and the gate in code', async () => {
+    const { api } = await boot();
+    const expectAnswer = async (label: string, answer: Promise<{ status: number; body: unknown }>, expected: { status: number; body?: unknown }) => {
+      const got = await answer;
+      expect(got, `${label}: ${JSON.stringify(got)}`).toMatchObject(expected);
+    };
+    const update = (token: string) => api(token, 'PUT', '/posts/1', { title: 'By token' });
+    await expectAnswer("the author's token", update('1/posts:write'), { status: 200, body: { updated: 1, title: 'By token' } });
+    await expectAnswer("another user's token", update('2/posts:write'), { status: 403, body: { message: 'Only the author can edit this post.' } });
+    await expectAnswer("an admin's token: before() decides", update('4/posts:write'), { status: 200 });
+    await expectAnswer('gate.authorize() in a controller', api('1/posts:write', 'DELETE', '/posts/1'), { status: 200, body: { deleted: 1 } });
+    await expectAnswer('gate.authorize() in a controller, another user', api('2/posts:write', 'DELETE', '/posts/1'), { status: 403 });
+    await expectAnswer('gate.allows() in a controller', api('1/posts:read', 'GET', '/posts/1'), { status: 200, body: { id: 1, can: { update: true } } });
+    await expectAnswer("another user's draft", api('2/posts:read', 'GET', '/posts/2'), { status: 200 });
+    await expectAnswer("someone else's draft", api('1/posts:read', 'GET', '/posts/2'), { status: 404 });
+  });
+
+  it("still asks the token's abilities on top: the author's token without posts:write is refused (403) before any policy", async () => {
+    const { api } = await boot();
+    expect(await api('1/posts:read', 'PUT', '/posts/1', { title: 'By token' })).toEqual({ status: 403, body: { message: 'This token may not: posts:write.' } });
+    expect((await api('nobody', 'PUT', '/posts/1', { title: 'x' })).status).toBe(401);
   });
 });
 

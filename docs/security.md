@@ -133,11 +133,10 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
 - **Mail goes out encrypted or not at all.** SMTP uses TLS from the first byte, or requires STARTTLS, so a server without it, or
   someone who strips the offer, never sees the credentials or a reset link. `MAIL_REQUIRE_TLS=false` turns the requirement off, for
   a local relay only. The [mail](mail.md#smtp-and-tls) page has the settings.
-- **Policies decide what a user may do,** on every request. The gate asks the session's user, so on routes of the `api` group a
-  policy refuses every request. Authorize those with the token's abilities and an ownership check: compare `ctx.user` with the
-  record in the controller, or look the record up among the user's own. An ability only says what kind of action a token may do,
-  never on whose record, so it alone leaves every user's records one id away. The
-  [authorization](authorization.md#policies-and-api-tokens) page shows it.
+- **Policies decide what a user may do,** on every request: the session's user on a page, the token's user on a route behind
+  `authenticate('api')`. Authorize an API route with the token's abilities and a policy. An ability only says what kind of action
+  a token may do, never on whose record, so it alone leaves every user's records one id away. The
+  [authorization](authorization.md#policies-and-api-tokens) page shows both on one route.
 
 ### Private registration
 

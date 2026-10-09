@@ -255,22 +255,54 @@ Abilities are a hint for the interface. The server checks again on every request
 
 ## Policies and API tokens
 
-The gate asks the session for its user. The routes of the `api` group have no session, so `can()` and the gate find no user there
-and refuse every request with 403. Authorize an API route with the token's [abilities](api-tokens.md#abilities), and compare
-`ctx.user` with the record in the controller:
+On a route behind `authenticate('api')`, the token guard tells the request's gate whose token it is. `can()` and the gate then ask
+their policies about the token's user, as they ask about the session's user on a page. The token's abilities are checked on top:
+`abilities(...)` refuses a token that lacks one before any policy runs, and a policy allows only what the user may do anyway.
 
-```ts title="modules/notes/controllers/ShowNoteApiController.ts"
-import type { Authenticated, WithToken } from '@marmeon/auth';
-import type { Row } from '@marmeon/database';
-import { abort, Controller, type HttpContext } from '@marmeon/http';
+```ts title="modules/notes/api-routes.ts"
+import { abilities, authenticate } from '@marmeon/auth';
+import { defineRoutes } from '@marmeon/http';
+import { NoteRepository } from './NoteRepository.ts';
+import { UpdateNoteApiController } from './controllers/UpdateNoteApiController.ts';
 
-export class ShowNoteApiController extends Controller {
-  handle(ctx: HttpContext<Authenticated & WithToken, { note: Row<'notes'> }>) {
-    if (ctx.params.note.user_id !== ctx.user.id) abort(404);
-    return { id: ctx.params.note.id, title: ctx.params.note.title };
+export default defineRoutes((Route) => {
+  const api = Route.middleware(authenticate('api'));
+  api.middleware(abilities('notes:write')).bind('note', NoteRepository).put('/notes/:note', UpdateNoteApiController).name('api.notes.update');
+});
+```
+
+```ts title="modules/notes/controllers/UpdateNoteApiController.ts"
+import { can } from '@marmeon/auth';
+import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { rules as r } from '@marmeon/validation';
+import { NotePolicy } from '../policies/NotePolicy.ts';
+import { NoteRepository } from '../NoteRepository.ts';
+
+export const UpdateNoteApiRequest = defineRequest({
+  schema: r.object({ title: r.string().trim().required().max(120) }),
+  authorize: can(NotePolicy, 'update', 'note'),
+});
+
+export class UpdateNoteApiController extends Controller {
+  static request = UpdateNoteApiRequest;
+
+  readonly #notes: NoteRepository;
+
+  constructor(notes: NoteRepository) {
+    super();
+    this.#notes = notes;
+  }
+
+  async handle(ctx: ContextOf<typeof UpdateNoteApiRequest>) {
+    await this.#notes.update(ctx.params.note.id, ctx.body);
+    return { id: ctx.params.note.id, title: ctx.body.title };
   }
 }
 ```
+
+The author's token with `notes:write` updates the note. Another user's token gets the policy's 403, and a token without
+`notes:write` gets 403 before the policy is asked. An ability only says what kind of action a token may do, never on whose
+record: the policy says that.
 
 ## Testing
 

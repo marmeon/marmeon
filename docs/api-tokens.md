@@ -130,8 +130,8 @@ A missing, malformed, unknown, revoked or expired token, and one whose user no l
 compared in constant time. `ctx.token` holds the token without its secret: `id`, `userId`, `name`, `abilities`, `lastUsedAt`,
 `expiresAt` and `createdAt`. The token's last use is written at most once a minute, not on every request.
 
-The [authorization](authorization.md#policies-and-api-tokens) page explains why policies do not apply to API routes, and what to
-use there instead.
+`can()` and the gate ask their policies about the token's user here, and the token's abilities are checked on top. The
+[authorization](authorization.md#policies-and-api-tokens) page shows both on one route.
 
 ## Abilities
 
