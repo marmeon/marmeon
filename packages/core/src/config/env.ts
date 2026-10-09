@@ -133,13 +133,15 @@ export class EnvNumber extends EnvBlock<number> {
   }
 }
 
-/** Decimal, as written by hand: `42`, `-1`, `0.5`, `1e3` — not `0x10`, not `Infinity`. */
-const NUMBER = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+/** A whole number as written by hand: an optional sign and decimal digits — not `1e3`, `5.`, `0x10` or ` 5`. */
+const INTEGER = /^[+-]?\d+$/;
+/** A number as written by hand: a whole number, or one with decimals (`0.5`) — not `.5`, `5.`, `1e3` or `Infinity`. */
+const NUMBER = /^[+-]?\d+(?:\.\d+)?$/;
 /** The same as valibot's and the e-mail rule's — what an address in a `.env` looks like. */
 const EMAIL = /^[\w+-]+(?:\.[\w+-]+)*@[\da-zA-Z]+(?:[.-][\da-zA-Z]+)*\.[a-zA-Z]{2,}$/u;
 
-function toNumber(raw: string): number | undefined {
-  const number = NUMBER.test(raw) ? Number(raw) : Number.NaN;
+function toNumber(raw: string, pattern: RegExp = NUMBER): number | undefined {
+  const number = pattern.test(raw) ? Number(raw) : Number.NaN;
   return Number.isFinite(number) ? number : undefined;
 }
 
@@ -162,18 +164,19 @@ const number = (message?: string): EnvNumber =>
 const integer = (message?: string): EnvNumber =>
   new EnvNumber({
     parse: (raw, name) => {
-      const value = toNumber(raw);
+      const value = toNumber(raw, INTEGER);
       return value === undefined || !Number.isSafeInteger(value) ? fail(message ?? `${name} must be a whole number.`) : ok(value);
     },
     checks: [],
   });
 
-const BOOLEANS: Readonly<Record<string, boolean>> = { true: true, false: false, '1': true, '0': false };
+// A Map, not an object literal: `constructor` or `__proto__` must not find what Object.prototype has.
+const BOOLEANS: ReadonlyMap<string, boolean> = new Map([['true', true], ['false', false], ['1', true], ['0', false]]);
 
 const boolean = (message?: string): EnvBlock<boolean> =>
   new EnvBlock({
     parse: (raw, name) => {
-      const value = BOOLEANS[raw.toLowerCase()];
+      const value = BOOLEANS.get(raw.toLowerCase());
       return value === undefined ? fail(message ?? `${name} must be true or false (or 1 or 0).`) : ok(value);
     },
     checks: [],
@@ -205,7 +208,7 @@ const url = ({ protocols = ['http', 'https'], message }: { readonly protocols?: 
 const port = (message?: string): EnvNumber =>
   new EnvNumber({
     parse: (raw, name) => {
-      const value = toNumber(raw);
+      const value = toNumber(raw, INTEGER);
       return value !== undefined && Number.isSafeInteger(value) && value >= 1 && value <= 65_535 ? ok(value) : fail(message ?? `${name} must be a port from 1 to 65535.`);
     },
     checks: [],
@@ -268,7 +271,7 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
   #validate(environment: unknown): StandardResult<Out> {
     if (typeof environment !== 'object' || environment === null) return { issues: [{ message: 'The environment must be an object of strings.' }] };
     const source = environment as Readonly<Record<string, unknown>>;
-    const values: Record<string, unknown> = {};
+    const entries: [string, unknown][] = [];
     const issues: StandardIssue[] = [];
     for (const [name, field] of Object.entries(this.#fields)) {
       const raw = Object.hasOwn(source, name) ? source[name] : undefined;
@@ -278,9 +281,11 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
       }
       const read = field['~env'](raw, name);
       if (read.problem !== undefined) issues.push({ message: read.problem, path: [name] });
-      else values[name] = read.value;
+      else entries.push([name, read.value]);
     }
     if (issues.length > 0) return { issues };
+    // Own properties only — a variable named `__proto__` is a key like any other, never the object's prototype.
+    const values = Object.fromEntries(entries);
     for (const check of this.#checks) {
       if (!check.test(values as Out)) issues.push({ message: text(check.message, values as Out), path: [check.variable] });
     }

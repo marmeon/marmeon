@@ -31,7 +31,9 @@ describe('env — the building blocks', () => {
   it('integer: a whole number, as written in decimal; min/max its range', () => {
     expect(one(env.integer(), '5000')).toEqual({ value: { X: 5000 } });
     expect(one(env.integer(), '-3')).toEqual({ value: { X: -3 } });
-    for (const raw of ['1.5', 'ten', '0x10', '12abc', 'Infinity', '9007199254740993']) {
+    expect(one(env.integer(), '+7')).toEqual({ value: { X: 7 } });
+    // Only a sign and decimal digits — as the whole-number variables take them today (KEEP_ALIVE_TIMEOUT, AUTH_UNVERIFIED_DAYS).
+    for (const raw of ['1.5', 'ten', '0x10', '12abc', 'Infinity', '9007199254740993', '1e3', '5.', '.5', ' 5', '5 ', '--5']) {
       expect(one(env.integer(), raw), raw).toEqual({ problems: ['X — X must be a whole number.'] });
     }
     expect(one(env.integer().min(1), '0')).toEqual({ problems: ['X — X must be at least 1.'] });
@@ -43,7 +45,7 @@ describe('env — the building blocks', () => {
   it('number: decimals too', () => {
     expect(one(env.number(), '0.5')).toEqual({ value: { X: 0.5 } });
     expect(one(env.number().max(300), '300.5')).toEqual({ problems: ['X — X must be at most 300.'] });
-    expect(one(env.number(), '5s')).toEqual({ problems: ['X — X must be a number.'] });
+    for (const raw of ['5s', '1e3', '5.', '.5', 'Infinity', 'NaN', ' 1']) expect(one(env.number(), raw), raw).toEqual({ problems: ['X — X must be a number.'] });
     expect(one(env.number('Expected seconds, like 5 or 0.5'), '5s')).toEqual({ problems: ['X — Expected seconds, like 5 or 0.5'] });
   });
 
@@ -51,7 +53,8 @@ describe('env — the building blocks', () => {
     for (const [raw, value] of [['true', true], ['TRUE', true], ['1', true], ['false', false], ['False', false], ['0', false]] as const) {
       expect(one(env.boolean(), raw), raw).toEqual({ value: { X: value } });
     }
-    for (const raw of ['yes', 'off', 'tru', '2']) {
+    // `constructor`, `__proto__`, `toString`: names Object.prototype has — never a value.
+    for (const raw of ['yes', 'off', 'tru', '2', 'constructor', 'CONSTRUCTOR', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
       expect(one(env.boolean(), raw), raw).toEqual({ problems: ['X — X must be true or false (or 1 or 0).'] });
     }
   });
@@ -80,7 +83,7 @@ describe('env — the building blocks', () => {
 
   it('port: 1 to 65535', () => {
     expect(one(env.port(), '5432')).toEqual({ value: { X: 5432 } });
-    for (const raw of ['0', '65536', '80.5', 'http']) expect(one(env.port(), raw), raw).toEqual({ problems: ['X — X must be a port from 1 to 65535.'] });
+    for (const raw of ['0', '65536', '80.5', 'http', '8e1', '80.']) expect(one(env.port(), raw), raw).toEqual({ problems: ['X — X must be a port from 1 to 65535.'] });
   });
 
   it('email: an address', () => {
@@ -207,6 +210,12 @@ describe('env({ … }) — the schema', () => {
   it('a value that is not a string (an env object built in code) is a problem, not a crash', () => {
     expect(read(schema, { REDIS_TIMEOUT: 250 as never })).toEqual({ problems: ['REDIS_TIMEOUT — REDIS_TIMEOUT must be a string, as every environment variable is.'] });
     expect(schema['~standard'].validate(null)).toEqual({ issues: [{ message: 'The environment must be an object of strings.' }] });
+  });
+
+  it('a variable named __proto__ is a key like any other, never the prototype of the values', () => {
+    const result = read(env({ ['__proto__']: env.string() }), JSON.parse('{"__proto__": "x"}') as Record<string, string>) as { value: object };
+    expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(result.value, '__proto__')?.value).toBe('x');
   });
 
   it('.check(): a rule between variables, under the variable it names — only once every variable read cleanly', () => {
