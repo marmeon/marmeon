@@ -31,6 +31,7 @@ import { defineGegenproben } from '../define.ts';
  * - **`key:generate` says what `--force` does** (G18) — the old text claims a new key makes sessions unreadable, while `--force`
  *   keeps the old key in `APP_PREVIOUS_KEYS`.
  * - **A mail's links need a scheme** (G19) — checked only for a leading `/`, `./`, `../` or `?` again, `notes/7` reaches the mail.
+ * - **The error page names a `defineMiddleware()` by its name** (G21) — classes only again, the object shows as "(anonymous)".
  */
 const HEALTHCHECK = { vitest: 'packages/cli/src/make-docker.test.ts', name: 'checks nothing with HEALTH_PATH=off' } as const;
 const COMMAND_HELP = { vitest: 'packages/cli/src/cli.test.ts', name: 'for --help, without running it' } as const;
@@ -200,6 +201,13 @@ export default defineGegenproben({
       patch: [{ file: 'packages/mail/src/mailer.ts', find: "const ABSOLUTE = /^(?:[a-z][a-z\\d+.-]*:|#)/i;", replace: "const ABSOLUTE = /^(?!\\/(?!\\/)|\\.{1,2}\\/|\\?)/;" }],
       run: { vitest: 'packages/mail/src/queued.test.ts', name: 'refuses relative links' },
       expect: /relative links that passed: \["notes\/7","reset-password\?token=abc","\/\/app\.test\/reset","www\.app\.test\/reset",""\]: expected/,
+    },
+    {
+      id: 'G21',
+      title: 'the error page names classes only: a defineMiddleware() shows as "(anonymous)"',
+      patch: [{ file: KERNEL, find: ".map((middleware) => middleware.name || '(anonymous)'),", replace: ".map((middleware) => (typeof middleware === 'function' && middleware.name) || '(anonymous)')," }],
+      run: { vitest: 'packages/server/src/error-page.test.ts', name: 'shows the class, the message, the throwing line' },
+      expect: /CheckAssetVersion, \(anonymous\): expected '.*' to contain 'AuditTrail'/,
     },
   ],
 });

@@ -345,7 +345,8 @@ export function createHttpKernel(
                   path: route.path,
                   methods: route.methods,
                   controller: controllerOf(route),
-                  middleware: router.middlewareFor(route).map((middleware) => (typeof middleware === 'function' && middleware.name) || '(anonymous)'),
+                  // A class by its name, a defineMiddleware() by the name it was given — as route:list shows them.
+                  middleware: router.middlewareFor(route).map((middleware) => middleware.name || '(anonymous)'),
                   params: parameters.get(failed) ?? {},
                 },
               }

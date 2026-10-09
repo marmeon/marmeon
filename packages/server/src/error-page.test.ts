@@ -5,7 +5,7 @@ import { createApplication, defineModule, Logger, token, type Application } from
 import { channels, messageBase, publishEnded } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, HttpServiceProvider, view, type PageObject } from '@marmeon/http';
-import { defineRoutes } from '@marmeon/router';
+import { defineMiddleware, defineRoutes } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { createHttpKernel } from './kernel.ts';
@@ -49,7 +49,7 @@ class SendWelcomeController {
 
 let release: (() => void) | undefined;
 const routes = defineRoutes((Route) => {
-  Route.get('/explode/:user', ExplodingController).name('lab.explode');
+  Route.middleware(defineMiddleware('AuditTrail', (_ctx, next) => next())).get('/explode/:user', ExplodingController).name('lab.explode');
   Route.post('/login', async (ctx) => {
     await ctx.input();
     throw new Error('Signing in failed');
@@ -140,6 +140,10 @@ describe('the development error page (E119)', () => {
       // Route, queries (the secret statement without its parameters), the log line (its token redacted).
       expect(html).toContain('<code>lab.explode</code>');
       expect(html).toContain('ExplodingController');
+      // A defineMiddleware() by its name, as route:list shows it.
+      const middleware = /\(middleware: (.*)\)$/m.exec(markdownOf(html))?.[1] ?? markdownOf(html);
+      expect(middleware, middleware).toContain('AuditTrail');
+      expect(middleware, middleware).not.toContain('(anonymous)');
       // (The code snippet shows the source as it is — the sections below are what was recorded.)
       const queries = sectionOf(html, 'queries');
       expect(queries).toContain('select * from users where email = ?');

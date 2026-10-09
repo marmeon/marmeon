@@ -73,7 +73,7 @@ export const jsonOnly = defineMiddleware('jsonOnly', (ctx, next) => {
 });
 ```
 
-The name shows in `marmeon route:list`.
+The name shows in `marmeon route:list` and on the development error page.
 
 ## Adding to the context
 
